@@ -9,18 +9,18 @@ VoxelCity
 .. image:: https://img.shields.io/travis/kunifujiwara/voxelcity.svg
         :target: https://travis-ci.com/kunifujiwara/voxelcity
 
-.. image:: https://readthedocs.org/projects/three-d-city-model-generator/badge/?version=latest
-        :target: https://three-d-city-model-generator.readthedocs.io/en/latest/?version=latest
+.. image:: https://readthedocs.org/projects/voxelcity/badge/?version=latest
+        :target: https://voxelcity.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
 
 
 
-3d-city-model-generator is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data
+VoxelCity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data
 
 
 * Free software: MIT license
-* Documentation: https://three-d-city-model-generator.readthedocs.io.
+* Documentation: https://voxelcity.readthedocs.io.
 
 
 Features
