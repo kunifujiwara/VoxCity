@@ -7,9 +7,10 @@ import ee
 import geemap
 from collections import Counter
 from scipy.interpolate import griddata
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 from shapely.geometry import Polygon
-from rasterio.errors import TransformError
+import rasterio
+from pyproj.geod import Geod
 
 def initialize_earth_engine():
     ee.Initialize()
