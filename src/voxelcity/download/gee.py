@@ -9,6 +9,7 @@ from collections import Counter
 from scipy.interpolate import griddata
 from pyproj import Transformer
 from shapely.geometry import Polygon
+from rasterio.errors import TransformError
 
 def initialize_earth_engine():
     ee.Initialize()
@@ -35,9 +36,38 @@ def create_grid(tiff_path, mesh_size):
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
         left, bottom, right, top = src.bounds
-        num_cells_x = int((right - left) / mesh_size)
-        num_cells_y = int((top - bottom) / mesh_size)
-        new_affine = Affine(mesh_size, 0, left, 0, -mesh_size, top)
+        src_crs = src.crs
+
+        # Calculate width and height in meters
+        if src_crs.to_epsg() == 3857:  # Web Mercator
+            # Convert bounds to WGS84
+            wgs84 = CRS.from_epsg(4326)
+            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
+            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
+            right_wgs84, top_wgs84 = transformer.transform(right, top)
+        
+            # Use geodesic calculations for accuracy
+            geod = Geod(ellps="WGS84")
+            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
+            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
+        else:
+            # For other projections, assume units are already in meters
+            width = right - left
+            height = top - bottom
+
+        # Display width and height in meters
+        print(f"ROI Width: {width:.2f} meters")
+        print(f"ROI Height: {height:.2f} meters")
+
+        num_cells_x = int(width / mesh_size + 0.5)
+        num_cells_y = int(height / mesh_size + 0.5)
+
+        # Adjust mesh_size to fit the image exactly
+        adjusted_mesh_size_x = width / num_cells_x
+        adjusted_mesh_size_y = height / num_cells_y
+
+        # Create a new affine transformation for the new grid
+        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
 
         cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
         xs, ys = new_affine * (cols, rows)
@@ -66,9 +96,38 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
     with rasterio.open(tiff_path) as src:
         img = src.read((1,2,3))
         left, bottom, right, top = src.bounds
-        num_cells_x = int((right - left) / mesh_size)
-        num_cells_y = int((top - bottom) / mesh_size)
-        new_affine = Affine(mesh_size, 0, left, 0, -mesh_size, top)
+        src_crs = src.crs
+
+        # Calculate width and height in meters
+        if src_crs.to_epsg() == 3857:  # Web Mercator
+            # Convert bounds to WGS84
+            wgs84 = CRS.from_epsg(4326)
+            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
+            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
+            right_wgs84, top_wgs84 = transformer.transform(right, top)
+        
+            # Use geodesic calculations for accuracy
+            geod = Geod(ellps="WGS84")
+            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
+            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
+        else:
+            # For other projections, assume units are already in meters
+            width = right - left
+            height = top - bottom
+
+        # Display width and height in meters
+        print(f"ROI Width: {width:.2f} meters")
+        print(f"ROI Height: {height:.2f} meters")
+
+        num_cells_x = int(width / mesh_size + 0.5)
+        num_cells_y = int(height / mesh_size + 0.5)
+
+        # Adjust mesh_size to fit the image exactly
+        adjusted_mesh_size_x = width / num_cells_x
+        adjusted_mesh_size_y = height / num_cells_y
+
+        # Create a new affine transformation for the new grid
+        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
 
         cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
         xs, ys = new_affine * (cols, rows)
@@ -81,7 +140,6 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
         row, col = row[valid], col[valid]
 
         grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-
         for i, (r, c) in enumerate(zip(row, col)):
             cell_data = img[:, r, c]
             dominant_class = get_dominant_class(cell_data, land_cover_classes)
@@ -98,29 +156,54 @@ def create_dem_grid(tiff_path, mesh_size, roi_shapely):
     with rasterio.open(tiff_path) as src:
         dem = src.read(1)
         transform = src.transform
-        crs = src.crs
+        src_crs = src.crs
 
-        transformer = Transformer.from_crs(crs.to_string(), "EPSG:3857", always_xy=True)
+        # Ensure we're working with EPSG:3857
+        if src_crs.to_epsg() != 3857:
+            transformer_to_3857 = Transformer.from_crs(src_crs, CRS.from_epsg(3857), always_xy=True)
+        else:
+            transformer_to_3857 = lambda x, y: (x, y)
 
+        # Transform ROI bounds to EPSG:3857
         roi_bounds = roi_shapely.bounds
-        roi_left, roi_bottom = transformer.transform(roi_bounds[0], roi_bounds[1])
-        roi_right, roi_top = transformer.transform(roi_bounds[2], roi_bounds[3])
+        roi_left, roi_bottom = transformer_to_3857.transform(roi_bounds[0], roi_bounds[1])
+        roi_right, roi_top = transformer_to_3857.transform(roi_bounds[2], roi_bounds[3])
 
-        roi_width_m = roi_right - roi_left
-        roi_height_m = roi_top - roi_bottom
-        num_cells_x = int(roi_width_m / mesh_size)
-        num_cells_y = int(roi_height_m / mesh_size)
+        # Calculate width and height in meters using geodesic methods
+        wgs84 = CRS.from_epsg(4326)
+        transformer_to_wgs84 = Transformer.from_crs(CRS.from_epsg(3857), wgs84, always_xy=True)
+        roi_left_wgs84, roi_bottom_wgs84 = transformer_to_wgs84.transform(roi_left, roi_bottom)
+        roi_right_wgs84, roi_top_wgs84 = transformer_to_wgs84.transform(roi_right, roi_top)
 
+        geod = Geod(ellps="WGS84")
+        _, _, roi_width_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_right_wgs84, roi_bottom_wgs84)
+        _, _, roi_height_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_left_wgs84, roi_top_wgs84)
+
+        # Display width and height in meters
+        print(f"ROI Width: {roi_width_m:.2f} meters")
+        print(f"ROI Height: {roi_height_m:.2f} meters")
+
+        num_cells_x = int(roi_width_m / mesh_size + 0.5)
+        num_cells_y = int(roi_height_m / mesh_size + 0.5)
+
+        # Adjust mesh_size to fit the ROI exactly
+        adjusted_mesh_size_x = roi_width_m / num_cells_x
+        adjusted_mesh_size_y = roi_height_m / num_cells_y
+
+        # Create grid in EPSG:3857
         x = np.linspace(roi_left, roi_right, num_cells_x, endpoint=False)
         y = np.linspace(roi_top, roi_bottom, num_cells_y, endpoint=False)
         xx, yy = np.meshgrid(x, y)
 
-        rows, cols = np.mgrid[0:dem.shape[0], 0:dem.shape[1]]
-        orig_lon, orig_lat = rasterio.transform.xy(transform, rows, cols)
-        lons, lats = transformer.transform(xx, yy, direction='INVERSE')
-        points = np.column_stack((np.ravel(orig_lon), np.ravel(orig_lat)))
+        # Transform original DEM coordinates to EPSG:3857
+        rows, cols = np.meshgrid(range(dem.shape[0]), range(dem.shape[1]), indexing='ij')
+        orig_x, orig_y = rasterio.transform.xy(transform, rows.ravel(), cols.ravel())
+        orig_x, orig_y = transformer_to_3857.transform(orig_x, orig_y)
+
+        # Interpolate DEM values onto new grid
+        points = np.column_stack((orig_x, orig_y))
         values = dem.ravel()
-        grid = griddata(points, values, (lons, lats), method='linear')
+        grid = griddata(points, values, (xx, yy), method='cubic')
 
     return grid
 
