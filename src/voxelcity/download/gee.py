@@ -64,8 +64,8 @@ def create_grid(tiff_path, mesh_size):
         num_cells_y = int(height / mesh_size + 0.5)
 
         # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = width / num_cells_x
-        adjusted_mesh_size_y = height / num_cells_y
+        adjusted_mesh_size_x = (right - left) / num_cells_x
+        adjusted_mesh_size_y = (top - bottom) / num_cells_y
 
         # Create a new affine transformation for the new grid
         new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
@@ -124,8 +124,8 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
         num_cells_y = int(height / mesh_size + 0.5)
 
         # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = width / num_cells_x
-        adjusted_mesh_size_y = height / num_cells_y
+        adjusted_mesh_size_x = (right - left) / num_cells_x
+        adjusted_mesh_size_y = (top - bottom) / num_cells_y
 
         # Create a new affine transformation for the new grid
         new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
@@ -187,9 +187,9 @@ def create_dem_grid(tiff_path, mesh_size, roi_shapely):
         num_cells_x = int(roi_width_m / mesh_size + 0.5)
         num_cells_y = int(roi_height_m / mesh_size + 0.5)
 
-        # Adjust mesh_size to fit the ROI exactly
-        adjusted_mesh_size_x = roi_width_m / num_cells_x
-        adjusted_mesh_size_y = roi_height_m / num_cells_y
+        # # Adjust mesh_size to fit the ROI exactly
+        # adjusted_mesh_size_x = roi_width_m / num_cells_x
+        # adjusted_mesh_size_y = roi_height_m / num_cells_y
 
         # Create grid in EPSG:3857
         x = np.linspace(roi_left, roi_right, num_cells_x, endpoint=False)
@@ -234,7 +234,7 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     numeric_grid = np.vectorize(class_to_num.get)(grid)
 
     plt.figure(figsize=(12, 12))
-    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm)
+    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
     cbar.set_ticklabels(sorted_classes)
     plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
