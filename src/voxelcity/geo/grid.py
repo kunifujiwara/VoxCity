@@ -37,26 +37,28 @@ def process_grid(grid_bi, dem_grid):
     return result - np.min(result)
 
 def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
-    grid_size_0 = math.ceil(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec))
-    grid_size_1 = math.ceil(np.linalg.norm(side_2) / np.linalg.norm(meshsize * v_vec))
-    return (grid_size_0, grid_size_1)
+    grid_size_0 = int(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec) + 0.5)
+    grid_size_1 = int(np.linalg.norm(side_2) / np.linalg.norm(meshsize * v_vec) + 0.5)
+    adjusted_mesh_size_0 = meshsize *  np.linalg.norm(meshsize * u_vec) * grid_size_0 / np.linalg.norm(side_1)
+    adjusted_mesh_size_1 = meshsize *  np.linalg.norm(meshsize * v_vec) * grid_size_1 / np.linalg.norm(side_2)
+    return (grid_size_0, grid_size_1), (adjusted_mesh_size_0, adjusted_mesh_size_1)
 
-def create_coordinate_mesh(origin, grid_size, meshsize, u_vec, v_vec):
+def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
     x = np.linspace(0, grid_size[0], grid_size[0])
     y = np.linspace(0, grid_size[1], grid_size[1])
     xx, yy = np.meshgrid(x, y)
 
     cell_coords = origin[:, np.newaxis, np.newaxis] + \
-                  xx[np.newaxis, :, :] * meshsize * u_vec[:, np.newaxis, np.newaxis] + \
-                  yy[np.newaxis, :, :] * meshsize * v_vec[:, np.newaxis, np.newaxis]
+                  xx[np.newaxis, :, :] * adjusted_meshsize[0] * u_vec[:, np.newaxis, np.newaxis] + \
+                  yy[np.newaxis, :, :] * adjusted_meshsize[1] * v_vec[:, np.newaxis, np.newaxis]
 
     return cell_coords
 
-def create_cell_polygon(origin, i, j, meshsize, u_vec, v_vec):
-    bottom_left = origin + i * meshsize * u_vec + j * meshsize * v_vec
-    bottom_right = origin + (i + 1) * meshsize * u_vec + j * meshsize * v_vec
-    top_right = origin + (i + 1) * meshsize * u_vec + (j + 1) * meshsize * v_vec
-    top_left = origin + i * meshsize * u_vec + (j + 1) * meshsize * v_vec
+def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
+    bottom_left = origin + i * adjusted_meshsize[0] * u_vec + j * adjusted_meshsize[1] * v_vec
+    bottom_right = origin + (i + 1) * adjusted_meshsize[0] * u_vec + j * adjusted_meshsize[1] * v_vec
+    top_right = origin + (i + 1) * adjusted_meshsize[0] * u_vec + (j + 1) * adjusted_meshsize[1] * v_vec
+    top_left = origin + i * adjusted_meshsize[0] * u_vec + (j + 1) * adjusted_meshsize[1] * v_vec
     return Polygon([bottom_left, bottom_right, top_right, top_left])
 
 def tree_height_grid_from_land_cover(land_cover_grid_ori):

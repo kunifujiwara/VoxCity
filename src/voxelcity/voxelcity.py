@@ -44,8 +44,8 @@ from .utils.visualization import plot_grid
 
 def get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize, output_dir, source = 'Urbanwatch'):
 
-    if source == 'Urbanwatch':
-        get_geotif_urbanwatch(rotated_rectangle_vertices, output_dir)
+    # if source == 'Urbanwatch':
+    #     get_geotif_urbanwatch(rotated_rectangle_vertices, output_dir)
 
     geod = initialize_geod()
 
@@ -63,9 +63,10 @@ def get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
     origin = np.array(rotated_rectangle_vertices[0])
-    grid_size = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)    
 
     print(f"Calculated grid size: {grid_size}")
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     geotiff_path = os.path.join(output_dir, 'lulc.tif')
 
@@ -73,7 +74,7 @@ def get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize
         geotiff_crs = src.crs
     transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
 
-    cell_coords = create_coordinate_mesh(origin, grid_size, meshsize, u_vec, v_vec)
+    cell_coords = create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
     cell_coords_flat = cell_coords.reshape(2, -1).T
     transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
     transformed_coords = transformed_coords.reshape(grid_size[::-1] + (2,))
@@ -91,7 +92,7 @@ def get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize
 
     grid = grid.T
 
-    plot_grid(grid, origin, meshsize, u_vec, v_vec, transformer, geotiff_crs,
+    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, geotiff_crs,
               rotated_rectangle_vertices, 'land_cover', land_cover_classes=land_cover_classes)
 
     unique_indices = np.unique(grid)
@@ -139,7 +140,10 @@ def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
     origin = np.array(rectangle_vertices[0])
-    grid_size = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+
+    print(f"Calculated grid size: {grid_size}")
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Create the grid
     grid = np.zeros(grid_size)
@@ -158,7 +162,7 @@ def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 
     buildings_found = 0
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
-            cell = create_cell_polygon(origin, i, j, meshsize, u_vec, v_vec)
+            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             for k in idx.intersection(cell.bounds):
                 polygon, height = building_polygons[k]
                 if cell.intersects(polygon) and cell.intersection(polygon).area > cell.area/2:
@@ -167,7 +171,7 @@ def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 
                     break
 
     # Plot the results
-    plot_grid(grid, origin, meshsize, u_vec, v_vec, transformer, CRS.from_epsg(3857),
+    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, CRS.from_epsg(3857),
               rectangle_vertices, 'building_height', buildings=filtered_buildings)
 
     return grid#, buildings_found

@@ -179,8 +179,8 @@ def visualize_3d_voxel_plotly(voxel_grid, color_map, voxel_size=2.0):
     print("Visualization complete. Displaying plot...")
     fig.show()
 
-def plot_grid(grid, origin, meshsize, u_vec, v_vec, transformer, crs, vertices, data_type, **kwargs):
-    fig, ax = plt.subplots(figsize=(12, 8))
+def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, vertices, data_type, **kwargs):
+    fig, ax = plt.subplots(figsize=(24, 16))
 
     if data_type == 'land_cover':
         land_cover_classes = kwargs.get('land_cover_classes')
@@ -210,7 +210,7 @@ def plot_grid(grid, origin, meshsize, u_vec, v_vec, transformer, crs, vertices, 
 
     for i in range(grid.shape[0]):
         for j in range(grid.shape[1]):
-            cell = create_cell_polygon(origin, j, i, meshsize, u_vec, v_vec)  # Note the swap of i and j
+            cell = create_cell_polygon(origin, j, i, adjusted_meshsize, u_vec, v_vec)  # Note the swap of i and j
             x, y = cell.exterior.xy
             x, y = zip(*[transformer.transform(lon, lat) for lat, lon in zip(x, y)])
 
