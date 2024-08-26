@@ -86,11 +86,20 @@ def create_grid(tiff_path, mesh_size):
 
     return grid
 
+def rgb_distance(color1, color2):
+    return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
+      
+def get_nearest_class(pixel, land_cover_classes):
+    distances = {class_name: rgb_distance(pixel, color) 
+                 for color, class_name in land_cover_classes.items()}
+    return min(distances, key=distances.get)
+
 def get_dominant_class(cell_data, land_cover_classes):
     if cell_data.size == 0:
         return 'No Data'
-    pixel_tuples = [tuple(pixel) for pixel in cell_data.reshape(-1, 3)]
-    class_counts = Counter(land_cover_classes.get(t, 'Unknown') for t in pixel_tuples)
+    pixel_classes = [get_nearest_class(tuple(pixel), land_cover_classes) 
+                     for pixel in cell_data.reshape(-1, 3)]
+    class_counts = Counter(pixel_classes)
     return class_counts.most_common(1)[0][0]
 
 def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
@@ -98,7 +107,7 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
         img = src.read((1,2,3))
         left, bottom, right, top = src.bounds
         src_crs = src.crs
-
+        
         # Calculate width and height in meters
         if src_crs.to_epsg() == 3857:  # Web Mercator
             # Convert bounds to WGS84
@@ -115,38 +124,38 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
             # For other projections, assume units are already in meters
             width = right - left
             height = top - bottom
-
+        
         # Display width and height in meters
         print(f"ROI Width: {width:.2f} meters")
         print(f"ROI Height: {height:.2f} meters")
-
+        
         num_cells_x = int(width / mesh_size + 0.5)
         num_cells_y = int(height / mesh_size + 0.5)
-
+        
         # Adjust mesh_size to fit the image exactly
         adjusted_mesh_size_x = (right - left) / num_cells_x
         adjusted_mesh_size_y = (top - bottom) / num_cells_y
-
+        
         # Create a new affine transformation for the new grid
         new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-
+        
         cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
         xs, ys = new_affine * (cols, rows)
         xs_flat, ys_flat = xs.flatten(), ys.flatten()
-
+        
         row, col = src.index(xs_flat, ys_flat)
         row, col = np.array(row), np.array(col)
-
         valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
         row, col = row[valid], col[valid]
-
+        
         grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
+        
         for i, (r, c) in enumerate(zip(row, col)):
             cell_data = img[:, r, c]
             dominant_class = get_dominant_class(cell_data, land_cover_classes)
             grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
             grid[grid_row, grid_col] = dominant_class
-
+    
     return grid
 
 def get_dem_image(roi_buffered):
