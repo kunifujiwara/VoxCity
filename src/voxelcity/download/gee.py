@@ -12,6 +12,7 @@ from shapely.geometry import Polygon
 import rasterio
 from pyproj.geod import Geod
 
+
 def initialize_earth_engine():
     ee.Initialize()
 
