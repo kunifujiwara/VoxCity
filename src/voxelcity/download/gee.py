@@ -15,7 +15,17 @@ from pyproj.geod import Geod
 def initialize_earth_engine():
     ee.Initialize()
 
-def get_roi(coords):
+def convert_format(input_coords):
+    # Convert input to the desired output format
+    output_coords = [[coord[1], coord[0]] for coord in input_coords]
+
+    # Add the first point to the end to close the polygon
+    output_coords.append(output_coords[0])
+
+    return output_coords
+
+def get_roi(input_coords):
+    coords = convert_format(input_coords)
     return ee.Geometry.Polygon(coords)
 
 def get_center_point(roi):
@@ -33,7 +43,7 @@ def save_geotiff(image, filename, resolution=1, scale=None, region=None):
     else:
         geemap.ee_to_geotiff(image, filename, resolution=resolution, to_cog=True)
 
-def create_grid(tiff_path, mesh_size):
+def create_canopy_height_grid(tiff_path, mesh_size):
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
         left, bottom, right, top = src.bounds
@@ -84,7 +94,7 @@ def create_grid(tiff_path, mesh_size):
         flat_indices = np.ravel_multi_index((row, col), img.shape)
         np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
 
-    return grid
+    return np.flipud(grid)
 
 def rgb_distance(color1, color2):
     return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
@@ -102,6 +112,17 @@ def get_dominant_class(cell_data, land_cover_classes):
     class_counts = Counter(pixel_classes)
     return class_counts.most_common(1)[0][0]
 
+def convert_land_cover_array(input_array, land_cover_classes):
+    # Create a mapping of class names to integers
+    class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
+
+    # Create a vectorized function to map string values to integers
+    vectorized_map = np.vectorize(lambda x: class_to_int.get(x, -1))
+
+    # Apply the mapping to the input array
+    output_array = vectorized_map(input_array)
+
+    return output_array
 def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
     with rasterio.open(tiff_path) as src:
         img = src.read((1,2,3))
@@ -156,7 +177,7 @@ def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
             grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
             grid[grid_row, grid_col] = dominant_class
     
-    return grid
+    return np.flipud(grid)
 
 def get_dem_image(roi_buffered):
     dem = ee.Image('USGS/SRTMGL1_003')
@@ -215,7 +236,7 @@ def create_dem_grid(tiff_path, mesh_size, roi_shapely):
         values = dem.ravel()
         grid = griddata(points, values, (xx, yy), method='cubic')
 
-    return grid
+    return np.flipud(grid)
 
 def visualize_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
     plt.figure(figsize=(10, 10))
@@ -266,13 +287,14 @@ def get_grid(tag, collection_name, coords, mesh_size, land_cover_classes=None, b
         save_geotiff(image, f"{tag}.tif")
 
     if tag == 'canopy_height':
-        grid = create_grid(f"{tag}.tif", mesh_size)
+        grid = create_canopy_height_grid(f"{tag}.tif", mesh_size)
         visualize_grid(grid, mesh_size, title=f'{tag.replace("_", " ").title()} Grid')
     elif tag == 'land_cover':
         grid = create_land_cover_grid(f"{tag}.tif", mesh_size, land_cover_classes)
         color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
-        color_map['No Data'] = [0.5, 0.5, 0.5]
+        # color_map['No Data'] = [0.5, 0.5, 0.5]
         visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes)
+        grid = convert_land_cover_array(grid, land_cover_classes)
     elif tag == 'nasa_dem':
         roi_shapely = Polygon(coords)
         grid = create_dem_grid(f"{tag}.tif", mesh_size, roi_shapely)
