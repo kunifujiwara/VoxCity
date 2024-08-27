@@ -272,7 +272,7 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     plt.ylabel('Grid Cells (Y)')
     plt.show()
 
-def get_grid(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
+def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
     initialize_earth_engine()
 
     roi = get_roi(coords)
@@ -296,7 +296,8 @@ def get_grid(tag, collection_name, coords, mesh_size, land_cover_classes=None, b
         visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes)
         grid = convert_land_cover_array(grid, land_cover_classes)
     elif tag == 'nasa_dem':
-        roi_shapely = Polygon(coords)
+        converted_coords = convert_format(coords)
+        roi_shapely = Polygon(converted_coords)
         grid = create_dem_grid(f"{tag}.tif", mesh_size, roi_shapely)
         visualize_grid(grid, mesh_size, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
