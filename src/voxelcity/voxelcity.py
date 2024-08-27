@@ -9,6 +9,7 @@ from shapely.geometry import box
 # Local application/library specific imports
 from .download.urbanwatch import get_geotif_urbanwatch
 from .download.mbfp import get_geojson_links, find_row_for_location
+from .download.osm import load_geojsons_from_openstreetmap
 from .download.utils import download_file
 from .download.nasadem import (
     download_nasa_dem,
@@ -125,6 +126,8 @@ def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 
         # Load and process GeoJSON data
         geojson_data = load_geojsons_from_multiple_gz(filenames)
         swap_coordinates(geojson_data)
+    elif source == 'OpenStreetMap':
+        geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
 
     # Calculate grid and normalize vectors
     geod = initialize_geod()
