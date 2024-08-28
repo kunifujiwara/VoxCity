@@ -4,3 +4,4 @@ from .nasadem import *
 from .utils import *
 from .gee import *
 from .osm import *
+from .oemj import *
