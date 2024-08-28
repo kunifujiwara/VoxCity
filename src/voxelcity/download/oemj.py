@@ -113,3 +113,17 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
         band.WriteArray(np.array(image)[:,:,i])
 
     dataset = None
+
+def save_oemj_as_geotiff(polygon, filepath, zoom=16):
+    try:
+        tiles, bounds = download_tiles(polygon, zoom)
+        if not tiles:
+            raise ValueError("No tiles were downloaded. Please check the polygon coordinates and zoom level.")
+
+        composed_image = compose_image(tiles, bounds)
+        cropped_image, bbox = crop_image(composed_image, polygon, bounds, zoom)
+        save_as_geotiff(cropped_image, polygon, zoom, bbox, bounds, filepath)
+        print(f"GeoTIFF saved as '{filepath}' in Web Mercator projection (EPSG:3857).")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        print("Please check the polygon coordinates and zoom level, and ensure you have an active internet connection.")
