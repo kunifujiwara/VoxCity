@@ -7,9 +7,21 @@ import contextily as ctx
 from shapely.geometry import Polygon
 import plotly.graph_objects as go
 from tqdm import tqdm
+import rasterio
+from pyproj import CRS
 
 from ..geo.grid import (
+    calculate_grid_size,
+    create_coordinate_mesh,
     create_cell_polygon
+)
+
+from ..geo.utils import (
+    initialize_geod,
+    calculate_distance,
+    normalize_to_one_meter,
+    setup_transformer,
+    transform_coords
 )
 
 def visualize_3d_voxel(voxel_grid, color_map, voxel_size=2.0):
@@ -247,3 +259,47 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, v
     plt.axis('off')
     plt.tight_layout()
     plt.show()
+
+def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classes, meshsize, source = 'Urbanwatch'):
+
+    geod = initialize_geod()
+
+    vertex_0 = rectangle_vertices[0]
+    vertex_1 = rectangle_vertices[1]
+    vertex_3 = rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+
+    print(f"Calculated grid size: {grid_size}")
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
+
+    # geotiff_path = os.path.join(output_dir, "land_cover.tif")
+    geotiff_path = "land_cover.tif"
+
+    with rasterio.open(geotiff_path) as src:
+        geotiff_crs = src.crs
+    transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
+
+    cell_coords = create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
+    cell_coords_flat = cell_coords.reshape(2, -1).T
+    transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
+    transformed_coords = transformed_coords.reshape(grid_size[::-1] + (2,))
+
+    print(f"Grid shape: {grid.shape}")
+
+    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, geotiff_crs,
+              rectangle_vertices, 'land_cover', land_cover_classes=land_cover_classes)
+
+    unique_indices = np.unique(grid)
+    unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
+    print(f"Unique classes in the grid: {unique_classes}")
