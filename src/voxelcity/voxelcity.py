@@ -11,12 +11,21 @@ from .download.urbanwatch import get_geotif_urbanwatch
 from .download.mbfp import get_geojson_links, find_row_for_location
 from .download.osm import load_geojsons_from_openstreetmap
 from .download.utils import download_file
+from .download.oemj import save_oemj_as_geotiff
 from .download.nasadem import (
     download_nasa_dem,
     interpolate_dem,
     get_utm_crs
 )
-
+from .download.gee import (
+    initialize_earth_engine,
+    create_land_cover_grid,
+    visualize_land_cover_grid,
+    convert_land_cover_array,
+    get_roi,
+    get_image_collection,
+    save_geotiff
+)
 from .geo.utils import (
     initialize_geod,
     calculate_distance,
@@ -31,7 +40,6 @@ from .geo.utils import (
     filter_buildings,
     create_building_polygons
 )
-
 from .geo.grid import (
     group_and_label_cells, 
     process_grid,
@@ -39,11 +47,30 @@ from .geo.grid import (
     create_coordinate_mesh,
     create_cell_polygon
 )
-
 from .utils.visualization import plot_grid
 
+def get_grid_land_cover(rectangle_vertices, land_cover_classes, meshsize, source = 'Urbanwatch'):
 
-def get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize, output_dir, source = 'Urbanwatch'):
+    # Initialize Earth Engine
+    initialize_earth_engine()
+
+    if source == 'Urbanwatch':
+        roi = get_roi(rectangle_vertices)
+        collection_name = "projects/sat-io/open-datasets/HRLC/urban-watch-cities"
+        image = get_image_collection(collection_name, roi)
+        save_geotiff(image, "land_cover.tif")
+    elif source == 'OpenEarthMapJapan':
+        save_oemj_as_geotiff(rectangle_vertices, "land_cover.tif")
+    
+    land_cover_grid_str = create_land_cover_grid("land_cover.tif", meshsize, land_cover_classes)
+    color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
+    # color_map['No Data'] = [0.5, 0.5, 0.5]
+    visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
+    land_cover_grid_int = convert_land_cover_array(land_cover_grid_str, land_cover_classes)
+
+    return land_cover_grid_int
+
+def old_get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize, output_dir, source = 'Urbanwatch'):
 
     # if source == 'Urbanwatch':
     #     get_geotif_urbanwatch(rotated_rectangle_vertices, output_dir)

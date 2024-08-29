@@ -249,10 +249,10 @@ def visualize_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
     plt.show()
 
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
-    all_classes = list(land_cover_classes.values()) + ['No Data']
-    for cls in all_classes:
-        if cls not in color_map:
-            color_map[cls] = [0.5, 0.5, 0.5]
+    all_classes = list(land_cover_classes.values())# + ['No Data']
+    # for cls in all_classes:
+    #     if cls not in color_map:
+    #         color_map[cls] = [0.5, 0.5, 0.5]
 
     sorted_classes = sorted(all_classes)
     colors = [color_map[cls] for cls in sorted_classes]
