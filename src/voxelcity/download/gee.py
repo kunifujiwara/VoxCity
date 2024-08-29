@@ -124,61 +124,6 @@ def convert_land_cover_array(input_array, land_cover_classes):
     output_array = vectorized_map(input_array)
 
     return output_array
-def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
-    with rasterio.open(tiff_path) as src:
-        img = src.read((1,2,3))
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-        
-        # Calculate width and height in meters
-        if src_crs.to_epsg() == 3857:  # Web Mercator
-            # Convert bounds to WGS84
-            wgs84 = CRS.from_epsg(4326)
-            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
-            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
-            right_wgs84, top_wgs84 = transformer.transform(right, top)
-        
-            # Use geodesic calculations for accuracy
-            geod = Geod(ellps="WGS84")
-            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        else:
-            # For other projections, assume units are already in meters
-            width = right - left
-            height = top - bottom
-        
-        # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
-        
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-        
-        # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-        
-        # Create a new affine transformation for the new grid
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-        
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-        
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-        
-        grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-        
-        for i, (r, c) in enumerate(zip(row, col)):
-            cell_data = img[:, r, c]
-            dominant_class = get_dominant_class(cell_data, land_cover_classes)
-            grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
-            grid[grid_row, grid_col] = dominant_class
-    
-    return np.flipud(grid)
 
 def get_dem_image(roi_buffered):
     dem = ee.Image('USGS/SRTMGL1_003')
@@ -273,35 +218,35 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     plt.ylabel('Grid Cells (Y)')
     plt.show()
 
-def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
-    initialize_earth_engine()
+# def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
+#     initialize_earth_engine()
 
-    roi = get_roi(coords)
-    center_lon, center_lat = get_center_point(roi)
+#     roi = get_roi(coords)
+#     center_lon, center_lat = get_center_point(roi)
 
-    if buffer_distance:
-        roi_buffered = roi.buffer(buffer_distance)
-        image = get_dem_image(roi_buffered)
-        save_geotiff(image, f"{tag}.tif", scale=30, region=roi_buffered)
-    else:
-        image = get_image_collection(collection_name, roi)
-        save_geotiff(image, f"{tag}.tif")
+#     if buffer_distance:
+#         roi_buffered = roi.buffer(buffer_distance)
+#         image = get_dem_image(roi_buffered)
+#         save_geotiff(image, f"{tag}.tif", scale=30, region=roi_buffered)
+#     else:
+#         image = get_image_collection(collection_name, roi)
+#         save_geotiff(image, f"{tag}.tif")
 
-    if tag == 'canopy_height':
-        grid = create_canopy_height_grid(f"{tag}.tif", mesh_size)
-        visualize_grid(grid, mesh_size, title=f'{tag.replace("_", " ").title()} Grid')
-    elif tag == 'land_cover':
-        grid = create_land_cover_grid(f"{tag}.tif", mesh_size, land_cover_classes)
-        color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
-        # color_map['No Data'] = [0.5, 0.5, 0.5]
-        visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes)
-        grid = convert_land_cover_array(grid, land_cover_classes)
-    elif tag == 'nasa_dem':
-        converted_coords = convert_format(coords)
-        roi_shapely = Polygon(converted_coords)
-        grid = create_dem_grid(f"{tag}.tif", mesh_size, roi_shapely)
-        visualize_grid(grid, mesh_size, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+#     if tag == 'canopy_height':
+#         grid = create_canopy_height_grid(f"{tag}.tif", mesh_size)
+#         visualize_grid(grid, mesh_size, title=f'{tag.replace("_", " ").title()} Grid')
+#     elif tag == 'land_cover':
+#         grid = create_land_cover_grid(f"{tag}.tif", mesh_size, land_cover_classes)
+#         color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
+#         # color_map['No Data'] = [0.5, 0.5, 0.5]
+#         visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes)
+#         grid = convert_land_cover_array(grid, land_cover_classes)
+#     elif tag == 'nasa_dem':
+#         converted_coords = convert_format(coords)
+#         roi_shapely = Polygon(converted_coords)
+#         grid = create_dem_grid(f"{tag}.tif", mesh_size, roi_shapely)
+#         visualize_grid(grid, mesh_size, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
-    print(f"Resulting grid shape: {grid.shape}")
+#     print(f"Resulting grid shape: {grid.shape}")
 
-    return grid
+#     return grid

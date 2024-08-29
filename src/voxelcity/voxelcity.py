@@ -19,7 +19,6 @@ from .download.nasadem import (
 )
 from .download.gee import (
     initialize_earth_engine,
-    create_land_cover_grid,
     visualize_land_cover_grid,
     convert_land_cover_array,
     get_roi,
@@ -38,7 +37,8 @@ from .geo.utils import (
     load_geojsons_from_multiple_gz,
     swap_coordinates,
     filter_buildings,
-    create_building_polygons
+    create_building_polygons,
+    create_land_cover_grid_polygon,
 )
 from .geo.grid import (
     group_and_label_cells, 
@@ -49,7 +49,34 @@ from .geo.grid import (
 )
 from .utils.visualization import plot_grid
 
-def get_grid_land_cover(rectangle_vertices, land_cover_classes, meshsize, source = 'Urbanwatch'):
+def get_land_cover_classes(source):
+    if source == "Urbanwatch":
+        land_cover_classes = {
+            (255, 0, 0): 'Building',
+            (133, 133, 133): 'Road',
+            (255, 0, 192): 'Parking Lot',
+            (34, 139, 34): 'Tree Canopy',
+            (128, 236, 104): 'Grass/Shrub',
+            (255, 193, 37): 'Agriculture',
+            (0, 0, 255): 'Water',
+            (234, 234, 234): 'Barren',
+            (255, 255, 255): 'Unknown',
+            (0, 0, 0): 'Sea'
+        }    
+    elif source == "OpenEarthMapJapan":
+        land_cover_classes = {
+            (128, 0, 0): 'Bareland',
+            (0, 255, 36): 'Rangeland',
+            (148, 148, 148): 'Developed space',
+            (255, 255, 255): 'Road',
+            (34, 97, 38): 'Tree',
+            (0, 69, 255): 'Water',
+            (75, 181, 73): 'Agriculture land',
+            (222, 31, 7): 'Building'
+        }
+    return land_cover_classes
+
+def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch'):
 
     # Initialize Earth Engine
     initialize_earth_engine()
@@ -60,74 +87,17 @@ def get_grid_land_cover(rectangle_vertices, land_cover_classes, meshsize, source
         image = get_image_collection(collection_name, roi)
         save_geotiff(image, "land_cover.tif")
     elif source == 'OpenEarthMapJapan':
-        save_oemj_as_geotiff(rectangle_vertices, "land_cover.tif")
+        save_oemj_as_geotiff(rectangle_vertices, "land_cover.tif")    
     
-    land_cover_grid_str = create_land_cover_grid("land_cover.tif", meshsize, land_cover_classes)
+    land_cover_classes = get_land_cover_classes(source)
+
+    land_cover_grid_str = create_land_cover_grid_polygon("land_cover.tif", meshsize, land_cover_classes, rectangle_vertices)
     color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
     # color_map['No Data'] = [0.5, 0.5, 0.5]
     visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
     land_cover_grid_int = convert_land_cover_array(land_cover_grid_str, land_cover_classes)
 
     return land_cover_grid_int
-
-def old_get_grid_land_cover(rotated_rectangle_vertices, land_cover_classes, meshsize, output_dir, source = 'Urbanwatch'):
-
-    # if source == 'Urbanwatch':
-    #     get_geotif_urbanwatch(rotated_rectangle_vertices, output_dir)
-
-    geod = initialize_geod()
-
-    vertex_0 = rotated_rectangle_vertices[0]
-    vertex_1 = rotated_rectangle_vertices[1]
-    vertex_3 = rotated_rectangle_vertices[3]
-
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
-
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
-    origin = np.array(rotated_rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)    
-
-    print(f"Calculated grid size: {grid_size}")
-    print(f"Adjusted mesh size: {adjusted_meshsize}")
-
-    geotiff_path = os.path.join(output_dir, 'lulc.tif')
-
-    with rasterio.open(geotiff_path) as src:
-        geotiff_crs = src.crs
-    transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
-
-    cell_coords = create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
-    cell_coords_flat = cell_coords.reshape(2, -1).T
-    transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
-    transformed_coords = transformed_coords.reshape(grid_size[::-1] + (2,))
-
-    sampled_values = sample_geotiff(geotiff_path, transformed_coords)
-    print(f"Sampled values shape: {sampled_values.shape}")
-
-    dominant_classes = calculate_dominant_classes(sampled_values, land_cover_classes)
-    print(f"Dominant classes shape: {dominant_classes.shape}")
-
-    grid = create_grid(dominant_classes, land_cover_classes)
-    print(f"Grid shape: {grid.shape}")
-
-    print("Unique classes found:", np.unique(dominant_classes))
-
-    grid = grid.T
-
-    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, geotiff_crs,
-              rotated_rectangle_vertices, 'land_cover', land_cover_classes=land_cover_classes)
-
-    unique_indices = np.unique(grid)
-    unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
-    print(f"Unique classes in the grid: {unique_classes}")
-
-    return grid
 
 def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 'Microsoft Building Footprints'):
 
