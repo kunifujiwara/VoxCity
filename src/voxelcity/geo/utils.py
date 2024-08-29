@@ -156,11 +156,11 @@ def merge_geotiffs(geotiff_files, output_dir):
     for src in src_files_to_mosaic:
         src.close()
 
-# Sampling and Classification Functions
-def sample_geotiff(geotiff_path, transformed_coords):
-    with rasterio.open(geotiff_path) as src:
-        sampled_values = np.array(list(src.sample(transformed_coords.reshape(-1, 2))))
-    return sampled_values.reshape(transformed_coords.shape[:-1] + (3,))
+# # Sampling and Classification Functions
+# def sample_geotiff(geotiff_path, transformed_coords):
+#     with rasterio.open(geotiff_path) as src:
+#         sampled_values = np.array(list(src.sample(transformed_coords.reshape(-1, 2))))
+#     return sampled_values.reshape(transformed_coords.shape[:-1] + (3,))
 
 # def get_land_cover_class(rgb, land_cover_classes):
 #     return land_cover_classes.get(tuple(rgb), 'Unknown')

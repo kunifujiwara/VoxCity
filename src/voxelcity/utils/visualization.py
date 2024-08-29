@@ -260,7 +260,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, v
     plt.tight_layout()
     plt.show()
 
-def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classes, meshsize, source = 'Urbanwatch'):
+def visualize_grid_land_cover_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch'):
 
     geod = initialize_geod()
 
@@ -305,7 +305,7 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classe
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     print(f"Unique classes in the grid: {unique_classes}")
-    
+
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())# + ['No Data']
     # for cls in all_classes:

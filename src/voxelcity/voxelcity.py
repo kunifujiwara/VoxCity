@@ -19,7 +19,6 @@ from .download.nasadem import (
 )
 from .download.gee import (
     initialize_earth_engine,
-    convert_land_cover_array,
     get_roi,
     get_image_collection,
     save_geotiff
@@ -30,9 +29,7 @@ from .geo.utils import (
     normalize_to_one_meter,
     setup_transformer,
     transform_coords,
-    calculate_dominant_classes,
-    sample_geotiff,
-    create_grid,
+    convert_land_cover_array,
     load_geojsons_from_multiple_gz,
     swap_coordinates,
     filter_buildings,
