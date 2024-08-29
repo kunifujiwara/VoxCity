@@ -305,6 +305,31 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classe
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     print(f"Unique classes in the grid: {unique_classes}")
+    
+def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
+    all_classes = list(land_cover_classes.values())# + ['No Data']
+    # for cls in all_classes:
+    #     if cls not in color_map:
+    #         color_map[cls] = [0.5, 0.5, 0.5]
+
+    sorted_classes = sorted(all_classes)
+    colors = [color_map[cls] for cls in sorted_classes]
+    cmap = mcolors.ListedColormap(colors)
+
+    bounds = np.arange(len(sorted_classes) + 1)
+    norm = mcolors.BoundaryNorm(bounds, cmap.N)
+
+    class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
+    numeric_grid = np.vectorize(class_to_num.get)(grid)
+
+    plt.figure(figsize=(12, 12))
+    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
+    cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
+    cbar.set_ticklabels(sorted_classes)
+    plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
+    plt.xlabel('Grid Cells (X)')
+    plt.ylabel('Grid Cells (Y)')
+    plt.show()
 
 def get_land_cover_classes(source):
     if source == "Urbanwatch":

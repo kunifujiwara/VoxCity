@@ -5,10 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import ee
 import geemap
-from collections import Counter
 from scipy.interpolate import griddata
 from pyproj import CRS, Transformer
-from shapely.geometry import Polygon
 import rasterio
 from pyproj.geod import Geod
 
@@ -97,34 +95,6 @@ def create_canopy_height_grid(tiff_path, mesh_size):
 
     return np.flipud(grid)
 
-def rgb_distance(color1, color2):
-    return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
-      
-def get_nearest_class(pixel, land_cover_classes):
-    distances = {class_name: rgb_distance(pixel, color) 
-                 for color, class_name in land_cover_classes.items()}
-    return min(distances, key=distances.get)
-
-def get_dominant_class(cell_data, land_cover_classes):
-    if cell_data.size == 0:
-        return 'No Data'
-    pixel_classes = [get_nearest_class(tuple(pixel), land_cover_classes) 
-                     for pixel in cell_data.reshape(-1, 3)]
-    class_counts = Counter(pixel_classes)
-    return class_counts.most_common(1)[0][0]
-
-def convert_land_cover_array(input_array, land_cover_classes):
-    # Create a mapping of class names to integers
-    class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
-
-    # Create a vectorized function to map string values to integers
-    vectorized_map = np.vectorize(lambda x: class_to_int.get(x, -1))
-
-    # Apply the mapping to the input array
-    output_array = vectorized_map(input_array)
-
-    return output_array
-
 def get_dem_image(roi_buffered):
     dem = ee.Image('USGS/SRTMGL1_003')
     return dem.clip(roi_buffered)
@@ -189,31 +159,6 @@ def visualize_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
     plt.imshow(grid, cmap=cmap)
     plt.colorbar(label=label)
     plt.title(f'{title} (Mesh Size: {mesh_size}m)')
-    plt.xlabel('Grid Cells (X)')
-    plt.ylabel('Grid Cells (Y)')
-    plt.show()
-
-def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
-    all_classes = list(land_cover_classes.values())# + ['No Data']
-    # for cls in all_classes:
-    #     if cls not in color_map:
-    #         color_map[cls] = [0.5, 0.5, 0.5]
-
-    sorted_classes = sorted(all_classes)
-    colors = [color_map[cls] for cls in sorted_classes]
-    cmap = mcolors.ListedColormap(colors)
-
-    bounds = np.arange(len(sorted_classes) + 1)
-    norm = mcolors.BoundaryNorm(bounds, cmap.N)
-
-    class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
-    numeric_grid = np.vectorize(class_to_num.get)(grid)
-
-    plt.figure(figsize=(12, 12))
-    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
-    cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
-    cbar.set_ticklabels(sorted_classes)
-    plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
     plt.xlabel('Grid Cells (X)')
     plt.ylabel('Grid Cells (Y)')
     plt.show()

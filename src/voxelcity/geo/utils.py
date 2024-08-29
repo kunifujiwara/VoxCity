@@ -2,7 +2,7 @@ import os
 import math
 from math import radians, sin, cos, sqrt, atan2
 import numpy as np
-from pyproj import Geod, Transformer, CRS
+from pyproj import Geod, Transformer
 import geopandas as gpd
 import rasterio
 from rasterio.merge import merge
@@ -12,7 +12,7 @@ from fiona.crs import from_epsg
 import gzip
 import json
 from rtree import index
-from affine import Affine
+from collections import Counter
 
 def tile_from_lat_lon(lat, lon, level_of_detail):
     sin_lat = math.sin(lat * math.pi / 180)
@@ -162,29 +162,57 @@ def sample_geotiff(geotiff_path, transformed_coords):
         sampled_values = np.array(list(src.sample(transformed_coords.reshape(-1, 2))))
     return sampled_values.reshape(transformed_coords.shape[:-1] + (3,))
 
-def get_land_cover_class(rgb, land_cover_classes):
-    return land_cover_classes.get(tuple(rgb), 'Unknown')
+# def get_land_cover_class(rgb, land_cover_classes):
+#     return land_cover_classes.get(tuple(rgb), 'Unknown')
 
-def find_full_class_name(partial_name, land_cover_classes):
-    for full_name in land_cover_classes.values():
-        if partial_name.lower() == full_name.lower()[:len(partial_name)]:
-            return full_name
-    return 'Unknown'
+# def find_full_class_name(partial_name, land_cover_classes):
+#     for full_name in land_cover_classes.values():
+#         if partial_name.lower() == full_name.lower()[:len(partial_name)]:
+#             return full_name
+#     return 'Unknown'
 
-def get_dominant_class(cell_values, land_cover_classes):
-    unique, counts = np.unique(cell_values.reshape(-1, 3), axis=0, return_counts=True)
-    dominant_rgb = unique[np.argmax(counts)]
-    class_name = get_land_cover_class(dominant_rgb, land_cover_classes)
-    # if class_name == 'Unknown':
-    #     print(f"Unknown RGB value: {dominant_rgb}")
-    return class_name
+# def get_dominant_class(cell_values, land_cover_classes):
+#     unique, counts = np.unique(cell_values.reshape(-1, 3), axis=0, return_counts=True)
+#     dominant_rgb = unique[np.argmax(counts)]
+#     class_name = get_land_cover_class(dominant_rgb, land_cover_classes)
+#     # if class_name == 'Unknown':
+#     #     print(f"Unknown RGB value: {dominant_rgb}")
+#     return class_name
 
-def calculate_dominant_classes(sampled_values, land_cover_classes):
-    return np.apply_along_axis(lambda x: get_dominant_class(x, land_cover_classes), axis=2, arr=sampled_values)
+# def calculate_dominant_classes(sampled_values, land_cover_classes):
+#     return np.apply_along_axis(lambda x: get_dominant_class(x, land_cover_classes), axis=2, arr=sampled_values)
 
-def create_grid(dominant_classes, land_cover_classes):
-    class_to_index = {cls: idx for idx, cls in enumerate(land_cover_classes.values())}
-    return np.array([[class_to_index[find_full_class_name(cls, land_cover_classes)] for cls in row] for row in dominant_classes])
+# def create_grid(dominant_classes, land_cover_classes):
+#     class_to_index = {cls: idx for idx, cls in enumerate(land_cover_classes.values())}
+#     return np.array([[class_to_index[find_full_class_name(cls, land_cover_classes)] for cls in row] for row in dominant_classes])
+
+def rgb_distance(color1, color2):
+    return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
+      
+def get_nearest_class(pixel, land_cover_classes):
+    distances = {class_name: rgb_distance(pixel, color) 
+                 for color, class_name in land_cover_classes.items()}
+    return min(distances, key=distances.get)
+
+def get_dominant_class(cell_data, land_cover_classes):
+    if cell_data.size == 0:
+        return 'No Data'
+    pixel_classes = [get_nearest_class(tuple(pixel), land_cover_classes) 
+                     for pixel in cell_data.reshape(-1, 3)]
+    class_counts = Counter(pixel_classes)
+    return class_counts.most_common(1)[0][0]
+
+def convert_land_cover_array(input_array, land_cover_classes):
+    # Create a mapping of class names to integers
+    class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
+
+    # Create a vectorized function to map string values to integers
+    vectorized_map = np.vectorize(lambda x: class_to_int.get(x, -1))
+
+    # Apply the mapping to the input array
+    output_array = vectorized_map(input_array)
+
+    return output_array
 
 def filter_buildings(geojson_data, plotting_box):
     return [feature for feature in geojson_data if plotting_box.intersects(shape(feature['geometry']))]
@@ -211,110 +239,3 @@ def load_geojsons_from_multiple_gz(file_paths):
                 except json.JSONDecodeError as e:
                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
     return geojson_objects
-
-def create_land_cover_grid(tiff_path, mesh_size, land_cover_classes):
-    with rasterio.open(tiff_path) as src:
-        img = src.read((1,2,3))
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-        
-        # Calculate width and height in meters
-        if src_crs.to_epsg() == 3857:  # Web Mercator
-            # Convert bounds to WGS84
-            wgs84 = CRS.from_epsg(4326)
-            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
-            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
-            right_wgs84, top_wgs84 = transformer.transform(right, top)
-        
-            # Use geodesic calculations for accuracy
-            geod = Geod(ellps="WGS84")
-            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        else:
-            # For other projections, assume units are already in meters
-            width = right - left
-            height = top - bottom
-        
-        # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
-        
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-        
-        # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-        
-        # Create a new affine transformation for the new grid
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-        
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-        
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-        
-        grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-        
-        for i, (r, c) in enumerate(zip(row, col)):
-            cell_data = img[:, r, c]
-            dominant_class = get_dominant_class(cell_data, land_cover_classes)
-            grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
-            grid[grid_row, grid_col] = dominant_class
-    
-    return np.flipud(grid)
-
-def create_land_cover_grid_polygon(tiff_path, mesh_size, land_cover_classes, polygon):
-    with rasterio.open(tiff_path) as src:
-        img = src.read((1,2,3))
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-        
-        # Create a Shapely polygon from input coordinates
-        poly = Polygon(polygon)
-        
-        # Get bounds of the polygon
-        bottom_wgs84, left_wgs84, top_wgs84, right_wgs84 = poly.bounds
-        print(left, bottom, right, top)
-
-        # Use geodesic calculations for accuracy
-        geod = Geod(ellps="WGS84")
-        _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-        _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        
-        # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
-        
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-        
-        # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-        
-        # Create a new affine transformation for the new grid
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-        
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-        
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-        
-        grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-        
-        for i, (r, c) in enumerate(zip(row, col)):
-            cell_data = img[:, r, c]
-            dominant_class = get_dominant_class(cell_data, land_cover_classes)
-            grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
-            grid[grid_row, grid_col] = dominant_class
-    
-    return np.flipud(grid)

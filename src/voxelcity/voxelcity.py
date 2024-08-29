@@ -19,7 +19,6 @@ from .download.nasadem import (
 )
 from .download.gee import (
     initialize_earth_engine,
-    visualize_land_cover_grid,
     convert_land_cover_array,
     get_roi,
     get_image_collection,
@@ -37,17 +36,21 @@ from .geo.utils import (
     load_geojsons_from_multiple_gz,
     swap_coordinates,
     filter_buildings,
-    create_building_polygons,
-    create_land_cover_grid_polygon,
+    create_building_polygons
 )
 from .geo.grid import (
     group_and_label_cells, 
     process_grid,
     calculate_grid_size,
     create_coordinate_mesh,
-    create_cell_polygon
+    create_cell_polygon,
+    create_land_cover_grid_from_geotiff_polygon
 )
-from .utils.visualization import plot_grid, get_land_cover_classes
+from .utils.visualization import (
+    plot_grid, 
+    get_land_cover_classes,
+    visualize_land_cover_grid
+)
 
 def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch'):
 
@@ -64,7 +67,7 @@ def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch'):
     
     land_cover_classes = get_land_cover_classes(source)
 
-    land_cover_grid_str = create_land_cover_grid_polygon("land_cover.tif", meshsize, land_cover_classes, rectangle_vertices)
+    land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon("land_cover.tif", meshsize, land_cover_classes, rectangle_vertices)
     color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
     # color_map['No Data'] = [0.5, 0.5, 0.5]
     visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
