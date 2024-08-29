@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from tqdm import tqdm
 import rasterio
 from pyproj import CRS
+from shapely.geometry import box
 
 from ..geo.grid import (
     calculate_grid_size,
@@ -21,7 +22,8 @@ from ..geo.utils import (
     calculate_distance,
     normalize_to_one_meter,
     setup_transformer,
-    transform_coords
+    transform_coords,
+    filter_buildings
 )
 
 def visualize_3d_voxel(voxel_grid, color_map, voxel_size=2.0):
@@ -191,8 +193,8 @@ def visualize_3d_voxel_plotly(voxel_grid, color_map, voxel_size=2.0):
     print("Visualization complete. Displaying plot...")
     fig.show()
 
-def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, vertices, data_type, **kwargs):
-    fig, ax = plt.subplots(figsize=(24, 16))
+def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, **kwargs):
+    fig, ax = plt.subplots(figsize=(12, 12))
 
     if data_type == 'land_cover':
         land_cover_classes = kwargs.get('land_cover_classes')
@@ -214,8 +216,14 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, v
         title = 'DEM Grid Overlaid on Map'
         label = 'Elevation (m)'
         tick_labels = None
+    elif data_type == 'canopy_height':
+        cmap = plt.cm.Greens
+        norm = mcolors.Normalize(vmin=np.nanmin(grid), vmax=np.nanmax(grid))
+        title = 'Canopy Height Grid Overlaid on Map'
+        label = 'Canopy Height (m)'
+        tick_labels = None
     else:
-        raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
+        raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', 'canopy_height', or 'dem'.")
 
     # Ensure grid is in the correct orientation
     grid = grid.T
@@ -229,7 +237,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, v
             color = cmap(norm(grid[i, j]))
             ax.fill(x, y, alpha=0.7, fc=color, ec='black', linewidth=0.1)
 
-    ctx.add_basemap(ax, crs=crs.to_string(), source=ctx.providers.OpenStreetMap.Mapnik)
+    ctx.add_basemap(ax, crs=CRS.from_epsg(3857), source=ctx.providers.OpenStreetMap.Mapnik)
 
     if data_type == 'building_height':
         buildings = kwargs.get('buildings', [])
@@ -260,7 +268,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, crs, v
     plt.tight_layout()
     plt.show()
 
-def visualize_grid_land_cover_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch'):
+def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch'):
 
     geod = initialize_geod()
 
@@ -285,11 +293,7 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, meshsize, source 
     print(f"Calculated grid size: {grid_size}")
     print(f"Adjusted mesh size: {adjusted_meshsize}")
 
-    # geotiff_path = os.path.join(output_dir, "land_cover.tif")
-    geotiff_path = "land_cover.tif"
-
-    with rasterio.open(geotiff_path) as src:
-        geotiff_crs = src.crs
+    geotiff_crs = CRS.from_epsg(3857)
     transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
 
     cell_coords = create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
@@ -299,13 +303,61 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, meshsize, source 
 
     print(f"Grid shape: {grid.shape}")
 
-    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, geotiff_crs,
+    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, 'land_cover', land_cover_classes=land_cover_classes)
 
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     print(f"Unique classes in the grid: {unique_classes}")
 
+def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize):
+    # Calculate grid and normalize vectors
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize) 
+
+    # Setup transformer and plotting extent
+    transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
+
+    # Plot the results
+    plot_grid(building_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
+              rectangle_vertices, 'building_height', buildings=filtered_buildings)
+    
+def visualize_canopy_height_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize):
+    # Calculate grid and normalize vectors
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize) 
+
+    # Setup transformer and plotting extent
+    transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
+
+    # Plot the results
+    plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
+              rectangle_vertices, 'canopy_height')
+    
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())# + ['No Data']
     # for cls in all_classes:
@@ -322,7 +374,7 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
     numeric_grid = np.vectorize(class_to_num.get)(grid)
 
-    plt.figure(figsize=(12, 12))
+    plt.figure(figsize=(10, 10))
     im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
     cbar.set_ticklabels(sorted_classes)
@@ -357,3 +409,12 @@ def get_land_cover_classes(source):
             (222, 31, 7): 'Building'
         }
     return land_cover_classes
+
+def visualize_numerical_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
+    plt.figure(figsize=(10, 10))
+    plt.imshow(grid, cmap=cmap)
+    plt.colorbar(label=label)
+    plt.title(f'{title} (Mesh Size: {mesh_size}m)')
+    plt.xlabel('Grid Cells (X)')
+    plt.ylabel('Grid Cells (Y)')
+    plt.show()

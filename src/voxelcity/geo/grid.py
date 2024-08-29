@@ -4,8 +4,19 @@ from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
 import rasterio
 from affine import Affine
+from shapely.geometry import box
 
 from .utils import get_dominant_class
+
+from .utils import (
+    get_dominant_class,
+    initialize_geod,
+    calculate_distance,
+    normalize_to_one_meter,
+    setup_transformer,
+    filter_buildings,
+    create_building_polygons
+)
 
 def apply_operation(arr, meshsize):
     step1 = arr / meshsize
@@ -190,3 +201,150 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
             grid[grid_row, grid_col] = dominant_class
     
     return np.flipud(grid)
+
+def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
+    with rasterio.open(tiff_path) as src:
+        img = src.read(1)
+        left, bottom, right, top = src.bounds
+        src_crs = src.crs
+
+        # Calculate width and height in meters
+        if src_crs.to_epsg() == 3857:  # Web Mercator
+            # Convert bounds to WGS84
+            wgs84 = CRS.from_epsg(4326)
+            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
+            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
+            right_wgs84, top_wgs84 = transformer.transform(right, top)
+        
+            # Use geodesic calculations for accuracy
+            geod = Geod(ellps="WGS84")
+            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
+            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
+        else:
+            # For other projections, assume units are already in meters
+            width = right - left
+            height = top - bottom
+
+        # Display width and height in meters
+        print(f"ROI Width: {width:.2f} meters")
+        print(f"ROI Height: {height:.2f} meters")
+
+        num_cells_x = int(width / mesh_size + 0.5)
+        num_cells_y = int(height / mesh_size + 0.5)
+
+        # Adjust mesh_size to fit the image exactly
+        adjusted_mesh_size_x = (right - left) / num_cells_x
+        adjusted_mesh_size_y = (top - bottom) / num_cells_y
+
+        # Create a new affine transformation for the new grid
+        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
+
+        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
+        xs, ys = new_affine * (cols, rows)
+        xs_flat, ys_flat = xs.flatten(), ys.flatten()
+
+        row, col = src.index(xs_flat, ys_flat)
+        row, col = np.array(row), np.array(col)
+
+        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
+        row, col = row[valid], col[valid]
+
+        grid = np.full((num_cells_y, num_cells_x), np.nan)
+        flat_indices = np.ravel_multi_index((row, col), img.shape)
+        np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
+
+    return np.flipud(grid)
+
+def create_canopy_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
+    with rasterio.open(tiff_path) as src:
+        img = src.read(1)
+        left, bottom, right, top = src.bounds
+        src_crs = src.crs
+
+        # Create a Shapely polygon from input coordinates
+        poly = Polygon(polygon)
+        
+        # Get bounds of the polygon
+        bottom_wgs84, left_wgs84, top_wgs84, right_wgs84 = poly.bounds
+        print(left, bottom, right, top)
+
+        # Use geodesic calculations for accuracy
+        geod = Geod(ellps="WGS84")
+        _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
+        _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
+        
+        # Display width and height in meters
+        print(f"ROI Width: {width:.2f} meters")
+        print(f"ROI Height: {height:.2f} meters")
+
+        num_cells_x = int(width / mesh_size + 0.5)
+        num_cells_y = int(height / mesh_size + 0.5)
+
+        # Adjust mesh_size to fit the image exactly
+        adjusted_mesh_size_x = (right - left) / num_cells_x
+        adjusted_mesh_size_y = (top - bottom) / num_cells_y
+
+        # Create a new affine transformation for the new grid
+        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
+
+        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
+        xs, ys = new_affine * (cols, rows)
+        xs_flat, ys_flat = xs.flatten(), ys.flatten()
+
+        row, col = src.index(xs_flat, ys_flat)
+        row, col = np.array(row), np.array(col)
+
+        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
+        row, col = row[valid], col[valid]
+
+        grid = np.full((num_cells_y, num_cells_x), np.nan)
+        flat_indices = np.ravel_multi_index((row, col), img.shape)
+        np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
+
+    return np.flipud(grid)
+
+def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices):
+    # Calculate grid and normalize vectors
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+
+    print(f"Calculated grid size: {grid_size}")
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
+
+    # Create the grid
+    grid = np.zeros(grid_size)
+
+    # Setup transformer and plotting extent
+    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
+              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
+    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+
+    # Filter polygons and create building polygons
+    filtered_buildings = filter_buildings(geojson_data, plotting_box)
+    building_polygons, idx = create_building_polygons(filtered_buildings)
+
+    # Calculate building heights for each grid cell
+    buildings_found = 0
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+            for k in idx.intersection(cell.bounds):
+                polygon, height = building_polygons[k]
+                if cell.intersects(polygon) and cell.intersection(polygon).area > cell.area/2:
+                    grid[i, j] = height
+                    buildings_found += 1
+                    break
+    
+    return grid, filtered_buildings

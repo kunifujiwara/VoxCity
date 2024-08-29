@@ -3,13 +3,9 @@
 import pandas as pd
 import os
 from .utils import download_file
-from ..geo.utils import tile_from_lat_lon, quadkey_to_tile
+from ..geo.utils import tile_from_lat_lon, quadkey_to_tile, swap_coordinates, load_geojsons_from_multiple_gz
 
 def get_geojson_links(output_dir):
-
-    os.makedirs(output_dir, exist_ok=True) 
-    
-    print("Ensuring output directory exists: ", output_dir)
 
     print("Downloading dataset-links.csv...")
     
@@ -46,3 +42,28 @@ def find_row_for_location(df, lat, lon):
         except Exception as e:
             print(f"Error processing row {index}: {e}")
     return None
+
+def get_mbfp_geojson(output_dir, rectangle_vertices):
+    # print_flush(f"Testing get_geojson_links with output_dir: {output_dir}")
+    df_links = get_geojson_links(output_dir)
+
+    # Find and download files
+    filenames = []
+    for vertex in rectangle_vertices:
+        lat, lon = vertex
+        row = find_row_for_location(df_links, lat, lon)
+        if row is not None:
+            location = row["Location"]
+            quadkey = row["QuadKey"]
+            filename = os.path.join(output_dir, f"{location}_{quadkey}.gz")
+            if filename not in filenames:
+                filenames.append(filename)
+                download_file(row["Url"], filename)
+        else:
+            print("No matching row found.")
+
+    # Load and process GeoJSON data
+    geojson_data = load_geojsons_from_multiple_gz(filenames)
+    swap_coordinates(geojson_data)
+
+    return geojson_data

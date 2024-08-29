@@ -42,59 +42,6 @@ def save_geotiff(image, filename, resolution=1, scale=None, region=None):
     else:
         geemap.ee_to_geotiff(image, filename, resolution=resolution, to_cog=True)
 
-def create_canopy_height_grid(tiff_path, mesh_size):
-    with rasterio.open(tiff_path) as src:
-        img = src.read(1)
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-
-        # Calculate width and height in meters
-        if src_crs.to_epsg() == 3857:  # Web Mercator
-            # Convert bounds to WGS84
-            wgs84 = CRS.from_epsg(4326)
-            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
-            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
-            right_wgs84, top_wgs84 = transformer.transform(right, top)
-        
-            # Use geodesic calculations for accuracy
-            geod = Geod(ellps="WGS84")
-            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        else:
-            # For other projections, assume units are already in meters
-            width = right - left
-            height = top - bottom
-
-        # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
-
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-
-        # Adjust mesh_size to fit the image exactly
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-
-        # Create a new affine transformation for the new grid
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-
-        grid = np.full((num_cells_y, num_cells_x), np.nan)
-        flat_indices = np.ravel_multi_index((row, col), img.shape)
-        np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
-
-    return np.flipud(grid)
-
 def get_dem_image(roi_buffered):
     dem = ee.Image('USGS/SRTMGL1_003')
     return dem.clip(roi_buffered)
@@ -153,15 +100,6 @@ def create_dem_grid(tiff_path, mesh_size, roi_shapely):
         grid = griddata(points, values, (xx, yy), method='cubic')
 
     return np.flipud(grid)
-
-def visualize_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
-    plt.figure(figsize=(10, 10))
-    plt.imshow(grid, cmap=cmap)
-    plt.colorbar(label=label)
-    plt.title(f'{title} (Mesh Size: {mesh_size}m)')
-    plt.xlabel('Grid Cells (X)')
-    plt.ylabel('Grid Cells (Y)')
-    plt.show()
 
 # def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
 #     initialize_earth_engine()

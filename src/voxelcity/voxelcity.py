@@ -2,21 +2,18 @@
 
 import numpy as np
 import os
-import rasterio
-from pyproj import CRS
-from shapely.geometry import box
 
 # Local application/library specific imports
-from .download.urbanwatch import get_geotif_urbanwatch
-from .download.mbfp import get_geojson_links, find_row_for_location
+# from .download.urbanwatch import get_geotif_urbanwatch
+from .download.mbfp import get_mbfp_geojson
 from .download.osm import load_geojsons_from_openstreetmap
-from .download.utils import download_file
+# from .download.utils import download_file
 from .download.oemj import save_oemj_as_geotiff
-from .download.nasadem import (
-    download_nasa_dem,
-    interpolate_dem,
-    get_utm_crs
-)
+# from .download.nasadem import (
+#     download_nasa_dem,
+#     interpolate_dem,
+#     get_utm_crs
+# )
 from .download.gee import (
     initialize_earth_engine,
     get_roi,
@@ -41,30 +38,36 @@ from .geo.grid import (
     calculate_grid_size,
     create_coordinate_mesh,
     create_cell_polygon,
-    create_land_cover_grid_from_geotiff_polygon
+    create_land_cover_grid_from_geotiff_polygon,
+    create_canopy_height_grid_from_geotiff_polygon,
+    create_building_height_grid_from_geojson_polygon
 )
 from .utils.visualization import (
     plot_grid, 
     get_land_cover_classes,
-    visualize_land_cover_grid
+    visualize_land_cover_grid,
+    visualize_numerical_grid
 )
 
-def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch'):
+def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch', output_dir="output"):
 
     # Initialize Earth Engine
     initialize_earth_engine()
+
+    os.makedirs(output_dir, exist_ok=True)
+    geotiff_path = os.path.join(output_dir, "land_cover.tif")
 
     if source == 'Urbanwatch':
         roi = get_roi(rectangle_vertices)
         collection_name = "projects/sat-io/open-datasets/HRLC/urban-watch-cities"
         image = get_image_collection(collection_name, roi)
-        save_geotiff(image, "land_cover.tif")
+        save_geotiff(image, geotiff_path)
     elif source == 'OpenEarthMapJapan':
-        save_oemj_as_geotiff(rectangle_vertices, "land_cover.tif")    
+        save_oemj_as_geotiff(rectangle_vertices, geotiff_path)    
     
     land_cover_classes = get_land_cover_classes(source)
 
-    land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon("land_cover.tif", meshsize, land_cover_classes, rectangle_vertices)
+    land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
     color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
     # color_map['No Data'] = [0.5, 0.5, 0.5]
     visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
@@ -72,148 +75,105 @@ def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch'):
 
     return land_cover_grid_int
 
-def get_grid_building_height(rectangle_vertices, meshsize, output_dir, source = 'Microsoft Building Footprints'):
+def get_grid_building_height(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output"):
+
+    os.makedirs(output_dir, exist_ok=True)
 
     if source == 'Microsoft Building Footprints':
-        # print_flush(f"Testing get_geojson_links with output_dir: {output_dir}")
-        df_links = get_geojson_links(output_dir)
-
-        # Find and download files
-        filenames = []
-        for vertex in rectangle_vertices:
-            lat, lon = vertex
-            row = find_row_for_location(df_links, lat, lon)
-            if row is not None:
-                location = row["Location"]
-                quadkey = row["QuadKey"]
-                filename = os.path.join(output_dir, f"{location}_{quadkey}.gz")
-                if filename not in filenames:
-                    filenames.append(filename)
-                    download_file(row["Url"], filename)
-            else:
-                print("No matching row found.")
-
-        # Load and process GeoJSON data
-        geojson_data = load_geojsons_from_multiple_gz(filenames)
-        swap_coordinates(geojson_data)
+        geojson_data = get_mbfp_geojson(output_dir, rectangle_vertices)
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
+    
+    building_height_grid = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
 
-    # Calculate grid and normalize vectors
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+    visualize_numerical_grid(building_height_grid, meshsize, "building height (m)", cmap='viridis', label='Value')
 
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+    return building_height_grid#, buildings_found
 
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
+def get_grid_canopy_height(rectangle_vertices, meshsize, output_dir="output"):
 
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+    # Initialize Earth Engine
+    initialize_earth_engine()
 
-    origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+    os.makedirs(output_dir, exist_ok=True)
+    geotiff_path = os.path.join(output_dir, "canopy_height.tif")
+    
+    roi = get_roi(rectangle_vertices)
+    collection_name = "projects/meta-forest-monitoring-okw37/assets/CanopyHeight"
+    image = get_image_collection(collection_name, roi)
+    save_geotiff(image, geotiff_path)  
 
-    print(f"Calculated grid size: {grid_size}")
-    print(f"Adjusted mesh size: {adjusted_meshsize}")
+    canopy_height_grid, filtered_buildings = create_canopy_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
-    # Create the grid
-    grid = np.zeros(grid_size)
+    visualize_numerical_grid(canopy_height_grid, meshsize, "tree canopy height (m)", cmap='Greens', label='Value')
 
-    # Setup transformer and plotting extent
-    transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
-    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
-              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
-    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+    return canopy_height_grid, filtered_buildings
 
-    # Filter polygons and create building polygons
-    filtered_buildings = filter_buildings(geojson_data, plotting_box)
-    building_polygons, idx = create_building_polygons(filtered_buildings)
+# def get_grid_dem(rectangle_vertices, meshsize, output_dir, api_key, **kwargs):
+#     geod = initialize_geod()
 
-    # Calculate building heights for each grid cell
-    buildings_found = 0
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
-            for k in idx.intersection(cell.bounds):
-                polygon, height = building_polygons[k]
-                if cell.intersects(polygon) and cell.intersection(polygon).area > cell.area/2:
-                    grid[i, j] = height
-                    buildings_found += 1
-                    break
+#     center_lat = sum(vertex[0] for vertex in rectangle_vertices) / len(rectangle_vertices)
+#     center_lon = sum(vertex[1] for vertex in rectangle_vertices) / len(rectangle_vertices)
+#     dst_crs = get_utm_crs(center_lat, center_lon)
 
-    # Plot the results
-    plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, CRS.from_epsg(3857),
-              rectangle_vertices, 'building_height', buildings=filtered_buildings)
+#     vertex_0 = rectangle_vertices[0]
+#     vertex_1 = rectangle_vertices[1]
+#     vertex_3 = rectangle_vertices[3]
 
-    return grid#, buildings_found
+#     dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+#     dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
 
-def get_grid_dem(rectangle_vertices, meshsize, output_dir, api_key, **kwargs):
-    geod = initialize_geod()
+#     side_1 = np.array(vertex_1) - np.array(vertex_0)
+#     side_2 = np.array(vertex_3) - np.array(vertex_0)
 
-    center_lat = sum(vertex[0] for vertex in rectangle_vertices) / len(rectangle_vertices)
-    center_lon = sum(vertex[1] for vertex in rectangle_vertices) / len(rectangle_vertices)
-    dst_crs = get_utm_crs(center_lat, center_lon)
+#     u_vec = normalize_to_one_meter(side_1, dist_side_1)
+#     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
-    vertex_0 = rectangle_vertices[0]
-    vertex_1 = rectangle_vertices[1]
-    vertex_3 = rectangle_vertices[3]
+#     origin = np.array(rectangle_vertices[0])
+#     grid_size = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+#     cell_coords = create_coordinate_mesh(origin, grid_size, meshsize, u_vec, v_vec)
 
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
+#     cell_coords_flat = cell_coords.reshape(2, -1).T
+#     transformer = setup_transformer(CRS.from_epsg(4326), dst_crs)
+#     transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
 
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+#     transformed_coords = np.array([coord for coord in transformed_coords if coord is not None])
 
-    origin = np.array(rectangle_vertices[0])
-    grid_size = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+#     all_coords = np.array(rectangle_vertices)
+#     buffer = 0.01
+#     bbox = [
+#         min(all_coords[:, 1]) - buffer,
+#         min(all_coords[:, 0]) - buffer,
+#         max(all_coords[:, 1]) + buffer,
+#         max(all_coords[:, 0]) + buffer
+#     ]
 
-    cell_coords = create_coordinate_mesh(origin, grid_size, meshsize, u_vec, v_vec)
+#     dem_data = download_nasa_dem(bbox, api_key)
 
-    cell_coords_flat = cell_coords.reshape(2, -1).T
-    transformer = setup_transformer(CRS.from_epsg(4326), dst_crs)
-    transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
+#     interpolated_dem = interpolate_dem(dem_data, transformed_coords, dst_crs)
+#     dem_grid = interpolated_dem.reshape(grid_size[::-1]).T
 
-    transformed_coords = np.array([coord for coord in transformed_coords if coord is not None])
+#     plot_grid(dem_grid, origin, meshsize, u_vec, v_vec, transformer, dst_crs, rectangle_vertices, 'dem')
 
-    all_coords = np.array(rectangle_vertices)
-    buffer = 0.01
-    bbox = [
-        min(all_coords[:, 1]) - buffer,
-        min(all_coords[:, 0]) - buffer,
-        max(all_coords[:, 1]) + buffer,
-        max(all_coords[:, 0]) + buffer
-    ]
+#     return dem_grid
 
-    dem_data = download_nasa_dem(bbox, api_key)
-
-    interpolated_dem = interpolate_dem(dem_data, transformed_coords, dst_crs)
-    dem_grid = interpolated_dem.reshape(grid_size[::-1]).T
-
-    plot_grid(dem_grid, origin, meshsize, u_vec, v_vec, transformer, dst_crs, rectangle_vertices, 'dem')
-
-    return dem_grid
-
-# Main function to handle land cover, building height, and DEM
-def get_grid_data(rectangle_vertices, data_type, meshsize=4, output_dir='output', **kwargs):
-    if data_type == 'land_cover':
-        land_cover_classes = kwargs.pop('land_cover_classes', None)
-        if land_cover_classes is None:
-            raise ValueError("land_cover_classes is required for land_cover analysis")
-        return get_grid_land_cover(rectangle_vertices, land_cover_classes, meshsize, output_dir, **kwargs)
-    elif data_type == 'building_height':
-        return get_grid_building_height(rectangle_vertices, meshsize, output_dir, **kwargs)
-    elif data_type == 'dem':
-        api_key = kwargs.pop('api_key', None)
-        if api_key is None:
-            raise ValueError("api_key is required for DEM analysis")
-        return get_grid_dem(rectangle_vertices, meshsize, output_dir, api_key, **kwargs)
-    else:
-        raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
+# # Main function to handle land cover, building height, and DEM
+# def get_grid_data(rectangle_vertices, data_type, meshsize=4, output_dir='output', **kwargs):
+#     if data_type == 'land_cover':
+#         land_cover_classes = kwargs.pop('land_cover_classes', None)
+#         if land_cover_classes is None:
+#             raise ValueError("land_cover_classes is required for land_cover analysis")
+#         return get_grid_land_cover(rectangle_vertices, land_cover_classes, meshsize, output_dir, **kwargs)
+#     elif data_type == 'building_height':
+#         return get_grid_building_height(rectangle_vertices, meshsize, output_dir, **kwargs)
+#     elif data_type == 'dem':
+#         api_key = kwargs.pop('api_key', None)
+#         if api_key is None:
+#             raise ValueError("api_key is required for DEM analysis")
+#         return get_grid_dem(rectangle_vertices, meshsize, output_dir, api_key, **kwargs)
+#     else:
+#         raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
     
 def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size=2.0):
 
