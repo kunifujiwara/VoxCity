@@ -264,6 +264,8 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classe
 
     geod = initialize_geod()
 
+    land_cover_classes = get_land_cover_classes(source)
+
     vertex_0 = rectangle_vertices[0]
     vertex_1 = rectangle_vertices[1]
     vertex_3 = rectangle_vertices[3]
@@ -303,3 +305,30 @@ def visualize_grid_land_cover_on_map(grid, rectangle_vertices, land_cover_classe
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     print(f"Unique classes in the grid: {unique_classes}")
+
+def get_land_cover_classes(source):
+    if source == "Urbanwatch":
+        land_cover_classes = {
+            (255, 0, 0): 'Building',
+            (133, 133, 133): 'Road',
+            (255, 0, 192): 'Parking Lot',
+            (34, 139, 34): 'Tree Canopy',
+            (128, 236, 104): 'Grass/Shrub',
+            (255, 193, 37): 'Agriculture',
+            (0, 0, 255): 'Water',
+            (234, 234, 234): 'Barren',
+            (255, 255, 255): 'Unknown',
+            (0, 0, 0): 'Sea'
+        }    
+    elif source == "OpenEarthMapJapan":
+        land_cover_classes = {
+            (128, 0, 0): 'Bareland',
+            (0, 255, 36): 'Rangeland',
+            (148, 148, 148): 'Developed space',
+            (255, 255, 255): 'Road',
+            (34, 97, 38): 'Tree',
+            (0, 69, 255): 'Water',
+            (75, 181, 73): 'Agriculture land',
+            (222, 31, 7): 'Building'
+        }
+    return land_cover_classes
