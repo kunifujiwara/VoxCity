@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import datetime
 
 from ..geo.grid import apply_operation, translate_array, group_and_label_cells, process_grid
 
@@ -240,4 +241,111 @@ def export_inx(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, mesh
     # Save the output
     output_file_path = os.path.join(output_dir, "output.INX")
     save_file(xml_content, output_file_path)
+
+def generate_edb_file(lad='1.00000'):
+    header = f'''<ENVI-MET_Datafile>
+<Header>
+<filetype>DATA</filetype>
+<version>1</version>
+<revisiondate>{datetime.datetime.now().strftime("%m/%d/%Y %I:%M:%S %p")}</revisiondate>
+<remark>Envi-Data</remark>
+<checksum>0</checksum>
+<encryptionlevel>1699612</encryptionlevel>
+</Header>
+'''
+
+    footer = '</ENVI-MET_Datafile>'
+
+    plant3d_objects = []
+
+    for height in range(1, 51):
+        plant3d = f'''  <PLANT3D>
+     <ID> H{height:02d}W01 </ID>
+     <Description> H{height:02d}W01 </Description>
+     <AlternativeName> Albero nuovo </AlternativeName>
+     <Planttype> 0 </Planttype>
+     <Leaftype> 1 </Leaftype>
+     <Albedo> 0.18000 </Albedo>
+     <Eps> 0.00000 </Eps>
+     <Transmittance> 0.30000 </Transmittance>
+     <isoprene> 12.00000 </isoprene>
+     <leafweigth> 100.00000 </leafweigth>
+     <rs_min> 0.00000 </rs_min>
+     <Height> {height:.5f} </Height>
+     <Width> 1.00000 </Width>
+     <Depth> {height * 0.4:.5f} </Depth>
+     <RootDiameter> 1.00000 </RootDiameter>
+     <cellsize> 1.00000 </cellsize>
+     <xy_cells> 1 </xy_cells>
+     <z_cells> {height} </z_cells>
+     <scalefactor> 0.00000 </scalefactor>
+     <LAD-Profile type="sparematrix-3D" dataI="1" dataJ="1" zlayers="{height}" defaultValue="0.00000">
+{generate_lad_profile(height, lad=lad)}
+     </LAD-Profile>
+     <RAD-Profile> 0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000 </RAD-Profile>
+     <Root-Range-Profile> 1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000 </Root-Range-Profile>
+     <Season-Profile> 0.30000,0.30000,0.30000,0.40000,0.70000,1.00000,1.00000,1.00000,0.80000,0.60000,0.30000,0.30000 </Season-Profile>
+     <Blossom-Profile> 0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000 </Blossom-Profile>
+     <DensityWood> 690.00000 </DensityWood>
+     <YoungsModulus> 8770000896.00000 </YoungsModulus>
+     <YoungRatioRtoL> 0.12000 </YoungRatioRtoL>
+     <MORBranch> 65.00000 </MORBranch>
+     <MORConnection> 45.00000 </MORConnection>
+     <PlantGroup> 0 </PlantGroup>
+     <Color> 0 </Color>
+     <Group>  </Group>
+     <Author>  </Author>
+     <costs> 0.00000 </costs>
+     <ColorStem> 0 </ColorStem>
+     <ColorBlossom> 0 </ColorBlossom>
+     <BlossomRadius> 0.00000 </BlossomRadius>
+     <L-SystemBased> 0 </L-SystemBased>
+     <Axiom> V </Axiom>
+     <IterationDepth> 0 </IterationDepth>
+     <hasUserEdits> 0 </hasUserEdits>
+     <LADMatrix_generated> 0 </LADMatrix_generated>
+     <InitialSegmentLength> 0.00000 </InitialSegmentLength>
+     <SmallSegmentLength> 0.00000 </SmallSegmentLength>
+     <ChangeSegmentLength> 0.00000 </ChangeSegmentLength>
+     <SegmentResolution> 0.00000 </SegmentResolution>
+     <TurtleAngle> 0.00000 </TurtleAngle>
+     <RadiusOuterBranch> 0.00000 </RadiusOuterBranch>
+     <PipeFactor> 0.00000 </PipeFactor>
+     <LeafPosition> 0 </LeafPosition>
+     <LeafsPerNode> 0 </LeafsPerNode>
+     <LeafInternodeLength> 0.00000 </LeafInternodeLength>
+     <LeafMinSegmentOrder> 0 </LeafMinSegmentOrder>
+     <LeafWidth> 0.00000 </LeafWidth>
+     <LeafLength> 0.00000 </LeafLength>
+     <LeafSurface> 0.00000 </LeafSurface>
+     <PetioleAngle> 0.00000 </PetioleAngle>
+     <PetioleLength> 0.00000 </PetioleLength>
+     <LeafRotationalAngle> 0.00000 </LeafRotationalAngle>
+     <FactorHorizontal> 0.00000 </FactorHorizontal>
+     <TropismVector> 0.000000,0.000000,0.000000 </TropismVector>
+     <TropismElstaicity> 0.00000 </TropismElstaicity>
+     <SegmentRemovallist>  </SegmentRemovallist>
+     <NrRules> 0 </NrRules>
+     <Rules_Variable>  </Rules_Variable>
+     <Rules_Replacement>  </Rules_Replacement>
+     <Rules_isConditional>  </Rules_isConditional>
+     <Rules_Condition>  </Rules_Condition>
+     <Rules_Remark>  </Rules_Remark>
+     <TermLString>   </TermLString>
+     <ApplyTermLString> 0 </ApplyTermLString>
+  </PLANT3D>
+'''
+        plant3d_objects.append(plant3d)
+
+    content = header + ''.join(plant3d_objects) + footer
+    
+    with open('plant3d_objects.edb', 'w') as f:
+        f.write(content)
+
+def generate_lad_profile(height, lad = '1.00000'):
+    lad_profile = []
+    start = max(0, int(height * 0.4))
+    for i in range(start, height):
+        lad_profile.append(f"     0,0,{i},{lad}")
+    return '\n'.join(lad_profile)
     

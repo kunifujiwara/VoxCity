@@ -1,2 +1,2 @@
-from .envimet_inx import *
+from .envimet import *
 from .visualization import *

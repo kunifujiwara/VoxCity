@@ -18,7 +18,8 @@ from .download.gee import (
     initialize_earth_engine,
     get_roi,
     get_image_collection,
-    save_geotiff
+    save_geotiff,
+    get_dem_image
 )
 from .geo.utils import (
     initialize_geod,
@@ -40,16 +41,18 @@ from .geo.grid import (
     create_cell_polygon,
     create_land_cover_grid_from_geotiff_polygon,
     create_canopy_height_grid_from_geotiff_polygon,
-    create_building_height_grid_from_geojson_polygon
+    create_building_height_grid_from_geojson_polygon,
+    create_dem_grid_from_geotiff_polygon
 )
 from .utils.visualization import (
     plot_grid, 
     get_land_cover_classes,
     visualize_land_cover_grid,
-    visualize_numerical_grid
+    visualize_numerical_grid,
+    convert_land_cover
 )
 
-def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch', output_dir="output"):
+def get_land_cover_grid(rectangle_vertices, meshsize, source = 'Urbanwatch', output_dir="output", visualization=True):
 
     # Initialize Earth Engine
     initialize_earth_engine()
@@ -70,12 +73,14 @@ def get_grid_land_cover(rectangle_vertices, meshsize, source = 'Urbanwatch', out
     land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
     color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
     # color_map['No Data'] = [0.5, 0.5, 0.5]
-    visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
+
+    if visualization:
+        visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
     land_cover_grid_int = convert_land_cover_array(land_cover_grid_str, land_cover_classes)
 
     return land_cover_grid_int
 
-def get_grid_building_height(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output"):
+def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output", visualization=True):
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -84,13 +89,14 @@ def get_grid_building_height(rectangle_vertices, meshsize, source = 'Microsoft B
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
     
-    building_height_grid = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+    building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
 
-    visualize_numerical_grid(building_height_grid, meshsize, "building height (m)", cmap='viridis', label='Value')
+    if visualization:
+        visualize_numerical_grid(building_height_grid, meshsize, "building height (m)", cmap='viridis', label='Value')
 
-    return building_height_grid#, buildings_found
+    return building_height_grid, filtered_buildings#, buildings_found
 
-def get_grid_canopy_height(rectangle_vertices, meshsize, output_dir="output"):
+def get_canopy_height_grid(rectangle_vertices, meshsize, output_dir="output", visualization=True):
 
     # Initialize Earth Engine
     initialize_earth_engine()
@@ -103,11 +109,32 @@ def get_grid_canopy_height(rectangle_vertices, meshsize, output_dir="output"):
     image = get_image_collection(collection_name, roi)
     save_geotiff(image, geotiff_path)  
 
-    canopy_height_grid, filtered_buildings = create_canopy_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+    canopy_height_grid = create_canopy_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
-    visualize_numerical_grid(canopy_height_grid, meshsize, "tree canopy height (m)", cmap='Greens', label='Value')
+    if visualization:
+        visualize_numerical_grid(canopy_height_grid, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
 
-    return canopy_height_grid, filtered_buildings
+    return canopy_height_grid
+
+def get_dem_grid(rectangle_vertices, meshsize, output_dir="output", visualization=True):
+
+    # Initialize Earth Engine
+    initialize_earth_engine()    
+
+    os.makedirs(output_dir, exist_ok=True)
+    geotiff_path = os.path.join(output_dir, "dem.tif")
+
+    buffer_distance = 100
+    roi = get_roi(rectangle_vertices)
+    roi_buffered = roi.buffer(buffer_distance)
+    image = get_dem_image(roi_buffered)
+    save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
+    
+    dem_grid = create_dem_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+    if visualization:
+        visualize_numerical_grid(dem_grid, meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+
+    return dem_grid
 
 # def get_grid_dem(rectangle_vertices, meshsize, output_dir, api_key, **kwargs):
 #     geod = initialize_geod()
@@ -175,11 +202,16 @@ def get_grid_canopy_height(rectangle_vertices, meshsize, output_dir="output"):
 #     else:
 #         raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
     
-def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size=2.0):
+def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size=2.0, land_cover_source='OpenEarthMapJapan'):
+
+    if land_cover_source != 'OpenEarthMapJapan':
+        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)  
+    else:
+        land_cover_grid_converted = land_cover_grid_ori      
 
     # Prepare grids
     building_height_grid = np.flipud(building_height_grid_ori.copy())
-    land_cover_grid = np.flipud(land_cover_grid_ori.copy()) + 1
+    land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
     dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
     building_nr_grid = group_and_label_cells(np.flipud(building_height_grid_ori.copy()))
     dem_grid = process_grid(building_nr_grid, dem_grid)

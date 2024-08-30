@@ -5,6 +5,7 @@ from pyproj import Geod, Transformer, CRS
 import rasterio
 from affine import Affine
 from shapely.geometry import box
+from scipy.interpolate import griddata
 
 from .utils import get_dominant_class
 
@@ -15,7 +16,8 @@ from .utils import (
     normalize_to_one_meter,
     setup_transformer,
     filter_buildings,
-    create_building_polygons
+    create_building_polygons,
+    convert_format_lat_lon
 )
 
 def apply_operation(arr, meshsize):
@@ -348,3 +350,62 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                     break
     
     return grid, filtered_buildings
+
+def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices):
+
+    converted_coords = convert_format_lat_lon(rectangle_vertices)
+    roi_shapely = Polygon(converted_coords)
+
+    with rasterio.open(tiff_path) as src:
+        dem = src.read(1)
+        transform = src.transform
+        src_crs = src.crs
+
+        # Ensure we're working with EPSG:3857
+        if src_crs.to_epsg() != 3857:
+            transformer_to_3857 = Transformer.from_crs(src_crs, CRS.from_epsg(3857), always_xy=True)
+        else:
+            transformer_to_3857 = lambda x, y: (x, y)
+
+        # Transform ROI bounds to EPSG:3857
+        roi_bounds = roi_shapely.bounds
+        roi_left, roi_bottom = transformer_to_3857.transform(roi_bounds[0], roi_bounds[1])
+        roi_right, roi_top = transformer_to_3857.transform(roi_bounds[2], roi_bounds[3])
+
+        # Calculate width and height in meters using geodesic methods
+        wgs84 = CRS.from_epsg(4326)
+        transformer_to_wgs84 = Transformer.from_crs(CRS.from_epsg(3857), wgs84, always_xy=True)
+        roi_left_wgs84, roi_bottom_wgs84 = transformer_to_wgs84.transform(roi_left, roi_bottom)
+        roi_right_wgs84, roi_top_wgs84 = transformer_to_wgs84.transform(roi_right, roi_top)
+
+        geod = Geod(ellps="WGS84")
+        _, _, roi_width_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_right_wgs84, roi_bottom_wgs84)
+        _, _, roi_height_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_left_wgs84, roi_top_wgs84)
+
+        # Display width and height in meters
+        print(f"ROI Width: {roi_width_m:.2f} meters")
+        print(f"ROI Height: {roi_height_m:.2f} meters")
+
+        num_cells_x = int(roi_width_m / mesh_size + 0.5)
+        num_cells_y = int(roi_height_m / mesh_size + 0.5)
+
+        # # Adjust mesh_size to fit the ROI exactly
+        # adjusted_mesh_size_x = roi_width_m / num_cells_x
+        # adjusted_mesh_size_y = roi_height_m / num_cells_y
+
+        # Create grid in EPSG:3857
+        x = np.linspace(roi_left, roi_right, num_cells_x, endpoint=False)
+        y = np.linspace(roi_top, roi_bottom, num_cells_y, endpoint=False)
+        xx, yy = np.meshgrid(x, y)
+
+        # Transform original DEM coordinates to EPSG:3857
+        rows, cols = np.meshgrid(range(dem.shape[0]), range(dem.shape[1]), indexing='ij')
+        orig_x, orig_y = rasterio.transform.xy(transform, rows.ravel(), cols.ravel())
+        orig_x, orig_y = transformer_to_3857.transform(orig_x, orig_y)
+
+        # Interpolate DEM values onto new grid
+        points = np.column_stack((orig_x, orig_y))
+        values = dem.ravel()
+        grid = griddata(points, values, (xx, yy), method='cubic')
+
+    return np.flipud(grid)

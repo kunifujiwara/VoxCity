@@ -156,6 +156,15 @@ def merge_geotiffs(geotiff_files, output_dir):
     for src in src_files_to_mosaic:
         src.close()
 
+def convert_format_lat_lon(input_coords):
+    # Convert input to the desired output format
+    output_coords = [[coord[1], coord[0]] for coord in input_coords]
+
+    # Add the first point to the end to close the polygon
+    output_coords.append(output_coords[0])
+
+    return output_coords
+
 # # Sampling and Classification Functions
 # def sample_geotiff(geotiff_path, transformed_coords):
 #     with rasterio.open(geotiff_path) as src:

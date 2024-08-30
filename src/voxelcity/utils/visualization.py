@@ -11,6 +11,21 @@ import rasterio
 from pyproj import CRS
 from shapely.geometry import box
 
+default_voxel_color_map = {
+    -3: [180, 187, 216],  #(lightgray) 'Building',
+    -2: [48, 176, 158],   #(forestgreen) 'Tree',
+    -1: [188, 143, 143],  #(saddle brown) 'Underground',
+    #0: 'Air (Void)',
+    1: [239, 228, 176],   #'Bareland (ground surface)',
+    2: [183, 226, 150],   #(greenyellow) 'Rangeland (ground surface)',
+    3: [108, 119, 129],   #(darkgray) 'Developed space (ground surface)',
+    4: [59, 62, 87],      #(dimgray) 'Road (ground surface)',
+    5: [188, 143, 143],   #(peru) 'Tree (ground surface)',
+    6: [80, 142, 204],    #(blue) 'Water (ground surface)',
+    7: [150, 226, 180],   #(lightgreen) 'Agriculture land (ground surface)',
+    8: [150, 166, 190]    #(lightgray) 'Building (ground surface)'
+}
+
 from ..geo.grid import (
     calculate_grid_size,
     create_coordinate_mesh,
@@ -26,7 +41,7 @@ from ..geo.utils import (
     filter_buildings
 )
 
-def visualize_3d_voxel(voxel_grid, color_map, voxel_size=2.0):
+def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_size=2.0):
     print("Preparing visualization...")
     # Create a figure and a 3D axis
     fig = plt.figure(figsize=(12, 10))
@@ -74,7 +89,7 @@ def visualize_3d_voxel(voxel_grid, color_map, voxel_size=2.0):
     plt.show()
 
 
-def visualize_3d_voxel_plotly(voxel_grid, color_map, voxel_size=2.0):
+def visualize_3d_voxel_plotly(voxel_grid, color_map = default_voxel_color_map, voxel_size=2.0):
     print("Preparing visualization...")
 
     print("Processing voxels...")
@@ -334,7 +349,7 @@ def visualize_building_height_grid_on_map(building_height_grid, filtered_buildin
     plot_grid(building_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, 'building_height', buildings=filtered_buildings)
     
-def visualize_canopy_height_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize):
+def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -356,7 +371,7 @@ def visualize_canopy_height_grid_on_map(canopy_height_grid, rectangle_vertices, 
 
     # Plot the results
     plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
-              rectangle_vertices, 'canopy_height')
+              rectangle_vertices, type)
     
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())# + ['No Data']
@@ -409,6 +424,31 @@ def get_land_cover_classes(source):
             (222, 31, 7): 'Building'
         }
     return land_cover_classes
+
+def convert_land_cover(input_array, land_cover_source='Urbanwatch'):  
+
+    if land_cover_source == 'Urbanwatch':
+        # Define the mapping from #urbanwatch to #general(integration)
+        convert_dict = {
+            0: 7,  # Building
+            1: 3,  # Road
+            2: 2,  # Parking Lot
+            3: 4,  # Tree Canopy
+            4: 1,  # Grass/Shrub
+            5: 6,  # Agriculture
+            6: 5,  # Water
+            7: 0,  # Barren
+            8: 0,  # Unknown
+            9: 5   # Sea
+        }
+        
+    # Create a vectorized function for the conversion
+    vectorized_convert = np.vectorize(lambda x: convert_dict.get(x, x))
+    
+    # Apply the conversion to the input array
+    converted_array = vectorized_convert(input_array)
+    
+    return converted_array
 
 def visualize_numerical_grid(grid, mesh_size, title, cmap='viridis', label='Value'):
     plt.figure(figsize=(10, 10))
