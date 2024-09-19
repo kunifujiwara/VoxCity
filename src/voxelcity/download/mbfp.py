@@ -7,7 +7,7 @@ from ..geo.utils import tile_from_lat_lon, quadkey_to_tile, swap_coordinates, lo
 
 def get_geojson_links(output_dir):
 
-    print("Downloading dataset-links.csv...")
+    # print("Downloading dataset-links.csv")
     
     # URL of the file you want to download
     url = "https://minedbuildings.blob.core.windows.net/global-buildings/dataset-links.csv"
@@ -44,6 +44,7 @@ def find_row_for_location(df, lat, lon):
     return None
 
 def get_mbfp_geojson(output_dir, rectangle_vertices):
+    print("Downloading geojson files")
     # print_flush(f"Testing get_geojson_links with output_dir: {output_dir}")
     df_links = get_geojson_links(output_dir)
 

@@ -121,8 +121,8 @@ def create_land_cover_grid_from_geotiff(tiff_path, mesh_size, land_cover_classes
             height = top - bottom
         
         # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
+        # print(f"ROI Width: {width:.2f} meters")
+        # print(f"ROI Height: {height:.2f} meters")
         
         num_cells_x = int(width / mesh_size + 0.5)
         num_cells_y = int(height / mesh_size + 0.5)
@@ -164,7 +164,7 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
         
         # Get bounds of the polygon
         bottom_wgs84, left_wgs84, top_wgs84, right_wgs84 = poly.bounds
-        print(left, bottom, right, top)
+        # print(left, bottom, right, top)
 
         # Use geodesic calculations for accuracy
         geod = Geod(ellps="WGS84")
@@ -172,8 +172,8 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
         _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
         
         # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
+        # print(f"ROI Width: {width:.2f} meters")
+        # print(f"ROI Height: {height:.2f} meters")
         
         num_cells_x = int(width / mesh_size + 0.5)
         num_cells_y = int(height / mesh_size + 0.5)
@@ -228,8 +228,8 @@ def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
             height = top - bottom
 
         # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
+        # print(f"ROI Width: {width:.2f} meters")
+        # print(f"ROI Height: {height:.2f} meters")
 
         num_cells_x = int(width / mesh_size + 0.5)
         num_cells_y = int(height / mesh_size + 0.5)
@@ -276,8 +276,8 @@ def create_canopy_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon
         _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
         
         # Display width and height in meters
-        print(f"ROI Width: {width:.2f} meters")
-        print(f"ROI Height: {height:.2f} meters")
+        # print(f"ROI Width: {width:.2f} meters")
+        # print(f"ROI Height: {height:.2f} meters")
 
         num_cells_x = int(width / mesh_size + 0.5)
         num_cells_y = int(height / mesh_size + 0.5)
@@ -322,8 +322,8 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
 
-    print(f"Calculated grid size: {grid_size}")
-    print(f"Adjusted mesh size: {adjusted_meshsize}")
+    # print(f"Calculated grid size: {grid_size}")
+    # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Create the grid
     grid = np.zeros(grid_size)
@@ -358,6 +358,7 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
 
     with rasterio.open(tiff_path) as src:
         dem = src.read(1)
+        dem = np.where(dem < -1000, 0, dem)
         transform = src.transform
         src_crs = src.crs
 
@@ -383,8 +384,8 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
         _, _, roi_height_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_left_wgs84, roi_top_wgs84)
 
         # Display width and height in meters
-        print(f"ROI Width: {roi_width_m:.2f} meters")
-        print(f"ROI Height: {roi_height_m:.2f} meters")
+        # print(f"ROI Width: {roi_width_m:.2f} meters")
+        # print(f"ROI Height: {roi_height_m:.2f} meters")
 
         num_cells_x = int(roi_width_m / mesh_size + 0.5)
         num_cells_y = int(roi_height_m / mesh_size + 0.5)

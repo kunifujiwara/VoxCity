@@ -3,6 +3,7 @@ import numpy as np
 import datetime
 
 from ..geo.grid import apply_operation, translate_array, group_and_label_cells, process_grid
+from ..utils.visualization import convert_land_cover
 
 def array_to_string(arr):
     return '\n'.join('     ' + ','.join(str(cell) for cell in row) for row in arr)
@@ -13,60 +14,49 @@ def array_to_string_with_value(arr, value):
 def array_to_string_int(arr):
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
-def prepare_grids(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize):
+def prepare_grids(building_height_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
     building_height_grid = np.flipud(building_height_grid_ori).copy()
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
     building_height_grid = apply_operation(building_height_grid, meshsize)
 
-    land_cover_grid = np.flipud(land_cover_grid_ori).copy() + 1
+    if land_cover_source != 'OpenEarthMapJapan':
+        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)  
+    else:
+        land_cover_grid_converted = land_cover_grid_ori    
+    land_cover_grid = np.flipud(land_cover_grid_converted).copy() + 1
 
     veg_translation_dict = {
         1: '',
-        2: '',
+        2: '0200XX',
         3: '',
         4: '',
         5: '0200XX',
-        6: '0200XX',
-        7: '',
-        8: '',
-        9: '',
-        10: ''
+        6: '',
+        7: '0200XX',
+        8: ''
     }
     land_cover_veg_grid = translate_array(land_cover_grid, veg_translation_dict)
 
     mat_translation_dict = {
-        1: '000000',
-        2: '0200ST',
-        3: '0200PG',
-        4: '000000',
-        5: '000000',
-        6: '000000',
-        7: '0200WW',
-        8: '0200SD',
-        9: '000000',
-        10: '0200WW'
+        1: '0200SD',#Bareland
+        2: '000000',#Rangeland
+        3: '0200PG',#Developed space
+        4: '0200ST',#Road
+        5: '000000',#Tree
+        6: '0200WW',#Water
+        7: '000000',#Agriculture land
+        8: '000000',#Building
     }
     land_cover_mat_grid = translate_array(land_cover_grid, mat_translation_dict)
 
-    tree_translation_dict = {
-        1: 0,
-        2: 0,
-        3: 0,
-        4: 10,
-        5: 0,
-        6: 0,
-        7: 0,
-        8: 0,
-        9: 0,
-        10: 0
-    }
-    tree_height_grid = translate_array(np.flipud(land_cover_grid), tree_translation_dict).astype(int)
+    # canopy_height_grid = np.flipud(canopy_height_grid_ori).copy()
+    canopy_height_grid = canopy_height_grid_ori.copy()
 
     dem_grid = np.flipud(dem_grid_ori).copy()
 
-    return building_height_grid, land_cover_veg_grid, land_cover_mat_grid, tree_height_grid, dem_grid
+    return building_height_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
-def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat_grid, tree_height_grid, dem_grid, meshsize):
+def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize):
     # XML template
     xml_template = """<ENVI-MET_Datafile>
     <Header>
@@ -202,8 +192,10 @@ def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat
     tree_content = ""
     for i in range(grids_I):
         for j in range(grids_J):
-            if tree_height_grid[j, i] > 0 and np.flipud(building_height_grid)[j, i]==0:
-                plantid = f'H{tree_height_grid[j, i]:02d}W01'
+            canopy_height = int(canopy_height_grid[j, i] + 0.5)
+            if canopy_height_grid[j, i] > 0 and np.flipud(building_height_grid)[j, i]==0:
+            # if canopy_height > 0 and building_height_grid[j, i]==0:
+                plantid = f'H{canopy_height:02d}W01'
                 tree_ij = f"""  <3Dplants>
      <rootcell_i> {i+1} </rootcell_i>
      <rootcell_j> {j+1} </rootcell_j>
@@ -215,13 +207,10 @@ def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat
                 tree_content += '\n' + tree_ij
 
     xml_template = xml_template.replace("$3Dplants$", tree_content)
-
     xml_template = xml_template.replace("$ID_soilprofile$", array_to_string(land_cover_mat_grid))
-
     dem_grid = process_grid(building_nr_grid, dem_grid)
     xml_template = xml_template.replace("$DEMReference$", '0')
     xml_template = xml_template.replace("$terrainheight$", array_to_string_int(dem_grid))
-
     xml_template = xml_template.replace("$ID_sources$", array_to_string_with_value(land_cover_mat_grid, ''))
 
     return xml_template
@@ -230,13 +219,13 @@ def save_file(content, output_file_path):
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
-def export_inx(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, output_dir):
+def export_inx(building_height_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, output_dir="output"):
     # Prepare grids
-    building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, tree_height_grid_inx, dem_grid_inx = prepare_grids(
-        building_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize)
+    building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
+        building_height_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)
 
     # Create XML content
-    xml_content = create_xml_content(building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, tree_height_grid_inx, dem_grid_inx, meshsize)
+    xml_content = create_xml_content(building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize)
 
     # Save the output
     output_file_path = os.path.join(output_dir, "output.INX")

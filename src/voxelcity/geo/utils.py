@@ -13,6 +13,9 @@ import gzip
 import json
 from rtree import index
 from collections import Counter
+import geopy
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 def tile_from_lat_lon(lat, lon, level_of_detail):
     sin_lat = math.sin(lat * math.pi / 180)
@@ -165,6 +168,22 @@ def convert_format_lat_lon(input_coords):
 
     return output_coords
 
+def get_coordinates_from_cityname(place_name):
+    # Initialize the geocoder
+    geolocator = Nominatim(user_agent="my_geocoding_script")
+    
+    try:
+        # Attempt to geocode the place name
+        location = geolocator.geocode(place_name)
+        
+        if location:
+            return (location.latitude, location.longitude)
+        else:
+            return None
+    except (GeocoderTimedOut, GeocoderServiceError):
+        print(f"Error: Geocoding service timed out or encountered an error for {place_name}")
+        return None
+
 # # Sampling and Classification Functions
 # def sample_geotiff(geotiff_path, transformed_coords):
 #     with rasterio.open(geotiff_path) as src:
@@ -231,12 +250,27 @@ def create_building_polygons(filtered_buildings):
     idx = index.Index()
     for i, building in enumerate(filtered_buildings):
         polygon = Polygon(building['geometry']['coordinates'][0])
-        height = max(0, building['properties']['height'])
+        height = building['properties']['height']
+        if (height <= 0) or (height == None):
+            print("A building with a height of 0 meters was found. A height of 10 meters was set instead.")
+            height = 10
         building_polygons.append((polygon, height))
         idx.insert(i, polygon.bounds)
     return building_polygons, idx
 
 # GeoJSON and Data Loading Functions
+# def load_geojsons_from_multiple_gz(file_paths):
+#     geojson_objects = []
+#     for gz_file_path in file_paths:
+#         with gzip.open(gz_file_path, 'rt', encoding='utf-8') as file:
+#             for line in file:
+#                 try:
+#                     data = json.loads(line)
+#                     geojson_objects.append(data)
+#                 except json.JSONDecodeError as e:
+#                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
+#     return geojson_objects
+
 def load_geojsons_from_multiple_gz(file_paths):
     geojson_objects = []
     for gz_file_path in file_paths:
@@ -244,6 +278,17 @@ def load_geojsons_from_multiple_gz(file_paths):
             for line in file:
                 try:
                     data = json.loads(line)
+                    # Check and set default height if necessary
+                    if 'properties' in data and 'height' in data['properties']:
+                        if data['properties']['height'] is None:
+                            # print("No building height data was found. A height of 10 meters was set instead.")
+                            data['properties']['height'] = 0
+                    else:
+                        # If 'height' property doesn't exist, add it with default value
+                        if 'properties' not in data:
+                            data['properties'] = {}
+                        # print("No building height data was found. A height of 10 meters was set instead.")
+                        data['properties']['height'] = 0
                     geojson_objects.append(data)
                 except json.JSONDecodeError as e:
                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")

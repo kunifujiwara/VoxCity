@@ -22,6 +22,9 @@ def num2deg(xtile, ytile, zoom):
     return (lat_deg, lon_deg)
 
 def download_tiles(polygon, zoom):
+
+    print(f"Downloading tiles")
+
     min_lat = min(p[0] for p in polygon)
     max_lat = max(p[0] for p in polygon)
     min_lon = min(p[1] for p in polygon)
@@ -30,13 +33,13 @@ def download_tiles(polygon, zoom):
     min_x, max_y = map(math.floor, deg2num(max_lat, min_lon, zoom))
     max_x, min_y = map(math.ceil, deg2num(min_lat, max_lon, zoom))
     
-    print(f"Tile coordinates: min_x={min_x}, min_y={min_y}, max_x={max_x}, max_y={max_y}")
+    # print(f"Tile coordinates: min_x={min_x}, min_y={min_y}, max_x={max_x}, max_y={max_y}")
     
     tiles = {}
     for x in range(min(min_x, max_x), max(min_x, max_x) + 1):
         for y in range(min(min_y, max_y), max(min_y, max_y) + 1):
             url = f"https://www.open-earth-map.org/demo/Japan/{zoom}/{x}/{y}.png"
-            print(f"Downloading tile: {url}")
+            # print(f"Downloading tile: {url}")
             response = requests.get(url)
             if response.status_code == 200:
                 tiles[(x, y)] = Image.open(BytesIO(response.content))

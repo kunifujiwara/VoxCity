@@ -20,7 +20,7 @@ default_voxel_color_map = {
     2: [183, 226, 150],   #(greenyellow) 'Rangeland (ground surface)',
     3: [108, 119, 129],   #(darkgray) 'Developed space (ground surface)',
     4: [59, 62, 87],      #(dimgray) 'Road (ground surface)',
-    5: [188, 143, 143],   #(peru) 'Tree (ground surface)',
+    5: [183, 226, 150],   #(greenyellow) 'Tree (ground surface)',
     6: [80, 142, 204],    #(blue) 'Water (ground surface)',
     7: [150, 226, 180],   #(lightgreen) 'Agriculture land (ground surface)',
     8: [150, 166, 190]    #(lightgray) 'Building (ground surface)'
@@ -42,12 +42,12 @@ from ..geo.utils import (
 )
 
 def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_size=2.0):
-    print("Preparing visualization...")
+    print("\tVisualizing 3D voxel data")
     # Create a figure and a 3D axis
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
 
-    print("Processing voxels...")
+    print("\tProcessing voxels...")
     filled_voxels = voxel_grid != 0
     colors = np.zeros(voxel_grid.shape + (4,))  # RGBA
 
@@ -55,7 +55,7 @@ def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_si
         mask = voxel_grid == val
         if val in color_map:
             rgb = [x/255 for x in color_map[val]]  # Normalize RGB values to [0, 1]
-            alpha = 0.5 if ((val == -1) or (val == -2)) else 0.9  # More transparent for underground and below
+            alpha = 0.7 if ((val == -1) or (val == -2)) else 0.9  # More transparent for underground and below
             colors[mask] = rgb + [alpha]
         else:
             colors[mask] = [0, 0, 0, 0.9]  # Default color if not in color_map
@@ -64,7 +64,7 @@ def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_si
         ax.voxels(filled_voxels, facecolors=colors, edgecolors=None)
         pbar.update(np.prod(voxel_grid.shape))
 
-    print("Finalizing plot...")
+    # print("Finalizing plot...")
     # Set labels and title
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -84,7 +84,7 @@ def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_si
     max_range = np.array([voxel_grid.shape[0], voxel_grid.shape[1], voxel_grid.shape[2]]).max()
     ax.set_box_aspect((voxel_grid.shape[0]/max_range, voxel_grid.shape[1]/max_range, voxel_grid.shape[2]/max_range))
 
-    print("Visualization complete. Displaying plot...")
+    # print("Visualization complete. Displaying plot...")
     plt.tight_layout()
     plt.show()
 
@@ -306,7 +306,7 @@ def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source 
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
     print(f"Calculated grid size: {grid_size}")
-    print(f"Adjusted mesh size: {adjusted_meshsize}")
+    # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     geotiff_crs = CRS.from_epsg(3857)
     transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
@@ -316,14 +316,14 @@ def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source 
     transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
     transformed_coords = transformed_coords.reshape(grid_size[::-1] + (2,))
 
-    print(f"Grid shape: {grid.shape}")
+    # print(f"Grid shape: {grid.shape}")
 
     plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, 'land_cover', land_cover_classes=land_cover_classes)
 
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
-    print(f"Unique classes in the grid: {unique_classes}")
+    # print(f"Unique classes in the grid: {unique_classes}")
 
 def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize):
     # Calculate grid and normalize vectors
@@ -423,6 +423,34 @@ def get_land_cover_classes(source):
             (75, 181, 73): 'Agriculture land',
             (222, 31, 7): 'Building'
         }
+    # elif source == "ESRI 10m Annual Land Cover":
+    #     land_cover_classes = {
+    #         (255, 255, 255): 'No Data',
+    #         (26, 91, 171): 'Water',
+    #         (53, 130, 33): 'Trees',
+    #         (167, 210, 130): 'Grass',
+    #         (135, 209, 158): 'Flooded Vegetation',
+    #         (255, 219, 92): 'Crops',
+    #         (238, 207, 168): 'Scrub/Shrub',
+    #         (237, 2, 42): 'Built Area',
+    #         (237, 233, 228): 'Bare Ground',
+    #         (242, 250, 255): 'Snow/Ice',
+    #         (200, 200, 200): 'Clouds'
+    #     }
+    elif source == "ESA WorldCover":
+        land_cover_classes = {
+            (0, 112, 0): 'Trees',
+            (255, 224, 80): 'Shrubland',
+            (255, 255, 170): 'Grassland',
+            (255, 176, 176): 'Cropland',
+            (230, 0, 0): 'Built-up',
+            (191, 191, 191): 'Barren / sparse vegetation',
+            (192, 192, 255): 'Snow and ice',
+            (0, 60, 255): 'Open water',
+            (0, 236, 230): 'Herbaceous wetland',
+            (0, 255, 0): 'Mangroves',
+            (255, 255, 0): 'Moss and lichen'
+        }
     return land_cover_classes
 
 def convert_land_cover(input_array, land_cover_source='Urbanwatch'):  
@@ -440,6 +468,20 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             7: 0,  # Barren
             8: 0,  # Unknown
             9: 5   # Sea
+        }
+    elif land_cover_source == 'ESA WorldCover':
+        convert_dict = {
+            0: 4,  # Trees
+            1: 1,  # Shrubland
+            2: 1,  # Grassland
+            3: 6,  # Cropland
+            4: 2,  # Built-up
+            5: 0,  # Barren / sparse vegetation
+            6: 0,  # Snow and ice
+            7: 5,  # Open water
+            8: 5,  # Herbaceous wetland
+            9: 5,  # Mangroves
+            10: 1  # Moss and lichen
         }
         
     # Create a vectorized function for the conversion

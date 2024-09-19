@@ -29,14 +29,62 @@ def get_image_collection(collection_name, roi):
 
 def save_geotiff(image, filename, resolution=1, scale=None, region=None):
     if scale and region:
-        geemap.ee_export_image(image, filename=filename, scale=scale, region=region)
+        geemap.ee_export_image(image, filename=filename, scale=scale, region=region, file_per_band=False)
     else:
         geemap.ee_to_geotiff(image, filename, resolution=resolution, to_cog=True)
 
-def get_dem_image(roi_buffered):
-    dem = ee.Image('USGS/SRTMGL1_003')
+def get_dem_image(roi_buffered, source):
+    if source == 'NASA':
+        collection_name = 'USGS/SRTMGL1_003'
+        dem = ee.Image(collection_name)
+    elif source == 'COPERNICUS':
+        collection_name = 'COPERNICUS/DEM/GLO30'
+        collection = ee.ImageCollection(collection_name)
+        # Get the most recent image and select the DEM band
+        dem = collection.select('DEM').mosaic()
+    elif source == 'DeltaDTM':
+        collection_name = 'projects/sat-io/open-datasets/DELTARES/deltadtm_v1'
+        elevation = ee.Image(collection_name).select('b1')
+        dem = elevation.updateMask(elevation.neq(10))
     return dem.clip(roi_buffered)
 
+def save_geotiff_esa_land_cover(roi, geotiff_path):
+    # Initialize Earth Engine
+    ee.Initialize()
+
+    # Load the ESA WorldCover dataset
+    esa = ee.ImageCollection("ESA/WorldCover/v100").first()
+
+    # Clip the image to the AOI
+    esa_clipped = esa.clip(roi)
+
+    # Define the color palette based on the provided image
+    color_map = {
+        10: '006400',  # Trees
+        20: 'ffbb22',  # Shrubland
+        30: 'ffff4c',  # Grassland
+        40: 'f096ff',  # Cropland
+        50: 'fa0000',  # Built-up
+        60: 'b4b4b4',  # Barren / sparse vegetation
+        70: 'f0f0f0',  # Snow and ice
+        80: '0064c8',  # Open water
+        90: '0096a0',  # Herbaceous wetland
+        95: '00cf75',  # Mangroves
+        100: 'fae6a0'  # Moss and lichen
+    }
+
+    # Create a list of colors in the order of class values
+    colors = [color_map[i] for i in sorted(color_map.keys())]
+
+    # Apply the color palette to the image
+    esa_colored = esa_clipped.remap(
+        list(color_map.keys()),
+        list(range(len(color_map)))
+    ).visualize(palette=colors, min=0, max=len(color_map)-1)
+
+    geemap.ee_export_image(esa_colored, geotiff_path, scale=10, region=roi)
+
+    print(f"Colored GeoTIFF saved to: {geotiff_path}")
 
 # def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
 #     initialize_earth_engine()

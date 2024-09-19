@@ -19,41 +19,34 @@ from .download.gee import (
     get_roi,
     get_image_collection,
     save_geotiff,
-    get_dem_image
+    get_dem_image,
+    save_geotiff_esa_land_cover
 )
-from .geo.utils import (
-    initialize_geod,
-    calculate_distance,
-    normalize_to_one_meter,
-    setup_transformer,
-    transform_coords,
-    convert_land_cover_array,
-    load_geojsons_from_multiple_gz,
-    swap_coordinates,
-    filter_buildings,
-    create_building_polygons
-)
+from .geo.utils import convert_land_cover_array
 from .geo.grid import (
     group_and_label_cells, 
     process_grid,
-    calculate_grid_size,
-    create_coordinate_mesh,
-    create_cell_polygon,
     create_land_cover_grid_from_geotiff_polygon,
     create_canopy_height_grid_from_geotiff_polygon,
     create_building_height_grid_from_geojson_polygon,
     create_dem_grid_from_geotiff_polygon
 )
 from .utils.visualization import (
-    plot_grid, 
     get_land_cover_classes,
     visualize_land_cover_grid,
     visualize_numerical_grid,
-    convert_land_cover
+    convert_land_cover,
+    visualize_land_cover_grid_on_map,
+    visualize_numerical_grid_on_map,
+    visualize_building_height_grid_on_map,
+    visualize_3d_voxel
 )
 
 def get_land_cover_grid(rectangle_vertices, meshsize, source = 'Urbanwatch', output_dir="output", visualization=True):
 
+    print("Creating Land Use Land Cover grid\n ")
+    print(f"Data source: {source}")
+    
     # Initialize Earth Engine
     initialize_earth_engine()
 
@@ -65,8 +58,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source = 'Urbanwatch', out
         collection_name = "projects/sat-io/open-datasets/HRLC/urban-watch-cities"
         image = get_image_collection(collection_name, roi)
         save_geotiff(image, geotiff_path)
+    elif source == 'ESA WorldCover':
+        roi = get_roi(rectangle_vertices)
+        save_geotiff_esa_land_cover(roi, geotiff_path)
     elif source == 'OpenEarthMapJapan':
-        save_oemj_as_geotiff(rectangle_vertices, geotiff_path)    
+        save_oemj_as_geotiff(rectangle_vertices, geotiff_path)   
     
     land_cover_classes = get_land_cover_classes(source)
 
@@ -75,12 +71,15 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source = 'Urbanwatch', out
     # color_map['No Data'] = [0.5, 0.5, 0.5]
 
     if visualization:
-        visualize_land_cover_grid(land_cover_grid_str, meshsize, color_map, land_cover_classes)
+        visualize_land_cover_grid(np.flipud(land_cover_grid_str), meshsize, color_map, land_cover_classes)
     land_cover_grid_int = convert_land_cover_array(land_cover_grid_str, land_cover_classes)
 
     return land_cover_grid_int
 
 def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output", visualization=True):
+
+    print("Creating Building Height grid\n ")
+    print(f"Data source: {source}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -92,12 +91,15 @@ def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft B
     building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
 
     if visualization:
-        visualize_numerical_grid(building_height_grid, meshsize, "building height (m)", cmap='viridis', label='Value')
+        visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
 
     return building_height_grid, filtered_buildings#, buildings_found
 
 def get_canopy_height_grid(rectangle_vertices, meshsize, output_dir="output", visualization=True):
 
+    print("Creating Canopy Height grid\n ")
+    print(f"Data source: High Resolution Canopy Height Maps by WRI and Meta")
+    
     # Initialize Earth Engine
     initialize_earth_engine()
 
@@ -112,14 +114,17 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, output_dir="output", vi
     canopy_height_grid = create_canopy_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
     if visualization:
-        visualize_numerical_grid(canopy_height_grid, meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+        visualize_numerical_grid(np.flipud(canopy_height_grid), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
 
     return canopy_height_grid
 
-def get_dem_grid(rectangle_vertices, meshsize, output_dir="output", visualization=True):
+def get_dem_grid(rectangle_vertices, meshsize, source='NASA', output_dir="output", visualization=True):
+
+    print("Creating Digital Elevation Model (DEM) grid\n ")
+    print(f"Data source: {source}")
 
     # Initialize Earth Engine
-    initialize_earth_engine()    
+    initialize_earth_engine()
 
     os.makedirs(output_dir, exist_ok=True)
     geotiff_path = os.path.join(output_dir, "dem.tif")
@@ -127,12 +132,12 @@ def get_dem_grid(rectangle_vertices, meshsize, output_dir="output", visualizatio
     buffer_distance = 100
     roi = get_roi(rectangle_vertices)
     roi_buffered = roi.buffer(buffer_distance)
-    image = get_dem_image(roi_buffered)
+    image = get_dem_image(roi_buffered, source)
     save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
-    
+
     dem_grid = create_dem_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
     if visualization:
-        visualize_numerical_grid(dem_grid, meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+        visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
     return dem_grid
 
@@ -202,8 +207,8 @@ def get_dem_grid(rectangle_vertices, meshsize, output_dir="output", visualizatio
 #     else:
 #         raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
     
-def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size=2.0, land_cover_source='OpenEarthMapJapan'):
-
+def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source):
+    print("Generating 3D voxel data")
     if land_cover_source != 'OpenEarthMapJapan':
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)  
     else:
@@ -232,9 +237,9 @@ def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori,
     # Fill the 3D array
     for i in range(rows):
         for j in range(cols):
-            ground_level = int(dem_grid[i, j] / voxel_size)
-            building_height = int(building_height_grid[i, j] / voxel_size)
-            tree_height = int(tree_grid[i, j] / voxel_size)
+            ground_level = int(dem_grid[i, j] / voxel_size + 0.5)
+            building_height = int(building_height_grid[i, j] / voxel_size + 0.5)
+            tree_height = int(tree_grid[i, j] / voxel_size + 0.5)
             land_cover = land_cover_grid[i, j]
 
             # Fill underground cells with -1
@@ -245,7 +250,7 @@ def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori,
 
             # Fill tree crown with value -2
             if tree_height > 0:
-                tree_start = ground_level + 2
+                tree_start = ground_level
                 tree_end = ground_level + tree_height
                 voxel_grid[i, j, tree_start:tree_end+1] = -2
 
@@ -254,3 +259,33 @@ def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori,
                 voxel_grid[i, j, ground_level+1:ground_level+building_height+1] = -3
 
     return voxel_grid
+
+
+def get_voxelcity(rectangle_vertices, building_source, land_cover_source, dem_source, meshsize, remove_perimeter_object=None, mapvis=False, voxelvis=False):
+    #prepare of grid data
+    land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, source = land_cover_source)
+    building_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, source = building_source)
+    canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize)
+    dem_grid = get_dem_grid(rectangle_vertices, meshsize, source = dem_source)
+
+    if remove_perimeter_object:
+        w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
+        h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
+        building_height_grid[:w_peri, :] = building_height_grid[-w_peri:, :] = building_height_grid[:, :h_peri] = building_height_grid[:, -h_peri:] = 0
+        canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
+
+    #display grid data on basemap
+    if mapvis:
+        visualize_land_cover_grid_on_map(land_cover_grid, rectangle_vertices, meshsize, source = land_cover_source)
+        visualize_building_height_grid_on_map(building_height_grid, building_geojson, rectangle_vertices, meshsize)
+        visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, "canopy_height")
+        visualize_numerical_grid_on_map(dem_grid, rectangle_vertices, meshsize, "dem")
+
+    #prepare 3D voxel grid  
+    voxelcity_grid = create_3d_voxel(building_height_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
+
+    #display grid data in 3D
+    if voxelvis:      
+        visualize_3d_voxel(voxelcity_grid, voxel_size=meshsize)
+
+    return voxelcity_grid, building_height_grid, canopy_height_grid, land_cover_grid, dem_grid

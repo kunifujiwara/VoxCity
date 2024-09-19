@@ -39,11 +39,12 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             # Check if we have at least 4 coordinates
             if len(coords) >= 4:
                 properties = element.get('tags', {})
-                height = properties.get('height', properties.get('building:height', '3'))  # Default to 3 meters if no height is specified
+                height = properties.get('height', properties.get('building:height', '0'))  # Default to 3 meters if no height is specified
                 try:
                     height = float(height)
                 except ValueError:
-                    height = 3  # Default height if conversion fails
+                    # print("No building height data was found. A height of 10 meters was set instead.")
+                    height = 0  # Default height if conversion fails
                 
                 feature = {
                     "type": "Feature",
