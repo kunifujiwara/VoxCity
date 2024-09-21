@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.0.54"
+version = "0.0.56"
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.rst"
 authors = [
@@ -32,7 +32,8 @@ dependencies = [
     "earthengine-api",
     "geemap",
     "rio-cogeo",
-    "geopy"
+    "geopy",
+    "py-vox-io"
 ]
 
 [project.scripts]

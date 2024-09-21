@@ -248,14 +248,18 @@ def filter_buildings(geojson_data, plotting_box):
 def create_building_polygons(filtered_buildings):
     building_polygons = []
     idx = index.Index()
+    count = 0
     for i, building in enumerate(filtered_buildings):
         polygon = Polygon(building['geometry']['coordinates'][0])
         height = building['properties']['height']
         if (height <= 0) or (height == None):
-            print("A building with a height of 0 meters was found. A height of 10 meters was set instead.")
+            # print("A building with a height of 0 meters was found. A height of 10 meters was set instead.")
+            count += 1
             height = 10
         building_polygons.append((polygon, height))
         idx.insert(i, polygon.bounds)
+    
+    print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")
     return building_polygons, idx
 
 # GeoJSON and Data Loading Functions
