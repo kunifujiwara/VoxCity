@@ -18,7 +18,7 @@ VoxelCity
 
 
 
-VoxelCity is an easy and one-stop tool to output 3d city models for urban simulation by integrating multiple geospatial open-data
+.. VoxelCity is an easy and one-stop tool to output 3d city models for urban simulation by integrating multiple geospatial open-data
 
 
 * Free software: CC BY-SA 4.0
