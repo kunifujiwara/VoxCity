@@ -14,7 +14,7 @@ VoxelCity
         :alt: Documentation Status
 
 .. image:: https://pepy.tech/badge/voxelcity
-        :target: https://pepy.tech/project/tree-shade-mapper)
+        :target: https://pepy.tech/project/voxelcity
 
 
 
