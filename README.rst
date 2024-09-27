@@ -6,13 +6,15 @@ VoxelCity
 .. image:: https://img.shields.io/pypi/v/voxelcity.svg
         :target: https://pypi.python.org/pypi/voxelcity
 
-.. image:: https://img.shields.io/travis/kunifujiwara/voxelcity.svg
-        :target: https://travis-ci.com/kunifujiwara/voxelcity
+.. .. image:: https://img.shields.io/travis/kunifujiwara/voxelcity.svg
+..         :target: https://travis-ci.com/kunifujiwara/voxelcity
 
 .. image:: https://readthedocs.org/projects/voxelcity/badge/?version=latest
         :target: https://voxelcity.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
+.. image:: https://pepy.tech/badge/voxelcity
+        :target: https://pepy.tech/project/tree-shade-mapper)
 
 
 

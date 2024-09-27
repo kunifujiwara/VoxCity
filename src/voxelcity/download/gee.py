@@ -86,6 +86,31 @@ def save_geotiff_esa_land_cover(roi, geotiff_path):
 
     print(f"Colored GeoTIFF saved to: {geotiff_path}")
 
+def save_geotiff_open_buildings_temporal(aoi, geotiff_path):
+    # Initialize Earth Engine
+    ee.Initialize()
+
+    # Load the dataset
+    collection = ee.ImageCollection('GOOGLE/Research/open-buildings-temporal/v1')
+
+    # Get the latest image in the collection for the AOI
+    latest_image = collection.filterBounds(aoi).sort('system:time_start', False).first()
+
+    # Select the building height band
+    building_height = latest_image.select('building_height')
+
+    # Clip the image to the AOI
+    clipped_image = building_height.clip(aoi)
+
+    # Export the GeoTIFF
+    geemap.ee_export_image(
+        clipped_image,
+        filename=geotiff_path,
+        scale=4,
+        region=aoi,
+        file_per_band=False
+    )
+
 # def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
 #     initialize_earth_engine()
 

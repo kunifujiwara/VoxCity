@@ -7,6 +7,8 @@ from affine import Affine
 from shapely.geometry import box
 from scipy.interpolate import griddata
 
+from shapely.errors import GEOSException
+
 from .utils import get_dominant_class
 
 from .utils import (
@@ -257,7 +259,7 @@ def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
 
     return np.flipud(grid)
 
-def create_canopy_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
+def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
         left, bottom, right, top = src.bounds
@@ -338,18 +340,48 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     building_polygons, idx = create_building_polygons(filtered_buildings)
 
     # Calculate building heights for each grid cell
+    # buildings_found = 0
+    # for i in range(grid_size[0]):
+    #     for j in range(grid_size[1]):
+    #         cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+    #         for k in idx.intersection(cell.bounds):
+    #             polygon, height = building_polygons[k]
+    #             if cell.intersects(polygon) and cell.intersection(polygon).area > cell.area/2:
+    #                 grid[i, j] = height
+    #                 buildings_found += 1
+    #                 break
+
     buildings_found = 0
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             for k in idx.intersection(cell.bounds):
                 polygon, height = building_polygons[k]
-                if cell.intersects(polygon) and cell.intersection(polygon).area > cell.area/2:
-                    grid[i, j] = height
-                    buildings_found += 1
-                    break
+                try:
+                    if cell.intersects(polygon):
+                        intersection = cell.intersection(polygon)
+                        if intersection.area > cell.area/2:
+                            grid[i, j] = height
+                            buildings_found += 1
+                            break
+                except GEOSException as e:
+                    print(f"GEOS error at grid cell ({i}, {j}): {str(e)}")
+                    # Attempt to fix the polygon
+                    try:
+                        fixed_polygon = polygon.buffer(0)
+                        if cell.intersects(fixed_polygon):
+                            intersection = cell.intersection(fixed_polygon)
+                            if intersection.area > cell.area/2:
+                                grid[i, j] = height
+                                buildings_found += 1
+                                break
+                    except Exception as fix_error:
+                        print(f"Failed to fix polygon at grid cell ({i}, {j}): {str(fix_error)}")
+                    continue
     
     return grid, filtered_buildings
+
+
 
 def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices):
 

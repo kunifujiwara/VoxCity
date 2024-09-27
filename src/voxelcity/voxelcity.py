@@ -20,14 +20,15 @@ from .download.gee import (
     get_image_collection,
     save_geotiff,
     get_dem_image,
-    save_geotiff_esa_land_cover
+    save_geotiff_esa_land_cover,
+    save_geotiff_open_buildings_temporal
 )
 from .geo.utils import convert_land_cover_array
 from .geo.grid import (
     group_and_label_cells, 
     process_grid,
     create_land_cover_grid_from_geotiff_polygon,
-    create_canopy_height_grid_from_geotiff_polygon,
+    create_height_grid_from_geotiff_polygon,
     create_building_height_grid_from_geojson_polygon,
     create_dem_grid_from_geotiff_polygon
 )
@@ -85,10 +86,17 @@ def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft B
 
     if source == 'Microsoft Building Footprints':
         geojson_data = get_mbfp_geojson(output_dir, rectangle_vertices)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
-    
-    building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+    elif source == "Open Building 2.5D Temporal":
+        roi = get_roi(rectangle_vertices)
+        os.makedirs(output_dir, exist_ok=True)
+        geotiff_path = os.path.join(output_dir, "building_height.tif")
+        save_geotiff_open_buildings_temporal(roi, geotiff_path)
+        building_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+        filtered_buildings = []    
 
     if visualization:
         visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
@@ -111,7 +119,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, output_dir="output", vi
     image = get_image_collection(collection_name, roi)
     save_geotiff(image, geotiff_path)  
 
-    canopy_height_grid = create_canopy_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+    canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
     if visualization:
         visualize_numerical_grid(np.flipud(canopy_height_grid), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
@@ -266,7 +274,10 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, dem_so
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, source = land_cover_source)
     building_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, source = building_source)
     canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize)
-    dem_grid = get_dem_grid(rectangle_vertices, meshsize, source = dem_source)
+    if dem_source == "Flat":
+        dem_grid = np.zeros_like(land_cover_grid)
+    else:
+        dem_grid = get_dem_grid(rectangle_vertices, meshsize, source = dem_source)
 
     if remove_perimeter_object:
         w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
