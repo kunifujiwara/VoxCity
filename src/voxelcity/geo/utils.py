@@ -2,20 +2,24 @@ import os
 import math
 from math import radians, sin, cos, sqrt, atan2
 import numpy as np
-from pyproj import Geod, Transformer
+from pyproj import Geod, Transformer, CRS
 import geopandas as gpd
 import rasterio
 from rasterio.merge import merge
 from rasterio.warp import transform_bounds
+from rasterio.mask import mask
 from shapely.geometry import Polygon, box, shape
 from fiona.crs import from_epsg
 import gzip
 import json
 from rtree import index
 from collections import Counter
-import geopy
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+import warnings
+from typing import List, Dict
+
+warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
 def tile_from_lat_lon(lat, lon, level_of_detail):
     sin_lat = math.sin(lat * math.pi / 180)
@@ -297,3 +301,111 @@ def load_geojsons_from_multiple_gz(file_paths):
                 except json.JSONDecodeError as e:
                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
     return geojson_objects
+
+def extract_building_heights_from_geotiff(geotiff_path, geojson_data):
+    # Check if geojson_data is a string, if so, parse it
+    if isinstance(geojson_data, str):
+        geojson = json.loads(geojson_data)
+        input_was_string = True
+    else:
+        geojson = geojson_data
+        input_was_string = False
+
+    count_0 = 0
+    count_1 = 0
+    count_2 = 0
+
+    # Open the GeoTIFF file and keep it open for the entire process
+    with rasterio.open(geotiff_path) as src:
+        # print("Raster CRS:", src.crs)
+        # print("Raster Bounds:", src.bounds)
+        # print("Raster Affine Transform:", src.transform)
+
+        # Create a transformer for coordinate conversion
+        transformer = Transformer.from_crs(CRS.from_epsg(4326), src.crs, always_xy=True)
+
+        # Process each feature in the GeoJSON
+        for feature in geojson:
+            if (feature['geometry']['type'] == 'Polygon') & (feature['properties']['height']<=0):
+                count_0 += 1
+                # Transform coordinates from (lat, lon) to the raster's CRS
+                coords = feature['geometry']['coordinates'][0]
+                transformed_coords = [transformer.transform(lon, lat) for lat, lon in coords]
+                
+                # Create a shapely polygon from the transformed coordinates
+                polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
+                
+                try:
+                    # Mask the raster data with the polygon
+                    masked, mask_transform = mask(src, [polygon], crop=True, all_touched=True)
+                    
+                    # Extract valid height values
+                    heights = masked[0][masked[0] != src.nodata]
+                    
+                    # Calculate average height if we have valid samples
+                    if len(heights) > 0:
+                        count_1 += 1
+                        avg_height = np.mean(heights)
+                        feature['properties']['height'] = float(avg_height)
+                    else:
+                        count_2 += 1
+                        feature['properties']['height'] = 10
+                        print(f"No valid height data for feature: {feature['properties']}")
+                except ValueError as e:
+                    print(f"Error processing feature: {feature['properties']}. Error: {str(e)}")
+                    feature['properties']['extracted_height'] = None
+
+    if count_0 > 0:
+        print(f"{count_0} of the total {len(geojson_data)} building footprint from OSM did not have height data.")
+        print(f"For {count_1} of these building footprints without height, values from Open Building 2.5D Temporal were assigned.")
+        print(f"For {count_2} of these building footprints without height, no data exist in Open Building 2.5D Temporal. Height values of 10m were set instead")
+
+    # Return the result in the same format as the input
+    if input_was_string:
+        return json.dumps(geojson, indent=2)
+    else:
+        return geojson
+
+def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
+    # Convert geojson_data_1 to Shapely polygons with height information
+    reference_buildings = []
+    for feature in geojson_data_1:
+        geom = shape(feature['geometry'])
+        height = feature['properties']['height']
+        reference_buildings.append((geom, height))
+
+    count_0 = 0
+    count_1 = 0
+    count_2 = 0
+    # Process geojson_data_0 and update heights where necessary
+    updated_geojson_data_0 = []
+    for feature in geojson_data_0:
+        geom = shape(feature['geometry'])
+        height = feature['properties']['height']
+        if height == 0:     
+            count_0 += 1       
+            # Find overlapping buildings in geojson_data_1
+            overlapping_heights = []
+            for ref_geom, ref_height in reference_buildings:
+                if geom.intersects(ref_geom):
+                    overlap_area = geom.intersection(ref_geom).area
+                    if overlap_area / geom.area > 0.3:  # More than 50% overlap
+                        overlapping_heights.append(ref_height)
+            
+            # Update height if overlapping buildings found
+            if overlapping_heights:
+                count_1 += 1
+                new_height = max(overlapping_heights)
+                feature['properties']['height'] = new_height
+            else:
+                count_2 += 1
+                feature['properties']['height'] = 10
+        
+        updated_geojson_data_0.append(feature)
+    
+    if count_0 > 0:
+        print(f"{count_0} of the total {len(geojson_data_0)} building footprint from OSM did not have height data.")
+        print(f"For {count_1} of these building footprints without height, values from Microsoft Building Footprints were assigned.")
+        print(f"For {count_2} of these building footprints without height, no data exist in Microsoft Building Footprints. Height values of 10m were set instead")
+
+    return updated_geojson_data_0

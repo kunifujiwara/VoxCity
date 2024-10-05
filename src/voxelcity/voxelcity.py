@@ -96,7 +96,18 @@ def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft B
         geotiff_path = os.path.join(output_dir, "building_height.tif")
         save_geotiff_open_buildings_temporal(roi, geotiff_path)
         building_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
-        filtered_buildings = []    
+        filtered_buildings = []
+    elif source == "OpenStreetMap & Microsoft Building Footprints":
+        geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
+        geojson_data_comp = get_mbfp_geojson(output_dir, rectangle_vertices)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
+    elif source == "OpenStreetMap & Open Building 2.5D Temporal":
+        geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
+        roi = get_roi(rectangle_vertices)
+        os.makedirs(output_dir, exist_ok=True)
+        geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
+        save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
 
     if visualization:
         visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')

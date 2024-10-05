@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from shapely.geometry import Polygon
 from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
@@ -9,8 +10,6 @@ from scipy.interpolate import griddata
 
 from shapely.errors import GEOSException
 
-from .utils import get_dominant_class
-
 from .utils import (
     get_dominant_class,
     initialize_geod,
@@ -19,7 +18,14 @@ from .utils import (
     setup_transformer,
     filter_buildings,
     create_building_polygons,
-    convert_format_lat_lon
+    convert_format_lat_lon,
+    extract_building_heights_from_geotiff,
+    extract_building_heights_from_geojson
+)
+from ..download.mbfp import get_mbfp_geojson
+from ..download.gee import (
+    get_roi,
+    save_geotiff_open_buildings_temporal
 )
 
 def apply_operation(arr, meshsize):
@@ -307,7 +313,7 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
 
     return np.flipud(grid)
 
-def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices):
+def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -337,7 +343,14 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     # Filter polygons and create building polygons
     filtered_buildings = filter_buildings(geojson_data, plotting_box)
-    building_polygons, idx = create_building_polygons(filtered_buildings)
+
+    if geojson_data_comp:
+        filtered_geojson_data_comp = filter_buildings(geojson_data_comp, plotting_box)
+        filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
+    elif geotiff_path_comp:
+        filtered_buildings_comp = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_buildings)
+
+    building_polygons, idx = create_building_polygons(filtered_buildings_comp)
 
     # Calculate building heights for each grid cell
     # buildings_found = 0

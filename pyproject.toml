@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.3"
+version = "0.1.5"
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.rst"
 authors = [
@@ -17,7 +17,7 @@ dependencies = [
     "pyproj",
     "ipyleaflet",
     "geopandas",
-    "rasterio",
+    "rasterio==1.3.11",
     "shapely",
     "gdown",
     "numpy",
