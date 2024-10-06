@@ -349,6 +349,8 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
         filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
     elif geotiff_path_comp:
         filtered_buildings_comp = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_buildings)
+    else:
+        filtered_buildings_comp = filtered_buildings
 
     building_polygons, idx = create_building_polygons(filtered_buildings_comp)
 

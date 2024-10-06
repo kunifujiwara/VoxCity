@@ -9,6 +9,7 @@ from rasterio.merge import merge
 from rasterio.warp import transform_bounds
 from rasterio.mask import mask
 from shapely.geometry import Polygon, box, shape
+from shapely.errors import GEOSException, ShapelyError
 from fiona.crs import from_epsg
 import gzip
 import json
@@ -246,8 +247,45 @@ def convert_land_cover_array(input_array, land_cover_classes):
 
     return output_array
 
+def validate_polygon_coordinates(geometry):
+    if geometry['type'] == 'Polygon':
+        for ring in geometry['coordinates']:
+            if ring[0] != ring[-1]:
+                ring.append(ring[0])  # Close the ring
+            if len(ring) < 4:
+                return False
+        return True
+    elif geometry['type'] == 'MultiPolygon':
+        for polygon in geometry['coordinates']:
+            for ring in polygon:
+                if ring[0] != ring[-1]:
+                    ring.append(ring[0])  # Close the ring
+                if len(ring) < 4:
+                    return False
+        return True
+    else:
+        return False
+
+# def filter_buildings(geojson_data, plotting_box):
+#     return [feature for feature in geojson_data if plotting_box.intersects(shape(feature['geometry']))]
 def filter_buildings(geojson_data, plotting_box):
-    return [feature for feature in geojson_data if plotting_box.intersects(shape(feature['geometry']))]
+    filtered_features = []
+    for feature in geojson_data:
+        if not validate_polygon_coordinates(feature['geometry']):
+            print("Skipping feature with invalid geometry")
+            print(feature['geometry'])
+            continue
+        try:
+            geom = shape(feature['geometry'])
+            if not geom.is_valid:
+                print("Skipping invalid geometry")
+                print(geom)
+                continue
+            if plotting_box.intersects(geom):
+                filtered_features.append(feature)
+        except ShapelyError as e:
+            print(f"Skipping feature due to geometry error: {e}")
+    return filtered_features
 
 def create_building_polygons(filtered_buildings):
     building_polygons = []
@@ -263,7 +301,7 @@ def create_building_polygons(filtered_buildings):
         building_polygons.append((polygon, height))
         idx.insert(i, polygon.bounds)
     
-    print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")
+    # print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")
     return building_polygons, idx
 
 # GeoJSON and Data Loading Functions
@@ -387,10 +425,24 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
             # Find overlapping buildings in geojson_data_1
             overlapping_heights = []
             for ref_geom, ref_height in reference_buildings:
-                if geom.intersects(ref_geom):
-                    overlap_area = geom.intersection(ref_geom).area
-                    if overlap_area / geom.area > 0.3:  # More than 50% overlap
-                        overlapping_heights.append(ref_height)
+                try:
+                    if geom.intersects(ref_geom):
+                        overlap_area = geom.intersection(ref_geom).area
+                        if overlap_area / geom.area > 0.3:  # More than 50% overlap
+                            overlapping_heights.append(ref_height)
+                except GEOSException as e:
+                    print(f"GEOS error at a building polygon {ref_geom}")
+                    # Attempt to fix the polygon
+                    try:
+                        fixed_ref_geom = ref_geom.buffer(0)
+                        if geom.intersects(fixed_ref_geom):
+                            overlap_area = geom.intersection(ref_geom).area
+                            if overlap_area / geom.area > 0.3:  # More than 50% overlap
+                                overlapping_heights.append(ref_height)
+                                break
+                    except Exception as fix_error:
+                        print(f"Failed to fix polygon")
+                    continue
             
             # Update height if overlapping buildings found
             if overlapping_heights:

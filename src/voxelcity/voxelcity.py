@@ -6,9 +6,10 @@ import os
 # Local application/library specific imports
 # from .download.urbanwatch import get_geotif_urbanwatch
 from .download.mbfp import get_mbfp_geojson
-from .download.osm import load_geojsons_from_openstreetmap
+from .download.osm import load_geojsons_from_openstreetmap, load_geojsons_from_osmbuildings
 # from .download.utils import download_file
 from .download.oemj import save_oemj_as_geotiff
+from .download.omt import load_geojsons_from_openmaptiles
 # from .download.nasadem import (
 #     download_nasa_dem,
 #     interpolate_dem,
@@ -77,7 +78,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source = 'Urbanwatch', out
 
     return land_cover_grid_int
 
-def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output", visualization=True):
+def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft Building Footprints', output_dir="output", visualization=True, maptiler_API_key=None):
 
     print("Creating Building Height grid\n ")
     print(f"Data source: {source}")
@@ -90,6 +91,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft B
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
         building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+    elif source == 'OSM Buildings':
+        geojson_data = load_geojsons_from_osmbuildings(rectangle_vertices)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "Open Building 2.5D Temporal":
         roi = get_roi(rectangle_vertices)
         os.makedirs(output_dir, exist_ok=True)
@@ -97,6 +101,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source = 'Microsoft B
         save_geotiff_open_buildings_temporal(roi, geotiff_path)
         building_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
         filtered_buildings = []
+    elif source == "OpenMapTiles":
+        geojson_data = load_geojsons_from_openmaptiles(rectangle_vertices, maptiler_API_key)
+        building_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenStreetMap & Microsoft Building Footprints":
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
         geojson_data_comp = get_mbfp_geojson(output_dir, rectangle_vertices)
@@ -280,10 +287,10 @@ def create_3d_voxel(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori,
     return voxel_grid
 
 
-def get_voxelcity(rectangle_vertices, building_source, land_cover_source, dem_source, meshsize, remove_perimeter_object=None, mapvis=False, voxelvis=False):
+def get_voxelcity(rectangle_vertices, building_source, land_cover_source, dem_source, meshsize, remove_perimeter_object=None, mapvis=False, voxelvis=False, maptiler_API_key=None):
     #prepare of grid data
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, source = land_cover_source)
-    building_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, source = building_source)
+    building_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, source = building_source, maptiler_API_key=maptiler_API_key)
     canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize)
     if dem_source == "Flat":
         dem_grid = np.zeros_like(land_cover_grid)
