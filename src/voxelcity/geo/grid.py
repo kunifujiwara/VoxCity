@@ -1,5 +1,4 @@
 import numpy as np
-import os
 from shapely.geometry import Polygon
 from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
@@ -7,26 +6,30 @@ import rasterio
 from affine import Affine
 from shapely.geometry import box
 from scipy.interpolate import griddata
-
 from shapely.errors import GEOSException
 
 from .utils import (
-    get_dominant_class,
     initialize_geod,
     calculate_distance,
     normalize_to_one_meter,
-    setup_transformer,
-    filter_buildings,
     create_building_polygons,
-    convert_format_lat_lon,
-    extract_building_heights_from_geotiff,
+    convert_format_lat_lon
+)
+from ..file.geojson import (
+    filter_buildings, 
+    extract_building_heights_from_geotiff, 
     extract_building_heights_from_geojson
 )
-from ..download.mbfp import get_mbfp_geojson
-from ..download.gee import (
-    get_roi,
-    save_geotiff_open_buildings_temporal
+from ..utils.lc import (
+    get_class_priority, 
+    create_land_cover_polygons, 
+    get_dominant_class,
 )
+# from ..download.mbfp import get_mbfp_geojson
+# from ..download.gee import (
+#     get_roi,
+#     save_geotiff_open_buildings_temporal
+# )
 
 def apply_operation(arr, meshsize):
     step1 = arr / meshsize
@@ -212,6 +215,90 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     
     return np.flipud(grid)
 
+def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, rectangle_vertices):
+
+    class_priority = { 
+        'Bareland': 4, 
+        'Rangeland': 6, 
+        'Developed space': 8, 
+        'Road': 1, 
+        'Tree': 7, 
+        'Water': 3, 
+        'Agriculture land': 5, 
+        'Building': 2 
+    }
+
+    class_priority = get_class_priority(source)
+    
+    # Calculate grid and normalize vectors
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+
+    # print(f"Calculated grid size: {grid_size}")
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
+
+    # Create the grid
+    # grid = np.zeros(grid_size)
+    # grid = np.full(grid_size, 0)
+    grid = np.full(grid_size, 'Developed space', dtype=object)
+
+    # Setup transformer and plotting extent
+    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
+              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
+    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+
+    land_cover_polygons, idx = create_land_cover_polygons(geojson_data) 
+
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            land_cover_class = 'Developed space'
+            # grid[i, j] = 3
+            # grid[i, j] = class_mapping[land_cover_class]
+            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+            for k in idx.intersection(cell.bounds):
+                polygon, land_cover_class_temp = land_cover_polygons[k]
+                try:
+                    if cell.intersects(polygon):
+                        # print("intersection")
+                        intersection = cell.intersection(polygon)
+                        if intersection.area > cell.area/2:
+                            rank = class_priority[land_cover_class]
+                            rank_temp = class_priority[land_cover_class_temp]
+                            if rank_temp < rank:
+                                land_cover_class = land_cover_class_temp
+                                grid[i, j] = land_cover_class
+                            # break
+                except GEOSException as e:
+                    print(f"GEOS error at grid cell ({i}, {j}): {str(e)}")
+                    # Attempt to fix the polygon
+                    try:
+                        fixed_polygon = polygon.buffer(0)
+                        if cell.intersects(fixed_polygon):
+                            intersection = cell.intersection(fixed_polygon)
+                            if intersection.area > cell.area/2:
+                                rank = class_priority[land_cover_class]
+                                rank_temp = class_priority[land_cover_class_temp]
+                                if rank_temp < rank:
+                                    land_cover_class = land_cover_class_temp
+                                    grid[i, j] = land_cover_class
+                                # break
+                    except Exception as fix_error:
+                        print(f"Failed to fix polygon at grid cell ({i}, {j}): {str(fix_error)}")
+                    continue 
+    return grid
+
 def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
@@ -328,13 +415,20 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
     origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
     # print(f"Calculated grid size: {grid_size}")
     # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Create the grid
-    grid = np.zeros(grid_size)
+    building_height_grid = np.zeros(grid_size)
+
+    # Create object array that can store lists of varying lengths
+    building_min_height_grid = np.empty(grid_size, dtype=object)
+    # Initialize each cell with an empty list
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            building_min_height_grid[i, j] = []
 
     # Setup transformer and plotting extent
     extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
@@ -366,19 +460,19 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     #                 buildings_found += 1
     #                 break
 
-    buildings_found = 0
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             for k in idx.intersection(cell.bounds):
-                polygon, height = building_polygons[k]
+                polygon, height, min_height = building_polygons[k]
                 try:
                     if cell.intersects(polygon):
                         intersection = cell.intersection(polygon)
                         if intersection.area > cell.area/2:
-                            grid[i, j] = height
-                            buildings_found += 1
-                            break
+                            building_min_height_grid[i, j].append([min_height, height])
+                            if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height):
+                                building_height_grid[i, j] = height
+                            # break
                 except GEOSException as e:
                     print(f"GEOS error at grid cell ({i}, {j}): {str(e)}")
                     # Attempt to fix the polygon
@@ -387,16 +481,15 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                         if cell.intersects(fixed_polygon):
                             intersection = cell.intersection(fixed_polygon)
                             if intersection.area > cell.area/2:
-                                grid[i, j] = height
-                                buildings_found += 1
-                                break
+                                building_min_height_grid[i, j].append([min_height, height])
+                                if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height):
+                                    building_height_grid[i, j] = height
+                                # break
                     except Exception as fix_error:
                         print(f"Failed to fix polygon at grid cell ({i}, {j}): {str(fix_error)}")
                     continue
-    
-    return grid, filtered_buildings
 
-
+    return building_height_grid, building_min_height_grid, filtered_buildings
 
 def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices):
 

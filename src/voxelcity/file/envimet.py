@@ -3,7 +3,7 @@ import numpy as np
 import datetime
 
 from ..geo.grid import apply_operation, translate_array, group_and_label_cells, process_grid
-from ..utils.visualization import convert_land_cover
+from ..utils.lc import convert_land_cover
 
 def array_to_string(arr):
     return '\n'.join('     ' + ','.join(str(cell) for cell in row) for row in arr)
@@ -15,14 +15,15 @@ def array_to_string_int(arr):
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
 def prepare_grids(building_height_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
-    building_height_grid = np.flipud(building_height_grid_ori).copy()
+    building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)).copy()#set 10m height to nan
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
     building_height_grid = apply_operation(building_height_grid, meshsize)
 
-    if land_cover_source != 'OpenEarthMapJapan':
-        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)  
+    if (land_cover_source == 'OpenEarthMapJapan') or (land_cover_source == 'OpenStreetMap'):
+        land_cover_grid_converted = land_cover_grid_ori   
     else:
-        land_cover_grid_converted = land_cover_grid_ori    
+        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)        
+
     land_cover_grid = np.flipud(land_cover_grid_converted).copy() + 1
 
     veg_translation_dict = {

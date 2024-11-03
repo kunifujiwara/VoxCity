@@ -2,23 +2,20 @@ import os
 import math
 from math import radians, sin, cos, sqrt, atan2
 import numpy as np
-from pyproj import Geod, Transformer, CRS
+from pyproj import Geod, Transformer
 import geopandas as gpd
 import rasterio
 from rasterio.merge import merge
 from rasterio.warp import transform_bounds
 from rasterio.mask import mask
-from shapely.geometry import Polygon, box, shape
-from shapely.errors import GEOSException, ShapelyError
+from shapely.geometry import Polygon, box
 from fiona.crs import from_epsg
-import gzip
-import json
 from rtree import index
-from collections import Counter
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import warnings
-from typing import List, Dict
+import reverse_geocoder as rg
+import pycountry
 
 warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
@@ -62,14 +59,14 @@ def quadkey_to_tile(quadkey):
 #                 new_coords.append(new_multipolygon)
 #             feature['geometry']['coordinates'] = new_coords
 
-def swap_coordinates(features):
-    for feature in features:
-        if feature['geometry']['type'] == 'Polygon':
-            new_coords = [[[lat, lon] for lon, lat in polygon] for polygon in feature['geometry']['coordinates']]
-            feature['geometry']['coordinates'] = new_coords
-        elif feature['geometry']['type'] == 'MultiPolygon':
-            new_coords = [[[[lat, lon] for lon, lat in polygon] for polygon in multipolygon] for multipolygon in feature['geometry']['coordinates']]
-            feature['geometry']['coordinates'] = new_coords
+# def swap_coordinates(features):
+#     for feature in features:
+#         if feature['geometry']['type'] == 'Polygon':
+#             new_coords = [[[lat, lon] for lon, lat in polygon] for polygon in feature['geometry']['coordinates']]
+#             feature['geometry']['coordinates'] = new_coords
+#         elif feature['geometry']['type'] == 'MultiPolygon':
+#             new_coords = [[[[lat, lon] for lon, lat in polygon] for polygon in multipolygon] for multipolygon in feature['geometry']['coordinates']]
+#             feature['geometry']['coordinates'] = new_coords
 
 def initialize_geod():
     return Geod(ellps='WGS84')
@@ -218,35 +215,7 @@ def get_coordinates_from_cityname(place_name):
 # def create_grid(dominant_classes, land_cover_classes):
 #     class_to_index = {cls: idx for idx, cls in enumerate(land_cover_classes.values())}
 #     return np.array([[class_to_index[find_full_class_name(cls, land_cover_classes)] for cls in row] for row in dominant_classes])
-
-def rgb_distance(color1, color2):
-    return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
       
-def get_nearest_class(pixel, land_cover_classes):
-    distances = {class_name: rgb_distance(pixel, color) 
-                 for color, class_name in land_cover_classes.items()}
-    return min(distances, key=distances.get)
-
-def get_dominant_class(cell_data, land_cover_classes):
-    if cell_data.size == 0:
-        return 'No Data'
-    pixel_classes = [get_nearest_class(tuple(pixel), land_cover_classes) 
-                     for pixel in cell_data.reshape(-1, 3)]
-    class_counts = Counter(pixel_classes)
-    return class_counts.most_common(1)[0][0]
-
-def convert_land_cover_array(input_array, land_cover_classes):
-    # Create a mapping of class names to integers
-    class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
-
-    # Create a vectorized function to map string values to integers
-    vectorized_map = np.vectorize(lambda x: class_to_int.get(x, -1))
-
-    # Apply the mapping to the input array
-    output_array = vectorized_map(input_array)
-
-    return output_array
-
 def validate_polygon_coordinates(geometry):
     if geometry['type'] == 'Polygon':
         for ring in geometry['coordinates']:
@@ -268,24 +237,6 @@ def validate_polygon_coordinates(geometry):
 
 # def filter_buildings(geojson_data, plotting_box):
 #     return [feature for feature in geojson_data if plotting_box.intersects(shape(feature['geometry']))]
-def filter_buildings(geojson_data, plotting_box):
-    filtered_features = []
-    for feature in geojson_data:
-        if not validate_polygon_coordinates(feature['geometry']):
-            print("Skipping feature with invalid geometry")
-            print(feature['geometry'])
-            continue
-        try:
-            geom = shape(feature['geometry'])
-            if not geom.is_valid:
-                print("Skipping invalid geometry")
-                print(geom)
-                continue
-            if plotting_box.intersects(geom):
-                filtered_features.append(feature)
-        except ShapelyError as e:
-            print(f"Skipping feature due to geometry error: {e}")
-    return filtered_features
 
 def create_building_polygons(filtered_buildings):
     building_polygons = []
@@ -294,13 +245,18 @@ def create_building_polygons(filtered_buildings):
     for i, building in enumerate(filtered_buildings):
         polygon = Polygon(building['geometry']['coordinates'][0])
         height = building['properties']['height']
+        if building['properties'].get('min_height') is not None:
+            min_height = building['properties']['min_height']
+        else:
+            min_height = 0
         if (height <= 0) or (height == None):
             # print("A building with a height of 0 meters was found. A height of 10 meters was set instead.")
             count += 1
-            height = 10
-        building_polygons.append((polygon, height))
+            # height = 10
+            height = np.nan
+        building_polygons.append((polygon, height, min_height))
         idx.insert(i, polygon.bounds)
-    
+
     # print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")
     return building_polygons, idx
 
@@ -317,147 +273,17 @@ def create_building_polygons(filtered_buildings):
 #                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
 #     return geojson_objects
 
-def load_geojsons_from_multiple_gz(file_paths):
-    geojson_objects = []
-    for gz_file_path in file_paths:
-        with gzip.open(gz_file_path, 'rt', encoding='utf-8') as file:
-            for line in file:
-                try:
-                    data = json.loads(line)
-                    # Check and set default height if necessary
-                    if 'properties' in data and 'height' in data['properties']:
-                        if data['properties']['height'] is None:
-                            # print("No building height data was found. A height of 10 meters was set instead.")
-                            data['properties']['height'] = 0
-                    else:
-                        # If 'height' property doesn't exist, add it with default value
-                        if 'properties' not in data:
-                            data['properties'] = {}
-                        # print("No building height data was found. A height of 10 meters was set instead.")
-                        data['properties']['height'] = 0
-                    geojson_objects.append(data)
-                except json.JSONDecodeError as e:
-                    print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
-    return geojson_objects
+def get_country_name(lat, lon):
+    # Perform reverse geocoding
+    results = rg.search((lat, lon))
 
-def extract_building_heights_from_geotiff(geotiff_path, geojson_data):
-    # Check if geojson_data is a string, if so, parse it
-    if isinstance(geojson_data, str):
-        geojson = json.loads(geojson_data)
-        input_was_string = True
+    # Extract the country code
+    country_code = results[0]['cc']
+
+    # Get the country name from the country code
+    country = pycountry.countries.get(alpha_2=country_code)
+
+    if country:
+        return country.name
     else:
-        geojson = geojson_data
-        input_was_string = False
-
-    count_0 = 0
-    count_1 = 0
-    count_2 = 0
-
-    # Open the GeoTIFF file and keep it open for the entire process
-    with rasterio.open(geotiff_path) as src:
-        # print("Raster CRS:", src.crs)
-        # print("Raster Bounds:", src.bounds)
-        # print("Raster Affine Transform:", src.transform)
-
-        # Create a transformer for coordinate conversion
-        transformer = Transformer.from_crs(CRS.from_epsg(4326), src.crs, always_xy=True)
-
-        # Process each feature in the GeoJSON
-        for feature in geojson:
-            if (feature['geometry']['type'] == 'Polygon') & (feature['properties']['height']<=0):
-                count_0 += 1
-                # Transform coordinates from (lat, lon) to the raster's CRS
-                coords = feature['geometry']['coordinates'][0]
-                transformed_coords = [transformer.transform(lon, lat) for lat, lon in coords]
-                
-                # Create a shapely polygon from the transformed coordinates
-                polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
-                
-                try:
-                    # Mask the raster data with the polygon
-                    masked, mask_transform = mask(src, [polygon], crop=True, all_touched=True)
-                    
-                    # Extract valid height values
-                    heights = masked[0][masked[0] != src.nodata]
-                    
-                    # Calculate average height if we have valid samples
-                    if len(heights) > 0:
-                        count_1 += 1
-                        avg_height = np.mean(heights)
-                        feature['properties']['height'] = float(avg_height)
-                    else:
-                        count_2 += 1
-                        feature['properties']['height'] = 10
-                        print(f"No valid height data for feature: {feature['properties']}")
-                except ValueError as e:
-                    print(f"Error processing feature: {feature['properties']}. Error: {str(e)}")
-                    feature['properties']['extracted_height'] = None
-
-    if count_0 > 0:
-        print(f"{count_0} of the total {len(geojson_data)} building footprint from OSM did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from Open Building 2.5D Temporal were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in Open Building 2.5D Temporal. Height values of 10m were set instead")
-
-    # Return the result in the same format as the input
-    if input_was_string:
-        return json.dumps(geojson, indent=2)
-    else:
-        return geojson
-
-def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
-    # Convert geojson_data_1 to Shapely polygons with height information
-    reference_buildings = []
-    for feature in geojson_data_1:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        reference_buildings.append((geom, height))
-
-    count_0 = 0
-    count_1 = 0
-    count_2 = 0
-    # Process geojson_data_0 and update heights where necessary
-    updated_geojson_data_0 = []
-    for feature in geojson_data_0:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        if height == 0:     
-            count_0 += 1       
-            # Find overlapping buildings in geojson_data_1
-            overlapping_heights = []
-            for ref_geom, ref_height in reference_buildings:
-                try:
-                    if geom.intersects(ref_geom):
-                        overlap_area = geom.intersection(ref_geom).area
-                        if overlap_area / geom.area > 0.3:  # More than 50% overlap
-                            overlapping_heights.append(ref_height)
-                except GEOSException as e:
-                    print(f"GEOS error at a building polygon {ref_geom}")
-                    # Attempt to fix the polygon
-                    try:
-                        fixed_ref_geom = ref_geom.buffer(0)
-                        if geom.intersects(fixed_ref_geom):
-                            overlap_area = geom.intersection(ref_geom).area
-                            if overlap_area / geom.area > 0.3:  # More than 50% overlap
-                                overlapping_heights.append(ref_height)
-                                break
-                    except Exception as fix_error:
-                        print(f"Failed to fix polygon")
-                    continue
-            
-            # Update height if overlapping buildings found
-            if overlapping_heights:
-                count_1 += 1
-                new_height = max(overlapping_heights)
-                feature['properties']['height'] = new_height
-            else:
-                count_2 += 1
-                feature['properties']['height'] = 10
-        
-        updated_geojson_data_0.append(feature)
-    
-    if count_0 > 0:
-        print(f"{count_0} of the total {len(geojson_data_0)} building footprint from OSM did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from Microsoft Building Footprints were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in Microsoft Building Footprints. Height values of 10m were set instead")
-
-    return updated_geojson_data_0
+        return None

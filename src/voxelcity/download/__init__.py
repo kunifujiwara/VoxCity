@@ -6,3 +6,4 @@ from .gee import *
 from .osm import *
 from .oemj import *
 from .omt import *
+from .eubucco import *

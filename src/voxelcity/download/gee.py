@@ -23,9 +23,13 @@ def get_center_point(roi):
     center_coords = center_point.coordinates().getInfo()
     return center_coords[0], center_coords[1]
 
-def get_image_collection(collection_name, roi):
+def get_ee_image_collection(collection_name, roi):
     collection = ee.ImageCollection(collection_name).filterBounds(roi)
     return collection.sort('system:time_start').first().clip(roi).unmask()
+
+def get_ee_image(collection_name, roi):
+    collection = ee.Image(collection_name)
+    return collection.clip(roi)
 
 def save_geotiff(image, filename, resolution=1, scale=None, region=None):
     if scale and region:
@@ -46,6 +50,11 @@ def get_dem_image(roi_buffered, source):
         collection_name = 'projects/sat-io/open-datasets/DELTARES/deltadtm_v1'
         elevation = ee.Image(collection_name).select('b1')
         dem = elevation.updateMask(elevation.neq(10))
+    elif source == 'FABDEM':
+        collection_name = "projects/sat-io/open-datasets/FABDEM"
+        collection = ee.ImageCollection(collection_name)
+        # Get the most recent image and select the DEM band
+        dem = collection.select('b1').mosaic()
     return dem.clip(roi_buffered)
 
 def save_geotiff_esa_land_cover(roi, geotiff_path):
@@ -53,7 +62,7 @@ def save_geotiff_esa_land_cover(roi, geotiff_path):
     ee.Initialize()
 
     # Load the ESA WorldCover dataset
-    esa = ee.ImageCollection("ESA/WorldCover/v100").first()
+    esa = ee.ImageCollection("ESA/WorldCover/v200").first()
 
     # Clip the image to the AOI
     esa_clipped = esa.clip(roi)

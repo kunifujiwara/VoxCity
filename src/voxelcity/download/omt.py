@@ -128,6 +128,7 @@ def convert_geojson_format(geojson_data):
                 new_properties = properties.copy()
                 # Optionally, map 'render_height' to 'height' and add 'confidence'
                 new_properties['height'] = new_properties.pop('render_height', None)
+                new_properties['min_height'] = new_properties.pop('render_min_height', None)
                 new_properties['confidence'] = -1.0  # Or any other default value
 
                 # Adjust coordinate order from (lon, lat) to (lat, lon) if necessary
@@ -156,6 +157,7 @@ def convert_geojson_format(geojson_data):
             new_properties = properties.copy()
             # Optionally, map 'render_height' to 'height' and add 'confidence'
             new_properties['height'] = new_properties.pop('render_height', None)
+            new_properties['min_height'] = new_properties.pop('render_min_height', None)
             new_properties['confidence'] = -1.0  # Or any other default value
 
             # Create the new feature

@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.8"
+version = "0.1.22"
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.rst"
 authors = [
@@ -34,7 +34,11 @@ dependencies = [
     "rio-cogeo",
     "geopy",
     "py-vox-io",
-    "mapbox_vector_tile"
+    "mapbox_vector_tile",
+    "numba",
+    "reverse_geocoder",
+    "pycountry",
+    "osm2geojson"
 ]
 
 [project.scripts]
@@ -55,7 +59,7 @@ homepage = "https://github.com/kunifujiwara/voxelcity"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["voxelcity", "voxelcity.download", "voxelcity.geo", "voxelcity.utils"]
+packages = ["voxelcity", "voxelcity.download", "voxelcity.geo", "voxelcity.file", "voxelcity.sim", "voxelcity.utils"]
 
 [tool.setuptools.package-data]
 "*" = ["*.*"]

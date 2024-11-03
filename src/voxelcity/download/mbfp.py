@@ -3,7 +3,8 @@
 import pandas as pd
 import os
 from .utils import download_file
-from ..geo.utils import tile_from_lat_lon, quadkey_to_tile, swap_coordinates, load_geojsons_from_multiple_gz
+from ..geo.utils import tile_from_lat_lon, quadkey_to_tile
+from ..file.geojson import load_geojsons_from_multiple_gz, swap_coordinates
 
 def get_geojson_links(output_dir):
 

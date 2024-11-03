@@ -8,12 +8,14 @@ default_voxel_color_map = {
     -4: [180, 187, 216],  # (lightgray) 'Building',
     -3: [78, 99, 63],   # (forestgreen) 'Tree',
     -2: [188, 143, 143],  # (saddle brown) 'Underground',
+    -1: [188, 143, 143],  # (saddle brown) 'Underground',
     0: [239, 228, 176],   # 'Bareland (ground surface)',
     1: [123, 130, 59],   # (greenyellow) 'Rangeland (ground surface)',
     2: [108, 119, 129],   # (darkgray) 'Developed space (ground surface)',
     3: [59, 62, 87],      # (dimgray) 'Road (ground surface)',
     4: [116, 150, 66],   # (greenyellow) 'Tree (ground surface)',
-    5: [24, 61, 107],    # (blue) 'Water (ground surface)',
+    # 5: [16, 24, 48],    # (blue) 'Water (ground surface)',
+    5: [44, 66, 133],    # (blue) 'Water (ground surface)',
     6: [112, 120, 56],   # (lightgreen) 'Agriculture land (ground surface)',
     7: [150, 166, 190],    # (lightgray) 'Building (ground surface)'
     8: [150, 166, 190],    # (lightgray) 'Building (ground surface)'
