@@ -11,6 +11,7 @@ import pyproj
 # import rasterio
 from pyproj import CRS
 # from shapely.geometry import box
+import seaborn as sns
 
 from .lc import get_land_cover_classes
 # from ..geo.geojson import filter_buildings
@@ -350,7 +351,7 @@ def visualize_3d_voxel_plotly(voxel_grid, color_map = default_voxel_color_map, v
 #     plt.tight_layout()
 #     plt.show()
 
-def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, **kwargs):
+def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light', **kwargs):
     fig, ax = plt.subplots(figsize=(12, 12))
 
     if data_type == 'land_cover':
@@ -372,6 +373,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
         if vmax is None:
             vmax = np.nanmax(masked_grid)
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+
         title = 'Grid Cells with Building Heights'
         label = 'Building Height (m)'
         tick_labels = None
@@ -395,8 +397,38 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
         title = 'Canopy Height Grid Overlaid on Map'
         label = 'Canopy Height (m)'
         tick_labels = None
+    elif data_type == 'green_view_index':
+        cmap = plt.cm.Greens
+        if vmin is None:
+            vmin = np.nanmin(grid)
+        if vmax is None:
+            vmax = np.nanmax(grid)
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        title = 'Green View Index Grid Overlaid on Map'
+        label = 'Green View Index'
+        tick_labels = None
+    elif data_type == 'sky_view_index':
+        cmap = plt.cm.get_cmap('BuPu_r').copy()
+        if vmin is None:
+            vmin = np.nanmin(grid)
+        if vmax is None:
+            vmax = np.nanmax(grid)
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        title = 'Sky View Index Grid Overlaid on Map'
+        label = 'Sky View Index'
+        tick_labels = None
     else:
-        raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', 'canopy_height', or 'dem'.")
+        cmap = plt.cm.viridis
+        if vmin is None:
+            vmin = np.nanmin(grid)
+        if vmax is None:
+            vmax = np.nanmax(grid)
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        tick_labels = None
+        
+    if color_map:
+        # cmap = plt.cm.get_cmap(color_map).copy()
+        cmap = sns.color_palette(color_map, as_cmap=True).copy()
 
     # Ensure grid is in the correct orientation
     grid = grid.T
@@ -412,7 +444,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
             if data_type == 'building_height':
                 if np.isnan(value):
                     # White fill for NaN values
-                    ax.fill(x, y, alpha=alpha, fc='white', ec='black' if edge else None, linewidth=0.1)
+                    ax.fill(x, y, alpha=alpha, fc='gray', ec='black' if edge else None, linewidth=0.1)
                 elif value == 0:
                     # No fill for zero values, only edges if enabled
                     if edge:
@@ -432,6 +464,15 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
                         ax.fill(x, y, alpha=alpha, fc=color, ec='black', linewidth=0.1)
                     else:
                         ax.fill(x, y, alpha=alpha, fc=color, ec=None)
+            elif 'view' in data_type:
+                if np.isnan(value):
+                    # No fill for zero values, only edges if enabled
+                    if edge:
+                        ax.plot(x, y, color='black', linewidth=0.1)
+                elif value >= 0:
+                    # Viridis colormap for positive values
+                    color = cmap(norm(value))
+                    ax.fill(x, y, alpha=alpha, fc=color, ec='black' if edge else None, linewidth=0.1)
             else:
                 color = cmap(norm(value))
                 if edge:
@@ -440,8 +481,20 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
                     ax.fill(x, y, alpha=alpha, fc=color, ec=None)
 
     crs_epsg_3857 = CRS.from_epsg(3857)
-    # crs_epsg_3857 = pyproj.CRS.from_epsg(3857)
-    ctx.add_basemap(ax, crs=crs_epsg_3857, source=ctx.providers.CartoDB.DarkMatter)
+
+    basemaps = {
+      'CartoDB dark': ctx.providers.CartoDB.DarkMatter,  # Popular dark option
+      'CartoDB light': ctx.providers.CartoDB.Positron,  # Popular dark option
+      'CartoDB voyager': ctx.providers.CartoDB.Voyager,  # Popular dark option
+      'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
+    }
+    ctx.add_basemap(ax, crs=crs_epsg_3857, source=basemaps[basemap])
+    # if basemap == "dark":
+    #     ctx.add_basemap(ax, crs=crs_epsg_3857, source=ctx.providers.CartoDB.DarkMatter)
+    # elif basemap == 'light':
+    #     ctx.add_basemap(ax, crs=crs_epsg_3857, source=ctx.providers.CartoDB.Positron)
+    # elif basemap == 'voyager':
+    #     ctx.add_basemap(ax, crs=crs_epsg_3857, source=ctx.providers.CartoDB.Voyager)
 
     if data_type == 'building_height':
         buildings = kwargs.get('buildings', [])
@@ -449,7 +502,8 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
             polygon = Polygon(building['geometry']['coordinates'][0])
             x, y = polygon.exterior.xy
             x, y = zip(*[transformer.transform(lon, lat) for lat, lon in zip(x, y)])
-            ax.plot(x, y, color='red', linewidth=0.5)
+            ax.plot(x, y, color='red', linewidth=1.5)
+            # print(polygon)
 
     # Safe calculation of plot limits
     all_coords = np.array(vertices)
@@ -474,7 +528,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
     plt.tight_layout()
     plt.show()
 
-def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True):
+def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
 
     geod = initialize_geod()
 
@@ -510,13 +564,13 @@ def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source 
     # print(f"Grid shape: {grid.shape}")
 
     plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
-              rectangle_vertices, 'land_cover', alpha=alpha, buf=buf, edge=edge, land_cover_classes=land_cover_classes)
+              rectangle_vertices, 'land_cover', alpha=alpha, buf=buf, edge=edge, basemap=basemap, land_cover_classes=land_cover_classes)
 
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     # print(f"Unique classes in the grid: {unique_classes}")
 
-def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize, vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True):
+def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -531,16 +585,16 @@ def visualize_building_height_grid_on_map(building_height_grid, filtered_buildin
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
     origin = np.array(rectangle_vertices[0])
-    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize) 
+    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
     # Setup transformer and plotting extent
     transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
 
     # Plot the results
     plot_grid(building_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
-              rectangle_vertices, 'building_height', vmin=vmin, vmax=vmax, alpha=alpha, buf=buf, edge=edge, buildings=filtered_buildings)
+              rectangle_vertices, 'building_height', vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap, buildings=filtered_buildings)
     
-def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type, vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True):
+def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -562,7 +616,7 @@ def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, mesh
 
     # Plot the results
     plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
-              rectangle_vertices, type, vmin=vmin, vmax=vmax, alpha=alpha, buf=buf, edge=edge)
+              rectangle_vertices, type, vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap)
     
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())# + ['No Data']

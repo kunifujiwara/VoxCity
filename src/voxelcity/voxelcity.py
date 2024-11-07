@@ -24,6 +24,8 @@ from .download.gee import (
     save_geotiff,
     get_dem_image,
     save_geotiff_esa_land_cover,
+    save_geotiff_esri_landcover,
+    save_geotiff_dynamic_world_v1,
     save_geotiff_open_buildings_temporal
 )
 from .geo.grid import (
@@ -67,6 +69,14 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     elif source == 'ESA WorldCover':
         roi = get_roi(rectangle_vertices)
         save_geotiff_esa_land_cover(roi, geotiff_path)
+    elif source == 'ESRI 10m Annual Land Cover':
+        esri_landcover_year = kwargs.get("esri_landcover_year")
+        roi = get_roi(rectangle_vertices)
+        save_geotiff_esri_landcover(roi, geotiff_path, year=esri_landcover_year)
+    elif source == 'Dynamic World V1':
+        dynamic_world_date = kwargs.get("dynamic_world_date")
+        roi = get_roi(rectangle_vertices)
+        save_geotiff_dynamic_world_v1(roi, geotiff_path, dynamic_world_date)
     elif source == 'OpenEarthMapJapan':
         save_oemj_as_geotiff(rectangle_vertices, geotiff_path)   
     elif source == 'OpenStreetMap':
@@ -90,6 +100,9 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
 
 # def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir="output", visualization=True, maptiler_API_key=None, file_path=None):
 def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
+
+    # Initialize Earth Engine
+    initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
     print(f"Data source: {source}")
@@ -141,6 +154,12 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
         if extension == ".gpkg":
             geojson_data = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
             building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+    elif source == "OpenStreetMap & Local file":
+        geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
+        _, extension = os.path.splitext(kwargs["building_path"])
+        if extension == ".gpkg":
+            geojson_data_comp = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
+        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
 
     if kwargs["gridvis"]:
         visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
@@ -190,9 +209,15 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     roi = get_roi(rectangle_vertices)
     roi_buffered = roi.buffer(buffer_distance)
     image = get_dem_image(roi_buffered, source)
-    save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
+    if source in ["England 1m DTM", 'USGS 3DEP 1m']:
+        save_geotiff(image, geotiff_path, scale=1, region=roi_buffered, crs='EPSG:4326')
+    elif source in ['DEM France 5m']:
+        save_geotiff(image, geotiff_path, scale=5, region=roi_buffered, crs='EPSG:4326')
+    else:
+        save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
 
-    dem_grid = create_dem_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+    dem_interpolation = kwargs.get("dem_interpolation")
+    dem_grid = create_dem_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices, dem_interpolation=dem_interpolation)
     if kwargs["gridvis"]:
         visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
@@ -421,6 +446,8 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
     building_height_grid, building_min_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
     save_path = f"{output_dir}/building.geojson"
+    
+    # print(building_geojson[0])
     save_geojson(building_geojson, save_path)
     canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     if dem_source == "Flat":
@@ -428,15 +455,21 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
     else:
         dem_grid = get_dem_grid(rectangle_vertices, meshsize, dem_source, output_dir, **kwargs)
 
-    if kwargs["remove_perimeter_object"]:
-        w_peri = int(kwargs["remove_perimeter_object"] * building_height_grid.shape[0] + 0.5)
-        h_peri = int(kwargs["remove_perimeter_object"] * building_height_grid.shape[1] + 0.5)
+    min_canopy_height = kwargs.get("min_canopy_height")
+    if min_canopy_height is not None:
+        canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0        
+
+    remove_perimeter_object = kwargs.get("remove_perimeter_object")
+    if remove_perimeter_object > 0:
+        w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
+        h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
         building_height_grid[:w_peri, :] = building_height_grid[-w_peri:, :] = building_height_grid[:, :h_peri] = building_height_grid[:, -h_peri:] = 0
         building_min_height_grid[:w_peri, :] = building_min_height_grid[-w_peri:, :] = building_min_height_grid[:, :h_peri] = building_min_height_grid[:, -h_peri:] = []
         canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
 
     #display grid data on basemap
-    if kwargs["mapvis"]:
+    mapvis = kwargs.get("mapvis")
+    if mapvis:
         visualize_land_cover_grid_on_map(land_cover_grid, rectangle_vertices, meshsize, source = land_cover_source)
         visualize_building_height_grid_on_map(building_height_grid, building_geojson, rectangle_vertices, meshsize)
         visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, "canopy_height")
@@ -445,8 +478,9 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
     #prepare 3D voxel grid  
     voxelcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
+    voxelvis = kwargs.get("voxelvis")
     #display grid data in 3D
-    if kwargs["voxelvis"]:
+    if voxelvis:
         new_height = int(550/meshsize+0.5)     
         voxelcity_grid_vis = np.zeros((voxelcity_grid.shape[0], voxelcity_grid.shape[1], new_height))
         voxelcity_grid_vis[:, :, :voxelcity_grid.shape[2]] = voxelcity_grid

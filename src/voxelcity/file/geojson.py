@@ -12,6 +12,7 @@ from typing import List, Dict
 from pyproj import Transformer, CRS
 import rasterio
 from rasterio.mask import mask
+import copy
 
 from ..geo.utils import validate_polygon_coordinates
 
@@ -128,13 +129,16 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
         if height == 0:     
             count_0 += 1       
             # Find overlapping buildings in geojson_data_1
-            overlapping_heights = []
+            overlapping_height_area = 0
+            overlapping_area = 0
             for ref_geom, ref_height in reference_buildings:
                 try:
                     if geom.intersects(ref_geom):
                         overlap_area = geom.intersection(ref_geom).area
-                        if overlap_area / geom.area > 0.3:  # More than 50% overlap
-                            overlapping_heights.append(ref_height)
+                        # if overlap_area / geom.area > 0.3:  # More than 50% overlap
+                            # overlapping_heights.append(ref_height)
+                        overlapping_height_area += ref_height * overlap_area
+                        overlapping_area += overlap_area
                 except GEOSException as e:
                     print(f"GEOS error at a building polygon {ref_geom}")
                     # Attempt to fix the polygon
@@ -142,28 +146,31 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
                         fixed_ref_geom = ref_geom.buffer(0)
                         if geom.intersects(fixed_ref_geom):
                             overlap_area = geom.intersection(ref_geom).area
-                            if overlap_area / geom.area > 0.3:  # More than 50% overlap
-                                overlapping_heights.append(ref_height)
-                                break
+                            # if overlap_area / geom.area > 0.3:  # More than 50% overlap
+                            #     overlapping_heights.append(ref_height)
+                            #     break
+                            overlapping_height_area += ref_height * overlap_area
+                            overlapping_area += overlap_area
                     except Exception as fix_error:
                         print(f"Failed to fix polygon")
                     continue
             
             # Update height if overlapping buildings found
-            if overlapping_heights:
+            if overlapping_height_area > 0:
                 count_1 += 1
-                new_height = max(overlapping_heights)
+                # new_height = max(overlapping_heights)
+                new_height = overlapping_height_area / overlapping_area
                 feature['properties']['height'] = new_height
             else:
                 count_2 += 1
-                feature['properties']['height'] = 10
+                feature['properties']['height'] = np.nan
         
         updated_geojson_data_0.append(feature)
     
     if count_0 > 0:
         print(f"{count_0} of the total {len(geojson_data_0)} building footprint from OSM did not have height data.")
         print(f"For {count_1} of these building footprints without height, values from Microsoft Building Footprints were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in Microsoft Building Footprints. Height values of 10m were set instead")
+        # print(f"For {count_2} of these building footprints without height, no data exist in Microsoft Building Footprints. Height values of 10m were set instead")
 
     return updated_geojson_data_0
 
@@ -293,11 +300,13 @@ def save_geojson(features, save_path):
     """
     Save a GeoJSON structure with swapped coordinates.
     """
-    swap_coordinates(features)
+    geojson_features = copy.deepcopy(features)
+    swap_coordinates(geojson_features)
+    # print(geojson_features[0])
 
     geojson = {
         "type": "FeatureCollection",
-        "features": features
+        "features": geojson_features
     }
 
     # Write to file

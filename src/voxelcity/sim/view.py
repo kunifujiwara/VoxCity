@@ -92,7 +92,7 @@ def compute_gvi(observer_location, voxel_data, ray_directions):
 
 # JIT-compiled function to compute GVI map
 @njit(parallel=True)
-def compute_gvi_map(voxel_data, ray_directions):
+def compute_gvi_map(voxel_data, ray_directions, view_height_voxel=0):
     nx, ny, nz = voxel_data.shape
     gvi_map = np.full((nx, ny), np.nan)
 
@@ -100,13 +100,13 @@ def compute_gvi_map(voxel_data, ray_directions):
         for y in range(ny):
             found_observer = False
             for z in range(1, nz):
-                if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
-                    if voxel_data[x, y, z - 1] in (-3, -2, 6):
+                if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                    if voxel_data[x, y, z - 1] in (-3, 6):
                         gvi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        observer_location = np.array([x, y, z], dtype=np.float64)
+                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
                         gvi_value = compute_gvi(observer_location, voxel_data, ray_directions)
                         gvi_map[x, y] = gvi_value
                         found_observer = True
@@ -124,7 +124,7 @@ def compute_gvi_map(voxel_data, ray_directions):
 # Replace the above line with your actual voxel data
 # voxel_data = voxelcity_grid  # Ensure voxelcity_grid is defined in your environment
 
-def get_green_view_index(voxel_data):
+def get_green_view_index(voxel_data, view_height_voxel=0):
     # Define parameters for ray emission
     N_azimuth = 60  # Number of horizontal angles
     N_elevation = 10  # Number of vertical angles within the specified range
@@ -148,7 +148,7 @@ def get_green_view_index(voxel_data):
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
     # Compute the GVI map using the optimized function
-    gvi_map = compute_gvi_map(voxel_data, ray_directions)
+    gvi_map = compute_gvi_map(voxel_data, ray_directions, view_height_voxel=view_height_voxel)
 
     # Create a copy of the inverted 'BuPu' colormap
     cmap = plt.cm.get_cmap('viridis').copy()
@@ -176,7 +176,7 @@ def get_green_view_index(voxel_data):
     # plt.ylabel('Y Coordinate')
     plt.show()
 
-    return gvi_map
+    return np.flipud(gvi_map)
 
 # JIT-compiled trace_ray_sky function
 @njit
@@ -269,7 +269,7 @@ def compute_svi(observer_location, voxel_data, ray_directions):
 
 # JIT-compiled function to compute SVI map
 @njit(parallel=True)
-def compute_svi_map(voxel_data, ray_directions):
+def compute_svi_map(voxel_data, ray_directions, view_height_voxel=0):
     nx, ny, nz = voxel_data.shape
     svi_map = np.full((nx, ny), np.nan)
 
@@ -277,13 +277,13 @@ def compute_svi_map(voxel_data, ray_directions):
         for y in range(ny):
             found_observer = False
             for z in range(1, nz):
-                if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
-                    if voxel_data[x, y, z - 1] in (-3, -2, 6):
+                if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                    if voxel_data[x, y, z - 1] in (-3, 6):
                         svi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        observer_location = np.array([x, y, z], dtype=np.float64)
+                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
                         svi_value = compute_svi(observer_location, voxel_data, ray_directions)
                         svi_map[x, y] = svi_value
                         found_observer = True
@@ -297,7 +297,7 @@ def compute_svi_map(voxel_data, ray_directions):
 # Load or define your voxel data (3D numpy array)
 # voxel_data = voxelcity_grid  # Ensure voxelcity_grid is defined in your environment
 
-def get_sky_view_index(voxel_data):
+def get_sky_view_index(voxel_data, view_height_voxel=0):
     # Define parameters for ray emission for SVI
     # For SVI, we focus on upward directions
     N_azimuth_svi = 60  # Number of horizontal angles
@@ -322,7 +322,7 @@ def get_sky_view_index(voxel_data):
     ray_directions_svi = np.array(ray_directions_svi, dtype=np.float64)
 
     # Compute the SVI map using the optimized function
-    svi_map = compute_svi_map(voxel_data, ray_directions_svi)
+    svi_map = compute_svi_map(voxel_data, ray_directions_svi, view_height_voxel=view_height_voxel)
 
     # Create a copy of the inverted 'BuPu' colormap
     cmap = plt.cm.get_cmap('BuPu_r').copy()
@@ -350,4 +350,4 @@ def get_sky_view_index(voxel_data):
     # plt.ylabel('Y Coordinate')
     plt.show()
 
-    return svi_map
+    return np.flipud(svi_map)

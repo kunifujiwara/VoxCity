@@ -31,20 +31,20 @@ def get_land_cover_classes(source):
             (75, 181, 73): 'Agriculture land',
             (222, 31, 7): 'Building'
         }
-    # elif source == "ESRI 10m Annual Land Cover":
-    #     land_cover_classes = {
-    #         (255, 255, 255): 'No Data',
-    #         (26, 91, 171): 'Water',
-    #         (53, 130, 33): 'Trees',
-    #         (167, 210, 130): 'Grass',
-    #         (135, 209, 158): 'Flooded Vegetation',
-    #         (255, 219, 92): 'Crops',
-    #         (238, 207, 168): 'Scrub/Shrub',
-    #         (237, 2, 42): 'Built Area',
-    #         (237, 233, 228): 'Bare Ground',
-    #         (242, 250, 255): 'Snow/Ice',
-    #         (200, 200, 200): 'Clouds'
-    #     }
+    elif source == "ESRI 10m Annual Land Cover":
+        land_cover_classes = {
+            (255, 255, 255): 'No Data',
+            (26, 91, 171): 'Water',
+            (53, 130, 33): 'Trees',
+            (167, 210, 130): 'Grass',
+            (135, 209, 158): 'Flooded Vegetation',
+            (255, 219, 92): 'Crops',
+            (238, 207, 168): 'Scrub/Shrub',
+            (237, 2, 42): 'Built Area',
+            (237, 233, 228): 'Bare Ground',
+            (242, 250, 255): 'Snow/Ice',
+            (200, 200, 200): 'Clouds'
+        }
     elif source == "ESA WorldCover":
         land_cover_classes = {
             (0, 112, 0): 'Trees',
@@ -58,6 +58,19 @@ def get_land_cover_classes(source):
             (0, 236, 230): 'Herbaceous wetland',
             (0, 255, 0): 'Mangroves',
             (255, 255, 0): 'Moss and lichen'
+        }
+    elif source == "Dynamic World V1":
+        # Convert hex colors to RGB tuples
+        land_cover_classes = {
+            (65, 155, 223): 'Water',            # #419bdf
+            (57, 125, 73): 'Trees',             # #397d49
+            (136, 176, 83): 'Grass',            # #88b053
+            (122, 135, 198): 'Flooded Vegetation', # #7a87c6
+            (228, 150, 53): 'Crops',            # #e49635
+            (223, 195, 90): 'Shrub and Scrub',  # #dfc35a
+            (196, 40, 27): 'Built',             # #c4281b
+            (165, 155, 143): 'Bare',            # #a59b8f
+            (179, 159, 225): 'Snow and Ice'     # #b39fe1
         }
     return land_cover_classes
 
@@ -90,6 +103,33 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             8: 5,  # Herbaceous wetland
             9: 5,  # Mangroves
             10: 1  # Moss and lichen
+        }
+    elif land_cover_source == "ESRI 10m Annual Land Cover":
+        convert_dict = {
+            0: 0,  # (255, 255, 255): 'No Data',
+            1: 5,  # (26, 91, 171): 'Water',
+            2: 4,  # (53, 130, 33): 'Trees',
+            3: 1,  # (167, 210, 130): 'Grass',
+            4: 1,  # (135, 209, 158): 'Flooded Vegetation',
+            5: 6,  # (255, 219, 92): 'Crops',
+            6: 1,  # (238, 207, 168): 'Scrub/Shrub',
+            7: 2,  # (237, 2, 42): 'Built Area',
+            8: 0,  # (237, 233, 228): 'Bare Ground',
+            9: 0,  # (242, 250, 255): 'Snow/Ice',
+            10: 0  # (200, 200, 200): 'Clouds'
+        }
+    elif land_cover_source == "Dynamic World V1":
+        # Convert hex colors to RGB tuples
+        convert_dict = {
+            0: 5,# 'Water',            
+            1: 4,# 'Trees',             
+            2: 1,# 'Grass',            
+            3: 1,# 'Flooded Vegetation', 
+            4: 6,# 'Crops',            
+            5: 1,# 'Shrub and Scrub',  
+            6: 2,# 'Built',             
+            7: 0,# 'Bare',            
+            8: 0,# 'Snow and Ice'     
         }
         
     # Create a vectorized function for the conversion

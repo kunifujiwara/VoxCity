@@ -470,7 +470,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                         intersection = cell.intersection(polygon)
                         if intersection.area > cell.area/2:
                             building_min_height_grid[i, j].append([min_height, height])
-                            if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height):
+                            if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height) or (building_height_grid[i, j] == np.nan):
                                 building_height_grid[i, j] = height
                             # break
                 except GEOSException as e:
@@ -482,7 +482,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                             intersection = cell.intersection(fixed_polygon)
                             if intersection.area > cell.area/2:
                                 building_min_height_grid[i, j].append([min_height, height])
-                                if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height):
+                                if (building_height_grid[i, j] == 0) or (building_height_grid[i, j] < height) or (building_height_grid[i, j] == np.nan):
                                     building_height_grid[i, j] = height
                                 # break
                     except Exception as fix_error:
@@ -491,7 +491,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     return building_height_grid, building_min_height_grid, filtered_buildings
 
-def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices):
+def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices, dem_interpolation=False):
 
     converted_coords = convert_format_lat_lon(rectangle_vertices)
     roi_shapely = Polygon(converted_coords)
@@ -547,6 +547,11 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
         # Interpolate DEM values onto new grid
         points = np.column_stack((orig_x, orig_y))
         values = dem.ravel()
-        grid = griddata(points, values, (xx, yy), method='cubic')
+        if dem_interpolation:
+            # Use cubic interpolation for smoother results
+            grid = griddata(points, values, (xx, yy), method='cubic')
+        else:
+            # Use nearest neighbor interpolation for raw data
+            grid = griddata(points, values, (xx, yy), method='nearest')
 
     return np.flipud(grid)

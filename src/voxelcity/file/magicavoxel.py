@@ -9,7 +9,7 @@ default_voxel_color_map = {
     -3: [78, 99, 63],   # (forestgreen) 'Tree',
     -2: [188, 143, 143],  # (saddle brown) 'Underground',
     -1: [188, 143, 143],  # (saddle brown) 'Underground',
-    0: [239, 228, 176],   # 'Bareland (ground surface)',
+    0: [235, 202, 178],   # 'Bareland (ground surface)',
     1: [123, 130, 59],   # (greenyellow) 'Rangeland (ground surface)',
     2: [108, 119, 129],   # (darkgray) 'Developed space (ground surface)',
     3: [59, 62, 87],      # (dimgray) 'Road (ground surface)',
