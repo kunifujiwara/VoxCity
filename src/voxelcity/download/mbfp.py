@@ -11,7 +11,7 @@ def get_geojson_links(output_dir):
     # print("Downloading dataset-links.csv")
     
     # URL of the file you want to download
-    url = "https://minedbuildings.blob.core.windows.net/global-buildings/dataset-links.csv"
+    url = "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 
     # Local filename to save the downloaded file
     filepath = os.path.join(output_dir, "dataset-links.csv")

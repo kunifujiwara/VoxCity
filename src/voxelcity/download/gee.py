@@ -271,7 +271,7 @@ def save_geotiff_esri_landcover(roi, geotiff_path, year=None):
 
     # Export the image
     geemap.ee_export_image(
-        label_visualized, geotiff_path, scale=10, region=roi, file_per_band=False
+        label_visualized, geotiff_path, scale=10, region=roi, file_per_band=False, crs='EPSG:4326'
     )
 
     print(f"Colored GeoTIFF saved to: {geotiff_path}")

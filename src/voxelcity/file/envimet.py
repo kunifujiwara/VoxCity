@@ -14,8 +14,9 @@ def array_to_string_with_value(arr, value):
 def array_to_string_int(arr):
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
-def prepare_grids(building_height_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
+def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
     building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)).copy()#set 10m height to nan
+    building_id_grid = np.flipud(building_id_grid_ori)
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
     building_height_grid = apply_operation(building_height_grid, meshsize)
 
@@ -55,9 +56,9 @@ def prepare_grids(building_height_grid_ori, canopy_height_grid_ori, land_cover_g
 
     dem_grid = np.flipud(dem_grid_ori).copy()
 
-    return building_height_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
+    return building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
-def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize):
+def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize):
     # XML template
     xml_template = """<ENVI-MET_Datafile>
     <Header>
@@ -184,7 +185,7 @@ def create_xml_content(building_height_grid, land_cover_veg_grid, land_cover_mat
     xml_template = xml_template.replace("$zBottom$", array_to_string_with_value(building_height_grid, '0'))
     xml_template = xml_template.replace("$fixedheight$", array_to_string_with_value(building_height_grid, '0'))
 
-    building_nr_grid = group_and_label_cells(building_height_grid)
+    building_nr_grid = group_and_label_cells(building_id_grid)
     xml_template = xml_template.replace("$buildingNr$", array_to_string(building_nr_grid))
 
     xml_template = xml_template.replace("$ID_plants1D$", array_to_string(land_cover_veg_grid))
@@ -220,13 +221,13 @@ def save_file(content, output_file_path):
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
-def export_inx(building_height_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, output_dir="output"):
+def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, output_dir="output"):
     # Prepare grids
-    building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
-        building_height_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)
+    building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
+        building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)
 
     # Create XML content
-    xml_content = create_xml_content(building_height_grid_inx, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize)
+    xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize)
 
     # Save the output
     output_file_path = os.path.join(output_dir, "output.INX")

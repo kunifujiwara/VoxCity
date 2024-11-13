@@ -111,13 +111,13 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
 
     if source == 'Microsoft Building Footprints':
         geojson_data = get_mbfp_geojson(output_dir, rectangle_vertices)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == 'OSM Buildings':
         geojson_data = load_geojsons_from_osmbuildings(rectangle_vertices)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "Open Building 2.5D Temporal":
         roi = get_roi(rectangle_vertices)
         os.makedirs(output_dir, exist_ok=True)
@@ -134,37 +134,37 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
         filtered_buildings = []
     elif source == 'EUBUCCO v0.1':
         geojson_data = load_geojson_from_eubucco(rectangle_vertices, output_dir)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenMapTiles":
         geojson_data = load_geojsons_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenStreetMap & Microsoft Building Footprints":
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
         geojson_data_comp = get_mbfp_geojson(output_dir, rectangle_vertices)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
     elif source == "OpenStreetMap & Open Building 2.5D Temporal":
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
         roi = get_roi(rectangle_vertices)
         os.makedirs(output_dir, exist_ok=True)
         geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
         save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
     elif source == "Local file":
         _, extension = os.path.splitext(kwargs["building_path"])
         if extension == ".gpkg":
             geojson_data = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
-            building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenStreetMap & Local file":
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
         _, extension = os.path.splitext(kwargs["building_path"])
         if extension == ".gpkg":
             geojson_data_comp = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
-        building_height_grid, building_min_height_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
 
     if kwargs["gridvis"]:
         visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
 
-    return building_height_grid, building_min_height_grid, filtered_buildings#, buildings_found
+    return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings#, buildings_found
 
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 # def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir="output", visualization=True):
@@ -289,7 +289,7 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 #     else:
 #         raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', or 'dem'.")
     
-def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, **kwargs):
+def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, **kwargs):
 
     # building_min_height_grid_ori = kwargs['building_min_height_grid_ori']
 
@@ -302,10 +302,11 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, land
     # Prepare grids
     building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0))#set 10m height to nan
     building_min_height_grid = np.flipud(replace_nan_in_nested(building_min_height_grid_ori))#set 10m height to nan
+    building_id_grid = np.flipud(building_id_grid_ori)
     land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
     dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
-    building_nr_grid = group_and_label_cells(np.flipud(building_height_grid_ori.copy()))
-    dem_grid = process_grid(building_nr_grid, dem_grid)
+    # building_nr_grid = group_and_label_cells(building_id_grid)
+    dem_grid = process_grid(building_id_grid, dem_grid)
     tree_grid = np.flipud(tree_grid_ori.copy())
 
     # Ensure all input grids have the same shape
@@ -444,7 +445,7 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
 
     #prepare of grid data
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
-    building_height_grid, building_min_height_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
+    building_height_grid, building_min_height_grid, building_id_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
     save_path = f"{output_dir}/building.geojson"
     
     # print(building_geojson[0])
@@ -476,7 +477,7 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
         visualize_numerical_grid_on_map(dem_grid, rectangle_vertices, meshsize, "dem")
 
     #prepare 3D voxel grid  
-    voxelcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
+    voxelcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
     voxelvis = kwargs.get("voxelvis")
     #display grid data in 3D
@@ -488,7 +489,7 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
         visualize_3d_voxel(voxelcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
         # visualize_3d_voxel(voxelcity_grid, voxel_size=meshsize, save_path=img_save_path)
 
-    return voxelcity_grid, building_height_grid, building_min_height_grid, canopy_height_grid, land_cover_grid, dem_grid, building_geojson
+    return voxelcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_geojson
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     # Convert array to list for easier manipulation

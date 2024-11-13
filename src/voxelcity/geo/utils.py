@@ -254,7 +254,11 @@ def create_building_polygons(filtered_buildings):
             count += 1
             # height = 10
             height = np.nan
-        building_polygons.append((polygon, height, min_height))
+        if building['properties'].get('is_inner') is not None:
+            is_inner = building['properties']['is_inner']
+        else:
+            is_inner = False
+        building_polygons.append((polygon, height, min_height, is_inner))
         idx.insert(i, polygon.bounds)
 
     # print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")
