@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from numba import njit, prange
 
 def export_obj(array, output_dir, file_name, voxel_size):
     # Voxel color mapping (same as before)
@@ -75,58 +76,82 @@ def export_obj(array, output_dir, file_name, voxel_size):
         # Loop over the axis perpendicular to the face
         if direction in ('nx', 'px'):
             for x in range(size_x):
-                mask = np.zeros((size_y, size_z), dtype=np.int32)
-                for y in range(size_y):
-                    for z in range(size_z):
-                        voxel = array[x, y, z]
-                        if direction == 'nx':
-                            neighbor = array[x - 1, y, z] if x > 0 else 0
-                        else:  # 'px'
-                            neighbor = array[x + 1, y, z] if x + 1 < size_x else 0
+                # Vectorized mask generation
+                voxel_slice = array[x, :, :]
+                if direction == 'nx':
+                    if x > 0:
+                        neighbor_slice = array[x - 1, :, :]
+                    else:
+                        neighbor_slice = np.zeros((size_y, size_z), dtype=array.dtype)
+                    layer = x
+                else:  # 'px'
+                    if x + 1 < size_x:
+                        neighbor_slice = array[x + 1, :, :]
+                    else:
+                        neighbor_slice = np.zeros((size_y, size_z), dtype=array.dtype)
+                    layer = x + 1  # Adjust layer index for 'px'
 
-                        if voxel != neighbor:
-                            if voxel != 0:
-                                mask[y, z] = voxel
+                mask = np.where(
+                    (voxel_slice != neighbor_slice) & (voxel_slice != 0),
+                    voxel_slice,
+                    0
+                )
 
                 # Greedy meshing on the mask
-                layer = x if direction == 'nx' else x + 1  # Adjust layer index for 'px'
-                mesh_faces(mask, layer, 'x', direction == 'px', normal_idx, voxel_size, vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
+                mesh_faces(mask, layer, 'x', direction == 'px', normal_idx, voxel_size,
+                           vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
         elif direction in ('ny', 'py'):
             for y in range(size_y):
-                mask = np.zeros((size_x, size_z), dtype=np.int32)
-                for x in range(size_x):
-                    for z in range(size_z):
-                        voxel = array[x, y, z]
-                        if direction == 'ny':
-                            neighbor = array[x, y - 1, z] if y > 0 else 0
-                        else:  # 'py'
-                            neighbor = array[x, y + 1, z] if y + 1 < size_y else 0
+                # Vectorized mask generation
+                voxel_slice = array[:, y, :]
+                if direction == 'ny':
+                    if y > 0:
+                        neighbor_slice = array[:, y - 1, :]
+                    else:
+                        neighbor_slice = np.zeros((size_x, size_z), dtype=array.dtype)
+                    layer = y
+                else:  # 'py'
+                    if y + 1 < size_y:
+                        neighbor_slice = array[:, y + 1, :]
+                    else:
+                        neighbor_slice = np.zeros((size_x, size_z), dtype=array.dtype)
+                    layer = y + 1  # Adjust layer index for 'py'
 
-                        if voxel != neighbor:
-                            if voxel != 0:
-                                mask[x, z] = voxel
+                mask = np.where(
+                    (voxel_slice != neighbor_slice) & (voxel_slice != 0),
+                    voxel_slice,
+                    0
+                )
 
                 # Greedy meshing on the mask
-                layer = y if direction == 'ny' else y + 1  # Adjust layer index for 'py'
-                mesh_faces(mask, layer, 'y', direction == 'py', normal_idx, voxel_size, vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
+                mesh_faces(mask, layer, 'y', direction == 'py', normal_idx, voxel_size,
+                           vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
         elif direction in ('nz', 'pz'):
             for z in range(size_z):
-                mask = np.zeros((size_x, size_y), dtype=np.int32)
-                for x in range(size_x):
-                    for y in range(size_y):
-                        voxel = array[x, y, z]
-                        if direction == 'nz':
-                            neighbor = array[x, y, z - 1] if z > 0 else 0
-                        else:  # 'pz'
-                            neighbor = array[x, y, z + 1] if z + 1 < size_z else 0
+                # Vectorized mask generation
+                voxel_slice = array[:, :, z]
+                if direction == 'nz':
+                    if z > 0:
+                        neighbor_slice = array[:, :, z - 1]
+                    else:
+                        neighbor_slice = np.zeros((size_x, size_y), dtype=array.dtype)
+                    layer = z
+                else:  # 'pz'
+                    if z + 1 < size_z:
+                        neighbor_slice = array[:, :, z + 1]
+                    else:
+                        neighbor_slice = np.zeros((size_x, size_y), dtype=array.dtype)
+                    layer = z + 1  # Adjust layer index for 'pz'
 
-                        if voxel != neighbor:
-                            if voxel != 0:
-                                mask[x, y] = voxel
+                mask = np.where(
+                    (voxel_slice != neighbor_slice) & (voxel_slice != 0),
+                    voxel_slice,
+                    0
+                )
 
                 # Greedy meshing on the mask
-                layer = z if direction == 'nz' else z + 1  # Adjust layer index for 'pz'
-                mesh_faces(mask, layer, 'z', direction == 'pz', normal_idx, voxel_size, vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
+                mesh_faces(mask, layer, 'z', direction == 'pz', normal_idx, voxel_size,
+                           vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -187,8 +212,10 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
     visited = np.zeros_like(mask, dtype=bool)
 
     for u in range(h):
-        for v in range(w):
+        v = 0
+        while v < w:
             if visited[u, v] or mask[u, v] == 0:
+                v += 1
                 continue
 
             voxel_value = mask[u, v]
@@ -211,9 +238,7 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
                     height += 1
 
             # Mark visited
-            for du in range(height):
-                for dv in range(width):
-                    visited[u + du, v + dv] = True
+            visited[u:u + height, v:v + width] = True
 
             # Create face
             # Determine the coordinates based on the axis and direction
@@ -282,6 +307,23 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
             if material_name not in faces_per_material:
                 faces_per_material[material_name] = []
             faces_per_material[material_name].extend(faces)
+
+            v += width  # Move to the next segment
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # import numpy as np
 # import os

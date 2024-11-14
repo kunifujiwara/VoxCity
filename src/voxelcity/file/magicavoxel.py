@@ -64,20 +64,20 @@ def numpy_to_vox(array, color_map, output_file):
 
     return value_mapping, palette, array_transposed.shape
 
-def export_large_voxel_model(array, color_map, output_prefix, max_size=255):
+def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base_filename='chunk'):
     os.makedirs(output_prefix, exist_ok=True)
 
     for sub_array, (i, j, k) in split_array(array, max_size):
-        output_file = f"{output_prefix}/chunk_{i}_{j}_{k}.vox"
+        output_file = f"{output_prefix}/{base_filename}_{i}_{j}_{k}.vox"
         value_mapping, palette, shape = numpy_to_vox(sub_array, color_map, output_file)
         print(f"Chunk {i}_{j}_{k} saved as {output_file}")
         print(f"Shape: {shape}")
 
     return value_mapping, palette
 
-def export_magicavoxel_vox(array, output_dir):
+def export_magicavoxel_vox(array, output_dir, base_filename='chunk'):
 
-    value_mapping, palette = export_large_voxel_model(array, default_voxel_color_map, output_dir)
+    value_mapping, palette = export_large_voxel_model(array, default_voxel_color_map, output_dir, base_filename=base_filename)
     print(f"\tvox files was successfully exported in {output_dir}")
     # print(f"Original shape: {array.shape}")
     # print(f"Shape in VOX file: {new_shape}")

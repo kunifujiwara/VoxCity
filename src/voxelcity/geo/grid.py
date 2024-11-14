@@ -18,7 +18,8 @@ from .utils import (
 from ..file.geojson import (
     filter_buildings, 
     extract_building_heights_from_geotiff, 
-    extract_building_heights_from_geojson
+    extract_building_heights_from_geojson,
+    complement_building_heights_from_geojson
 )
 from ..utils.lc import (
     get_class_priority, 
@@ -426,7 +427,7 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
 
     return np.flipud(grid)
 
-def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None):
+def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None, complement_polygon=None):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -467,7 +468,10 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     if geojson_data_comp:
         filtered_geojson_data_comp = filter_buildings(geojson_data_comp, plotting_box)
-        filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
+        if complement_polygon:
+            filtered_buildings_comp = complement_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
+        else:
+            filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
     elif geotiff_path_comp:
         filtered_buildings_comp = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_buildings)
     else:

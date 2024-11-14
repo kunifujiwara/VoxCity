@@ -159,7 +159,8 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
         _, extension = os.path.splitext(kwargs["building_path"])
         if extension == ".gpkg":
             geojson_data_comp = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
-        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp)
+        complement_polygon = kwargs.get("complement_polygon")
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp, complement_polygon=complement_polygon)
 
     if kwargs["gridvis"]:
         visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
@@ -185,7 +186,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     elif source == 'ETH Global Sentinel-2 10m Canopy Height (2020)':
         collection_name = "users/nlang/ETH_GlobalCanopyHeight_2020_10m_v1"
         image = get_ee_image(collection_name, roi)
-    save_geotiff(image, geotiff_path)  
+    save_geotiff(image, geotiff_path, resolution=meshsize)  
 
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
@@ -209,10 +210,12 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     roi = get_roi(rectangle_vertices)
     roi_buffered = roi.buffer(buffer_distance)
     image = get_dem_image(roi_buffered, source)
-    if source in ["England 1m DTM", 'USGS 3DEP 1m']:
-        save_geotiff(image, geotiff_path, scale=1, region=roi_buffered, crs='EPSG:4326')
-    elif source in ['DEM France 5m']:
-        save_geotiff(image, geotiff_path, scale=5, region=roi_buffered, crs='EPSG:4326')
+    # if source in ["England 1m DTM", 'USGS 3DEP 1m', 'DEM France 1m']:
+    #     save_geotiff(image, geotiff_path, scale=1, region=roi_buffered, crs='EPSG:4326')
+    # elif source in ['DEM France 5m', 'AUSTRALIA 5M DEM']:
+    #     save_geotiff(image, geotiff_path, scale=5, region=roi_buffered, crs='EPSG:4326')
+    if source in ["England 1m DTM", 'USGS 3DEP 1m', 'DEM France 1m', 'DEM France 5m', 'AUSTRALIA 5M DEM']:
+        save_geotiff(image, geotiff_path, scale=meshsize, region=roi_buffered, crs='EPSG:4326')
     else:
         save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
 

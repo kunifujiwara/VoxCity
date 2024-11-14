@@ -174,6 +174,104 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
 
     return updated_geojson_data_0
 
+from typing import List, Dict
+from shapely.geometry import shape
+from shapely.errors import GEOSException
+import numpy as np
+
+def complement_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
+    # Convert geojson_data_0 to Shapely polygons for intersection checking
+    existing_buildings = []
+    for feature in geojson_data_0:
+        geom = shape(feature['geometry'])
+        existing_buildings.append(geom)
+    
+    # Convert geojson_data_1 to Shapely polygons with height information
+    reference_buildings = []
+    for feature in geojson_data_1:
+        geom = shape(feature['geometry'])
+        height = feature['properties']['height']
+        reference_buildings.append((geom, height, feature))
+    
+    count_0 = 0
+    count_1 = 0
+    count_2 = 0
+    count_3 = 0  # Counter for new non-intersecting buildings
+    
+    # Process geojson_data_0 and update heights where necessary
+    updated_geojson_data_0 = []
+    for feature in geojson_data_0:
+        geom = shape(feature['geometry'])
+        height = feature['properties']['height']
+        if height == 0:     
+            count_0 += 1       
+            # Find overlapping buildings in geojson_data_1
+            overlapping_height_area = 0
+            overlapping_area = 0
+            for ref_geom, ref_height, _ in reference_buildings:
+                try:
+                    if geom.intersects(ref_geom):
+                        overlap_area = geom.intersection(ref_geom).area
+                        overlapping_height_area += ref_height * overlap_area
+                        overlapping_area += overlap_area
+                except GEOSException as e:
+                    try:
+                        fixed_ref_geom = ref_geom.buffer(0)
+                        if geom.intersects(fixed_ref_geom):
+                            overlap_area = geom.intersection(ref_geom).area
+                            overlapping_height_area += ref_height * overlap_area
+                            overlapping_area += overlap_area
+                    except Exception as fix_error:
+                        print(f"Failed to fix polygon")
+                    continue
+            
+            # Update height if overlapping buildings found
+            if overlapping_height_area > 0:
+                count_1 += 1
+                new_height = overlapping_height_area / overlapping_area
+                feature['properties']['height'] = new_height
+            else:
+                count_2 += 1
+                feature['properties']['height'] = np.nan
+        
+        updated_geojson_data_0.append(feature)
+    
+    # Extract non-intersecting buildings from geojson_data_1
+    for ref_geom, ref_height, ref_feature in reference_buildings:
+        has_intersection = False
+        try:
+            for existing_geom in existing_buildings:
+                if ref_geom.intersects(existing_geom):
+                    has_intersection = True
+                    break
+            
+            if not has_intersection:
+                # Add non-intersecting building to the output
+                updated_geojson_data_0.append(ref_feature)
+                count_3 += 1
+                
+        except GEOSException as e:
+            try:
+                fixed_ref_geom = ref_geom.buffer(0)
+                for existing_geom in existing_buildings:
+                    if fixed_ref_geom.intersects(existing_geom):
+                        has_intersection = True
+                        break
+                
+                if not has_intersection:
+                    updated_geojson_data_0.append(ref_feature)
+                    count_3 += 1
+            except Exception as fix_error:
+                print(f"Failed to process non-intersecting building")
+            continue
+    
+    if count_0 > 0:
+        print(f"{count_0} of the total {len(geojson_data_0)} building footprint from base source did not have height data.")
+        print(f"For {count_1} of these building footprints without height, values from complement source were assigned.")
+        print(f"{count_3} non-intersecting buildings from Microsoft Building Footprints were added to the output.")
+    
+    return updated_geojson_data_0
+
 def load_geojsons_from_multiple_gz(file_paths):
     geojson_objects = []
     for gz_file_path in file_paths:

@@ -67,6 +67,13 @@ def get_dem_image(roi_buffered, source):
     elif source == 'DEM France 5m':
         collection_name = "projects/sat-io/open-datasets/IGN_RGE_Alti_5m"
         dem = ee.Image(collection_name)
+    elif source == 'DEM France 1m':
+        collection_name = 'IGN/RGE_ALTI/1M/2_0/FXX'
+        dem = ee.Image(collection_name).select('MNT')
+    elif source == 'AUSTRALIA 5M DEM':
+        collection_name = 'AU/GA/AUSTRALIA_5M_DEM'
+        collection = ee.ImageCollection(collection_name)
+        dem = collection.select('elevation').mosaic()
     elif source == 'USGS 3DEP 1m':
         collection_name = 'USGS/3DEP/1m'
         dem = ee.ImageCollection(collection_name).mosaic()

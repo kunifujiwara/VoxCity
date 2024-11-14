@@ -14,7 +14,7 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     min_lon = min(v[1] for v in rectangle_vertices)
     max_lon = max(v[1] for v in rectangle_vertices)
     
-    # Construct the Overpass API query to include building parts
+    # Enhanced Overpass API query with recursive member extraction
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = f"""
     [out:json];
@@ -22,7 +22,10 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
       way["building"]({min_lat},{min_lon},{max_lat},{max_lon});
       way["building:part"]({min_lat},{min_lon},{max_lat},{max_lon});
       relation["building"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="artwork"]["area"="yes"]({min_lat},{min_lon},{max_lat},{max_lon});
+      relation["tourism"="artwork"]["area"="yes"]({min_lat},{min_lon},{max_lat},{max_lon});
     );
+    (._; >;);  // Recursively get all nodes, ways, and relations within relations
     out geom;
     """
     
@@ -39,7 +42,6 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     
     def get_height_from_properties(properties):
         """Helper function to extract height from properties, using levels if height is not available"""
-        # Try to get explicit height first
         height = properties.get('height', properties.get('building:height', None))
         if height is not None:
             try:
@@ -47,7 +49,6 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             except ValueError:
                 pass
         
-        # If no height, try to get levels
         levels = properties.get('building:levels', properties.get('levels', None))
         if levels is not None:
             try:
@@ -71,29 +72,28 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             min_height = float(min_height)
         except ValueError:
             try:
-                # Try to calculate min_height from min_level if available
                 min_height = float(min_level) * 5.0
             except ValueError:
                 min_height = 0
         
-        # Get levels information
         levels = properties.get('building:levels', properties.get('levels', None))
         try:
             levels = float(levels) if levels is not None else None
         except ValueError:
             levels = None
             
-        # Extract additional building part properties
+        # Extract additional properties, including those relevant to artworks
         extracted_props = {
             "height": height,
             "min_height": min_height,
             "confidence": -1.0,
-            "is_inner": False,  # Changed from 'inner' to 'is_inner'
+            "is_inner": False,
             "levels": levels,
             "height_source": "explicit" if properties.get('height') or properties.get('building:height') 
-                           else "levels" if levels is not None 
-                           else "default",
+                               else "levels" if levels is not None 
+                               else "default",
             "min_level": min_level if min_level != '0' else None,
+            "building": properties.get('building', 'no'),
             "building_part": properties.get('building:part', 'no'),
             "building_material": properties.get('building:material'),
             "building_colour": properties.get('building:colour'),
@@ -105,9 +105,15 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             "architect": properties.get('architect'),
             "start_date": properties.get('start_date'),
             "name": properties.get('name'),
+            "name:en": properties.get('name:en'),
+            "name:es": properties.get('name:es'),
             "email": properties.get('email'),
             "phone": properties.get('phone'),
-            "wheelchair": properties.get('wheelchair')
+            "wheelchair": properties.get('wheelchair'),
+            "tourism": properties.get('tourism'),
+            "artwork_type": properties.get('artwork_type'),
+            "area": properties.get('area'),
+            "layer": properties.get('layer')
         }
         
         # Remove None values to keep the properties clean
@@ -116,8 +122,8 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     def create_polygon_feature(coords, properties, is_inner=False):
         """Helper function to create a polygon feature"""
         if len(coords) >= 4:
-            properties = properties.copy()  # Create a copy to avoid modifying the original
-            properties["is_inner"] = is_inner  # Changed from 'inner' to 'is_inner'
+            properties = properties.copy()
+            properties["is_inner"] = is_inner
             return {
                 "type": "Feature",
                 "properties": properties,
@@ -128,9 +134,9 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             }
         return None
     
+    # Process each element, handling relations and their way members
     for element in data['elements']:
         if element['type'] == 'way':
-            # Process simple polygons from ways
             coords = [(node['lon'], node['lat']) for node in element['geometry']]
             feature = create_polygon_feature(coords, extract_properties(element))
             if feature:
@@ -139,19 +145,201 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
         elif element['type'] == 'relation':
             properties = extract_properties(element)
             
-            # Process each member separately
+            # Process each member of the relation
             for member in element['members']:
-                if 'geometry' in member:
+                if member['type'] == 'way' and 'geometry' in member:
                     coords = [(node['lon'], node['lat']) for node in member['geometry']]
                     is_inner = member['role'] == 'inner'
                     
-                    # Create a separate feature for each ring
                     feature = create_polygon_feature(coords, properties, is_inner)
                     if feature:
                         feature['properties']['role'] = member['role']
                         features.append(feature)
     
     return features
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def load_geojsons_from_openstreetmap(rectangle_vertices):
+#     # Create a bounding box from the rectangle vertices
+#     min_lat = min(v[0] for v in rectangle_vertices)
+#     max_lat = max(v[0] for v in rectangle_vertices)
+#     min_lon = min(v[1] for v in rectangle_vertices)
+#     max_lon = max(v[1] for v in rectangle_vertices)
+    
+#     # Construct the Overpass API query to include building parts
+#     overpass_url = "http://overpass-api.de/api/interpreter"
+#     overpass_query = f"""
+#     [out:json];
+#     (
+#       way["building"]({min_lat},{min_lon},{max_lat},{max_lon});
+#       way["building:part"]({min_lat},{min_lon},{max_lat},{max_lon});
+#       relation["building"]({min_lat},{min_lon},{max_lat},{max_lon});
+#     );
+#     out geom;
+#     """
+    
+#     # Send the request to the Overpass API
+#     response = requests.get(overpass_url, params={'data': overpass_query})
+#     data = response.json()
+    
+#     # Process the response and create GeoJSON features
+#     features = []
+    
+#     def process_coordinates(geometry):
+#         """Helper function to process and reverse coordinate pairs"""
+#         return [coord[::-1] for coord in geometry]
+    
+#     def get_height_from_properties(properties):
+#         """Helper function to extract height from properties, using levels if height is not available"""
+#         # Try to get explicit height first
+#         height = properties.get('height', properties.get('building:height', None))
+#         if height is not None:
+#             try:
+#                 return float(height)
+#             except ValueError:
+#                 pass
+        
+#         # If no height, try to get levels
+#         levels = properties.get('building:levels', properties.get('levels', None))
+#         if levels is not None:
+#             try:
+#                 return float(levels) * 5.0  # Assume 5 meters per level
+#             except ValueError:
+#                 pass
+        
+#         return 0  # Default height if no valid height or levels found
+    
+#     def extract_properties(element):
+#         """Helper function to extract and process properties"""
+#         properties = element.get('tags', {})
+        
+#         # Get height (now using the helper function)
+#         height = get_height_from_properties(properties)
+            
+#         # Get min_height and min_level
+#         min_height = properties.get('min_height', '0')
+#         min_level = properties.get('building:min_level', properties.get('min_level', '0'))
+#         try:
+#             min_height = float(min_height)
+#         except ValueError:
+#             try:
+#                 # Try to calculate min_height from min_level if available
+#                 min_height = float(min_level) * 5.0
+#             except ValueError:
+#                 min_height = 0
+        
+#         # Get levels information
+#         levels = properties.get('building:levels', properties.get('levels', None))
+#         try:
+#             levels = float(levels) if levels is not None else None
+#         except ValueError:
+#             levels = None
+            
+#         # Extract additional building part properties
+#         extracted_props = {
+#             "height": height,
+#             "min_height": min_height,
+#             "confidence": -1.0,
+#             "is_inner": False,  # Changed from 'inner' to 'is_inner'
+#             "levels": levels,
+#             "height_source": "explicit" if properties.get('height') or properties.get('building:height') 
+#                            else "levels" if levels is not None 
+#                            else "default",
+#             "min_level": min_level if min_level != '0' else None,
+#             "building_part": properties.get('building:part', 'no'),
+#             "building_material": properties.get('building:material'),
+#             "building_colour": properties.get('building:colour'),
+#             "roof_shape": properties.get('roof:shape'),
+#             "roof_material": properties.get('roof:material'),
+#             "roof_angle": properties.get('roof:angle'),
+#             "roof_colour": properties.get('roof:colour'),
+#             "roof_direction": properties.get('roof:direction'),
+#             "architect": properties.get('architect'),
+#             "start_date": properties.get('start_date'),
+#             "name": properties.get('name'),
+#             "email": properties.get('email'),
+#             "phone": properties.get('phone'),
+#             "wheelchair": properties.get('wheelchair')
+#         }
+        
+#         # Remove None values to keep the properties clean
+#         return {k: v for k, v in extracted_props.items() if v is not None}
+    
+#     def create_polygon_feature(coords, properties, is_inner=False):
+#         """Helper function to create a polygon feature"""
+#         if len(coords) >= 4:
+#             properties = properties.copy()  # Create a copy to avoid modifying the original
+#             properties["is_inner"] = is_inner  # Changed from 'inner' to 'is_inner'
+#             return {
+#                 "type": "Feature",
+#                 "properties": properties,
+#                 "geometry": {
+#                     "type": "Polygon",
+#                     "coordinates": [process_coordinates(coords)]
+#                 }
+#             }
+#         return None
+    
+#     for element in data['elements']:
+#         if element['type'] == 'way':
+#             # Process simple polygons from ways
+#             coords = [(node['lon'], node['lat']) for node in element['geometry']]
+#             feature = create_polygon_feature(coords, extract_properties(element))
+#             if feature:
+#                 features.append(feature)
+                
+#         elif element['type'] == 'relation':
+#             properties = extract_properties(element)
+            
+#             # Process each member separately
+#             for member in element['members']:
+#                 if 'geometry' in member:
+#                     coords = [(node['lon'], node['lat']) for node in member['geometry']]
+#                     is_inner = member['role'] == 'inner'
+                    
+#                     # Create a separate feature for each ring
+#                     feature = create_polygon_feature(coords, properties, is_inner)
+#                     if feature:
+#                         feature['properties']['role'] = member['role']
+#                         features.append(feature)
+    
+#     return features
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # def load_geojsons_from_openstreetmap(rectangle_vertices):
 #     # Create a bounding box from the rectangle vertices
