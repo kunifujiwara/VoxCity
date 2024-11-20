@@ -11,6 +11,7 @@ from .download.osm import load_geojsons_from_openstreetmap, load_geojsons_from_o
 from .download.oemj import save_oemj_as_geotiff
 from .download.omt import load_geojsons_from_openmaptiles
 from .download.eubucco import load_geojson_from_eubucco
+from .download.overture import load_geojsons_from_overture
 # from .download.nasadem import (
 #     download_nasa_dem,
 #     interpolate_dem,
@@ -132,11 +133,22 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
                 else:
                     building_min_height_grid[i, j] = [[0, building_height_grid[i, j]]]
         filtered_buildings = []
+        building_id_grid = np.zeros_like(building_height_grid, dtype=int)        
+        # Get positions of non-zero elements
+        non_zero_positions = np.nonzero(building_height_grid)        
+        # Create sequential integers starting from 1
+        num_non_zeros = len(non_zero_positions[0])
+        sequence = np.arange(1, num_non_zeros + 1)        
+        # Place sequential integers at non-zero positions
+        building_id_grid[non_zero_positions] = sequence
     elif source == 'EUBUCCO v0.1':
         geojson_data = load_geojson_from_eubucco(rectangle_vertices, output_dir)
         building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenMapTiles":
         geojson_data = load_geojsons_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+    elif source == "Overture":
+        geojson_data = load_geojsons_from_overture(rectangle_vertices)
         building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "OpenStreetMap & Microsoft Building Footprints":
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)

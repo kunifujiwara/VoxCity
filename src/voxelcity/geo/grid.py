@@ -479,8 +479,6 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     building_polygons, idx = create_building_polygons(filtered_buildings_comp)
 
-    building_id = 0
-
     # Modified intersection detection and calculation
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
@@ -537,7 +535,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                                         current_height < height or 
                                         np.isnan(current_height)):
                                         building_height_grid[i, j] = height
-                                        building_id_grid[i, j] = k
+                                        building_id_grid[i, j] = k + 1
                             else:
                                 # Handle inner courtyards
                                 building_min_height_grid[i, j] = [[0, 0]]

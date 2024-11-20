@@ -311,7 +311,177 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
             v += width  # Move to the next segment
 
 
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
+def grid_to_obj(value_array, dem_array, output_dir, file_name, cell_size, offset,
+                 colormap_name='viridis', num_colors=256, alpha=1.0, vmin=None, vmax=None):
+    """
+    Converts a 2D array of values and a corresponding DEM array to an OBJ file
+    with specified colormap, transparency, and value range.
+
+    Parameters:
+    - value_array: 2D NumPy array of values to visualize.
+    - dem_array: 2D NumPy array of DEM values corresponding to value_array.
+    - output_dir: Directory to save the OBJ and MTL files.
+    - file_name: Base name for the output files.
+    - cell_size: Size of each cell in the grid (e.g., in meters).
+    - offset: Elevation offset added after quantization.
+    - colormap_name: Name of the Matplotlib colormap to use.
+    - num_colors: Number of discrete colors to use from the colormap.
+    - alpha: Transparency value between 0.0 (transparent) and 1.0 (opaque).
+    - vmin: Minimum value for colormap normalization.
+    - vmax: Maximum value for colormap normalization.
+    """
+    # Validate input arrays
+    if value_array.shape != dem_array.shape:
+        raise ValueError("The value array and DEM array must have the same shape.")
+    
+    # Get the dimensions
+    rows, cols = value_array.shape
+
+    value_array = np.flipud(value_array.copy())
+    dem_array = np.flipud(dem_array.copy())
+
+    # Get valid indices (non-NaN)
+    valid_indices = np.argwhere(~np.isnan(value_array))
+
+    # Set vmin and vmax if not provided
+    if vmin is None:
+        vmin = np.nanmin(value_array)
+    if vmax is None:
+        vmax = np.nanmax(value_array)
+    
+    # Handle case where vmin equals vmax
+    if vmin == vmax:
+        raise ValueError("vmin and vmax cannot be the same value.")
+    
+    # Normalize values to [0, 1] based on vmin and vmax
+    normalized_values = (value_array - vmin) / (vmax - vmin)
+    # Clip normalized values to [0, 1]
+    normalized_values = np.clip(normalized_values, 0.0, 1.0)
+    
+    # Prepare the colormap
+    if colormap_name not in plt.colormaps():
+        raise ValueError(f"Colormap '{colormap_name}' is not recognized. Please choose a valid Matplotlib colormap.")
+    colormap = plt.get_cmap(colormap_name, num_colors)  # Discrete colors
+
+    # Create a mapping from quantized colors to material names
+    color_to_material = {}
+    materials = []
+    material_index = 1  # Start indexing materials from 1
+
+    # Initialize lists
+    vertex_list = []
+    vertex_dict = {}  # To avoid duplicate vertices
+    vertex_index = 1  # OBJ indices start at 1
+
+    faces_per_material = {}
+
+    # For each valid cell
+    for idx in valid_indices:
+        i, j = idx  # i is the row index, j is the column index
+        value = value_array[i, j]
+        normalized_value = normalized_values[i, j]
+
+        # Get the color from the colormap
+        rgba = colormap(normalized_value)
+        rgb = rgba[:3]  # Ignore alpha channel
+        r, g, b = [int(c * 255) for c in rgb]
+
+        # Quantize the color
+        color_key = (r, g, b)
+        material_name = f'material_{r}_{g}_{b}'
+
+        if material_name not in color_to_material:
+            color_to_material[material_name] = {
+                'r': r / 255.0,
+                'g': g / 255.0,
+                'b': b / 255.0,
+                'alpha': alpha
+            }
+            materials.append(material_name)
+
+        # Calculate the vertices of the quad
+        x0 = i * cell_size
+        x1 = (i + 1) * cell_size
+        y0 = j * cell_size
+        y1 = (j + 1) * cell_size
+
+        # Calculate the z-coordinate
+        z = cell_size * int(dem_array[i, j] / cell_size + 1.5) + offset
+
+        # Define the four corners of the cell (quad)
+        vertices = [
+            (x0, y0, z),
+            (x1, y0, z),
+            (x1, y1, z),
+            (x0, y1, z),
+        ]
+
+        # Map vertices to indices
+        indices = []
+        for v in vertices:
+            if v not in vertex_dict:
+                vertex_list.append(v)
+                vertex_dict[v] = vertex_index
+                vertex_index += 1
+            indices.append(vertex_dict[v])
+
+        # Create face (quad split into two triangles)
+        faces = [
+            {'vertices': [indices[0], indices[1], indices[2]]},
+            {'vertices': [indices[0], indices[2], indices[3]]},
+        ]
+
+        # Add faces to faces_per_material
+        if material_name not in faces_per_material:
+            faces_per_material[material_name] = []
+        faces_per_material[material_name].extend(faces)
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # File paths
+    obj_file_path = os.path.join(output_dir, f'{file_name}.obj')
+    mtl_file_path = os.path.join(output_dir, f'{file_name}.mtl')
+
+    # Write OBJ file
+    with open(obj_file_path, 'w') as f:
+        f.write('# Generated OBJ file\n\n')
+        f.write(f'mtllib {file_name}.mtl\n\n')
+        # Vertices
+        for vx, vy, vz in vertex_list:
+            f.write(f'v {vx:.6f} {vy:.6f} {vz:.6f}\n')
+        f.write('\n')
+        # Faces per material
+        for material_name in materials:
+            f.write(f'usemtl {material_name}\n')
+            faces = faces_per_material[material_name]
+            for face in faces:
+                v_indices = face['vertices']
+                face_str = ' '.join([f'{vi}' for vi in v_indices])
+                f.write(f'f {face_str}\n')
+            f.write('\n')
+
+    # Write MTL file with transparency
+    with open(mtl_file_path, 'w') as f:
+        for material_name in materials:
+            color = color_to_material[material_name]
+            r, g, b = color['r'], color['g'], color['b']
+            a = color['alpha']
+            f.write(f'newmtl {material_name}\n')
+            f.write(f'Ka {r:.6f} {g:.6f} {b:.6f}\n')  # Ambient color
+            f.write(f'Kd {r:.6f} {g:.6f} {b:.6f}\n')  # Diffuse color
+            f.write(f'Ks 0.000000 0.000000 0.000000\n')  # Specular reflection
+            f.write('Ns 10.000000\n')                   # Specular exponent
+            f.write('illum 1\n')                        # Illumination model
+            f.write(f'd {a:.6f}\n')                     # Transparency (alpha)
+            f.write('\n')
+
+    print(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
 
 
 

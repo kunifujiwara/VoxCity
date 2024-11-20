@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.47"
+version = "0.1.49"
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.rst"
 authors = [
@@ -39,7 +39,8 @@ dependencies = [
     "reverse_geocoder",
     "pycountry",
     "osm2geojson",
-    "seaborn"
+    "seaborn",
+    "overturemaps"
 ]
 
 [project.scripts]

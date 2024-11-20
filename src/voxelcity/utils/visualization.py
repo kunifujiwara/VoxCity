@@ -486,6 +486,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
       'CartoDB dark': ctx.providers.CartoDB.DarkMatter,  # Popular dark option
       'CartoDB light': ctx.providers.CartoDB.Positron,  # Popular dark option
       'CartoDB voyager': ctx.providers.CartoDB.Voyager,  # Popular dark option
+      'CartoDB light no labels': ctx.providers.CartoDB.PositronNoLabels,  # Popular dark option
       'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
     }
     ctx.add_basemap(ax, crs=crs_epsg_3857, source=basemaps[basemap])
