@@ -25,10 +25,19 @@ def convert_numpy_to_python(obj):
     else:
         return str(obj)
 
+def is_valid_value(value):
+    """
+    Check if a value is valid (not NA/null) and handle array-like objects.
+    """
+    if isinstance(value, (np.ndarray, list)):
+        return True  # Always include arrays/lists
+    return pd.notna(value)
+
 def convert_gdf_to_geojson(gdf):
     """
     Convert GeoDataFrame to GeoJSON format with coordinates in (lat, lon) order.
-    Sets height and min_height to 0 if not present and handles NumPy types.
+    Extracts all columns as properties except for 'geometry' and 'bbox'.
+    Sets height and min_height to 0 if not present and handles arrays.
     """
     features = []
     
@@ -48,17 +57,19 @@ def convert_gdf_to_geojson(gdf):
         properties = {}
         
         # First set height and min_height with default values of 0
-        properties['height'] = float(row['height']) if pd.notna(row.get('height')) else 0.0
-        properties['min_height'] = float(row['min_height']) if pd.notna(row.get('min_height')) else 0.0
+        height_value = row.get('height')
+        min_height_value = row.get('min_height')
         
-        # Add all other columns except 'geometry'
+        properties['height'] = float(height_value) if is_valid_value(height_value) else 0.0
+        properties['min_height'] = float(min_height_value) if is_valid_value(min_height_value) else 0.0
+        
+        # Add all columns except 'geometry' and 'bbox'
+        excluded_columns = {'geometry', 'bbox', 'height', 'min_height'}
         for column in gdf.columns:
-            if column not in ['geometry', 'height', 'min_height']:
+            if column not in excluded_columns:
                 value = row[column]
-                if pd.notna(value):
-                    # Convert numpy types to native Python types
-                    value = convert_numpy_to_python(value)
-                properties[column] = value if pd.notna(value) else None
+                # Always include the value, but convert it appropriately
+                properties[column] = convert_numpy_to_python(value) if is_valid_value(value) else None
         
         # Add the index as id
         properties['id'] = convert_numpy_to_python(row.name)

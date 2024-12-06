@@ -3,6 +3,7 @@ import numpy as np
 import datetime
 
 from ..geo.grid import apply_operation, translate_array, group_and_label_cells, process_grid
+from ..geo.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
 
 def array_to_string(arr):
@@ -40,25 +41,31 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
     land_cover_veg_grid = translate_array(land_cover_grid, veg_translation_dict)
 
     mat_translation_dict = {
-        1: '0200SD',#Bareland
-        2: '000000',#Rangeland
-        3: '0200PG',#Developed space
-        4: '0200ST',#Road
-        5: '000000',#Tree
-        6: '0200WW',#Water
-        7: '000000',#Agriculture land
-        8: '000000',#Building
+        1: '000000',#'Bareland',
+        2: '000000',#'Rangeland',
+        3: '000000',#'Shrub',
+        4: '000000',#'Moss and lichen',
+        5: '000000',#'Agriculture land',
+        6: '000000',#'Tree',
+        7: '0200WW',#'Wet land',
+        8: '0200WW',#'Mangroves',
+        9: '0200WW',#'Water',
+        10: '000000',#'Snow and ice',
+        11: '0200PG',#'Developed space',
+        12: '0200ST',#'Road',
+        13: '000000',#'Building',
+        14: '0200SD',#'No Data'
     }
     land_cover_mat_grid = translate_array(land_cover_grid, mat_translation_dict)
 
     # canopy_height_grid = np.flipud(canopy_height_grid_ori).copy()
     canopy_height_grid = canopy_height_grid_ori.copy()
 
-    dem_grid = np.flipud(dem_grid_ori).copy()
+    dem_grid = np.flipud(dem_grid_ori).copy() - np.min(dem_grid_ori)
 
     return building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
-def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize):
+def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize, rectangle_vertices, **kwargs):
     # XML template
     xml_template = """<ENVI-MET_Datafile>
     <Header>
@@ -81,10 +88,10 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
          <dx> $dx$ </dx>
          <dy> $dy$ </dy>
          <dz-base> $dz-base$ </dz-base>
-         <useTelescoping_grid> 0 </useTelescoping_grid>
+         <useTelescoping_grid> $useTelescoping_grid$ </useTelescoping_grid>
          <useSplitting> 1 </useSplitting>
-         <verticalStretch> 0.00000 </verticalStretch>
-         <startStretch> 0.00000 </startStretch>
+         <verticalStretch> $verticalStretch$ </verticalStretch>
+         <startStretch> $startStretch$ </startStretch>
          <has3DModel> 0 </has3DModel>
          <isFull3DDesign> 0 </isFull3DDesign>
       </modelGeometry>
@@ -147,25 +154,71 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
       </sources2D>
     </ENVI-MET_Datafile>"""
 
+    
+    city_country_name = get_city_country_name_from_rectangle(rectangle_vertices)
+
+    # Calculate the center point of the rectangle
+    latitudes = [coord[0] for coord in rectangle_vertices]
+    longitudes = [coord[1] for coord in rectangle_vertices]
+    center_lat = str(sum(latitudes) / len(latitudes))
+    center_lon = str(sum(longitudes) / len(longitudes))
+    
+    timezone_info = get_timezone_info(rectangle_vertices)
+
+    author_name = kwargs.get('author_name')
+    if author_name is None:
+        author_name = "[Enter model author name]"
+    model_desctiption = kwargs.get('model_desctiption')
+    if model_desctiption is None:
+        model_desctiption = "[Enter model desctription]"
+
     # Replace placeholders
     placeholders = {
-        "$modelDescription$": "A brave new area",
-        "$modelAuthor$": "[Enter model author name]",
-        "$modelRotation$": "20",
+        "$modelDescription$": model_desctiption,
+        "$modelAuthor$": author_name,
+        "$modelRotation$": "0",
         "$projectionSystem$": "GCS_WGS_1984",
-        "$locationName$": "Essen/ Germany",
-        "$location_Longitude$": "7.00000",
-        "$location_Latitude$": "53.00000",
-        "$locationTimeZone_Name$": "CET/ UTC+1",
-        "$locationTimeZone_Longitude$": "15.00000",
+        "$locationName$": city_country_name,
+        "$location_Longitude$": center_lon,
+        "$location_Latitude$": center_lat,
+        "$locationTimeZone_Name$": timezone_info[0],
+        "$locationTimeZone_Longitude$": timezone_info[1],
     }
 
     for placeholder, value in placeholders.items():
         xml_template = xml_template.replace(placeholder, value)
-
+    
+    building_on_dem_grid = building_height_grid + dem_grid    
+    
+    domain_building_max_height_ratio = kwargs.get('domain_building_max_height_ratio')
+    if domain_building_max_height_ratio is None:
+        domain_building_max_height_ratio = 2
+    useTelescoping_grid = kwargs.get('useTelescoping_grid')
+    if (useTelescoping_grid is None) or (useTelescoping_grid == False):
+        useTelescoping_grid = 0
+        verticalStretch = 0
+        startStretch = 0
+    else:
+        useTelescoping_grid = 1
+        verticalStretch = kwargs.get('verticalStretch')
+        if (verticalStretch is None):
+            verticalStretch = 20
+        startStretch = kwargs.get('startStretch')
+        if (startStretch is None):
+            startStretch = int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize
+    
     # Set grid dimensions
     grids_I, grids_J = building_height_grid.shape[1], building_height_grid.shape[0]
-    grids_Z = max(int(100/meshsize), int(np.max(building_height_grid)/meshsize + 0.5) * 3)
+
+    if verticalStretch > 0:
+        a = meshsize
+        r = (100 + verticalStretch) / 100
+        S_target = (int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize) * (domain_building_max_height_ratio - 1)
+        min_n = find_min_n(a, r, S_target, max_n=1000000)
+        grids_Z = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
+    else:
+        grids_Z = int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio
+
     dx, dy, dz_base = meshsize, meshsize, meshsize
 
     grid_placeholders = {
@@ -175,6 +228,9 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         "$dx$": str(dx),
         "$dy$": str(dy),
         "$dz-base$": str(dz_base),
+        "$useTelescoping_grid$": str(useTelescoping_grid),
+        "$verticalStretch$": str(verticalStretch),
+        "$startStretch$": str(startStretch),
     }
 
     for placeholder, value in grid_placeholders.items():
@@ -221,19 +277,28 @@ def save_file(content, output_file_path):
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
-def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, output_dir="output"):
+def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, output_dir="output", **kwargs):
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
-        building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)
+        building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)    
 
     # Create XML content
-    xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize)
+    xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize, rectangle_vertices, **kwargs)
 
     # Save the output
     output_file_path = os.path.join(output_dir, "output.INX")
     save_file(xml_content, output_file_path)
 
-def generate_edb_file(lad='1.00000'):
+def generate_edb_file(**kwargs):
+    
+    lad = kwargs.get('lad')
+    if lad is None:
+        lad=1.0
+    
+    trunk_height_ratio = kwargs.get("trunk_height_ratio")
+    if trunk_height_ratio is None:
+        trunk_height_ratio = 11.76 / 19.98
+
     header = f'''<ENVI-MET_Datafile>
 <Header>
 <filetype>DATA</filetype>
@@ -264,14 +329,14 @@ def generate_edb_file(lad='1.00000'):
      <rs_min> 0.00000 </rs_min>
      <Height> {height:.5f} </Height>
      <Width> 1.00000 </Width>
-     <Depth> {height * 0.4:.5f} </Depth>
+     <Depth> {height * trunk_height_ratio:.5f} </Depth>
      <RootDiameter> 1.00000 </RootDiameter>
      <cellsize> 1.00000 </cellsize>
      <xy_cells> 1 </xy_cells>
      <z_cells> {height} </z_cells>
      <scalefactor> 0.00000 </scalefactor>
      <LAD-Profile type="sparematrix-3D" dataI="1" dataJ="1" zlayers="{height}" defaultValue="0.00000">
-{generate_lad_profile(height, lad=lad)}
+{generate_lad_profile(height, trunk_height_ratio, lad=str(lad))}
      </LAD-Profile>
      <RAD-Profile> 0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000 </RAD-Profile>
      <Root-Range-Profile> 1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000 </Root-Range-Profile>
@@ -330,13 +395,28 @@ def generate_edb_file(lad='1.00000'):
 
     content = header + ''.join(plant3d_objects) + footer
     
-    with open('plant3d_objects.edb', 'w') as f:
+    with open('projectdatabase.edb', 'w') as f:
         f.write(content)
 
-def generate_lad_profile(height, lad = '1.00000'):
+def generate_lad_profile(height, trunk_height_ratio, lad = '1.00000'):
     lad_profile = []
-    start = max(0, int(height * 0.4))
+    start = max(0, int(height * trunk_height_ratio))
     for i in range(start, height):
         lad_profile.append(f"     0,0,{i},{lad}")
     return '\n'.join(lad_profile)
     
+def find_min_n(a, r, S_target, max_n=1000000):
+    n = 1
+    while n <= max_n:
+        if r == 1:
+            S_n = a * n
+        else:
+            try:
+                S_n = a * (1 - r ** n) / (1 - r)
+            except OverflowError:
+                # Handle large exponents
+                S_n = float('inf') if r > 1 else 0
+        if (a > 0 and S_n > S_target) or (a < 0 and S_n < S_target):
+            return n
+        n += 1
+    return None  # Not possible within max_n terms

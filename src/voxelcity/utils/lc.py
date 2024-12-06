@@ -6,6 +6,23 @@ from collections import Counter
 def rgb_distance(color1, color2):
     return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
 
+
+# land_cover_classes = {
+#     (128, 0, 0): 'Bareland',              0         
+#     (0, 255, 36): 'Rangeland',            1
+#     (97, 140, 86): 'Shrub',               2
+#     (75, 181, 73): 'Agriculture land',    3
+#     (34, 97, 38): 'Tree',                 4
+#     (77, 118, 99): 'Wet land',            5
+#     (22, 61, 51): 'Mangrove',             6
+#     (0, 69, 255): 'Water',                7
+#     (205, 215, 224): 'Snow and ice',      8
+#     (148, 148, 148): 'Developed space',   9
+#     (255, 255, 255): 'Road',              10
+#     (222, 31, 7): 'Building',             11
+#     (128, 0, 0): 'No Data',               12
+# }
+
 def get_land_cover_classes(source):
     if source == "Urbanwatch":
         land_cover_classes = {
@@ -20,7 +37,7 @@ def get_land_cover_classes(source):
             (255, 255, 255): 'Unknown',
             (0, 0, 0): 'Sea'
         }    
-    elif (source == "OpenEarthMapJapan") or (source == "OpenStreetMap"):
+    elif (source == "OpenEarthMapJapan"):
         land_cover_classes = {
             (128, 0, 0): 'Bareland',
             (0, 255, 36): 'Rangeland',
@@ -72,66 +89,112 @@ def get_land_cover_classes(source):
             (165, 155, 143): 'Bare',            # #a59b8f
             (179, 159, 225): 'Snow and Ice'     # #b39fe1
         }
+    elif (source == 'Standard') or (source == "OpenStreetMap"):
+        land_cover_classes = {
+            (128, 0, 0): 'Bareland',
+            (0, 255, 36): 'Rangeland',
+            (255, 224, 80): 'Shrub',
+            (255, 255, 0): 'Moss and lichen',
+            (75, 181, 73): 'Agriculture land',
+            (34, 97, 38): 'Tree',
+            (0, 236, 230): 'Wet land',
+            (22, 61, 51): 'Mangroves',
+            (0, 69, 255): 'Water',
+            (192, 192, 255): 'Snow and ice',
+            (148, 148, 148): 'Developed space',
+            (255, 255, 255): 'Road',
+            (222, 31, 7): 'Building',
+            (0, 0, 0): 'No Data'
+        }
     return land_cover_classes
 
-def convert_land_cover(input_array, land_cover_source='Urbanwatch'):  
+# land_cover_classes = {
+#     (128, 0, 0): 'Bareland',              0         
+#     (0, 255, 36): 'Rangeland',            1
+#     (97, 140, 86): 'Shrub',               2
+#     (75, 181, 73): 'Agriculture land',    3
+#     (34, 97, 38): 'Tree',                 4
+#     (34, 97, 38): 'Moss and lichen',      5
+#     (77, 118, 99): 'Wet land',            6
+#     (22, 61, 51): 'Mangrove',             7
+#     (0, 69, 255): 'Water',                8
+#     (205, 215, 224): 'Snow and ice',      9
+#     (148, 148, 148): 'Developed space',   10
+#     (255, 255, 255): 'Road',              11
+#     (222, 31, 7): 'Building',             12
+#     (128, 0, 0): 'No Data',               13
+# }
+
+
+
+def convert_land_cover(input_array, land_cover_source='Urbanwatch'):   
 
     if land_cover_source == 'Urbanwatch':
-        # Define the mapping from #urbanwatch to #general(integration)
+        # Define the mapping from Urbanwatch to new standardized classes
         convert_dict = {
-            0: 7,  # Building
-            1: 3,  # Road
-            2: 2,  # Parking Lot
-            3: 4,  # Tree Canopy
-            4: 1,  # Grass/Shrub
-            5: 6,  # Agriculture
-            6: 5,  # Water
-            7: 0,  # Barren
-            8: 0,  # Unknown
-            9: 5   # Sea
+            0: 12,  # Building
+            1: 11,  # Road
+            2: 10,  # Parking Lot -> Developed space
+            3: 4,   # Tree Canopy -> Tree
+            4: 1,   # Grass/Shrub -> Rangeland
+            5: 3,   # Agriculture -> Agriculture land
+            6: 8,   # Water
+            7: 0,   # Barren -> Bareland
+            8: 13,  # Unknown -> No Data
+            9: 8    # Sea -> Water
         }
     elif land_cover_source == 'ESA WorldCover':
         convert_dict = {
-            0: 4,  # Trees
-            1: 1,  # Shrubland
-            2: 1,  # Grassland
-            3: 6,  # Cropland
-            4: 2,  # Built-up
-            5: 0,  # Barren / sparse vegetation
-            6: 0,  # Snow and ice
-            7: 5,  # Open water
-            8: 5,  # Herbaceous wetland
-            9: 5,  # Mangroves
-            10: 1  # Moss and lichen
+            0: 4,   # Trees -> Tree
+            1: 2,   # Shrubland -> Shrub
+            2: 1,   # Grassland -> Rangeland
+            3: 3,   # Cropland -> Agriculture land
+            4: 10,  # Built-up -> Developed space
+            5: 0,   # Barren / sparse vegetation -> Bareland
+            6: 9,   # Snow and ice
+            7: 8,   # Open water -> Water
+            8: 6,   # Herbaceous wetland -> Wet land
+            9: 7,   # Mangroves
+            10: 5   # Moss and lichen
         }
     elif land_cover_source == "ESRI 10m Annual Land Cover":
         convert_dict = {
-            0: 0,  # (255, 255, 255): 'No Data',
-            1: 5,  # (26, 91, 171): 'Water',
-            2: 4,  # (53, 130, 33): 'Trees',
-            3: 1,  # (167, 210, 130): 'Grass',
-            4: 5,  # (135, 209, 158): 'Flooded Vegetation',
-            5: 6,  # (255, 219, 92): 'Crops',
-            6: 1,  # (238, 207, 168): 'Scrub/Shrub',
-            7: 2,  # (237, 2, 42): 'Built Area',
-            8: 0,  # (237, 233, 228): 'Bare Ground',
-            9: 0,  # (242, 250, 255): 'Snow/Ice',
-            10: 0  # (200, 200, 200): 'Clouds'
+            0: 13,  # No Data
+            1: 8,   # Water
+            2: 4,   # Trees -> Tree
+            3: 1,   # Grass -> Rangeland
+            4: 6,   # Flooded Vegetation -> Wet land
+            5: 3,   # Crops -> Agriculture land
+            6: 2,   # Scrub/Shrub -> Shrub
+            7: 10,  # Built Area -> Developed space
+            8: 0,   # Bare Ground -> Bareland
+            9: 9,   # Snow/Ice
+            10: 13  # Clouds -> No Data
         }
     elif land_cover_source == "Dynamic World V1":
-        # Convert hex colors to RGB tuples
         convert_dict = {
-            0: 5,# 'Water',            
-            1: 4,# 'Trees',             
-            2: 1,# 'Grass',            
-            3: 5,# 'Flooded Vegetation', 
-            4: 6,# 'Crops',            
-            5: 1,# 'Shrub and Scrub',  
-            6: 2,# 'Built',             
-            7: 0,# 'Bare',            
-            8: 0,# 'Snow and Ice'     
+            0: 8,   # Water
+            1: 4,   # Trees -> Tree
+            2: 1,   # Grass -> Rangeland
+            3: 6,   # Flooded Vegetation -> Wet land
+            4: 3,   # Crops -> Agriculture land
+            5: 2,   # Shrub and Scrub -> Shrub
+            6: 10,  # Built -> Developed space
+            7: 0,   # Bare -> Bareland
+            8: 9    # Snow and Ice
+        }    
+    elif land_cover_source == "OpenEarthMapJapan":
+        convert_dict = {
+            0: 0,   # Bareland
+            1: 1,   # Rangeland
+            2: 10,  # Developed space
+            3: 11,  # Road
+            4: 4,   # Tree
+            5: 8,   # Water
+            6: 3,   # Agriculture land
+            7: 12,  # Building
         }
-        
+
     # Create a vectorized function for the conversion
     vectorized_convert = np.vectorize(lambda x: convert_dict.get(x, x))
     
@@ -142,16 +205,41 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
 
 def get_class_priority(source):
     if source == "OpenStreetMap":
-        return { 
-            'Bareland': 4, 
-            'Rangeland': 6, 
-            'Developed space': 8, 
-            'Road': 1, 
-            'Tree': 7, 
-            'Water': 3, 
-            'Agriculture land': 5, 
-            'Building': 2 
+        return {
+            # Built Environment (highest priority as they're most definitively mapped)
+            'Building': 2,          # Most definitive built structure
+            'Road': 1,             # Critical infrastructure
+            'Developed space': 13,   # Other developed areas
+            
+            # Water Bodies (next priority as they're clearly defined)
+            'Water': 3,            # Open water
+            'Wet land': 4,          # Semi-aquatic areas
+            'Moss and lichen': 5,          # Semi-aquatic areas
+            'Mangrove': 6,          # Special water-associated vegetation
+            
+            # Vegetation (medium priority)
+            'Tree': 12,              # Distinct tree cover
+            'Agriculture land': 11,   # Managed vegetation
+            'Shrub': 10,             # Medium height vegetation
+            'Rangeland': 9,         # Low vegetation
+            
+            # Natural Non-Vegetation (lower priority as they're often default classifications)
+            'Snow and ice': 8,      # Distinct natural cover
+            'Bareland': 7,          # Exposed ground
+            
+            # Uncertain
+            'No Data': 14            # Lowest priority as it represents uncertainty
         }
+        # return { 
+        #     'Bareland': 4, 
+        #     'Rangeland': 6, 
+        #     'Developed space': 8, 
+        #     'Road': 1, 
+        #     'Tree': 7, 
+        #     'Water': 3, 
+        #     'Agriculture land': 5, 
+        #     'Building': 2 
+        # }
 
 def create_land_cover_polygons(land_cover_geojson):
     land_cover_polygons = []

@@ -33,6 +33,11 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     response = requests.get(overpass_url, params={'data': overpass_query})
     data = response.json()
     
+    # Build a mapping from (type, id) to element
+    id_map = {}
+    for element in data['elements']:
+        id_map[(element['type'], element['id'])] = element
+    
     # Process the response and create GeoJSON features
     features = []
     
@@ -49,12 +54,12 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
             except ValueError:
                 pass
         
-        levels = properties.get('building:levels', properties.get('levels', None))
-        if levels is not None:
-            try:
-                return float(levels) * 5.0  # Assume 5 meters per level
-            except ValueError:
-                pass
+        # levels = properties.get('building:levels', properties.get('levels', None))
+        # if levels is not None:
+        #     try:
+        #         return float(levels) * 5.0  # Assume 5 meters per level
+        #     except ValueError:
+        #         pass
         
         return 0  # Default height if no valid height or levels found
     
@@ -71,19 +76,21 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
         try:
             min_height = float(min_height)
         except ValueError:
-            try:
-                min_height = float(min_level) * 5.0
-            except ValueError:
-                min_height = 0
+            # try:
+            #     min_height = float(min_level) * 5.0
+            # except ValueError:
+            #     min_height = 0
+            min_height = 0
         
         levels = properties.get('building:levels', properties.get('levels', None))
         try:
             levels = float(levels) if levels is not None else None
         except ValueError:
             levels = None
-            
+                
         # Extract additional properties, including those relevant to artworks
         extracted_props = {
+            "id": element['id'],
             "height": height,
             "min_height": min_height,
             "confidence": -1.0,
@@ -137,29 +144,32 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     # Process each element, handling relations and their way members
     for element in data['elements']:
         if element['type'] == 'way':
-            coords = [(node['lon'], node['lat']) for node in element['geometry']]
-            feature = create_polygon_feature(coords, extract_properties(element))
-            if feature:
-                features.append(feature)
-                
+            if 'geometry' in element:
+                coords = [(node['lon'], node['lat']) for node in element['geometry']]
+                properties = extract_properties(element)
+                feature = create_polygon_feature(coords, properties)
+                if feature:
+                    features.append(feature)
+                    
         elif element['type'] == 'relation':
             properties = extract_properties(element)
             
             # Process each member of the relation
             for member in element['members']:
-                if member['type'] == 'way' and 'geometry' in member:
-                    coords = [(node['lon'], node['lat']) for node in member['geometry']]
-                    is_inner = member['role'] == 'inner'
-                    
-                    feature = create_polygon_feature(coords, properties, is_inner)
-                    if feature:
-                        feature['properties']['role'] = member['role']
-                        features.append(feature)
-    
+                if member['type'] == 'way':
+                    # Look up the way in id_map
+                    way = id_map.get(('way', member['ref']))
+                    if way and 'geometry' in way:
+                        coords = [(node['lon'], node['lat']) for node in way['geometry']]
+                        is_inner = member['role'] == 'inner'
+                        member_properties = properties.copy()
+                        member_properties['member_id'] = way['id']  # Include id of the way
+                        feature = create_polygon_feature(coords, member_properties, is_inner)
+                        if feature:
+                            feature['properties']['role'] = member['role']
+                            features.append(feature)
+        
     return features
-
-
-
 
 
 
@@ -600,41 +610,168 @@ def convert_feature(feature):
 
     return new_feature
 
-# Land cover classifications mapping with class names
+
+from collections import defaultdict
+import requests
+import json
+from shapely.geometry import shape, mapping, Polygon
+from shapely.ops import transform
+import pyproj
+from osm2geojson import json2geojson
+
+# New classification_mapping with reordered classes
 classification_mapping = {
-    1: {'name': 'Bareland', 'tags': ['quarry', 'brownfield', 'bare_rock', 'scree', 'shingle', 'rock', 'sand', 'desert', 'landfill', 'beach']},
-    2: {'name': 'Rangeland', 'tags': ['grass', 'meadow', 'grassland', 'heath', 'scrub', 'garden', 'park']},
-    3: {'name': 'Developed space', 'tags': ['industrial', 'retail', 'commercial', 'residential', 'construction', 'railway', 'parking', 'islet', 'island']},
-    4: {'name': 'Road', 'tags': ['highway']},
-    5: {'name': 'Tree', 'tags': ['wood', 'forest', 'tree', 'tree_row']},
-    6: {'name': 'Water', 'tags': ['water', 'waterway', 'reservoir', 'basin', 'bay', 'ocean']},
-    7: {'name': 'Agriculture land', 'tags': ['farmland', 'orchard', 'vineyard', 'plant_nursery', 'greenhouse_horticulture', 'flowerbed', 'allotments']},
-    8: {'name': 'Building', 'tags': ['building']}
+    11: {'name': 'Road', 'tags': ['highway', 'road', 'path', 'track', 'street']},
+    12: {'name': 'Building', 'tags': ['building', 'house', 'apartment', 'commercial_building', 'industrial_building']},
+    10: {'name': 'Developed space', 'tags': ['industrial', 'retail', 'commercial', 'residential', 'construction', 'railway', 'parking', 'islet', 'island']},
+    0: {'name': 'Bareland', 'tags': ['quarry', 'brownfield', 'bare_rock', 'scree', 'shingle', 'rock', 'sand', 'desert', 'landfill', 'beach']},
+    1: {'name': 'Rangeland', 'tags': ['grass', 'meadow', 'grassland', 'heath', 'garden', 'park']},
+    2: {'name': 'Shrub', 'tags': ['scrub', 'shrubland', 'bush', 'thicket']},
+    3: {'name': 'Agriculture land', 'tags': ['farmland', 'orchard', 'vineyard', 'plant_nursery', 'greenhouse_horticulture', 'flowerbed', 'allotments', 'cropland']},
+    4: {'name': 'Tree', 'tags': ['wood', 'forest', 'tree', 'tree_row', 'tree_canopy']},
+    5: {'name': 'Moss and lichen', 'tags': ['moss', 'lichen', 'tundra_vegetation']},
+    6: {'name': 'Wet land', 'tags': ['wetland', 'marsh', 'swamp', 'bog', 'fen', 'flooded_vegetation']},
+    7: {'name': 'Mangrove', 'tags': ['mangrove', 'mangrove_forest', 'mangrove_swamp']},
+    8: {'name': 'Water', 'tags': ['water', 'waterway', 'reservoir', 'basin', 'bay', 'ocean', 'sea', 'river', 'lake']},
+    9: {'name': 'Snow and ice', 'tags': ['glacier', 'snow', 'ice', 'snowfield', 'ice_shelf']},
+    13: {'name': 'No Data', 'tags': ['unknown', 'no_data', 'clouds', 'undefined']}
 }
+
+# Mapping of classification tags to OSM key-value pairs
+tag_osm_key_value_mapping = {
+    # Road
+    'highway': {'highway': '*'},
+    'road': {'highway': '*'},
+    'path': {'highway': 'path'},
+    'track': {'highway': 'track'},
+    'street': {'highway': '*'},
+    
+    # Building
+    'building': {'building': '*'},
+    'house': {'building': 'house'},
+    'apartment': {'building': 'apartments'},
+    'commercial_building': {'building': 'commercial'},
+    'industrial_building': {'building': 'industrial'},
+    
+    # Developed space
+    'industrial': {'landuse': 'industrial'},
+    'retail': {'landuse': 'retail'},
+    'commercial': {'landuse': 'commercial'},
+    'residential': {'landuse': 'residential'},
+    'construction': {'landuse': 'construction'},
+    'railway': {'landuse': 'railway'},
+    'parking': {'amenity': 'parking'},
+    'islet': {'place': 'islet'},
+    'island': {'place': 'island'},
+    
+    # Bareland
+    'quarry': {'landuse': 'quarry'},
+    'brownfield': {'landuse': 'brownfield'},
+    'bare_rock': {'natural': 'bare_rock'},
+    'scree': {'natural': 'scree'},
+    'shingle': {'natural': 'shingle'},
+    'rock': {'natural': 'rock'},
+    'sand': {'natural': 'sand'},
+    'desert': {'natural': 'desert'},
+    'landfill': {'landuse': 'landfill'},
+    'beach': {'natural': 'beach'},
+    
+    # Rangeland
+    'grass': {'landuse': 'grass'},
+    'meadow': {'landuse': 'meadow'},
+    'grassland': {'natural': 'grassland'},
+    'heath': {'natural': 'heath'},
+    'garden': {'leisure': 'garden'},
+    'park': {'leisure': 'park'},
+    
+    # Shrub
+    'scrub': {'natural': 'scrub'},
+    'shrubland': {'natural': 'scrub'},
+    'bush': {'natural': 'scrub'},
+    'thicket': {'natural': 'scrub'},
+    
+    # Agriculture land
+    'farmland': {'landuse': 'farmland'},
+    'orchard': {'landuse': 'orchard'},
+    'vineyard': {'landuse': 'vineyard'},
+    'plant_nursery': {'landuse': 'plant_nursery'},
+    'greenhouse_horticulture': {'landuse': 'greenhouse_horticulture'},
+    'flowerbed': {'landuse': 'flowerbed'},
+    'allotments': {'landuse': 'allotments'},
+    'cropland': {'landuse': 'farmland'},
+    
+    # Tree
+    'wood': {'natural': 'wood'},
+    'forest': {'landuse': 'forest'},
+    'tree': {'natural': 'tree'},
+    'tree_row': {'natural': 'tree_row'},
+    'tree_canopy': {'natural': 'tree_canopy'},
+    
+    # Moss and lichen
+    'moss': {'natural': 'fell'},
+    'lichen': {'natural': 'fell'},
+    'tundra_vegetation': {'natural': 'fell'},
+    
+    # Wet land
+    'wetland': {'natural': 'wetland'},
+    'marsh': {'wetland': 'marsh'},
+    'swamp': {'wetland': 'swamp'},
+    'bog': {'wetland': 'bog'},
+    'fen': {'wetland': 'fen'},
+    'flooded_vegetation': {'natural': 'wetland'},
+    
+    # Mangrove
+    'mangrove': {'natural': 'wetland', 'wetland': 'mangrove'},
+    'mangrove_forest': {'natural': 'wetland', 'wetland': 'mangrove'},
+    'mangrove_swamp': {'natural': 'wetland', 'wetland': 'mangrove'},
+    
+    # Water
+    'water': {'natural': 'water'},
+    'waterway': {'waterway': '*'},
+    'reservoir': {'landuse': 'reservoir'},
+    'basin': {'landuse': 'basin'},
+    'bay': {'natural': 'bay'},
+    'ocean': {'natural': 'water', 'water': 'ocean'},
+    'sea': {'natural': 'water', 'water': 'sea'},
+    'river': {'waterway': 'river'},
+    'lake': {'natural': 'water', 'water': 'lake'},
+    
+    # Snow and ice
+    'glacier': {'natural': 'glacier'},
+    'snow': {'natural': 'glacier'},
+    'ice': {'natural': 'glacier'},
+    'snowfield': {'natural': 'glacier'},
+    'ice_shelf': {'natural': 'glacier'},
+    
+    # No Data
+    'unknown': {'FIXME': '*'},
+    'no_data': {'FIXME': '*'},
+    'clouds': {'natural': 'cloud'},
+    'undefined': {'FIXME': '*'}
+}
+
 # Function to assign classification code and name based on tags
 def get_classification(tags):
     for code, info in classification_mapping.items():
-        tag_list = info['tags']
-        for tag in tag_list:
-            if tag in tags.values():
+        for tag in info['tags']:
+            osm_mappings = tag_osm_key_value_mapping.get(tag)
+            if osm_mappings:
+                for key, value in osm_mappings.items():
+                    if key in tags:
+                        if value == '*' or tags[key] == value:
+                            # Debug statement to trace matching
+                            # print(f"Matched tag '{tag}' with OSM mapping '{key}: {value}' for class '{info['name']}'")
+                            return code, info['name']
+            # Special handling for 'place' with 'islet' and 'island'
+            if tag in ['islet', 'island'] and tags.get('place') == tag:
                 return code, info['name']
-            # Special handling for keys with any value
-            if tag == 'highway' and 'highway' in tags:
-                return code, info['name']
-            if tag == 'building' and 'building' in tags:
-                return code, info['name']
-            if tag == 'waterway' and 'waterway' in tags:
-                return code, info['name']
-            if tag in ['islet', 'island'] and 'place' in tags and tags['place'] == tag:
-                return code, info['name']
-        # Additional check for 'area:highway' (roads mapped as areas)
-        if 'area:highway' in tags:
-            return 4, 'Road'
+    # Additional check for 'area:highway' (roads mapped as areas)
+    if 'area:highway' in tags:
+        return 11, 'Road'
     return None, None
 
 # Function to swap coordinates from (lon, lat) to (lat, lon)
 def swap_coordinates(geom_mapping):
-    geom_type = geom_mapping['type']
     coords = geom_mapping['coordinates']
 
     def swap_coords(coord_list):
@@ -644,8 +781,7 @@ def swap_coordinates(geom_mapping):
             lon, lat = coord_list
             return [lat, lon]
 
-    new_coords = swap_coords(coords)
-    geom_mapping['coordinates'] = new_coords
+    geom_mapping['coordinates'] = swap_coords(coords)
     return geom_mapping
 
 def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
@@ -656,45 +792,21 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     # Convert vertices to a string for the Overpass query (lat lon)
     polygon_coords = ' '.join(f"{lat} {lon}" for lat, lon in rectangle_vertices)
 
-    # Extract OSM keys and values from the classification mapping
-    osm_keys_values = {
-        'landuse': [],
-        'natural': [],
-        'leisure': [],
-        'amenity': [],
-        'highway': [],
-        'building': [],
-        'place': []
-    }
+    # Initialize osm_keys_values
+    osm_keys_values = defaultdict(list)
 
+    # Map tags to osm_keys_values
     for info in classification_mapping.values():
         tags = info['tags']
         for tag in tags:
-            if tag in ['islet', 'island']:
-                osm_keys_values['place'].append(tag)  # Adding 'place' key
-            if tag in ['industrial', 'retail', 'commercial', 'construction', 'railway', 'farmland', 'orchard', 'vineyard', 'residential', 
-                      'plant_nursery', 'greenhouse_horticulture', 'flowerbed', 'allotments', 'quarry', 'brownfield', 'landfill',
-                      'grass', 'meadow', 'forest', 'reservoir', 'basin']:
-                osm_keys_values['landuse'].append(tag)
-            elif tag in ['wood', 'tree', 'tree_row', 'bare_rock', 'scree', 'shingle', 'rock', 'sand', 'desert',
-                        'grassland', 'heath', 'scrub', 'water', 'beach']:
-                osm_keys_values['natural'].append(tag)
-            elif tag in ['garden', 'park']:
-                osm_keys_values['leisure'].append(tag)
-            elif tag == 'parking':
-                osm_keys_values['amenity'].append(tag)
-            elif tag == 'highway':
-                osm_keys_values['highway'].append('*')  # Fetch all highways
-            elif tag == 'building':
-                osm_keys_values['building'].append('*')  # Fetch all buildings
-            elif tag in ['bay', 'ocean']:
-                osm_keys_values['natural'].append(tag)
-            elif tag in ['water', 'reservoir', 'basin']:
-                osm_keys_values['natural'].append(tag)
-            elif tag == 'waterway':
-                osm_keys_values['waterway'] = ['*']
-            elif tag in ['reservoir', 'basin']:
-                osm_keys_values['landuse'].append(tag)
+            osm_mappings = tag_osm_key_value_mapping.get(tag)
+            if osm_mappings:
+                for key, value in osm_mappings.items():
+                    if value == '*':
+                        osm_keys_values[key] = ['*']  # Fetch all values for this key
+                    else:
+                        if osm_keys_values[key] != ['*'] and value not in osm_keys_values[key]:
+                            osm_keys_values[key].append(value)
 
     # Build the Overpass API query
     query_parts = []
@@ -702,11 +814,6 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     # Add queries for each key
     for key, values in osm_keys_values.items():
         if values:
-            if key == 'place':
-                # Handle 'place' separately
-                for place_value in values:
-                    query_parts.append(f'way["place"="{place_value}"](poly:"{polygon_coords}");')
-                    query_parts.append(f'relation["place"="{place_value}"](poly:"{polygon_coords}");')
             if values == ['*']:
                 # Fetch all features with this key
                 query_parts.append(f'way["{key}"](poly:"{polygon_coords}");')
@@ -714,15 +821,10 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
             else:
                 # Remove duplicates
                 values = list(set(values))
-                # Fetch features with specific values
+                # Build a regex pattern for the values
                 values_regex = '|'.join(values)
                 query_parts.append(f'way["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
                 query_parts.append(f'relation["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
-
-    # Add waterway separately if present
-    if 'waterway' in osm_keys_values:
-        query_parts.append(f'way["waterway"](poly:"{polygon_coords}");')
-        query_parts.append(f'relation["waterway"](poly:"{polygon_coords}");')
 
     # Combine all query parts
     query_body = "\n  ".join(query_parts)
@@ -767,7 +869,6 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     filtered_features = []
 
     for feature in geojson_data['features']:
-        feature_id = feature['properties'].get('id', 'unknown')
         geom = shape(feature['geometry'])
         if not (geom.is_valid and geom.intersects(rectangle_polygon)):
             continue  # Skip invalid or non-intersecting geometries
@@ -776,22 +877,18 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
         tags = feature['properties'].get('tags', {})
         classification_code, classification_name = get_classification(tags)
         if classification_code is None:
-            feature_id = feature.get('id', 'unknown id')
-            print(f"Skipping feature id: {feature_id} due to missing classification.")
             continue  # Skip if no classification
 
-        # print(f"Processing feature id: {feature_id}, type: {classification_name}")
-
         # Exclude footpaths for roads
-        if classification_code == 4:
-            highway_value = feature['properties']['tags'].get('highway', '')
+        if classification_code == 11:
+            highway_value = tags.get('highway', '')
             # Exclude footpaths, paths, pedestrian, steps, cycleway, bridleway
             if highway_value in ['footway', 'path', 'pedestrian', 'steps', 'cycleway', 'bridleway']:
                 continue  # Skip this feature
 
             # Get width or lanes
-            width_value = feature['properties']['tags'].get('width')
-            lanes_value = feature['properties']['tags'].get('lanes')
+            width_value = tags.get('width')
+            lanes_value = tags.get('lanes')
 
             # Initialize buffer_distance
             buffer_distance = None
@@ -817,7 +914,7 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
             if buffer_distance is None:
                 continue  # Skip if buffer_distance is None
 
-            if geom.geom_type == 'LineString' or geom.geom_type == 'MultiLineString':
+            if geom.geom_type in ['LineString', 'MultiLineString']:
                 # Project to a planar coordinate system for buffering
                 geom_proj = transform(project, geom)
                 # Buffer the line
@@ -825,20 +922,14 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
                 # Project back to WGS84
                 buffered_geom = transform(project_back, buffered_geom_proj)
                 # Clip to rectangle polygon
-                buffered_geom_clipped = buffered_geom.intersection(rectangle_polygon)
-                # Use the buffered geometry
-                geom = buffered_geom_clipped
+                geom = buffered_geom.intersection(rectangle_polygon)
             else:
                 continue  # Skip if not LineString or MultiLineString
-        else:
-            # For non-road features, use the geometry as is
-            pass  # 'geom' is already defined
 
         # Now, handle Polygon and MultiPolygon
         if geom.is_empty:
             continue  # Skip empty geometries
 
-        # Now, handle Polygon and MultiPolygon
         if geom.geom_type == 'Polygon':
             # Swap coordinates to (lat, lon) order
             geom_mapping = mapping(geom)
@@ -854,7 +945,6 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
         elif geom.geom_type == 'MultiPolygon':
             # Split into multiple Polygon features
             for poly in geom.geoms:
-                # Swap coordinates to (lat, lon) order
                 geom_mapping = mapping(poly)
                 geom_mapping = swap_coordinates(geom_mapping)
                 new_feature = {
@@ -869,5 +959,4 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
             # Skip other geometry types
             pass
 
-    # Create the final GeoJSON object
     return filtered_features

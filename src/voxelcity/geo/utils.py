@@ -13,11 +13,18 @@ from fiona.crs import from_epsg
 from rtree import index
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+from geopy.extra.rate_limiter import RateLimiter
 import warnings
 import reverse_geocoder as rg
 import pycountry
 
+from timezonefinder import TimezoneFinder
+import pytz
+from datetime import datetime
+
 warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+
+floor_height = 2.5
 
 def tile_from_lat_lon(lat, lon, level_of_detail):
     sin_lat = math.sin(lat * math.pi / 180)
@@ -186,6 +193,82 @@ def get_coordinates_from_cityname(place_name):
         print(f"Error: Geocoding service timed out or encountered an error for {place_name}")
         return None
 
+def get_city_country_name_from_rectangle(coordinates):
+    # Calculate the center point of the rectangle
+    latitudes = [coord[0] for coord in coordinates]
+    longitudes = [coord[1] for coord in coordinates]
+    center_lat = sum(latitudes) / len(latitudes)
+    center_lon = sum(longitudes) / len(longitudes)
+    center_coord = (center_lat, center_lon)
+
+    # Initialize Nominatim API with a unique user agent
+    geolocator = Nominatim(user_agent="your_app_name (your_email@example.com)")
+
+    # Adding a delay between queries to respect usage limits
+    reverse = RateLimiter(geolocator.reverse, min_delay_seconds=2, error_wait_seconds=5, max_retries=3)
+
+    try:
+        # Reverse geocoding the center point with language parameter set to English
+        location = reverse(center_coord, language='en')
+        if location:
+            address = location.raw['address']
+            city = address.get('city', '') or address.get('town', '') or address.get('village', '') or address.get('county', '')
+            country = address.get('country', '')
+            return f"{city}/ {country}"
+        else:
+            print("Location not found")
+    except Exception as e:
+        print(f"Error retrieving location for {center_coord}: {e}")
+
+def get_timezone_info(rectangle_coords):
+    """
+    Calculates the time zone name and central meridian longitude
+    from the center location of the input rectangle.
+
+    Parameters:
+        rectangle_coords (list of tuples): A list of (latitude, longitude) tuples defining the rectangle.
+
+    Returns:
+        tuple: A tuple containing the time zone name (e.g., "UTC+4.00") and
+               the central meridian longitude as a string formatted to 5 decimal places.
+    """
+    # Calculate the center point of the rectangle
+    latitudes = [coord[0] for coord in rectangle_coords]
+    longitudes = [coord[1] for coord in rectangle_coords]
+    center_lat = sum(latitudes) / len(latitudes)
+    center_lon = sum(longitudes) / len(longitudes)
+    center_coord = (center_lat, center_lon)
+    
+    # Initialize TimezoneFinder
+    tf = TimezoneFinder()
+    
+    # Get the timezone at the center coordinate
+    timezone_str = tf.timezone_at(lng=center_lon, lat=center_lat)
+    
+    if timezone_str:
+        # Get the timezone object
+        timezone = pytz.timezone(timezone_str)
+        # Get the current time in that timezone
+        now = datetime.now(timezone)
+        # Get UTC offset in seconds and convert to hours
+        offset_seconds = now.utcoffset().total_seconds()
+        offset_hours = offset_seconds / 3600
+
+        # Format the UTC offset string with fractional hours
+        utc_offset = f"UTC{offset_hours:+.2f}"
+
+        # Calculate the central meridian of the timezone
+        # Each UTC hour corresponds to 15 degrees longitude
+        timezone_longitude = offset_hours * 15
+
+        # Format timezone_longitude to 5 decimal places
+        timezone_longitude_str = f"{timezone_longitude:.5f}"
+
+        # Return the results
+        return utc_offset, timezone_longitude_str
+    else:
+        raise ValueError("Time zone not found for the given location.")
+
 # # Sampling and Classification Functions
 # def sample_geotiff(geotiff_path, transformed_coords):
 #     with rasterio.open(geotiff_path) as src:
@@ -242,23 +325,53 @@ def create_building_polygons(filtered_buildings):
     building_polygons = []
     idx = index.Index()
     count = 0
+    id_list = []
+    for i, building in enumerate(filtered_buildings):
+        if building['properties'].get('id') is not None:
+            id_list.append(building['properties']['id'])
+    if len(id_list) > 0:
+        id_count = max(id_list)+1
+    else:
+        id_count = 0
+
     for i, building in enumerate(filtered_buildings):
         polygon = Polygon(building['geometry']['coordinates'][0])
-        height = building['properties']['height']
-        if building['properties'].get('min_height') is not None:
-            min_height = building['properties']['min_height']
+        height = building['properties'].get('height')
+        levels = building['properties'].get('levels')
+        floors = building['properties'].get('num_floors')
+        min_height = building['properties'].get('min_height')
+        min_level = building['properties'].get('min_level')    
+        min_floor = building['properties'].get('min_floor')        
+
+        if (height is None) or (height<=0):
+            if levels is not None:
+                height = floor_height * levels
+            elif floors is not None:
+                height = floor_height * floors
+            else:
+                count += 1
+                height = np.nan
+
+        if (min_height is None) or (min_height<=0):
+            if min_level is not None:
+                min_height = floor_height * float(min_level) 
+            elif min_floor is not None:
+                min_height = floor_height * float(min_floor)
+            else:
+                min_height = 0
+
+        if building['properties'].get('id') is not None:
+            feature_id = building['properties']['id']
         else:
-            min_height = 0
-        if (height <= 0) or (height == None):
-            # print("A building with a height of 0 meters was found. A height of 10 meters was set instead.")
-            count += 1
-            # height = 10
-            height = np.nan
+            feature_id = id_count
+            id_count += 1
+
         if building['properties'].get('is_inner') is not None:
             is_inner = building['properties']['is_inner']
         else:
             is_inner = False
-        building_polygons.append((polygon, height, min_height, is_inner))
+
+        building_polygons.append((polygon, height, min_height, is_inner, feature_id))
         idx.insert(i, polygon.bounds)
 
     # print(f"{count} of the total {len(filtered_buildings)} buildings did not have height data. A height of 10 meters was set instead.")

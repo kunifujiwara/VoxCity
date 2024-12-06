@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numba import njit, prange
 
+from ..file.geojson import find_building_containing_point
+
 # JIT-compiled trace_ray function
 @njit
 def trace_ray(voxel_data, origin, direction):
@@ -101,7 +103,7 @@ def compute_gvi_map(voxel_data, ray_directions, view_height_voxel=0):
             found_observer = False
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if voxel_data[x, y, z - 1] in (-3, 6):
+                    if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
                         gvi_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -278,7 +280,7 @@ def compute_svi_map(voxel_data, ray_directions, view_height_voxel=0):
             found_observer = False
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if voxel_data[x, y, z - 1] in (-3, 6):
+                    if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
                         svi_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -351,3 +353,196 @@ def get_sky_view_index(voxel_data, view_height_voxel=0):
     plt.show()
 
     return np.flipud(svi_map)
+
+def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
+
+    building_id_grid = np.flipud(building_id_grid_ori.copy())
+
+    # Get x,y positions from building_id_grid where landmarks are
+    positions = np.where(np.isin(building_id_grid, ids))
+
+    # Loop through each x,y position
+    for i in range(len(positions[0])):
+        x, y = positions[0][i], positions[1][i]
+        # Replace -3s with -10s at this x,y position for all z
+        z_mask = voxelcity_grid[x, y, :] == -3
+        voxelcity_grid[x, y, z_mask] = mark
+
+@njit
+def trace_ray_to_target(voxel_data, origin, target, opaque_values):
+    nx, ny, nz = voxel_data.shape
+    x0, y0, z0 = origin
+    x1, y1, z1 = target
+    dx = x1 - x0
+    dy = y1 - y0
+    dz = z1 - z0
+
+    # Normalize direction
+    length = np.sqrt(dx*dx + dy*dy + dz*dz)
+    if length == 0.0:
+        return True  # Origin and target are at the same location
+    dx /= length
+    dy /= length
+    dz /= length
+
+    # Initialize variables
+    x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5  # Start at center of voxel
+    i, j, k = int(x0), int(y0), int(z0)
+
+    # Determine the step direction
+    step_x = 1 if dx >= 0 else -1
+    step_y = 1 if dy >= 0 else -1
+    step_z = 1 if dz >= 0 else -1
+
+    # Compute tMax and tDelta
+    if dx != 0:
+        t_max_x = ((i + (step_x > 0)) - x) / dx
+        t_delta_x = abs(1 / dx)
+    else:
+        t_max_x = np.inf
+        t_delta_x = np.inf
+
+    if dy != 0:
+        t_max_y = ((j + (step_y > 0)) - y) / dy
+        t_delta_y = abs(1 / dy)
+    else:
+        t_max_y = np.inf
+        t_delta_y = np.inf
+
+    if dz != 0:
+        t_max_z = ((k + (step_z > 0)) - z) / dz
+        t_delta_z = abs(1 / dz)
+    else:
+        t_max_z = np.inf
+        t_delta_z = np.inf
+
+    # Main loop
+    while True:
+        # Check voxel value
+        if (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
+            voxel_value = voxel_data[i, j, k]
+            if voxel_value in opaque_values:
+                return False  # Ray is blocked
+        else:
+            return False  # Out of bounds
+
+        # Check if we have reached the target voxel
+        if i == int(x1) and j == int(y1) and k == int(z1):
+            return True  # Ray has reached the target
+
+        # Move to next voxel boundary
+        if t_max_x < t_max_y:
+            if t_max_x < t_max_z:
+                t_max = t_max_x
+                t_max_x += t_delta_x
+                i += step_x
+            else:
+                t_max = t_max_z
+                t_max_z += t_delta_z
+                k += step_z
+        else:
+            if t_max_y < t_max_z:
+                t_max = t_max_y
+                t_max_y += t_delta_y
+                j += step_y
+            else:
+                t_max = t_max_z
+                t_max_z += t_delta_z
+                k += step_z
+
+@njit
+def compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values):
+    # Check visibility to all landmarks
+    for idx in range(landmark_positions.shape[0]):
+        target = landmark_positions[idx].astype(np.float64)
+        is_visible = trace_ray_to_target(voxel_data, observer_location, target, opaque_values)
+        if is_visible:
+            return 1  # Visible to at least one landmark
+    return 0  # Not visible to any landmarks
+
+@njit(parallel=True)
+def compute_visibility_map(voxel_data, landmark_positions, opaque_values):
+    nx, ny, nz = voxel_data.shape
+    visibility_map = np.full((nx, ny), np.nan)
+
+    for x in prange(nx):
+        for y in range(ny):
+            found_observer = False
+            for z in range(1, nz):
+                if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
+                    # This is the lowest void cell
+                    if voxel_data[x, y, z - 1] in (-3, -2, 7, 8, 9):  # Building or tree below
+                        visibility_map[x, y] = np.nan
+                        found_observer = True
+                        break
+                    else:
+                        observer_location = np.array([x, y, z], dtype=np.float64)
+                        visible = compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
+                        visibility_map[x, y] = visible
+                        found_observer = True
+                        break
+            if not found_observer:
+                visibility_map[x, y] = np.nan
+
+    return visibility_map
+
+def compute_landmark_visibility(voxel_data, target_value=-10):
+    # Find landmark positions
+    landmark_positions = np.argwhere(voxel_data == target_value)
+
+    if landmark_positions.shape[0] == 0:
+        raise ValueError(f"No landmark with value {target_value} found in the voxel data.")
+
+    # Define opaque voxel values (values that block the ray)
+    # Opaque values are all values except 0 (void) and the target_value (landmark)
+    unique_values = np.unique(voxel_data)
+    opaque_values = np.array([v for v in unique_values if v != 0 and v != target_value], dtype=np.int32)
+
+    # Compute the visibility map
+    visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values)
+
+    # Visualization of the visibility map in 2D
+    cmap = plt.cm.get_cmap('viridis', 2).copy()
+    cmap.set_bad(color='lightgray')
+
+    plt.figure(figsize=(10, 8))
+    plt.imshow(visibility_map.T, origin='lower', cmap=cmap, vmin=0, vmax=1)
+    plt.colorbar(label='Visibility (1: Visible, 0: Not Visible)')
+    plt.title('Landmark Visibility Map')
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.show()
+
+    # Alternative visualization
+    plt.figure(figsize=(10, 8))
+    plt.imshow(np.flipud(visibility_map), origin='lower', cmap=cmap, vmin=0, vmax=1)
+    plt.axis('off')  # Remove axes, ticks, and tick numbers
+    plt.show()
+
+    return np.flipud(visibility_map)
+
+def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, rectangle_vertices=None, landmark_ids=None):
+
+    # Paste your GeoJSON features directly into the features variable
+    features = building_geojson  # Continue with your full data...
+
+    if landmark_ids is None:
+        if rectangle_vertices is None:
+            "Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids."
+            return None
+        # Extract all latitudes and longitudes
+        lats = [coord[0] for coord in rectangle_vertices]
+        lons = [coord[1] for coord in rectangle_vertices]
+        
+        # Calculate center by averaging min and max values
+        center_lat = (min(lats) + max(lats)) / 2
+        center_lon = (min(lons) + max(lons)) / 2
+        
+        target_point = (center_lat, center_lon)
+        landmark_ids = find_building_containing_point(features, target_point)
+
+    target_value = -30
+    mark_building_by_id(voxelcity_grid, building_id_grid, landmark_ids, target_value)
+    landmark_vis_map = compute_landmark_visibility(voxelcity_grid, target_value=target_value)
+
+    return landmark_vis_map

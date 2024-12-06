@@ -12,6 +12,9 @@ import pyproj
 from pyproj import CRS
 # from shapely.geometry import box
 import seaborn as sns
+import random
+import folium
+import math
 
 from .lc import get_land_cover_classes
 # from ..geo.geojson import filter_buildings
@@ -29,39 +32,49 @@ from ..geo.utils import (
     transform_coords,
 )
 
-# default_voxel_color_map = {
-#     -3: [180, 187, 216],  #(lightgray) 'Building',
-#     -2: [48, 176, 158],   #(forestgreen) 'Tree',
-#     -1: [188, 143, 143],  #(saddle brown) 'Underground',
-#     #0: 'Air (Void)',
-#     1: [239, 228, 176],   #'Bareland (ground surface)',
-#     2: [183, 226, 150],   #(greenyellow) 'Rangeland (ground surface)',
-#     3: [108, 119, 129],   #(darkgray) 'Developed space (ground surface)',
-#     4: [59, 62, 87],      #(dimgray) 'Road (ground surface)',
-#     5: [183, 226, 150],   #(greenyellow) 'Tree (ground surface)',
-#     6: [80, 142, 204],    #(blue) 'Water (ground surface)',
-#     7: [150, 226, 180],   #(lightgreen) 'Agriculture land (ground surface)',
-#     8: [150, 166, 190]    #(lightgray) 'Building (ground surface)'
-# }
+def get_material_dict():
+    return {
+        "unknown": -3,
+        "brick": -11,  
+        "wood": -12,  
+        "concrete": -13,  
+        "metal": -14,  
+        "stone": -15,  
+        "glass": -16,  
+        "plaster": -17,  
+    }
 
-# Define the color map (using the provided color map)
-default_voxel_color_map = {
-    -99: [0, 0, 0],  # void,
-    -3: [180, 187, 216],  # (lightgray) 'Building',
-    -2: [78, 99, 63],   # (forestgreen) 'Tree',
-    -1: [188, 143, 143],  # (saddle brown) 'Underground',
-    #0: 'Air (Void)',
-    1: [239, 228, 176],   # 'Bareland (ground surface)',
-    2: [123, 130, 59],   # (greenyellow) 'Rangeland (ground surface)',
-    3: [108, 119, 129],   # (darkgray) 'Developed space (ground surface)',
-    4: [59, 62, 87],      # (dimgray) 'Road (ground surface)',
-    5: [116, 150, 66],   # (greenyellow) 'Tree (ground surface)',
-    6: [44, 66, 133],    # (blue) 'Water (ground surface)',
-    7: [112, 120, 56],   # (lightgreen) 'Agriculture land (ground surface)',
-    8: [150, 166, 190],    # (lightgray) 'Building (ground surface)'
-}
+def get_default_voxel_color_map():
+    return {
+        -99: [0, 0, 0],  # void,
+        -30: [255, 0, 102],  # (Pink) 'Landmark',
+        -17: [238, 242, 234],  # (light gray) 'plaster',
+        -16: [56, 78, 84],  # (Dark blue) 'glass',
+        -15: [147, 140, 114],  # (Light brown) 'stone',
+        -14: [139, 149, 159],  # (Gray) 'metal',
+        -13: [186, 187, 181],  # (Gray) 'concrete',
+        -12: [248, 166, 2],  # (Orange) 'wood',
+        -11: [81, 59, 56],  # (Dark red) 'brick',
+        -3: [180, 187, 216],  # Building
+        -2: [78, 99, 63],     # Tree
+        -1: [188, 143, 143],  # Underground
+        1: [239, 228, 176],   # 'Bareland (ground surface)',
+        2: [123, 130, 59],   # 'Rangeland (ground surface)',
+        3: [97, 140, 86],   # 'Shrub (ground surface)',
+        4: [112, 120, 56],   #  'Agriculture land (ground surface)',
+        5: [116, 150, 66],   #  'Tree (ground surface)',
+        6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
+        7: [77, 118, 99],    #  'Wet land (ground surface)',
+        8: [22, 61, 51],    #  'Mangrove (ground surface)',
+        9: [44, 66, 133],    #  'Water (ground surface)',
+        10: [205, 215, 224],    #  'Snow and ice (ground surface)',
+        11: [108, 119, 129],   #  'Developed space (ground surface)',
+        12: [59, 62, 87],      # 'Road (ground surface)',
+        13: [150, 166, 190],    #  'Building (ground surface)'
+        14: [239, 228, 176],    #  'No Data (ground surface)'
+    }
 
-def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_size=2.0, save_path=None):
+def visualize_3d_voxel(voxel_grid, color_map = get_default_voxel_color_map(), voxel_size=2.0, save_path=None):
     print("\tVisualizing 3D voxel data")
     # Create a figure and a 3D axis
     fig = plt.figure(figsize=(12, 10))
@@ -71,7 +84,7 @@ def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_si
     filled_voxels = voxel_grid != 0
     colors = np.zeros(voxel_grid.shape + (4,))  # RGBA
 
-    for val in range(-3, 13):  # Updated range to include -3 and -2
+    for val in range(-99, 15):  # Updated range to include -3 and -2
         mask = voxel_grid == val
         if val in color_map:
             rgb = [x/255 for x in color_map[val]]  # Normalize RGB values to [0, 1]
@@ -119,7 +132,7 @@ def visualize_3d_voxel(voxel_grid, color_map = default_voxel_color_map, voxel_si
     plt.show()
 
 
-def visualize_3d_voxel_plotly(voxel_grid, color_map = default_voxel_color_map, voxel_size=2.0):
+def visualize_3d_voxel_plotly(voxel_grid, color_map = get_default_voxel_color_map(), voxel_size=2.0):
     print("Preparing visualization...")
 
     print("Processing voxels...")
@@ -619,26 +632,48 @@ def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, mesh
     plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, type, vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap)
     
-def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
-    all_classes = list(land_cover_classes.values())# + ['No Data']
-    # for cls in all_classes:
-    #     if cls not in color_map:
-    #         color_map[cls] = [0.5, 0.5, 0.5]
+# def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
+#     all_classes = list(land_cover_classes.values())# + ['No Data']
+#     # for cls in all_classes:
+#     #     if cls not in color_map:
+#     #         color_map[cls] = [0.5, 0.5, 0.5]
 
-    sorted_classes = sorted(all_classes)
-    colors = [color_map[cls] for cls in sorted_classes]
+#     sorted_classes = sorted(all_classes)
+#     colors = [color_map[cls] for cls in sorted_classes]
+#     cmap = mcolors.ListedColormap(colors)
+
+#     bounds = np.arange(len(sorted_classes) + 1)
+#     norm = mcolors.BoundaryNorm(bounds, cmap.N)
+
+#     class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
+#     numeric_grid = np.vectorize(class_to_num.get)(grid)
+
+#     plt.figure(figsize=(10, 10))
+#     im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
+#     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
+#     cbar.set_ticklabels(sorted_classes)
+#     plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
+#     plt.xlabel('Grid Cells (X)')
+#     plt.ylabel('Grid Cells (Y)')
+#     plt.show()
+
+def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
+    all_classes = list(land_cover_classes.values())
+    unique_classes = list(dict.fromkeys(all_classes))  # Preserve order and remove duplicates
+
+    colors = [color_map[cls] for cls in unique_classes]
     cmap = mcolors.ListedColormap(colors)
 
-    bounds = np.arange(len(sorted_classes) + 1)
+    bounds = np.arange(len(unique_classes) + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
+    class_to_num = {cls: i for i, cls in enumerate(unique_classes)}
     numeric_grid = np.vectorize(class_to_num.get)(grid)
 
     plt.figure(figsize=(10, 10))
     im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
-    cbar.set_ticklabels(sorted_classes)
+    cbar.set_ticklabels(unique_classes)
     plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
     plt.xlabel('Grid Cells (X)')
     plt.ylabel('Grid Cells (Y)')
@@ -652,3 +687,319 @@ def visualize_numerical_grid(grid, mesh_size, title, cmap='viridis', label='Valu
     plt.xlabel('Grid Cells (X)')
     plt.ylabel('Grid Cells (Y)')
     plt.show()
+
+def get_modulo_numbers(window_ratio):
+    """
+    Determines the appropriate modulo numbers for x, y, z based on window_ratio.
+    
+    Parameters:
+    window_ratio: float between 0 and 1.0
+    
+    Returns:
+    tuple (x_mod, y_mod, z_mod): modulo numbers for each dimension
+    """
+    if window_ratio <= 0.125 + 0.0625:  # around 0.125
+        return (2, 2, 2)
+    elif window_ratio <= 0.25 + 0.125:  # around 0.25
+        combinations = [(2, 2, 1), (2, 1, 2), (1, 2, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    elif window_ratio <= 0.5 + 0.125:  # around 0.5
+        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    elif window_ratio <= 0.75 + 0.125:  # around 0.75
+        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    else:  # above 0.875
+        return (1, 1, 1)
+
+def set_building_material_by_id(voxelcity_grid, building_id_grid_ori, ids, mark, window_ratio=0.125, glass_id=-10):
+    """
+    Marks cells in voxelcity_grid based on building IDs and window ratio.
+    Never sets glass_id to cells with maximum z index.
+    
+    Parameters:
+    voxelcity_grid: 3D numpy array
+    building_id_grid_ori: 2D numpy array containing building IDs
+    ids: list/array of building IDs to check
+    mark: value to set for marked cells
+    window_ratio: float between 0 and 1.0, determines window density:
+        ~0.125: sparse windows (2,2,2)
+        ~0.25: medium-sparse windows (2,2,1), (2,1,2), or (1,2,2)
+        ~0.5: medium windows (2,1,1), (1,2,1), or (1,1,2)
+        ~0.75: dense windows (2,1,1), (1,2,1), or (1,1,2)
+        >0.875: maximum density (1,1,1)
+    glass_id: value to set for glass cells (default: -10)
+    
+    Returns:
+    Modified voxelcity_grid
+    """
+    building_id_grid = np.flipud(building_id_grid_ori.copy())
+    
+    # Get modulo numbers based on window_ratio
+    x_mod, y_mod, z_mod = get_modulo_numbers(window_ratio)
+    
+    # Get positions where building IDs match
+    building_positions = np.where(np.isin(building_id_grid, ids))
+    
+    # Loop through each position that matches building IDs
+    for i in range(len(building_positions[0])):
+        x, y = building_positions[0][i], building_positions[1][i]
+        z_mask = voxelcity_grid[x, y, :] == -3
+        voxelcity_grid[x, y, z_mask] = mark
+        
+        # Check if x and y meet the modulo conditions
+        if x % x_mod == 0 and y % y_mod == 0:
+            z_mask = voxelcity_grid[x, y, :] == mark
+            if np.any(z_mask):
+                # Find the maximum z index where z_mask is True
+                z_indices = np.where(z_mask)[0]
+                max_z_index = np.max(z_indices)
+                
+                # Create base mask excluding maximum z index
+                base_mask = z_mask.copy()
+                base_mask[max_z_index] = False
+                
+                # Create pattern mask based on z modulo
+                pattern_mask = np.zeros_like(z_mask)
+                valid_z_indices = z_indices[z_indices != max_z_index]  # Exclude max_z_index
+                if len(valid_z_indices) > 0:
+                    pattern_mask[valid_z_indices[valid_z_indices % z_mod == 0]] = True
+                
+                # For window_ratio around 0.75, add additional pattern
+                if 0.625 < window_ratio <= 0.875 and len(valid_z_indices) > 0:
+                    additional_pattern = np.zeros_like(z_mask)
+                    additional_pattern[valid_z_indices[valid_z_indices % (z_mod + 1) == 0]] = True
+                    pattern_mask = np.logical_or(pattern_mask, additional_pattern)
+                
+                # Final mask combines base_mask and pattern_mask
+                final_glass_mask = np.logical_and(base_mask, pattern_mask)
+                
+                # Set glass_id for all positions in the final mask
+                voxelcity_grid[x, y, final_glass_mask] = glass_id
+    
+    return voxelcity_grid
+
+def set_building_material_by_gdf(voxelcity_grid_ori, building_id_grid, gdf_buildings, material_id_dict=None):
+    voxelcity_grid = voxelcity_grid_ori.copy()
+    if material_id_dict == None:
+        material_id_dict = get_material_dict()
+
+    for index, row in gdf_buildings.iterrows():
+        # Access properties
+        osmid = row['building_id']
+        surface_material = row['surface_material']
+        window_ratio = row['window_ratio']
+        if surface_material is None:
+            surface_material = 'unknown'            
+        set_building_material_by_id(voxelcity_grid, building_id_grid, osmid, material_id_dict[surface_material], window_ratio=window_ratio, glass_id=material_id_dict['glass'])
+    
+    return voxelcity_grid
+
+def get_modulo_numbers(window_ratio):
+    """
+    Determines the appropriate modulo numbers for x, y, z based on window_ratio.
+    
+    Parameters:
+    window_ratio: float between 0 and 1.0
+    
+    Returns:
+    tuple (x_mod, y_mod, z_mod): modulo numbers for each dimension
+    """
+    if window_ratio <= 0.125 + 0.0625:  # around 0.125
+        return (2, 2, 2)
+    elif window_ratio <= 0.25 + 0.125:  # around 0.25
+        combinations = [(2, 2, 1), (2, 1, 2), (1, 2, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    elif window_ratio <= 0.5 + 0.125:  # around 0.5
+        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    elif window_ratio <= 0.75 + 0.125:  # around 0.75
+        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
+        return combinations[hash(str(window_ratio)) % len(combinations)]
+    else:  # above 0.875
+        return (1, 1, 1)
+
+def set_building_material_by_id(voxelcity_grid, building_id_grid_ori, ids, mark, window_ratio=0.125, glass_id=-16):
+    """
+    Marks cells in voxelcity_grid based on building IDs and window ratio.
+    Never sets glass_id to cells with maximum z index.
+    
+    Parameters:
+    voxelcity_grid: 3D numpy array
+    building_id_grid_ori: 2D numpy array containing building IDs
+    ids: list/array of building IDs to check
+    mark: value to set for marked cells
+    window_ratio: float between 0 and 1.0, determines window density:
+        ~0.125: sparse windows (2,2,2)
+        ~0.25: medium-sparse windows (2,2,1), (2,1,2), or (1,2,2)
+        ~0.5: medium windows (2,1,1), (1,2,1), or (1,1,2)
+        ~0.75: dense windows (2,1,1), (1,2,1), or (1,1,2)
+        >0.875: maximum density (1,1,1)
+    glass_id: value to set for glass cells (default: -10)
+    
+    Returns:
+    Modified voxelcity_grid
+    """
+    building_id_grid = np.flipud(building_id_grid_ori.copy())
+    
+    # Get modulo numbers based on window_ratio
+    x_mod, y_mod, z_mod = get_modulo_numbers(window_ratio)
+    
+    # Get positions where building IDs match
+    building_positions = np.where(np.isin(building_id_grid, ids))
+    
+    # Loop through each position that matches building IDs
+    for i in range(len(building_positions[0])):
+        x, y = building_positions[0][i], building_positions[1][i]
+        z_mask = voxelcity_grid[x, y, :] == -3
+        voxelcity_grid[x, y, z_mask] = mark
+        
+        # Check if x and y meet the modulo conditions
+        if x % x_mod == 0 and y % y_mod == 0:
+            z_mask = voxelcity_grid[x, y, :] == mark
+            if np.any(z_mask):
+                # Find the maximum z index where z_mask is True
+                z_indices = np.where(z_mask)[0]
+                max_z_index = np.max(z_indices)
+                
+                # Create base mask excluding maximum z index
+                base_mask = z_mask.copy()
+                base_mask[max_z_index] = False
+                
+                # Create pattern mask based on z modulo
+                pattern_mask = np.zeros_like(z_mask)
+                valid_z_indices = z_indices[z_indices != max_z_index]  # Exclude max_z_index
+                if len(valid_z_indices) > 0:
+                    pattern_mask[valid_z_indices[valid_z_indices % z_mod == 0]] = True
+                
+                # For window_ratio around 0.75, add additional pattern
+                if 0.625 < window_ratio <= 0.875 and len(valid_z_indices) > 0:
+                    additional_pattern = np.zeros_like(z_mask)
+                    additional_pattern[valid_z_indices[valid_z_indices % (z_mod + 1) == 0]] = True
+                    pattern_mask = np.logical_or(pattern_mask, additional_pattern)
+                
+                # Final mask combines base_mask and pattern_mask
+                final_glass_mask = np.logical_and(base_mask, pattern_mask)
+                
+                # Set glass_id for all positions in the final mask
+                voxelcity_grid[x, y, final_glass_mask] = glass_id
+    
+    return voxelcity_grid
+
+def convert_coordinates(coords):
+    return coords
+
+def calculate_centroid(coords):
+    lat_sum = sum(coord[0] for coord in coords)
+    lon_sum = sum(coord[1] for coord in coords)
+    return [lat_sum / len(coords), lon_sum / len(coords)]
+
+def calculate_center(features):
+    lats = []
+    lons = []
+    for feature in features:
+        coords = feature['geometry']['coordinates'][0]
+        for lat, lon in coords:
+            lats.append(lat)
+            lons.append(lon)
+    return sum(lats) / len(lats), sum(lons) / len(lons)
+
+# def format_building_id(id_num):
+#     # Format ID to ensure it's at least 9 digits with leading zeros
+#     return f"{id_num:09d}"
+
+def create_circle_polygon(center_lat, center_lon, radius_meters):
+    """Create a circular polygon with given center and radius"""
+    # Convert radius from meters to degrees (approximate)
+    radius_deg = radius_meters / 111000  # 1 degree ≈ 111km at equator
+    
+    # Create circle points
+    points = []
+    for angle in range(361):  # 0 to 360 degrees
+        rad = math.radians(angle)
+        lat = center_lat + (radius_deg * math.cos(rad))
+        lon = center_lon + (radius_deg * math.sin(rad) / math.cos(math.radians(center_lat)))
+        points.append((lat, lon))
+    return Polygon(points)
+
+def display_builing_ids_on_map(building_geojson, rectangle_vertices):
+    # Parse the GeoJSON data
+    geojson_data = building_geojson
+
+    # Extract all latitudes and longitudes
+    lats = [coord[0] for coord in rectangle_vertices]
+    lons = [coord[1] for coord in rectangle_vertices]
+    
+    # Calculate center by averaging min and max values
+    center_lat = (min(lats) + max(lats)) / 2
+    center_lon = (min(lons) + max(lons)) / 2
+
+    # Create circle polygon for intersection testing
+    circle = create_circle_polygon(center_lat, center_lon, 200)
+
+    # Create a map centered on the data
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=17)
+
+    # Add building footprints to the map
+    for feature in geojson_data:
+        coords = convert_coordinates(feature['geometry']['coordinates'][0])
+        building_polygon = Polygon(coords)
+        
+        # Check if building intersects with circle
+        if building_polygon.intersects(circle):
+            # Get and format building properties
+            # building_id = format_building_id(feature['properties'].get('id', 0))
+            building_id = str(feature['properties'].get('id', 0))
+            building_name = feature['properties'].get('name:en', 
+                                                    feature['properties'].get('name', f'Building {building_id}'))
+            
+            # Create popup content with selectable ID
+            popup_content = f"""
+            <div>
+                Building ID: <span style="user-select: all">{building_id}</span><br>
+                Name: {building_name}
+            </div>
+            """
+            
+            # Add polygon to map
+            folium.Polygon(
+                locations=coords,
+                popup=folium.Popup(popup_content),
+                color='blue',
+                weight=2,
+                fill=True,
+                fill_color='blue',
+                fill_opacity=0.2
+            ).add_to(m)
+            
+            # Calculate centroid for label placement
+            centroid = calculate_centroid(coords)
+            
+            # Add building ID as a selectable label
+            folium.Marker(
+                centroid,
+                icon=folium.DivIcon(
+                    html=f'''
+                    <div style="
+                        position: relative;
+                        font-family: monospace;
+                        font-size: 12px;
+                        color: black;
+                        background-color: rgba(255, 255, 255, 0.9);
+                        padding: 5px 8px;
+                        margin: -10px -15px;
+                        border: 1px solid black;
+                        border-radius: 4px;
+                        user-select: all;
+                        cursor: text;
+                        white-space: nowrap;
+                        display: inline-block;
+                        box-shadow: 0 0 3px rgba(0,0,0,0.2);
+                    ">{building_id}</div>
+                    ''',
+                    class_name="building-label"
+                )
+            ).add_to(m)
+
+    # Save the map
+    return m

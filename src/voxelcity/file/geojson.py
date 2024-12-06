@@ -1,6 +1,6 @@
 import geopandas as gpd
 import json
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, Point
 import pandas as pd
 import numpy as np
 import geopandas as gpd
@@ -410,3 +410,32 @@ def save_geojson(features, save_path):
     # Write to file
     with open(save_path, 'w') as f:
         json.dump(geojson, f, indent=2)
+
+def find_building_containing_point(features, target_point):
+    """
+    Find the building ID that contains the target point.
+    
+    Args:
+        features (list): List of GeoJSON feature dictionaries
+        target_point (tuple): Tuple of (latitude, longitude)
+        
+    Returns:
+        int: Building ID if found, None if not found
+    """
+    # Create Point object (note: shapely uses (lon, lat) order)
+    point = Point(target_point[1], target_point[0])
+    
+    id_list = []
+    for feature in features:
+        # Get the polygon coordinates
+        coords = feature['geometry']['coordinates'][0]
+        
+        # Convert to shapely Polygon (swap lat/lon to lon/lat for shapely)
+        polygon_coords = [(lon, lat) for lat, lon in coords]
+        polygon = Polygon(polygon_coords)
+        
+        # Check if point is within polygon
+        if polygon.contains(point):
+            id_list.append(feature['properties']['id'])
+    
+    return id_list

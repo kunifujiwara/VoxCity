@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from shapely.geometry import Polygon
 from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
@@ -25,6 +26,10 @@ from ..utils.lc import (
     get_class_priority, 
     create_land_cover_polygons, 
     get_dominant_class,
+)
+from ..download.gee import (
+    get_roi,
+    save_geotiff_open_buildings_temporal
 )
 # from ..download.mbfp import get_mbfp_geojson
 # from ..download.gee import (
@@ -427,7 +432,7 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
 
     return np.flipud(grid)
 
-def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None, complement_polygon=None):
+def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None, complement_building_footprints=None):
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -468,7 +473,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     if geojson_data_comp:
         filtered_geojson_data_comp = filter_buildings(geojson_data_comp, plotting_box)
-        if complement_polygon:
+        if complement_building_footprints:
             filtered_buildings_comp = complement_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
         else:
             filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
@@ -501,7 +506,7 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
             found_intersection = False
             all_zero_or_nan = True
             
-            for k, (polygon, height, min_height, is_inner) in cell_buildings:
+            for k, (polygon, height, min_height, is_inner, feature_id) in cell_buildings:
                 try:
                     # Prepare geometries
                     if not polygon.is_valid:
@@ -523,6 +528,8 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                             if not is_inner:
                                 # Store height information
                                 building_min_height_grid[i, j].append([min_height, height])
+                                # building_id_grid[i, j] = k + 1
+                                building_id_grid[i, j] = feature_id
                                 
                                 # Check if this building has a valid non-zero height
                                 has_valid_height = height is not None and not np.isnan(height) and height > 0
@@ -535,7 +542,6 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                                         current_height < height or 
                                         np.isnan(current_height)):
                                         building_height_grid[i, j] = height
-                                        building_id_grid[i, j] = k + 1
                             else:
                                 # Handle inner courtyards
                                 building_min_height_grid[i, j] = [[0, 0]]
@@ -558,6 +564,8 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                                 
                                 if not is_inner:
                                     building_min_height_grid[i, j].append([min_height, height])
+                                    # building_id_grid[i, j] = k + 1
+                                    building_id_grid[i, j] = feature_id
                                     
                                     # Check if this building has a valid non-zero height
                                     has_valid_height = height is not None and not np.isnan(height) and height > 0
@@ -568,7 +576,6 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                                             building_height_grid[i, j] < height or 
                                             np.isnan(building_height_grid[i, j])):
                                             building_height_grid[i, j] = height
-                                            building_id_grid[i, j] = k
                                 else:
                                     building_min_height_grid[i, j] = [[0, 0]]
                                     building_height_grid[i, j] = 0
@@ -582,6 +589,31 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
             # After processing all buildings for this cell, set to NaN if needed
             if found_intersection and all_zero_or_nan:
                 building_height_grid[i, j] = np.nan
+
+    return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
+
+def create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir):        
+    roi = get_roi(rectangle_vertices)
+    os.makedirs(output_dir, exist_ok=True)
+    geotiff_path = os.path.join(output_dir, "building_height.tif")
+    save_geotiff_open_buildings_temporal(roi, geotiff_path)
+    building_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
+    building_min_height_grid = np.empty(building_height_grid.shape, dtype=object)
+    for i in range(building_height_grid.shape[0]):
+        for j in range(building_height_grid.shape[1]):
+            if building_height_grid[i, j] <= 0:
+                building_min_height_grid[i, j] = []
+            else:
+                building_min_height_grid[i, j] = [[0, building_height_grid[i, j]]]
+    filtered_buildings = []
+    building_id_grid = np.zeros_like(building_height_grid, dtype=int)        
+    # Get positions of non-zero elements
+    non_zero_positions = np.nonzero(building_height_grid)        
+    # Create sequential integers starting from 1
+    num_non_zeros = len(non_zero_positions[0])
+    sequence = np.arange(1, num_non_zeros + 1)        
+    # Place sequential integers at non-zero positions
+    building_id_grid[non_zero_positions] = sequence
 
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
