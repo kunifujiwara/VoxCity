@@ -332,7 +332,7 @@ def create_building_polygons(filtered_buildings):
     if len(id_list) > 0:
         id_count = max(id_list)+1
     else:
-        id_count = 0
+        id_count = 1
 
     for i, building in enumerate(filtered_buildings):
         polygon = Polygon(building['geometry']['coordinates'][0])

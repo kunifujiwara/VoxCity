@@ -40,6 +40,7 @@ def convert_gdf_to_geojson(gdf):
     Sets height and min_height to 0 if not present and handles arrays.
     """
     features = []
+    id_count = 1
     
     for idx, row in gdf.iterrows():
         # Get the geometry in GeoJSON format
@@ -72,7 +73,8 @@ def convert_gdf_to_geojson(gdf):
                 properties[column] = convert_numpy_to_python(value) if is_valid_value(value) else None
         
         # Add the index as id
-        properties['id'] = convert_numpy_to_python(row.name)
+        properties['id'] = convert_numpy_to_python(id_count)
+        id_count += 1
         
         # Create feature dictionary
         feature = {

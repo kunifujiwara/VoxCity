@@ -210,14 +210,19 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     # Set grid dimensions
     grids_I, grids_J = building_height_grid.shape[1], building_height_grid.shape[0]
 
+
+    min_grids_Z = kwargs.get('min_grids_Z')
     if verticalStretch > 0:
         a = meshsize
         r = (100 + verticalStretch) / 100
         S_target = (int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize) * (domain_building_max_height_ratio - 1)
         min_n = find_min_n(a, r, S_target, max_n=1000000)
-        grids_Z = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
+        grids_Z_tent = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
+        if grids_Z_tent < min_grids_Z:
+            grids_Z = min_grids_Z
+            startStretch += (min_grids_Z - grids_Z)
     else:
-        grids_Z = int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio
+        grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
 
     dx, dy, dz_base = meshsize, meshsize, meshsize
 
