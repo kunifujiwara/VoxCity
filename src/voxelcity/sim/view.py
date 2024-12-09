@@ -1,8 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from numba import njit, prange
 
 from ..file.geojson import find_building_containing_point
+from ..file.obj import grid_to_obj, export_obj
 
 # JIT-compiled trace_ray function
 @njit
@@ -116,7 +118,7 @@ def compute_gvi_map(voxel_data, ray_directions, view_height_voxel=0):
             if not found_observer:
                 gvi_map[x, y] = np.nan
 
-    return gvi_map
+    return np.flipud(gvi_map)
 
 # Main script
 # Load or define your voxel data (3D numpy array)
@@ -126,7 +128,16 @@ def compute_gvi_map(voxel_data, ray_directions, view_height_voxel=0):
 # Replace the above line with your actual voxel data
 # voxel_data = voxelcity_grid  # Ensure voxelcity_grid is defined in your environment
 
-def get_green_view_index(voxel_data, view_height_voxel=0):
+
+
+
+def get_green_view_index(voxel_data, meshsize, **kwargs):
+
+    view_point_height = kwargs.get("view_point_height", 1.5)
+    view_height_voxel = int(view_point_height / meshsize)
+
+    colormap = kwargs.get("colormap", 'viridis')
+
     # Define parameters for ray emission
     N_azimuth = 60  # Number of horizontal angles
     N_elevation = 10  # Number of vertical angles within the specified range
@@ -153,7 +164,7 @@ def get_green_view_index(voxel_data, view_height_voxel=0):
     gvi_map = compute_gvi_map(voxel_data, ray_directions, view_height_voxel=view_height_voxel)
 
     # Create a copy of the inverted 'BuPu' colormap
-    cmap = plt.cm.get_cmap('viridis').copy()
+    cmap = plt.cm.get_cmap(colormap).copy()
 
     # Set the 'bad' color (for np.nan values) to gray
     # cmap.set_bad(color='#202020')
@@ -161,24 +172,59 @@ def get_green_view_index(voxel_data, view_height_voxel=0):
 
     # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
     plt.figure(figsize=(10, 8))
-    plt.imshow(gvi_map.T, origin='lower', cmap=cmap)
+    plt.imshow(gvi_map, origin='lower', cmap=cmap)
     plt.colorbar(label='Green View Index')
-    plt.title('Green View Index Map with Inverted BuPu Colormap (NaN as Gray)')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.show()
-
-    # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
-    plt.figure(figsize=(10, 8))
-    plt.imshow(np.flipud(gvi_map), origin='lower', cmap=cmap)
-    plt.axis('off')  # Remove axes, ticks, and tick numbers
-    # plt.colorbar(label='Sky View Index')
-    # plt.title('Sky View Index Map with Inverted BuPu Colormap (NaN as Gray)')
+    # plt.title('Green View Index Map with Inverted BuPu Colormap (NaN as Gray)')
     # plt.xlabel('X Coordinate')
     # plt.ylabel('Y Coordinate')
     plt.show()
 
-    return np.flipud(gvi_map)
+    # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(np.flipud(gvi_map), origin='lower', cmap=cmap)
+    # plt.axis('off')  # Remove axes, ticks, and tick numbers
+    # # plt.colorbar(label='Sky View Index')
+    # # plt.title('Sky View Index Map with Inverted BuPu Colormap (NaN as Gray)')
+    # # plt.xlabel('X Coordinate')
+    # # plt.ylabel('Y Coordinate')
+    # plt.show()
+
+# view_kwargs = {
+#     "view_point_height": 1.5, # To set height of view point in meters. Default: 1.5 m.
+#     "obj_export": True,
+#     "output_directory": 'output/test', # To set directory path for output files. Default: False.
+#     "output_file_name": 'gvi_test', # To set file name excluding extension. Default: 'view_index.
+#     "colormap_name": 'viridis', # Choose a colormap
+#     "num_colors": 10, # Number of discrete colors
+#     "alpha_value": 1.0, # Set transparency (0.0 to 1.0)
+#     "vmin_value": 0.0, # Minimum value for colormap normalization
+#     "vmax_value": 1.0 # Maximum value for colormap normalization
+# }
+
+    obj_export = kwargs.get("obj_export")
+    if obj_export == True:
+        dem_grid = kwargs.get("dem_grid", np.zeros_like(gvi_map))
+        output_dir = kwargs.get("output_directory", "output")
+        output_file_name = kwargs.get("output_file_name", "view_index")        
+        num_colors = kwargs.get("num_colors", 10)
+        alpha = kwargs.get("alpha", 1.0)
+        vmin = kwargs.get("vmin", 0.0)
+        vmax = kwargs.get("vmax", 1.0)
+        grid_to_obj(
+            gvi_map,
+            dem_grid,
+            output_dir,
+            output_file_name,
+            meshsize,
+            view_point_height,
+            colormap_name=colormap,
+            num_colors=num_colors,
+            alpha=alpha,
+            vmin=vmin,
+            vmax=vmax
+        )
+
+    return gvi_map
 
 # JIT-compiled trace_ray_sky function
 @njit
@@ -293,13 +339,19 @@ def compute_svi_map(voxel_data, ray_directions, view_height_voxel=0):
             if not found_observer:
                 svi_map[x, y] = np.nan
 
-    return svi_map
+    return np.flipud(svi_map)
 
 # Main script modifications
 # Load or define your voxel data (3D numpy array)
 # voxel_data = voxelcity_grid  # Ensure voxelcity_grid is defined in your environment
 
-def get_sky_view_index(voxel_data, view_height_voxel=0):
+def get_sky_view_index(voxel_data, meshsize, **kwargs):
+
+    view_point_height = kwargs.get("view_point_height", 1.5)
+    view_height_voxel = int(view_point_height / meshsize)
+
+    colormap = kwargs.get("colormap", 'viridis')
+
     # Define parameters for ray emission for SVI
     # For SVI, we focus on upward directions
     N_azimuth_svi = 60  # Number of horizontal angles
@@ -327,7 +379,7 @@ def get_sky_view_index(voxel_data, view_height_voxel=0):
     svi_map = compute_svi_map(voxel_data, ray_directions_svi, view_height_voxel=view_height_voxel)
 
     # Create a copy of the inverted 'BuPu' colormap
-    cmap = plt.cm.get_cmap('BuPu_r').copy()
+    cmap = plt.cm.get_cmap(colormap).copy()
 
     # Set the 'bad' color (for np.nan values) to gray
     # cmap.set_bad(color='#202020')
@@ -335,24 +387,47 @@ def get_sky_view_index(voxel_data, view_height_voxel=0):
 
     # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
     plt.figure(figsize=(10, 8))
-    plt.imshow(np.flipud(svi_map), origin='lower', cmap=cmap)
+    plt.imshow(svi_map, origin='lower', cmap=cmap)
     plt.colorbar(label='Sky View Index')
-    plt.title('Sky View Index Map with Inverted BuPu Colormap (NaN as Gray)')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
-    plt.show()
-
-    # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
-    plt.figure(figsize=(10, 8))
-    plt.imshow(np.flipud(svi_map), origin='lower', cmap=cmap)
-    plt.axis('off')  # Remove axes, ticks, and tick numbers
-    # plt.colorbar(label='Sky View Index')
     # plt.title('Sky View Index Map with Inverted BuPu Colormap (NaN as Gray)')
     # plt.xlabel('X Coordinate')
     # plt.ylabel('Y Coordinate')
     plt.show()
 
-    return np.flipud(svi_map)
+    # Visualization of the SVI map in 2D with inverted 'BuPu' colormap and gray for np.nan
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(np.flipud(svi_map), origin='lower', cmap=cmap)
+    # plt.axis('off')  # Remove axes, ticks, and tick numbers
+    # # plt.colorbar(label='Sky View Index')
+    # # plt.title('Sky View Index Map with Inverted BuPu Colormap (NaN as Gray)')
+    # # plt.xlabel('X Coordinate')
+    # # plt.ylabel('Y Coordinate')
+    # plt.show()
+
+    obj_export = kwargs.get("obj_export")
+    if obj_export == True:
+        dem_grid = kwargs.get("dem_grid", np.zeros_like(svi_map))
+        output_dir = kwargs.get("output_directory", "output")
+        output_file_name = kwargs.get("output_file_name", "view_index")        
+        num_colors = kwargs.get("num_colors", 10)
+        alpha = kwargs.get("alpha", 1.0)
+        vmin = kwargs.get("vmin", 0.0)
+        vmax = kwargs.get("vmax", 1.0)
+        grid_to_obj(
+            svi_map,
+            dem_grid,
+            output_dir,
+            output_file_name,
+            meshsize,
+            view_point_height,
+            colormap_name=colormap,
+            num_colors=num_colors,
+            alpha=alpha,
+            vmin=vmin,
+            vmax=vmax
+        )
+
+    return svi_map
 
 def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
 
@@ -461,7 +536,7 @@ def compute_visibility_to_all_landmarks(observer_location, landmark_positions, v
     return 0  # Not visible to any landmarks
 
 @njit(parallel=True)
-def compute_visibility_map(voxel_data, landmark_positions, opaque_values):
+def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel):
     nx, ny, nz = voxel_data.shape
     visibility_map = np.full((nx, ny), np.nan)
 
@@ -476,7 +551,7 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values):
                         found_observer = True
                         break
                     else:
-                        observer_location = np.array([x, y, z], dtype=np.float64)
+                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
                         visible = compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
                         visibility_map[x, y] = visible
                         found_observer = True
@@ -486,7 +561,7 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values):
 
     return visibility_map
 
-def compute_landmark_visibility(voxel_data, target_value=-10):
+def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis'):
     # Find landmark positions
     landmark_positions = np.argwhere(voxel_data == target_value)
 
@@ -499,36 +574,53 @@ def compute_landmark_visibility(voxel_data, target_value=-10):
     opaque_values = np.array([v for v in unique_values if v != 0 and v != target_value], dtype=np.int32)
 
     # Compute the visibility map
-    visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values)
+    visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel)
 
     # Visualization of the visibility map in 2D
-    cmap = plt.cm.get_cmap('viridis', 2).copy()
+    cmap = plt.cm.get_cmap(colormap, 2).copy()
     cmap.set_bad(color='lightgray')
 
     plt.figure(figsize=(10, 8))
-    plt.imshow(visibility_map.T, origin='lower', cmap=cmap, vmin=0, vmax=1)
-    plt.colorbar(label='Visibility (1: Visible, 0: Not Visible)')
-    plt.title('Landmark Visibility Map')
-    plt.xlabel('X Coordinate')
-    plt.ylabel('Y Coordinate')
+    plt.imshow(np.flipud(visibility_map), origin='lower', cmap=cmap, vmin=0, vmax=1)
+    # plt.colorbar(label='Visibility (1: Visible, 0: Not Visible)')
+
+    # Create legend handles
+    visible_patch = mpatches.Patch(color=cmap(1.0), label='Visible (1)')
+    not_visible_patch = mpatches.Patch(color=cmap(0.0), label='Not Visible (0)')
+
+    # Add legend
+    plt.legend(handles=[visible_patch, not_visible_patch], 
+            loc='center left',  # You can adjust location as needed
+            bbox_to_anchor=(1.0, 0.5))  # This places legend to the right of the plot
+    
+    # plt.title('Landmark Visibility Map')
+    # plt.xlabel('X Coordinate')
+    # plt.ylabel('Y Coordinate')
     plt.show()
 
     # Alternative visualization
-    plt.figure(figsize=(10, 8))
-    plt.imshow(np.flipud(visibility_map), origin='lower', cmap=cmap, vmin=0, vmax=1)
-    plt.axis('off')  # Remove axes, ticks, and tick numbers
-    plt.show()
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(np.flipud(visibility_map), origin='lower', cmap=cmap, vmin=0, vmax=1)
+    # plt.axis('off')  # Remove axes, ticks, and tick numbers
+    # plt.show()
 
     return np.flipud(visibility_map)
 
-def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, rectangle_vertices=None, landmark_ids=None):
+def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **kwargs):
+
+    view_point_height = kwargs.get("view_point_height", 1.5)
+    view_height_voxel = int(view_point_height / meshsize)
+
+    colormap = kwargs.get("colormap", 'viridis')
 
     # Paste your GeoJSON features directly into the features variable
     features = building_geojson  # Continue with your full data...
 
+    landmark_ids = kwargs.get('landmark_building_ids', None)
     if landmark_ids is None:
+        rectangle_vertices = kwargs.get("rectangle_vertices", None)
         if rectangle_vertices is None:
-            "Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids."
+            print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
             return None
         # Extract all latitudes and longitudes
         lats = [coord[0] for coord in rectangle_vertices]
@@ -543,6 +635,31 @@ def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojs
 
     target_value = -30
     mark_building_by_id(voxelcity_grid, building_id_grid, landmark_ids, target_value)
-    landmark_vis_map = compute_landmark_visibility(voxelcity_grid, target_value=target_value)
+    landmark_vis_map = compute_landmark_visibility(voxelcity_grid, target_value=target_value, view_height_voxel=view_height_voxel, colormap=colormap)
+
+    obj_export = kwargs.get("obj_export")
+    if obj_export == True:
+        dem_grid = kwargs.get("dem_grid", np.zeros_like(landmark_vis_map))
+        output_dir = kwargs.get("output_directory", "output")
+        output_file_name = kwargs.get("output_file_name", "landmark_visibility")        
+        num_colors = 2
+        alpha = kwargs.get("alpha", 1.0)
+        vmin = kwargs.get("vmin", 0.0)
+        vmax = kwargs.get("vmax", 1.0)
+        grid_to_obj(
+            landmark_vis_map,
+            dem_grid,
+            output_dir,
+            output_file_name,
+            meshsize,
+            view_point_height,
+            colormap_name=colormap,
+            num_colors=num_colors,
+            alpha=alpha,
+            vmin=vmin,
+            vmax=vmax
+        )
+        output_file_name_vox = 'voxcity_' + output_file_name
+        export_obj(voxelcity_grid, output_dir, output_file_name_vox, meshsize)
 
     return landmark_vis_map

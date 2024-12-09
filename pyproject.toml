@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.66"
+version = "0.1.67"
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.rst"
 authors = [

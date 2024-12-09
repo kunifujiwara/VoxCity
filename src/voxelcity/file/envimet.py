@@ -221,6 +221,8 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         if grids_Z_tent < min_grids_Z:
             grids_Z = min_grids_Z
             startStretch += (min_grids_Z - grids_Z)
+        else:
+            grids_Z = grids_Z_tent
     else:
         grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
 
@@ -282,7 +284,7 @@ def save_file(content, output_file_path):
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
-def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, output_dir="output", **kwargs):
+def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, **kwargs):
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
         building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)    
@@ -291,6 +293,7 @@ def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_gri
     xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize, rectangle_vertices, **kwargs)
 
     # Save the output
+    output_dir = kwargs.get("output_directory", 'output')
     output_file_path = os.path.join(output_dir, "output.INX")
     save_file(xml_content, output_file_path)
 
