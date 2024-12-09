@@ -1,5 +1,4 @@
 from .mbfp import *
-from ....docs.archive.urbanwatch import *
 from .utils import *
 from .gee import *
 from .osm import *
