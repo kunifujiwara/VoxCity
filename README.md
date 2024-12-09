@@ -216,3 +216,20 @@ kwargs = {
 - COPERNICUS DEM: Global coverage, ≤30m resolution
 
 For detailed citation information and additional data sources, please refer to the documentation.
+
+[Previous content remains the same...]
+
+## Building Height Data Sources Comparison
+
+| Dataset | Spatial Coverage | Resolution/Accuracy | Platform/File format | Source/Data Acquisition |
+|---------|------------------|---------------------|---------------------|------------------------|
+| OpenStreetMap [^1] | Worldwide (24% completeness in city centers) | - / Not provided | API / JSON (vector) | Volunteered / updated continuously |
+| Microsoft Building Footprints | North America, Europe, Australia | - / Not provided | List of download links with QuadKey / GeoJSON (vector) | Prediction from satellite or aerial imagery / 2018-2019 for majority of the input imagery |
+| Open Buildings 2.5D Temporal dataset | Africa, Latin America, and South and Southeast Asia | 4 m / 1.5 m (MAE, height) | Google Earth Engine, Google Cloud Storage / GeoTIFF (Raster) | Prediction from satellite imagery / 2016-2023 |
+| EUBUCCO v0.1 | 27 EU countries and Switzerland (378 regions and 40,829 cities) | - / Not provided | Files on the official website[^2], Zenodo / GPKG (vector) | OpenStreetMap, government datasets / 2003-2021 (majority is after 2019) |
+| UT-GLOBUS | Worldwide (more than 1200 cities or locales) | - / 7.8 m (RMSE, height) | Files on Zenodo / GPKG (vector) | Prediction from building footprints, population, spaceborne nDSM / not provided |
+
+[^1]: https://www.openstreetmap.org
+[^2]: https://eubucco.com/
+
+[Rest of the content remains the same...]
