@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-from .utils import download_file_google_drive
-from ..geo.utils import haversine_distance, raster_intersects_polygon, save_raster, create_polygon, create_geodataframe, merge_geotiffs
+from ...src.voxelcity.download.utils import download_file_google_drive
+from ...src.voxelcity.geo.utils import haversine_distance, raster_intersects_polygon, save_raster, create_polygon, create_geodataframe, merge_geotiffs
 
 def process_city(city, city_data, polygon, distance_threshold, output_dir):
     city_lat, city_lon = city_data["coords"]
@@ -40,11 +40,11 @@ def process_city_files(city_data, polygon, output_dir):
             print(f"Failed to download: {filename}")
     return geotiff_files
 
-def get_geotif_urbanwatch(rotated_rectangle_vertices, output_dir):
+def get_geotif_urbanwatch(rectangle_vertices, output_dir):
 
     distance_threshold = 50
 
-    polygon = create_polygon(rotated_rectangle_vertices)
+    polygon = create_polygon(rectangle_vertices)
     gdf = create_geodataframe(polygon)
 
     os.makedirs(output_dir, exist_ok=True)
