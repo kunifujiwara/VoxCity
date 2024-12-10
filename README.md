@@ -96,6 +96,12 @@ height = 500
 m, rectangle_vertices = center_location_map_cityname(cityname, width, height, zoom=15)
 m
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/draw_rect.png">
+    <img src="images/draw_rect.png" alt="Draw rectangle on map GUI" width="400">
+  </picture>
+</p>
 
 ### 3. Set Parameters
 
