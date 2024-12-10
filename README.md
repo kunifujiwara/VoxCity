@@ -164,7 +164,7 @@ generate_edb_file(**envimet_kwargs)
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
-    <img src="images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="400">
+    <img src="images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
   </picture>
 </p>
 
@@ -180,7 +180,7 @@ export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
-    <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="400">
+    <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
   </picture>
 </p>
 
@@ -196,7 +196,7 @@ export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/obj.png">
-    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="400">
+    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
   </picture>
 </p>
 
