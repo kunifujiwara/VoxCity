@@ -219,17 +219,25 @@ For detailed citation information and additional data sources, please refer to t
 
 [Previous content remains the same...]
 
-## Building Height Data Sources Comparison
 
-[Previous content remains the same...]
-
-## Building Height Data Sources Comparison
+## Building Height Data Sources
 
 | Dataset | Spatial Coverage | Source/Data Acquisition |
 |---------|------------------|------------------------|
 | [OpenStreetMap](https://www.openstreetmap.org) | Worldwide (24% completeness in city centers) | Volunteered / updated continuously |
 | [Global ML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints) | North America, Europe, Australia | Prediction from satellite or aerial imagery / 2018-2019 for majority of the input imagery |
-| [Open Buildings 2.5D Temporal Dataset](https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_RESEARCH_OPEN_BUILDINGS_V3_polygons_height_time) | Africa, Latin America, and South and Southeast Asia | Prediction from satellite imagery / 2016-2023 |
+| [Open Buildings 2.5D Temporal Dataset](https://sites.research.google/gr/open-buildings/temporal/) | Africa, Latin America, and South and Southeast Asia | Prediction from satellite imagery / 2016-2023 |
 | [EUBUCCO v0.1](https://eubucco.com/) | 27 EU countries and Switzerland (378 regions and 40,829 cities) | OpenStreetMap, government datasets / 2003-2021 (majority is after 2019) |
-| [UT-GLOBUS](https://zenodo.org/records/10531814) | Worldwide (more than 1200 cities or locales) | Prediction from building footprints, population, spaceborne nDSM / not provided |
+| [UT-GLOBUS](https://zenodo.org/records/11156602) | Worldwide (more than 1200 cities or locales) | Prediction from building footprints, population, spaceborne nDSM / not provided |
 | [Overture Maps](https://overturemaps.org/) | Worldwide | OpenStreetMap, Esri Community Maps Program, Google Open Buildings, etc. / updated continuously |
+
+## Land Cover Data Sources
+
+| Dataset | Spatial Coverage | Resolution | Source/Data Acquisition |
+|---------|------------------|------------|----------------------|
+| [ESA World Cover 10m 2021 V200](https://zenodo.org/records/7254221) | Worldwide | 10 m | Prediction from satellite imagery / 2021 |
+| [ESRI 10m Annual Land Cover (2017-2023)](https://www.arcgis.com/home/item.html?id=cfcb7609de5f478eb7666240902d4d3d) | Worldwide | 10 m | Prediction from satellite imagery / 2017-2023 |
+| [Dynamic World V1](https://dynamicworld.app) | Worldwide | 10 m | Prediction from satellite imagery / updated continuously |
+| [OpenStreetMap](https://www.openstreetmap.org) | Worldwide | - (Vector) | Volunteered / updated continuously |
+| [OpenEarthMap Japan](https://www.open-earth-map.org/demo/Japan/leaflet.html) | Japan | ~1 m | Prediction from aerial imagery / 1974-2022 (mostly after 2018 in major cities) |
+| [UrbanWatch](https://urbanwatch.charlotte.edu/) | 22 major cities in the US | 1 m | Prediction from aerial imagery / 2014–2017 |
