@@ -216,7 +216,7 @@ landmark_kwargs = {
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
 
-## References of Data sources
+## References of Data Sources
 
 ### Building 
 
@@ -259,3 +259,34 @@ landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid,
 | [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
 
 VoxelCity streamlines the process of creating voxelized city models, enabling users to integrate multiple geospatial datasets for simulations and analyses in urban environments.
+
+## Citation
+
+Please cite the [paper](https://doi.org) if you use `voxelcity` in a scientific publication:
+
+Fujiwara, K., XXX. XXX. XXX, XXX, XXX.
+
+```bibtex
+@article{,
+  author = {Fujiwara, Kunihiko and XXX, XXX and XXX, XXX and XXX, XXX},
+  doi = {XXX},
+  journal = {XXX},
+  pages = {XXX},
+  title = {XXX},
+  volume = {XXX},
+  year = {XXX}
+}
+```
+
+## Credit
+
+This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
+
+--------------------------------------------------------------------------------
+<br>
+<br>
+<p align="center">
+  <a href="https://ual.sg/">
+    <img src="https://raw.githubusercontent.com/winstonyym/urbanity/main/images/ualsg.jpeg" width = 55% alt="Logo">
+  </a>
+</p>
