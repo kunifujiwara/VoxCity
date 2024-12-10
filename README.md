@@ -74,7 +74,7 @@ earthengine authenticate
 
 ### For Google Colab
 ```python
-# Authenticate Google Earth Engine (Click link, generate token, copy and paste the token)
+# Click displayed link, generate token, copy and paste the token
 !earthengine authenticate --auth_mode=notebook
 ```
 
