@@ -64,10 +64,17 @@ https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
 
 After setting up, authenticate and initialize Earth Engine:
 
+### For Local Environment
 ```python
 import ee
 ee.Authenticate()
 ee.Initialize(project='your-project-id')
+```
+
+### For Google Colab
+```python
+# Authenticate Google Earth Engine (Click link, generate token, copy and paste the token)
+!earthengine authenticate --auth_mode=notebook
 ```
 
 ## Usage Overview
