@@ -220,7 +220,7 @@ For detailed citation information and additional data sources, please refer to t
 [Previous content remains the same...]
 
 
-## Building Height Data Sources
+## Building 
 
 | Dataset | Spatial Coverage | Source/Data Acquisition |
 |---------|------------------|------------------------|
@@ -231,7 +231,14 @@ For detailed citation information and additional data sources, please refer to t
 | [UT-GLOBUS](https://zenodo.org/records/11156602) | Worldwide (more than 1200 cities or locales) | Prediction from building footprints, population, spaceborne nDSM / not provided |
 | [Overture Maps](https://overturemaps.org/) | Worldwide | OpenStreetMap, Esri Community Maps Program, Google Open Buildings, etc. / updated continuously |
 
-## Land Cover Data Sources
+## Tree Canopy Height
+
+| Dataset | Coverage | Resolution | Source/Data Acquisition |
+|---------|-----------|------------|------------------------|
+| [High Resolution 1m Global Canopy Height Maps](https://glad.umd.edu/dataset/gedi/canopy-height-2021) | Worldwide | 1 m | Prediction from satellite imagery / 2009 and 2020 (80% are 2018-2020) |
+| [ETH Global Sentinel-2 10m Canopy Height (2020)](https://doi.org/10.5281/zenodo.7882832) | Worldwide | 10 m | Prediction from satellite imagery / 2020 |
+
+## Land Cover
 
 | Dataset | Spatial Coverage | Resolution | Source/Data Acquisition |
 |---------|------------------|------------|----------------------|
@@ -241,3 +248,14 @@ For detailed citation information and additional data sources, please refer to t
 | [OpenStreetMap](https://www.openstreetmap.org) | Worldwide | - (Vector) | Volunteered / updated continuously |
 | [OpenEarthMap Japan](https://www.open-earth-map.org/demo/Japan/leaflet.html) | Japan | ~1 m | Prediction from aerial imagery / 1974-2022 (mostly after 2018 in major cities) |
 | [UrbanWatch](https://urbanwatch.charlotte.edu/) | 22 major cities in the US | 1 m | Prediction from aerial imagery / 2014–2017 |
+
+## Terrain Elevation
+
+| Dataset | Coverage | Resolution | Source/Data Acquisition |
+|---------|-----------|------------|------------------------|
+| [FABDEM](https://doi.org/10.5523/bris.25wfy0f9ukoge2gs7a5mqpq2j7) | Worldwide | 30 m | Correction of Copernicus DEM using canopy height and building footprints data / 2011-2015 (Copernicus DEM) |
+| [DeltaDTM](https://gee-community-catalog.org/projects/delta_dtm/) | Worldwide (Only for coastal areas below 10m + mean sea level) | 30 m | Copernicus DEM, spaceborne LiDAR / 2011-2015 (Copernicus DEM) |
+| [USGS 3DEP 1m DEM](https://www.usgs.gov/3d-elevation-program) | United States | 1 m | Aerial LiDAR / 2004-2024 (mostly after 2015) |
+| [England 1m Composite DTM](https://environment.data.gov.uk/dataset/0d7aa6cd-c5db-47dd-bdbd-3d4db8010f64) | England | 1 m | Aerial LiDAR / 2000-2022 |
+| [Australian 5M DEM](https://www.ga.gov.au) | Australia | 5 m | Aerial LiDAR / 2001-2015 |
+| [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
