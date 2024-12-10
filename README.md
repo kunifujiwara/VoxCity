@@ -99,7 +99,7 @@ m
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/draw_rect.png">
-    <img src="images/draw_rect.png" alt="Draw rectangle on map GUI" width="400">
+    <img src="images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
   </picture>
 </p>
 
@@ -109,14 +109,13 @@ Define data sources and mesh size:
 
 ```python
 building_source = 'OpenStreetMap'
-building_complementary_source = 'None'
 land_cover_source = 'OpenStreetMap'
 canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
 dem_source = 'DeltaDTM'
 meshsize = 5
 
 kwargs = {
-    "output_dir": "output/test",
+    "output_dir": "output",
     "dem_interpolation": True
 }
 ```
@@ -149,7 +148,7 @@ building_geojson = get_voxelcity(
 from voxelcity.file.envimet import export_inx, generate_edb_file
 
 envimet_kwargs = {
-    "output_directory": "output/test",
+    "output_directory": "output",
     "author_name": "your name",
     "model_description": "generated with VoxelCity",
     "domain_building_max_height_ratio": 2,
@@ -162,26 +161,44 @@ envimet_kwargs = {
 export_inx(building_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, meshsize, land_cover_source, rectangle_vertices, **envimet_kwargs)
 generate_edb_file(**envimet_kwargs)
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
+    <img src="images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="400">
+  </picture>
+</p>
 
 #### MagicaVoxel VOX Files:
 
 ```python
 from voxelcity.file.magicavoxel import export_magicavoxel_vox
 
-output_path = "output/magicavoxel"
-base_filename = "test_voxelcity"
+output_path = "output"
+base_filename = "voxelcity"
 export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
+    <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="400">
+  </picture>
+</p>
 
 #### OBJ Files:
 
 ```python
 from voxelcity.file.obj import export_obj
 
-output_directory = "./output/test"
-output_file_name = "voxcity_test"
+output_directory = "output"
+output_file_name = "voxcity"
 export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/obj.png">
+    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="400">
+  </picture>
+</p>
 
 ### 6. Additional Use Cases
 
@@ -195,15 +212,21 @@ view_kwargs = {
     "dem_grid": dem_grid,
     "colormap": "viridis",
     "obj_export": True,
-    "output_directory": "output/test",
-    "output_file_name": "gvi_test"
+    "output_directory": "output",
+    "output_file_name": "gvi"
 }
 gvi_grid = get_green_view_index(voxelcity_grid, meshsize, **view_kwargs)
 
 view_kwargs["colormap"] = "BuPu_r"
-view_kwargs["output_file_name"] = "svi_test"
+view_kwargs["output_file_name"] = "svi"
 svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/view_index.png">
+    <img src="images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
+  </picture>
+</p>
 
 #### Landmark Visibility Map:
 
@@ -216,11 +239,17 @@ landmark_kwargs = {
     "dem_grid": dem_grid,
     "colormap": "cool",
     "obj_export": True,
-    "output_directory": "output/test",
-    "output_file_name": "landmark_visibility_test"
+    "output_directory": "output",
+    "output_file_name": "landmark_visibility"
 }
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/landmark.png">
+    <img src="images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="400">
+  </picture>
+</p>
 
 ## References of Data Sources
 
