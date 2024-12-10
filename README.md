@@ -47,14 +47,17 @@
 
 Make sure you have Python 3.7+ installed. Install VoxelCity with:
 
+### For Local Environment
 ```bash
+conda create --name voxelcity python=3.10
+conda activate voxelcity
+conda install -c conda-forge gdal
 pip install voxelcity
 ```
 
-You will also need to have Earth Engine authenticated if you plan to use Earth Engine datasets:
-
-```bash
-earthengine authenticate
+### For Google Colab
+```python
+!pip install voxelcity
 ```
 
 ## Setup for Earth Engine
@@ -65,10 +68,8 @@ https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
 After setting up, authenticate and initialize Earth Engine:
 
 ### For Local Environment
-```python
-import ee
-ee.Authenticate()
-ee.Initialize(project='your-project-id')
+```bash
+earthengine authenticate
 ```
 
 ### For Google Colab
@@ -79,13 +80,9 @@ ee.Initialize(project='your-project-id')
 
 ## Usage Overview
 
-### 1. Prepare Environment
+### 1. Authenticate Earth Engine
 
 ```python
-# Install and authenticate Earth Engine (if needed)
-!pip install voxelcity
-!earthengine authenticate
-
 import ee
 ee.Authenticate()
 ee.Initialize(project='your-project-id')
