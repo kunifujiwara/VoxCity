@@ -123,14 +123,14 @@ m
 
 ### 3. Set Parameters
 
-Define data sources and mesh size:
+Define data sources and mesh size (m):
 
 ```python
 building_source = 'OpenStreetMap'
 land_cover_source = 'OpenStreetMap'
 canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
 dem_source = 'DeltaDTM'
-meshsize = 5
+meshsize = 5 # meters
 
 kwargs = {
     "output_dir": "output",
@@ -161,6 +161,7 @@ building_geojson = get_voxelcity(
 ### 5. Exporting Files
 
 #### ENVI-MET INX/EDB Files:
+[ENVI-MET](https://www.envi-met.com/) is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).
 
 ```python
 from voxelcity.file.envimet import export_inx, generate_edb_file
@@ -186,7 +187,31 @@ generate_edb_file(**envimet_kwargs)
   </picture>
 </p>
 
+#### OBJ Files:
+
+```python
+from voxelcity.file.obj import export_obj
+
+output_directory = "output"
+output_file_name = "voxcity"
+export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
+```
+The generated OBJ files can be opened and rendered in the following 3D visualization software:
+
+- [Twinmotion](https://www.twinmotion.com/): Real-time visualization tool (Free for personal use)
+- [Blender](https://www.blender.org/): Professional-grade 3D creation suite (Free)
+- [Rhino](https://www.rhino3d.com/): Professional 3D modeling software (Commercial, offers educational licenses)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/obj.png">
+    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
+  </picture>
+</p>
+
 #### MagicaVoxel VOX Files:
+
+[MagicaVoxel](https://ephtracy.github.io/) is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.
 
 ```python
 from voxelcity.file.magicavoxel import export_magicavoxel_vox
@@ -199,22 +224,6 @@ export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
     <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
-  </picture>
-</p>
-
-#### OBJ Files:
-
-```python
-from voxelcity.file.obj import export_obj
-
-output_directory = "output"
-output_file_name = "voxcity"
-export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
-```
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/obj.png">
-    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
   </picture>
 </p>
 
