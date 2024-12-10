@@ -186,6 +186,9 @@ generate_edb_file(**envimet_kwargs)
     <img src="images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
   </picture>
 </p>
+<p align="center">
+  <em>Example Output Exported in INX and Inported in ENVI-met</em>
+</p>
 
 #### OBJ Files:
 
@@ -208,6 +211,9 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
     <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
   </picture>
 </p>
+<p align="center">
+  <em>Example Output Exported in OBJ and Rendered in MagicaVoxel</em>
+</p>
 
 #### MagicaVoxel VOX Files:
 
@@ -225,6 +231,9 @@ export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
     <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
     <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
   </picture>
+</p>
+<p align="center">
+  <em>Example Output Exported in VOX and Rendered in MagicaVoxel</em>
 </p>
 
 ### 6. Additional Use Cases
@@ -254,6 +263,9 @@ svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
     <img src="images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
   </picture>
 </p>
+<p align="center">
+  <em>Example Results Saved as OBJ and Rendered in Rhino</em>
+</p>
 
 #### Landmark Visibility Map:
 
@@ -276,6 +288,9 @@ landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid,
     <source media="(prefers-color-scheme: dark)" srcset="images/landmark.png">
     <img src="images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="600">
   </picture>
+</p>
+<p align="center">
+  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
 </p>
 
 ## References of Data Sources
@@ -320,7 +335,6 @@ landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid,
 | [Australian 5M DEM](https://ecat.ga.gov.au/geonetwork/srv/eng/catalog.search#/metadata/89644) | Australia | 5 m | Aerial LiDAR / 2001-2015 |
 | [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
 
-VoxelCity streamlines the process of creating voxelized city models, enabling users to integrate multiple geospatial datasets for simulations and analyses in urban environments.
 
 ## Citation
 
