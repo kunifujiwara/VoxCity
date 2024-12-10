@@ -259,3 +259,233 @@ For detailed citation information and additional data sources, please refer to t
 | [England 1m Composite DTM](https://environment.data.gov.uk/dataset/13787b9a-26a4-4775-8523-806d13af58fc) | England | 1 m | Aerial LiDAR / 2000-2022 |
 | [Australian 5M DEM](https://ecat.ga.gov.au/geonetwork/srv/eng/catalog.search#/metadata/89644) | Australia | 5 m | Aerial LiDAR / 2001-2015 |
 | [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
+
+
+# VoxelCity
+
+**VoxelCity** is a Python package that facilitates the creation of voxel-based 3D urban environments and related geospatial analyses. It integrates various geospatial datasets—such as building footprints, land cover, canopy height, and digital elevation models (DEMs)—to generate 2D and 3D representations of urban areas. It can export data in formats compatible with popular simulation tools like ENVI-MET, as well as visualization tools like MagicaVoxel, and supports simulations such as sky view index and green view index calculations.
+
+## Key Features
+
+- **Integration of Multiple Data Sources:**  
+  Combines building footprints, land cover data, canopy height maps, and DEMs to generate a consistent 3D voxel representation of an urban scene.
+  
+- **Flexible Input Sources:**  
+  Supports various building and terrain data sources including:
+  - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, OpenMapTiles, Open Building 2.5D
+  - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
+  - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
+  - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
+  
+- **Customizable Domain and Resolution:**  
+  Easily define a target area by drawing a rectangle on a map or specifying center coordinates and dimensions. Adjust the mesh size to meet resolution needs.
+  
+- **Integration with Earth Engine:**  
+  Leverages Google Earth Engine for large-scale geospatial data processing (authentication and project setup required).
+  
+- **Output Formats:**
+  - **ENVI-MET**: Export INX and EDB files suitable for ENVI-MET microclimate simulations.
+  - **MagicaVoxel**: Export vox files for 3D editing and visualization in MagicaVoxel.
+  - **OBJ**: Export wavefront OBJ for rendering and integration into other workflows.
+
+- **Analytical Tools:**
+  - **View Index Simulations**: Compute sky view index (SVI) and green view index (GVI) from a specified viewpoint.
+  - **Landmark Visibility Maps**: Assess the visibility of selected landmarks within the voxelized environment.
+
+## Installation
+
+Make sure you have Python 3.7+ installed. Install VoxelCity with:
+
+```bash
+pip install voxelcity
+```
+
+You will also need to have Earth Engine authenticated if you plan to use Earth Engine datasets:
+
+```bash
+earthengine authenticate
+```
+
+## Setup for Earth Engine
+
+To use Earth Engine data, set up your Earth Engine enabled Cloud Project by following the instructions here:
+https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
+
+After setting up, authenticate and initialize Earth Engine:
+
+```python
+import ee
+ee.Authenticate()
+ee.Initialize(project='your-project-id')
+```
+
+## Usage Overview
+
+### 1. Prepare Environment
+
+```python
+# Install and authenticate Earth Engine (if needed)
+!pip install voxelcity
+!earthengine authenticate
+
+import ee
+ee.Authenticate()
+ee.Initialize(project='your-project-id')
+```
+
+### 2. Define Target Area
+
+You can define your target area in two ways:
+
+#### Option 1: Draw a Rectangle
+Use the GUI map interface to draw a rectangular domain of interest.
+
+```python
+from voxelcity.geo.draw import draw_rectangle_map_cityname
+
+cityname = "tokyo"
+m, rectangle_vertices = draw_rectangle_map_cityname(cityname, zoom=15)
+m
+```
+
+#### Option 2: Specify Center and Dimensions
+Choose the width and height in meters and select the center point on the map.
+
+```python
+from voxelcity.geo.draw import center_location_map_cityname
+
+width = 500
+height = 500
+m, rectangle_vertices = center_location_map_cityname(cityname, width, height, zoom=15)
+m
+```
+
+### 3. Set Parameters
+
+Define data sources and mesh size:
+
+```python
+building_source = 'OpenStreetMap'
+building_complementary_source = 'None'
+land_cover_source = 'OpenStreetMap'
+canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
+dem_source = 'DeltaDTM'
+meshsize = 5
+
+kwargs = {
+    "output_dir": "output/test",
+    "dem_interpolation": True
+}
+```
+
+### 4. Get VoxelCity Output
+
+Generate voxel data grids and corresponding building geoJSON:
+
+```python
+from voxelcity import get_voxelcity
+
+voxelcity_grid, building_height_grid, building_min_height_grid, \
+building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
+building_geojson = get_voxelcity(
+    rectangle_vertices,
+    building_source,
+    land_cover_source,
+    canopy_height_source,
+    dem_source,
+    meshsize,
+    **kwargs
+)
+```
+
+### 5. Exporting Files
+
+#### ENVI-MET INX/EDB Files:
+
+```python
+from voxelcity.file.envimet import export_inx, generate_edb_file
+
+envimet_kwargs = {
+    "output_directory": "output/test",
+    "author_name": "your name",
+    "model_description": "generated with VoxelCity",
+    "domain_building_max_height_ratio": 2,
+    "useTelescoping_grid": True,
+    "verticalStretch": 20,
+    "min_grids_Z": 20,
+    "lad": 1.0
+}
+
+export_inx(building_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, meshsize, land_cover_source, rectangle_vertices, **envimet_kwargs)
+generate_edb_file(**envimet_kwargs)
+```
+
+#### MagicaVoxel VOX Files:
+
+```python
+from voxelcity.file.magicavoxel import export_magicavoxel_vox
+
+output_path = "output/magicavoxel"
+base_filename = "test_voxelcity"
+export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
+```
+
+#### OBJ Files:
+
+```python
+from voxelcity.file.obj import export_obj
+
+output_directory = "./output/test"
+output_file_name = "voxcity_test"
+export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
+```
+
+### 6. Additional Use Cases
+
+#### Compute Green View Index (GVI) and Sky View Index (SVI):
+
+```python
+from voxelcity.sim.view import get_green_view_index, get_sky_view_index
+
+view_kwargs = {
+    "view_point_height": 1.5,
+    "dem_grid": dem_grid,
+    "colormap": "viridis",
+    "obj_export": True,
+    "output_directory": "output/test",
+    "output_file_name": "gvi_test"
+}
+gvi_grid = get_green_view_index(voxelcity_grid, meshsize, **view_kwargs)
+
+view_kwargs["colormap"] = "BuPu_r"
+view_kwargs["output_file_name"] = "svi_test"
+svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
+```
+
+#### Landmark Visibility Map:
+
+```python
+from voxelcity.sim.view import get_landmark_visibility_map
+
+landmark_kwargs = {
+    "view_point_height": 1.5,
+    "rectangle_vertices": rectangle_vertices,
+    "dem_grid": dem_grid,
+    "colormap": "cool",
+    "obj_export": True,
+    "output_directory": "output/test",
+    "output_file_name": "landmark_visibility_test"
+}
+landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
+```
+
+## References
+
+- **OpenStreetMap**: [OSM Building Key](https://wiki.openstreetmap.org/wiki/Key:building)
+- **Microsoft Building Footprints**: [Global ML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints)
+- **Urbanwatch**: Coverage of 22 major U.S. cities. [UrbanWatch Project](https://urbanwatch.charlotte.edu/)
+- **OpenEarthMap Japan**: High-resolution land cover data for Japan
+- **ESA World Cover**: Global 10m resolution land cover data
+- **DEM Data**: Various global DEM sources including DeltaDTM, NASA, and COPERNICUS
+
+VoxelCity streamlines the process of creating voxelized city models, enabling users to integrate multiple geospatial datasets for simulations and analyses in urban environments.
