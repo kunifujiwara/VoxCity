@@ -247,7 +247,7 @@ landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid,
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/landmark.png">
-    <img src="images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="400">
+    <img src="images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="600">
   </picture>
 </p>
 
