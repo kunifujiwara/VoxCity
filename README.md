@@ -272,14 +272,15 @@ svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
 ```python
 from voxelcity.sim.view import get_landmark_visibility_map
 
+# Dictionary of parameters for landmark visibility analysis
 landmark_kwargs = {
-    "view_point_height": 1.5,
-    "rectangle_vertices": rectangle_vertices,
-    "dem_grid": dem_grid,
-    "colormap": "cool",
-    "obj_export": True,
-    "output_directory": "output",
-    "output_file_name": "landmark_visibility"
+    "view_point_height": 1.5,        # Height of observer viewpoint in meters
+    "rectangle_vertices": rectangle_vertices,  # Vertices defining landmark boundary
+    "dem_grid": dem_grid,            # Digital elevation model grid
+    "colormap": "cool",              # Colormap for visualization
+    "obj_export": True,              # Whether to export as OBJ file
+    "output_directory": "output",     # Directory to save output files
+    "output_file_name": "landmark_visibility"  # Base filename for outputs
 }
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
