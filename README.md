@@ -126,15 +126,15 @@ m
 Define data sources and mesh size (m):
 
 ```python
-building_source = 'OpenStreetMap'
-land_cover_source = 'OpenStreetMap'
-canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
-dem_source = 'DeltaDTM'
-meshsize = 5 # meters
+building_source = 'OpenStreetMap'                                     # Building footprint and height data source
+land_cover_source = 'OpenStreetMap'                                   # Land cover classification data source
+canopy_height_source = 'High Resolution 1m Global Canopy Height Maps' # Tree canopy height data source
+dem_source = 'DeltaDTM'                                               # Digital elevation model data source
+meshsize = 5                                                          # Grid cell size in meters
 
 kwargs = {
-    "output_dir": "output",
-    "dem_interpolation": True
+    "output_dir": "output",   # Directory to save output files
+    "dem_interpolation": True # Enable DEM interpolation
 }
 ```
 
@@ -167,14 +167,14 @@ building_geojson = get_voxelcity(
 from voxelcity.file.envimet import export_inx, generate_edb_file
 
 envimet_kwargs = {
-    "output_directory": "output",                         # Directory where output files will be saved
-    "author_name": "your name",                          # Name of the model author
-    "model_description": "generated with VoxelCity",      # Description text for the model
-    "domain_building_max_height_ratio": 2,               # Maximum ratio between domain height and tallest building height
-    "useTelescoping_grid": True,                        # Enable telescoping grid for better computational efficiency
-    "verticalStretch": 20,                              # Vertical grid stretching factor (%)
-    "min_grids_Z": 20,                                  # Minimum number of vertical grid cells
-    "lad": 1.0                                          # Leaf Area Density (m2/m3) for vegetation modeling 
+    "output_directory": "output",                     # Directory where output files will be saved
+    "author_name": "your name",                       # Name of the model author
+    "model_description": "generated with VoxelCity",  # Description text for the model
+    "domain_building_max_height_ratio": 2,            # Maximum ratio between domain height and tallest building height
+    "useTelescoping_grid": True,                      # Enable telescoping grid for better computational efficiency
+    "verticalStretch": 20,                            # Vertical grid stretching factor (%)
+    "min_grids_Z": 20,                                # Minimum number of vertical grid cells
+    "lad": 1.0                                        # Leaf Area Density (m2/m3) for vegetation modeling 
 }
 
 export_inx(building_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, meshsize, land_cover_source, rectangle_vertices, **envimet_kwargs)
@@ -195,8 +195,8 @@ generate_edb_file(**envimet_kwargs)
 ```python
 from voxelcity.file.obj import export_obj
 
-output_directory = "output"
-output_file_name = "voxcity"
+output_directory = "output"  # Directory where output files will be saved
+output_file_name = "voxcity" # Base name for the output OBJ file
 export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
 ```
 The generated OBJ files can be opened and rendered in the following 3D visualization software:
@@ -245,12 +245,12 @@ from voxelcity.sim.view import get_green_view_index, get_sky_view_index
 
 # Dictionary of parameters for view index analysis
 view_kwargs = {
-    "view_point_height": 1.5,        # Height of observer viewpoint in meters
-    "dem_grid": dem_grid,            # Digital elevation model grid
-    "colormap": "viridis",           # Colormap for visualization
-    "obj_export": True,              # Whether to export as OBJ file
-    "output_directory": "output",     # Directory to save output files
-    "output_file_name": "gvi"        # Base filename for outputs
+    "view_point_height": 1.5,      # Height of observer viewpoint in meters
+    "dem_grid": dem_grid,          # Digital elevation model grid
+    "colormap": "viridis",         # Colormap for visualization
+    "obj_export": True,            # Whether to export as OBJ file
+    "output_directory": "output",  # Directory to save output files
+    "output_file_name": "gvi"      # Base filename for outputs
 }
 gvi_grid = get_green_view_index(voxelcity_grid, meshsize, **view_kwargs)
 
@@ -275,13 +275,13 @@ from voxelcity.sim.view import get_landmark_visibility_map
 
 # Dictionary of parameters for landmark visibility analysis
 landmark_kwargs = {
-    "view_point_height": 1.5,        # Height of observer viewpoint in meters
-    "rectangle_vertices": rectangle_vertices,  # Vertices defining simulation domain boundary
-    "dem_grid": dem_grid,            # Digital elevation model grid
-    "colormap": "cool",              # Colormap for visualization
-    "obj_export": True,              # Whether to export as OBJ file
-    "output_directory": "output",     # Directory to save output files
-    "output_file_name": "landmark_visibility"  # Base filename for outputs
+    "view_point_height": 1.5,                 # Height of observer viewpoint in meters
+    "rectangle_vertices": rectangle_vertices, # Vertices defining simulation domain boundary
+    "dem_grid": dem_grid,                     # Digital elevation model grid
+    "colormap": "cool",                       # Colormap for visualization
+    "obj_export": True,                       # Whether to export as OBJ file
+    "output_directory": "output",             # Directory to save output files
+    "output_file_name": "landmark_visibility" # Base filename for outputs
 }
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
