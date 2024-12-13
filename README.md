@@ -264,7 +264,7 @@ view_kwargs["output_file_name"] = "svi"
 svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
 ```
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="600">
 </p>
 <p align="center">
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
@@ -288,7 +288,7 @@ landmark_kwargs = {
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="600">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">
 </p>
 <p align="center">
   <em>Example Result Saved as OBJ and Rendered in Rhino</em>
