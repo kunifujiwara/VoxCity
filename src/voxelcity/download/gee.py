@@ -1,37 +1,86 @@
-import numpy as np
-import rasterio
-from affine import Affine
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
+"""
+Module for interacting with Google Earth Engine API and downloading geospatial data.
+
+This module provides functionality to initialize Earth Engine, create regions of interest,
+download various types of satellite imagery and terrain data, and save them as GeoTIFF files.
+It supports multiple data sources including DEMs, land cover maps, and building footprints.
+"""
+
+# Earth Engine and geospatial imports
 import ee
 import geemap
-from pyproj import CRS, Transformer
-import rasterio
-from pyproj.geod import Geod
 
+# Local imports
 from ..geo.utils import convert_format_lat_lon
 
 def initialize_earth_engine():
+    """Initialize the Earth Engine API."""
     ee.Initialize()
 
 def get_roi(input_coords):
+    """Create an Earth Engine region of interest polygon from coordinates.
+    
+    Args:
+        input_coords: List of coordinate pairs defining the polygon vertices
+        
+    Returns:
+        ee.Geometry.Polygon: Earth Engine polygon geometry
+    """
     coords = convert_format_lat_lon(input_coords)
     return ee.Geometry.Polygon(coords)
 
 def get_center_point(roi):
+    """Get the centroid coordinates of a region of interest.
+    
+    Args:
+        roi: Earth Engine geometry
+        
+    Returns:
+        tuple: (longitude, latitude) of centroid
+    """
     center_point = roi.centroid()
     center_coords = center_point.coordinates().getInfo()
     return center_coords[0], center_coords[1]
 
 def get_ee_image_collection(collection_name, roi):
+    """Get the first image from an Earth Engine ImageCollection filtered by region.
+    
+    Args:
+        collection_name: Name of the Earth Engine ImageCollection
+        roi: Earth Engine geometry to filter by
+        
+    Returns:
+        ee.Image: First image from collection clipped to ROI
+    """
+    # Filter collection by bounds and get first image
     collection = ee.ImageCollection(collection_name).filterBounds(roi)
     return collection.sort('system:time_start').first().clip(roi).unmask()
 
 def get_ee_image(collection_name, roi):
+    """Get an Earth Engine Image clipped to a region.
+    
+    Args:
+        collection_name: Name of the Earth Engine Image
+        roi: Earth Engine geometry to clip to
+        
+    Returns:
+        ee.Image: Image clipped to ROI
+    """
     collection = ee.Image(collection_name)
     return collection.clip(roi)
 
 def save_geotiff(image, filename, resolution=1, scale=None, region=None, crs=None):
+    """Save an Earth Engine image as a GeoTIFF file.
+    
+    Args:
+        image: Earth Engine image to save
+        filename: Output filename
+        resolution: Output resolution in degrees (default: 1)
+        scale: Output scale in meters
+        region: Region to export
+        crs: Coordinate reference system
+    """
+    # Handle different export scenarios based on provided parameters
     if scale and region:
         if crs:
             geemap.ee_export_image(image, filename=filename, scale=scale, region=region, file_per_band=False, crs=crs)
@@ -44,6 +93,17 @@ def save_geotiff(image, filename, resolution=1, scale=None, region=None, crs=Non
             geemap.ee_to_geotiff(image, filename, resolution=resolution, to_cog=True)
 
 def get_dem_image(roi_buffered, source):
+    """Get a digital elevation model (DEM) image for a region.
+    
+    Args:
+        roi_buffered: Earth Engine geometry with buffer
+        source: DEM source ('NASA', 'COPERNICUS', 'DeltaDTM', 'FABDEM', 'England 1m DTM',
+               'DEM France 5m', 'DEM France 1m', 'AUSTRALIA 5M DEM', 'USGS 3DEP 1m')
+               
+    Returns:
+        ee.Image: DEM image clipped to region
+    """
+    # Handle different DEM sources
     if source == 'NASA':
         collection_name = 'USGS/SRTMGL1_003'
         dem = ee.Image(collection_name)
@@ -77,6 +137,7 @@ def get_dem_image(roi_buffered, source):
     elif source == 'USGS 3DEP 1m':
         collection_name = 'USGS/3DEP/1m'
         dem = ee.ImageCollection(collection_name).mosaic()
+    # Commented out sources that are not yet implemented
     # elif source == 'Canada High Resolution DTM':
     #     collection_name = "projects/sat-io/open-datasets/OPEN-CANADA/CAN_ELV/HRDEM_1M_DTM"
     #     collection = ee.ImageCollection(collection_name)
@@ -86,16 +147,20 @@ def get_dem_image(roi_buffered, source):
     return dem.clip(roi_buffered)
 
 def save_geotiff_esa_land_cover(roi, geotiff_path):
+    """Save ESA WorldCover land cover data as a colored GeoTIFF.
+    
+    Args:
+        roi: Earth Engine geometry defining region of interest
+        geotiff_path: Output path for GeoTIFF file
+    """
     # Initialize Earth Engine
     ee.Initialize()
 
-    # Load the ESA WorldCover dataset
+    # Load and clip the ESA WorldCover dataset
     esa = ee.ImageCollection("ESA/WorldCover/v200").first()
-
-    # Clip the image to the AOI
     esa_clipped = esa.clip(roi)
 
-    # Define the color palette based on the provided image
+    # Define color mapping for different land cover classes
     color_map = {
         10: '006400',  # Trees
         20: 'ffbb22',  # Shrubland
@@ -110,24 +175,32 @@ def save_geotiff_esa_land_cover(roi, geotiff_path):
         100: 'fae6a0'  # Moss and lichen
     }
 
-    # Create a list of colors in the order of class values
+    # Create ordered color palette
     colors = [color_map[i] for i in sorted(color_map.keys())]
 
-    # Apply the color palette to the image
+    # Remap classes and apply color visualization
     esa_colored = esa_clipped.remap(
         list(color_map.keys()),
         list(range(len(color_map)))
     ).visualize(palette=colors, min=0, max=len(color_map)-1)
 
+    # Export colored image
     geemap.ee_export_image(esa_colored, geotiff_path, scale=10, region=roi)
 
     print(f"Colored GeoTIFF saved to: {geotiff_path}")
 
 def save_geotiff_dynamic_world_v1(roi, geotiff_path, date=None):
-
+    """Save Dynamic World land cover data as a colored GeoTIFF.
+    
+    Args:
+        roi: Earth Engine geometry defining region of interest
+        geotiff_path: Output path for GeoTIFF file
+        date: Optional date string to get data for specific time
+    """
     # Initialize Earth Engine
     ee.Initialize()
 
+    # Load and filter Dynamic World dataset
     # Load the Dynamic World dataset and filter by ROI
     dw = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterBounds(roi)
 
@@ -207,7 +280,13 @@ def save_geotiff_dynamic_world_v1(roi, geotiff_path, date=None):
     print(f"Image date: {image_date}")
 
 def save_geotiff_esri_landcover(roi, geotiff_path, year=None):
-
+    """Save ESRI Land Cover data as a colored GeoTIFF.
+    
+    Args:
+        roi: Earth Engine geometry defining region of interest
+        geotiff_path: Output path for GeoTIFF file
+        year: Optional year to get data for specific time
+    """
     # Initialize Earth Engine
     ee.Initialize()
 
@@ -285,6 +364,12 @@ def save_geotiff_esri_landcover(roi, geotiff_path, year=None):
     print(f"Image date: {year}")
 
 def save_geotiff_open_buildings_temporal(aoi, geotiff_path):
+    """Save Open Buildings temporal data as a GeoTIFF.
+    
+    Args:
+        aoi: Earth Engine geometry defining area of interest
+        geotiff_path: Output path for GeoTIFF file
+    """
     # Initialize Earth Engine
     ee.Initialize()
 
@@ -308,36 +393,3 @@ def save_geotiff_open_buildings_temporal(aoi, geotiff_path):
         region=aoi,
         file_per_band=False
     )
-
-# def get_grid_gee(tag, collection_name, coords, mesh_size, land_cover_classes=None, buffer_distance=None):
-#     initialize_earth_engine()
-
-#     roi = get_roi(coords)
-#     center_lon, center_lat = get_center_point(roi)
-
-#     if buffer_distance:
-#         roi_buffered = roi.buffer(buffer_distance)
-#         image = get_dem_image(roi_buffered)
-#         save_geotiff(image, f"{tag}.tif", scale=30, region=roi_buffered)
-#     else:
-#         image = get_image_collection(collection_name, roi)
-#         save_geotiff(image, f"{tag}.tif")
-
-#     if tag == 'canopy_height':
-#         grid = create_canopy_height_grid(f"{tag}.tif", mesh_size)
-#         visualize_grid(grid, mesh_size, title=f'{tag.replace("_", " ").title()} Grid')
-#     elif tag == 'land_cover':
-#         grid = create_land_cover_grid(f"{tag}.tif", mesh_size, land_cover_classes)
-#         color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
-#         # color_map['No Data'] = [0.5, 0.5, 0.5]
-#         visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes)
-#         grid = convert_land_cover_array(grid, land_cover_classes)
-#     elif tag == 'nasa_dem':
-#         converted_coords = convert_format(coords)
-#         roi_shapely = Polygon(converted_coords)
-#         grid = create_dem_grid(f"{tag}.tif", mesh_size, roi_shapely)
-#         visualize_grid(grid, mesh_size, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
-
-#     print(f"Resulting grid shape: {grid.shape}")
-
-#     return grid

@@ -1,4 +1,5 @@
 [![PyPi version](https://img.shields.io/pypi/v/voxelcity.svg)](https://pypi.python.org/pypi/voxelcity)
+[![Python versions](https://img.shields.io/pypi/pyversions/voxelcity.svg)](https://pypi.org/project/voxelcity/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing)
 [![License](https://img.shields.io/pypi/l/voxelcity.svg)](https://pypi.org/project/voxelcity/)
 [![Downloads](https://pepy.tech/badge/voxelcity)](https://pepy.tech/project/voxelcity)
@@ -15,6 +16,7 @@
     <img src="images/concept.png" alt="Conceptual Diagram of VoxelCity" width="800">
   </picture>
 </p>
+
 
 ## Key Features
 
@@ -49,7 +51,7 @@ Make sure you have Python 3.7+ installed. Install VoxelCity with:
 
 ### For Local Environment
 ```bash
-conda create --name voxelcity python=3.10
+conda create --name voxelcity python=3.12
 conda activate voxelcity
 conda install -c conda-forge gdal
 pip install voxelcity

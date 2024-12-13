@@ -1,3 +1,11 @@
+"""
+Module for downloading and processing building data from the EUBUCCO dataset.
+
+This module provides functionality to download, extract, filter and convert building footprint data 
+from the EUBUCCO (European Building Characteristics) dataset. It handles downloading zipped GeoPackage 
+files, extracting building geometries and heights, and converting them to GeoJSON format.
+"""
+
 import json
 from shapely.geometry import Polygon, mapping, shape, MultiPolygon
 import requests
@@ -12,6 +20,7 @@ import shapely
 
 from ..geo.utils import get_country_name
 
+# Dictionary mapping European countries to their EUBUCCO data download URLs
 country_links = {
         "Austria": "https://api.eubucco.com/v0.1/files/5e63fc15-b602-474b-a618-43080fa49db4/download",
         "Belgium": "https://api.eubucco.com/v0.1/files/08b81844-f46d-403b-bbd0-871fc5017b62/download",
@@ -49,7 +58,7 @@ country_links = {
 # Configuration
 # ================================
 
-# Setup logging
+# Setup logging with timestamp and level
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_vertices, output_geojson):
@@ -62,29 +71,29 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
     - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the rectangle.
     - output_geojson (str): Path to the output GeoJSON file.
     """
-    # Create rectangle polygon in (longitude, latitude) order
+    # Convert rectangle vertices from (lat,lon) to (lon,lat) format and create polygon
     rectangle_vertices_lonlat = [(lon, lat) for lat, lon in rectangle_vertices]
     rectangle_polygon = Polygon(rectangle_vertices_lonlat)
 
-    # Define a function to swap coordinates from (lon, lat) to (lat, lon)
+    # Helper function to swap coordinate order
     def swap_coordinates_gdf(x, y, z=None):
         return y, x
 
-    # Determine Shapely version
+    # Get Shapely version for compatibility checks
     shapely_version = shapely.__version__
     major_version = int(shapely_version.split('.')[0])
-
     logging.info(f"Using Shapely version: {shapely_version}")
 
-    # Open the GeoPackage layer with Fiona
+    # Process the GeoPackage
     with fiona.Env():
         with fiona.open(gpkg_file, layer=layer_name, mode='r') as src:
+            # Verify CRS information
             src_crs = src.crs
             if not src_crs:
                 logging.error("Input GeoPackage layer has no CRS defined.")
                 raise ValueError("Input GeoPackage layer has no CRS defined.")
 
-            # Assume the rectangle is in EPSG:4326 (WGS84)
+            # Check if coordinate transformation is needed
             target_crs = 'EPSG:4326'
             if src_crs.get('init') != 'epsg:4326' and 'epsg:4326' not in src_crs.values():
                 transform_required = True
@@ -94,7 +103,7 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
             else:
                 transform_required = False
 
-            # Define the output schema
+            # Define schema for output GeoJSON
             output_schema = {
                 'geometry': 'Polygon',
                 'properties': {
@@ -103,7 +112,7 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
                 },
             }
 
-            # Open the output GeoJSON file
+            # Process features and write to output
             with fiona.open(
                 output_geojson,
                 'w',
@@ -113,27 +122,30 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
             ) as dst:
                 feature_count = 0
                 missing_height_count = 0
+                
+                # Iterate through all features in source file
                 for idx, feature in enumerate(src):
+                    # Progress logging
                     if idx % 10000 == 0 and idx > 0:
                         logging.info(f"Processed {idx} features...")
 
+                    # Skip invalid geometries
                     geom = feature['geometry']
                     if not geom:
-                        continue  # Skip features without geometry
+                        continue
 
                     shapely_geom = shape(geom)
 
-                    # Check if the geometry intersects with the rectangle
+                    # Check intersection with target rectangle
                     if not shapely_geom.intersects(rectangle_polygon):
-                        continue  # Skip non-overlapping features
+                        continue
 
-                    # Get the intersection geometry
+                    # Get intersection geometry
                     intersection = shapely_geom.intersection(rectangle_polygon)
-
                     if intersection.is_empty:
-                        continue  # No intersection
+                        continue
 
-                    # Split MultiPolygons into individual Polygons
+                    # Handle different geometry types
                     if isinstance(intersection, Polygon):
                         polygons = [intersection]
                     elif isinstance(intersection, MultiPolygon):
@@ -142,36 +154,33 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
                         else:
                             polygons = list(intersection.geoms)
                     else:
-                        continue  # Skip other geometry types
+                        continue
 
-                    # Process each Polygon
+                    # Process each polygon in the intersection
                     for poly in polygons:
-                        # Transform the polygon to EPSG:4326 if required
+                        # Transform coordinates if needed
                         if transform_required:
                             transformed_geom = transform_geom(src_crs, target_crs, mapping(poly))
                             shapely_transformed_poly = shape(transformed_geom)
                         else:
                             shapely_transformed_poly = poly
 
-                        # Swap coordinates from (lon, lat) to (lat, lon)
+                        # Swap coordinates to (lat,lon) format
                         swapped_poly = transform(swap_coordinates_gdf, shapely_transformed_poly)
 
-                        # Extract coordinates
+                        # Extract polygon coordinates
                         coords = []
-                        # Exterior ring
-                        exterior = list(swapped_poly.exterior.coords)
-                        coords.append(exterior)
-                        # Interior rings (holes), if any
-                        for interior in swapped_poly.interiors:
+                        coords.append(list(swapped_poly.exterior.coords))  # Exterior ring
+                        for interior in swapped_poly.interiors:  # Interior rings (holes)
                             coords.append(list(interior.coords))
 
-                        # Build the GeoJSON geometry
+                        # Create GeoJSON geometry
                         out_geom = {
                             'type': 'Polygon',
                             'coordinates': coords
                         }
 
-                        # Safely extract and convert 'height'
+                        # Extract and validate height property
                         height = feature['properties'].get('height', -1.0)
                         if height is None:
                             height = -1.0
@@ -185,23 +194,22 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
                             missing_height_count += 1
                             logging.debug(f"Feature ID {feature.get('id', 'N/A')} has invalid 'height'. Assigned default value.")
 
-                        # Build the properties
+                        # Create feature properties
                         properties = {
                             'height': height,
-                            'confidence': -1.0  # As per your initial requirement
+                            'confidence': -1.0  # Default confidence value
                         }
 
-                        # Create the output feature
+                        # Create and write output feature
                         out_feature = {
                             'geometry': out_geom,
                             'properties': properties,
                             'type': 'Feature'
                         }
-
-                        # Write the feature to the output GeoJSON
                         dst.write(out_feature)
                         feature_count += 1
 
+                # Log processing summary
                 logging.info(f"Total features written to GeoJSON: {feature_count}")
                 logging.info(f"Total features with missing or invalid 'height': {missing_height_count}")
 
@@ -212,24 +220,24 @@ def download_extract_open_gpkg_from_eubucco(url, output_dir):
 
     Parameters:
     - url (str): URL to download the ZIP file containing the GeoPackage.
+    - output_dir (str): Directory to store extracted files
 
     Returns:
     - str: Path to the extracted GeoPackage file.
     """
-
-    # Download the file
+    # Download ZIP file from URL
     logging.info("Downloading file...")
     response = requests.get(url)
     if response.status_code != 200:
         logging.error(f"Failed to download file. Status code: {response.status_code}")
         raise Exception(f"Failed to download file. Status code: {response.status_code}")
 
-    # Extract the ZIP file
+    # Extract contents of ZIP file
     logging.info("Extracting ZIP file...")
     with zipfile.ZipFile(BytesIO(response.content)) as zip_ref:
         zip_ref.extractall(f"{output_dir}/EUBUCCO_raw")
 
-    # Find the GPKG file
+    # Find GPKG file in extracted contents
     gpkg_file = None
     for root, dirs, files in os.walk(f"{output_dir}/EUBUCCO_raw"):
         for file in files:
@@ -253,10 +261,13 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
     Parameters:
     - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the rectangle.
     - country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs.
+    - output_dir (str): Directory to save output files
+    - file_name (str): Name for output GeoJSON file
 
     Returns:
     - None: Writes the output to a GeoJSON file.
     """
+    # Determine country based on first vertex
     country_name = get_country_name(rectangle_vertices[0][0], rectangle_vertices[0][1])
     if country_name in country_links:
         url = country_links[country_name]
@@ -264,20 +275,21 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
         logging.error("Your target area does not have data in EUBUCCO.")
         return
 
+    # Download and extract GPKG file
     gpkg_file = download_extract_open_gpkg_from_eubucco(url, output_dir)
 
-    # Determine the layer name (assuming the first layer)
+    # Get first layer from GPKG file
     with fiona.Env():
         layers = fiona.listlayers(gpkg_file)
         if not layers:
             logging.error("No layers found in the GeoPackage.")
             return
-        layer_name = layers[0]  # Modify if you need a specific layer
+        layer_name = layers[0]
         logging.info(f"Using layer: {layer_name}")
 
     file_path = f"{output_dir}/{file_name}"
 
-    # Process and convert to GeoJSON
+    # Convert GPKG to GeoJSON
     filter_and_convert_gdf_to_geojson_eubucco(
         gpkg_file=gpkg_file,
         layer_name=layer_name,
@@ -288,15 +300,24 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
     logging.info(f"GeoJSON file has been created at: {file_path}")
 
 def load_geojson_from_eubucco(rectangle_vertices, output_dir):
+    """
+    Downloads EUBUCCO data and loads it as GeoJSON.
 
-    # Path to save and load the GeoJSON file
+    Parameters:
+    - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the area
+    - output_dir (str): Directory to save intermediate files
+
+    Returns:
+    - list: List of GeoJSON features containing building footprints and heights
+    """
+    # Define output file path
     file_name = 'building.geojson' 
     file_path = f"{output_dir}/{file_name}"
 
-    # Get GeoJSON from EUBUCCO
+    # Download and save GeoJSON
     save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, file_name)   
 
-    # Load raw JSON
+    # Load and return GeoJSON features
     with open(file_path, 'r') as f:
         raw_data = json.load(f)
     geojson_data = raw_data['features']
