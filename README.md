@@ -30,6 +30,8 @@
   - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
   - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
   
+  *Detailed information about each data source can be found in the [References of Data Sources](#references-of-data-sources) section.*
+  
 - **Customizable Domain and Resolution:**  
   Easily define a target area by drawing a rectangle on a map or specifying center coordinates and dimensions. Adjust the mesh size to meet resolution needs.
   

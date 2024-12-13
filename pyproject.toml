@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.72"
+version = "0.1.73"
 requires-python = "==3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -13,7 +13,7 @@ authors = [
 maintainers = [
   {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
 ]
-license = {text = "MIT license"}
+license = {text = "CC BY-SA 4.0"}
 dependencies = [
     "typer",
     "pandas",
