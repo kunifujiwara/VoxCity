@@ -29,7 +29,7 @@
   - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
   - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
   - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
-  
+
   *Detailed information about each data source can be found in the [References of Data Sources](#references-of-data-sources) section.*
   
 - **Customizable Domain and Resolution:**  
@@ -94,9 +94,21 @@ ee.Initialize(project='your-project-id')
 
 ### 2. Define Target Area
 
-You can define your target area in two ways:
+You can define your target area in three ways:
 
-#### Option 1: Draw a Rectangle
+#### Option 1: Direct Coordinate Input
+Define the target area by directly specifying the coordinates of the rectangle vertices.
+
+```python
+rectangle_vertices = [
+    (47.59830044521263, -122.33587348582083),  # Southwest corner (latitude, longitude)
+    (47.60279755390168, -122.33587348582083),  # Northwest corner (latitude, longitude)
+    (47.60279755390168, -122.32922451417917),  # Northeast corner (latitude, longitude)
+    (47.59830044521263, -122.32922451417917)   # Southeast corner (latitude, longitude)
+]
+```
+
+#### Option 2: Draw a Rectangle (for Jupyter Notebook)
 Use the GUI map interface to draw a rectangular domain of interest.
 
 ```python
@@ -107,7 +119,7 @@ m, rectangle_vertices = draw_rectangle_map_cityname(cityname, zoom=15)
 m
 ```
 
-#### Option 2: Specify Center and Dimensions
+#### Option 3: Specify Center and Dimensions (for Jupyter Notebook)
 Choose the width and height in meters and select the center point on the map.
 
 ```python
