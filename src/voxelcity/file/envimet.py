@@ -294,7 +294,9 @@ def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_gri
 
     # Save the output
     output_dir = kwargs.get("output_directory", 'output')
-    output_file_path = os.path.join(output_dir, "output.INX")
+    os.makedirs(output_dir, exist_ok=True)
+    file_basename = kwargs.get("file_basename", 'voxcity')
+    output_file_path = os.path.join(output_dir, f"{file_basename}.INX")
     save_file(xml_content, output_file_path)
 
 def generate_edb_file(**kwargs):
