@@ -1,9 +1,12 @@
 [project]
 name = "voxelcity"
-version = "0.1.69"
+version = "0.1.72"
 requires-python = "==3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+]
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
-readme = "README.rst"
+readme = "README.md"
 authors = [
   {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
 ]

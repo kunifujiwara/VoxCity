@@ -47,7 +47,7 @@
 
 ## Installation
 
-Make sure you have Python 3.7+ installed. Install VoxelCity with:
+Make sure you have Python 3.12 installed. Install VoxelCity with:
 
 ### For Local Environment
 ```bash
