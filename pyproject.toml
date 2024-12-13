@@ -1,8 +1,10 @@
 [project]
 name = "voxelcity"
-version = "0.1.74"
-requires-python = "==3.12"
+version = "0.1.75"
+requires-python = ">=3.10,<3.13"
 classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"

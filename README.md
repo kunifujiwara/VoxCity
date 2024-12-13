@@ -12,8 +12,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/concept.png">
-    <img src="images/concept.png" alt="Conceptual Diagram of VoxelCity" width="800">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png">
+    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of VoxelCity" width="800">
   </picture>
 </p>
 
