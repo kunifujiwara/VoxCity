@@ -1,6 +1,6 @@
 [project]
 name = "voxelcity"
-version = "0.1.78"
+version = "0.1.79"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",

@@ -54,13 +54,11 @@
 
 Make sure you have Python 3.12 installed. Install VoxelCity with:
 
-### For Local Environment
-```bash
+### For Local Environment```bash
 conda create --name voxelcity python=3.12
 conda activate voxelcity
 conda install -c conda-forge gdal
-pip install voxelcity
-```
+pip install voxelcity```
 
 ### For Google Colab
 ```python
@@ -134,10 +132,7 @@ m, rectangle_vertices = center_location_map_cityname(cityname, width, height, zo
 m
 ```
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/draw_rect.png">
-    <img src="images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
 </p>
 
 ### 3. Set Parameters
@@ -200,10 +195,7 @@ export_inx(building_height_grid, building_id_grid, canopy_height_grid, land_cove
 generate_edb_file(**envimet_kwargs)
 ```
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
-    <img src="images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
 </p>
 <p align="center">
   <em>Example Output Exported in INX and Inported in ENVI-met</em>
@@ -225,10 +217,7 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
 - [Rhino](https://www.rhino3d.com/): Professional 3D modeling software (Commercial, offers educational licenses)
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/obj.png">
-    <img src="images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
 </p>
 <p align="center">
   <em>Example Output Exported in OBJ and Rendered in MagicaVoxel</em>
@@ -246,10 +235,7 @@ base_filename = "voxelcity"
 export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
 ```
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/envimet.png">
-    <img src="images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
 </p>
 <p align="center">
   <em>Example Output Exported in VOX and Rendered in MagicaVoxel</em>
@@ -278,10 +264,7 @@ view_kwargs["output_file_name"] = "svi"
 svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
 ```
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/view_index.png">
-    <img src="images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
 </p>
 <p align="center">
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
@@ -305,10 +288,7 @@ landmark_kwargs = {
 landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/landmark.png">
-    <img src="images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="600">
-  </picture>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="600">
 </p>
 <p align="center">
   <em>Example Result Saved as OBJ and Rendered in Rhino</em>
@@ -387,3 +367,4 @@ This package was created with [Cookiecutter](https://github.com/audreyr/cookiecu
     <img src="https://raw.githubusercontent.com/winstonyym/urbanity/main/images/ualsg.jpeg" width = 55% alt="Logo">
   </a>
 </p>
+
