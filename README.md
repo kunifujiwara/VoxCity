@@ -264,7 +264,7 @@ view_kwargs["output_file_name"] = "svi"
 svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
 ```
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="600">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
 </p>
 <p align="center">
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
