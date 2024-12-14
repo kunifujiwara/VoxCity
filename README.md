@@ -54,13 +54,17 @@
 
 Make sure you have Python 3.12 installed. Install VoxelCity with:
 
-### For Local Environment```bash
+### For Local Environment
+
+```bash
 conda create --name voxelcity python=3.12
 conda activate voxelcity
 conda install -c conda-forge gdal
-pip install voxelcity```
+pip install voxelcity
+```
 
 ### For Google Colab
+
 ```python
 !pip install voxelcity
 ```
@@ -73,10 +77,6 @@ https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
 After setting up, authenticate and initialize Earth Engine:
 
 ### For Local Environment
-
-```bash
-earthengine authenticate
-```
 
 ```bash
 earthengine authenticate
