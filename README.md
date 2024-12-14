@@ -76,7 +76,6 @@ After setting up, authenticate and initialize Earth Engine:
 
 ```bash
 earthengine authenticate
-```
 
 ### For Google Colab
 
