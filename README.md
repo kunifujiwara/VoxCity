@@ -73,11 +73,13 @@ https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
 After setting up, authenticate and initialize Earth Engine:
 
 ### For Local Environment
+
 ```bash
 earthengine authenticate
 ```
 
 ### For Google Colab
+
 ```python
 # Click displayed link, generate token, copy and paste the token
 !earthengine authenticate --auth_mode=notebook
