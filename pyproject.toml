@@ -51,9 +51,6 @@ dependencies = [
     "timezonefinder"
 ]
 
-[project.scripts]
-voxelcity = "voxelcity.cli:main"
-
 [project.optional-dependencies]
 dev = [
     "coverage",

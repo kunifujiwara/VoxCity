@@ -373,6 +373,108 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     
     # Flip grid vertically to match geographic orientation
     return np.flipud(grid)
+    
+def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, rectangle_vertices):
+    """Create a grid of land cover classes from GeoJSON polygon data.
+
+    Args:
+        geojson_data (dict): GeoJSON data containing land cover polygons
+        meshsize (float): Size of each grid cell in meters
+        source (str): Source of the land cover data to determine class priorities
+        rectangle_vertices (list): List of 4 (lat,lon) coordinate pairs defining the rectangle bounds
+
+    Returns:
+        numpy.ndarray: 2D grid of land cover classes as strings
+
+    The function creates a regular grid over the given rectangle area and determines the dominant
+    land cover class for each cell based on polygon intersections. Classes are assigned based on
+    priority rules and majority area coverage.
+    """
+
+    # Default priority mapping for land cover classes (lower number = higher priority)
+    class_priority = { 
+        'Bareland': 4, 
+        'Rangeland': 6, 
+        'Developed space': 8, 
+        'Road': 1,  # Roads have highest priority
+        'Tree': 7, 
+        'Water': 3, 
+        'Agriculture land': 5, 
+        'Building': 2  # Buildings have second highest priority
+    }
+
+    # Get source-specific priority mapping if available
+    class_priority = get_class_priority(source)
+    
+    # Calculate grid dimensions and normalize direction vectors
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    # Calculate actual distances between vertices using geodesic calculations
+    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
+    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+
+    # Create vectors representing the sides of the rectangle
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+
+    # Normalize vectors to represent 1 meter in each direction
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
+
+    print(f"Adjusted mesh size: {adjusted_meshsize}")
+
+    # Initialize grid with default land cover class
+    grid = np.full(grid_size, 'Developed space', dtype=object)
+
+    # Calculate bounding box for spatial indexing
+    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
+              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
+    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+
+    # Create spatial index for efficient polygon lookup
+    land_cover_polygons, idx = create_land_cover_polygons(geojson_data) 
+
+    # Iterate through each grid cell
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            land_cover_class = 'Developed space'
+            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+            
+            # Check intersections with polygons that could overlap this cell
+            for k in idx.intersection(cell.bounds):
+                polygon, land_cover_class_temp = land_cover_polygons[k]
+                try:
+                    if cell.intersects(polygon):
+                        intersection = cell.intersection(polygon)
+                        # If polygon covers more than 50% of cell, consider its land cover class
+                        if intersection.area > cell.area/2:
+                            rank = class_priority[land_cover_class]
+                            rank_temp = class_priority[land_cover_class_temp]
+                            # Update cell class if new class has higher priority (lower rank)
+                            if rank_temp < rank:
+                                land_cover_class = land_cover_class_temp
+                                grid[i, j] = land_cover_class
+                except GEOSException as e:
+                    print(f"GEOS error at grid cell ({i}, {j}): {str(e)}")
+                    # Attempt to fix invalid polygon geometry
+                    try:
+                        fixed_polygon = polygon.buffer(0)
+                        if cell.intersects(fixed_polygon):
+                            intersection = cell.intersection(fixed_polygon)
+                            if intersection.area > cell.area/2:
+                                rank = class_priority[land_cover_class]
+                                rank_temp = class_priority[land_cover_class_temp]
+                                if rank_temp < rank:
+                                    land_cover_class = land_cover_class_temp
+                                    grid[i, j] = land_cover_class
+                    except Exception as fix_error:
+                        print(f"Failed to fix polygon at grid cell ({i}, {j}): {str(fix_error)}")
+                    continue 
+    return grid
 
 def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
     """

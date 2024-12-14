@@ -213,78 +213,15 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
         
     return features
 
-# Convert Overpass JSON to GeoJSON
-def overpass_to_geojson(data):
-    nodes = {}
-    for element in data['elements']:
-        if element['type'] == 'node':
-            nodes[element['id']] = (element['lat'], element['lon'])
-
-    features = []
-    for element in data['elements']:
-        if element['type'] == 'way':
-            coords = [nodes[node_id] for node_id in element['nodes']]
-            properties = element.get('tags', {})
-            feature = {
-                'type': 'Feature',
-                'geometry': {
-                    'type': 'Polygon',
-                    'coordinates': [coords],
-                },
-                'properties': properties,
-            }
-            features.append(feature)
-
-    geojson = {
-        'type': 'FeatureCollection',
-        'features': features,
-    }
-    return geojson
-
-def load_geojsons_from_osmbuildings(rectangle_vertices): 
-
-    # Extract latitudes and longitudes
-    lats = [coord[0] for coord in rectangle_vertices]
-    lons = [coord[1] for coord in rectangle_vertices]
-
-    # Find minimum and maximum values
-    min_lat = min(lats)
-    max_lat = max(lats)
-    min_lon = min(lons)
-    max_lon = max(lons)
-
-    # Overpass API query to get buildings with 3D attributes
-    overpass_url = "https://overpass-api.de/api/interpreter"
-    overpass_query = f"""
-    [out:json][timeout:60];
-    (
-      way["building"]({min_lat},{min_lon},{max_lat},{max_lon});
-      relation["building"]({min_lat},{min_lon},{max_lat},{max_lon});
-    );
-    out body;
-    >;
-    out skel qt;
-    """
-
-    response = requests.get(overpass_url, params={'data': overpass_query})
-    data = response.json()
-
-    geojson_data = overpass_to_geojson(data)
-
-    # Load your current GeoJSON data
-    # Replace 'your_current_geojson_string' with your actual data or file path
-    current_geojson = geojson_data
-
-    desirable_features = []
-
-    for feature in current_geojson['features']:
-        converted_feature = convert_feature(feature)
-        if converted_feature:
-            desirable_features.append(converted_feature)
-    
-    return desirable_features
-
 def convert_feature(feature):
+    """Convert a GeoJSON feature to the desired format with height information.
+    
+    Args:
+        feature (dict): Input GeoJSON feature
+        
+    Returns:
+        dict: Converted feature with height and confidence values, or None if invalid
+    """
     new_feature = {}
     new_feature['type'] = 'Feature'
     new_feature['properties'] = {}
@@ -326,27 +263,28 @@ def convert_feature(feature):
     properties = feature.get('properties', {})
     height = properties.get('height')
 
-    # If height is not available, estimate it (optional)
+    # If height is not available, estimate it based on building levels
     if not height:
         levels = properties.get('building:levels')
         if levels:
             if type(levels)==str:
-                # Default height if not specified
-                height = 10.0  # You can adjust this default value as needed
+                # If levels is a string (invalid format), use default height
+                height = 10.0  # Default height in meters
             else:
-                # Assuming average height per level is 3 meters
-                height = float(levels) * 3.0
+                # Calculate height based on number of levels
+                height = float(levels) * 3.0  # Assume 3m per level
         else:
-            # Default height if not specified
-            height = 10.0  # You can adjust this default value as needed
+            # No level information available, use default height
+            height = 10.0  # Default height in meters
 
     new_feature['properties']['height'] = float(height)
-    new_feature['properties']['confidence'] = -1.0  # As per your desirable format
+    new_feature['properties']['confidence'] = -1.0  # Confidence score for height estimate
 
     return new_feature
 
 
-# New classification_mapping with reordered classes
+# Classification mapping defines the land cover/use classes and their associated tags
+# The numbers (0-13) represent class codes used in the system
 classification_mapping = {
     11: {'name': 'Road', 'tags': ['highway', 'road', 'path', 'track', 'street']},
     12: {'name': 'Building', 'tags': ['building', 'house', 'apartment', 'commercial_building', 'industrial_building']},
@@ -364,7 +302,8 @@ classification_mapping = {
     13: {'name': 'No Data', 'tags': ['unknown', 'no_data', 'clouds', 'undefined']}
 }
 
-# Mapping of classification tags to OSM key-value pairs
+# Maps classification tags to specific OSM key-value pairs
+# '*' means match any value for that key
 tag_osm_key_value_mapping = {
     # Road
     'highway': {'highway': '*'},
@@ -477,34 +416,51 @@ tag_osm_key_value_mapping = {
     'undefined': {'FIXME': '*'}
 }
 
-# Function to assign classification code and name based on tags
 def get_classification(tags):
+    """Determine the classification code and name for a feature based on its OSM tags.
+    
+    Args:
+        tags (dict): Dictionary of OSM tags
+        
+    Returns:
+        tuple: (classification_code, classification_name) or (None, None) if no match
+    """
+    # Iterate through each classification code and its associated info
     for code, info in classification_mapping.items():
+        # Check each tag associated with this classification
         for tag in info['tags']:
             osm_mappings = tag_osm_key_value_mapping.get(tag)
             if osm_mappings:
+                # Check if the feature's tags match any of the OSM key-value pairs
                 for key, value in osm_mappings.items():
                     if key in tags:
                         if value == '*' or tags[key] == value:
-                            # Debug statement to trace matching
-                            # print(f"Matched tag '{tag}' with OSM mapping '{key}: {value}' for class '{info['name']}'")
                             return code, info['name']
-            # Special handling for 'place' with 'islet' and 'island'
+            # Special case for islets and islands
             if tag in ['islet', 'island'] and tags.get('place') == tag:
                 return code, info['name']
-    # Additional check for 'area:highway' (roads mapped as areas)
+    # Special case for roads mapped as areas
     if 'area:highway' in tags:
         return 11, 'Road'
     return None, None
 
-# Function to swap coordinates from (lon, lat) to (lat, lon)
 def swap_coordinates(geom_mapping):
+    """Swap coordinates from (lon, lat) to (lat, lon) order.
+    
+    Args:
+        geom_mapping (dict): GeoJSON geometry object
+        
+    Returns:
+        dict: Geometry with swapped coordinates
+    """
     coords = geom_mapping['coordinates']
 
     def swap_coords(coord_list):
+        # Recursively swap coordinates for nested lists
         if isinstance(coord_list[0], (list, tuple)):
             return [swap_coords(c) for c in coord_list]
         else:
+            # Swap lon/lat to lat/lon
             lon, lat = coord_list
             return [lat, lon]
 
@@ -512,17 +468,25 @@ def swap_coordinates(geom_mapping):
     return geom_mapping
 
 def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
-    # Close the rectangle polygon if needed
+    """Load land cover data from OpenStreetMap within a given rectangular area.
+    
+    Args:
+        rectangle_vertices_ori (list): List of (lat, lon) coordinates defining the rectangle
+        
+    Returns:
+        list: List of GeoJSON features with land cover classifications
+    """
+    # Close the rectangle polygon by adding first vertex at the end
     rectangle_vertices = rectangle_vertices_ori.copy()
     rectangle_vertices.append(rectangle_vertices_ori[0])
 
-    # Convert vertices to a string for the Overpass query (lat lon)
+    # Convert vertices to space-separated string for Overpass query
     polygon_coords = ' '.join(f"{lat} {lon}" for lat, lon in rectangle_vertices)
 
-    # Initialize osm_keys_values
+    # Initialize dictionary to store OSM keys and their allowed values
     osm_keys_values = defaultdict(list)
 
-    # Map tags to osm_keys_values
+    # Build mapping of OSM keys to their possible values from classification mapping
     for info in classification_mapping.values():
         tags = info['tags']
         for tag in tags:
@@ -530,30 +494,28 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
             if osm_mappings:
                 for key, value in osm_mappings.items():
                     if value == '*':
-                        osm_keys_values[key] = ['*']  # Fetch all values for this key
+                        osm_keys_values[key] = ['*']  # Match all values
                     else:
                         if osm_keys_values[key] != ['*'] and value not in osm_keys_values[key]:
                             osm_keys_values[key].append(value)
 
-    # Build the Overpass API query
+    # Build Overpass API query parts for each key-value pair
     query_parts = []
-
-    # Add queries for each key
     for key, values in osm_keys_values.items():
         if values:
             if values == ['*']:
-                # Fetch all features with this key
+                # Query for any value of this key
                 query_parts.append(f'way["{key}"](poly:"{polygon_coords}");')
                 query_parts.append(f'relation["{key}"](poly:"{polygon_coords}");')
             else:
-                # Remove duplicates
+                # Remove duplicate values
                 values = list(set(values))
-                # Build a regex pattern for the values
+                # Build regex pattern for specific values
                 values_regex = '|'.join(values)
                 query_parts.append(f'way["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
                 query_parts.append(f'relation["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
 
-    # Combine all query parts
+    # Combine query parts into complete Overpass query
     query_body = "\n  ".join(query_parts)
     query = (
         "[out:json];\n"
@@ -565,100 +527,101 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
         "out skel qt;"
     )
 
+    # Overpass API endpoint
     overpass_url = "http://overpass-api.de/api/interpreter"
 
     # Fetch data from Overpass API
     print("Fetching data from Overpass API...")
     response = requests.get(overpass_url, params={'data': query})
-    response.raise_for_status()  # Check for request errors
+    response.raise_for_status()
     data = response.json()
 
-    # Convert OSM data to GeoJSON
+    # Convert OSM data to GeoJSON format
     print("Converting data to GeoJSON format...")
     geojson_data = json2geojson(data)
 
-    # Create a shapely polygon from your rectangle (using (lon, lat) order)
+    # Create shapely polygon from rectangle vertices (in lon,lat order)
     rectangle_polygon = Polygon([(lon, lat) for lat, lon in rectangle_vertices])
 
-    # Center of the rectangle (for projection parameters)
+    # Calculate center point for projection
     center_lat = sum(lat for lat, lon in rectangle_vertices) / len(rectangle_vertices)
     center_lon = sum(lon for lat, lon in rectangle_vertices) / len(rectangle_vertices)
 
-    # Define the coordinate reference systems
-    wgs84 = pyproj.CRS('EPSG:4326')
+    # Set up coordinate reference systems for projection
+    wgs84 = pyproj.CRS('EPSG:4326')  # Standard lat/lon
+    # Albers Equal Area projection centered on area of interest
     aea = pyproj.CRS(proj='aea', lat_1=rectangle_polygon.bounds[1], lat_2=rectangle_polygon.bounds[3], lat_0=center_lat, lon_0=center_lon)
 
-    # Create transformer objects
+    # Create transformers for projecting coordinates
     project = pyproj.Transformer.from_crs(wgs84, aea, always_xy=True).transform
     project_back = pyproj.Transformer.from_crs(aea, wgs84, always_xy=True).transform
 
-    # Filter features that intersect with the rectangle and assign classification codes
+    # Process and filter features
     filtered_features = []
 
     for feature in geojson_data['features']:
+        # Convert feature geometry to shapely object
         geom = shape(feature['geometry'])
         if not (geom.is_valid and geom.intersects(rectangle_polygon)):
-            continue  # Skip invalid or non-intersecting geometries
+            continue
 
-        # Assign classification code and name
+        # Get classification for feature
         tags = feature['properties'].get('tags', {})
         classification_code, classification_name = get_classification(tags)
         if classification_code is None:
-            continue  # Skip if no classification
+            continue
 
-        # Exclude footpaths for roads
+        # Special handling for roads
         if classification_code == 11:
             highway_value = tags.get('highway', '')
-            # Exclude footpaths, paths, pedestrian, steps, cycleway, bridleway
+            # Skip minor paths and walkways
             if highway_value in ['footway', 'path', 'pedestrian', 'steps', 'cycleway', 'bridleway']:
-                continue  # Skip this feature
+                continue
 
-            # Get width or lanes
+            # Determine road width for buffering
             width_value = tags.get('width')
             lanes_value = tags.get('lanes')
-
-            # Initialize buffer_distance
             buffer_distance = None
 
+            # Calculate buffer distance based on width or number of lanes
             if width_value is not None:
                 try:
                     width_meters = float(width_value)
-                    buffer_distance = width_meters / 2  # Half width for buffering
+                    buffer_distance = width_meters / 2
                 except ValueError:
-                    pass  # Invalid width value
+                    pass
             elif lanes_value is not None:
                 try:
                     num_lanes = float(lanes_value)
-                    width_meters = num_lanes * 3.0  # Assuming 3 meters per lane
+                    width_meters = num_lanes * 3.0  # 3m per lane
                     buffer_distance = width_meters / 2
                 except ValueError:
-                    pass  # Invalid lanes value
+                    pass
             else:
-                # Set a default width for roads without width or lanes information
-                default_width_meters = 5.0  # Adjust as needed
-                buffer_distance = default_width_meters / 2
+                # Default road width
+                buffer_distance = 2.5  # 5m total width
 
             if buffer_distance is None:
-                continue  # Skip if buffer_distance is None
+                continue
 
+            # Buffer line features to create polygons
             if geom.geom_type in ['LineString', 'MultiLineString']:
-                # Project to a planar coordinate system for buffering
+                # Project to planar CRS, buffer, and project back
                 geom_proj = transform(project, geom)
-                # Buffer the line
                 buffered_geom_proj = geom_proj.buffer(buffer_distance)
-                # Project back to WGS84
                 buffered_geom = transform(project_back, buffered_geom_proj)
-                # Clip to rectangle polygon
+                # Clip to rectangle
                 geom = buffered_geom.intersection(rectangle_polygon)
             else:
-                continue  # Skip if not LineString or MultiLineString
+                continue
 
-        # Now, handle Polygon and MultiPolygon
+        # Skip empty geometries
         if geom.is_empty:
-            continue  # Skip empty geometries
+            continue
 
+        # Convert geometry to GeoJSON feature
         if geom.geom_type == 'Polygon':
-            # Swap coordinates to (lat, lon) order
+            # Create single polygon feature
             geom_mapping = mapping(geom)
             geom_mapping = swap_coordinates(geom_mapping)
             new_feature = {
@@ -670,7 +633,7 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
             }
             filtered_features.append(new_feature)
         elif geom.geom_type == 'MultiPolygon':
-            # Split into multiple Polygon features
+            # Split into separate polygon features
             for poly in geom.geoms:
                 geom_mapping = mapping(poly)
                 geom_mapping = swap_coordinates(geom_mapping)
@@ -682,8 +645,5 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
                     'geometry': geom_mapping
                 }
                 filtered_features.append(new_feature)
-        else:
-            # Skip other geometry types
-            pass
 
     return filtered_features

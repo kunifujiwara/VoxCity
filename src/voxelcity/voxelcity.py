@@ -6,7 +6,7 @@ import os
 # Local application/library specific imports
 # from .download.urbanwatch import get_geotif_urbanwatch
 from .download.mbfp import get_mbfp_geojson
-from .download.osm import load_geojsons_from_openstreetmap, load_geojsons_from_osmbuildings, load_land_cover_geojson_from_osm
+from .download.osm import load_geojsons_from_openstreetmap, load_land_cover_geojson_from_osm
 # from .download.utils import download_file
 from .download.oemj import save_oemj_as_geotiff
 from .download.omt import load_geojsons_from_openmaptiles
@@ -117,9 +117,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
         # building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == 'OpenStreetMap':
         geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
-        # building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
-    elif source == 'OSM Buildings':
-        geojson_data = load_geojsons_from_osmbuildings(rectangle_vertices)
         # building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
     elif source == "Open Building 2.5D Temporal":
         building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
