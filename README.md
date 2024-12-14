@@ -78,6 +78,10 @@ After setting up, authenticate and initialize Earth Engine:
 earthengine authenticate
 ```
 
+```bash
+earthengine authenticate
+```
+
 ### For Google Colab
 
 ```python
