@@ -1,3 +1,7 @@
+"""
+This module provides functions for creating and manipulating grids of building heights, land cover, and elevation data.
+"""
+
 import numpy as np
 import os
 from shapely.geometry import Polygon
@@ -38,12 +42,32 @@ from ..download.gee import (
 # )
 
 def apply_operation(arr, meshsize):
+    """
+    Applies a sequence of operations to an array based on a mesh size.
+    
+    Args:
+        arr (numpy.ndarray): Input array to transform
+        meshsize (float): Size of mesh to use for calculations
+        
+    Returns:
+        numpy.ndarray: Transformed array after applying operations
+    """
     step1 = arr / meshsize
     step2 = step1 + 0.5
     step3 = np.floor(step2)
     return step3 * meshsize
 
 def translate_array(input_array, translation_dict):
+    """
+    Translates values in an array according to a dictionary mapping.
+    
+    Args:
+        input_array (numpy.ndarray): Array containing values to translate
+        translation_dict (dict): Dictionary mapping input values to output values
+        
+    Returns:
+        numpy.ndarray: Array with translated values
+    """
     translated_array = np.empty_like(input_array, dtype=object)
     for i in range(input_array.shape[0]):
         for j in range(input_array.shape[1]):
@@ -51,25 +75,16 @@ def translate_array(input_array, translation_dict):
             translated_array[i, j] = translation_dict.get(value, '')
     return translated_array
 
-# def group_and_label_cells(input_array):
-#     binary_array = input_array > 0
-#     structure = generate_binary_structure(2, 1)
-#     labeled_array, num_features = label(binary_array, structure=structure)
-#     result = np.zeros_like(input_array, dtype=int)
-#     for i in range(1, num_features + 1):
-#         result[labeled_array == i] = i
-#     return result
-
 def group_and_label_cells(array):
     """
     Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
     Zero values remain unchanged.
     
-    Parameters:
-    array (numpy.ndarray): Input 2D array
-    
+    Args:
+        array (numpy.ndarray): Input 2D array
+        
     Returns:
-    numpy.ndarray: Array with non-zero values converted to sequential IDs
+        numpy.ndarray: Array with non-zero values converted to sequential IDs
     """
     # Create a copy of the input array
     result = array.copy()
@@ -87,6 +102,16 @@ def group_and_label_cells(array):
     return result
 
 def process_grid(grid_bi, dem_grid):
+    """
+    Process a binary grid and DEM grid to create averaged elevation values.
+    
+    Args:
+        grid_bi (numpy.ndarray): Binary grid indicating regions
+        dem_grid (numpy.ndarray): Grid of elevation values
+        
+    Returns:
+        numpy.ndarray: Processed grid with averaged elevation values
+    """
     unique_ids = np.unique(grid_bi[grid_bi != 0])
     result = dem_grid.copy()
     for id_num in unique_ids:
@@ -96,6 +121,19 @@ def process_grid(grid_bi, dem_grid):
     return result - np.min(result)
 
 def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
+    """
+    Calculate grid size and adjusted mesh size based on input parameters.
+    
+    Args:
+        side_1 (numpy.ndarray): First side vector
+        side_2 (numpy.ndarray): Second side vector
+        u_vec (numpy.ndarray): Unit vector in first direction
+        v_vec (numpy.ndarray): Unit vector in second direction
+        meshsize (float): Desired mesh size
+        
+    Returns:
+        tuple: Grid size (tuple of ints) and adjusted mesh size (tuple of floats)
+    """
     grid_size_0 = int(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec) + 0.5)
     grid_size_1 = int(np.linalg.norm(side_2) / np.linalg.norm(meshsize * v_vec) + 0.5)
     adjusted_mesh_size_0 = meshsize *  np.linalg.norm(meshsize * u_vec) * grid_size_0 / np.linalg.norm(side_1)
@@ -103,6 +141,19 @@ def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
     return (grid_size_0, grid_size_1), (adjusted_mesh_size_0, adjusted_mesh_size_1)
 
 def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
+    """
+    Create a coordinate mesh based on input parameters.
+    
+    Args:
+        origin (numpy.ndarray): Origin point coordinates
+        grid_size (tuple): Size of grid in each dimension
+        adjusted_meshsize (tuple): Adjusted mesh size in each dimension
+        u_vec (numpy.ndarray): Unit vector in first direction
+        v_vec (numpy.ndarray): Unit vector in second direction
+        
+    Returns:
+        numpy.ndarray: Coordinate mesh
+    """
     x = np.linspace(0, grid_size[0], grid_size[0])
     y = np.linspace(0, grid_size[1], grid_size[1])
     xx, yy = np.meshgrid(x, y)
@@ -114,6 +165,20 @@ def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
     return cell_coords
 
 def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
+    """
+    Create a polygon representing a grid cell.
+    
+    Args:
+        origin (numpy.ndarray): Origin point coordinates
+        i (int): Row index
+        j (int): Column index
+        adjusted_meshsize (tuple): Adjusted mesh size in each dimension
+        u_vec (numpy.ndarray): Unit vector in first direction
+        v_vec (numpy.ndarray): Unit vector in second direction
+        
+    Returns:
+        shapely.geometry.Polygon: Polygon representing the grid cell
+    """
     bottom_left = origin + i * adjusted_meshsize[0] * u_vec + j * adjusted_meshsize[1] * v_vec
     bottom_right = origin + (i + 1) * adjusted_meshsize[0] * u_vec + j * adjusted_meshsize[1] * v_vec
     top_right = origin + (i + 1) * adjusted_meshsize[0] * u_vec + (j + 1) * adjusted_meshsize[1] * v_vec
@@ -121,7 +186,15 @@ def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
     return Polygon([bottom_left, bottom_right, top_right, top_left])
 
 def tree_height_grid_from_land_cover(land_cover_grid_ori):
-
+    """
+    Convert a land cover grid to a tree height grid.
+    
+    Args:
+        land_cover_grid_ori (numpy.ndarray): Original land cover grid
+        
+    Returns:
+        numpy.ndarray: Grid of tree heights
+    """
     land_cover_grid = np.flipud(land_cover_grid_ori) + 1
 
     tree_translation_dict = {
@@ -141,6 +214,17 @@ def tree_height_grid_from_land_cover(land_cover_grid_ori):
     return tree_height_grid
 
 def create_land_cover_grid_from_geotiff(tiff_path, mesh_size, land_cover_classes):
+    """
+    Create a land cover grid from a GeoTIFF file.
+    
+    Args:
+        tiff_path (str): Path to GeoTIFF file
+        mesh_size (float): Size of mesh cells
+        land_cover_classes (dict): Dictionary mapping land cover classes
+        
+    Returns:
+        numpy.ndarray: Grid of land cover classes
+    """
     with rasterio.open(tiff_path) as src:
         img = src.read((1,2,3))
         left, bottom, right, top = src.bounds
@@ -197,6 +281,18 @@ def create_land_cover_grid_from_geotiff(tiff_path, mesh_size, land_cover_classes
     return np.flipud(grid)
 
 def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover_classes, polygon):
+    """
+    Create a land cover grid from a GeoTIFF file within a polygon boundary.
+    
+    Args:
+        tiff_path (str): Path to GeoTIFF file
+        mesh_size (float): Size of mesh cells
+        land_cover_classes (dict): Dictionary mapping land cover classes
+        polygon (list): List of polygon vertices
+        
+    Returns:
+        numpy.ndarray: Grid of land cover classes within the polygon
+    """
     with rasterio.open(tiff_path) as src:
         img = src.read((1,2,3))
         left, bottom, right, top = src.bounds
@@ -247,91 +343,17 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     
     return np.flipud(grid)
 
-def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, rectangle_vertices):
-
-    class_priority = { 
-        'Bareland': 4, 
-        'Rangeland': 6, 
-        'Developed space': 8, 
-        'Road': 1, 
-        'Tree': 7, 
-        'Water': 3, 
-        'Agriculture land': 5, 
-        'Building': 2 
-    }
-
-    class_priority = get_class_priority(source)
-    
-    # Calculate grid and normalize vectors
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
-
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
-    origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)  
-
-    # print(f"Calculated grid size: {grid_size}")
-    print(f"Adjusted mesh size: {adjusted_meshsize}")
-
-    # Create the grid
-    # grid = np.zeros(grid_size)
-    # grid = np.full(grid_size, 0)
-    grid = np.full(grid_size, 'Developed space', dtype=object)
-
-    # Setup transformer and plotting extent
-    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
-              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
-    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
-
-    land_cover_polygons, idx = create_land_cover_polygons(geojson_data) 
-
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            land_cover_class = 'Developed space'
-            # grid[i, j] = 3
-            # grid[i, j] = class_mapping[land_cover_class]
-            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
-            for k in idx.intersection(cell.bounds):
-                polygon, land_cover_class_temp = land_cover_polygons[k]
-                try:
-                    if cell.intersects(polygon):
-                        # print("intersection")
-                        intersection = cell.intersection(polygon)
-                        if intersection.area > cell.area/2:
-                            rank = class_priority[land_cover_class]
-                            rank_temp = class_priority[land_cover_class_temp]
-                            if rank_temp < rank:
-                                land_cover_class = land_cover_class_temp
-                                grid[i, j] = land_cover_class
-                            # break
-                except GEOSException as e:
-                    print(f"GEOS error at grid cell ({i}, {j}): {str(e)}")
-                    # Attempt to fix the polygon
-                    try:
-                        fixed_polygon = polygon.buffer(0)
-                        if cell.intersects(fixed_polygon):
-                            intersection = cell.intersection(fixed_polygon)
-                            if intersection.area > cell.area/2:
-                                rank = class_priority[land_cover_class]
-                                rank_temp = class_priority[land_cover_class_temp]
-                                if rank_temp < rank:
-                                    land_cover_class = land_cover_class_temp
-                                    grid[i, j] = land_cover_class
-                                # break
-                    except Exception as fix_error:
-                        print(f"Failed to fix polygon at grid cell ({i}, {j}): {str(fix_error)}")
-                    continue 
-    return grid
-
 def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
+    """
+    Create a canopy height grid from a GeoTIFF file.
+    
+    Args:
+        tiff_path (str): Path to GeoTIFF file
+        mesh_size (float): Size of mesh cells
+        
+    Returns:
+        numpy.ndarray: Grid of canopy heights
+    """
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
         left, bottom, right, top = src.bounds
@@ -385,6 +407,17 @@ def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
     return np.flipud(grid)
 
 def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
+    """
+    Create a height grid from a GeoTIFF file within a polygon boundary.
+    
+    Args:
+        tiff_path (str): Path to GeoTIFF file
+        mesh_size (float): Size of mesh cells
+        polygon (list): List of polygon vertices
+        
+    Returns:
+        numpy.ndarray: Grid of heights within the polygon
+    """
     with rasterio.open(tiff_path) as src:
         img = src.read(1)
         left, bottom, right, top = src.bounds
@@ -433,6 +466,24 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
     return np.flipud(grid)
 
 def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None, complement_building_footprints=None):
+    """
+    Create a building height grid from GeoJSON data within a polygon boundary.
+    
+    Args:
+        geojson_data (dict): GeoJSON data containing building information
+        meshsize (float): Size of mesh cells
+        rectangle_vertices (list): List of rectangle vertices defining the boundary
+        geojson_data_comp (dict, optional): Complementary GeoJSON data
+        geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
+        complement_building_footprints (bool, optional): Whether to complement building footprints
+        
+    Returns:
+        tuple: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
+            - building_height_grid (numpy.ndarray): Grid of building heights
+            - building_min_height_grid (numpy.ndarray): Grid of minimum building heights
+            - building_id_grid (numpy.ndarray): Grid of building IDs
+            - filtered_buildings (list): List of filtered building features
+    """
     # Calculate grid and normalize vectors
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
@@ -448,9 +499,6 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
 
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
-
-    # print(f"Calculated grid size: {grid_size}")
-    # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Create the grid
     building_height_grid = np.zeros(grid_size)

@@ -1,38 +1,16 @@
+"""
+Module for handling MagicaVoxel .vox files.
+
+This module provides functionality for converting 3D numpy arrays to MagicaVoxel .vox files,
+including color mapping and splitting large models into smaller chunks.
+"""
+
+# Required imports for voxel file handling and array manipulation
 import numpy as np
 from pyvox.models import Vox
 from pyvox.writer import VoxWriter
 import os
 from ..utils.visualization import get_default_voxel_color_map
-
-# # Define the color map (using the provided color map)
-# default_voxel_color_map = {
-#     -12: [238, 242, 234],  # (light gray) 'plaster',
-#     -11: [56, 78, 84],  # (Dark blue) 'glass',
-#     -10: [206, 196, 160],  # (Light brown) 'stone',
-#     -9: [139, 149, 159],  # (Gray) 'metal',
-#     -8: [186, 187, 181],  # (Gray) 'concrete',
-#     -7: [248, 166, 2],  # (Orange) 'wood',
-#     -6: [138, 83, 74],  # (Pink) 'brick',
-#     -5: [255, 0, 102],  # (Pink) 'Landmark',
-#     -4: [180, 187, 216],  # (lightgray) 'Building',
-#     -3: [78, 99, 63],   # (forestgreen) 'Tree',
-#     -2: [188, 143, 143],  # (saddle brown) 'Underground',
-#     -1: [188, 143, 143],  # (saddle brown) 'Underground',
-#     0: [239, 228, 176],   # 'Bareland (ground surface)',
-#     1: [123, 130, 59],   # 'Rangeland (ground surface)',
-#     2: [97, 140, 86],   # 'Shrub (ground surface)',
-#     3: [112, 120, 56],   #  'Agriculture land (ground surface)',
-#     4: [116, 150, 66],   #  'Tree (ground surface)',
-#     5: [187, 204, 40],   #  'Moss and lichen (ground surface)',
-#     6: [77, 118, 99],    #  'Wet land (ground surface)',
-#     7: [22, 61, 51],    #  'Mangrove (ground surface)',
-#     8: [44, 66, 133],    #  'Water (ground surface)',
-#     9: [205, 215, 224],    #  'Snow and ice (ground surface)',
-#     10: [108, 119, 129],   #  'Developed space (ground surface)',
-#     11: [59, 62, 87],      # 'Road (ground surface)',
-#     12: [150, 166, 190],    #  'Building (ground surface)'
-#     13: [239, 228, 176],    #  'No Data (ground surface)'
-# }
 
 def convert_colormap_and_array(original_map, original_array):
     """
@@ -66,41 +44,63 @@ def convert_colormap_and_array(original_map, original_array):
     for old_idx, new_idx in old_to_new.items():
         new_array[original_array == old_idx] = new_idx
     
-    # # Print the new map in a formatted way
-    # print("new_colormap = {")
-    # for key, value in new_map.items():
-    #     # Get the comment from the original map if it exists
-    #     original_key = keys[key]
-    #     original_line = str(original_map[original_key])
-    #     comment = ""
-    #     if "#" in original_line:
-    #         comment = "#" + original_line.split("#")[1].strip()
-        
-    #     print(f"    {key}: {value},  {comment}")
-    # print("}")
-    
     return new_map, new_array
 
 def create_custom_palette(color_map):
+    """
+    Create a palette array from a color map dictionary.
+    
+    Args:
+        color_map (dict): Dictionary mapping indices to RGB color values
+        
+    Returns:
+        numpy.ndarray: 256x4 array containing RGBA color values
+    """
+    # Initialize empty palette with alpha channel
     palette = np.zeros((256, 4), dtype=np.uint8)
     palette[:, 3] = 255  # Set alpha to 255 for all colors
-    palette[0] = [0, 0, 0, 0]  # Set the first color to black with alpha 0
+    palette[0] = [0, 0, 0, 0]  # Set the first color to transparent black
+    
+    # Fill palette with RGB values from color map
     for i, color in enumerate(color_map.values(), start=1):
         palette[i, :3] = color
     return palette
 
 def create_mapping(color_map):
+    """
+    Create a mapping from color map keys to sequential indices.
+    
+    Args:
+        color_map (dict): Dictionary mapping indices to RGB color values
+        
+    Returns:
+        dict: Mapping from original indices to sequential indices starting at 2
+    """
+    # Create mapping starting at index 2 (0 is void, 1 is reserved)
     return {value: i+2 for i, value in enumerate(color_map.keys())}
 
 def split_array(array, max_size=255):
+    """
+    Split a 3D array into smaller chunks that fit within MagicaVoxel size limits.
+    
+    Args:
+        array (numpy.ndarray): 3D array to split
+        max_size (int): Maximum size allowed for each dimension
+        
+    Yields:
+        tuple: (sub_array, (i,j,k)) where sub_array is the chunk and (i,j,k) are the chunk indices
+    """
+    # Calculate number of splits needed in each dimension
     x, y, z = array.shape
     x_splits = (x + max_size - 1) // max_size
     y_splits = (y + max_size - 1) // max_size
     z_splits = (z + max_size - 1) // max_size
 
+    # Iterate through all possible chunk positions
     for i in range(x_splits):
         for j in range(y_splits):
             for k in range(z_splits):
+                # Calculate chunk boundaries
                 x_start, x_end = i * max_size, min((i + 1) * max_size, x)
                 y_start, y_end = j * max_size, min((j + 1) * max_size, y)
                 z_start, z_end = k * max_size, min((k + 1) * max_size, z)
@@ -110,14 +110,28 @@ def split_array(array, max_size=255):
                 )
 
 def numpy_to_vox(array, color_map, output_file):
+    """
+    Convert a numpy array to a MagicaVoxel .vox file.
+    
+    Args:
+        array (numpy.ndarray): 3D array containing voxel data
+        color_map (dict): Dictionary mapping indices to RGB color values
+        output_file (str): Path to save the .vox file
+        
+    Returns:
+        tuple: (value_mapping, palette, shape) containing the index mapping, color palette and output shape
+    """
+    # Create color palette and value mapping
     palette = create_custom_palette(color_map)
     value_mapping = create_mapping(color_map)
     value_mapping[0] = 0  # Ensure 0 maps to 0 (void)
 
-    array_flipped = np.flip(array, axis=2)
-    array_transposed = np.transpose(array_flipped, (1, 2, 0))
+    # Transform array to match MagicaVoxel coordinate system
+    array_flipped = np.flip(array, axis=2)  # Flip Z axis
+    array_transposed = np.transpose(array_flipped, (1, 2, 0))  # Reorder axes
     mapped_array = np.vectorize(value_mapping.get)(array_transposed, 0)
 
+    # Create and save vox file
     vox = Vox.from_dense(mapped_array.astype(np.uint8))
     vox.palette = palette
     VoxWriter(output_file, vox).write()
@@ -125,8 +139,23 @@ def numpy_to_vox(array, color_map, output_file):
     return value_mapping, palette, array_transposed.shape
 
 def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base_filename='chunk'):
+    """
+    Export a large voxel model by splitting it into multiple .vox files.
+    
+    Args:
+        array (numpy.ndarray): 3D array containing voxel data
+        color_map (dict): Dictionary mapping indices to RGB color values
+        output_prefix (str): Directory to save the .vox files
+        max_size (int): Maximum size allowed for each dimension
+        base_filename (str): Base name for the output files
+        
+    Returns:
+        tuple: (value_mapping, palette) containing the index mapping and color palette
+    """
+    # Create output directory if it doesn't exist
     os.makedirs(output_prefix, exist_ok=True)
 
+    # Process each chunk of the model
     for sub_array, (i, j, k) in split_array(array, max_size):
         output_file = f"{output_prefix}/{base_filename}_{i}_{j}_{k}.vox"
         value_mapping, palette, shape = numpy_to_vox(sub_array, color_map, output_file)
@@ -136,21 +165,23 @@ def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base
     return value_mapping, palette
 
 def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color_map=None):
-    # Voxel color mapping (same as before)
+    """
+    Export a voxel model to MagicaVoxel .vox format.
+    
+    Args:
+        array (numpy.ndarray): 3D array containing voxel data
+        output_dir (str): Directory to save the .vox files
+        base_filename (str): Base name for the output files
+        voxel_color_map (dict, optional): Dictionary mapping indices to RGB color values.
+            If None, uses default color map.
+    """
+    # Use default color map if none provided
     if voxel_color_map is None:
         voxel_color_map = get_default_voxel_color_map()
+    
+    # Convert color map and array to sequential indices
     converted_voxel_color_map, converted_array = convert_colormap_and_array(voxel_color_map, array)
 
+    # Export the model and print confirmation
     value_mapping, palette = export_large_voxel_model(converted_array, converted_voxel_color_map, output_dir, base_filename=base_filename)
     print(f"\tvox files was successfully exported in {output_dir}")
-    # print(f"Original shape: {array.shape}")
-    # print(f"Shape in VOX file: {new_shape}")
-
-    # # Print the value mapping for reference
-    # for original, new in value_mapping.items():
-    #     print(f"Original value {original} mapped to palette index {new}")
-    #     if new == 0:
-    #         print("  Color: Void (transparent)")
-    #     else:
-    #         print(f"  Color: {palette[new, :3]}")
-    #     print()

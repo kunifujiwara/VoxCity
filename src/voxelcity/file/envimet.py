@@ -7,20 +7,69 @@ from ..geo.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
 
 def array_to_string(arr):
+    """Convert a 2D numpy array to a string representation with comma-separated values.
+    
+    Args:
+        arr: 2D numpy array to convert
+        
+    Returns:
+        String representation with each row indented by 5 spaces and values comma-separated
+    """
     return '\n'.join('     ' + ','.join(str(cell) for cell in row) for row in arr)
 
 def array_to_string_with_value(arr, value):
+    """Convert a 2D numpy array to a string representation, replacing all values with a constant.
+    
+    Args:
+        arr: 2D numpy array to convert
+        value: Value to use for all cells
+        
+    Returns:
+        String representation with each row indented by 5 spaces and constant value repeated
+    """
     return '\n'.join('     ' + ','.join(str(value) for cell in row) for row in arr)
 
 def array_to_string_int(arr):
+    """Convert a 2D numpy array to a string representation of rounded integers.
+    
+    Args:
+        arr: 2D numpy array to convert
+        
+    Returns:
+        String representation with each row indented by 5 spaces and values rounded to integers
+    """
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
 def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
-    building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)).copy()#set 10m height to nan
+    """Prepare and process input grids for ENVI-met model.
+    
+    Args:
+        building_height_grid_ori: Original building height grid
+        building_id_grid_ori: Original building ID grid
+        canopy_height_grid_ori: Original canopy height grid
+        land_cover_grid_ori: Original land cover grid
+        dem_grid_ori: Original DEM grid
+        meshsize: Size of mesh cells
+        land_cover_source: Source of land cover data
+        
+    Returns:
+        Tuple of processed grids:
+        - building_height_grid: Processed building heights
+        - building_id_grid: Processed building IDs
+        - land_cover_veg_grid: Vegetation codes grid
+        - land_cover_mat_grid: Material codes grid
+        - canopy_height_grid: Processed canopy heights
+        - dem_grid: Processed DEM
+    """
+    # Flip building height grid vertically and replace NaN with 10m height
+    building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)).copy()
     building_id_grid = np.flipud(building_id_grid_ori)
+    
+    # Set border cells to 0 height
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
     building_height_grid = apply_operation(building_height_grid, meshsize)
 
+    # Convert land cover if needed based on source
     if (land_cover_source == 'OpenEarthMapJapan') or (land_cover_source == 'OpenStreetMap'):
         land_cover_grid_converted = land_cover_grid_ori   
     else:
@@ -28,45 +77,69 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
 
     land_cover_grid = np.flipud(land_cover_grid_converted).copy() + 1
 
+    # Dictionary mapping land cover types to vegetation codes
     veg_translation_dict = {
-        1: '',
-        2: '0200XX',
-        3: '',
-        4: '',
-        5: '0200XX',
-        6: '',
-        7: '0200XX',
-        8: ''
+        1: '',  # Bareland
+        2: '0200XX',  # Rangeland
+        3: '',  # Shrub
+        4: '',  # Moss and lichen
+        5: '0200XX',  # Agriculture land
+        6: '',  # Tree
+        7: '0200XX',  # Wet land
+        8: ''  # Mangroves
     }
     land_cover_veg_grid = translate_array(land_cover_grid, veg_translation_dict)
 
+    # Dictionary mapping land cover types to material codes
     mat_translation_dict = {
-        1: '000000',#'Bareland',
-        2: '000000',#'Rangeland',
-        3: '000000',#'Shrub',
-        4: '000000',#'Moss and lichen',
-        5: '000000',#'Agriculture land',
-        6: '000000',#'Tree',
-        7: '0200WW',#'Wet land',
-        8: '0200WW',#'Mangroves',
-        9: '0200WW',#'Water',
-        10: '000000',#'Snow and ice',
-        11: '0200PG',#'Developed space',
-        12: '0200ST',#'Road',
-        13: '000000',#'Building',
-        14: '0200SD',#'No Data'
+        1: '000000',  # Bareland
+        2: '000000',  # Rangeland
+        3: '000000',  # Shrub
+        4: '000000',  # Moss and lichen
+        5: '000000',  # Agriculture land
+        6: '000000',  # Tree
+        7: '0200WW',  # Wet land
+        8: '0200WW',  # Mangroves
+        9: '0200WW',  # Water
+        10: '000000', # Snow and ice
+        11: '0200PG', # Developed space
+        12: '0200ST', # Road
+        13: '000000', # Building
+        14: '0200SD', # No Data
     }
     land_cover_mat_grid = translate_array(land_cover_grid, mat_translation_dict)
 
-    # canopy_height_grid = np.flipud(canopy_height_grid_ori).copy()
+    # Process canopy and DEM grids
     canopy_height_grid = canopy_height_grid_ori.copy()
-
     dem_grid = np.flipud(dem_grid_ori).copy() - np.min(dem_grid_ori)
 
     return building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
 def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize, rectangle_vertices, **kwargs):
-    # XML template
+    """Create XML content for ENVI-met INX file.
+    
+    Args:
+        building_height_grid: Processed building heights
+        building_id_grid: Processed building IDs
+        land_cover_veg_grid: Vegetation codes grid
+        land_cover_mat_grid: Material codes grid
+        canopy_height_grid: Processed canopy heights
+        dem_grid: Processed DEM
+        meshsize: Size of mesh cells
+        rectangle_vertices: Vertices defining model area
+        **kwargs: Additional keyword arguments:
+            - author_name: Name of model author
+            - model_description: Description of model
+            - domain_building_max_height_ratio: Ratio of domain height to max building height
+            - useTelescoping_grid: Whether to use telescoping grid
+            - verticalStretch: Vertical stretch factor
+            - startStretch: Height to start stretching
+            - min_grids_Z: Minimum vertical grid cells
+            
+    Returns:
+        String containing complete XML content for INX file
+    """
+    # XML template defining the structure of an ENVI-met INX file
     xml_template = """<ENVI-MET_Datafile>
     <Header>
     <filetype>INPX ENVI-met Area Input File</filetype>
@@ -154,10 +227,10 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
       </sources2D>
     </ENVI-MET_Datafile>"""
 
-    
+    # Get location information based on rectangle vertices
     city_country_name = get_city_country_name_from_rectangle(rectangle_vertices)
 
-    # Calculate the center point of the rectangle
+    # Calculate center coordinates of the model area
     latitudes = [coord[0] for coord in rectangle_vertices]
     longitudes = [coord[1] for coord in rectangle_vertices]
     center_lat = str(sum(latitudes) / len(latitudes))
@@ -165,6 +238,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     
     timezone_info = get_timezone_info(rectangle_vertices)
 
+    # Set default values for optional parameters
     author_name = kwargs.get('author_name')
     if author_name is None:
         author_name = "[Enter model author name]"
@@ -172,7 +246,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     if model_desctiption is None:
         model_desctiption = "[Enter model desctription]"
 
-    # Replace placeholders
+    # Replace location-related placeholders in template
     placeholders = {
         "$modelDescription$": model_desctiption,
         "$modelAuthor$": author_name,
@@ -188,11 +262,15 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     for placeholder, value in placeholders.items():
         xml_template = xml_template.replace(placeholder, value)
     
+    # Calculate building heights including terrain elevation
     building_on_dem_grid = building_height_grid + dem_grid    
     
+    # Configure vertical grid settings
     domain_building_max_height_ratio = kwargs.get('domain_building_max_height_ratio')
     if domain_building_max_height_ratio is None:
         domain_building_max_height_ratio = 2
+    
+    # Configure telescoping grid settings if enabled
     useTelescoping_grid = kwargs.get('useTelescoping_grid')
     if (useTelescoping_grid is None) or (useTelescoping_grid == False):
         useTelescoping_grid = 0
@@ -207,14 +285,15 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         if (startStretch is None):
             startStretch = int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize
     
-    # Set grid dimensions
+    # Set horizontal grid dimensions
     grids_I, grids_J = building_height_grid.shape[1], building_height_grid.shape[0]
 
-
+    # Calculate vertical grid dimension based on building heights and telescoping settings
     min_grids_Z = kwargs.get('min_grids_Z')
     if verticalStretch > 0:
-        a = meshsize
-        r = (100 + verticalStretch) / 100
+        # Calculate minimum number of cells needed to reach target height with telescoping
+        a = meshsize  # First cell size
+        r = (100 + verticalStretch) / 100  # Growth ratio
         S_target = (int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize) * (domain_building_max_height_ratio - 1)
         min_n = find_min_n(a, r, S_target, max_n=1000000)
         grids_Z_tent = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
@@ -224,10 +303,13 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         else:
             grids_Z = grids_Z_tent
     else:
+        # Calculate vertical grid cells without telescoping
         grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
 
+    # Set grid cell sizes
     dx, dy, dz_base = meshsize, meshsize, meshsize
 
+    # Replace grid-related placeholders
     grid_placeholders = {
         "$grids-I$": str(grids_I),
         "$grids-J$": str(grids_J),
@@ -243,23 +325,25 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     for placeholder, value in grid_placeholders.items():
         xml_template = xml_template.replace(placeholder, value)
 
-    # Replace matrix data
+    # Replace matrix data placeholders with actual grid data
     xml_template = xml_template.replace("$zTop$", array_to_string(building_height_grid))
     xml_template = xml_template.replace("$zBottom$", array_to_string_with_value(building_height_grid, '0'))
     xml_template = xml_template.replace("$fixedheight$", array_to_string_with_value(building_height_grid, '0'))
 
+    # Process and add building numbers
     building_nr_grid = group_and_label_cells(building_id_grid)
     xml_template = xml_template.replace("$buildingNr$", array_to_string(building_nr_grid))
 
+    # Add vegetation data
     xml_template = xml_template.replace("$ID_plants1D$", array_to_string(land_cover_veg_grid))
 
-    # Add 3D plants
+    # Generate and add 3D plant data
     tree_content = ""
     for i in range(grids_I):
         for j in range(grids_J):
             canopy_height = int(canopy_height_grid[j, i] + 0.5)
+            # Only add trees where there are no buildings
             if canopy_height_grid[j, i] > 0 and np.flipud(building_height_grid)[j, i]==0:
-            # if canopy_height > 0 and building_height_grid[j, i]==0:
                 plantid = f'H{canopy_height:02d}W01'
                 tree_ij = f"""  <3Dplants>
      <rootcell_i> {i+1} </rootcell_i>
@@ -271,6 +355,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
   </3Dplants>"""
                 tree_content += '\n' + tree_ij
 
+    # Add remaining data
     xml_template = xml_template.replace("$3Dplants$", tree_content)
     xml_template = xml_template.replace("$ID_soilprofile$", array_to_string(land_cover_mat_grid))
     dem_grid = process_grid(building_nr_grid, dem_grid)
@@ -281,10 +366,32 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     return xml_template
 
 def save_file(content, output_file_path):
+    """Save content to a file.
+    
+    Args:
+        content: String content to save
+        output_file_path: Path to save file to
+    """
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
 def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, **kwargs):
+    """Export model data to ENVI-met INX file format.
+    
+    Args:
+        building_height_grid_ori: Original building height grid
+        building_id_grid_ori: Original building ID grid
+        canopy_height_grid_ori: Original canopy height grid
+        land_cover_grid_ori: Original land cover grid
+        dem_grid_ori: Original DEM grid
+        meshsize: Size of mesh cells
+        land_cover_source: Source of land cover data
+        rectangle_vertices: Vertices defining model area
+        **kwargs: Additional keyword arguments:
+            - output_directory: Directory to save output
+            - file_basename: Base filename for output
+            - Other args passed to create_xml_content()
+    """
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
         building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)    
@@ -300,6 +407,13 @@ def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_gri
     save_file(xml_content, output_file_path)
 
 def generate_edb_file(**kwargs):
+    """Generate ENVI-met database file for 3D plants.
+    
+    Args:
+        **kwargs: Keyword arguments:
+            - lad: Leaf area density (default 1.0)
+            - trunk_height_ratio: Ratio of trunk height to total height (default 11.76/19.98)
+    """
     
     lad = kwargs.get('lad')
     if lad is None:
@@ -309,6 +423,7 @@ def generate_edb_file(**kwargs):
     if trunk_height_ratio is None:
         trunk_height_ratio = 11.76 / 19.98
 
+    # Create header with current timestamp
     header = f'''<ENVI-MET_Datafile>
 <Header>
 <filetype>DATA</filetype>
@@ -322,6 +437,7 @@ def generate_edb_file(**kwargs):
 
     footer = '</ENVI-MET_Datafile>'
 
+    # Generate plant definitions for heights 1-50m
     plant3d_objects = []
 
     for height in range(1, 51):
@@ -409,13 +525,35 @@ def generate_edb_file(**kwargs):
         f.write(content)
 
 def generate_lad_profile(height, trunk_height_ratio, lad = '1.00000'):
+    """Generate leaf area density profile for a plant.
+    
+    Args:
+        height: Total height of plant
+        trunk_height_ratio: Ratio of trunk height to total height
+        lad: Leaf area density value as string (default '1.00000')
+        
+    Returns:
+        String containing LAD profile data
+    """
     lad_profile = []
+    # Only add LAD values above trunk height
     start = max(0, int(height * trunk_height_ratio))
     for i in range(start, height):
         lad_profile.append(f"     0,0,{i},{lad}")
     return '\n'.join(lad_profile)
     
 def find_min_n(a, r, S_target, max_n=1000000):
+    """Find minimum number of terms needed in geometric series to exceed target sum.
+    
+    Args:
+        a: First term of series
+        r: Common ratio
+        S_target: Target sum to exceed
+        max_n: Maximum number of terms to try (default 1000000)
+        
+    Returns:
+        Minimum number of terms needed, or None if not possible within max_n
+    """
     n = 1
     while n <= max_n:
         if r == 1:
