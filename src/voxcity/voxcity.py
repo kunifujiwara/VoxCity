@@ -1,4 +1,4 @@
-"""Main module for VoxelCity.
+"""Main module for voxcity.
 
 This module provides functions to generate 3D voxel representations of cities using various data sources.
 It handles land cover, building heights, canopy heights, and digital elevation models to create detailed
@@ -11,7 +11,7 @@ The main functions are:
 - get_dem_grid: Creates a digital elevation model grid
 - create_3d_voxel: Combines the grids into a 3D voxel representation
 - create_3d_voxel_individuals: Creates separate voxel grids for each component
-- get_voxelcity: Main function to generate a complete voxel city model
+- get_voxcity: Main function to generate a complete voxel city model
 """
 
 import numpy as np
@@ -506,7 +506,7 @@ def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, d
 
     return land_cover_voxel_grid, building_voxel_grid, tree_voxel_grid, dem_voxel_grid, layered_voxel_grid
 
-def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, **kwargs):
+def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, **kwargs):
     """Main function to generate a complete voxel city model.
 
     Args:
@@ -526,7 +526,7 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
 
     Returns:
         tuple containing:
-            - voxelcity_grid: 3D voxel grid of the complete city model
+            - voxcity_grid: 3D voxel grid of the complete city model
             - building_height_grid: 2D grid of building heights
             - building_min_height_grid: 2D grid of minimum building heights
             - building_id_grid: 2D grid of building IDs
@@ -596,19 +596,19 @@ def get_voxelcity(rectangle_vertices, building_source, land_cover_source, canopy
         visualize_numerical_grid_on_map(dem_grid, rectangle_vertices, meshsize, "dem")
 
     # Generate 3D voxel grid
-    voxelcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
+    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
     # Visualize 3D model if requested
     voxelvis = kwargs.get("voxelvis")
     if voxelvis:
         # Create taller visualization grid with fixed height
         new_height = int(550/meshsize+0.5)     
-        voxelcity_grid_vis = np.zeros((voxelcity_grid.shape[0], voxelcity_grid.shape[1], new_height))
-        voxelcity_grid_vis[:, :, :voxelcity_grid.shape[2]] = voxelcity_grid
-        voxelcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
-        visualize_3d_voxel(voxelcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
+        voxcity_grid_vis = np.zeros((voxcity_grid.shape[0], voxcity_grid.shape[1], new_height))
+        voxcity_grid_vis[:, :, :voxcity_grid.shape[2]] = voxcity_grid
+        voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
+        visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
 
-    return voxelcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_geojson
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_geojson
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     """Replace NaN values in a nested array structure with a specified value.

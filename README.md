@@ -1,23 +1,23 @@
-[![PyPi version](https://img.shields.io/pypi/v/voxelcity.svg)](https://pypi.python.org/pypi/voxelcity)
-[![Python versions](https://img.shields.io/pypi/pyversions/voxelcity.svg)](https://pypi.org/project/voxelcity/)
+[![PyPi version](https://img.shields.io/pypi/v/voxcity.svg)](https://pypi.python.org/pypi/voxcity)
+[![Python versions](https://img.shields.io/pypi/pyversions/voxcity.svg)](https://pypi.org/project/voxcity/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing)
-[![License](https://img.shields.io/pypi/l/voxelcity.svg)](https://pypi.org/project/voxelcity/)
-[![Downloads](https://pepy.tech/badge/voxelcity)](https://pepy.tech/project/voxelcity)
+[![License](https://img.shields.io/pypi/l/voxcity.svg)](https://pypi.org/project/voxcity/)
+[![Downloads](https://pepy.tech/badge/voxcity)](https://pepy.tech/project/voxcity)
 <!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
 
 
-# VoxelCity
+# VoxCity
 
-**VoxelCity** is a Python package that facilitates the creation of voxel-based 3D urban environments and related geospatial analyses. It integrates various geospatial datasets—such as building footprints, land cover, canopy height, and digital elevation models (DEMs)—to generate 2D and 3D representations of urban areas. It can export data in formats compatible with popular simulation tools like ENVI-MET, as well as visualization tools like MagicaVoxel, and supports simulations such as sky view index and green view index calculations.
+**VoxCity** is a Python package that facilitates the creation of voxel-based 3D urban environments and related geospatial analyses. It integrates various geospatial datasets—such as building footprints, land cover, canopy height, and digital elevation models (DEMs)—to generate 2D and 3D representations of urban areas. It can export data in formats compatible with popular simulation tools like ENVI-MET, as well as visualization tools like MagicaVoxel, and supports simulations such as sky view index and green view index calculations.
 
 <!-- <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png">
-    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of VoxelCity" width="800">
+    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
   </picture>
 </p> -->
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual Diagram of VoxelCity" width="800">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
 </p>
 
 
@@ -52,21 +52,21 @@
 
 ## Installation
 
-Make sure you have Python 3.12 installed. Install VoxelCity with:
+Make sure you have Python 3.12 installed. Install voxcity with:
 
 ### For Local Environment
 
 ```bash
-conda create --name voxelcity python=3.12
-conda activate voxelcity
+conda create --name voxcity python=3.12
+conda activate voxcity
 conda install -c conda-forge gdal
-pip install voxelcity
+pip install voxcity
 ```
 
 ### For Google Colab
 
 ```python
-!pip install voxelcity
+!pip install voxcity
 ```
 
 ## Setup for Earth Engine
@@ -119,7 +119,7 @@ rectangle_vertices = [
 Use the GUI map interface to draw a rectangular domain of interest.
 
 ```python
-from voxelcity.geo.draw import draw_rectangle_map_cityname
+from voxcity.geo.draw import draw_rectangle_map_cityname
 
 cityname = "tokyo"
 m, rectangle_vertices = draw_rectangle_map_cityname(cityname, zoom=15)
@@ -130,7 +130,7 @@ m
 Choose the width and height in meters and select the center point on the map.
 
 ```python
-from voxelcity.geo.draw import center_location_map_cityname
+from voxcity.geo.draw import center_location_map_cityname
 
 width = 500
 height = 500
@@ -158,16 +158,16 @@ kwargs = {
 }
 ```
 
-### 4. Get VoxelCity Output
+### 4. Get voxcity Output
 
 Generate voxel data grids and corresponding building geoJSON:
 
 ```python
-from voxelcity import get_voxelcity
+from voxcity import get_voxcity
 
-voxelcity_grid, building_height_grid, building_min_height_grid, \
+voxcity_grid, building_height_grid, building_min_height_grid, \
 building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
-building_geojson = get_voxelcity(
+building_geojson = get_voxcity(
     rectangle_vertices,
     building_source,
     land_cover_source,
@@ -184,12 +184,12 @@ building_geojson = get_voxelcity(
 [ENVI-MET](https://www.envi-met.com/) is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).
 
 ```python
-from voxelcity.file.envimet import export_inx, generate_edb_file
+from voxcity.file.envimet import export_inx, generate_edb_file
 
 envimet_kwargs = {
     "output_directory": "output",                     # Directory where output files will be saved
     "author_name": "your name",                       # Name of the model author
-    "model_description": "generated with VoxelCity",  # Description text for the model
+    "model_description": "generated with voxcity",  # Description text for the model
     "domain_building_max_height_ratio": 2,            # Maximum ratio between domain height and tallest building height
     "useTelescoping_grid": True,                      # Enable telescoping grid for better computational efficiency
     "verticalStretch": 20,                            # Vertical grid stretching factor (%)
@@ -210,11 +210,11 @@ generate_edb_file(**envimet_kwargs)
 #### OBJ Files:
 
 ```python
-from voxelcity.file.obj import export_obj
+from voxcity.file.obj import export_obj
 
 output_directory = "output"  # Directory where output files will be saved
 output_file_name = "voxcity" # Base name for the output OBJ file
-export_obj(voxelcity_grid, output_directory, output_file_name, meshsize)
+export_obj(voxcity_grid, output_directory, output_file_name, meshsize)
 ```
 The generated OBJ files can be opened and rendered in the following 3D visualization software:
 
@@ -234,11 +234,11 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
 [MagicaVoxel](https://ephtracy.github.io/) is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.
 
 ```python
-from voxelcity.file.magicavoxel import export_magicavoxel_vox
+from voxcity.file.magicavoxel import export_magicavoxel_vox
 
 output_path = "output"
-base_filename = "voxelcity"
-export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
+base_filename = "voxcity"
+export_magicavoxel_vox(voxcity_grid, output_path, base_filename=base_filename)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
@@ -252,7 +252,7 @@ export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
 #### Compute Green View Index (GVI) and Sky View Index (SVI):
 
 ```python
-from voxelcity.sim.view import get_view_index
+from voxcity.sim.view import get_view_index
 
 view_kwargs = {
     "view_point_height": 1.5,      # Height of observer viewpoint in meters
@@ -264,7 +264,7 @@ view_kwargs = {
 }
 
 # Compute Green View Index using mode='green'
-gvi_grid = get_view_index(voxelcity_grid, meshsize, mode='green', **view_kwargs)
+gvi_grid = get_view_index(voxcity_grid, meshsize, mode='green', **view_kwargs)
 
 # Adjust parameters for Sky View Index
 view_kwargs["colormap"] = "BuPu_r"
@@ -272,7 +272,7 @@ view_kwargs["output_file_name"] = "svi"
 view_kwargs["elevation_min_degrees"] = 0 # Start ray-tracing from the horizon
 
 # Compute Sky View Index using mode='sky'
-svi_grid = get_view_index(voxelcity_grid, meshsize, mode='sky', **view_kwargs)
+svi_grid = get_view_index(voxcity_grid, meshsize, mode='sky', **view_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
@@ -284,7 +284,7 @@ svi_grid = get_view_index(voxelcity_grid, meshsize, mode='sky', **view_kwargs)
 #### Landmark Visibility Map:
 
 ```python
-from voxelcity.sim.view import get_landmark_visibility_map
+from voxcity.sim.view import get_landmark_visibility_map
 
 # Dictionary of parameters for landmark visibility analysis
 landmark_kwargs = {
@@ -296,7 +296,7 @@ landmark_kwargs = {
     "output_directory": "output",             # Directory to save output files
     "output_file_name": "landmark_visibility" # Base filename for outputs
 }
-landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
+landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">
@@ -350,7 +350,7 @@ landmark_vis_map = get_landmark_visibility_map(voxelcity_grid, building_id_grid,
 
 ## Citation
 
-Please cite the [paper](https://doi.org) if you use `voxelcity` in a scientific publication:
+Please cite the [paper](https://doi.org) if you use `voxcity` in a scientific publication:
 
 Fujiwara, K., XXX. XXX. XXX, XXX, XXX.
 

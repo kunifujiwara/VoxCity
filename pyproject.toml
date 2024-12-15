@@ -1,13 +1,13 @@
 [project]
-name = "voxelcity"
-version = "0.1.81"
+name = "voxcity"
+version = "0.2.0"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
+description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.md"
 authors = [
   {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
@@ -60,13 +60,13 @@ dev = [
 ]
 
 [project.urls]
-bugs = "https://github.com/kunifujiwara/voxelcity/issues"
-changelog = "https://github.com/kunifujiwara/voxelcity/blob/master/changelog.md"
-homepage = "https://github.com/kunifujiwara/voxelcity"
+bugs = "https://github.com/kunifujiwara/voxcity/issues"
+changelog = "https://github.com/kunifujiwara/voxcity/blob/master/changelog.md"
+homepage = "https://github.com/kunifujiwara/voxcity"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["voxelcity", "voxelcity.download", "voxelcity.geo", "voxelcity.file", "voxelcity.sim", "voxelcity.utils"]
+packages = ["voxcity", "voxcity.download", "voxcity.geo", "voxcity.file", "voxcity.sim", "voxcity.utils"]
 
 [tool.setuptools.package-data]
 "*" = ["*.*"]

@@ -299,11 +299,11 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
 
     return vi_map
 
-def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
+def mark_building_by_id(voxcity_grid, building_id_grid_ori, ids, mark):
     """Mark specific buildings in the voxel grid with a given value.
 
     Args:
-        voxelcity_grid (ndarray): 3D array of voxel values
+        voxcity_grid (ndarray): 3D array of voxel values
         building_id_grid_ori (ndarray): 2D array of building IDs
         ids (list): List of building IDs to mark
         mark (int): Value to mark the buildings with
@@ -318,8 +318,8 @@ def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
     for i in range(len(positions[0])):
         x, y = positions[0][i], positions[1][i]
         # Replace building voxels (-3) with mark value at this x,y position
-        z_mask = voxelcity_grid[x, y, :] == -3
-        voxelcity_grid[x, y, z_mask] = mark
+        z_mask = voxcity_grid[x, y, :] == -3
+        voxcity_grid[x, y, z_mask] = mark
 
 @njit
 def trace_ray_to_target(voxel_data, origin, target, opaque_values):
@@ -531,7 +531,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 
     return np.flipud(visibility_map)
 
-def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **kwargs):
+def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson, meshsize, **kwargs):
     """Generate a visibility map for landmark buildings in a voxel city.
 
     Places observers at valid locations and checks visibility to any part of the
@@ -539,7 +539,7 @@ def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojs
     buildings within a specified rectangle.
 
     Args:
-        voxelcity_grid (ndarray): 3D array representing the voxel city
+        voxcity_grid (ndarray): 3D array representing the voxel city
         building_id_grid (ndarray): 3D array mapping voxels to building IDs
         building_geojson (dict): GeoJSON data containing building features
         meshsize (float): Size of each voxel in meters
@@ -586,10 +586,10 @@ def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojs
 
     # Mark landmark buildings in voxel grid with special value
     target_value = -30
-    mark_building_by_id(voxelcity_grid, building_id_grid, landmark_ids, target_value)
+    mark_building_by_id(voxcity_grid, building_id_grid, landmark_ids, target_value)
     
     # Compute visibility map
-    landmark_vis_map = compute_landmark_visibility(voxelcity_grid, target_value=target_value, view_height_voxel=view_height_voxel, colormap=colormap)
+    landmark_vis_map = compute_landmark_visibility(voxcity_grid, target_value=target_value, view_height_voxel=view_height_voxel, colormap=colormap)
 
     # Handle optional OBJ export
     obj_export = kwargs.get("obj_export")
@@ -617,6 +617,6 @@ def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojs
             vmax=vmax
         )
         output_file_name_vox = 'voxcity_' + output_file_name
-        export_obj(voxelcity_grid, output_dir, output_file_name_vox, meshsize)
+        export_obj(voxcity_grid, output_dir, output_file_name_vox, meshsize)
 
     return landmark_vis_map
