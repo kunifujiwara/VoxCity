@@ -1,14 +1,14 @@
-Welcome to 3D City Model Generator's documentation!
-======================================
+Welcome to VoxelCity's documentation!
+================================================
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-   readme
-   installation
-   usage
+   README.md
    modules
+   usage
+   installation
    contributing
    authors
    history

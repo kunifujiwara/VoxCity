@@ -1,11 +1,16 @@
 """Functions for computing and visualizing various view indices in a voxel city model.
 
 This module provides functionality to compute and visualize:
-- Green View Index (GVI): Measures visibility of green elements
-- Sky View Index (SVI): Measures visibility of the sky
-- Landmark Visibility: Measures visibility of specified landmark buildings
+- Green View Index (GVI): Measures visibility of green elements like trees and vegetation
+- Sky View Index (SVI): Measures visibility of open sky from street level
+- Landmark Visibility: Measures visibility of specified landmark buildings from different locations
 
-The module uses ray tracing techniques optimized with Numba JIT compilation.
+The module uses optimized ray tracing techniques with Numba JIT compilation for efficient computation.
+Key features:
+- Generic ray tracing framework that can be customized for different view indices
+- Parallel processing for fast computation of view maps
+- Visualization tools including matplotlib plots and OBJ exports
+- Support for both inclusion and exclusion based visibility checks
 """
 
 import numpy as np
@@ -17,10 +22,25 @@ from ..file.obj import grid_to_obj, export_obj
 
 @njit
 def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=True):
+    """Trace a ray through a voxel grid and check for hits with specified values.
+    
+    Uses an optimized DDA (Digital Differential Analyzer) algorithm for ray traversal.
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values
+        origin (tuple): Starting point (x,y,z) of ray
+        direction (tuple): Direction vector of ray
+        hit_values (tuple): Values to check for hits
+        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
+
+    Returns:
+        bool: True if ray hits target value(s), False otherwise
+    """
     nx, ny, nz = voxel_data.shape
     x0, y0, z0 = origin
     dx, dy, dz = direction
 
+    # Normalize direction vector
     length = np.sqrt(dx*dx + dy*dy + dz*dz)
     if length == 0.0:
         return False
@@ -28,13 +48,16 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
     dy /= length
     dz /= length
 
+    # Initialize ray position at center of starting voxel
     x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
     i, j, k = int(x0), int(y0), int(z0)
 
+    # Determine step direction for each axis
     step_x = 1 if dx >= 0 else -1
     step_y = 1 if dy >= 0 else -1
     step_z = 1 if dz >= 0 else -1
 
+    # Calculate distances to next voxel boundaries and step sizes
     if dx != 0:
         t_max_x = ((i + (step_x > 0)) - x) / dx
         t_delta_x = abs(1 / dx)
@@ -56,6 +79,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
         t_max_z = np.inf
         t_delta_z = np.inf
 
+    # Main ray traversal loop
     while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
         voxel_value = voxel_data[i, j, k]
 
@@ -74,7 +98,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
             if not in_set:
                 return True
 
-        # Move to next voxel
+        # Move to next voxel using DDA algorithm
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
                 t_max_x += t_delta_x
@@ -90,16 +114,27 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
                 t_max_z += t_delta_z
                 k += step_z
 
-    # No hit found
+    # No hit found within grid bounds
     return False
 
 @njit
 def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode=True):
+    """Compute view index for a single observer location by casting multiple rays.
+
+    Args:
+        observer_location (ndarray): Position of observer (x,y,z)
+        voxel_data (ndarray): 3D array of voxel values
+        ray_directions (ndarray): Array of direction vectors for rays
+        hit_values (tuple): Values to check for hits
+        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
+
+    Returns:
+        float: Ratio of successful rays (0.0 to 1.0)
+    """
     hit_count = 0
     total_rays = ray_directions.shape[0]
 
-    # If inclusion_mode=True, a ray is considered successful if it returns True (hit found).
-    # If inclusion_mode=False, a ray is considered successful if it returns False (no hit).
+    # Cast rays in all directions and count hits
     for idx in range(total_rays):
         direction = ray_directions[idx]
         result = trace_ray_generic(voxel_data, observer_location, direction, hit_values, inclusion_mode)
@@ -114,19 +149,38 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
 
 @njit(parallel=True)
 def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode=True):
+    """Compute view index map for entire grid by placing observers at valid locations.
+
+    Valid observer locations are empty voxels above ground level, excluding building roofs
+    and vegetation surfaces.
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values
+        ray_directions (ndarray): Array of direction vectors for rays
+        view_height_voxel (int): Height offset for observer in voxels
+        hit_values (tuple): Values to check for hits
+        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
+
+    Returns:
+        ndarray: 2D array of view index values with y-axis flipped
+    """
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
 
+    # Process each x,y position in parallel
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
+            # Find lowest empty voxel above ground
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                    # Skip if standing on building or vegetation
                     if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
                         vi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
+                        # Place observer and compute view index
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
                         vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode)
                         vi_map[x, y] = vi_value
@@ -144,9 +198,9 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
         mode (str): Predefined mode. Options: 'green', 'sky', or None.
-            If 'green': GVI mode (hit_values and inclusion_mode are set internally).
-            If 'sky': SVI mode (hit_values and inclusion_mode are set internally).
-            If None or any other string: Must provide hit_values.
+            If 'green': GVI mode - measures visibility of vegetation
+            If 'sky': SVI mode - measures visibility of open sky
+            If None: Custom mode requiring hit_values parameter
         hit_values (tuple): Voxel values considered as hits (if inclusion_mode=True)
                             or allowed values (if inclusion_mode=False), if mode is None.
         inclusion_mode (bool): 
@@ -156,21 +210,27 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
             - view_point_height (float): Observer height in meters (default: 1.5)
             - colormap (str): Matplotlib colormap name (default: 'viridis')
             - obj_export (bool): Export as OBJ (default: False)
-            - output_directory (str), output_file_name (str)
-            - num_colors (int), alpha (float), vmin (float), vmax (float)
-            - N_azimuth (int), N_elevation (int)
-            - elevation_min_degrees (float), elevation_max_degrees (float)
+            - output_directory (str): Directory for OBJ output
+            - output_file_name (str): Base filename for OBJ output
+            - num_colors (int): Number of discrete colors for OBJ export
+            - alpha (float): Transparency value for OBJ export
+            - vmin (float): Minimum value for color mapping
+            - vmax (float): Maximum value for color mapping
+            - N_azimuth (int): Number of azimuth angles for ray directions
+            - N_elevation (int): Number of elevation angles for ray directions
+            - elevation_min_degrees (float): Minimum elevation angle in degrees
+            - elevation_max_degrees (float): Maximum elevation angle in degrees
 
     Returns:
         ndarray: 2D array of computed view index values.
     """
     # Handle mode presets
     if mode == 'green':
-        # GVI defaults
+        # GVI defaults - detect vegetation and trees
         hit_values = (-2, 2, 5, 7)
         inclusion_mode = True
     elif mode == 'sky':
-        # SVI defaults
+        # SVI defaults - detect open sky
         hit_values = (0,)
         inclusion_mode = False
     else:
@@ -178,6 +238,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
         if hit_values is None:
             raise ValueError("For custom mode, you must provide hit_values.")
 
+    # Get parameters from kwargs with defaults
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
     colormap = kwargs.get("colormap", 'viridis')
@@ -188,7 +249,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
 
-    # Generate ray directions
+    # Generate ray directions using spherical coordinates
     azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
     elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
 
@@ -206,7 +267,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     # Compute the view index map
     vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode)
 
-    # Plot
+    # Plot results
     cmap = plt.cm.get_cmap(colormap).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
@@ -263,6 +324,8 @@ def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
 @njit
 def trace_ray_to_target(voxel_data, origin, target, opaque_values):
     """Trace a ray from origin to target through voxel data.
+
+    Uses DDA algorithm to efficiently traverse voxels along ray path.
 
     Args:
         voxel_data (ndarray): 3D array of voxel values
@@ -334,7 +397,7 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
         if i == int(x1) and j == int(y1) and k == int(z1):
             return True  # Ray has reached the target
 
-        # Move to next voxel boundary using DDA algorithm
+        # Move to next voxel using DDA algorithm
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
                 t_max = t_max_x
@@ -379,6 +442,9 @@ def compute_visibility_to_all_landmarks(observer_location, landmark_positions, v
 def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel):
     """Compute visibility map for landmarks in the voxel grid.
 
+    Places observers at valid locations (empty voxels above ground, excluding building
+    roofs and vegetation) and checks visibility to any landmark.
+
     Args:
         voxel_data (ndarray): 3D array of voxel values
         landmark_positions (ndarray): Array of landmark positions
@@ -417,6 +483,9 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
 
 def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis'):
     """Compute and visualize landmark visibility in a voxel grid.
+
+    Places observers at valid locations and checks visibility to any landmark voxel.
+    Generates a binary visibility map and visualization.
 
     Args:
         voxel_data (ndarray): 3D array of voxel values
@@ -465,6 +534,10 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojson, meshsize, **kwargs):
     """Generate a visibility map for landmark buildings in a voxel city.
 
+    Places observers at valid locations and checks visibility to any part of the
+    specified landmark buildings. Can identify landmarks either by ID or by finding
+    buildings within a specified rectangle.
+
     Args:
         voxelcity_grid (ndarray): 3D array representing the voxel city
         building_id_grid (ndarray): 3D array mapping voxels to building IDs
@@ -511,7 +584,7 @@ def get_landmark_visibility_map(voxelcity_grid, building_id_grid, building_geojs
         # Find buildings at center point
         landmark_ids = find_building_containing_point(features, target_point)
 
-    # Mark landmark buildings in voxel grid
+    # Mark landmark buildings in voxel grid with special value
     target_value = -30
     mark_building_by_id(voxelcity_grid, building_id_grid, landmark_ids, target_value)
     
