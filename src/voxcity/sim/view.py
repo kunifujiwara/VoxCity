@@ -15,6 +15,7 @@ Key features:
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from numba import njit, prange
 
 from ..file.geojson import find_building_containing_point
