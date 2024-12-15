@@ -252,9 +252,8 @@ export_magicavoxel_vox(voxelcity_grid, output_path, base_filename=base_filename)
 #### Compute Green View Index (GVI) and Sky View Index (SVI):
 
 ```python
-from voxelcity.sim.view import get_green_view_index, get_sky_view_index
+from voxelcity.sim.view import get_view_index_generic
 
-# Dictionary of parameters for view index analysis
 view_kwargs = {
     "view_point_height": 1.5,      # Height of observer viewpoint in meters
     "dem_grid": dem_grid,          # Digital elevation model grid
@@ -263,11 +262,17 @@ view_kwargs = {
     "output_directory": "output",  # Directory to save output files
     "output_file_name": "gvi"      # Base filename for outputs
 }
-gvi_grid = get_green_view_index(voxelcity_grid, meshsize, **view_kwargs)
 
+# Compute Green View Index using mode='green'
+gvi_grid = get_view_index_generic(voxelcity_grid, meshsize, mode='green', **view_kwargs)
+
+# Adjust parameters for Sky View Index
 view_kwargs["colormap"] = "BuPu_r"
 view_kwargs["output_file_name"] = "svi"
-svi_grid = get_sky_view_index(voxelcity_grid, meshsize, **view_kwargs)
+view_kwargs["elevation_min_degrees"] = 0 # Start ray-tracing from the horizon
+
+# Compute Sky View Index using mode='sky'
+svi_grid = get_view_index_generic(voxelcity_grid, meshsize, mode='sky', **view_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
