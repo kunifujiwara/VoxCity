@@ -289,7 +289,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     grids_I, grids_J = building_height_grid.shape[1], building_height_grid.shape[0]
 
     # Calculate vertical grid dimension based on building heights and telescoping settings
-    min_grids_Z = kwargs.get('min_grids_Z')
+    min_grids_Z = kwargs.get('min_grids_Z', 20)
     if verticalStretch > 0:
         # Calculate minimum number of cells needed to reach target height with telescoping
         a = meshsize  # First cell size
