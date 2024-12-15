@@ -137,7 +137,7 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
 
     return np.flipud(vi_map)
 
-def get_view_index_generic(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
+def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
     """Calculate and visualize a generic view index for a voxel city model.
 
     Args:
