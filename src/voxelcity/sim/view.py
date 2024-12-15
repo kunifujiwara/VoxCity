@@ -10,7 +10,6 @@ The module uses ray tracing techniques optimized with Numba JIT compilation.
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from numba import njit, prange
 
 from ..file.geojson import find_building_containing_point
@@ -22,7 +21,6 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
     x0, y0, z0 = origin
     dx, dy, dz = direction
 
-    # Normalize direction
     length = np.sqrt(dx*dx + dy*dy + dz*dz)
     if length == 0.0:
         return False
@@ -61,7 +59,6 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
     while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
         voxel_value = voxel_data[i, j, k]
 
-        # Check hit condition
         if inclusion_mode:
             # Inclusion mode: hit if voxel_value in hit_values
             for hv in hit_values:
@@ -75,7 +72,6 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
                     in_set = True
                     break
             if not in_set:
-                # voxel_value not in hit_values => hit
                 return True
 
         # Move to next voxel
@@ -94,66 +90,105 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
                 t_max_z += t_delta_z
                 k += step_z
 
-    # Exited the grid without finding a hit
+    # No hit found
     return False
 
 @njit
-def compute_gvi(observer_location, voxel_data, ray_directions):
-    """Compute Green View Index for a single observer location."""
-    green_hit_values = (-2, 2, 5, 7)  # Green-related voxel values
-    green_count = 0
+def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode=True):
+    hit_count = 0
     total_rays = ray_directions.shape[0]
 
+    # If inclusion_mode=True, a ray is considered successful if it returns True (hit found).
+    # If inclusion_mode=False, a ray is considered successful if it returns False (no hit).
     for idx in range(total_rays):
         direction = ray_directions[idx]
-        # Inclusion mode = True, hits if voxel_value in green_hit_values
-        if trace_ray_generic(voxel_data, observer_location, direction, green_hit_values, inclusion_mode=True):
-            green_count += 1
+        result = trace_ray_generic(voxel_data, observer_location, direction, hit_values, inclusion_mode)
+        if inclusion_mode:
+            if result:  # hit found
+                hit_count += 1
+        else:
+            if not result:  # no hit means success in exclusion mode
+                hit_count += 1
 
-    return green_count / total_rays
+    return hit_count / total_rays
 
 @njit(parallel=True)
-def compute_gvi_map(voxel_data, ray_directions, view_height_voxel=0):
-    """Compute GVI map for entire voxel grid."""
+def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode=True):
     nx, ny, nz = voxel_data.shape
-    gvi_map = np.full((nx, ny), np.nan)
+    vi_map = np.full((nx, ny), np.nan)
 
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
             for z in range(1, nz):
-                # Check if current position is walkable (0 or -2) and below is solid
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    # If below is building or special element
                     if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
-                        gvi_map[x, y] = np.nan
+                        vi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
-                        gvi_value = compute_gvi(observer_location, voxel_data, ray_directions)
-                        gvi_map[x, y] = gvi_value
+                        observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                        vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode)
+                        vi_map[x, y] = vi_value
                         found_observer = True
                         break
             if not found_observer:
-                gvi_map[x, y] = np.nan
+                vi_map[x, y] = np.nan
 
-    return np.flipud(gvi_map)
+    return np.flipud(vi_map)
 
-def get_green_view_index(voxel_data, meshsize, **kwargs):
-    """Calculate and visualize Green View Index for a voxel city model."""
+def get_view_index_generic(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
+    """Calculate and visualize a generic view index for a voxel city model.
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        mode (str): Predefined mode. Options: 'green', 'sky', or None.
+            If 'green': GVI mode (hit_values and inclusion_mode are set internally).
+            If 'sky': SVI mode (hit_values and inclusion_mode are set internally).
+            If None or any other string: Must provide hit_values.
+        hit_values (tuple): Voxel values considered as hits (if inclusion_mode=True)
+                            or allowed values (if inclusion_mode=False), if mode is None.
+        inclusion_mode (bool): 
+            True = voxel_value in hit_values is success.
+            False = voxel_value not in hit_values is success.
+        **kwargs: Additional arguments:
+            - view_point_height (float): Observer height in meters (default: 1.5)
+            - colormap (str): Matplotlib colormap name (default: 'viridis')
+            - obj_export (bool): Export as OBJ (default: False)
+            - output_directory (str), output_file_name (str)
+            - num_colors (int), alpha (float), vmin (float), vmax (float)
+            - N_azimuth (int), N_elevation (int)
+            - elevation_min_degrees (float), elevation_max_degrees (float)
+
+    Returns:
+        ndarray: 2D array of computed view index values.
+    """
+    # Handle mode presets
+    if mode == 'green':
+        # GVI defaults
+        hit_values = (-2, 2, 5, 7)
+        inclusion_mode = True
+    elif mode == 'sky':
+        # SVI defaults
+        hit_values = (0,)
+        inclusion_mode = False
+    else:
+        # For other modes, user must specify hit_values
+        if hit_values is None:
+            raise ValueError("For custom mode, you must provide hit_values.")
+
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
     colormap = kwargs.get("colormap", 'viridis')
     vmin = kwargs.get("vmin", 0.0)
     vmax = kwargs.get("vmax", 1.0)
+    N_azimuth = kwargs.get("N_azimuth", 60)
+    N_elevation = kwargs.get("N_elevation", 10)
+    elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
+    elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
 
-    # Define ray sampling parameters for GVI
-    N_azimuth = 60
-    N_elevation = 10
-    elevation_min_degrees = -30
-    elevation_max_degrees = 30
-
+    # Generate ray directions
     azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
     elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
 
@@ -166,28 +201,29 @@ def get_green_view_index(voxel_data, meshsize, **kwargs):
             dy = cos_elev * np.sin(azimuth)
             dz = sin_elev
             ray_directions.append([dx, dy, dz])
-
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
-    gvi_map = compute_gvi_map(voxel_data, ray_directions, view_height_voxel=view_height_voxel)
+    # Compute the view index map
+    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode)
 
+    # Plot
     cmap = plt.cm.get_cmap(colormap).copy()
     cmap.set_bad(color='lightgray')
-
     plt.figure(figsize=(10, 8))
-    plt.imshow(gvi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
-    plt.colorbar(label='Green View Index')
+    plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+    plt.colorbar(label='View Index')
     plt.show()
 
-    obj_export = kwargs.get("obj_export")
-    if obj_export == True:
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(gvi_map))
+    # Optional OBJ export
+    obj_export = kwargs.get("obj_export", False)
+    if obj_export:
+        dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
         output_dir = kwargs.get("output_directory", "output")
-        output_file_name = kwargs.get("output_file_name", "view_index")        
+        output_file_name = kwargs.get("output_file_name", "view_index")
         num_colors = kwargs.get("num_colors", 10)
         alpha = kwargs.get("alpha", 1.0)
         grid_to_obj(
-            gvi_map,
+            vi_map,
             dem_grid,
             output_dir,
             output_file_name,
@@ -200,176 +236,7 @@ def get_green_view_index(voxel_data, meshsize, **kwargs):
             vmax=vmax
         )
 
-    return gvi_map
-
-@njit
-def compute_svi(observer_location, voxel_data, ray_directions):
-    """Compute Sky View Index for a single observer location."""
-    # For SVI, obstacles are any voxel != 0
-    # We want to return True if we exit without hitting an obstacle (non-0).
-    # Thus we set hit_values=(0,) and inclusion_mode=False
-    # This means we only 'ignore' voxel_value 0. If we find any voxel !=0, we hit and return True,
-    # but since inclusion_mode=False, a non-0 voxel triggers a hit and we return True immediately.
-    # Actually, for SVI we want the opposite: if we hit a non-zero voxel, return False immediately.
-    # Wait, let's clarify:
-    # `trace_ray_generic` returns True if hit condition is met. We want:
-    # - If we find a non-zero voxel, that's a "hit" under exclusion mode (since voxel_value not in [0]),
-    #   return True from trace_ray_generic, meaning we found an obstacle.
-    # Then `compute_svi` should interpret that as no sky.
-    # If we exit the grid, trace_ray_generic returns True if exclusion_mode=False? Actually it returns True at the end, but we rely on logic:
-    # - If no hit found in exclusion mode, it returns True, meaning no obstacle found.
-    # Actually, that's correct. If we never hit a non-zero voxel, at the end we return not inclusion_mode => not False => True.
-    # So trace_ray_generic will return True if no obstacle found and exit.
-    # If obstacle found, it returns True early. 
-    # To differentiate: We need to distinguish sky/no sky:
-    # In SVI:
-    # - If an obstacle is found: `trace_ray_generic` returns True (hit condition).
-    #   That's actually the opposite of what we want. We want to return False for SVI if obstacle is found.
-    #
-    # Let's invert our logic:
-    # For SVI:
-    # - We can run `trace_ray_generic` with inclusion_mode=True and hit_values=[0],
-    #   meaning we want to stop if we see a voxel in hit_values. But that's incorrect because we want to stop on non-zero voxel.
-    #
-    # Another approach:
-    # Let's define a special mode for sky:
-    # If we want no obstacles: If we find a non-0 voxel, that's a 'bad' hit (no sky).
-    # If we never find a non-0 voxel and exit:
-    # trace_ray_generic(inclusion_mode=False, hit_values=[0]) returns True at exit with no hits (no problem).
-    # If we see a non-0 voxel: It's a hit (since not in [0]), returns True immediately.
-    #
-    # After calling trace_ray_generic:
-    # - If returned True means we found a hit condition: that means an obstacle was found. For sky that means no sky.
-    # - If returned False means no hit was found. For exclusion_mode=False we said `return not inclusion_mode` at the end,
-    #   which is True for end. We must fix the logic in `trace_ray_generic`.
-    #
-    # Let's fix trace_ray_generic logic at the end:
-    # Actually, let's define that `trace_ray_generic` only returns True if a voxel meets the hit condition inside the loop.
-    # If it exits the loop, return False, meaning no hit found. 
-    # This makes more sense: a "hit" should only occur if we find a condition inside the grid.
-    # Exiting the grid means no hit.
-    #
-    # Revised logic in trace_ray_generic:
-    # - If found condition: return True immediately.
-    # - If exit: return False.
-    #
-    # For SVI:
-    # - We want to return True if sky is visible (no obstacle)
-    # - If an obstacle is found: trace_ray_generic returns True immediately = found hit (obstacle), no sky.
-    #   We want to interpret True as obstacle found, so no sky = False.
-    # - If exit without obstacle: trace_ray_generic returns False = no hit.
-    #   No hit means no obstacle found, so sky visible = True.
-    #
-    # Conclusion:
-    # After calling trace_ray_generic for SVI:
-    # - if result == True: obstacle found => sky not visible => return False
-    # - if result == False: no obstacle found => sky visible => return True
-
-    sky_count = 0
-    total_rays = ray_directions.shape[0]
-    # We consider obstacles as anything not equal to 0
-    # hit_values=(0,), inclusion_mode=False means:
-    #   Hit if voxel_value not in (0,) => that means any non-zero voxel triggers a hit.
-    # Exiting means no hit.
-    hit_values = (0,)
-
-    for idx in range(total_rays):
-        direction = ray_directions[idx]
-        hit_result = trace_ray_generic(voxel_data, observer_location, direction, hit_values, inclusion_mode=False)
-        # hit_result == True: found an obstacle
-        # hit_result == False: no obstacle found (exited grid)
-        if hit_result == False:
-            # No hit => sky visible along this ray
-            sky_count += 1
-
-    return sky_count / total_rays
-
-@njit(parallel=True)
-def compute_svi_map(voxel_data, ray_directions, view_height_voxel=0):
-    """Compute SVI map for entire voxel grid."""
-    nx, ny, nz = voxel_data.shape
-    svi_map = np.full((nx, ny), np.nan)
-
-    for x in prange(nx):
-        for y in range(ny):
-            found_observer = False
-            for z in range(1, nz):
-                if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
-                        svi_map[x, y] = np.nan
-                        found_observer = True
-                        break
-                    else:
-                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
-                        svi_value = compute_svi(observer_location, voxel_data, ray_directions)
-                        svi_map[x, y] = svi_value
-                        found_observer = True
-                        break
-            if not found_observer:
-                svi_map[x, y] = np.nan
-
-    return np.flipud(svi_map)
-
-def get_sky_view_index(voxel_data, meshsize, **kwargs):
-    """Calculate and visualize Sky View Index for a voxel city model."""
-    view_point_height = kwargs.get("view_point_height", 1.5)
-    view_height_voxel = int(view_point_height / meshsize)
-    colormap = kwargs.get("colormap", 'viridis')
-    vmin = kwargs.get("vmin", 0.0)
-    vmax = kwargs.get("vmax", 1.0)
-
-    # Parameters for SVI rays (focused upward directions)
-    N_azimuth_svi = 60
-    N_elevation_svi = 5
-    elevation_min_degrees_svi = 0
-    elevation_max_degrees_svi = 30
-
-    azimuth_angles_svi = np.linspace(0, 2 * np.pi, N_azimuth_svi, endpoint=False)
-    elevation_angles_svi = np.deg2rad(np.linspace(elevation_min_degrees_svi, elevation_max_degrees_svi, N_elevation_svi))
-
-    ray_directions_svi = []
-    for elevation in elevation_angles_svi:
-        cos_elev = np.cos(elevation)
-        sin_elev = np.sin(elevation)
-        for azimuth in azimuth_angles_svi:
-            dx = cos_elev * np.cos(azimuth)
-            dy = cos_elev * np.sin(azimuth)
-            dz = sin_elev
-            ray_directions_svi.append([dx, dy, dz])
-
-    ray_directions_svi = np.array(ray_directions_svi, dtype=np.float64)
-    svi_map = compute_svi_map(voxel_data, ray_directions_svi, view_height_voxel=view_height_voxel)
-
-    cmap = plt.cm.get_cmap(colormap).copy()
-    cmap.set_bad(color='lightgray')
-
-    plt.figure(figsize=(10, 8))
-    plt.imshow(svi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
-    plt.colorbar(label='Sky View Index')
-    plt.show()
-
-    obj_export = kwargs.get("obj_export")
-    if obj_export == True:
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(svi_map))
-        output_dir = kwargs.get("output_directory", "output")
-        output_file_name = kwargs.get("output_file_name", "view_index")        
-        num_colors = kwargs.get("num_colors", 10)
-        alpha = kwargs.get("alpha", 1.0)
-        grid_to_obj(
-            svi_map,
-            dem_grid,
-            output_dir,
-            output_file_name,
-            meshsize,
-            view_point_height,
-            colormap_name=colormap,
-            num_colors=num_colors,
-            alpha=alpha,
-            vmin=vmin,
-            vmax=vmax
-        )
-
-    return svi_map
+    return vi_map
 
 def mark_building_by_id(voxelcity_grid, building_id_grid_ori, ids, mark):
     """Mark specific buildings in the voxel grid with a given value.
