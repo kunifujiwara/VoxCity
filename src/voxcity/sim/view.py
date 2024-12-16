@@ -621,3 +621,104 @@ def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson
         export_obj(voxcity_grid, output_dir, output_file_name_vox, meshsize)
 
     return landmark_vis_map
+
+def get_sky_view_factor_map(voxel_data, meshsize, **kwargs):
+    """
+    Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
+
+    The SVF is computed similarly to how the 'sky' mode of the get_view_index function works:
+    - Rays are cast from each observer position upward (within a specified angular range).
+    - Any non-empty voxel encountered is considered an obstruction.
+    - The ratio of unobstructed rays to total rays is the SVF.
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        **kwargs: Additional parameters:
+            - view_point_height (float): Observer height above ground in meters. Default: 1.5
+            - colormap (str): Matplotlib colormap name. Default: 'viridis'
+            - vmin (float): Minimum value for color bar. Default: 0.0
+            - vmax (float): Maximum value for color bar. Default: 1.0
+            - N_azimuth (int): Number of azimuth angles. Default: 60
+            - N_elevation (int): Number of elevation angles. Default: 10
+            - elevation_min_degrees (float): Minimum elevation angle in degrees. Typically 0 (horizon). Default: 0
+            - elevation_max_degrees (float): Maximum elevation angle in degrees. Typically 90 for full hemisphere. Default: 90
+            - obj_export (bool): Whether to export the result as an OBJ file. Default: False
+            - output_directory (str), output_file_name (str), etc. are also supported if OBJ export is needed.
+
+    Returns:
+        ndarray: 2D array of SVF values at each cell (x, y).
+    """
+    # Default parameters
+    view_point_height = kwargs.get("view_point_height", 1.5)
+    view_height_voxel = int(view_point_height / meshsize)
+    colormap = kwargs.get("colormap", 'BuPu_r')
+    vmin = kwargs.get("vmin", 0.0)
+    vmax = kwargs.get("vmax", 1.0)
+    N_azimuth = kwargs.get("N_azimuth", 60)
+    N_elevation = kwargs.get("N_elevation", 10)
+    elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)
+    elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)
+
+    # Define hit_values and inclusion_mode for sky detection
+    # For sky: hit_values=(0,), inclusion_mode=False means:
+    # A hit occurs whenever we encounter a voxel_value != 0 along the ray.
+    # Thus, a ray that escapes with only 0's encountered is unobstructed sky.
+    hit_values = (0,)
+    inclusion_mode = False
+
+    # Generate ray directions over the specified hemisphere
+    azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
+    elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
+
+    ray_directions = []
+    for elevation in elevation_angles:
+        cos_elev = np.cos(elevation)
+        sin_elev = np.sin(elevation)
+        for azimuth in azimuth_angles:
+            dx = cos_elev * np.cos(azimuth)
+            dy = cos_elev * np.sin(azimuth)
+            dz = sin_elev
+            ray_directions.append([dx, dy, dz])
+    ray_directions = np.array(ray_directions, dtype=np.float64)
+
+    # Compute the SVF map using the same compute function but with the sky parameters
+    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode)
+
+    # vi_map now holds the fraction of rays that 'hit' the condition for sky (no obstruction)
+    # Actually, since inclusion_mode=False and hit_values=(0,), vi_map gives the fraction of unobstructed rays.
+    # This is essentially the sky view factor.
+
+    # Plot results
+    cmap = plt.cm.get_cmap(colormap).copy()
+    cmap.set_bad(color='lightgray')
+    plt.figure(figsize=(10, 8))
+    plt.title("Sky View Factor Map")
+    plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+    plt.colorbar(label='Sky View Factor')
+    plt.show()
+
+    # Optional OBJ export
+    obj_export = kwargs.get("obj_export", False)
+    if obj_export:
+        from ..file.obj import grid_to_obj
+        dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
+        output_dir = kwargs.get("output_directory", "output")
+        output_file_name = kwargs.get("output_file_name", "sky_view_factor")
+        num_colors = kwargs.get("num_colors", 10)
+        alpha = kwargs.get("alpha", 1.0)
+        grid_to_obj(
+            vi_map,
+            dem_grid,
+            output_dir,
+            output_file_name,
+            meshsize,
+            view_point_height,
+            colormap_name=colormap,
+            num_colors=num_colors,
+            alpha=alpha,
+            vmin=vmin,
+            vmax=vmax
+        )
+
+    return vi_map
