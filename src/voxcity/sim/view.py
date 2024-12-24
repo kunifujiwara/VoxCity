@@ -22,20 +22,26 @@ from ..file.geojson import find_building_containing_point
 from ..file.obj import grid_to_obj, export_obj
 
 @njit
-def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=True):
+def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
+    """Calculate tree transmittance using the Beer-Lambert law.
+    
+    Args:
+        length (float): Path length through tree voxel in meters
+        tree_k (float): Static extinction coefficient (default: 0.5)
+        tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+    
+    Returns:
+        float: Transmittance value between 0 and 1
+    """
+    return np.exp(-tree_k * tree_lad * length)
+
+@njit
+def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     """Trace a ray through a voxel grid and check for hits with specified values.
     
-    Uses an optimized DDA (Digital Differential Analyzer) algorithm for ray traversal.
-
-    Args:
-        voxel_data (ndarray): 3D array of voxel values
-        origin (tuple): Starting point (x,y,z) of ray
-        direction (tuple): Direction vector of ray
-        hit_values (tuple): Values to check for hits
-        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
-
-    Returns:
-        bool: True if ray hits target value(s), False otherwise
+    For tree voxels (-2):
+    - If -2 in hit_values: counts obstruction (1 - transmittance) as hit contribution
+    - If -2 not in hit_values: applies transmittance normally
     """
     nx, ny, nz = voxel_data.shape
     x0, y0, z0 = origin
@@ -44,62 +50,86 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
     # Normalize direction vector
     length = np.sqrt(dx*dx + dy*dy + dz*dz)
     if length == 0.0:
-        return False
+        return False, 1.0
     dx /= length
     dy /= length
     dz /= length
 
-    # Initialize ray position at center of starting voxel
+    # Initialize ray position
     x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
     i, j, k = int(x0), int(y0), int(z0)
 
-    # Determine step direction for each axis
+    # Calculate step directions and initial distances
     step_x = 1 if dx >= 0 else -1
     step_y = 1 if dy >= 0 else -1
     step_z = 1 if dz >= 0 else -1
 
-    # Calculate distances to next voxel boundaries and step sizes
-    if dx != 0:
+    # Calculate DDA parameters with safety checks
+    EPSILON = 1e-10  # Small value to prevent division by zero
+    
+    if abs(dx) > EPSILON:
         t_max_x = ((i + (step_x > 0)) - x) / dx
         t_delta_x = abs(1 / dx)
     else:
         t_max_x = np.inf
         t_delta_x = np.inf
 
-    if dy != 0:
+    if abs(dy) > EPSILON:
         t_max_y = ((j + (step_y > 0)) - y) / dy
         t_delta_y = abs(1 / dy)
     else:
         t_max_y = np.inf
         t_delta_y = np.inf
 
-    if dz != 0:
+    if abs(dz) > EPSILON:
         t_max_z = ((k + (step_z > 0)) - z) / dz
         t_delta_z = abs(1 / dz)
     else:
         t_max_z = np.inf
         t_delta_z = np.inf
 
+    # Track cumulative values
+    cumulative_transmittance = 1.0
+    cumulative_hit_contribution = 0.0
+    last_t = 0.0
+
     # Main ray traversal loop
     while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
         voxel_value = voxel_data[i, j, k]
+        
+        # Find next intersection
+        t_next = min(t_max_x, t_max_y, t_max_z)
+        
+        # Calculate segment length in current voxel
+        segment_length = (t_next - last_t) * meshsize
+        
+        # Handle tree voxels (value -2)
+        if voxel_value == -2:
+            transmittance = calculate_transmittance(segment_length, tree_k, tree_lad)
+            cumulative_transmittance *= transmittance
+            
+            # If transmittance becomes too low, consider it a hit
+            if cumulative_transmittance < 0.01:
+                return True, cumulative_transmittance
 
+        # Check for hits with other objects
         if inclusion_mode:
-            # Inclusion mode: hit if voxel_value in hit_values
             for hv in hit_values:
                 if voxel_value == hv:
-                    return True
+                    return True, cumulative_transmittance
         else:
-            # Exclusion mode: hit if voxel_value not in hit_values
             in_set = False
             for hv in hit_values:
                 if voxel_value == hv:
                     in_set = True
                     break
-            if not in_set:
-                return True
+            if not in_set and voxel_value != -2:  # Exclude trees from regular hits
+                return True, cumulative_transmittance
 
-        # Move to next voxel using DDA algorithm
+        # Update for next iteration
+        last_t = t_next
+        
+        # Move to next voxel
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
                 t_max_x += t_delta_x
@@ -115,75 +145,58 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, inclusion_mode=
                 t_max_z += t_delta_z
                 k += step_z
 
-    # No hit found within grid bounds
-    return False
+    return False, cumulative_transmittance
 
 @njit
-def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode=True):
-    """Compute view index for a single observer location by casting multiple rays.
-
-    Args:
-        observer_location (ndarray): Position of observer (x,y,z)
-        voxel_data (ndarray): 3D array of voxel values
-        ray_directions (ndarray): Array of direction vectors for rays
-        hit_values (tuple): Values to check for hits
-        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
-
-    Returns:
-        float: Ratio of successful rays (0.0 to 1.0)
+def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
+    """Compute view index accounting for tree transmittance.
+    
+    For tree voxels (-2):
+    - If -2 in hit_values: counts obstruction (1 - transmittance) as hit contribution
+    - If -2 not in hit_values: applies transmittance normally
     """
-    hit_count = 0
     total_rays = ray_directions.shape[0]
+    visibility_sum = 0.0
 
-    # Cast rays in all directions and count hits
     for idx in range(total_rays):
         direction = ray_directions[idx]
-        result = trace_ray_generic(voxel_data, observer_location, direction, hit_values, inclusion_mode)
+        hit, value = trace_ray_generic(voxel_data, observer_location, direction, 
+                                     hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+        
         if inclusion_mode:
-            if result:  # hit found
-                hit_count += 1
+            if hit:
+                if -2 in hit_values:
+                    # For trees in hit_values, use the hit contribution (1 - transmittance)
+                    visibility_sum += (1.0 - value) if value < 1.0 else 1.0
+                else:
+                    visibility_sum += 1.0
         else:
-            if not result:  # no hit means success in exclusion mode
-                hit_count += 1
+            if not hit:
+                # For exclusion mode, use transmittance value directly
+                visibility_sum += value
 
-    return hit_count / total_rays
+    return visibility_sum / total_rays
 
 @njit(parallel=True)
-def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode=True):
-    """Compute view index map for entire grid by placing observers at valid locations.
-
-    Valid observer locations are empty voxels above ground level, excluding building roofs
-    and vegetation surfaces.
-
-    Args:
-        voxel_data (ndarray): 3D array of voxel values
-        ray_directions (ndarray): Array of direction vectors for rays
-        view_height_voxel (int): Height offset for observer in voxels
-        hit_values (tuple): Values to check for hits
-        inclusion_mode (bool): If True, hit when value in hit_values. If False, hit when not in hit_values.
-
-    Returns:
-        ndarray: 2D array of view index values with y-axis flipped
-    """
+def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, 
+                          meshsize, tree_k, tree_lad, inclusion_mode=True):
+    """Compute view index map incorporating tree transmittance."""
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
 
-    # Process each x,y position in parallel
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            # Find lowest empty voxel above ground
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    # Skip if standing on building or vegetation
-                    if voxel_data[x, y, z - 1] in (-3, 7, 8, 9):
+                    if voxel_data[x, y, z - 1] in (-3, -2):
                         vi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        # Place observer and compute view index
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
-                        vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, inclusion_mode)
+                        vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, 
+                                                    hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
                         vi_map[x, y] = vi_value
                         found_observer = True
                         break
@@ -622,7 +635,7 @@ def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson
 
     return landmark_vis_map
 
-def get_sky_view_factor_map(voxel_data, meshsize, **kwargs):
+def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     """
     Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
 
@@ -690,13 +703,14 @@ def get_sky_view_factor_map(voxel_data, meshsize, **kwargs):
     # This is essentially the sky view factor.
 
     # Plot results
-    cmap = plt.cm.get_cmap(colormap).copy()
-    cmap.set_bad(color='lightgray')
-    plt.figure(figsize=(10, 8))
-    plt.title("Sky View Factor Map")
-    plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
-    plt.colorbar(label='Sky View Factor')
-    plt.show()
+    if show_plot:
+        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap.set_bad(color='lightgray')
+        plt.figure(figsize=(10, 8))
+        plt.title("Sky View Factor Map")
+        plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+        plt.colorbar(label='Sky View Factor')
+        plt.show()
 
     # Optional OBJ export
     obj_export = kwargs.get("obj_export", False)
