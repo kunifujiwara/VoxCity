@@ -354,7 +354,7 @@ def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         
         # Get stations from all KML sources
-        print("Fetching weather station data...")
+        print("Fetching weather station data from Climate.OneBuilding.Org...")
         all_stations = []
         
         for region, url in KML_SOURCES.items():

@@ -234,6 +234,8 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
             - N_elevation (int): Number of elevation angles for ray directions
             - elevation_min_degrees (float): Minimum elevation angle in degrees
             - elevation_max_degrees (float): Maximum elevation angle in degrees
+            - tree_k (float): Tree extinction coefficient (default: 0.5)
+            - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
 
     Returns:
         ndarray: 2D array of computed view index values.
@@ -248,7 +250,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
         hit_values = (0,)
         inclusion_mode = False
     else:
-        # For other modes, user must specify hit_values
+        # For custom mode, user must specify hit_values
         if hit_values is None:
             raise ValueError("For custom mode, you must provide hit_values.")
 
@@ -262,6 +264,10 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     N_elevation = kwargs.get("N_elevation", 10)
     elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
+    
+    # Tree transmittance parameters
+    tree_k = kwargs.get("tree_k", 0.5)
+    tree_lad = kwargs.get("tree_lad", 1.0)
 
     # Generate ray directions using spherical coordinates
     azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
@@ -278,10 +284,12 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
             ray_directions.append([dx, dy, dz])
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
-    # Compute the view index map
-    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode)
+    # Compute the view index map with transmittance parameters
+    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
+                                  hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
 
     # Plot results
+    import matplotlib.pyplot as plt
     cmap = plt.cm.get_cmap(colormap).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
@@ -639,25 +647,11 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     """
     Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
 
-    The SVF is computed similarly to how the 'sky' mode of the get_view_index function works:
-    - Rays are cast from each observer position upward (within a specified angular range).
-    - Any non-empty voxel encountered is considered an obstruction.
-    - The ratio of unobstructed rays to total rays is the SVF.
-
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        **kwargs: Additional parameters:
-            - view_point_height (float): Observer height above ground in meters. Default: 1.5
-            - colormap (str): Matplotlib colormap name. Default: 'viridis'
-            - vmin (float): Minimum value for color bar. Default: 0.0
-            - vmax (float): Maximum value for color bar. Default: 1.0
-            - N_azimuth (int): Number of azimuth angles. Default: 60
-            - N_elevation (int): Number of elevation angles. Default: 10
-            - elevation_min_degrees (float): Minimum elevation angle in degrees. Typically 0 (horizon). Default: 0
-            - elevation_max_degrees (float): Maximum elevation angle in degrees. Typically 90 for full hemisphere. Default: 90
-            - obj_export (bool): Whether to export the result as an OBJ file. Default: False
-            - output_directory (str), output_file_name (str), etc. are also supported if OBJ export is needed.
+        show_plot (bool): Whether to display the plot.
+        **kwargs: Additional parameters.
 
     Returns:
         ndarray: 2D array of SVF values at each cell (x, y).
@@ -673,10 +667,11 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)
 
+    # Get tree transmittance parameters
+    tree_k = kwargs.get("tree_k", 0.6)  # Static extinction coefficient
+    tree_lad = kwargs.get("tree_lad", 1.0)  # Leaf area density in m^-1
+
     # Define hit_values and inclusion_mode for sky detection
-    # For sky: hit_values=(0,), inclusion_mode=False means:
-    # A hit occurs whenever we encounter a voxel_value != 0 along the ray.
-    # Thus, a ray that escapes with only 0's encountered is unobstructed sky.
     hit_values = (0,)
     inclusion_mode = False
 
@@ -695,15 +690,13 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
             ray_directions.append([dx, dy, dz])
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
-    # Compute the SVF map using the same compute function but with the sky parameters
-    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, inclusion_mode)
+    # Compute the SVF map using the compute function
+    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
+                                  hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
 
-    # vi_map now holds the fraction of rays that 'hit' the condition for sky (no obstruction)
-    # Actually, since inclusion_mode=False and hit_values=(0,), vi_map gives the fraction of unobstructed rays.
-    # This is essentially the sky view factor.
-
-    # Plot results
+    # Plot results if requested
     if show_plot:
+        import matplotlib.pyplot as plt
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
@@ -714,8 +707,7 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
 
     # Optional OBJ export
     obj_export = kwargs.get("obj_export", False)
-    if obj_export:
-        from ..file.obj import grid_to_obj
+    if obj_export:        
         dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "sky_view_factor")
