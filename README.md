@@ -249,6 +249,62 @@ export_magicavoxel_vox(voxcity_grid, output_path, base_filename=base_filename)
 
 ### 6. Additional Use Cases
 
+#### Compute Solar Irradiance:
+
+```python
+from voxcity.sim.solar import get_global_solar_irradiance_using_epw
+
+solar_kwargs = {
+    "download_nearest_epw": True,  # Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org
+    "rectangle_vertices": rectangle_vertices,  # Coordinates defining the area of interest for calculation
+    # "epw_file_path": "./output/new.york-downtown.manhattan.heli_ny_usa_1.epw",  # Path to EnergyPlus Weather (EPW) file containing climate data. Set if you already have an EPW file.
+    "calc_time": "01-01 12:00:00",  # Time for instantaneous calculation in format "MM-DD HH:MM:SS"
+    "view_point_height": 1.5,  # Height of view point in meters for calculating solar access. Default: 1.5 m
+    "tree_k": 0.6,    # Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)
+    "tree_lad": 1.0,    # Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)
+    "dem_grid": dem_grid,      # Digital elevation model grid for terrain heights
+    "colormap": 'magma',       # Matplotlib colormap for visualization. Default: 'viridis'
+    "obj_export": True,        # Whether to export results as 3D OBJ file
+    "output_directory": 'output/test',  # Directory for saving output files
+    "output_file_name": 'instantaneous_solar_irradiance',  # Base filename for outputs (without extension)
+    "alpha": 1.0,             # Transparency of visualization (0.0-1.0)
+    "vmin": 0,               # Minimum value for colormap scaling in visualization
+    # "vmax": 900,             # Maximum value for colormap scaling in visualization
+}
+
+# Compute global solar irradiance map (direct + diffuse radiation)
+global_map = get_global_solar_irradiance_using_epw(    
+    voxcity_grid,                        # 3D voxel grid representing the urban environment
+    meshsize,                            # Size of each voxel in meters
+    calc_type='instantaneous',           # Calculate instantaneous irradiance at specified time
+    direct_normal_irradiance_scaling=1.0, # Scaling factor for direct solar radiation (1.0 = no scaling)
+    diffuse_irradiance_scaling=1.0,      # Scaling factor for diffuse solar radiation (1.0 = no scaling)
+    **solar_kwargs                       # Pass all the parameters defined above
+)
+
+# Adjust parameters for cumulative calculation
+solar_kwargs["start_time"] = "01-01 01:00:00" # Start time for cumulative calculation
+solar_kwargs["end_time"] = "01-31 23:00:00" # End time for cumulative calculation
+solar_kwargs["output_file_name"] = 'cummulative_solar_irradiance',  # Base filename for outputs (without extension)
+
+# Calculate cumulative solar irradiance over the specified time period
+global_map = get_global_solar_irradiance_using_epw(    
+    voxcity_grid,                        # 3D voxel grid representing the urban environment
+    meshsize,                            # Size of each voxel in meters
+    calc_type='cumulative',              # Calculate cumulative irradiance over time period instead of instantaneous
+    direct_normal_irradiance_scaling=1.0, # Scaling factor for direct solar radiation (1.0 = no scaling)
+    diffuse_irradiance_scaling=1.0,      # Scaling factor for diffuse solar radiation (1.0 = no scaling)
+    **solar_kwargs                       # Pass all the parameters defined above
+)
+```
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/solar_index.png" alt="Solar Irradiance Maps Rendered in Rhino" width="800">
+</p>
+<p align="center">
+  <em>Example Results Saved as OBJ and Rendered in Rhino</em>
+</p>
+
 #### Compute Green View Index (GVI) and Sky View Index (SVI):
 
 ```python

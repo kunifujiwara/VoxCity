@@ -2,15 +2,43 @@
 
 This module provides functionality to compute and visualize:
 - Green View Index (GVI): Measures visibility of green elements like trees and vegetation
-- Sky View Index (SVI): Measures visibility of open sky from street level
+- Sky View Index (SVI): Measures visibility of open sky from street level 
+- Sky View Factor (SVF): Measures the ratio of visible sky hemisphere to total hemisphere
 - Landmark Visibility: Measures visibility of specified landmark buildings from different locations
 
 The module uses optimized ray tracing techniques with Numba JIT compilation for efficient computation.
 Key features:
 - Generic ray tracing framework that can be customized for different view indices
 - Parallel processing for fast computation of view maps
+- Tree transmittance modeling using Beer-Lambert law
 - Visualization tools including matplotlib plots and OBJ exports
 - Support for both inclusion and exclusion based visibility checks
+
+The module provides several key functions:
+- trace_ray_generic(): Core ray tracing function that handles tree transmittance
+- compute_vi_generic(): Computes view indices by casting rays in specified directions
+- compute_vi_map_generic(): Generates 2D maps of view indices
+- get_view_index(): High-level function to compute various view indices
+- compute_landmark_visibility(): Computes visibility of landmark buildings
+- get_sky_view_factor_map(): Computes sky view factor maps
+
+The module uses a voxel-based representation where:
+- Empty space is represented by 0
+- Trees are represented by -2 
+- Buildings are represented by -3
+- Other values can be used for different features
+
+Tree transmittance is modeled using the Beer-Lambert law with configurable parameters:
+- tree_k: Static extinction coefficient (default 0.6)
+- tree_lad: Leaf area density in m^-1 (default 1.0)
+
+Additional implementation details:
+- Uses DDA (Digital Differential Analyzer) algorithm for efficient ray traversal
+- Handles edge cases like zero-length rays and division by zero
+- Supports early exit optimizations for performance
+- Provides flexible observer placement rules
+- Includes comprehensive error checking and validation
+- Allows customization of visualization parameters
 """
 
 import numpy as np
@@ -25,13 +53,24 @@ from ..file.obj import grid_to_obj, export_obj
 def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
     """Calculate tree transmittance using the Beer-Lambert law.
     
+    Uses the Beer-Lambert law to model light attenuation through tree canopy:
+    transmittance = exp(-k * LAD * L)
+    where:
+    - k is the extinction coefficient
+    - LAD is the leaf area density
+    - L is the path length through the canopy
+    
     Args:
         length (float): Path length through tree voxel in meters
-        tree_k (float): Static extinction coefficient (default: 0.5)
+        tree_k (float): Static extinction coefficient (default: 0.6)
+            Controls overall light attenuation strength
         tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+            Higher values = denser foliage = more attenuation
     
     Returns:
         float: Transmittance value between 0 and 1
+            1.0 = fully transparent
+            0.0 = fully opaque
     """
     return np.exp(-tree_k * tree_lad * length)
 
@@ -39,9 +78,34 @@ def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
 def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     """Trace a ray through a voxel grid and check for hits with specified values.
     
-    For tree voxels (-2):
-    - If -2 in hit_values: counts obstruction (1 - transmittance) as hit contribution
-    - If -2 not in hit_values: applies transmittance normally
+    Uses DDA (Digital Differential Analyzer) algorithm for efficient ray traversal.
+    Handles tree transmittance using Beer-Lambert law.
+    
+    The DDA algorithm:
+    1. Initializes ray at origin voxel
+    2. Calculates distances to next voxel boundaries in each direction
+    3. Steps to next voxel by choosing smallest distance
+    4. Repeats until hit or out of bounds
+    
+    Tree transmittance:
+    - When ray passes through tree voxels (-2), transmittance is accumulated
+    - Uses Beer-Lambert law with configurable extinction coefficient and leaf area density
+    - Ray is considered blocked if cumulative transmittance falls below 0.01
+    
+    Args:
+        voxel_data (ndarray): 3D array of voxel values
+        origin (ndarray): Starting point (x,y,z) of ray in voxel coordinates
+        direction (ndarray): Direction vector of ray (will be normalized)
+        hit_values (tuple): Values to check for hits
+        meshsize (float): Size of each voxel in meters
+        tree_k (float): Tree extinction coefficient
+        tree_lad (float): Leaf area density in m^-1
+        inclusion_mode (bool): If True, hit_values are hits. If False, hit_values are allowed values.
+    
+    Returns:
+        tuple: (hit_detected, transmittance_value)
+            hit_detected (bool): Whether ray hit a target voxel
+            transmittance_value (float): Cumulative transmittance through trees
     """
     nx, ny, nz = voxel_data.shape
     x0, y0, z0 = origin
@@ -151,9 +215,28 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
 def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     """Compute view index accounting for tree transmittance.
     
-    For tree voxels (-2):
-    - If -2 in hit_values: counts obstruction (1 - transmittance) as hit contribution
-    - If -2 not in hit_values: applies transmittance normally
+    Casts rays in specified directions and computes visibility index based on hits and transmittance.
+    The view index is the ratio of visible rays to total rays cast, where:
+    - For inclusion mode: Counts hits with target values
+    - For exclusion mode: Counts rays that don't hit obstacles
+    Tree transmittance is handled specially:
+    - In inclusion mode with trees as targets: Uses (1 - transmittance) as contribution
+    - In exclusion mode: Uses transmittance value directly
+    
+    Args:
+        observer_location (ndarray): Observer position (x,y,z) in voxel coordinates
+        voxel_data (ndarray): 3D array of voxel values
+        ray_directions (ndarray): Array of direction vectors for rays
+        hit_values (tuple): Values to check for hits
+        meshsize (float): Size of each voxel in meters
+        tree_k (float): Tree extinction coefficient
+        tree_lad (float): Leaf area density in m^-1
+        inclusion_mode (bool): If True, hit_values are hits. If False, hit_values are allowed values.
+    
+    Returns:
+        float: View index value between 0 and 1
+            0.0 = no visibility in any direction
+            1.0 = full visibility in all directions
     """
     total_rays = ray_directions.shape[0]
     visibility_sum = 0.0
@@ -180,7 +263,31 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
 @njit(parallel=True)
 def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, 
                           meshsize, tree_k, tree_lad, inclusion_mode=True):
-    """Compute view index map incorporating tree transmittance."""
+    """Compute view index map incorporating tree transmittance.
+    
+    Places observers at valid locations and computes view index for each position.
+    Valid observer locations are:
+    - Empty voxels (0) or tree voxels (-2)
+    - Above non-empty, non-tree voxels
+    - Not above water (7,8,9) or negative values
+    
+    The function processes each x,y position in parallel for efficiency.
+    
+    Args:
+        voxel_data (ndarray): 3D array of voxel values
+        ray_directions (ndarray): Array of direction vectors for rays
+        view_height_voxel (int): Observer height in voxel units
+        hit_values (tuple): Values to check for hits
+        meshsize (float): Size of each voxel in meters
+        tree_k (float): Tree extinction coefficient
+        tree_lad (float): Leaf area density in m^-1
+        inclusion_mode (bool): If True, hit_values are hits. If False, hit_values are allowed values.
+    
+    Returns:
+        ndarray: 2D array of view index values
+            NaN = invalid observer location
+            0.0-1.0 = view index value
+    """
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
 
@@ -188,12 +295,15 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
         for y in range(ny):
             found_observer = False
             for z in range(1, nz):
+                # Check for valid observer location
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if voxel_data[x, y, z - 1] in (-3, -2):
+                    # Skip invalid ground types
+                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         vi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
+                        # Place observer and compute view index
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
                         vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, 
                                                     hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
@@ -207,6 +317,14 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
 
 def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
     """Calculate and visualize a generic view index for a voxel city model.
+
+    This is a high-level function that provides a flexible interface for computing
+    various view indices. It handles:
+    - Mode presets for common indices (green, sky)
+    - Ray direction generation
+    - Tree transmittance parameters
+    - Visualization
+    - Optional OBJ export
 
     Args:
         voxel_data (ndarray): 3D array of voxel values.
@@ -324,6 +442,9 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
 def mark_building_by_id(voxcity_grid, building_id_grid_ori, ids, mark):
     """Mark specific buildings in the voxel grid with a given value.
 
+    Used to identify landmark buildings for visibility analysis.
+    Flips building ID grid vertically to match voxel grid orientation.
+
     Args:
         voxcity_grid (ndarray): 3D array of voxel values
         building_id_grid_ori (ndarray): 2D array of building IDs
@@ -348,11 +469,12 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
     """Trace a ray from origin to target through voxel data.
 
     Uses DDA algorithm to efficiently traverse voxels along ray path.
+    Checks for any opaque voxels blocking the line of sight.
 
     Args:
         voxel_data (ndarray): 3D array of voxel values
-        origin (tuple): Starting point (x,y,z) of ray
-        target (tuple): End point (x,y,z) of ray
+        origin (tuple): Starting point (x,y,z) in voxel coordinates
+        target (tuple): End point (x,y,z) in voxel coordinates
         opaque_values (ndarray): Array of voxel values that block the ray
 
     Returns:
@@ -443,8 +565,11 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
 def compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values):
     """Check if any landmark is visible from the observer location.
 
+    Traces rays to each landmark position until finding one that's visible.
+    Uses optimized ray tracing with early exit on first visible landmark.
+
     Args:
-        observer_location (ndarray): Observer position (x,y,z)
+        observer_location (ndarray): Observer position (x,y,z) in voxel coordinates
         landmark_positions (ndarray): Array of landmark positions
         voxel_data (ndarray): 3D array of voxel values
         opaque_values (ndarray): Array of voxel values that block visibility
@@ -467,6 +592,12 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
     Places observers at valid locations (empty voxels above ground, excluding building
     roofs and vegetation) and checks visibility to any landmark.
 
+    The function processes each x,y position in parallel for efficiency.
+    Valid observer locations are:
+    - Empty voxels (0) or tree voxels (-2)
+    - Above non-empty, non-tree voxels
+    - Not above water (7,8,9) or negative values
+
     Args:
         voxel_data (ndarray): 3D array of voxel values
         landmark_positions (ndarray): Array of landmark positions
@@ -474,7 +605,10 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
         view_height_voxel (int): Height offset for observer in voxels
 
     Returns:
-        ndarray: 2D array of visibility values (0 or 1)
+        ndarray: 2D array of visibility values
+            NaN = invalid observer location
+            0 = no landmarks visible
+            1 = at least one landmark visible
     """
     nx, ny, nz = voxel_data.shape
     visibility_map = np.full((nx, ny), np.nan)
@@ -509,6 +643,12 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
     Places observers at valid locations and checks visibility to any landmark voxel.
     Generates a binary visibility map and visualization.
 
+    The function:
+    1. Identifies all landmark voxels (target_value)
+    2. Determines which voxel values block visibility
+    3. Computes visibility from each valid observer location
+    4. Generates visualization with legend
+
     Args:
         voxel_data (ndarray): 3D array of voxel values
         target_value (int, optional): Value used to identify landmark voxels. Defaults to -30.
@@ -517,6 +657,9 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 
     Returns:
         ndarray: 2D array of visibility values (0 or 1) with y-axis flipped
+            NaN = invalid observer location
+            0 = no landmarks visible
+            1 = at least one landmark visible
 
     Raises:
         ValueError: If no landmark voxels are found with the specified target_value

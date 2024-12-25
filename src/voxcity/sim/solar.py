@@ -16,10 +16,16 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
     """
     Compute a map of direct solar irradiation accounting for tree transmittance.
 
+    The function:
+    1. Places observers at valid locations (empty voxels above ground)
+    2. Casts rays from each observer in the sun direction
+    3. Computes transmittance through trees using Beer-Lambert law
+    4. Returns a 2D map of transmittance values
+
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         sun_direction (tuple): Direction vector of the sun.
-        view_height_voxel (int): Observer height in voxel units.
+        view_point_height (float): Observer height in meters.
         hit_values (tuple): Values considered non-obstacles if inclusion_mode=False.
         meshsize (float): Size of each voxel in meters.
         tree_k (float): Tree extinction coefficient.
@@ -27,7 +33,7 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
         inclusion_mode (bool): False here, meaning any voxel not in hit_values is an obstacle.
 
     Returns:
-        ndarray: 2D array of transmittance values (0.0-1.0), NaN = invalid observer.
+        ndarray: 2D array of transmittance values (0.0-1.0), NaN = invalid observer position.
     """
     
     view_height_voxel = int(view_point_height / meshsize)
@@ -35,18 +41,22 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
     nx, ny, nz = voxel_data.shape
     irradiance_map = np.full((nx, ny), np.nan, dtype=np.float64)
 
-    # Normalize sun direction
+    # Normalize sun direction vector for ray tracing
     sd = np.array(sun_direction, dtype=np.float64)
     sd_len = np.sqrt(sd[0]**2 + sd[1]**2 + sd[2]**2)
     if sd_len == 0.0:
         return np.flipud(irradiance_map)
     sd /= sd_len
 
+    # Process each x,y position in parallel
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
+            # Search upward for valid observer position
             for z in range(1, nz):
+                # Check if current voxel is empty/tree and voxel below is solid
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                    # Skip if standing on building/vegetation/water
                     if voxel_data[x, y, z - 1] in (-30, -3, -2):
                         irradiance_map[x, y] = np.nan
                         found_observer = True
@@ -62,12 +72,43 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
             if not found_observer:
                 irradiance_map[x, y] = np.nan
 
+    # Flip map vertically to match visualization conventions
     return np.flipud(irradiance_map)
 
 def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, elevation_degrees, 
                                   direct_normal_irradiance, show_plot=False, **kwargs):
     """
     Compute direct solar irradiance map with tree transmittance.
+    
+    The function:
+    1. Converts sun angles to direction vector
+    2. Computes binary transmittance map
+    3. Scales by direct normal irradiance and sun elevation
+    4. Optionally visualizes and exports results
+    
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        azimuth_degrees_ori (float): Sun azimuth angle in degrees (0° = North, 90° = East).
+        elevation_degrees (float): Sun elevation angle in degrees above horizon.
+        direct_normal_irradiance (float): Direct normal irradiance in W/m².
+        show_plot (bool): Whether to display visualization.
+        **kwargs: Additional arguments including:
+            - view_point_height (float): Observer height in meters (default: 1.5)
+            - colormap (str): Matplotlib colormap name (default: 'magma')
+            - vmin (float): Minimum value for colormap
+            - vmax (float): Maximum value for colormap
+            - tree_k (float): Tree extinction coefficient (default: 0.6)
+            - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+            - obj_export (bool): Whether to export as OBJ file
+            - output_directory (str): Directory for OBJ export
+            - output_file_name (str): Filename for OBJ export
+            - dem_grid (ndarray): DEM grid for OBJ export
+            - num_colors (int): Number of colors for OBJ export
+            - alpha (float): Alpha value for OBJ export
+
+    Returns:
+        ndarray: 2D array of direct solar irradiance values (W/m²).
     """
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
@@ -78,7 +119,8 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
 
-    # Convert angles to direction
+    # Convert sun angles to direction vector
+    # Note: azimuth is adjusted by 180° to match coordinate system
     azimuth_degrees = 180 - azimuth_degrees_ori
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
@@ -91,14 +133,17 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
     hit_values = (0,)
     inclusion_mode = False
 
+    # Compute transmittance map
     transmittance_map = compute_direct_solar_irradiance_map_binary(
         voxel_data, sun_direction, view_point_height, hit_values, 
         meshsize, tree_k, tree_lad, inclusion_mode
     )
 
+    # Scale by direct normal irradiance and sun elevation
     sin_elev = dz
     direct_map = transmittance_map * direct_normal_irradiance * sin_elev
 
+    # Optional visualization
     if show_plot:
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
@@ -135,6 +180,33 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
 def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.0, show_plot=False, **kwargs):
     """
     Compute diffuse solar irradiance map using the Sky View Factor (SVF) with tree transmittance.
+
+    The function:
+    1. Computes SVF map accounting for tree transmittance
+    2. Scales SVF by diffuse horizontal irradiance
+    3. Optionally visualizes and exports results
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m².
+        show_plot (bool): Whether to display visualization.
+        **kwargs: Additional arguments including:
+            - view_point_height (float): Observer height in meters (default: 1.5)
+            - colormap (str): Matplotlib colormap name (default: 'magma')
+            - vmin (float): Minimum value for colormap
+            - vmax (float): Maximum value for colormap
+            - tree_k (float): Tree extinction coefficient
+            - tree_lad (float): Leaf area density in m^-1
+            - obj_export (bool): Whether to export as OBJ file
+            - output_directory (str): Directory for OBJ export
+            - output_file_name (str): Filename for OBJ export
+            - dem_grid (ndarray): DEM grid for OBJ export
+            - num_colors (int): Number of colors for OBJ export
+            - alpha (float): Alpha value for OBJ export
+
+    Returns:
+        ndarray: 2D array of diffuse solar irradiance values (W/m²).
     """
 
     view_point_height = kwargs.get("view_point_height", 1.5)
@@ -152,6 +224,7 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
     SVF_map = get_sky_view_factor_map(voxel_data, meshsize, **svf_kwargs)
     diffuse_map = SVF_map * diffuse_irradiance
 
+    # Optional visualization
     if show_plot:
         vmin = kwargs.get("vmin", 0.0)
         vmax = kwargs.get("vmax", diffuse_irradiance)
@@ -201,18 +274,35 @@ def get_global_solar_irradiance_map(
     """
     Compute global solar irradiance (direct + diffuse) on a horizontal plane at each valid observer location.
 
-    No mode/hit_values/inclusion_mode needed. Uses the updated direct and diffuse functions.
+    The function:
+    1. Computes direct solar irradiance map
+    2. Computes diffuse solar irradiance map
+    3. Combines maps and optionally visualizes/exports results
 
     Args:
         voxel_data (ndarray): 3D voxel array.
         meshsize (float): Voxel size in meters.
-        azimuth_degrees (float): Sun azimuth angle in degrees.
-        elevation_degrees (float): Sun elevation angle in degrees.
-        direct_normal_irradiance (float): DNI in W/m².
-        diffuse_irradiance (float): Diffuse irradiance in W/m².
+        azimuth_degrees (float): Sun azimuth angle in degrees (0° = North, 90° = East).
+        elevation_degrees (float): Sun elevation angle in degrees above horizon.
+        direct_normal_irradiance (float): Direct normal irradiance in W/m².
+        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m².
+        show_plot (bool): Whether to display visualization.
+        **kwargs: Additional arguments including:
+            - view_point_height (float): Observer height in meters (default: 1.5)
+            - colormap (str): Matplotlib colormap name (default: 'magma')
+            - vmin (float): Minimum value for colormap
+            - vmax (float): Maximum value for colormap
+            - tree_k (float): Tree extinction coefficient
+            - tree_lad (float): Leaf area density in m^-1
+            - obj_export (bool): Whether to export as OBJ file
+            - output_directory (str): Directory for OBJ export
+            - output_file_name (str): Filename for OBJ export
+            - dem_grid (ndarray): DEM grid for OBJ export
+            - num_colors (int): Number of colors for OBJ export
+            - alpha (float): Alpha value for OBJ export
 
     Returns:
-        ndarray: 2D array of global solar irradiance (W/m²).
+        ndarray: 2D array of global solar irradiance values (W/m²).
     """    
     
     colormap = kwargs.get("colormap", 'magma')
@@ -242,12 +332,13 @@ def get_global_solar_irradiance_map(
         **direct_diffuse_kwargs
     )
 
-    # Sum the two
+    # Sum the two components
     global_map = direct_map + diffuse_map
 
     vmin = kwargs.get("vmin", np.nanmin(global_map))
     vmax = kwargs.get("vmax", np.nanmax(global_map))
 
+    # Optional visualization
     if show_plot:
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
@@ -286,7 +377,19 @@ def get_global_solar_irradiance_map(
 def get_solar_positions_astral(times, lat, lon):
     """
     Compute solar azimuth and elevation using Astral for given times and location.
-    Times must be timezone-aware.
+    
+    The function:
+    1. Creates an Astral observer at the specified location
+    2. Computes sun position for each timestamp
+    3. Returns DataFrame with azimuth and elevation angles
+    
+    Args:
+        times (DatetimeIndex): Array of timezone-aware datetime objects.
+        lat (float): Latitude in degrees.
+        lon (float): Longitude in degrees.
+
+    Returns:
+        DataFrame: DataFrame with columns 'azimuth' and 'elevation' containing solar positions.
     """
     observer = Observer(latitude=lat, longitude=lon)
     df_pos = pd.DataFrame(index=times, columns=['azimuth', 'elevation'], dtype=float)
@@ -303,70 +406,55 @@ def get_solar_positions_astral(times, lat, lon):
 def get_cumulative_global_solar_irradiance(
     voxel_data,
     meshsize,
-    start_time,
-    end_time,
+    df, lat, lon, tz,
     direct_normal_irradiance_scaling=1.0,
     diffuse_irradiance_scaling=1.0,
     **kwargs
 ):
     """
-    Compute cumulative global solar irradiance over a specified period using data from an EPW file,
-    accounting for tree transmittance.
+    Compute cumulative global solar irradiance over a specified period using data from an EPW file.
+
+    The function:
+    1. Filters EPW data for specified time period
+    2. Computes sun positions for each timestep
+    3. Calculates and accumulates global irradiance maps
+    4. Handles tree transmittance and visualization
 
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        start_time (str): Start time in format 'MM-DD HH:MM:SS' (no year).
-        end_time (str): End time in format 'MM-DD HH:MM:SS' (no year).
-        direct_normal_irradiance_scaling (float): Scaling factor for DNI.
-        diffuse_irradiance_scaling (float): Scaling factor for DHI.
+        df (DataFrame): EPW weather data.
+        lat (float): Latitude in degrees.
+        lon (float): Longitude in degrees.
+        tz (float): Timezone offset in hours.
+        direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
+        diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
         **kwargs: Additional arguments including:
-            - view_point_height (float): Observer height in meters
-            - tree_k (float): Tree extinction coefficient (default: 0.5)
-            - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
-            - download_nearest_epw (bool): Whether to download nearest EPW file
-            - epw_file_path (str): Path to EPW file
+            - view_point_height (float): Observer height in meters (default: 1.5)
+            - start_time (str): Start time in format 'MM-DD HH:MM:SS'
+            - end_time (str): End time in format 'MM-DD HH:MM:SS'
+            - tree_k (float): Tree extinction coefficient
+            - tree_lad (float): Leaf area density in m^-1
             - show_plot (bool): Whether to show final plot
             - show_each_timestep (bool): Whether to show plots for each timestep
+            - colormap (str): Matplotlib colormap name
+            - vmin (float): Minimum value for colormap
+            - vmax (float): Maximum value for colormap
+            - obj_export (bool): Whether to export as OBJ file
+            - output_directory (str): Directory for OBJ export
+            - output_file_name (str): Filename for OBJ export
+            - dem_grid (ndarray): DEM grid for OBJ export
+            - num_colors (int): Number of colors for OBJ export
+            - alpha (float): Alpha value for OBJ export
 
     Returns:
-        ndarray: 2D array of cumulative global solar irradiance (W/m²·hour).
+        ndarray: 2D array of cumulative global solar irradiance values (W/m²·hour).
     """
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
+    start_time = kwargs.get("start_time", "01-01 05:00:00")
+    end_time = kwargs.get("end_time", "01-01 20:00:00")
 
-    # Get EPW file
-    download_nearest_epw = kwargs.get("download_nearest_epw", False)
-    rectangle_vertices = kwargs.get("rectangle_vertices", None)
-    epw_file_path = kwargs.get("epw_file_path", None)
-    if download_nearest_epw:
-        if rectangle_vertices is None:
-            print("rectangle_vertices is required to download nearest EPW file")
-            return None
-        else:
-            # Calculate center point of rectangle
-            lats = [coord[0] for coord in rectangle_vertices]
-            lons = [coord[1] for coord in rectangle_vertices]
-            center_lat = (min(lats) + max(lats)) / 2
-            center_lon = (min(lons) + max(lons)) / 2
-            target_point = (center_lat, center_lon)
-
-            # Optional: specify maximum distance in kilometers
-            max_distance = 100  # None for no limit
-
-            output_dir = kwargs.get("output_dir", "output")
-
-            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
-                latitude=center_lat,
-                longitude=center_lon,
-                output_dir=output_dir,
-                max_distance=max_distance,
-                extract_zip=True,
-                load_data=True
-            )
-
-    # Read EPW data
-    df, lat, lon, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
     if df.empty:
         raise ValueError("No data in EPW file.")
 
@@ -377,20 +465,23 @@ def get_cumulative_global_solar_irradiance(
     except ValueError as ve:
         raise ValueError("start_time and end_time must be in format 'MM-DD HH:MM:SS'") from ve
 
-    # Add hour of year column and filter data as before...
+    # Add hour of year column and filter data
     df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
     
+    # Convert dates to day of year and hour
     start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
     end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
     
     start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
     end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
 
+    # Handle period crossing year boundary
     if start_hour <= end_hour:
         df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
     else:
         df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
 
+    # Filter by minutes within start/end hours
     df_period = df_period[
         ((df_period.index.hour != start_dt.hour) | (df_period.index.minute >= start_dt.minute)) &
         ((df_period.index.hour != end_dt.hour) | (df_period.index.minute <= end_dt.minute))
@@ -399,14 +490,14 @@ def get_cumulative_global_solar_irradiance(
     if df_period.empty:
         raise ValueError("No EPW data in the specified period.")
 
-    # Prepare timezone conversion
+    # Handle timezone conversion
     offset_minutes = int(tz * 60)
     local_tz = pytz.FixedOffset(offset_minutes)
     df_period_local = df_period.copy()
     df_period_local.index = df_period_local.index.tz_localize(local_tz)
     df_period_utc = df_period_local.tz_convert(pytz.UTC)
 
-    # Compute solar positions
+    # Compute solar positions for period
     solar_positions = get_solar_positions_astral(df_period_utc.index, lat, lon)
 
     # Create kwargs for diffuse calculation
@@ -424,7 +515,7 @@ def get_cumulative_global_solar_irradiance(
         **diffuse_kwargs
     )
 
-    # Initialize maps
+    # Initialize accumulation maps
     cumulative_map = np.zeros((voxel_data.shape[0], voxel_data.shape[1]))
     mask_map = np.ones((voxel_data.shape[0], voxel_data.shape[1]), dtype=bool)
 
@@ -436,13 +527,14 @@ def get_cumulative_global_solar_irradiance(
         'obj_export': False
     })
 
-    # Iterate through each time step
+    # Process each timestep
     for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
+        # Get scaled irradiance values
         DNI = row['DNI'] * direct_normal_irradiance_scaling
         DHI = row['DHI'] * diffuse_irradiance_scaling
         time_local = df_period_local.index[idx]
 
-        # Get solar position
+        # Get solar position for timestep
         solpos = solar_positions.loc[time_utc]
         azimuth_degrees = solpos['azimuth']
         elevation_degrees = solpos['elevation']        
@@ -457,13 +549,13 @@ def get_cumulative_global_solar_irradiance(
             **direct_kwargs
         )
 
-        # Scale base_diffuse_map by actual DHI
+        # Scale base diffuse map by actual DHI
         diffuse_map = base_diffuse_map * DHI
 
-        # Combine direct and diffuse
+        # Combine direct and diffuse components
         global_map = direct_map + diffuse_map
 
-        # Update mask_map
+        # Update valid pixel mask
         mask_map &= ~np.isnan(global_map)
 
         # Replace NaN with 0 for accumulation
@@ -484,7 +576,7 @@ def get_cumulative_global_solar_irradiance(
             plt.colorbar(label='Global Solar Irradiance (W/m²)')
             plt.show()
 
-    # Apply mask
+    # Apply mask to final result
     cumulative_map[~mask_map] = np.nan
 
     # Final visualization
@@ -527,3 +619,135 @@ def get_cumulative_global_solar_irradiance(
         )
 
     return cumulative_map
+
+def get_global_solar_irradiance_using_epw(
+    voxel_data,
+    meshsize,
+    calc_type='instantaneous',
+    direct_normal_irradiance_scaling=1.0,
+    diffuse_irradiance_scaling=1.0,
+    **kwargs
+):
+    """
+    Compute global solar irradiance using EPW weather data, either for a single time or cumulatively over a period.
+
+    The function:
+    1. Optionally downloads and reads EPW weather data
+    2. Handles timezone conversions and solar position calculations
+    3. Computes either instantaneous or cumulative irradiance maps
+    4. Supports visualization and export options
+
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        calc_type (str): 'instantaneous' or 'cumulative'.
+        direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
+        diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
+        **kwargs: Additional arguments including:
+            - download_nearest_epw (bool): Whether to download nearest EPW file
+            - epw_file_path (str): Path to EPW file
+            - rectangle_vertices (list): List of (lat,lon) coordinates for EPW download
+            - output_dir (str): Directory for EPW download
+            - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
+            - start_time (str): Start time for cumulative calculation
+            - end_time (str): End time for cumulative calculation
+            - view_point_height (float): Observer height in meters
+            - tree_k (float): Tree extinction coefficient
+            - tree_lad (float): Leaf area density in m^-1
+            - show_plot (bool): Whether to show visualization
+            - show_each_timestep (bool): Whether to show timestep plots
+            - colormap (str): Matplotlib colormap name
+            - obj_export (bool): Whether to export as OBJ file
+
+    Returns:
+        ndarray: 2D array of solar irradiance values (W/m²).
+    """
+    view_point_height = kwargs.get("view_point_height", 1.5)
+    colormap = kwargs.get("colormap", 'magma')
+
+    # Get EPW file
+    download_nearest_epw = kwargs.get("download_nearest_epw", False)
+    rectangle_vertices = kwargs.get("rectangle_vertices", None)
+    epw_file_path = kwargs.get("epw_file_path", None)
+    if download_nearest_epw:
+        if rectangle_vertices is None:
+            print("rectangle_vertices is required to download nearest EPW file")
+            return None
+        else:
+            # Calculate center point of rectangle
+            lats = [coord[0] for coord in rectangle_vertices]
+            lons = [coord[1] for coord in rectangle_vertices]
+            center_lat = (min(lats) + max(lats)) / 2
+            center_lon = (min(lons) + max(lons)) / 2
+            target_point = (center_lat, center_lon)
+
+            # Optional: specify maximum distance in kilometers
+            max_distance = 100  # None for no limit
+
+            output_dir = kwargs.get("output_dir", "output")
+
+            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
+                latitude=center_lat,
+                longitude=center_lon,
+                output_dir=output_dir,
+                max_distance=max_distance,
+                extract_zip=True,
+                load_data=True
+            )
+
+    # Read EPW data
+    df, lat, lon, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
+    if df.empty:
+        raise ValueError("No data in EPW file.")
+
+    if calc_type == 'instantaneous':
+        if df.empty:
+            raise ValueError("No data in EPW file.")
+
+        calc_time = kwargs.get("calc_time", "01-01 12:00:00")
+
+        # Parse start and end times without year
+        try:
+            calc_dt = datetime.strptime(calc_time, "%m-%d %H:%M:%S")
+        except ValueError as ve:
+            raise ValueError("calc_time must be in format 'MM-DD HH:MM:SS'") from ve
+
+        df_period = df[
+            (df.index.month == calc_dt.month) & (df.index.day == calc_dt.day) & (df.index.hour == calc_dt.hour)
+        ]
+
+        if df_period.empty:
+            raise ValueError("No EPW data at the specified time.")
+
+        # Prepare timezone conversion
+        offset_minutes = int(tz * 60)
+        local_tz = pytz.FixedOffset(offset_minutes)
+        df_period_local = df_period.copy()
+        df_period_local.index = df_period_local.index.tz_localize(local_tz)
+        df_period_utc = df_period_local.tz_convert(pytz.UTC)
+
+        # Compute solar positions
+        solar_positions = get_solar_positions_astral(df_period_utc.index, lat, lon)
+        direct_normal_irradiance = df_period_utc.iloc[0]['DNI']
+        diffuse_irradiance = df_period_utc.iloc[0]['DHI']
+        azimuth_degrees = solar_positions.iloc[0]['azimuth']
+        elevation_degrees = solar_positions.iloc[0]['elevation']    
+        solar_map = get_global_solar_irradiance_map(
+            voxel_data,                 # 3D voxel grid representing the urban environment
+            meshsize,                   # Size of each grid cell in meters
+            azimuth_degrees,            # Sun's azimuth angle
+            elevation_degrees,          # Sun's elevation angle
+            direct_normal_irradiance,   # Direct Normal Irradiance value
+            diffuse_irradiance,         # Diffuse irradiance value
+            show_plot=True,             # Display visualization of results
+            **kwargs
+        )
+    if calc_type == 'cumulative':
+        solar_map = get_cumulative_global_solar_irradiance(
+            voxel_data,
+            meshsize,
+            df, lat, lon, tz,
+            **kwargs
+        )
+    
+    return solar_map 
