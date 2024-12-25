@@ -299,7 +299,7 @@ global_map = get_global_solar_irradiance_using_epw(
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/solar_index.png" alt="Solar Irradiance Maps Rendered in Rhino" width="800">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/solar.png" alt="Solar Irradiance Maps Rendered in Rhino" width="800">
 </p>
 <p align="center">
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
