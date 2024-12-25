@@ -4,10 +4,11 @@ This module provides functions for drawing and manipulating rectangles on maps.
 
 import math
 from pyproj import Proj, transform
-from ipyleaflet import Map, DrawControl, Rectangle
+from ipyleaflet import Map, DrawControl, Rectangle, Polygon as LeafletPolygon
 import ipyleaflet
 from geopy import distance
 from .utils import get_coordinates_from_cityname
+import shapely.geometry as geom
 
 def rotate_rectangle(m, rectangle_vertices, angle):
     """
@@ -223,3 +224,112 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
     draw_control.on_draw(handle_draw)
 
     return m, rectangle_vertices
+
+def display_buildings_and_draw_polygon(building_geojson, zoom=17):
+    """
+    Displays building footprints (in Lat-Lon order) on an ipyleaflet map,
+    and allows the user to draw a polygon whose vertices are returned
+    in a Python list (also in Lat-Lon).
+
+    Args:
+        building_geojson (list): A list of GeoJSON features (Polygons),
+                                 BUT with coordinates in [lat, lon] order.
+        zoom (int): Initial zoom level for the map. Default=17.
+
+    Returns:
+        (map_object, drawn_polygon_vertices)
+          - map_object: ipyleaflet Map instance
+          - drawn_polygon_vertices: a Python list that gets updated whenever
+            a new polygon is created. The list is in (lat, lon) order.
+    """
+    # ---------------------------------------------------------
+    # 1. Determine a suitable map center via bounding box logic
+    # ---------------------------------------------------------
+    all_lats = []
+    all_lons = []
+    for feature in building_geojson:
+        # Handle only Polygons here; skip MultiPolygon if present
+        if feature['geometry']['type'] == 'Polygon':
+            # Coordinates in this data are [ [lat, lon], [lat, lon], ... ]
+            coords = feature['geometry']['coordinates'][0]  # outer ring
+            all_lats.extend(pt[0] for pt in coords)
+            all_lons.extend(pt[1] for pt in coords)
+
+    if not all_lats or not all_lons:
+        # Fallback: If no footprints or invalid data, pick a default
+        center_lat, center_lon = 40.0, -100.0
+    else:
+        min_lat, max_lat = min(all_lats), max(all_lats)
+        min_lon, max_lon = min(all_lons), max(all_lons)
+        center_lat = (min_lat + max_lat) / 2
+        center_lon = (min_lon + max_lon) / 2
+
+    # Create the ipyleaflet map
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+
+    # -----------------------------------------
+    # 2. Add each building footprint to the map
+    # -----------------------------------------
+    for feature in building_geojson:
+        # Only handle simple Polygons
+        if feature['geometry']['type'] == 'Polygon':
+            coords = feature['geometry']['coordinates'][0]
+            # Because your data is already lat-lon, we do NOT swap:
+            lat_lon_coords = [(c[0], c[1]) for c in coords]
+
+            # Create the polygon layer
+            bldg_layer = LeafletPolygon(
+                locations=lat_lon_coords,
+                color="blue",
+                fill_color="blue",
+                fill_opacity=0.2,
+                weight=2
+            )
+            m.add_layer(bldg_layer)
+
+    # -----------------------------------------------------------------
+    # 3. Enable drawing of polygons, capturing the vertices in Lat-Lon
+    # -----------------------------------------------------------------
+    drawn_polygon_vertices = []  # We'll store the newly drawn polygon's vertices here (lat, lon).
+
+    draw_control = DrawControl(
+        polygon={
+            "shapeOptions": {
+                "color": "#6bc2e5",
+                "fillColor": "#6bc2e5",
+                "fillOpacity": 0.2
+            }
+        },
+        rectangle={},     # Disable rectangles (or enable if needed)
+        circle={},        # Disable circles
+        circlemarker={},  # Disable circlemarkers
+        polyline={},      # Disable polylines
+        marker={}         # Disable markers
+    )
+
+    def handle_draw(self, action, geo_json):
+        """
+        Callback for whenever a shape is created or edited.
+        ipyleaflet's DrawControl returns standard GeoJSON (lon, lat).
+        We'll convert them to (lat, lon).
+        """
+        # Clear any previously stored vertices
+        drawn_polygon_vertices.clear()
+
+        if action == 'created' and geo_json['geometry']['type'] == 'Polygon':
+            # The polygon’s first ring
+            coordinates = geo_json['geometry']['coordinates'][0]
+            print("Vertices of the drawn polygon (Lat-Lon):")
+
+            # By default, drawn polygon coords are [ [lon, lat], [lon, lat], ... ]
+            # The last coordinate repeats the first -> skip it with [:-1]
+            for coord in coordinates[:-1]:
+                lon = coord[0]
+                lat = coord[1]
+                drawn_polygon_vertices.append((lat, lon))
+                print(f" - (lat, lon) = ({lat}, {lon})")
+
+    draw_control.on_draw(handle_draw)
+    m.add_control(draw_control)
+
+    return m, drawn_polygon_vertices

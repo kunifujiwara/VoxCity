@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from numba import njit, prange
 
-from ..file.geojson import find_building_containing_point
+from ..file.geojson import find_building_containing_point, get_buildings_in_drawn_polygon
 from ..file.obj import grid_to_obj, export_obj
 
 @njit
@@ -439,7 +439,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
 
     return vi_map
 
-def mark_building_by_id(voxcity_grid, building_id_grid_ori, ids, mark):
+def mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark):
     """Mark specific buildings in the voxel grid with a given value.
 
     Used to identify landmark buildings for visibility analysis.
@@ -451,6 +451,9 @@ def mark_building_by_id(voxcity_grid, building_id_grid_ori, ids, mark):
         ids (list): List of building IDs to mark
         mark (int): Value to mark the buildings with
     """
+
+    voxcity_grid = voxcity_grid_ori.copy()
+
     # Flip building ID grid vertically to match voxel grid orientation
     building_id_grid = np.flipud(building_id_grid_ori.copy())
 
@@ -463,6 +466,8 @@ def mark_building_by_id(voxcity_grid, building_id_grid_ori, ids, mark):
         # Replace building voxels (-3) with mark value at this x,y position
         z_mask = voxcity_grid[x, y, :] == -3
         voxcity_grid[x, y, z_mask] = mark
+    
+    return voxcity_grid
 
 @njit
 def trace_ray_to_target(voxel_data, origin, target, opaque_values):
@@ -696,7 +701,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 
     return np.flipud(visibility_map)
 
-def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson, meshsize, **kwargs):
+def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geojson, meshsize, **kwargs):
     """Generate a visibility map for landmark buildings in a voxel city.
 
     Places observers at valid locations and checks visibility to any part of the
@@ -733,25 +738,29 @@ def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson
     # Get landmark building IDs either directly or by finding buildings in rectangle
     features = building_geojson
     landmark_ids = kwargs.get('landmark_building_ids', None)
+    landmark_polygon = kwargs.get('landmark_polygon', None)
     if landmark_ids is None:
-        rectangle_vertices = kwargs.get("rectangle_vertices", None)
-        if rectangle_vertices is None:
-            print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
-            return None
+        if landmark_polygon is not None:
+            landmark_ids = get_buildings_in_drawn_polygon(building_geojson, landmark_polygon, operation='within')
+        else:
+            rectangle_vertices = kwargs.get("rectangle_vertices", None)
+            if rectangle_vertices is None:
+                print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
+                return None
+                
+            # Calculate center point of rectangle
+            lats = [coord[0] for coord in rectangle_vertices]
+            lons = [coord[1] for coord in rectangle_vertices]
+            center_lat = (min(lats) + max(lats)) / 2
+            center_lon = (min(lons) + max(lons)) / 2
+            target_point = (center_lat, center_lon)
             
-        # Calculate center point of rectangle
-        lats = [coord[0] for coord in rectangle_vertices]
-        lons = [coord[1] for coord in rectangle_vertices]
-        center_lat = (min(lats) + max(lats)) / 2
-        center_lon = (min(lons) + max(lons)) / 2
-        target_point = (center_lat, center_lon)
-        
-        # Find buildings at center point
-        landmark_ids = find_building_containing_point(features, target_point)
+            # Find buildings at center point
+            landmark_ids = find_building_containing_point(features, target_point)
 
     # Mark landmark buildings in voxel grid with special value
     target_value = -30
-    mark_building_by_id(voxcity_grid, building_id_grid, landmark_ids, target_value)
+    voxcity_grid = mark_building_by_id(voxcity_grid_ori, building_id_grid, landmark_ids, target_value)
     
     # Compute visibility map
     landmark_vis_map = compute_landmark_visibility(voxcity_grid, target_value=target_value, view_height_voxel=view_height_voxel, colormap=colormap)
@@ -784,7 +793,7 @@ def get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson
         output_file_name_vox = 'voxcity_' + output_file_name
         export_obj(voxcity_grid, output_dir, output_file_name_vox, meshsize)
 
-    return landmark_vis_map
+    return landmark_vis_map, voxcity_grid
 
 def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     """

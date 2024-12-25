@@ -526,3 +526,74 @@ def find_building_containing_point(features, target_point):
             id_list.append(feature['properties']['id'])
     
     return id_list
+
+def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices, 
+                                   operation='within'):
+    """
+    Given a list of building footprints (in Lat-Lon) and a set of drawn polygon 
+    vertices (also in Lat-Lon), return the building IDs that fall within or 
+    intersect the drawn polygon.
+
+    Args:
+        building_geojson (list): 
+            A list of GeoJSON features, each feature is a dict with:
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [lat1, lon1], [lat2, lon2], ...
+                        ]
+                    ]
+                },
+                "properties": {
+                    "id": ...
+                    ...
+                }
+            }
+            Note: These coordinates are in (lat, lon) order, not standard (lon, lat).
+
+        drawn_polygon_vertices (list): 
+            A list of (lat, lon) tuples representing the polygon drawn by the user.
+
+        operation (str):
+            Determines how to include buildings. 
+            Use "intersect" to include buildings that intersect the drawn polygon. 
+            Use "within" to include buildings that lie entirely within the drawn polygon.
+
+    Returns:
+        list:
+            A list of building IDs (strings or ints) that satisfy the condition.
+    """
+    # 1. Convert the user-drawn polygon vertices (lat, lon) into a Shapely Polygon.
+    #    Shapely expects (x, y) = (longitude, latitude).
+    #    So we'll do (lon, lat) for each vertex.
+    drawn_polygon_shapely = Polygon([(lon, lat) for (lat, lon) in drawn_polygon_vertices])
+
+    included_building_ids = []
+
+    # 2. Check each building in the GeoJSON
+    for feature in building_geojson:
+        # Skip any feature that is not Polygon
+        if feature['geometry']['type'] != 'Polygon':
+            continue
+
+        # Extract coordinates, which are in [ [lat, lon], [lat, lon], ... ]
+        coords = feature['geometry']['coordinates'][0]
+
+        # Create a Shapely polygon for the building
+        # Convert from (lat, lon) to (lon, lat)
+        building_polygon = Polygon([(lon, lat) for (lat, lon) in coords])
+
+        # 3. Depending on the operation, check the relationship
+        if operation == 'intersect':
+            if building_polygon.intersects(drawn_polygon_shapely):
+                included_building_ids.append(feature['properties'].get('id', None))
+        elif operation == 'within':
+            if building_polygon.within(drawn_polygon_shapely):
+                included_building_ids.append(feature['properties'].get('id', None))
+        else:
+            raise ValueError("operation must be 'intersect' or 'within'")
+
+    return included_building_ids
