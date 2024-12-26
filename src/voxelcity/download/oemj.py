@@ -25,10 +25,10 @@ def download_tiles(polygon, zoom):
 
     print(f"Downloading tiles")
 
-    min_lat = min(p[0] for p in polygon)
-    max_lat = max(p[0] for p in polygon)
-    min_lon = min(p[1] for p in polygon)
-    max_lon = max(p[1] for p in polygon)
+    min_lon = min(p[0] for p in polygon)
+    max_lon = max(p[0] for p in polygon)
+    min_lat = min(p[1] for p in polygon)
+    max_lat = max(p[1] for p in polygon)
     
     min_x, max_y = map(math.floor, deg2num(max_lat, min_lon, zoom))
     max_x, min_y = map(math.ceil, deg2num(min_lat, max_lon, zoom))

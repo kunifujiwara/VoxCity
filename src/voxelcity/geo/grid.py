@@ -98,8 +98,8 @@ def process_grid(grid_bi, dem_grid):
 def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
     grid_size_0 = int(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec) + 0.5)
     grid_size_1 = int(np.linalg.norm(side_2) / np.linalg.norm(meshsize * v_vec) + 0.5)
-    adjusted_mesh_size_0 = meshsize *  np.linalg.norm(meshsize * u_vec) * grid_size_0 / np.linalg.norm(side_1)
-    adjusted_mesh_size_1 = meshsize *  np.linalg.norm(meshsize * v_vec) * grid_size_1 / np.linalg.norm(side_2)
+    adjusted_mesh_size_0 = meshsize * np.linalg.norm(meshsize * u_vec) * grid_size_0 / np.linalg.norm(side_1)
+    adjusted_mesh_size_1 = meshsize * np.linalg.norm(meshsize * v_vec) * grid_size_1 / np.linalg.norm(side_2)
     return (grid_size_0, grid_size_1), (adjusted_mesh_size_0, adjusted_mesh_size_1)
 
 def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
@@ -437,20 +437,19 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
 
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+    # Calculate distances using (lon, lat) order
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
 
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
+    # Calculate vectors using (lon, lat) order
+    side_1 = np.array([vertex_1[0] - vertex_0[0], vertex_1[1] - vertex_0[1]])
+    side_2 = np.array([vertex_3[0] - vertex_0[0], vertex_3[1] - vertex_0[1]])
 
     u_vec = normalize_to_one_meter(side_1, dist_side_1)
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
-
-    # print(f"Calculated grid size: {grid_size}")
-    # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Create the grid
     building_height_grid = np.zeros(grid_size)
@@ -497,100 +496,25 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
             
             if not potential_intersections:
                 continue
-                
-            # Sort buildings by height to process highest first
-            cell_buildings = [(k, building_polygons[k]) for k in potential_intersections]
-            cell_buildings.sort(key=lambda x: x[1][1] if x[1][1] is not None else -float('inf'), reverse=True)
             
-            # Track if we've found any valid intersections and if they all have zero/nan height
-            found_intersection = False
-            all_zero_or_nan = True
-            
-            for k, (polygon, height, min_height, is_inner, feature_id) in cell_buildings:
+            # Check actual intersections and calculate heights
+            for idx_building in potential_intersections:
+                building = building_polygons[idx_building]
                 try:
-                    # Prepare geometries
-                    if not polygon.is_valid:
-                        polygon = polygon.buffer(0)
-                    
-                    # Calculate precise intersection
-                    if cell.intersects(polygon):
-                        intersection = cell.intersection(polygon)
+                    if cell.intersects(building['geometry']):
+                        height = building['properties'].get('height', 0)
+                        min_height = building['properties'].get('min_height', 0)
+                        building_id = building['properties'].get('id', 0)
                         
-                        # Calculate intersection percentage
-                        intersection_ratio = intersection.area / cell.area
-                        
-                        # Use a more flexible threshold for intersection
-                        INTERSECTION_THRESHOLD = 0.3  # Can be adjusted based on needs
-                        
-                        if intersection_ratio > INTERSECTION_THRESHOLD:
-                            found_intersection = True
-                            
-                            if not is_inner:
-                                # Store height information
-                                building_min_height_grid[i, j].append([min_height, height])
-                                # building_id_grid[i, j] = k + 1
-                                building_id_grid[i, j] = feature_id
-                                
-                                # Check if this building has a valid non-zero height
-                                has_valid_height = height is not None and not np.isnan(height) and height > 0
-                                if has_valid_height:
-                                    all_zero_or_nan = False
-                                    
-                                    # Update maximum height if necessary
-                                    current_height = building_height_grid[i, j]
-                                    if (current_height == 0 or 
-                                        current_height < height or 
-                                        np.isnan(current_height)):
-                                        building_height_grid[i, j] = height
-                            else:
-                                # Handle inner courtyards
-                                building_min_height_grid[i, j] = [[0, 0]]
-                                building_height_grid[i, j] = 0
-                                found_intersection = True
-                                all_zero_or_nan = False
-                                break  # Exit after finding an inner courtyard
-                                
-                except (GEOSException, ValueError) as e:
-                    # More robust error handling
-                    try:
-                        # Attempt to fix topology
-                        simplified_polygon = polygon.simplify(1e-8)
-                        if simplified_polygon.is_valid:
-                            intersection = cell.intersection(simplified_polygon)
-                            intersection_ratio = intersection.area / cell.area
-                            
-                            if intersection_ratio > INTERSECTION_THRESHOLD:
-                                found_intersection = True
-                                
-                                if not is_inner:
-                                    building_min_height_grid[i, j].append([min_height, height])
-                                    # building_id_grid[i, j] = k + 1
-                                    building_id_grid[i, j] = feature_id
-                                    
-                                    # Check if this building has a valid non-zero height
-                                    has_valid_height = height is not None and not np.isnan(height) and height > 0
-                                    if has_valid_height:
-                                        all_zero_or_nan = False
-                                        
-                                        if (building_height_grid[i, j] == 0 or 
-                                            building_height_grid[i, j] < height or 
-                                            np.isnan(building_height_grid[i, j])):
-                                            building_height_grid[i, j] = height
-                                else:
-                                    building_min_height_grid[i, j] = [[0, 0]]
-                                    building_height_grid[i, j] = 0
-                                    found_intersection = True
-                                    all_zero_or_nan = False
-                                    break
-                    except Exception as fix_error:
-                        print(f"Failed to process cell ({i}, {j}) - Building {k}: {str(fix_error)}")
-                        continue
-            
-            # After processing all buildings for this cell, set to NaN if needed
-            if found_intersection and all_zero_or_nan:
-                building_height_grid[i, j] = np.nan
+                        # Update grids
+                        if height > building_height_grid[i, j]:
+                            building_height_grid[i, j] = height
+                            building_id_grid[i, j] = building_id
+                            building_min_height_grid[i, j].append(min_height)
+                except GEOSException:
+                    continue
 
-    return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
+    return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings_comp
 
 def create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir):        
     roi = get_roi(rectangle_vertices)

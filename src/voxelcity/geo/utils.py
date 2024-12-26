@@ -79,11 +79,27 @@ def initialize_geod():
     return Geod(ellps='WGS84')
 
 def calculate_distance(geod, lon1, lat1, lon2, lat2):
+    """Calculate the geodesic distance between two points.
+    
+    Args:
+        geod: Geod object initialized with the desired ellipsoid
+        lon1: Longitude of the first point
+        lat1: Latitude of the first point
+        lon2: Longitude of the second point
+        lat2: Latitude of the second point
+        
+    Returns:
+        float: Distance in meters between the two points
+    """
     _, _, dist = geod.inv(lon1, lat1, lon2, lat2)
     return dist
 
 def normalize_to_one_meter(vector, distance_in_meters):
-    return vector * (1 / distance_in_meters)
+    """Normalize a vector to have a magnitude of 1/distance_in_meters"""
+    norm = np.linalg.norm(vector)
+    if norm == 0:
+        raise ValueError("Cannot normalize a zero vector. The input vector must have non-zero magnitude.")
+    return vector * (1 / (norm * distance_in_meters))
 
 def setup_transformer(from_crs, to_crs):
     return Transformer.from_crs(from_crs, to_crs, always_xy=True)
@@ -99,8 +115,8 @@ def transform_coords(transformer, lon, lat):
         return None, None
 
 def create_polygon(vertices):
-    flipped_vertices = [(lon, lat) for lat, lon in vertices]
-    return Polygon(flipped_vertices)
+    # vertices are already in (lon, lat) order, no need to flip
+    return Polygon(vertices)
 
 def create_geodataframe(polygon, crs=4326):
     return gpd.GeoDataFrame({'geometry': [polygon]}, crs=from_epsg(crs))
@@ -195,11 +211,11 @@ def get_coordinates_from_cityname(place_name):
 
 def get_city_country_name_from_rectangle(coordinates):
     # Calculate the center point of the rectangle
-    latitudes = [coord[0] for coord in coordinates]
-    longitudes = [coord[1] for coord in coordinates]
-    center_lat = sum(latitudes) / len(latitudes)
+    longitudes = [coord[0] for coord in coordinates]
+    latitudes = [coord[1] for coord in coordinates]
     center_lon = sum(longitudes) / len(longitudes)
-    center_coord = (center_lat, center_lon)
+    center_lat = sum(latitudes) / len(latitudes)
+    center_coord = (center_lat, center_lon)  # Nominatim expects (lat, lon)
 
     # Initialize Nominatim API with a unique user agent
     geolocator = Nominatim(user_agent="your_app_name (your_email@example.com)")
@@ -226,18 +242,18 @@ def get_timezone_info(rectangle_coords):
     from the center location of the input rectangle.
 
     Parameters:
-        rectangle_coords (list of tuples): A list of (latitude, longitude) tuples defining the rectangle.
+        rectangle_coords (list of tuples): A list of (longitude, latitude) tuples defining the rectangle.
 
     Returns:
         tuple: A tuple containing the time zone name (e.g., "UTC+4.00") and
                the central meridian longitude as a string formatted to 5 decimal places.
     """
     # Calculate the center point of the rectangle
-    latitudes = [coord[0] for coord in rectangle_coords]
-    longitudes = [coord[1] for coord in rectangle_coords]
-    center_lat = sum(latitudes) / len(latitudes)
+    longitudes = [coord[0] for coord in rectangle_coords]
+    latitudes = [coord[1] for coord in rectangle_coords]
     center_lon = sum(longitudes) / len(longitudes)
-    center_coord = (center_lat, center_lon)
+    center_lat = sum(latitudes) / len(latitudes)
+    center_coord = (center_lon, center_lat)
     
     # Initialize TimezoneFinder
     tf = TimezoneFinder()

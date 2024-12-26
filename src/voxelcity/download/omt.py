@@ -9,15 +9,15 @@ from pyproj import Transformer
 import json
 
 def load_geojsons_from_openmaptiles(rectangle_vertices, API_KEY):
-    # Extract latitudes and longitudes
-    lats = [coord[0] for coord in rectangle_vertices]
-    lons = [coord[1] for coord in rectangle_vertices]
+    # Extract longitudes and latitudes
+    lons = [coord[0] for coord in rectangle_vertices]
+    lats = [coord[1] for coord in rectangle_vertices]
 
     # Find minimum and maximum values
-    min_lat = min(lats)
-    max_lat = max(lats)
     min_lon = min(lons)
     max_lon = max(lons)
+    min_lat = min(lats)
+    max_lat = max(lats)
 
     # Define the zoom level
     zoom = 15  # Adjust as needed

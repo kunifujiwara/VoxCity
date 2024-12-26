@@ -28,15 +28,8 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
     # Add 'confidence' column
     gdf['confidence'] = -1.0
 
-    # Define rectangle polygon
-    # rectangle_vertices = [
-    #     (56.168518, 14.85961),
-    #     (56.172627, 14.85961),
-    #     (56.172627, 14.866734),
-    #     (56.168518, 14.866734)
-    # ]
-    rectangle_vertices_lonlat = [(lon, lat) for lat, lon in rectangle_vertices]
-    rectangle_polygon = Polygon(rectangle_vertices_lonlat)
+    # Define rectangle polygon using (lon, lat) order
+    rectangle_polygon = Polygon(rectangle_vertices)
 
     # Use spatial index to filter geometries
     gdf.sindex  # Ensure spatial index is built
@@ -51,7 +44,7 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
     # Function to swap coordinates
     def swap_coordinates(coords):
         if isinstance(coords[0][0], (float, int)):
-            return [[lat, lon] for lon, lat in coords]
+            return coords  # Already in (lon, lat) order
         else:
             return [swap_coordinates(ring) for ring in coords]
 

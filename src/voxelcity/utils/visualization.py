@@ -890,25 +890,25 @@ def convert_coordinates(coords):
     return coords
 
 def calculate_centroid(coords):
-    lat_sum = sum(coord[0] for coord in coords)
-    lon_sum = sum(coord[1] for coord in coords)
-    return [lat_sum / len(coords), lon_sum / len(coords)]
+    lon_sum = sum(coord[0] for coord in coords)
+    lat_sum = sum(coord[1] for coord in coords)
+    return [lon_sum / len(coords), lat_sum / len(coords)]
 
 def calculate_center(features):
-    lats = []
     lons = []
+    lats = []
     for feature in features:
         coords = feature['geometry']['coordinates'][0]
-        for lat, lon in coords:
-            lats.append(lat)
+        for lon, lat in coords:
             lons.append(lon)
-    return sum(lats) / len(lats), sum(lons) / len(lons)
+            lats.append(lat)
+    return sum(lons) / len(lons), sum(lats) / len(lats)
 
 # def format_building_id(id_num):
 #     # Format ID to ensure it's at least 9 digits with leading zeros
 #     return f"{id_num:09d}"
 
-def create_circle_polygon(center_lat, center_lon, radius_meters):
+def create_circle_polygon(center_lon, center_lat, radius_meters):
     """Create a circular polygon with given center and radius"""
     # Convert radius from meters to degrees (approximate)
     radius_deg = radius_meters / 111000  # 1 degree ≈ 111km at equator
@@ -919,7 +919,7 @@ def create_circle_polygon(center_lat, center_lon, radius_meters):
         rad = math.radians(angle)
         lat = center_lat + (radius_deg * math.cos(rad))
         lon = center_lon + (radius_deg * math.sin(rad) / math.cos(math.radians(center_lat)))
-        points.append((lat, lon))
+        points.append((lon, lat))
     return Polygon(points)
 
 def display_builing_ids_on_map(building_geojson, rectangle_vertices):
@@ -935,7 +935,7 @@ def display_builing_ids_on_map(building_geojson, rectangle_vertices):
     center_lon = (min(lons) + max(lons)) / 2
 
     # Create circle polygon for intersection testing
-    circle = create_circle_polygon(center_lat, center_lon, 200)
+    circle = create_circle_polygon(center_lon, center_lat, 200)
 
     # Create a map centered on the data
     m = folium.Map(location=[center_lat, center_lon], zoom_start=17)
