@@ -386,6 +386,13 @@ G, edge_gdf = get_network_values(
 )
 ```
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/network.png" alt="Example of Graph Output" width="400">
+</p>
+<p align="center">
+  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
+</p>
+
 ## References of Data Sources
 
 ### Building 
