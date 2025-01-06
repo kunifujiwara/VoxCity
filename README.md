@@ -361,6 +361,31 @@ landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, b
   <em>Example Result Saved as OBJ and Rendered in Rhino</em>
 </p>
 
+#### Output Result as Graph for Network Analysis:
+
+```python
+from voxcity.geo.network import get_network_values
+
+network_kwargs = {
+    "network_type": "walk",        # Type of network to download from OSM (walk, drive, all, etc.)
+    "colormap": "magma",          # Matplotlib colormap for visualization
+    "vis_graph": True,            # Whether to display the network visualization
+    "vmin": 0.0,                  # Minimum value for color scaling
+    "vmax": 600000,               # Maximum value for color scaling
+    "edge_width": 2,              # Width of network edges in visualization
+    "alpha": 0.8,                 # Transparency of network edges
+    "zoom": 16                    # Zoom level for basemap
+}
+
+G, edge_gdf = get_network_values(
+    cum_solar_grid,               # Grid of cumulative solar irradiance values
+    rectangle_vertices,           # Coordinates defining simulation domain boundary
+    meshsize,                     # Size of each grid cell in meters
+    value_name='Cumulative Global Solar Irradiance (W/m²·hour)',  # Label for values in visualization
+    **network_kwargs              # Additional visualization and network parameters
+)
+```
+
 ## References of Data Sources
 
 ### Building 
