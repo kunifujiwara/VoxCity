@@ -180,7 +180,8 @@ def get_network_values(grid, rectangle_vertices, meshsize, value_name='value', *
                                 vmin=settings['vmin'],
                                 vmax=settings['vmax'],
                                 linewidth=settings['edge_width'],
-                                legend_kwds={'label': value_name})
+                                legend_kwds={'label': value_name,
+                                           'shrink': 0.5})  # Make colorbar 50% smaller
         
         ctx.add_basemap(ax,
                        source=settings['basemap_style'],
