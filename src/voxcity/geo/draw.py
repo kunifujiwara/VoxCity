@@ -295,8 +295,8 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
     draw_control = DrawControl(
         polygon={
             "shapeOptions": {
-                "color": "#6bc2e5",
-                "fillColor": "#6bc2e5",
+                "color": "red",
+                "fillColor": "red",
                 "fillOpacity": 0.2
             }
         },
