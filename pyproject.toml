@@ -50,6 +50,7 @@ dependencies = [
     "protobuf==3.20.3",
     "timezonefinder",
     "astral",
+    "osmnx",
 ]
 
 [project.optional-dependencies]

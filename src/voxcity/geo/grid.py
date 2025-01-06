@@ -4,7 +4,7 @@ This module provides functions for creating and manipulating grids of building h
 
 import numpy as np
 import os
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box
 from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
 import rasterio
@@ -12,6 +12,7 @@ from affine import Affine
 from shapely.geometry import box
 from scipy.interpolate import griddata
 from shapely.errors import GEOSException
+import geopandas as gpd
 
 from .utils import (
     initialize_geod,
@@ -749,3 +750,59 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
             grid = griddata(points, values, (xx, yy), method='nearest')
 
     return np.flipud(grid)
+
+def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
+    """Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+    
+    Args:
+        grid: 2D numpy array containing grid values
+        rectangle_vertices: List of [lon, lat] coordinates defining area corners
+        meshsize: Size of each grid cell in meters
+        
+    Returns:
+        GeoDataFrame with columns:
+            - geometry: Polygon geometry of each grid cell
+            - value: Value from the grid
+    """
+    grid = np.flipud(grid_ori.copy())
+    
+    # Extract bounds from rectangle vertices
+    min_lon = min(v[0] for v in rectangle_vertices)
+    max_lon = max(v[0] for v in rectangle_vertices)
+    min_lat = min(v[1] for v in rectangle_vertices)
+    max_lat = max(v[1] for v in rectangle_vertices)
+    
+    rows, cols = grid.shape
+    
+    # Calculate cell sizes in degrees (approximate)
+    # 111,111 meters = 1 degree at equator
+    cell_size_lon = meshsize / (111111 * np.cos(np.mean([min_lat, max_lat]) * np.pi / 180))
+    cell_size_lat = meshsize / 111111
+    
+    # Create lists to store data
+    polygons = []
+    values = []
+    
+    # Create grid cells
+    for i in range(rows):
+        for j in range(cols):
+            # Calculate cell bounds
+            cell_min_lon = min_lon + j * cell_size_lon
+            cell_max_lon = min_lon + (j + 1) * cell_size_lon
+            # Flip vertical axis since grid is stored with origin at top-left
+            cell_min_lat = max_lat - (i + 1) * cell_size_lat
+            cell_max_lat = max_lat - i * cell_size_lat
+            
+            # Create polygon for cell
+            cell_poly = box(cell_min_lon, cell_min_lat, cell_max_lon, cell_max_lat)
+            
+            polygons.append(cell_poly)
+            values.append(grid[i, j])
+    
+    # Create GeoDataFrame
+    gdf = gpd.GeoDataFrame({
+        'geometry': polygons,
+        'value': values
+    }, crs=CRS.from_epsg(4326))
+    
+    return gdf

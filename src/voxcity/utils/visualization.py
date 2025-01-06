@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
 import matplotlib.colors as mcolors
+from matplotlib.colors import ListedColormap, BoundaryNorm
 import contextily as ctx
 from shapely.geometry import Polygon
 import plotly.graph_objects as go
@@ -21,7 +22,8 @@ from .lc import get_land_cover_classes
 from ..geo.grid import (
     calculate_grid_size,
     create_coordinate_mesh,
-    create_cell_polygon
+    create_cell_polygon,
+    grid_to_geodataframe
 )
 
 from ..geo.utils import (
@@ -31,18 +33,7 @@ from ..geo.utils import (
     setup_transformer,
     transform_coords,
 )
-
-def get_material_dict():
-    return {
-        "unknown": -3,
-        "brick": -11,  
-        "wood": -12,  
-        "concrete": -13,  
-        "metal": -14,  
-        "stone": -15,  
-        "glass": -16,  
-        "plaster": -17,  
-    }
+from .material import get_material_dict
 
 def get_default_voxel_color_map():
     return {
@@ -250,119 +241,6 @@ def visualize_3d_voxel_plotly(voxel_grid, color_map = get_default_voxel_color_ma
 
     print("Visualization complete. Displaying plot...")
     fig.show()
-
-# def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, **kwargs):
-#     fig, ax = plt.subplots(figsize=(12, 12))
-
-#     if data_type == 'land_cover':
-#         land_cover_classes = kwargs.get('land_cover_classes')
-#         colors = [mcolors.to_rgb(f'#{r:02x}{g:02x}{b:02x}') for r, g, b in land_cover_classes.keys()]
-#         cmap = mcolors.ListedColormap(colors)
-#         norm = mcolors.BoundaryNorm(range(len(land_cover_classes)+1), cmap.N)
-#         title = 'Grid Cells with Dominant Land Cover Classes'
-#         label = 'Land Cover Class'
-#         tick_labels = list(land_cover_classes.values())
-#     elif data_type == 'building_height':
-#         # Create a masked array to handle special values
-#         masked_grid = np.ma.masked_array(grid, mask=(np.isnan(grid) | (grid == 0)))
-        
-#         # Set up colormap and normalization for positive values
-#         cmap = plt.cm.viridis
-#         if vmin is None:
-#             vmin = np.nanmin(masked_grid[masked_grid > 0])
-#         if vmax is None:
-#             vmax = np.nanmax(masked_grid)
-#         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-        
-#         title = 'Grid Cells with Building Heights'
-#         label = 'Building Height (m)'
-#         tick_labels = None
-#     elif data_type == 'dem':
-#         cmap = plt.cm.terrain
-#         if vmin is None:
-#             vmin = np.nanmin(grid)
-#         if vmax is None:
-#             vmax = np.nanmax(grid)
-#         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-#         title = 'DEM Grid Overlaid on Map'
-#         label = 'Elevation (m)'
-#         tick_labels = None
-#     elif data_type == 'canopy_height':
-#         cmap = plt.cm.Greens
-#         if vmin is None:
-#             vmin = np.nanmin(grid)
-#         if vmax is None:
-#             vmax = np.nanmax(grid)
-#         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-#         title = 'Canopy Height Grid Overlaid on Map'
-#         label = 'Canopy Height (m)'
-#         tick_labels = None
-#     else:
-#         raise ValueError("Invalid data_type. Choose 'land_cover', 'building_height', 'canopy_height', or 'dem'.")
-
-#     # Ensure grid is in the correct orientation
-#     grid = grid.T
-
-#     for i in range(grid.shape[0]):
-#         for j in range(grid.shape[1]):
-#             cell = create_cell_polygon(origin, j, i, adjusted_meshsize, u_vec, v_vec)  # Note the swap of i and j
-#             x, y = cell.exterior.xy
-#             x, y = zip(*[transformer.transform(lon, lat) for lat, lon in zip(x, y)])
-
-#             value = grid[i, j]
-            
-#             if data_type == 'building_height':
-#                 if np.isnan(value):
-#                     # White fill for NaN values
-#                     ax.fill(x, y, alpha=alpha, fc='white', ec='black' if edge else None, linewidth=0.1)
-#                 elif value == 0:
-#                     # No fill for zero values, only edges if enabled
-#                     if edge:
-#                         ax.plot(x, y, color='black', linewidth=0.1)
-#                 elif value > 0:
-#                     # Viridis colormap for positive values
-#                     color = cmap(norm(value))
-#                     ax.fill(x, y, alpha=alpha, fc=color, ec='black' if edge else None, linewidth=0.1)
-#             else:
-#                 color = cmap(norm(value))
-#                 if edge:
-#                     ax.fill(x, y, alpha=alpha, fc=color, ec='black', linewidth=0.1)
-#                 else:
-#                     ax.fill(x, y, alpha=alpha, fc=color, ec=None)
-
-#     crs_epsg_3857 = CRS.from_epsg(3857)
-#     ctx.add_basemap(ax, crs=crs_epsg_3857, source=ctx.providers.CartoDB.DarkMatter)
-
-#     if data_type == 'building_height':
-#         buildings = kwargs.get('buildings', [])
-#         for building in buildings:
-#             polygon = Polygon(building['geometry']['coordinates'][0])
-#             x, y = polygon.exterior.xy
-#             x, y = zip(*[transformer.transform(lon, lat) for lat, lon in zip(x, y)])
-#             ax.plot(x, y, color='red', linewidth=1)
-
-#     # Safe calculation of plot limits
-#     all_coords = np.array(vertices)
-#     x, y = zip(*[transformer.transform(lon, lat) for lat, lon in all_coords])
-    
-#     # Calculate limits safely
-#     x_min, x_max = min(x), max(x)
-#     y_min, y_max = min(y), max(y)
-    
-#     if x_min != x_max and y_min != y_max and buf != 0:
-#         dist_x = x_max - x_min
-#         dist_y = y_max - y_min
-#         # Set limits with buffer
-#         ax.set_xlim(x_min - buf * dist_x, x_max + buf * dist_x)
-#         ax.set_ylim(y_min - buf * dist_y, y_max + buf * dist_y)
-#     else:
-#         # If coordinates are the same or buffer is 0, set limits without buffer
-#         ax.set_xlim(x_min, x_max)
-#         ax.set_ylim(y_min, y_max)
-
-#     plt.axis('off')
-#     plt.tight_layout()
-#     plt.show()
 
 def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light', **kwargs):
     fig, ax = plt.subplots(figsize=(12, 12))
@@ -631,31 +509,6 @@ def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, mesh
     # Plot the results
     plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, type, vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap)
-    
-# def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
-#     all_classes = list(land_cover_classes.values())# + ['No Data']
-#     # for cls in all_classes:
-#     #     if cls not in color_map:
-#     #         color_map[cls] = [0.5, 0.5, 0.5]
-
-#     sorted_classes = sorted(all_classes)
-#     colors = [color_map[cls] for cls in sorted_classes]
-#     cmap = mcolors.ListedColormap(colors)
-
-#     bounds = np.arange(len(sorted_classes) + 1)
-#     norm = mcolors.BoundaryNorm(bounds, cmap.N)
-
-#     class_to_num = {cls: i for i, cls in enumerate(sorted_classes)}
-#     numeric_grid = np.vectorize(class_to_num.get)(grid)
-
-#     plt.figure(figsize=(10, 10))
-#     im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
-#     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
-#     cbar.set_ticklabels(sorted_classes)
-#     plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
-#     plt.xlabel('Grid Cells (X)')
-#     plt.ylabel('Grid Cells (Y)')
-#     plt.show()
 
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())
@@ -688,204 +541,6 @@ def visualize_numerical_grid(grid, mesh_size, title, cmap='viridis', label='Valu
     plt.ylabel('Grid Cells (Y)')
     plt.show()
 
-def get_modulo_numbers(window_ratio):
-    """
-    Determines the appropriate modulo numbers for x, y, z based on window_ratio.
-    
-    Parameters:
-    window_ratio: float between 0 and 1.0
-    
-    Returns:
-    tuple (x_mod, y_mod, z_mod): modulo numbers for each dimension
-    """
-    if window_ratio <= 0.125 + 0.0625:  # around 0.125
-        return (2, 2, 2)
-    elif window_ratio <= 0.25 + 0.125:  # around 0.25
-        combinations = [(2, 2, 1), (2, 1, 2), (1, 2, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    elif window_ratio <= 0.5 + 0.125:  # around 0.5
-        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    elif window_ratio <= 0.75 + 0.125:  # around 0.75
-        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    else:  # above 0.875
-        return (1, 1, 1)
-
-def set_building_material_by_id(voxelcity_grid, building_id_grid_ori, ids, mark, window_ratio=0.125, glass_id=-10):
-    """
-    Marks cells in voxelcity_grid based on building IDs and window ratio.
-    Never sets glass_id to cells with maximum z index.
-    
-    Parameters:
-    voxelcity_grid: 3D numpy array
-    building_id_grid_ori: 2D numpy array containing building IDs
-    ids: list/array of building IDs to check
-    mark: value to set for marked cells
-    window_ratio: float between 0 and 1.0, determines window density:
-        ~0.125: sparse windows (2,2,2)
-        ~0.25: medium-sparse windows (2,2,1), (2,1,2), or (1,2,2)
-        ~0.5: medium windows (2,1,1), (1,2,1), or (1,1,2)
-        ~0.75: dense windows (2,1,1), (1,2,1), or (1,1,2)
-        >0.875: maximum density (1,1,1)
-    glass_id: value to set for glass cells (default: -10)
-    
-    Returns:
-    Modified voxelcity_grid
-    """
-    building_id_grid = np.flipud(building_id_grid_ori.copy())
-    
-    # Get modulo numbers based on window_ratio
-    x_mod, y_mod, z_mod = get_modulo_numbers(window_ratio)
-    
-    # Get positions where building IDs match
-    building_positions = np.where(np.isin(building_id_grid, ids))
-    
-    # Loop through each position that matches building IDs
-    for i in range(len(building_positions[0])):
-        x, y = building_positions[0][i], building_positions[1][i]
-        z_mask = voxelcity_grid[x, y, :] == -3
-        voxelcity_grid[x, y, z_mask] = mark
-        
-        # Check if x and y meet the modulo conditions
-        if x % x_mod == 0 and y % y_mod == 0:
-            z_mask = voxelcity_grid[x, y, :] == mark
-            if np.any(z_mask):
-                # Find the maximum z index where z_mask is True
-                z_indices = np.where(z_mask)[0]
-                max_z_index = np.max(z_indices)
-                
-                # Create base mask excluding maximum z index
-                base_mask = z_mask.copy()
-                base_mask[max_z_index] = False
-                
-                # Create pattern mask based on z modulo
-                pattern_mask = np.zeros_like(z_mask)
-                valid_z_indices = z_indices[z_indices != max_z_index]  # Exclude max_z_index
-                if len(valid_z_indices) > 0:
-                    pattern_mask[valid_z_indices[valid_z_indices % z_mod == 0]] = True
-                
-                # For window_ratio around 0.75, add additional pattern
-                if 0.625 < window_ratio <= 0.875 and len(valid_z_indices) > 0:
-                    additional_pattern = np.zeros_like(z_mask)
-                    additional_pattern[valid_z_indices[valid_z_indices % (z_mod + 1) == 0]] = True
-                    pattern_mask = np.logical_or(pattern_mask, additional_pattern)
-                
-                # Final mask combines base_mask and pattern_mask
-                final_glass_mask = np.logical_and(base_mask, pattern_mask)
-                
-                # Set glass_id for all positions in the final mask
-                voxelcity_grid[x, y, final_glass_mask] = glass_id
-    
-    return voxelcity_grid
-
-def set_building_material_by_gdf(voxelcity_grid_ori, building_id_grid, gdf_buildings, material_id_dict=None):
-    voxelcity_grid = voxelcity_grid_ori.copy()
-    if material_id_dict == None:
-        material_id_dict = get_material_dict()
-
-    for index, row in gdf_buildings.iterrows():
-        # Access properties
-        osmid = row['building_id']
-        surface_material = row['surface_material']
-        window_ratio = row['window_ratio']
-        if surface_material is None:
-            surface_material = 'unknown'            
-        set_building_material_by_id(voxelcity_grid, building_id_grid, osmid, material_id_dict[surface_material], window_ratio=window_ratio, glass_id=material_id_dict['glass'])
-    
-    return voxelcity_grid
-
-def get_modulo_numbers(window_ratio):
-    """
-    Determines the appropriate modulo numbers for x, y, z based on window_ratio.
-    
-    Parameters:
-    window_ratio: float between 0 and 1.0
-    
-    Returns:
-    tuple (x_mod, y_mod, z_mod): modulo numbers for each dimension
-    """
-    if window_ratio <= 0.125 + 0.0625:  # around 0.125
-        return (2, 2, 2)
-    elif window_ratio <= 0.25 + 0.125:  # around 0.25
-        combinations = [(2, 2, 1), (2, 1, 2), (1, 2, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    elif window_ratio <= 0.5 + 0.125:  # around 0.5
-        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    elif window_ratio <= 0.75 + 0.125:  # around 0.75
-        combinations = [(2, 1, 1), (1, 2, 1), (1, 1, 2)]
-        return combinations[hash(str(window_ratio)) % len(combinations)]
-    else:  # above 0.875
-        return (1, 1, 1)
-
-def set_building_material_by_id(voxelcity_grid, building_id_grid_ori, ids, mark, window_ratio=0.125, glass_id=-16):
-    """
-    Marks cells in voxelcity_grid based on building IDs and window ratio.
-    Never sets glass_id to cells with maximum z index.
-    
-    Parameters:
-    voxelcity_grid: 3D numpy array
-    building_id_grid_ori: 2D numpy array containing building IDs
-    ids: list/array of building IDs to check
-    mark: value to set for marked cells
-    window_ratio: float between 0 and 1.0, determines window density:
-        ~0.125: sparse windows (2,2,2)
-        ~0.25: medium-sparse windows (2,2,1), (2,1,2), or (1,2,2)
-        ~0.5: medium windows (2,1,1), (1,2,1), or (1,1,2)
-        ~0.75: dense windows (2,1,1), (1,2,1), or (1,1,2)
-        >0.875: maximum density (1,1,1)
-    glass_id: value to set for glass cells (default: -10)
-    
-    Returns:
-    Modified voxelcity_grid
-    """
-    building_id_grid = np.flipud(building_id_grid_ori.copy())
-    
-    # Get modulo numbers based on window_ratio
-    x_mod, y_mod, z_mod = get_modulo_numbers(window_ratio)
-    
-    # Get positions where building IDs match
-    building_positions = np.where(np.isin(building_id_grid, ids))
-    
-    # Loop through each position that matches building IDs
-    for i in range(len(building_positions[0])):
-        x, y = building_positions[0][i], building_positions[1][i]
-        z_mask = voxelcity_grid[x, y, :] == -3
-        voxelcity_grid[x, y, z_mask] = mark
-        
-        # Check if x and y meet the modulo conditions
-        if x % x_mod == 0 and y % y_mod == 0:
-            z_mask = voxelcity_grid[x, y, :] == mark
-            if np.any(z_mask):
-                # Find the maximum z index where z_mask is True
-                z_indices = np.where(z_mask)[0]
-                max_z_index = np.max(z_indices)
-                
-                # Create base mask excluding maximum z index
-                base_mask = z_mask.copy()
-                base_mask[max_z_index] = False
-                
-                # Create pattern mask based on z modulo
-                pattern_mask = np.zeros_like(z_mask)
-                valid_z_indices = z_indices[z_indices != max_z_index]  # Exclude max_z_index
-                if len(valid_z_indices) > 0:
-                    pattern_mask[valid_z_indices[valid_z_indices % z_mod == 0]] = True
-                
-                # For window_ratio around 0.75, add additional pattern
-                if 0.625 < window_ratio <= 0.875 and len(valid_z_indices) > 0:
-                    additional_pattern = np.zeros_like(z_mask)
-                    additional_pattern[valid_z_indices[valid_z_indices % (z_mod + 1) == 0]] = True
-                    pattern_mask = np.logical_or(pattern_mask, additional_pattern)
-                
-                # Final mask combines base_mask and pattern_mask
-                final_glass_mask = np.logical_and(base_mask, pattern_mask)
-                
-                # Set glass_id for all positions in the final mask
-                voxelcity_grid[x, y, final_glass_mask] = glass_id
-    
-    return voxelcity_grid
-
 def convert_coordinates(coords):
     return coords
 
@@ -903,10 +558,6 @@ def calculate_center(features):
             lats.append(lat)
             lons.append(lon)
     return sum(lats) / len(lats), sum(lons) / len(lons)
-
-# def format_building_id(id_num):
-#     # Format ID to ensure it's at least 9 digits with leading zeros
-#     return f"{id_num:09d}"
 
 def create_circle_polygon(center_lat, center_lon, radius_meters):
     """Create a circular polygon with given center and radius"""
@@ -1003,3 +654,126 @@ def display_builing_ids_on_map(building_geojson, rectangle_vertices):
 
     # Save the map
     return m
+
+def visualize_landcover_grid_on_basemap(landcover_grid, rectangle_vertices, meshsize, source='Standard', alpha=0.6, figsize=(12, 8), 
+                                     basemap='CartoDB light', show_edge=False, edge_color='black', edge_width=0.5):
+    """Visualizes a land cover grid GeoDataFrame using predefined color schemes.
+    
+    Args:
+        gdf: GeoDataFrame containing grid cells with 'geometry' and 'value' columns
+        source: Source of land cover classification (e.g., 'Standard', 'Urbanwatch', etc.)
+        title: Title for the plot (default: None)
+        alpha: Transparency of the grid overlay (default: 0.6)
+        figsize: Figure size in inches (default: (12, 8))
+        basemap: Basemap style (default: 'CartoDB light')
+        show_edge: Whether to show cell edges (default: True)
+        edge_color: Color of cell edges (default: 'black')
+        edge_width: Width of cell edges (default: 0.5)
+    """
+    # Get land cover classes and colors
+    land_cover_classes = get_land_cover_classes(source)
+
+    gdf = grid_to_geodataframe(landcover_grid, rectangle_vertices, meshsize)
+    
+    # Convert RGB tuples to normalized RGB values
+    colors = [(r/255, g/255, b/255) for (r,g,b) in land_cover_classes.keys()]
+    
+    # Create custom colormap
+    cmap = ListedColormap(colors)
+    
+    # Create bounds for discrete colorbar
+    bounds = np.arange(len(colors) + 1)
+    norm = BoundaryNorm(bounds, cmap.N)
+    
+    # Convert to Web Mercator
+    gdf_web = gdf.to_crs(epsg=3857)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot the GeoDataFrame
+    gdf_web.plot(column='value',
+                 ax=ax,
+                 alpha=alpha,
+                 cmap=cmap,
+                 norm=norm,
+                 legend=True,
+                 legend_kwds={
+                     'label': 'Land Cover Class',
+                     'ticks': bounds[:-1] + 0.5,
+                     'boundaries': bounds,
+                     'format': lambda x, p: list(land_cover_classes.values())[int(x)]
+                 },
+                 edgecolor=edge_color if show_edge else 'none',
+                 linewidth=edge_width if show_edge else 0)
+    
+    # Add basemap
+    basemaps = {
+        'CartoDB dark': ctx.providers.CartoDB.DarkMatter,
+        'CartoDB light': ctx.providers.CartoDB.Positron,
+        'CartoDB voyager': ctx.providers.CartoDB.Voyager,
+        'CartoDB light no labels': ctx.providers.CartoDB.PositronNoLabels,
+        'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
+    }
+    ctx.add_basemap(ax, source=basemaps[basemap])
+    
+    # Set title and remove axes
+    ax.set_axis_off()
+    
+    plt.tight_layout()
+    plt.show()
+
+def visualize_numerical_grid_on_basemap(grid, rectangle_vertices, meshsize, value_name="value", cmap='viridis', vmin=None, vmax=None, 
+                                          alpha=0.6, figsize=(12, 8), basemap='CartoDB light',
+                                          show_edge=False, edge_color='black', edge_width=0.5):
+    """Visualizes a numerical grid GeoDataFrame (e.g., heights) on a basemap.
+    
+    Args:
+        gdf: GeoDataFrame containing grid cells with 'geometry' and 'value' columns
+        title: Title for the plot (default: None)
+        cmap: Colormap to use (default: 'viridis')
+        vmin: Minimum value for colormap scaling (default: None)
+        vmax: Maximum value for colormap scaling (default: None)
+        alpha: Transparency of the grid overlay (default: 0.6)
+        figsize: Figure size in inches (default: (12, 8))
+        basemap: Basemap style (default: 'CartoDB light')
+        show_edge: Whether to show cell edges (default: True)
+        edge_color: Color of cell edges (default: 'black')
+        edge_width: Width of cell edges (default: 0.5)
+    """
+
+    gdf = grid_to_geodataframe(grid, rectangle_vertices, meshsize)
+
+    # Convert to Web Mercator
+    gdf_web = gdf.to_crs(epsg=3857)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot the GeoDataFrame
+    gdf_web.plot(column='value',
+                 ax=ax,
+                 alpha=alpha,
+                 cmap=cmap,
+                 vmin=vmin,
+                 vmax=vmax,
+                 legend=True,
+                 legend_kwds={'label': value_name},
+                 edgecolor=edge_color if show_edge else 'none',
+                 linewidth=edge_width if show_edge else 0)
+    
+    # Add basemap
+    basemaps = {
+        'CartoDB dark': ctx.providers.CartoDB.DarkMatter,
+        'CartoDB light': ctx.providers.CartoDB.Positron,
+        'CartoDB voyager': ctx.providers.CartoDB.Voyager,
+        'CartoDB light no labels': ctx.providers.CartoDB.PositronNoLabels,
+        'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
+    }
+    ctx.add_basemap(ax, source=basemaps[basemap])
+    
+    # Set title and remove axes
+    ax.set_axis_off()
+    
+    plt.tight_layout()
+    plt.show()

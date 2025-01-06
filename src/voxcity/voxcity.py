@@ -52,10 +52,12 @@ from .utils.visualization import (
     get_land_cover_classes,
     visualize_land_cover_grid,
     visualize_numerical_grid,
-    visualize_land_cover_grid_on_map,
-    visualize_numerical_grid_on_map,
-    visualize_building_height_grid_on_map,
-    visualize_3d_voxel
+    # visualize_land_cover_grid_on_map,
+    # visualize_numerical_grid_on_map,
+    # visualize_building_height_grid_on_map,
+    visualize_3d_voxel,
+    visualize_landcover_grid_on_basemap,
+    visualize_numerical_grid_on_basemap,
 )
 
 def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
@@ -593,10 +595,56 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     # Visualize 2D grids on map if requested
     mapvis = kwargs.get("mapvis")
     if mapvis:
-        visualize_land_cover_grid_on_map(land_cover_grid, rectangle_vertices, meshsize, source = land_cover_source)
-        visualize_building_height_grid_on_map(building_height_grid, building_geojson, rectangle_vertices, meshsize)
-        visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, "canopy_height")
-        visualize_numerical_grid_on_map(dem_grid, rectangle_vertices, meshsize, "dem")
+        # Visualize land cover using the new function
+        visualize_landcover_grid_on_basemap(
+            land_cover_grid, 
+            rectangle_vertices, 
+            meshsize, 
+            source=land_cover_source,
+            alpha=0.7,
+            figsize=(12, 8),
+            basemap='CartoDB light',
+            show_edge=False
+        )
+        
+        # Visualize building heights using the new function
+        visualize_numerical_grid_on_basemap(
+            building_height_grid,
+            rectangle_vertices,
+            meshsize,
+            value_name="Building Heights (m)",
+            cmap='viridis',
+            alpha=0.7,
+            figsize=(12, 8),
+            basemap='CartoDB light',
+            show_edge=False
+        )
+        
+        # Visualize canopy heights using the new function
+        visualize_numerical_grid_on_basemap(
+            canopy_height_grid,
+            rectangle_vertices,
+            meshsize,
+            value_name="Canopy Heights (m)",
+            cmap='Greens',
+            alpha=0.7,
+            figsize=(12, 8),
+            basemap='CartoDB light',
+            show_edge=False
+        )
+        
+        # Visualize DEM using the new function
+        visualize_numerical_grid_on_basemap(
+            dem_grid,
+            rectangle_vertices,
+            meshsize,
+            value_name="Terrain Elevation (m)",
+            cmap='terrain',
+            alpha=0.7,
+            figsize=(12, 8),
+            basemap='CartoDB light',
+            show_edge=False
+        )
 
     # Generate 3D voxel grid
     voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
