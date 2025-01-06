@@ -273,7 +273,7 @@ solar_kwargs = {
 }
 
 # Compute global solar irradiance map (direct + diffuse radiation)
-global_map = get_global_solar_irradiance_using_epw(    
+solar_grid = get_global_solar_irradiance_using_epw(    
     voxcity_grid,                        # 3D voxel grid representing the urban environment
     meshsize,                            # Size of each voxel in meters
     calc_type='instantaneous',           # Calculate instantaneous irradiance at specified time
@@ -288,7 +288,7 @@ solar_kwargs["end_time"] = "01-31 23:00:00" # End time for cumulative calculatio
 solar_kwargs["output_file_name"] = 'cummulative_solar_irradiance',  # Base filename for outputs (without extension)
 
 # Calculate cumulative solar irradiance over the specified time period
-global_map = get_global_solar_irradiance_using_epw(    
+cum_solar_grid = get_global_solar_irradiance_using_epw(    
     voxcity_grid,                        # 3D voxel grid representing the urban environment
     meshsize,                            # Size of each voxel in meters
     calc_type='cumulative',              # Calculate cumulative irradiance over time period instead of instantaneous
