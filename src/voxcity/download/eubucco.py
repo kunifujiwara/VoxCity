@@ -68,16 +68,11 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
     Parameters:
     - gpkg_file (str): Path to the GeoPackage file.
     - layer_name (str): Name of the layer within the GeoPackage to process.
-    - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the rectangle.
+    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle.
     - output_geojson (str): Path to the output GeoJSON file.
     """
-    # Convert rectangle vertices from (lat,lon) to (lon,lat) format and create polygon
-    rectangle_vertices_lonlat = [(lon, lat) for lat, lon in rectangle_vertices]
-    rectangle_polygon = Polygon(rectangle_vertices_lonlat)
-
-    # Helper function to swap coordinate order
-    def swap_coordinates_gdf(x, y, z=None):
-        return y, x
+    # Create polygon from rectangle vertices (already in lon,lat format)
+    rectangle_polygon = Polygon(rectangle_vertices)
 
     # Get Shapely version for compatibility checks
     shapely_version = shapely.__version__
@@ -165,13 +160,10 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
                         else:
                             shapely_transformed_poly = poly
 
-                        # Swap coordinates to (lat,lon) format
-                        swapped_poly = transform(swap_coordinates_gdf, shapely_transformed_poly)
-
-                        # Extract polygon coordinates
+                        # Extract polygon coordinates (already in lon,lat format)
                         coords = []
-                        coords.append(list(swapped_poly.exterior.coords))  # Exterior ring
-                        for interior in swapped_poly.interiors:  # Interior rings (holes)
+                        coords.append(list(shapely_transformed_poly.exterior.coords))  # Exterior ring
+                        for interior in shapely_transformed_poly.interiors:  # Interior rings (holes)
                             coords.append(list(interior.coords))
 
                         # Create GeoJSON geometry
@@ -259,7 +251,7 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
     Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.
 
     Parameters:
-    - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the rectangle.
+    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle.
     - country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs.
     - output_dir (str): Directory to save output files
     - file_name (str): Name for output GeoJSON file
@@ -268,7 +260,7 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
     - None: Writes the output to a GeoJSON file.
     """
     # Determine country based on first vertex
-    country_name = get_country_name(rectangle_vertices[0][0], rectangle_vertices[0][1])
+    country_name = get_country_name(rectangle_vertices[0][0], rectangle_vertices[0][1])  # Swap order for get_country_name
     if country_name in country_links:
         url = country_links[country_name]
     else:
@@ -304,7 +296,7 @@ def load_geojson_from_eubucco(rectangle_vertices, output_dir):
     Downloads EUBUCCO data and loads it as GeoJSON.
 
     Parameters:
-    - rectangle_vertices (list of tuples): List of (latitude, longitude) tuples defining the area
+    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area
     - output_dir (str): Directory to save intermediate files
 
     Returns:

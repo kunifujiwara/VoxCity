@@ -177,16 +177,15 @@ def transform_coords(transformer, lon, lat):
 def create_polygon(vertices):
     """
     Create a Shapely polygon from vertices.
-    Converts from (lat,lon) format to (lon,lat) format required by Shapely.
+    Input vertices are already in (lon,lat) format required by Shapely.
     
     Args:
-        vertices (list): List of (lat, lon) coordinate pairs
+        vertices (list): List of (lon, lat) coordinate pairs
         
     Returns:
         Polygon: Shapely polygon object
     """
-    flipped_vertices = [(lon, lat) for lat, lon in vertices]
-    return Polygon(flipped_vertices)
+    return Polygon(vertices)
 
 def create_geodataframe(polygon, crs=4326):
     """
@@ -202,14 +201,14 @@ def create_geodataframe(polygon, crs=4326):
     """
     return gpd.GeoDataFrame({'geometry': [polygon]}, crs=from_epsg(crs))
 
-def haversine_distance(lat1, lon1, lat2, lon2):
+def haversine_distance(lon1, lat1, lon2, lat2):
     """
     Calculate great-circle distance between two points using Haversine formula.
     This is an approximation that treats the Earth as a perfect sphere.
     
     Args:
-        lat1, lon1 (float): Coordinates of first point
-        lat2, lon2 (float): Coordinates of second point
+        lon1, lat1 (float): Coordinates of first point
+        lon2, lat2 (float): Coordinates of second point
         
     Returns:
         float: Distance in kilometers
@@ -323,15 +322,16 @@ def merge_geotiffs(geotiff_files, output_dir):
 def convert_format_lat_lon(input_coords):
     """
     Convert coordinate format and close polygon.
+    Input coordinates are already in [lon, lat] format.
     
     Args:
         input_coords (list): List of [lon, lat] coordinates
         
     Returns:
-        list: List of [lat, lon] coordinates with first point repeated at end
+        list: List of [lon, lat] coordinates with first point repeated at end
     """
-    # Swap lon/lat to lat/lon format and create list
-    output_coords = [[coord[1], coord[0]] for coord in input_coords]
+    # Create list with coordinates in same order
+    output_coords = input_coords.copy()
     # Close polygon by repeating first point at end
     output_coords.append(output_coords[0])
     return output_coords
@@ -344,7 +344,7 @@ def get_coordinates_from_cityname(place_name):
         place_name (str): Name of city to geocode
         
     Returns:
-        tuple: (latitude, longitude) or None if geocoding fails
+        tuple: (longitude, latitude) or None if geocoding fails
     """
     # Initialize geocoder with user agent
     geolocator = Nominatim(user_agent="my_geocoding_script")
@@ -366,16 +366,16 @@ def get_city_country_name_from_rectangle(coordinates):
     Get city and country name from rectangle coordinates.
     
     Args:
-        coordinates (list): List of (lat, lon) coordinates defining rectangle
+        coordinates (list): List of (lon, lat) coordinates defining rectangle
         
     Returns:
         str: String in format "city/ country" or None if lookup fails
     """
     # Calculate center point of rectangle
-    latitudes = [coord[0] for coord in coordinates]
-    longitudes = [coord[1] for coord in coordinates]
-    center_lat = sum(latitudes) / len(latitudes)
+    longitudes = [coord[0] for coord in coordinates]
+    latitudes = [coord[1] for coord in coordinates]
     center_lon = sum(longitudes) / len(longitudes)
+    center_lat = sum(latitudes) / len(latitudes)
     center_coord = (center_lat, center_lon)
 
     # Initialize geocoder with rate limiting to avoid hitting API limits
@@ -401,17 +401,16 @@ def get_timezone_info(rectangle_coords):
     Get timezone and central meridian info for a location.
     
     Args:
-        rectangle_coords (list): List of (lat, lon) coordinates defining rectangle
+        rectangle_coords (list): List of (lon, lat) coordinates defining rectangle
         
     Returns:
         tuple: (timezone string, central meridian longitude string)
     """
     # Calculate center point of rectangle
-    latitudes = [coord[0] for coord in rectangle_coords]
-    longitudes = [coord[1] for coord in rectangle_coords]
-    center_lat = sum(latitudes) / len(latitudes)
+    longitudes = [coord[0] for coord in rectangle_coords]
+    latitudes = [coord[1] for coord in rectangle_coords]
     center_lon = sum(longitudes) / len(longitudes)
-    center_coord = (center_lat, center_lon)
+    center_lat = sum(latitudes) / len(latitudes)
     
     # Find timezone at center coordinates
     tf = TimezoneFinder()
@@ -475,6 +474,7 @@ def create_building_polygons(filtered_buildings):
     """
     building_polygons = []
     idx = index.Index()
+    valid_count = 0
     count = 0
     
     # Find highest existing ID to avoid duplicates
@@ -487,63 +487,76 @@ def create_building_polygons(filtered_buildings):
     else:
         id_count = 1
 
-    for i, building in enumerate(filtered_buildings):
-        # Create polygon from coordinates
-        polygon = Polygon(building['geometry']['coordinates'][0])
-        
-        # Extract height information from various possible property fields
-        height = building['properties'].get('height')
-        levels = building['properties'].get('levels')
-        floors = building['properties'].get('num_floors')
-        min_height = building['properties'].get('min_height')
-        min_level = building['properties'].get('min_level')    
-        min_floor = building['properties'].get('min_floor')        
+    for building in filtered_buildings:
+        try:
+            # Handle potential nested coordinate tuples
+            coords = building['geometry']['coordinates'][0]
+            # Flatten coordinates if they're nested tuples
+            if isinstance(coords[0], tuple):
+                coords = [list(c) for c in coords]
+            elif isinstance(coords[0][0], tuple):
+                coords = [list(c[0]) for c in coords]
+                
+            # Create polygon from coordinates
+            polygon = Polygon(coords)
+            
+            # Skip invalid geometries
+            if not polygon.is_valid:
+                print(f"Warning: Skipping invalid polygon geometry")
+                continue
+                
+            height = building['properties'].get('height')
+            levels = building['properties'].get('levels')
+            floors = building['properties'].get('num_floors')
+            min_height = building['properties'].get('min_height')
+            min_level = building['properties'].get('min_level')    
+            min_floor = building['properties'].get('min_floor')        
 
-        # Calculate height if not directly specified
-        if (height is None) or (height<=0):
-            if levels is not None:
-                height = floor_height * levels
-            elif floors is not None:
-                height = floor_height * floors
+            if (height is None) or (height<=0):
+                if levels is not None:
+                    height = floor_height * levels
+                elif floors is not None:
+                    height = floor_height * floors
+                else:
+                    count += 1
+                    height = np.nan
+
+            if (min_height is None) or (min_height<=0):
+                if min_level is not None:
+                    min_height = floor_height * float(min_level) 
+                elif min_floor is not None:
+                    min_height = floor_height * float(min_floor)
+                else:
+                    min_height = 0
+
+            if building['properties'].get('id') is not None:
+                feature_id = building['properties']['id']
             else:
-                count += 1
-                height = np.nan
+                feature_id = id_count
+                id_count += 1
 
-        # Calculate minimum height if not directly specified
-        if (min_height is None) or (min_height<=0):
-            if min_level is not None:
-                min_height = floor_height * float(min_level) 
-            elif min_floor is not None:
-                min_height = floor_height * float(min_floor)
+            if building['properties'].get('is_inner') is not None:
+                is_inner = building['properties']['is_inner']
             else:
-                min_height = 0
+                is_inner = False
 
-        # Get or assign building ID
-        if building['properties'].get('id') is not None:
-            feature_id = building['properties']['id']
-        else:
-            feature_id = id_count
-            id_count += 1
-
-        # Check if building is inner part of another building
-        if building['properties'].get('is_inner') is not None:
-            is_inner = building['properties']['is_inner']
-        else:
-            is_inner = False
-
-        # Store polygon with all properties and add to spatial index
-        building_polygons.append((polygon, height, min_height, is_inner, feature_id))
-        idx.insert(i, polygon.bounds)
+            building_polygons.append((polygon, height, min_height, is_inner, feature_id))
+            idx.insert(valid_count, polygon.bounds)
+            valid_count += 1
+            
+        except Exception as e:
+            print(f"Warning: Skipping invalid building geometry: {e}")
+            continue
 
     return building_polygons, idx
 
-def get_country_name(lat, lon):
+def get_country_name(lon, lat):
     """
     Get country name from coordinates using reverse geocoding.
     
     Args:
-        lat (float): Latitude
         lon (float): Longitude
+        lat (float): Latitude
         
     Returns:
         str: Country name or None if lookup fails

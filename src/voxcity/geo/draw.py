@@ -16,11 +16,11 @@ def rotate_rectangle(m, rectangle_vertices, angle):
 
     Args:
         m (ipyleaflet.Map): Map object to draw the rotated rectangle on
-        rectangle_vertices (list): List of (lat, lon) tuples defining the rectangle vertices
+        rectangle_vertices (list): List of (lon, lat) tuples defining the rectangle vertices
         angle (float): Rotation angle in degrees
 
     Returns:
-        list: List of rotated (lat, lon) tuples defining the new rectangle vertices
+        list: List of rotated (lon, lat) tuples defining the new rectangle vertices
     """
     if not rectangle_vertices:
         print("Draw a rectangle first!")
@@ -31,7 +31,7 @@ def rotate_rectangle(m, rectangle_vertices, angle):
     mercator = Proj(init='epsg:3857')  # Web Mercator (projection used by most web maps)
 
     # Project vertices from WGS84 to Web Mercator for proper distance calculations
-    projected_vertices = [transform(wgs84, mercator, lon, lat) for lat, lon in rectangle_vertices]
+    projected_vertices = [transform(wgs84, mercator, lon, lat) for lon, lat in rectangle_vertices]
 
     # Calculate the centroid to use as rotation center
     centroid_x = sum(x for x, y in projected_vertices) / len(projected_vertices)
@@ -57,15 +57,12 @@ def rotate_rectangle(m, rectangle_vertices, angle):
 
         rotated_vertices.append((new_x, new_y))
 
-    # Convert coordinates back to WGS84 (lat/lon)
+    # Convert coordinates back to WGS84 (lon/lat)
     new_vertices = [transform(mercator, wgs84, x, y) for x, y in rotated_vertices]
-
-    # Reorder coordinates from (lon,lat) to (lat,lon) format
-    new_vertices = [(lat, lon) for lon, lat in new_vertices]
 
     # Create and add new polygon layer to map
     polygon = ipyleaflet.Polygon(
-        locations=new_vertices,
+        locations=[(lat, lon) for lon, lat in new_vertices],  # Convert to (lat,lon) for ipyleaflet
         color="red",
         fill_color="red"
     )
@@ -104,8 +101,8 @@ def draw_rectangle_map(center=(40, -100), zoom=4):
             print("Vertices of the drawn rectangle:")
             # Store all vertices except last (GeoJSON repeats first vertex at end)
             for coord in coordinates[:-1]:
-                # Convert from GeoJSON (lon,lat) to standard (lat,lon) format
-                rectangle_vertices.append((coord[1], coord[0]))
+                # Keep GeoJSON (lon,lat) format
+                rectangle_vertices.append((coord[0], coord[1]))
                 print(f"Longitude: {coord[0]}, Latitude: {coord[1]}")
 
     # Configure drawing controls - only enable rectangle drawing
@@ -179,9 +176,9 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
         # Process only if a point was drawn on the map
         if action == 'created' and geo_json['geometry']['type'] == 'Point':
-            # Extract point coordinates (converting from GeoJSON lon,lat to lat,lon)
-            lat, lon = geo_json['geometry']['coordinates'][1], geo_json['geometry']['coordinates'][0]
-            print(f"Point drawn at Latitude: {lat}, Longitude: {lon}")
+            # Extract point coordinates from GeoJSON (lon,lat)
+            lon, lat = geo_json['geometry']['coordinates'][0], geo_json['geometry']['coordinates'][1]
+            print(f"Point drawn at Longitude: {lon}, Latitude: {lat}")
             
             # Calculate corner points using geopy's distance calculator
             # Each point is calculated as a destination from center point using bearing
@@ -190,15 +187,15 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
             east = distance.distance(meters=east_west_length/2).destination((lat, lon), bearing=90)
             west = distance.distance(meters=east_west_length/2).destination((lat, lon), bearing=270)
 
-            # Create rectangle vertices in counter-clockwise order
+            # Create rectangle vertices in counter-clockwise order (lon,lat)
             rectangle_vertices.extend([
-                (south.latitude, west.longitude),
-                (north.latitude, west.longitude),
-                (north.latitude, east.longitude),
-                (south.latitude, east.longitude)                
+                (west.longitude, south.latitude),
+                (west.longitude, north.latitude),
+                (east.longitude, north.latitude),
+                (east.longitude, south.latitude)                
             ])
 
-            # Create and add new rectangle to map
+            # Create and add new rectangle to map (ipyleaflet expects lat,lon)
             rectangle = Rectangle(
                 bounds=[(north.latitude, west.longitude), (south.latitude, east.longitude)],
                 color="red",
@@ -209,7 +206,7 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
             print("Rectangle vertices:")
             for vertex in rectangle_vertices:
-                print(f"Latitude: {vertex[0]}, Longitude: {vertex[1]}")
+                print(f"Longitude: {vertex[0]}, Latitude: {vertex[1]}")
 
     # Configure drawing controls - only enable point drawing
     draw_control = DrawControl()
@@ -227,44 +224,44 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
 def display_buildings_and_draw_polygon(building_geojson, zoom=17):
     """
-    Displays building footprints (in Lat-Lon order) on an ipyleaflet map,
+    Displays building footprints (in Lon-Lat order) on an ipyleaflet map,
     and allows the user to draw a polygon whose vertices are returned
-    in a Python list (also in Lat-Lon).
+    in a Python list (also in Lon-Lat).
 
     Args:
         building_geojson (list): A list of GeoJSON features (Polygons),
-                                 BUT with coordinates in [lat, lon] order.
+                                 with coordinates in [lon, lat] order.
         zoom (int): Initial zoom level for the map. Default=17.
 
     Returns:
         (map_object, drawn_polygon_vertices)
           - map_object: ipyleaflet Map instance
           - drawn_polygon_vertices: a Python list that gets updated whenever
-            a new polygon is created. The list is in (lat, lon) order.
+            a new polygon is created. The list is in (lon, lat) order.
     """
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
     # ---------------------------------------------------------
-    all_lats = []
     all_lons = []
+    all_lats = []
     for feature in building_geojson:
         # Handle only Polygons here; skip MultiPolygon if present
         if feature['geometry']['type'] == 'Polygon':
-            # Coordinates in this data are [ [lat, lon], [lat, lon], ... ]
+            # Coordinates in this data are [ [lon, lat], [lon, lat], ... ]
             coords = feature['geometry']['coordinates'][0]  # outer ring
-            all_lats.extend(pt[0] for pt in coords)
-            all_lons.extend(pt[1] for pt in coords)
+            all_lons.extend(pt[0] for pt in coords)
+            all_lats.extend(pt[1] for pt in coords)
 
     if not all_lats or not all_lons:
         # Fallback: If no footprints or invalid data, pick a default
-        center_lat, center_lon = 40.0, -100.0
+        center_lon, center_lat = -100.0, 40.0
     else:
-        min_lat, max_lat = min(all_lats), max(all_lats)
         min_lon, max_lon = min(all_lons), max(all_lons)
-        center_lat = (min_lat + max_lat) / 2
+        min_lat, max_lat = min(all_lats), max(all_lats)
         center_lon = (min_lon + max_lon) / 2
+        center_lat = (min_lat + max_lat) / 2
 
-    # Create the ipyleaflet map
+    # Create the ipyleaflet map (needs lat,lon)
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
 
     # -----------------------------------------
@@ -274,8 +271,8 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
         # Only handle simple Polygons
         if feature['geometry']['type'] == 'Polygon':
             coords = feature['geometry']['coordinates'][0]
-            # Because your data is already lat-lon, we do NOT swap:
-            lat_lon_coords = [(c[0], c[1]) for c in coords]
+            # Convert to (lat,lon) for ipyleaflet
+            lat_lon_coords = [(c[1], c[0]) for c in coords]
 
             # Create the polygon layer
             bldg_layer = LeafletPolygon(
@@ -288,9 +285,9 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
             m.add_layer(bldg_layer)
 
     # -----------------------------------------------------------------
-    # 3. Enable drawing of polygons, capturing the vertices in Lat-Lon
+    # 3. Enable drawing of polygons, capturing the vertices in Lon-Lat
     # -----------------------------------------------------------------
-    drawn_polygon_vertices = []  # We'll store the newly drawn polygon's vertices here (lat, lon).
+    drawn_polygon_vertices = []  # We'll store the newly drawn polygon's vertices here (lon, lat).
 
     draw_control = DrawControl(
         polygon={
@@ -311,23 +308,22 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
         """
         Callback for whenever a shape is created or edited.
         ipyleaflet's DrawControl returns standard GeoJSON (lon, lat).
-        We'll convert them to (lat, lon).
+        We'll keep them as (lon, lat).
         """
         # Clear any previously stored vertices
         drawn_polygon_vertices.clear()
 
         if action == 'created' and geo_json['geometry']['type'] == 'Polygon':
-            # The polygon’s first ring
+            # The polygon's first ring
             coordinates = geo_json['geometry']['coordinates'][0]
-            print("Vertices of the drawn polygon (Lat-Lon):")
+            print("Vertices of the drawn polygon (Lon-Lat):")
 
-            # By default, drawn polygon coords are [ [lon, lat], [lon, lat], ... ]
-            # The last coordinate repeats the first -> skip it with [:-1]
+            # Keep GeoJSON (lon,lat) format, skip last repeated coordinate
             for coord in coordinates[:-1]:
                 lon = coord[0]
                 lat = coord[1]
-                drawn_polygon_vertices.append((lat, lon))
-                print(f" - (lat, lon) = ({lat}, {lon})")
+                drawn_polygon_vertices.append((lon, lat))
+                print(f" - (lon, lat) = ({lon}, {lat})")
 
     draw_control.on_draw(handle_draw)
     m.add_control(draw_control)

@@ -11,7 +11,7 @@ import ee
 import geemap
 
 # Local imports
-from ..geo.utils import convert_format_lat_lon
+# from ..geo.utils import convert_format_lat_lon
 
 def initialize_earth_engine():
     """Initialize the Earth Engine API."""
@@ -21,12 +21,13 @@ def get_roi(input_coords):
     """Create an Earth Engine region of interest polygon from coordinates.
     
     Args:
-        input_coords: List of coordinate pairs defining the polygon vertices
+        input_coords: List of coordinate pairs defining the polygon vertices in (lon, lat) format
         
     Returns:
         ee.Geometry.Polygon: Earth Engine polygon geometry
     """
-    coords = convert_format_lat_lon(input_coords)
+    coords = input_coords.copy()
+    coords.append(input_coords[0])
     return ee.Geometry.Polygon(coords)
 
 def get_center_point(roi):

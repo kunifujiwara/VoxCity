@@ -40,13 +40,13 @@ def get_geojson_links(output_dir):
     df_links = pd.read_csv(filepath, dtype=data_types)
     return df_links
 
-def find_row_for_location(df, lat, lon):
-    """Find the dataset row containing building data for a given lat/lon coordinate.
+def find_row_for_location(df, lon, lat):
+    """Find the dataset row containing building data for a given lon/lat coordinate.
     
     Args:
         df: DataFrame containing dataset links
-        lat: Latitude coordinate to search for
         lon: Longitude coordinate to search for
+        lat: Latitude coordinate to search for
         
     Returns:
         pandas.Series: Matching row from DataFrame, or None if no match found
@@ -57,7 +57,7 @@ def find_row_for_location(df, lat, lon):
             continue
             
         try:
-            # Convert lat/lon to tile coordinates at the quadkey's zoom level
+            # Convert lon/lat to tile coordinates at the quadkey's zoom level
             loc_tile_x, loc_tile_y = tile_from_lat_lon(lat, lon, len(quadkey))
             qk_tile_x, qk_tile_y, _ = quadkey_to_tile(quadkey)
             
@@ -73,7 +73,7 @@ def get_mbfp_geojson(output_dir, rectangle_vertices):
     
     Args:
         output_dir: Directory to save downloaded files
-        rectangle_vertices: List of (lat, lon) tuples defining the rectangle corners
+        rectangle_vertices: List of (lon, lat) tuples defining the rectangle corners
         
     Returns:
         dict: GeoJSON data containing building footprints
@@ -84,8 +84,8 @@ def get_mbfp_geojson(output_dir, rectangle_vertices):
     # Find and download files for each vertex of the rectangle
     filenames = []
     for vertex in rectangle_vertices:
-        lat, lon = vertex
-        row = find_row_for_location(df_links, lat, lon)
+        lon, lat = vertex
+        row = find_row_for_location(df_links, lon, lat)
         if row is not None:
             # Construct filename and download if not already downloaded
             location = row["Location"]

@@ -163,14 +163,14 @@ def process_epw(epw_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict]:
     
     return df, headers
 
-def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, output_dir: str = "./", max_distance: Optional[float] = None, 
+def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, output_dir: str = "./", max_distance: Optional[float] = None, 
                 extract_zip: bool = True, load_data: bool = True) -> Tuple[Optional[str], Optional[pd.DataFrame], Optional[Dict]]:
     """
     Download and process EPW weather file from Climate.OneBuilding.Org based on coordinates.
     
     Args:
-        latitude (float): Latitude of the location
         longitude (float): Longitude of the location
+        latitude (float): Latitude of the location
         output_dir (str): Directory to save the EPW file (defaults to current directory)
         max_distance (float, optional): Maximum distance in kilometers to search for stations
         extract_zip (bool): Whether to extract the ZIP file (default True)
@@ -222,7 +222,7 @@ def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, 
         content = re.sub(r'[^\x09\x0A\x0D\x20-\x7E\x85\xA0-\xFF]', '', content)
         return content
 
-    def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    def haversine_distance(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
         """Calculate the great circle distance between two points on Earth."""
         R = 6371  # Earth's radius in kilometers
         
@@ -281,8 +281,8 @@ def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, 
 
         metadata = {
             'url': url,
-            'latitude': lat,
             'longitude': lon,
+            'latitude': lat,
             'elevation': int(extract_value(r'Elevation <b>(-?\d+)</b>', '0')),
             'name': extract_value(r'<b>(.*?)</b>'),
             'wmo': extract_value(r'WMO <b>(\d+)</b>'),
@@ -370,7 +370,7 @@ def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, 
             
         # Calculate distances and find nearest station
         stations_with_distances = [
-            (station, haversine_distance(latitude, longitude, station['latitude'], station['longitude']))
+            (station, haversine_distance(longitude, latitude, station['longitude'], station['latitude']))
             for station in all_stations
         ]
         
@@ -445,7 +445,7 @@ def get_nearest_epw_from_climate_onebuilding(latitude: float, longitude: float, 
         # Print station information
         print(f"\nDownloaded EPW file for {nearest_station['name']}")
         print(f"Distance: {distance:.2f} km")
-        print(f"Station coordinates: {nearest_station['latitude']}, {nearest_station['longitude']}")
+        print(f"Station coordinates: {nearest_station['longitude']}, {nearest_station['latitude']}")
         if nearest_station['wmo']:
             print(f"WMO: {nearest_station['wmo']}")
         if nearest_station['climate_zone']:
@@ -520,4 +520,4 @@ def read_epw_for_solar_simulation(epw_file_path):
     df = pd.DataFrame(data, columns=['time', 'DNI', 'DHI']).set_index('time')
     df = df.sort_index()
 
-    return df, lat, lon, tz, elevation_m
+    return df, lon, lat, tz, elevation_m

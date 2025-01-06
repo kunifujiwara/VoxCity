@@ -78,7 +78,7 @@ def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
 def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     """Trace a ray through a voxel grid and check for hits with specified values.
     
-    Uses DDA (Digital Differential Analyzer) algorithm for efficient ray traversal.
+    Uses DDA algorithm to efficiently traverse voxels along ray path.
     Handles tree transmittance using Beer-Lambert law.
     
     The DDA algorithm:
@@ -749,11 +749,11 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geo
                 return None
                 
             # Calculate center point of rectangle
-            lats = [coord[0] for coord in rectangle_vertices]
-            lons = [coord[1] for coord in rectangle_vertices]
-            center_lat = (min(lats) + max(lats)) / 2
+            lons = [coord[0] for coord in rectangle_vertices]
+            lats = [coord[1] for coord in rectangle_vertices]
             center_lon = (min(lons) + max(lons)) / 2
-            target_point = (center_lat, center_lon)
+            center_lat = (min(lats) + max(lats)) / 2
+            target_point = (center_lon, center_lat)
             
             # Find buildings at center point
             landmark_ids = find_building_containing_point(features, target_point)

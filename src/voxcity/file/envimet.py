@@ -231,10 +231,10 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     city_country_name = get_city_country_name_from_rectangle(rectangle_vertices)
 
     # Calculate center coordinates of the model area
-    latitudes = [coord[0] for coord in rectangle_vertices]
-    longitudes = [coord[1] for coord in rectangle_vertices]
-    center_lat = str(sum(latitudes) / len(latitudes))
-    center_lon = str(sum(longitudes) / len(longitudes))
+    longitudes = [coord[0] for coord in rectangle_vertices]  # Changed order from lat to lon
+    latitudes = [coord[1] for coord in rectangle_vertices]  # Changed order from lat to lon
+    center_lon = str(sum(longitudes) / len(longitudes))  # Changed order
+    center_lat = str(sum(latitudes) / len(latitudes))  # Changed order
     
     timezone_info = get_timezone_info(rectangle_vertices)
 

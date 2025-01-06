@@ -374,7 +374,7 @@ def get_global_solar_irradiance_map(
 
     return global_map
 
-def get_solar_positions_astral(times, lat, lon):
+def get_solar_positions_astral(times, lon, lat):
     """
     Compute solar azimuth and elevation using Astral for given times and location.
     
@@ -385,8 +385,8 @@ def get_solar_positions_astral(times, lat, lon):
     
     Args:
         times (DatetimeIndex): Array of timezone-aware datetime objects.
-        lat (float): Latitude in degrees.
         lon (float): Longitude in degrees.
+        lat (float): Latitude in degrees.
 
     Returns:
         DataFrame: DataFrame with columns 'azimuth' and 'elevation' containing solar positions.
@@ -406,7 +406,7 @@ def get_solar_positions_astral(times, lat, lon):
 def get_cumulative_global_solar_irradiance(
     voxel_data,
     meshsize,
-    df, lat, lon, tz,
+    df, lon, lat, tz,
     direct_normal_irradiance_scaling=1.0,
     diffuse_irradiance_scaling=1.0,
     **kwargs
@@ -424,8 +424,8 @@ def get_cumulative_global_solar_irradiance(
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
         df (DataFrame): EPW weather data.
-        lat (float): Latitude in degrees.
         lon (float): Longitude in degrees.
+        lat (float): Latitude in degrees.
         tz (float): Timezone offset in hours.
         direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
         diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
@@ -498,7 +498,7 @@ def get_cumulative_global_solar_irradiance(
     df_period_utc = df_period_local.tz_convert(pytz.UTC)
 
     # Compute solar positions for period
-    solar_positions = get_solar_positions_astral(df_period_utc.index, lat, lon)
+    solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
 
     # Create kwargs for diffuse calculation
     diffuse_kwargs = kwargs.copy()

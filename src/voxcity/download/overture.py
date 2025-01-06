@@ -64,7 +64,7 @@ def is_valid_value(value):
 
 def convert_gdf_to_geojson(gdf):
     """
-    Convert GeoDataFrame to GeoJSON format with coordinates in (lat, lon) order.
+    Convert GeoDataFrame to GeoJSON format with coordinates in (lon, lat) order.
     Extracts all columns as properties except for 'geometry' and 'bbox'.
     Sets height and min_height to 0 if not present and handles arrays.
     
@@ -80,14 +80,6 @@ def convert_gdf_to_geojson(gdf):
     for idx, row in gdf.iterrows():
         # Convert Shapely geometry to GeoJSON format
         geom = mapping(row['geometry'])
-        
-        # Swap coordinate ordering from (lon, lat) to (lat, lon)
-        if geom['type'] == 'Polygon':
-            new_coordinates = []
-            for ring in geom['coordinates']:
-                new_ring = [[coord[1], coord[0]] for coord in ring]
-                new_coordinates.append(new_ring)
-            geom['coordinates'] = new_coordinates
         
         # Initialize properties dictionary for this feature
         properties = {}
@@ -125,18 +117,18 @@ def convert_gdf_to_geojson(gdf):
 
 def rectangle_to_bbox(vertices):
     """
-    Convert rectangle vertices in (lat, lon) format to a GeoDataFrame bbox
+    Convert rectangle vertices in (lon, lat) format to a GeoDataFrame bbox
     with Shapely box geometry in (minx, miny, maxx, maxy) format
     
     Args:
-        vertices (list): List of tuples containing (lat, lon) coordinates
+        vertices (list): List of tuples containing (lon, lat) coordinates
         
     Returns:
         tuple: Bounding box coordinates (min_lon, min_lat, max_lon, max_lat)
     """
-    # Extract lat, lon values from vertices
-    lats = [vertex[0] for vertex in vertices]
-    lons = [vertex[1] for vertex in vertices]
+    # Extract lon, lat values from vertices
+    lons = [vertex[0] for vertex in vertices]
+    lats = [vertex[1] for vertex in vertices]
     
     # Calculate bounding box extents
     min_lat = min(lats)
@@ -192,7 +184,7 @@ def load_geojsons_from_overture(rectangle_vertices):
     Download and process building footprint data from Overture Maps.
     
     Args:
-        rectangle_vertices (list): List of (lat, lon) coordinates defining the bounding box
+        rectangle_vertices (list): List of (lon, lat) coordinates defining the bounding box
         
     Returns:
         list: List of GeoJSON features containing building footprints with standardized properties

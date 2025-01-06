@@ -26,16 +26,16 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     """Download and process building footprint data from OpenStreetMap.
     
     Args:
-        rectangle_vertices: List of (lat, lon) coordinates defining the bounding box
+        rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
         
     Returns:
         list: List of GeoJSON features containing building footprints with standardized properties
     """
     # Create a bounding box from the rectangle vertices
-    min_lat = min(v[0] for v in rectangle_vertices)
-    max_lat = max(v[0] for v in rectangle_vertices)
-    min_lon = min(v[1] for v in rectangle_vertices)
-    max_lon = max(v[1] for v in rectangle_vertices)
+    min_lon = min(v[0] for v in rectangle_vertices)
+    max_lon = max(v[0] for v in rectangle_vertices)
+    min_lat = min(v[1] for v in rectangle_vertices)
+    max_lat = max(v[1] for v in rectangle_vertices)
     
     # Enhanced Overpass API query with recursive member extraction
     overpass_url = "http://overpass-api.de/api/interpreter"
@@ -73,7 +73,7 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
         Returns:
             list: Processed coordinate pairs with reversed order
         """
-        return [coord[::-1] for coord in geometry]
+        return [coord for coord in geometry]  # Keep original order since already (lon, lat)
     
     def get_height_from_properties(properties):
         """Helper function to extract height from properties.
@@ -253,7 +253,7 @@ def convert_feature(feature):
         for coord in ring:
             # Swap the order if needed (assuming original is [lat, lon])
             lat, lon = coord
-            new_ring.append((lat, lon))
+            new_ring.append((lon, lat))  # Changed to (lon, lat)
         new_coordinates.append(new_ring)
 
     new_feature['geometry']['type'] = 'Polygon'
@@ -460,9 +460,8 @@ def swap_coordinates(geom_mapping):
         if isinstance(coord_list[0], (list, tuple)):
             return [swap_coords(c) for c in coord_list]
         else:
-            # Swap lon/lat to lat/lon
-            lon, lat = coord_list
-            return [lat, lon]
+            # Keep original order since already (lon, lat)
+            return coord_list
 
     geom_mapping['coordinates'] = swap_coords(coords)
     return geom_mapping
@@ -471,7 +470,7 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     """Load land cover data from OpenStreetMap within a given rectangular area.
     
     Args:
-        rectangle_vertices_ori (list): List of (lat, lon) coordinates defining the rectangle
+        rectangle_vertices_ori (list): List of (lon, lat) coordinates defining the rectangle
         
     Returns:
         list: List of GeoJSON features with land cover classifications
@@ -480,8 +479,11 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     rectangle_vertices = rectangle_vertices_ori.copy()
     rectangle_vertices.append(rectangle_vertices_ori[0])
 
-    # Convert vertices to space-separated string for Overpass query
-    polygon_coords = ' '.join(f"{lat} {lon}" for lat, lon in rectangle_vertices)
+    # Instead of using poly:"lat lon lat lon...", use area coordinates
+    min_lat = min(lat for lon, lat in rectangle_vertices)
+    max_lat = max(lat for lon, lat in rectangle_vertices)
+    min_lon = min(lon for lon, lat in rectangle_vertices)
+    max_lon = max(lon for lon, lat in rectangle_vertices)
 
     # Initialize dictionary to store OSM keys and their allowed values
     osm_keys_values = defaultdict(list)
@@ -504,16 +506,16 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     for key, values in osm_keys_values.items():
         if values:
             if values == ['*']:
-                # Query for any value of this key
-                query_parts.append(f'way["{key}"](poly:"{polygon_coords}");')
-                query_parts.append(f'relation["{key}"](poly:"{polygon_coords}");')
+                # Query for any value of this key using bounding box
+                query_parts.append(f'way["{key}"]({min_lat},{min_lon},{max_lat},{max_lon});')
+                query_parts.append(f'relation["{key}"]({min_lat},{min_lon},{max_lat},{max_lon});')
             else:
                 # Remove duplicate values
                 values = list(set(values))
                 # Build regex pattern for specific values
                 values_regex = '|'.join(values)
-                query_parts.append(f'way["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
-                query_parts.append(f'relation["{key}"~"^{values_regex}$"](poly:"{polygon_coords}");')
+                query_parts.append(f'way["{key}"~"^{values_regex}$"]({min_lat},{min_lon},{max_lat},{max_lon});')
+                query_parts.append(f'relation["{key}"~"^{values_regex}$"]({min_lat},{min_lon},{max_lat},{max_lon});')
 
     # Combine query parts into complete Overpass query
     query_body = "\n  ".join(query_parts)
@@ -541,11 +543,11 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     geojson_data = json2geojson(data)
 
     # Create shapely polygon from rectangle vertices (in lon,lat order)
-    rectangle_polygon = Polygon([(lon, lat) for lat, lon in rectangle_vertices])
+    rectangle_polygon = Polygon(rectangle_vertices)
 
     # Calculate center point for projection
-    center_lat = sum(lat for lat, lon in rectangle_vertices) / len(rectangle_vertices)
-    center_lon = sum(lon for lat, lon in rectangle_vertices) / len(rectangle_vertices)
+    center_lat = sum(lat for lon, lat in rectangle_vertices) / len(rectangle_vertices)
+    center_lon = sum(lon for lon, lat in rectangle_vertices) / len(rectangle_vertices)
 
     # Set up coordinate reference systems for projection
     wgs84 = pyproj.CRS('EPSG:4326')  # Standard lat/lon

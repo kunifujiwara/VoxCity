@@ -20,20 +20,20 @@ def load_geojsons_from_openmaptiles(rectangle_vertices, API_KEY):
     """Download and process building footprint data from OpenMapTiles vector tiles.
 
     Args:
-        rectangle_vertices: List of (lat, lon) coordinates defining the bounding box
+        rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
         API_KEY: OpenMapTiles API key for authentication
 
     Returns:
         list: List of GeoJSON features containing building footprints with standardized properties
     """
-    # Extract latitudes and longitudes from vertices to find bounding box
-    lats = [coord[0] for coord in rectangle_vertices]
-    lons = [coord[1] for coord in rectangle_vertices]
+    # Extract longitudes and latitudes from vertices to find bounding box
+    lons = [coord[0] for coord in rectangle_vertices]
+    lats = [coord[1] for coord in rectangle_vertices]
 
-    min_lat = min(lats)
-    max_lat = max(lats)
     min_lon = min(lons)
     max_lon = max(lons)
+    min_lat = min(lats)
+    max_lat = max(lats)
 
     # Use zoom level 15 which provides good detail for buildings while keeping data size manageable
     zoom = 15
@@ -183,10 +183,10 @@ def convert_geojson_format(features):
                     ring_properties['is_inner'] = j > 0
                     ring_properties['role'] = 'inner' if j > 0 else 'outer'
 
-                    # Create new geometry with swapped coordinate order (lon,lat) -> (lat,lon)
+                    # Create new geometry keeping coordinate order as (lon,lat)
                     new_geometry = {
                         'type': 'Polygon',
-                        'coordinates': [[(coord[1], coord[0]) for coord in ring]]
+                        'coordinates': [ring]
                     }
 
                     new_feature = {
@@ -204,10 +204,10 @@ def convert_geojson_format(features):
                 ring_properties['is_inner'] = i > 0
                 ring_properties['role'] = 'inner' if i > 0 else 'outer'
 
-                # Create new geometry with swapped coordinate order
+                # Create new geometry keeping coordinate order as (lon,lat)
                 new_geometry = {
                     'type': 'Polygon',
-                    'coordinates': [[(coord[1], coord[0]) for coord in ring]]
+                    'coordinates': [ring]
                 }
 
                 new_feature = {

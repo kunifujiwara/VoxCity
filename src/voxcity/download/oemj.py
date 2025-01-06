@@ -15,12 +15,12 @@ import numpy as np
 from osgeo import gdal, osr
 import pyproj
 
-def deg2num(lat_deg, lon_deg, zoom):
-    """Convert latitude/longitude coordinates to tile coordinates.
+def deg2num(lon_deg, lat_deg, zoom):
+    """Convert longitude/latitude coordinates to tile coordinates.
     
     Args:
-        lat_deg (float): Latitude in degrees
         lon_deg (float): Longitude in degrees
+        lat_deg (float): Latitude in degrees
         zoom (int): Zoom level
         
     Returns:
@@ -33,7 +33,7 @@ def deg2num(lat_deg, lon_deg, zoom):
     return (xtile, ytile)
 
 def num2deg(xtile, ytile, zoom):
-    """Convert tile coordinates to latitude/longitude coordinates.
+    """Convert tile coordinates to longitude/latitude coordinates.
     
     Args:
         xtile (float): X tile coordinate
@@ -41,19 +41,19 @@ def num2deg(xtile, ytile, zoom):
         zoom (int): Zoom level
         
     Returns:
-        tuple: (latitude, longitude) in degrees
+        tuple: (longitude, latitude) in degrees
     """
     n = 2.0 ** zoom
     lon_deg = xtile / n * 360.0 - 180.0
     lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * ytile / n)))
     lat_deg = math.degrees(lat_rad)
-    return (lat_deg, lon_deg)
+    return (lon_deg, lat_deg)
 
 def download_tiles(polygon, zoom):
     """Download satellite imagery tiles covering a polygon region.
     
     Args:
-        polygon (list): List of (lat, lon) coordinates defining the region
+        polygon (list): List of (lon, lat) coordinates defining the region
         zoom (int): Zoom level for tile detail
         
     Returns:
@@ -62,14 +62,14 @@ def download_tiles(polygon, zoom):
     print(f"Downloading tiles")
 
     # Find bounding box of polygon
-    min_lat = min(p[0] for p in polygon)
-    max_lat = max(p[0] for p in polygon)
-    min_lon = min(p[1] for p in polygon)
-    max_lon = max(p[1] for p in polygon)
+    min_lon = min(p[0] for p in polygon)
+    max_lon = max(p[0] for p in polygon)
+    min_lat = min(p[1] for p in polygon)
+    max_lat = max(p[1] for p in polygon)
     
     # Convert to tile coordinates
-    min_x, max_y = map(math.floor, deg2num(max_lat, min_lon, zoom))
-    max_x, min_y = map(math.ceil, deg2num(min_lat, max_lon, zoom))
+    min_x, max_y = map(math.floor, deg2num(min_lon, max_lat, zoom))
+    max_x, min_y = map(math.ceil, deg2num(max_lon, min_lat, zoom))
     
     # Download tiles within bounds
     tiles = {}
@@ -108,7 +108,7 @@ def crop_image(image, polygon, bounds, zoom):
     
     Args:
         image (Image): PIL Image to crop
-        polygon (list): List of (lat, lon) coordinates
+        polygon (list): List of (lon, lat) coordinates
         bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
         zoom (int): Zoom level
         
@@ -120,8 +120,8 @@ def crop_image(image, polygon, bounds, zoom):
     
     # Convert polygon coordinates to pixel coordinates
     polygon_pixels = []
-    for lat, lon in polygon:
-        x, y = deg2num(lat, lon, zoom)
+    for lon, lat in polygon:
+        x, y = deg2num(lon, lat, zoom)
         px = (x - min_x) * 256
         py = (y - min_y) * 256
         polygon_pixels.append((px, py))
@@ -143,7 +143,7 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     
     Args:
         image (Image): PIL Image to save
-        polygon (list): List of (lat, lon) coordinates
+        polygon (list): List of (lon, lat) coordinates
         zoom (int): Zoom level
         bbox (tuple): Bounding box of cropped image
         bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
@@ -152,8 +152,8 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     min_x, min_y, max_x, max_y = bounds
     
     # Calculate georeferencing coordinates
-    upper_left_lat, upper_left_lon = num2deg(min_x + bbox[0]/256, min_y + bbox[1]/256, zoom)
-    lower_right_lat, lower_right_lon = num2deg(min_x + bbox[2]/256, min_y + bbox[3]/256, zoom)
+    lon_upper_left, lat_upper_left = num2deg(min_x + bbox[0]/256, min_y + bbox[1]/256, zoom)
+    lon_lower_right, lat_lower_right = num2deg(min_x + bbox[2]/256, min_y + bbox[3]/256, zoom)
     
     # Create transformation from WGS84 to Web Mercator
     wgs84 = pyproj.CRS('EPSG:4326')
@@ -161,8 +161,8 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     transformer = pyproj.Transformer.from_crs(wgs84, web_mercator, always_xy=True)
     
     # Transform coordinates to Web Mercator
-    upper_left_x, upper_left_y = transformer.transform(upper_left_lon, upper_left_lat)
-    lower_right_x, lower_right_y = transformer.transform(lower_right_lon, lower_right_lat)
+    upper_left_x, upper_left_y = transformer.transform(lon_upper_left, lat_upper_left)
+    lower_right_x, lower_right_y = transformer.transform(lon_lower_right, lat_lower_right)
     
     # Calculate pixel size
     pixel_size_x = (lower_right_x - upper_left_x) / image.width
@@ -190,7 +190,7 @@ def save_oemj_as_geotiff(polygon, filepath, zoom=16):
     """Download and save OpenEarthMap Japan imagery as GeoTIFF.
     
     Args:
-        polygon (list): List of (lat, lon) coordinates defining region
+        polygon (list): List of (lon, lat) coordinates defining region
         filepath (str): Output path for GeoTIFF
         zoom (int, optional): Zoom level for detail. Defaults to 16.
     """

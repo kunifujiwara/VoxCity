@@ -28,7 +28,7 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
     
     Args:
         gdf (GeoDataFrame): Input GeoDataFrame containing building data
-        rectangle_vertices (list): List of (lat, lon) tuples defining the bounding rectangle
+        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle
         
     Returns:
         list: List of GeoJSON features within the bounding rectangle
@@ -43,9 +43,8 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
     # Add 'confidence' column with default value
     gdf['confidence'] = -1.0
 
-    # Convert rectangle vertices from (lat,lon) to (lon,lat) format for shapely
-    rectangle_vertices_lonlat = [(lon, lat) for lat, lon in rectangle_vertices]
-    rectangle_polygon = Polygon(rectangle_vertices_lonlat)
+    # Rectangle vertices already in (lon,lat) format for shapely
+    rectangle_polygon = Polygon(rectangle_vertices)
 
     # Use spatial index to efficiently filter geometries that intersect with rectangle
     gdf.sindex  # Ensure spatial index is built
@@ -56,13 +55,6 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
 
     # Delete intermediate data to save memory
     del gdf, possible_matches, precise_matches
-
-    # Helper function to swap coordinate ordering from (lon,lat) to (lat,lon)
-    def swap_coordinates(coords):
-        if isinstance(coords[0][0], (float, int)):
-            return [[lat, lon] for lon, lat in coords]
-        else:
-            return [swap_coordinates(ring) for ring in coords]
 
     # Create GeoJSON features from filtered geometries
     features = []
@@ -78,7 +70,7 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
             for polygon_coords in geom['coordinates']:
                 single_geom = {
                     'type': 'Polygon',
-                    'coordinates': swap_coordinates(polygon_coords)
+                    'coordinates': polygon_coords
                 }
                 feature = {
                     'type': 'Feature',
@@ -87,7 +79,6 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
                 }
                 features.append(feature)
         elif geom['type'] == 'Polygon':
-            geom['coordinates'] = swap_coordinates(geom['coordinates'])
             feature = {
                 'type': 'Feature',
                 'properties': properties,
@@ -114,7 +105,7 @@ def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
     
     Args:
         gpkg_path (str): Path to the GeoPackage file
-        rectangle_vertices (list): List of (lat, lon) tuples defining the bounding rectangle
+        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle
         
     Returns:
         list: List of GeoJSON features within the bounding rectangle
@@ -404,9 +395,9 @@ def extract_building_heights_from_geotiff(geotiff_path, geojson_data):
         for feature in geojson:
             if (feature['geometry']['type'] == 'Polygon') & (feature['properties']['height']<=0):
                 count_0 += 1
-                # Transform coordinates from (lat, lon) to raster CRS
+                # Transform coordinates from (lon, lat) to raster CRS
                 coords = feature['geometry']['coordinates'][0]
-                transformed_coords = [transformer.transform(lon, lat) for lat, lon in coords]
+                transformed_coords = [transformer.transform(lon, lat) for lon, lat in coords]
                 
                 # Create polygon in raster CRS
                 polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
@@ -447,7 +438,7 @@ def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
     
     Args:
         gpkg_path (str): Path to the GeoPackage file
-        rectangle_vertices (list): List of (lat, lon) tuples defining the bounding rectangle
+        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle
         
     Returns:
         list: List of GeoJSON features within the bounding rectangle
@@ -460,7 +451,7 @@ def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
 
 def swap_coordinates(features):
     """
-    Swap coordinate ordering in GeoJSON features from (lon, lat) to (lat, lon).
+    Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).
     
     Args:
         features (list): List of GeoJSON features to process
@@ -469,11 +460,11 @@ def swap_coordinates(features):
     for feature in features:
         if feature['geometry']['type'] == 'Polygon':
             # Swap coordinates for simple polygons
-            new_coords = [[[lat, lon] for lon, lat in polygon] for polygon in feature['geometry']['coordinates']]
+            new_coords = [[[lon, lat] for lat, lon in polygon] for polygon in feature['geometry']['coordinates']]
             feature['geometry']['coordinates'] = new_coords
         elif feature['geometry']['type'] == 'MultiPolygon':
             # Swap coordinates for multi-polygons (polygons with holes)
-            new_coords = [[[[lat, lon] for lon, lat in polygon] for polygon in multipolygon] for multipolygon in feature['geometry']['coordinates']]
+            new_coords = [[[[lon, lat] for lat, lon in polygon] for polygon in multipolygon] for multipolygon in feature['geometry']['coordinates']]
             feature['geometry']['coordinates'] = new_coords
 
 def save_geojson(features, save_path):
@@ -506,20 +497,19 @@ def find_building_containing_point(features, target_point):
     
     Args:
         features (list): List of GeoJSON feature dictionaries
-        target_point (tuple): Tuple of (latitude, longitude)
+        target_point (tuple): Tuple of (lon, lat)
         
     Returns:
         list: List of building IDs containing the target point
     """
-    # Create Shapely point (note coordinate order swap)
-    point = Point(target_point[1], target_point[0])
+    # Create Shapely point
+    point = Point(target_point[0], target_point[1])
     
     id_list = []
     for feature in features:
         # Get polygon coordinates and convert to Shapely polygon
         coords = feature['geometry']['coordinates'][0]
-        polygon_coords = [(lon, lat) for lat, lon in coords]
-        polygon = Polygon(polygon_coords)
+        polygon = Polygon(coords)
         
         # Check if point is within polygon
         if polygon.contains(point):
@@ -530,8 +520,8 @@ def find_building_containing_point(features, target_point):
 def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices, 
                                    operation='within'):
     """
-    Given a list of building footprints (in Lat-Lon) and a set of drawn polygon 
-    vertices (also in Lat-Lon), return the building IDs that fall within or 
+    Given a list of building footprints and a set of drawn polygon 
+    vertices (in lon, lat), return the building IDs that fall within or 
     intersect the drawn polygon.
 
     Args:
@@ -543,7 +533,7 @@ def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices,
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [lat1, lon1], [lat2, lon2], ...
+                            [lon1, lat1], [lon2, lat2], ...
                         ]
                     ]
                 },
@@ -552,10 +542,9 @@ def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices,
                     ...
                 }
             }
-            Note: These coordinates are in (lat, lon) order, not standard (lon, lat).
 
         drawn_polygon_vertices (list): 
-            A list of (lat, lon) tuples representing the polygon drawn by the user.
+            A list of (lon, lat) tuples representing the polygon drawn by the user.
 
         operation (str):
             Determines how to include buildings. 
@@ -566,27 +555,24 @@ def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices,
         list:
             A list of building IDs (strings or ints) that satisfy the condition.
     """
-    # 1. Convert the user-drawn polygon vertices (lat, lon) into a Shapely Polygon.
-    #    Shapely expects (x, y) = (longitude, latitude).
-    #    So we'll do (lon, lat) for each vertex.
-    drawn_polygon_shapely = Polygon([(lon, lat) for (lat, lon) in drawn_polygon_vertices])
+    # Create Shapely Polygon from drawn vertices
+    drawn_polygon_shapely = Polygon(drawn_polygon_vertices)
 
     included_building_ids = []
 
-    # 2. Check each building in the GeoJSON
+    # Check each building in the GeoJSON
     for feature in building_geojson:
         # Skip any feature that is not Polygon
         if feature['geometry']['type'] != 'Polygon':
             continue
 
-        # Extract coordinates, which are in [ [lat, lon], [lat, lon], ... ]
+        # Extract coordinates
         coords = feature['geometry']['coordinates'][0]
 
         # Create a Shapely polygon for the building
-        # Convert from (lat, lon) to (lon, lat)
-        building_polygon = Polygon([(lon, lat) for (lat, lon) in coords])
+        building_polygon = Polygon(coords)
 
-        # 3. Depending on the operation, check the relationship
+        # Depending on the operation, check the relationship
         if operation == 'intersect':
             if building_polygon.intersects(drawn_polygon_shapely):
                 included_building_ids.append(feature['properties'].get('id', None))

@@ -108,10 +108,10 @@ Define the target area by directly specifying the coordinates of the rectangle v
 
 ```python
 rectangle_vertices = [
-    (47.59830044521263, -122.33587348582083),  # Southwest corner (latitude, longitude)
-    (47.60279755390168, -122.33587348582083),  # Northwest corner (latitude, longitude)
-    (47.60279755390168, -122.32922451417917),  # Northeast corner (latitude, longitude)
-    (47.59830044521263, -122.32922451417917)   # Southeast corner (latitude, longitude)
+    (-122.33587348582083, 47.59830044521263),  # Southwest corner (longitude, latitude)
+    (-122.33587348582083, 47.60279755390168),  # Northwest corner (longitude, latitude) 
+    (-122.32922451417917, 47.60279755390168),  # Northeast corner (longitude, latitude)
+    (-122.32922451417917, 47.59830044521263)   # Southeast corner (longitude, latitude)
 ]
 ```
 

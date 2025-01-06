@@ -235,77 +235,6 @@ def tree_height_grid_from_land_cover(land_cover_grid_ori):
 
     return tree_height_grid
 
-def create_land_cover_grid_from_geotiff(tiff_path, mesh_size, land_cover_classes):
-    """
-    Create a land cover grid from a GeoTIFF file.
-    
-    Args:
-        tiff_path (str): Path to GeoTIFF file
-        mesh_size (float): Size of mesh cells
-        land_cover_classes (dict): Dictionary mapping land cover classes
-        
-    Returns:
-        numpy.ndarray: Grid of land cover classes
-    """
-    with rasterio.open(tiff_path) as src:
-        # Read RGB bands
-        img = src.read((1,2,3))
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-        
-        # Handle different coordinate reference systems
-        if src_crs.to_epsg() == 3857:  # Web Mercator
-            # Convert bounds from Web Mercator to WGS84 for accurate distance calculations
-            wgs84 = CRS.from_epsg(4326)
-            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
-            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
-            right_wgs84, top_wgs84 = transformer.transform(right, top)
-        
-            # Calculate actual distances using geodesic calculations
-            geod = Geod(ellps="WGS84")
-            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        else:
-            # For projections already in meters, use simple subtraction
-            width = right - left
-            height = top - bottom
-        
-        # Calculate grid dimensions based on mesh size
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-        
-        # Adjust mesh size to fit image exactly
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-        
-        # Create affine transform for new grid
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-        
-        # Create coordinate grids
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-        
-        # Convert coordinates to image indices
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-        
-        # Filter out invalid indices
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-        
-        # Create output grid and fill with land cover classes
-        grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-        
-        for i, (r, c) in enumerate(zip(row, col)):
-            cell_data = img[:, r, c]
-            dominant_class = get_dominant_class(cell_data, land_cover_classes)
-            grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
-            grid[grid_row, grid_col] = dominant_class
-    
-    # Flip grid vertically before returning
-    return np.flipud(grid)
-
 def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover_classes, polygon):
     """
     Create a land cover grid from a GeoTIFF file within a polygon boundary.
@@ -329,7 +258,7 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
         poly = Polygon(polygon)
         
         # Get bounds of the polygon in WGS84 coordinates
-        bottom_wgs84, left_wgs84, top_wgs84, right_wgs84 = poly.bounds
+        left_wgs84, bottom_wgs84, right_wgs84, top_wgs84 = poly.bounds
         # print(left, bottom, right, top)
 
         # Calculate width and height using geodesic calculations for accuracy
@@ -381,7 +310,7 @@ def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, 
         geojson_data (dict): GeoJSON data containing land cover polygons
         meshsize (float): Size of each grid cell in meters
         source (str): Source of the land cover data to determine class priorities
-        rectangle_vertices (list): List of 4 (lat,lon) coordinate pairs defining the rectangle bounds
+        rectangle_vertices (list): List of 4 (lon,lat) coordinate pairs defining the rectangle bounds
 
     Returns:
         numpy.ndarray: 2D grid of land cover classes as strings
@@ -411,8 +340,8 @@ def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, 
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
 
     # Calculate actual distances between vertices using geodesic calculations
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
 
     # Create vectors representing the sides of the rectangle
     side_1 = np.array(vertex_1) - np.array(vertex_0)
@@ -476,70 +405,6 @@ def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, 
                     continue 
     return grid
 
-def create_canopy_height_grid_from_geotiff(tiff_path, mesh_size):
-    """
-    Create a canopy height grid from a GeoTIFF file.
-    
-    Args:
-        tiff_path (str): Path to GeoTIFF file
-        mesh_size (float): Size of mesh cells
-        
-    Returns:
-        numpy.ndarray: Grid of canopy heights
-    """
-    with rasterio.open(tiff_path) as src:
-        # Read single band height data
-        img = src.read(1)
-        left, bottom, right, top = src.bounds
-        src_crs = src.crs
-
-        # Handle coordinate system conversion and distance calculations
-        if src_crs.to_epsg() == 3857:  # Web Mercator projection
-            # Convert bounds to WGS84 for accurate distance calculation
-            wgs84 = CRS.from_epsg(4326)
-            transformer = Transformer.from_crs(src_crs, wgs84, always_xy=True)
-            left_wgs84, bottom_wgs84 = transformer.transform(left, bottom)
-            right_wgs84, top_wgs84 = transformer.transform(right, top)
-        
-            # Calculate actual distances using geodesic methods
-            geod = Geod(ellps="WGS84")
-            _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-            _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
-        else:
-            # For projections already in meters, use simple subtraction
-            width = right - left
-            height = top - bottom
-
-        # Calculate grid dimensions and adjust mesh size
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-
-        # Create affine transform for coordinate mapping
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-
-        # Generate coordinate grids
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-
-        # Convert to image coordinates
-        row, col = src.index(xs_flat, ys_flat)
-        row, col = np.array(row), np.array(col)
-
-        # Filter valid indices
-        valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
-
-        # Create output grid and fill with height values
-        grid = np.full((num_cells_y, num_cells_x), np.nan)
-        flat_indices = np.ravel_multi_index((row, col), img.shape)
-        np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
-
-    return np.flipud(grid)
-
 def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
     """
     Create a height grid from a GeoTIFF file within a polygon boundary.
@@ -562,8 +427,9 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
         poly = Polygon(polygon)
         
         # Get polygon bounds in WGS84
-        bottom_wgs84, left_wgs84, top_wgs84, right_wgs84 = poly.bounds
-        print(left, bottom, right, top)
+        left_wgs84, bottom_wgs84, right_wgs84, top_wgs84 = poly.bounds
+        # print(left, bottom, right, top)
+        # print(left_wgs84, bottom_wgs84, right_wgs84, top_wgs84)
 
         # Calculate actual distances using geodesic methods
         geod = Geod(ellps="WGS84")
@@ -624,8 +490,8 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
 
     # Calculate distances between vertices
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
 
     # Calculate normalized vectors for grid orientation
     side_1 = np.array(vertex_1) - np.array(vertex_0)
