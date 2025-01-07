@@ -390,7 +390,7 @@ G, edge_gdf = get_network_values(
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/network.png" alt="Example of Graph Output" width="500">
 </p>
 <p align="center">
-  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
+  <em>Cumulative Global Solar Irradiance (kW/m²·hour) on Road Network</em>
 </p>
 
 ## References of Data Sources
