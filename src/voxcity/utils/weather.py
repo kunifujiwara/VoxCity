@@ -512,8 +512,8 @@ def read_epw_for_solar_simulation(epw_file_path):
         month = int(vals[1])
         day = int(vals[2])
         hour = int(vals[3]) - 1
-        dni = float(vals[13])
-        dhi = float(vals[14])
+        dni = float(vals[14])
+        dhi = float(vals[15])
         timestamp = pd.Timestamp(year, month, day, hour)
         data.append([timestamp, dni, dhi])
 

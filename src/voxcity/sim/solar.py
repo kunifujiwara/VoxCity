@@ -675,11 +675,11 @@ def get_global_solar_irradiance_using_epw(
             return None
         else:
             # Calculate center point of rectangle
-            lats = [coord[0] for coord in rectangle_vertices]
-            lons = [coord[1] for coord in rectangle_vertices]
-            center_lat = (min(lats) + max(lats)) / 2
+            lons = [coord[0] for coord in rectangle_vertices]
+            lats = [coord[1] for coord in rectangle_vertices]
             center_lon = (min(lons) + max(lons)) / 2
-            target_point = (center_lat, center_lon)
+            center_lat = (min(lats) + max(lats)) / 2
+            target_point = (center_lon, center_lat)
 
             # Optional: specify maximum distance in kilometers
             max_distance = 100  # None for no limit
@@ -687,8 +687,8 @@ def get_global_solar_irradiance_using_epw(
             output_dir = kwargs.get("output_dir", "output")
 
             epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
-                latitude=center_lat,
                 longitude=center_lon,
+                latitude=center_lat,
                 output_dir=output_dir,
                 max_distance=max_distance,
                 extract_zip=True,
