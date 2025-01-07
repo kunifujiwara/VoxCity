@@ -361,7 +361,7 @@ landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, b
   <em>Example Result Saved as OBJ and Rendered in Rhino</em>
 </p>
 
-#### Output Result as Graph for Network Analysis:
+#### Network Analysis:
 
 ```python
 from voxcity.geo.network import get_network_values
