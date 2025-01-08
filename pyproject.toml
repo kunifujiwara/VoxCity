@@ -1,6 +1,6 @@
 [project]
 name = "voxcity"
-version = "0.3.8"
+version = "0.3.9"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",
@@ -51,6 +51,7 @@ dependencies = [
     "timezonefinder",
     "astral",
     "osmnx",
+    "joblib",
 ]
 
 [project.optional-dependencies]

@@ -187,118 +187,325 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
 
     return updated_geojson_data_0
 
-from typing import List, Dict
+# from typing import List, Dict
+# from shapely.geometry import shape
+# from shapely.errors import GEOSException
+# import numpy as np
+
+# def complement_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
+#     """
+#     Complement building heights in one GeoJSON dataset with data from another and add non-intersecting buildings.
+    
+#     Args:
+#         geojson_data_0 (List[Dict]): Primary GeoJSON features to update with heights
+#         geojson_data_1 (List[Dict]): Reference GeoJSON features containing height data
+        
+#     Returns:
+#         List[Dict]: Updated GeoJSON features with complemented heights and additional buildings
+#     """
+#     # Convert primary dataset to Shapely polygons for intersection checking
+#     existing_buildings = []
+#     for feature in geojson_data_0:
+#         geom = shape(feature['geometry'])
+#         existing_buildings.append(geom)
+    
+#     # Convert reference dataset to Shapely polygons with height info
+#     reference_buildings = []
+#     for feature in geojson_data_1:
+#         geom = shape(feature['geometry'])
+#         height = feature['properties']['height']
+#         reference_buildings.append((geom, height, feature))
+    
+#     # Initialize counters for statistics
+#     count_0 = 0  # Buildings without height
+#     count_1 = 0  # Buildings updated with height
+#     count_2 = 0  # Buildings with no height data found
+#     count_3 = 0  # New non-intersecting buildings added
+    
+#     # Process primary dataset and update heights where needed
+#     updated_geojson_data_0 = []
+#     for feature in geojson_data_0:
+#         geom = shape(feature['geometry'])
+#         height = feature['properties']['height']
+#         if height == 0:     
+#             count_0 += 1       
+#             # Calculate weighted average height based on overlapping areas
+#             overlapping_height_area = 0
+#             overlapping_area = 0
+#             for ref_geom, ref_height, _ in reference_buildings:
+#                 try:
+#                     if geom.intersects(ref_geom):
+#                         overlap_area = geom.intersection(ref_geom).area
+#                         overlapping_height_area += ref_height * overlap_area
+#                         overlapping_area += overlap_area
+#                 except GEOSException as e:
+#                     # Try to fix invalid geometries
+#                     try:
+#                         fixed_ref_geom = ref_geom.buffer(0)
+#                         if geom.intersects(fixed_ref_geom):
+#                             overlap_area = geom.intersection(ref_geom).area
+#                             overlapping_height_area += ref_height * overlap_area
+#                             overlapping_area += overlap_area
+#                     except Exception as fix_error:
+#                         print(f"Failed to fix polygon")
+#                     continue
+            
+#             # Update height if overlapping buildings found
+#             if overlapping_height_area > 0:
+#                 count_1 += 1
+#                 new_height = overlapping_height_area / overlapping_area
+#                 feature['properties']['height'] = new_height
+#             else:
+#                 count_2 += 1
+#                 feature['properties']['height'] = np.nan
+        
+#         updated_geojson_data_0.append(feature)
+    
+#     # Add non-intersecting buildings from reference dataset
+#     for ref_geom, ref_height, ref_feature in reference_buildings:
+#         has_intersection = False
+#         try:
+#             # Check if reference building intersects with any existing building
+#             for existing_geom in existing_buildings:
+#                 if ref_geom.intersects(existing_geom):
+#                     has_intersection = True
+#                     break
+            
+#             # Add building if it doesn't intersect with any existing ones
+#             if not has_intersection:
+#                 updated_geojson_data_0.append(ref_feature)
+#                 count_3 += 1
+                
+#         except GEOSException as e:
+#             # Try to fix invalid geometries
+#             try:
+#                 fixed_ref_geom = ref_geom.buffer(0)
+#                 for existing_geom in existing_buildings:
+#                     if fixed_ref_geom.intersects(existing_geom):
+#                         has_intersection = True
+#                         break
+                
+#                 if not has_intersection:
+#                     updated_geojson_data_0.append(ref_feature)
+#                     count_3 += 1
+#             except Exception as fix_error:
+#                 print(f"Failed to process non-intersecting building")
+#             continue
+    
+#     # Print statistics about updates
+#     if count_0 > 0:
+#         print(f"{count_0} of the total {len(geojson_data_0)} building footprint from base source did not have height data.")
+#         print(f"For {count_1} of these building footprints without height, values from complement source were assigned.")
+#         print(f"{count_3} non-intersecting buildings from Microsoft Building Footprints were added to the output.")
+    
+#     return updated_geojson_data_0
+
+import numpy as np
+import geopandas as gpd
+import pandas as pd
 from shapely.geometry import shape
 from shapely.errors import GEOSException
-import numpy as np
 
-def complement_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
+def geojson_to_gdf(geojson_data, id_col='id'):
     """
-    Complement building heights in one GeoJSON dataset with data from another and add non-intersecting buildings.
+    Convert a list of GeoJSON-like dict features into a GeoDataFrame.
     
     Args:
-        geojson_data_0 (List[Dict]): Primary GeoJSON features to update with heights
-        geojson_data_1 (List[Dict]): Reference GeoJSON features containing height data
-        
+        geojson_data (List[Dict]): A list of feature dicts (Fiona-like).
+        id_col (str): Name of property to use as an identifier. If not found,
+                      we'll try to create a unique ID.
+
     Returns:
-        List[Dict]: Updated GeoJSON features with complemented heights and additional buildings
+        gpd.GeoDataFrame: GeoDataFrame with geometry and property columns.
     """
-    # Convert primary dataset to Shapely polygons for intersection checking
-    existing_buildings = []
-    for feature in geojson_data_0:
-        geom = shape(feature['geometry'])
-        existing_buildings.append(geom)
-    
-    # Convert reference dataset to Shapely polygons with height info
-    reference_buildings = []
-    for feature in geojson_data_1:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        reference_buildings.append((geom, height, feature))
-    
-    # Initialize counters for statistics
-    count_0 = 0  # Buildings without height
-    count_1 = 0  # Buildings updated with height
-    count_2 = 0  # Buildings with no height data found
-    count_3 = 0  # New non-intersecting buildings added
-    
-    # Process primary dataset and update heights where needed
-    updated_geojson_data_0 = []
-    for feature in geojson_data_0:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        if height == 0:     
-            count_0 += 1       
-            # Calculate weighted average height based on overlapping areas
-            overlapping_height_area = 0
-            overlapping_area = 0
-            for ref_geom, ref_height, _ in reference_buildings:
-                try:
-                    if geom.intersects(ref_geom):
-                        overlap_area = geom.intersection(ref_geom).area
-                        overlapping_height_area += ref_height * overlap_area
-                        overlapping_area += overlap_area
-                except GEOSException as e:
-                    # Try to fix invalid geometries
-                    try:
-                        fixed_ref_geom = ref_geom.buffer(0)
-                        if geom.intersects(fixed_ref_geom):
-                            overlap_area = geom.intersection(ref_geom).area
-                            overlapping_height_area += ref_height * overlap_area
-                            overlapping_area += overlap_area
-                    except Exception as fix_error:
-                        print(f"Failed to fix polygon")
-                    continue
-            
-            # Update height if overlapping buildings found
-            if overlapping_height_area > 0:
-                count_1 += 1
-                new_height = overlapping_height_area / overlapping_area
-                feature['properties']['height'] = new_height
-            else:
-                count_2 += 1
-                feature['properties']['height'] = np.nan
+    # Build lists for geometry and properties
+    geometries = []
+    all_props = []
+
+    for i, feature in enumerate(geojson_data):
+        # Extract geometry
+        geom = feature.get('geometry')
+        shapely_geom = shape(geom) if geom else None
+
+        # Extract properties
+        props = feature.get('properties', {})
         
-        updated_geojson_data_0.append(feature)
+        # If an ID column is missing, create one
+        if id_col not in props:
+            props[id_col] = i  # fallback ID
+
+        # Capture geometry and all props
+        geometries.append(shapely_geom)
+        all_props.append(props)
+
+    gdf = gpd.GeoDataFrame(all_props, geometry=geometries, crs="EPSG:4326")
+    return gdf
+
+
+def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
+                                    primary_id='id', ref_id='id'):
+    """
+    Use a vectorized approach with GeoPandas to:
+      1) Convert both datasets to GeoDataFrames
+      2) Find intersections and compute weighted average heights
+      3) Update heights in the primary dataset
+      4) Add non-intersecting buildings from the reference dataset
     
-    # Add non-intersecting buildings from reference dataset
-    for ref_geom, ref_height, ref_feature in reference_buildings:
-        has_intersection = False
-        try:
-            # Check if reference building intersects with any existing building
-            for existing_geom in existing_buildings:
-                if ref_geom.intersects(existing_geom):
-                    has_intersection = True
-                    break
-            
-            # Add building if it doesn't intersect with any existing ones
-            if not has_intersection:
-                updated_geojson_data_0.append(ref_feature)
-                count_3 += 1
-                
-        except GEOSException as e:
-            # Try to fix invalid geometries
-            try:
-                fixed_ref_geom = ref_geom.buffer(0)
-                for existing_geom in existing_buildings:
-                    if fixed_ref_geom.intersects(existing_geom):
-                        has_intersection = True
-                        break
-                
-                if not has_intersection:
-                    updated_geojson_data_0.append(ref_feature)
-                    count_3 += 1
-            except Exception as fix_error:
-                print(f"Failed to process non-intersecting building")
-            continue
+    Args:
+        geojson_data_0 (List[Dict]): Primary GeoJSON-like features
+        geojson_data_1 (List[Dict]): Reference GeoJSON-like features
+        primary_id (str): Name of the unique identifier in primary dataset's properties
+        ref_id (str): Name of the unique identifier in reference dataset's properties
+
+    Returns:
+        gpd.GeoDataFrame: Updated GeoDataFrame (including new buildings).
+                         You can convert it back to a list of dict features if needed.
+    """
+    # ----------------------------------------------------------------
+    # 1) Convert primary and reference data to GeoDataFrames
+    # ----------------------------------------------------------------
+    gdf_primary = geojson_to_gdf(geojson_data_0, id_col=primary_id)
+    gdf_ref = geojson_to_gdf(geojson_data_1, id_col=ref_id)
+
+    # Ensure both are in the same CRS, e.g. EPSG:4326 or some projected CRS
+    # If needed, do something like:
+    # gdf_primary = gdf_primary.to_crs("EPSG:xxxx")
+    # gdf_ref = gdf_ref.to_crs("EPSG:xxxx")
+
+    # Make sure height columns exist
+    if 'height' not in gdf_primary.columns:
+        gdf_primary['height'] = 0.0
+    if 'height' not in gdf_ref.columns:
+        gdf_ref['height'] = 0.0
+
+    # ----------------------------------------------------------------
+    # 2) Intersection to compute areas for overlapping buildings
+    # ----------------------------------------------------------------
+    # We'll rename columns to avoid collision after overlay
+    gdf_primary = gdf_primary.rename(columns={'height': 'height_primary'})
+    gdf_ref = gdf_ref.rename(columns={'height': 'height_ref'})
+
+    # We perform an 'intersection' overlay to get the overlapping polygons
+    intersect_gdf = gpd.overlay(gdf_primary, gdf_ref, how='intersection')
+
+    # Compute intersection area
+    intersect_gdf['intersect_area'] = intersect_gdf.area
+    # Weighted area (height_ref * intersect_area)
+    intersect_gdf['height_area'] = intersect_gdf['height_ref'] * intersect_gdf['intersect_area']
+
+    # ----------------------------------------------------------------
+    # 3) Aggregate to get weighted average height for each primary building
+    # ----------------------------------------------------------------
+    # We group by the primary building ID, summing up the area and the 'height_area'
+    group_cols = {
+        'height_area': 'sum',
+        'intersect_area': 'sum'
+    }
+    grouped = intersect_gdf.groupby(gdf_primary[primary_id].name).agg(group_cols)
+
+    # Weighted average
+    grouped['weighted_height'] = grouped['height_area'] / grouped['intersect_area']
+
+    # ----------------------------------------------------------------
+    # 4) Merge aggregated results back to the primary GDF
+    # ----------------------------------------------------------------
+    # After merging, the primary GDF will have a column 'weighted_height'
+    gdf_primary = gdf_primary.merge(grouped['weighted_height'],
+                                    left_on=primary_id,
+                                    right_index=True,
+                                    how='left')
+
+    # Where primary had zero or missing height, we assign the new weighted height
+    zero_or_nan_mask = (gdf_primary['height_primary'] == 0) | (gdf_primary['height_primary'].isna())
+    gdf_primary.loc[zero_or_nan_mask, 'height_primary'] = gdf_primary.loc[zero_or_nan_mask, 'weighted_height']
+
+    # For any building that had no overlap, 'weighted_height' might be NaN.
+    # Keep it as NaN or set to 0 if you prefer:
+    gdf_primary['height_primary'] = gdf_primary['height_primary'].fillna(np.nan)
+
+    # ----------------------------------------------------------------
+    # 5) Identify reference buildings that do not intersect any primary building
+    # ----------------------------------------------------------------
+    # Another overlay or spatial join can do this:
+    # Option A: use 'difference' on reference to get non-overlapping parts, but that can chop polygons.
+    # Option B: check building-level intersection. We'll do a bounding test with sjoin.
     
-    # Print statistics about updates
-    if count_0 > 0:
-        print(f"{count_0} of the total {len(geojson_data_0)} building footprint from base source did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from complement source were assigned.")
-        print(f"{count_3} non-intersecting buildings from Microsoft Building Footprints were added to the output.")
-    
-    return updated_geojson_data_0
+    # For building-level intersection, do a left join of ref onto primary.
+    # Then we'll identify which reference IDs are missing from the intersection result.
+    sjoin_gdf = gpd.sjoin(gdf_ref, gdf_primary, how='left', op='intersects')
+
+    # All reference buildings that did not intersect any primary building
+    non_intersect_ids = sjoin_gdf.loc[sjoin_gdf[primary_id].isna(), ref_id].unique()
+
+    # Extract them from the original reference GDF
+    gdf_ref_non_intersect = gdf_ref[gdf_ref[ref_id].isin(non_intersect_ids)]
+
+    # We'll rename columns back to 'height' to be consistent
+    gdf_ref_non_intersect = gdf_ref_non_intersect.rename(columns={'height_ref': 'height'})
+
+    # Also rename any other properties you prefer. For clarity, keep an ID so you know they came from reference.
+
+    # ----------------------------------------------------------------
+    # 6) Combine the updated primary GDF with the new reference buildings
+    # ----------------------------------------------------------------
+    # First, rename columns in updated primary GDF
+    gdf_primary = gdf_primary.rename(columns={'height_primary': 'height'})
+    # Drop the 'weighted_height' column to clean up
+    if 'weighted_height' in gdf_primary.columns:
+        gdf_primary.drop(columns='weighted_height', inplace=True)
+
+    # Concatenate
+    final_gdf = pd.concat([gdf_primary, gdf_ref_non_intersect], ignore_index=True)
+
+    # ----------------------------------------------------------------
+    # Return the combined GeoDataFrame
+    # (You can convert it back to a list of GeoJSON-like dictionaries)
+    # ----------------------------------------------------------------
+    return final_gdf
+
+
+def gdf_to_geojson_dicts(gdf, id_col='id'):
+    """
+    Convert a GeoDataFrame to a list of dicts similar to GeoJSON features.
+    """
+    records = gdf.to_dict(orient='records')
+    features = []
+    for rec in records:
+        # geometry is separate
+        geom = rec.pop('geometry', None)
+        if geom is not None:
+            geom = geom.__geo_interface__
+        # use or set ID
+        feature_id = rec.get(id_col, None)
+        props = {k: v for k, v in rec.items() if k != id_col}
+        # build GeoJSON-like feature dict
+        feature = {
+            'type': 'Feature',
+            'properties': props,
+            'geometry': geom
+        }
+        features.append(feature)
+
+    return features
+
+
+def complement_building_heights_from_geojson(geojson_data_0, geojson_data_1,
+                                             primary_id='id', ref_id='id'):
+    """
+    High-level function that wraps the GeoPandas approach end-to-end.
+    Returns a list of GeoJSON-like feature dicts.
+    """
+    # 1) Complement building heights using the GeoDataFrame approach
+    final_gdf = complement_building_heights_gdf(
+        geojson_data_0,
+        geojson_data_1,
+        primary_id=primary_id,
+        ref_id=ref_id
+    )
+
+    # 2) Convert back to geojson-like dict format
+    updated_features = gdf_to_geojson_dicts(final_gdf, id_col=primary_id)
+    return updated_features
 
 def load_geojsons_from_multiple_gz(file_paths):
     """
