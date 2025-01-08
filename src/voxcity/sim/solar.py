@@ -651,6 +651,8 @@ def get_global_solar_irradiance_using_epw(
             - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
             - start_time (str): Start time for cumulative calculation
             - end_time (str): End time for cumulative calculation
+            - start_hour (int): Starting hour for daily time window (0-23)
+            - end_hour (int): Ending hour for daily time window (0-23)
             - view_point_height (float): Observer height in meters
             - tree_k (float): Tree extinction coefficient
             - tree_lad (float): Leaf area density in m^-1
@@ -743,10 +745,17 @@ def get_global_solar_irradiance_using_epw(
             **kwargs
         )
     if calc_type == 'cumulative':
+        # Get time window parameters
+        start_hour = kwargs.get("start_hour", 0)  # Default to midnight
+        end_hour = kwargs.get("end_hour", 23)     # Default to 11 PM
+        
+        # Filter dataframe for specified hours
+        df_filtered = df[(df.index.hour >= start_hour) & (df.index.hour <= end_hour)]
+        
         solar_map = get_cumulative_global_solar_irradiance(
             voxel_data,
             meshsize,
-            df, lat, lon, tz,
+            df_filtered, lat, lon, tz,
             **kwargs
         )
     
