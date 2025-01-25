@@ -20,11 +20,12 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
       
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm llvm-dev libllvm-14 python3-lldb-14 libgdal-dev
+          sudo apt-get install -y llvm llvm-dev libgdal-dev build-essential
       
       - name: Setup Conda
         uses: conda-incubator/setup-miniconda@v3
@@ -32,11 +33,29 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
+          activate-environment: voxcity
+          use-only-tar-bz2: true
       
-      - name: Install GDAL and other conda dependencies
+      - name: Cache conda env
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.CONDA }}/envs
+          key: conda-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-${{ runner.os }}-${{ matrix.python-version }}-
+      
+      - name: Install conda dependencies
         shell: bash -l {0}
         run: |
-          conda install -c conda-forge gdal llvmlite numba
+          conda install -y -c conda-forge \
+            gdal \
+            numba \
+            llvmlite \
+            rtree \
+            rasterio=1.3.11 \
+            fiona \
+            geopandas \
+            shapely
       
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -45,26 +64,26 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
       
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v3
+        id: cache-poetry
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ matrix.python-version }}-
+      
       - name: Configure Poetry
         shell: bash -l {0}
         run: |
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
       
-      - name: Clean poetry lock
-        shell: bash -l {0}
-        run: |
-          rm -f poetry.lock
-      
-      - name: Generate new lock file
-        shell: bash -l {0}
-        run: |
-          poetry lock --no-update
-      
       - name: Install dependencies
         shell: bash -l {0}
+        if: steps.cache-poetry.outputs.cache-hit != 'true'
         run: |
-          poetry install --with dev --no-interaction
+          poetry install --no-interaction --without conda-deps
       
       - name: Run tests with coverage
         shell: bash -l {0}
