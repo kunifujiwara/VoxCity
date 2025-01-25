@@ -6,18 +6,18 @@ import tempfile
 import json
 from pathlib import Path
 
-from voxelcity.geo.utils import (
+from voxcity.geo.utils import (
     get_coordinates_from_cityname,
     get_country_name,
     calculate_distance,
     initialize_geod,
     get_timezone_info
 )
-from voxelcity.download.omt import load_geojsons_from_openmaptiles
-from voxelcity.download.osm import load_geojsons_from_openstreetmap
-from voxelcity.download.overture import load_geojsons_from_overture
-from voxelcity.download.eubucco import load_geojson_from_eubucco
-from voxelcity.geo.grid import (
+from voxcity.download.omt import load_geojsons_from_openmaptiles
+from voxcity.download.osm import load_geojsons_from_openstreetmap
+from voxcity.download.overture import load_geojsons_from_overture
+from voxcity.download.eubucco import load_geojson_from_eubucco
+from voxcity.geo.grid import (
     create_building_height_grid_from_geojson_polygon,
     create_land_cover_grid_from_geojson_polygon,
     apply_operation,

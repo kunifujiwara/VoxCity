@@ -137,7 +137,10 @@ def normalize_to_one_meter(vector, distance_in_meters):
     Returns:
         numpy.ndarray: Normalized vector
     """
-    return vector * (1 / distance_in_meters)
+    norm = np.linalg.norm(vector)
+    if norm == 0:
+        return vector
+    return (vector / norm) * (1 / distance_in_meters)
 
 def setup_transformer(from_crs, to_crs):
     """
@@ -346,18 +349,19 @@ def get_coordinates_from_cityname(place_name):
     Returns:
         tuple: (longitude, latitude) or None if geocoding fails
     """
-    # Initialize geocoder with user agent
-    geolocator = Nominatim(user_agent="my_geocoding_script")
+    # Initialize geocoder with user agent and rate limiting
+    geolocator = Nominatim(user_agent="voxcity", timeout=5)
+    geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
     
     try:
         # Attempt to geocode the place name
-        location = geolocator.geocode(place_name)
+        location = geocode(place_name)
         
         if location:
             return (location.latitude, location.longitude)
         else:
             return None
-    except (GeocoderTimedOut, GeocoderServiceError):
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
         print(f"Error: Geocoding service timed out or encountered an error for {place_name}")
         return None
 
@@ -550,25 +554,29 @@ def create_building_polygons(filtered_buildings):
 
     return building_polygons, idx
 
-def get_country_name(lon, lat):
+def get_country_name(lat, lon):
     """
     Get country name from coordinates using reverse geocoding.
     
     Args:
-        lon (float): Longitude
         lat (float): Latitude
+        lon (float): Longitude
         
     Returns:
         str: Country name or None if lookup fails
     """
-    # Use reverse geocoder to get country code
-    results = rg.search((lat, lon))
-    country_code = results[0]['cc']
-    
-    # Convert country code to full name using pycountry
-    country = pycountry.countries.get(alpha_2=country_code)
+    # Initialize geocoder with rate limiting to avoid hitting API limits
+    geolocator = Nominatim(user_agent="voxcity")
+    reverse = RateLimiter(geolocator.reverse, min_delay_seconds=1)
 
-    if country:
-        return country.name
-    else:
-        return None
+    try:
+        # Attempt reverse geocoding (note: Nominatim expects lat, lon order)
+        location = reverse((lat, lon), language='en')
+        if location:
+            address = location.raw['address']
+            country = address.get('country')
+            return country
+    except Exception as e:
+        print(f"Error retrieving country for coordinates ({lat}, {lon}): {e}")
+    
+    return None

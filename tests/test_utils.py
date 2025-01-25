@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from voxelcity.geo.utils import (
+from voxcity.geo.utils import (
     initialize_geod,
     calculate_distance,
     normalize_to_one_meter,

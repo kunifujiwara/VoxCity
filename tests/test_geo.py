@@ -1,14 +1,14 @@
 import pytest
 import numpy as np
 from shapely.geometry import Polygon, Point
-from voxelcity.geo.utils import (
+from voxcity.geo.utils import (
     initialize_geod,
     calculate_distance,
     normalize_to_one_meter,
     get_timezone_info,
     get_city_country_name_from_rectangle
 )
-from voxelcity.geo.grid import (
+from voxcity.geo.grid import (
     apply_operation,
     translate_array,
     group_and_label_cells,

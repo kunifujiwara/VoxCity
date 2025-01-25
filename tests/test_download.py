@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 import requests
 from pathlib import Path
 
-from voxelcity.download import utils
+from voxcity.download import utils
 
 def test_download_file(tmp_path):
     mock_response = MagicMock()

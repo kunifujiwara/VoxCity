@@ -1,6 +1,6 @@
 import pytest
 from shapely.geometry import box
-from voxelcity.file.geojson import (
+from voxcity.file.geojson import (
     filter_buildings,
     swap_coordinates
 )

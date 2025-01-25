@@ -3,7 +3,7 @@ import numpy as np
 import json
 from pathlib import Path
 from shapely.geometry import box
-from voxelcity.file.geojson import (
+from voxcity.file.geojson import (
     filter_and_convert_gdf_to_geojson,
     load_geojsons_from_multiple_gz,
     filter_buildings,

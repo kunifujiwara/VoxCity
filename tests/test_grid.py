@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from voxelcity.geo.grid import (
+from voxcity.geo.grid import (
     apply_operation,
     translate_array,
     group_and_label_cells,
