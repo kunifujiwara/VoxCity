@@ -28,10 +28,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
       
-      - name: Install GDAL and other dependencies
+      - name: Install conda dependencies
         shell: bash -l {0}
         run: |
-          conda install -c conda-forge gdal osmnx
+          conda install -c conda-forge gdal osmnx llvmlite numba
       
       - name: Install Poetry
         uses: snok/install-poetry@v1
