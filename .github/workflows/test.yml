@@ -40,20 +40,38 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
       
+      - name: Configure Poetry
+        shell: bash -l {0}
+        run: |
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+      
+      - name: Clean poetry lock
+        shell: bash -l {0}
+        run: |
+          rm -f poetry.lock
+      
+      - name: Generate new lock file
+        shell: bash -l {0}
+        run: |
+          poetry lock --no-update
+      
       - name: Install dependencies
         shell: bash -l {0}
         run: |
-          poetry install
+          poetry install --with dev --no-interaction
       
       - name: Run tests with coverage
         shell: bash -l {0}
         run: |
-          poetry run pytest --cov=voxelcity --cov-report=xml
+          poetry run pytest --cov=voxcity --cov-report=xml
       
       - name: Upload coverage reports to Codecov
-        run: |
-          # Replace `linux` below with the appropriate OS
-          # Options are `alpine`, `linux`, `macos`, `windows`
-          curl -Os https://cli.codecov.io/latest/linux/codecov
-          chmod +x codecov
-          ./codecov --verbose upload-process --fail-on-error -t ${{ secrets.CODECOV_TOKEN }} -n 'service'-${{ github.run_id }} -F service -f coverage-service.xml
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: true
+          verbose: true
