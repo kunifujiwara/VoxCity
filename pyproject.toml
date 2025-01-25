@@ -1,64 +1,78 @@
-[tool.poetry]
-name = "voxelcity"
-version = "0.1.68"
-description = "voxelcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
-readme = "README.rst"
-authors = ["Kunihiko Fujiwara <kunihiko@nus.edu.sg>"]
-maintainers = ["Kunihiko Fujiwara <kunihiko@nus.edu.sg>"]
-license = "MIT"
-packages = [
-    { include = "voxelcity", from = "src" }
+[project]
+name = "voxcity"
+version = "0.3.9"
+requires-python = ">=3.10,<3.13"
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
+readme = "README.md"
+authors = [
+  {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
+]
+maintainers = [
+  {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
+]
+license = {text = "MIT"}
+dependencies = [
+    "typer",
+    "pandas",
+    "requests",
+    "pyproj",
+    "ipyleaflet",
+    "geopandas",
+    "rasterio==1.3.11",
+    "shapely",
+    "gdown",
+    "numpy",
+    "matplotlib",
+    "contextily",
+    "fiona",
+    "rtree",
+    "plotly",
+    "tqdm",
+    "scipy",
+    "affine",
+    "earthengine-api",
+    "geemap",
+    "rio-cogeo",
+    "geopy",
+    "py-vox-io",
+    "mapbox_vector_tile",
+    "numba",
+    "reverse_geocoder",
+    "pycountry",
+    "osm2geojson",
+    "seaborn",
+    "overturemaps",
+    "protobuf==3.20.3",
+    "timezonefinder",
+    "astral",
+    "osmnx",
+    "joblib",
 ]
 
-[tool.poetry.urls]
-"Bug Tracker" = "https://github.com/kunifujiwara/voxelcity/issues"
-"Changelog" = "https://github.com/kunifujiwara/voxelcity/blob/master/changelog.md"
-"Homepage" = "https://github.com/kunifujiwara/voxelcity"
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "mypy",
+    "pytest",
+    "ruff"
+]
 
-[tool.poetry.dependencies]
-python = ">=3.9,<3.13"
-numpy = "*"
-typer = "*"
-pandas = "*"
-requests = "*"
-pyproj = "*"
-ipyleaflet = "*"
-geopandas = "*"
-rasterio = "*"
-shapely = "*"
-matplotlib = "*"
-contextily = "*"
-fiona = "*"
-rtree = "*"
-plotly = "*"
-tqdm = "*"
-scipy = "*"
-affine = "*"
-earthengine-api = "*"
-geemap = "*"
-rio-cogeo = "*"
-geopy = "*"
-py-vox-io = "*"
-mapbox_vector_tile = "<=1.2.1"
-numba = "*"
-reverse_geocoder = "*"
-pycountry = "*"
-osm2geojson = "*"
-seaborn = "*"
-overturemaps = "*"
-protobuf = "<=3.20.3"
-timezonefinder = "*"
-gdown = "^5.2.0"
+[project.urls]
+bugs = "https://github.com/kunifujiwara/voxcity/issues"
+changelog = "https://github.com/kunifujiwara/voxcity/blob/master/changelog.md"
+homepage = "https://github.com/kunifujiwara/voxcity"
 
-[tool.poetry.group.dev.dependencies]
-coverage = "*"
-mypy = "*"
-pytest = "*"
-ruff = "*"
-pytest-cov = "^6.0.0"
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["voxcity", "voxcity.download", "voxcity.geo", "voxcity.file", "voxcity.sim", "voxcity.utils"]
 
-[tool.poetry.scripts]
-voxelcity = "voxelcity.cli:main"
+[tool.setuptools.package-data]
+"*" = ["*.*"]
 
 [tool.mypy]
 files = "."
