@@ -21,6 +21,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm llvm-dev libllvm-14 python3-lldb-14 libgdal-dev
+      
       - name: Setup Conda
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -28,10 +33,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
       
-      - name: Install GDAL
+      - name: Install GDAL and other conda dependencies
         shell: bash -l {0}
         run: |
-          conda install -c conda-forge gdal
+          conda install -c conda-forge gdal llvmlite numba
       
       - name: Install Poetry
         uses: snok/install-poetry@v1
