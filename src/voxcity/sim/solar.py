@@ -57,7 +57,7 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
                 # Check if current voxel is empty/tree and voxel below is solid
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
                     # Skip if standing on building/vegetation/water
-                    if voxel_data[x, y, z - 1] in (-30, -3, -2):
+                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         irradiance_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -148,9 +148,10 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
-        plt.title("Horizontal Direct Solar Irradiance Map (0° = North)")
+        # plt.title("Horizontal Direct Solar Irradiance Map (0° = North)")
         plt.imshow(direct_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Direct Solar Irradiance (W/m²)')
+        plt.axis('off')
         plt.show()
 
     # Optional OBJ export
@@ -231,9 +232,10 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
-        plt.title("Diffuse Solar Irradiance Map")
+        # plt.title("Diffuse Solar Irradiance Map")
         plt.imshow(diffuse_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Diffuse Solar Irradiance (W/m²)')
+        plt.axis('off')
         plt.show()
 
     # Optional OBJ export
@@ -310,7 +312,7 @@ def get_global_solar_irradiance_map(
     # Create kwargs for diffuse calculation
     direct_diffuse_kwargs = kwargs.copy()
     direct_diffuse_kwargs.update({
-        'show_plot': False,
+        'show_plot': True,
         'obj_export': False
     })
 
@@ -343,9 +345,10 @@ def get_global_solar_irradiance_map(
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
-        plt.title("Global Solar Irradiance Map")
+        # plt.title("Global Solar Irradiance Map")
         plt.imshow(global_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Global Solar Irradiance (W/m²)')
+        plt.axis('off')
         plt.show()
 
     # Optional OBJ export
@@ -571,8 +574,9 @@ def get_cumulative_global_solar_irradiance(
             cmap = plt.cm.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(8, 6))
-            plt.title(f"Global Solar Irradiance at {time_local.strftime('%Y-%m-%d %H:%M:%S')}")
+            # plt.title(f"Global Solar Irradiance at {time_local.strftime('%Y-%m-%d %H:%M:%S')}")
             plt.imshow(global_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+            plt.axis('off')
             plt.colorbar(label='Global Solar Irradiance (W/m²)')
             plt.show()
 
@@ -588,9 +592,10 @@ def get_cumulative_global_solar_irradiance(
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(8, 6))
-        plt.title("Cumulative Global Solar Irradiance Map")
+        # plt.title("Cumulative Global Solar Irradiance Map")
         plt.imshow(cumulative_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Cumulative Global Solar Irradiance (W/m²·hour)')
+        plt.axis('off')
         plt.show()
 
     # Optional OBJ export

@@ -294,28 +294,31 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     print("Creating Digital Elevation Model (DEM) grid\n ")
     print(f"Data source: {source}")
 
-    # Initialize Earth Engine for accessing elevation data
-    initialize_earth_engine()
-
-    geotiff_path = os.path.join(output_dir, "dem.tif")
-
-    # Add buffer around ROI to ensure smooth interpolation at edges
-    buffer_distance = 100
-    roi = get_roi(rectangle_vertices)
-    roi_buffered = roi.buffer(buffer_distance)
-    
-    # Get DEM data
-    image = get_dem_image(roi_buffered, source)
-    
-    # Save DEM data with appropriate resolution based on source
-    if source in ["England 1m DTM", 'DEM France 1m', 'DEM France 5m', 'AUSTRALIA 5M DEM']:
-        save_geotiff(image, geotiff_path, scale=meshsize, region=roi_buffered, crs='EPSG:4326')
-    elif source == 'USGS 3DEP 1m':
-        scale = max(meshsize, 1.25)
-        save_geotiff(image, geotiff_path, scale=scale, region=roi_buffered, crs='EPSG:4326')
+    if source == "Local file":
+        geotiff_path = kwargs["dem_path"]
     else:
-        # Default to 30m resolution for other sources
-        save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
+        # Initialize Earth Engine for accessing elevation data
+        initialize_earth_engine()
+
+        geotiff_path = os.path.join(output_dir, "dem.tif")
+
+        # Add buffer around ROI to ensure smooth interpolation at edges
+        buffer_distance = 100
+        roi = get_roi(rectangle_vertices)
+        roi_buffered = roi.buffer(buffer_distance)
+        
+        # Get DEM data
+        image = get_dem_image(roi_buffered, source)
+        
+        # Save DEM data with appropriate resolution based on source
+        if source in ["England 1m DTM", 'DEM France 1m', 'DEM France 5m', 'AUSTRALIA 5M DEM']:
+            save_geotiff(image, geotiff_path, scale=meshsize, region=roi_buffered, crs='EPSG:4326')
+        elif source == 'USGS 3DEP 1m':
+            scale = max(meshsize, 1.25)
+            save_geotiff(image, geotiff_path, scale=scale, region=roi_buffered, crs='EPSG:4326')
+        else:
+            # Default to 30m resolution for other sources
+            save_geotiff(image, geotiff_path, scale=30, region=roi_buffered)
 
     # Create DEM grid with optional interpolation method
     dem_interpolation = kwargs.get("dem_interpolation")

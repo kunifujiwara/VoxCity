@@ -413,6 +413,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     plt.figure(figsize=(10, 8))
     plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
     plt.colorbar(label='View Index')
+    plt.axis('off')
     plt.show()
 
     # Optional OBJ export
@@ -626,7 +627,7 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
             for z in range(1, nz):
                 if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
                     # Skip if standing on building or vegetation
-                    if voxel_data[x, y, z - 1] in (-3, -2, 7, 8, 9):
+                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         visibility_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -696,7 +697,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
     plt.legend(handles=[visible_patch, not_visible_patch], 
             loc='center left',
             bbox_to_anchor=(1.0, 0.5))
-    
+    plt.axis('off')
     plt.show()
 
     return np.flipud(visibility_map)
@@ -852,9 +853,10 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
-        plt.title("Sky View Factor Map")
+        # plt.title("Sky View Factor Map")
         plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Sky View Factor')
+        plt.axis('off')
         plt.show()
 
     # Optional OBJ export

@@ -117,7 +117,7 @@ def get_network_values(
     )
 
     # Compute edge values with the vectorized function
-    edge_values = vectorized_edge_values(G, polygons_gdf, value_col=value_name)
+    edge_values = vectorized_edge_values(G, polygons_gdf, value_col="value")
     nx.set_edge_attributes(G, edge_values, name=value_name)
 
     # Build edge GDF
