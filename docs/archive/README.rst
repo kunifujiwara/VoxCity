@@ -16,6 +16,10 @@ VoxCity
 .. image:: https://pepy.tech/badge/voxelcity
         :target: https://pepy.tech/project/voxelcity
 
+.. image:: https://codecov.io/gh/kunifujiwara/voxelcity/branch/main/graph/badge.svg
+        :target: https://codecov.io/gh/kunifujiwara/voxelcity
+        :alt: Code Coverage
+
 
 
 .. VoxelCity is an easy and one-stop tool to output 3d city models for urban simulation by integrating multiple geospatial open-data
