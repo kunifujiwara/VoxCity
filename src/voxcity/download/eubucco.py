@@ -314,4 +314,8 @@ def load_geojson_from_eubucco(rectangle_vertices, output_dir):
         raw_data = json.load(f)
     geojson_data = raw_data['features']
 
+    # Add id to each building's properties
+    for i, feature in enumerate(geojson_data):
+        feature['properties']['id'] = i + 1
+
     return geojson_data

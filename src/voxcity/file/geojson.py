@@ -58,11 +58,13 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
 
     # Create GeoJSON features from filtered geometries
     features = []
+    feature_id = 1
     for idx, row in filtered_gdf.iterrows():
         geom = row['geometry'].__geo_interface__
         properties = {
             'height': row['height'],
-            'confidence': row['confidence']
+            'confidence': row['confidence'],
+            'id': feature_id
         }
 
         # Handle MultiPolygon by splitting into separate Polygon features
@@ -74,10 +76,11 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
                 }
                 feature = {
                     'type': 'Feature',
-                    'properties': properties,
+                    'properties': properties.copy(),  # Use copy to avoid shared references
                     'geometry': single_geom
                 }
                 features.append(feature)
+                feature_id += 1
         elif geom['type'] == 'Polygon':
             feature = {
                 'type': 'Feature',
@@ -85,6 +88,7 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
                 'geometry': geom
             }
             features.append(feature)
+            feature_id += 1
         else:
             pass  # Skip other geometry types
 

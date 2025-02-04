@@ -3,13 +3,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Polygon
+import shapely.ops as ops
 import networkx as nx
 import osmnx as ox
 import os
 import shapely
 from shapely.geometry import Point
 from shapely.ops import transform
+import pyproj
 from pyproj import Transformer
 from joblib import Parallel, delayed
 
@@ -484,6 +486,17 @@ def analyze_network_slopes(
 
     # 10) Visualization
     if settings['vis_graph']:
+        # Create a Polygon from the rectangle vertices
+        rectangle_polygon = Polygon(rectangle_vertices)
+
+        # Convert the rectangle polygon to the same CRS as edge_gdf_web
+        rectangle_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[rectangle_polygon])
+        rectangle_gdf_web = rectangle_gdf.to_crs(epsg=3857)
+
+        # Get the bounding box of the rectangle
+        minx, miny, maxx, maxy = rectangle_gdf_web.total_bounds
+
+        # Plot the edges
         edge_gdf_web = edge_gdf.to_crs(epsg=3857)
         fig, ax = plt.subplots(figsize=settings['fig_size'])
         edge_gdf_web.plot(
@@ -497,9 +510,43 @@ def analyze_network_slopes(
             alpha=settings['alpha'],
             legend_kwds={'label': f"{value_name} (%)"}
         )
-        ctx.add_basemap(ax, source=settings['basemap_style'], zoom=settings['zoom'])
+
+        # Add basemap with the same extent as the rectangle
+        ctx.add_basemap(
+            ax,
+            source=settings['basemap_style'],
+            zoom=settings['zoom'],
+            bounds=(minx, miny, maxx, maxy)  # Explicitly set the bounds of the basemap
+        )
+
+        # Set the plot limits to the bounding box of the rectangle
+        ax.set_xlim(minx, maxx)
+        ax.set_ylim(miny, maxy)
+
+        # Turn off the axis
         ax.set_axis_off()
+
+        # Add title
         plt.title(f'Network {value_name} Analysis', pad=20)
+
+        # Show the plot
         plt.show()
+        # edge_gdf_web = edge_gdf.to_crs(epsg=3857)
+        # fig, ax = plt.subplots(figsize=settings['fig_size'])
+        # edge_gdf_web.plot(
+        #     column=value_name, 
+        #     ax=ax, 
+        #     cmap=settings['colormap'], 
+        #     legend=True, 
+        #     vmin=settings['vmin'], 
+        #     vmax=settings['vmax'],
+        #     linewidth=settings['edge_width'],
+        #     alpha=settings['alpha'],
+        #     legend_kwds={'label': f"{value_name} (%)"}
+        # )
+        # ctx.add_basemap(ax, source=settings['basemap_style'], zoom=settings['zoom'])
+        # ax.set_axis_off()
+        # plt.title(f'Network {value_name} Analysis', pad=20)
+        # plt.show()
 
     return G, edge_gdf
