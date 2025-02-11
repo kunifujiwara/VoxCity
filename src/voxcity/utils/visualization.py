@@ -19,14 +19,14 @@ import math
 
 from .lc import get_land_cover_classes
 # from ..geo.geojson import filter_buildings
-from ..geo.grid import (
+from ..geoprocessor.grid import (
     calculate_grid_size,
     create_coordinate_mesh,
     create_cell_polygon,
     grid_to_geodataframe
 )
 
-from ..geo.utils import (
+from ..geoprocessor.utils import (
     initialize_geod,
     calculate_distance,
     normalize_to_one_meter,
