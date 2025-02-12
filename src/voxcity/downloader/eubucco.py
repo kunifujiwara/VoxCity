@@ -17,6 +17,7 @@ from shapely.ops import transform
 from fiona.transform import transform_geom
 import logging
 import shapely
+import geopandas as gpd
 
 from ..geoprocessor.utils import get_country_name
 
@@ -246,7 +247,7 @@ def download_extract_open_gpkg_from_eubucco(url, output_dir):
     logging.info(f"GeoPackage file found: {gpkg_file}")
     return gpkg_file
 
-def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, file_name):
+def get_gdf_from_eubucco(rectangle_vertices, country_links, output_dir, file_name):
     """
     Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.
 
@@ -270,28 +271,22 @@ def save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, fil
     # Download and extract GPKG file
     gpkg_file = download_extract_open_gpkg_from_eubucco(url, output_dir)
 
-    # Get first layer from GPKG file
-    with fiona.Env():
-        layers = fiona.listlayers(gpkg_file)
-        if not layers:
-            logging.error("No layers found in the GeoPackage.")
-            return
-        layer_name = layers[0]
-        logging.info(f"Using layer: {layer_name}")
+    # Read GeoPackage file while preserving its CRS
+    gdf = gpd.read_file(gpkg_file)
+    
+    # Only set CRS if not already set
+    if gdf.crs is None:
+        gdf.set_crs(epsg=4326, inplace=True)
+    # Transform to WGS84 if needed
+    elif gdf.crs != "EPSG:4326":
+        gdf = gdf.to_crs(epsg=4326)
 
-    file_path = f"{output_dir}/{file_name}"
+    # Replace id column with index numbers
+    gdf['id'] = gdf.index
+    
+    return gdf
 
-    # Convert GPKG to GeoJSON
-    filter_and_convert_gdf_to_geojson_eubucco(
-        gpkg_file=gpkg_file,
-        layer_name=layer_name,
-        rectangle_vertices=rectangle_vertices,
-        output_geojson=file_path
-    )
-
-    logging.info(f"GeoJSON file has been created at: {file_path}")
-
-def load_geojson_from_eubucco(rectangle_vertices, output_dir):
+def load_gdf_from_eubucco(rectangle_vertices, output_dir):
     """
     Downloads EUBUCCO data and loads it as GeoJSON.
 
@@ -307,15 +302,6 @@ def load_geojson_from_eubucco(rectangle_vertices, output_dir):
     file_path = f"{output_dir}/{file_name}"
 
     # Download and save GeoJSON
-    save_geojson_from_eubucco(rectangle_vertices, country_links, output_dir, file_name)   
+    gdf = get_gdf_from_eubucco(rectangle_vertices, country_links, output_dir, file_name)   
 
-    # Load and return GeoJSON features
-    with open(file_path, 'r') as f:
-        raw_data = json.load(f)
-    geojson_data = raw_data['features']
-
-    # Add id to each building's properties
-    for i, feature in enumerate(geojson_data):
-        feature['properties']['id'] = i + 1
-
-    return geojson_data
+    return gdf

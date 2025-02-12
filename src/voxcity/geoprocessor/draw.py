@@ -223,15 +223,15 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
     return m, rectangle_vertices
 
-def display_buildings_and_draw_polygon(building_geojson, zoom=17):
+def display_buildings_and_draw_polygon(building_gdf, zoom=17):
     """
     Displays building footprints (in Lon-Lat order) on an ipyleaflet map,
     and allows the user to draw a polygon whose vertices are returned
     in a Python list (also in Lon-Lat).
 
     Args:
-        building_geojson (list): A list of GeoJSON features (Polygons),
-                                 with coordinates in [lon, lat] order.
+        building_gdf (GeoDataFrame): A GeoDataFrame containing building footprints,
+                                   with geometry in [lon, lat] order.
         zoom (int): Initial zoom level for the map. Default=17.
 
     Returns:
@@ -243,22 +243,13 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
     # ---------------------------------------------------------
-    all_lons = []
-    all_lats = []
-    for feature in building_geojson:
-        # Handle only Polygons here; skip MultiPolygon if present
-        if feature['geometry']['type'] == 'Polygon':
-            # Coordinates in this data are [ [lon, lat], [lon, lat], ... ]
-            coords = feature['geometry']['coordinates'][0]  # outer ring
-            all_lons.extend(pt[0] for pt in coords)
-            all_lats.extend(pt[1] for pt in coords)
-
-    if not all_lats or not all_lons:
+    if len(building_gdf) == 0:
         # Fallback: If no footprints or invalid data, pick a default
         center_lon, center_lat = -100.0, 40.0
     else:
-        min_lon, max_lon = min(all_lons), max(all_lons)
-        min_lat, max_lat = min(all_lats), max(all_lats)
+        # Get bounds from GeoDataFrame
+        bounds = building_gdf.total_bounds  # Returns [minx, miny, maxx, maxy]
+        min_lon, min_lat, max_lon, max_lat = bounds
         center_lon = (min_lon + max_lon) / 2
         center_lat = (min_lat + max_lat) / 2
 
@@ -268,12 +259,13 @@ def display_buildings_and_draw_polygon(building_geojson, zoom=17):
     # -----------------------------------------
     # 2. Add each building footprint to the map
     # -----------------------------------------
-    for feature in building_geojson:
+    for idx, row in building_gdf.iterrows():
         # Only handle simple Polygons
-        if feature['geometry']['type'] == 'Polygon':
-            coords = feature['geometry']['coordinates'][0]
-            # Convert to (lat,lon) for ipyleaflet
-            lat_lon_coords = [(c[1], c[0]) for c in coords]
+        if isinstance(row.geometry, geom.Polygon):
+            # Get coordinates from geometry
+            coords = list(row.geometry.exterior.coords)
+            # Convert to (lat,lon) for ipyleaflet, skip last repeated coordinate
+            lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
 
             # Create the polygon layer
             bldg_layer = LeafletPolygon(

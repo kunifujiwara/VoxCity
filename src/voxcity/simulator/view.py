@@ -702,7 +702,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 
     return np.flipud(visibility_map)
 
-def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geojson, meshsize, **kwargs):
+def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf, meshsize, **kwargs):
     """Generate a visibility map for landmark buildings in a voxel city.
 
     Places observers at valid locations and checks visibility to any part of the
@@ -712,7 +712,7 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geo
     Args:
         voxcity_grid (ndarray): 3D array representing the voxel city
         building_id_grid (ndarray): 3D array mapping voxels to building IDs
-        building_geojson (dict): GeoJSON data containing building features
+        building_gdf (GeoDataFrame): GeoDataFrame containing building features
         meshsize (float): Size of each voxel in meters
         **kwargs: Additional keyword arguments
             view_point_height (float): Height of observer viewpoint in meters
@@ -737,12 +737,11 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geo
     colormap = kwargs.get("colormap", 'viridis')
 
     # Get landmark building IDs either directly or by finding buildings in rectangle
-    features = building_geojson
     landmark_ids = kwargs.get('landmark_building_ids', None)
     landmark_polygon = kwargs.get('landmark_polygon', None)
     if landmark_ids is None:
         if landmark_polygon is not None:
-            landmark_ids = get_buildings_in_drawn_polygon(building_geojson, landmark_polygon, operation='within')
+            landmark_ids = get_buildings_in_drawn_polygon(building_gdf, landmark_polygon, operation='within')
         else:
             rectangle_vertices = kwargs.get("rectangle_vertices", None)
             if rectangle_vertices is None:
@@ -757,7 +756,7 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_geo
             target_point = (center_lon, center_lat)
             
             # Find buildings at center point
-            landmark_ids = find_building_containing_point(features, target_point)
+            landmark_ids = find_building_containing_point(building_gdf, target_point)
 
     # Mark landmark buildings in voxel grid with special value
     target_value = -30

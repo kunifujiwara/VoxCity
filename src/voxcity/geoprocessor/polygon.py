@@ -120,55 +120,72 @@ def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
     geojson = filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices)
     return geojson
 
-def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -> List[Dict]:
+def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """
-    Extract building heights from one GeoJSON dataset and apply them to another based on spatial overlap.
+    Extract building heights from one GeoDataFrame and apply them to another based on spatial overlap.
     
     Args:
-        geojson_data_0 (List[Dict]): Primary GeoJSON features to update with heights
-        geojson_data_1 (List[Dict]): Reference GeoJSON features containing height data
+        gdf_0 (gpd.GeoDataFrame): Primary GeoDataFrame to update with heights
+        gdf_1 (gpd.GeoDataFrame): Reference GeoDataFrame containing height data
         
     Returns:
-        List[Dict]: Updated primary GeoJSON features with extracted heights
+        gpd.GeoDataFrame: Updated primary GeoDataFrame with extracted heights
     """
-    # Convert reference dataset to Shapely polygons with height info
-    reference_buildings = []
-    for feature in geojson_data_1:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        reference_buildings.append((geom, height))
+    # Make a copy of input GeoDataFrame to avoid modifying original
+    gdf_primary = gdf_0.copy()
+    gdf_ref = gdf_1.copy()
+
+    # Make sure height columns exist
+    if 'height' not in gdf_primary.columns:
+        gdf_primary['height'] = 0.0
+    if 'height' not in gdf_ref.columns:
+        gdf_ref['height'] = 0.0
 
     # Initialize counters for statistics
     count_0 = 0  # Buildings without height
     count_1 = 0  # Buildings updated with height
     count_2 = 0  # Buildings with no height data found
 
-    # Process primary dataset and update heights where needed
-    updated_geojson_data_0 = []
-    for feature in geojson_data_0:
-        geom = shape(feature['geometry'])
-        height = feature['properties']['height']
-        if height == 0:     
-            count_0 += 1       
+    # Create spatial index for reference buildings
+    from rtree import index
+    spatial_index = index.Index()
+    for i, geom in enumerate(gdf_ref.geometry):
+        if geom.is_valid:
+            spatial_index.insert(i, geom.bounds)
+
+    # Process each building in primary dataset that needs height data
+    for idx_primary, row in gdf_primary.iterrows():
+        if row['height'] == 0:
+            count_0 += 1
+            geom = row.geometry
+            
             # Calculate weighted average height based on overlapping areas
             overlapping_height_area = 0
             overlapping_area = 0
-            for ref_geom, ref_height in reference_buildings:
+            
+            # Get potential intersecting buildings using spatial index
+            potential_matches = list(spatial_index.intersection(geom.bounds))
+            
+            # Check intersections with reference buildings
+            for ref_idx in potential_matches:
+                if ref_idx >= len(gdf_ref):
+                    continue
+                    
+                ref_row = gdf_ref.iloc[ref_idx]
                 try:
-                    if geom.intersects(ref_geom):
-                        overlap_area = geom.intersection(ref_geom).area
-                        overlapping_height_area += ref_height * overlap_area
+                    if geom.intersects(ref_row.geometry):
+                        overlap_area = geom.intersection(ref_row.geometry).area
+                        overlapping_height_area += ref_row['height'] * overlap_area
                         overlapping_area += overlap_area
-                except GEOSException as e:
+                except GEOSException:
                     # Try to fix invalid geometries using buffer(0)
-                    print(f"GEOS error at a building polygon {ref_geom}")
                     try:
-                        fixed_ref_geom = ref_geom.buffer(0)
+                        fixed_ref_geom = ref_row.geometry.buffer(0)
                         if geom.intersects(fixed_ref_geom):
-                            overlap_area = geom.intersection(ref_geom).area
-                            overlapping_height_area += ref_height * overlap_area
+                            overlap_area = geom.intersection(fixed_ref_geom).area
+                            overlapping_height_area += ref_row['height'] * overlap_area
                             overlapping_area += overlap_area
-                    except Exception as fix_error:
+                    except Exception:
                         print(f"Failed to fix polygon")
                     continue
             
@@ -177,19 +194,17 @@ def extract_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_da
                 count_1 += 1
                 # Calculate weighted average height
                 new_height = overlapping_height_area / overlapping_area
-                feature['properties']['height'] = new_height
+                gdf_primary.at[idx_primary, 'height'] = new_height
             else:
                 count_2 += 1
-                feature['properties']['height'] = np.nan
-        
-        updated_geojson_data_0.append(feature)
+                gdf_primary.at[idx_primary, 'height'] = np.nan
     
     # Print statistics about height updates
     if count_0 > 0:
-        print(f"{count_0} of the total {len(geojson_data_0)} building footprint from OSM did not have height data.")
+        print(f"{count_0} of the total {len(gdf_primary)} building footprint from OSM did not have height data.")
         print(f"For {count_1} of these building footprints without height, values from Microsoft Building Footprints were assigned.")
 
-    return updated_geojson_data_0
+    return gdf_primary
 
 # from typing import List, Dict
 # from shapely.geometry import shape
@@ -346,18 +361,17 @@ def geojson_to_gdf(geojson_data, id_col='id'):
     return gdf
 
 
-def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
+def complement_building_heights_from_gdf(gdf_0, gdf_1,
                                     primary_id='id', ref_id='id'):
     """
     Use a vectorized approach with GeoPandas to:
-      1) Convert both datasets to GeoDataFrames
-      2) Find intersections and compute weighted average heights
-      3) Update heights in the primary dataset
-      4) Add non-intersecting buildings from the reference dataset
+      1) Find intersections and compute weighted average heights
+      2) Update heights in the primary dataset
+      3) Add non-intersecting buildings from the reference dataset
     
     Args:
-        geojson_data_0 (List[Dict]): Primary GeoJSON-like features
-        geojson_data_1 (List[Dict]): Reference GeoJSON-like features
+        gdf_0 (gpd.GeoDataFrame): Primary GeoDataFrame
+        gdf_1 (gpd.GeoDataFrame): Reference GeoDataFrame
         primary_id (str): Name of the unique identifier in primary dataset's properties
         ref_id (str): Name of the unique identifier in reference dataset's properties
 
@@ -365,11 +379,9 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
         gpd.GeoDataFrame: Updated GeoDataFrame (including new buildings).
                          You can convert it back to a list of dict features if needed.
     """
-    # ----------------------------------------------------------------
-    # 1) Convert primary and reference data to GeoDataFrames
-    # ----------------------------------------------------------------
-    gdf_primary = geojson_to_gdf(geojson_data_0, id_col=primary_id)
-    gdf_ref = geojson_to_gdf(geojson_data_1, id_col=ref_id)
+    # Make a copy of input GeoDataFrames to avoid modifying originals
+    gdf_primary = gdf_0.copy()
+    gdf_ref = gdf_1.copy()
 
     # Ensure both are in the same CRS, e.g. EPSG:4326 or some projected CRS
     # If needed, do something like:
@@ -383,7 +395,7 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
         gdf_ref['height'] = 0.0
 
     # ----------------------------------------------------------------
-    # 2) Intersection to compute areas for overlapping buildings
+    # 1) Intersection to compute areas for overlapping buildings
     # ----------------------------------------------------------------
     # We'll rename columns to avoid collision after overlay
     gdf_primary = gdf_primary.rename(columns={'height': 'height_primary'})
@@ -398,7 +410,7 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
     intersect_gdf['height_area'] = intersect_gdf['height_ref'] * intersect_gdf['intersect_area']
 
     # ----------------------------------------------------------------
-    # 3) Aggregate to get weighted average height for each primary building
+    # 2) Aggregate to get weighted average height for each primary building
     # ----------------------------------------------------------------
     # We group by the primary building ID, summing up the area and the 'height_area'
     group_cols = {
@@ -411,7 +423,7 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
     grouped['weighted_height'] = grouped['height_area'] / grouped['intersect_area']
 
     # ----------------------------------------------------------------
-    # 4) Merge aggregated results back to the primary GDF
+    # 3) Merge aggregated results back to the primary GDF
     # ----------------------------------------------------------------
     # After merging, the primary GDF will have a column 'weighted_height'
     gdf_primary = gdf_primary.merge(grouped['weighted_height'],
@@ -428,7 +440,7 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
     gdf_primary['height_primary'] = gdf_primary['height_primary'].fillna(np.nan)
 
     # ----------------------------------------------------------------
-    # 5) Identify reference buildings that do not intersect any primary building
+    # 4) Identify reference buildings that do not intersect any primary building
     # ----------------------------------------------------------------
     # Another overlay or spatial join can do this:
     # Option A: use 'difference' on reference to get non-overlapping parts, but that can chop polygons.
@@ -450,7 +462,7 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
     # Also rename any other properties you prefer. For clarity, keep an ID so you know they came from reference.
 
     # ----------------------------------------------------------------
-    # 6) Combine the updated primary GDF with the new reference buildings
+    # 5) Combine the updated primary GDF with the new reference buildings
     # ----------------------------------------------------------------
     # First, rename columns in updated primary GDF
     gdf_primary = gdf_primary.rename(columns={'height_primary': 'height'})
@@ -461,10 +473,6 @@ def complement_building_heights_gdf(geojson_data_0, geojson_data_1,
     # Concatenate
     final_gdf = pd.concat([gdf_primary, gdf_ref_non_intersect], ignore_index=True)
 
-    # ----------------------------------------------------------------
-    # Return the combined GeoDataFrame
-    # (You can convert it back to a list of GeoJSON-like dictionaries)
-    # ----------------------------------------------------------------
     return final_gdf
 
 
@@ -492,34 +500,15 @@ def gdf_to_geojson_dicts(gdf, id_col='id'):
 
     return features
 
-
-def complement_building_heights_from_geojson(geojson_data_0, geojson_data_1,
-                                             primary_id='id', ref_id='id'):
+def load_gdf_from_multiple_gz(file_paths):
     """
-    High-level function that wraps the GeoPandas approach end-to-end.
-    Returns a list of GeoJSON-like feature dicts.
-    """
-    # 1) Complement building heights using the GeoDataFrame approach
-    final_gdf = complement_building_heights_gdf(
-        geojson_data_0,
-        geojson_data_1,
-        primary_id=primary_id,
-        ref_id=ref_id
-    )
-
-    # 2) Convert back to geojson-like dict format
-    updated_features = gdf_to_geojson_dicts(final_gdf, id_col=primary_id)
-    return updated_features
-
-def load_geojsons_from_multiple_gz(file_paths):
-    """
-    Load GeoJSON features from multiple gzipped files.
+    Load GeoJSON features from multiple gzipped files into a GeoDataFrame.
     
     Args:
         file_paths (list): List of paths to gzipped GeoJSON files
         
     Returns:
-        list: Combined list of GeoJSON features from all files
+        gpd.GeoDataFrame: GeoDataFrame containing features from all files
     """
     geojson_objects = []
     for gz_file_path in file_paths:
@@ -539,7 +528,15 @@ def load_geojsons_from_multiple_gz(file_paths):
                     geojson_objects.append(data)
                 except json.JSONDecodeError as e:
                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
-    return geojson_objects
+    
+    # Convert list of GeoJSON features to GeoDataFrame
+    # swap_coordinates(geojson_objects)
+    gdf = gpd.GeoDataFrame.from_features(geojson_objects)
+    
+    # Set CRS to WGS84 which is typically used for these files
+    gdf.set_crs(epsg=4326, inplace=True)
+    
+    return gdf
 
 def filter_buildings(geojson_data, plotting_box):
     """
@@ -573,24 +570,19 @@ def filter_buildings(geojson_data, plotting_box):
             print(f"Skipping feature due to geometry error: {e}")
     return filtered_features
 
-def extract_building_heights_from_geotiff(geotiff_path, geojson_data):
+def extract_building_heights_from_geotiff(geotiff_path, gdf):
     """
-    Extract building heights from a GeoTIFF raster for GeoJSON building footprints.
+    Extract building heights from a GeoTIFF raster for building footprints in a GeoDataFrame.
     
     Args:
         geotiff_path (str): Path to the GeoTIFF height raster
-        geojson_data (Union[str, list]): GeoJSON features or JSON string of features
+        gdf (gpd.GeoDataFrame): GeoDataFrame containing building footprints
         
     Returns:
-        Union[str, list]: Updated GeoJSON features with extracted heights in same format as input
+        gpd.GeoDataFrame: Updated GeoDataFrame with extracted heights
     """
-    # Handle input format - convert string to object if needed
-    if isinstance(geojson_data, str):
-        geojson = json.loads(geojson_data)
-        input_was_string = True
-    else:
-        geojson = geojson_data
-        input_was_string = False
+    # Make a copy to avoid modifying the input
+    gdf = gdf.copy()
 
     # Initialize counters for statistics
     count_0 = 0  # Buildings without height
@@ -602,48 +594,43 @@ def extract_building_heights_from_geotiff(geotiff_path, geojson_data):
         # Create coordinate transformer from WGS84 to raster CRS
         transformer = Transformer.from_crs(CRS.from_epsg(4326), src.crs, always_xy=True)
 
-        # Process each building feature
-        for feature in geojson:
-            if (feature['geometry']['type'] == 'Polygon') & (feature['properties']['height']<=0):
-                count_0 += 1
-                # Transform coordinates from (lon, lat) to raster CRS
-                coords = feature['geometry']['coordinates'][0]
-                transformed_coords = [transformer.transform(lon, lat) for lon, lat in coords]
+        # Filter buildings that need height processing
+        mask_condition = (gdf.geometry.geom_type == 'Polygon') & (gdf.get('height', 0) <= 0)
+        buildings_to_process = gdf[mask_condition]
+        count_0 = len(buildings_to_process)
+
+        for idx, row in buildings_to_process.iterrows():
+            # Transform geometry to raster CRS
+            coords = list(row.geometry.exterior.coords)
+            transformed_coords = [transformer.transform(lon, lat) for lon, lat in coords]
+            polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
+            
+            try:
+                # Extract height values from raster within polygon
+                masked_data, _ = rasterio.mask.mask(src, [polygon], crop=True, all_touched=True)
+                heights = masked_data[0][masked_data[0] != src.nodata]
                 
-                # Create polygon in raster CRS
-                polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
-                
-                try:
-                    # Extract height values from raster within polygon
-                    masked, mask_transform = mask(src, [polygon], crop=True, all_touched=True)
-                    heights = masked[0][masked[0] != src.nodata]
-                    
-                    # Calculate average height if valid samples exist
-                    if len(heights) > 0:
-                        count_1 += 1
-                        avg_height = np.mean(heights)
-                        feature['properties']['height'] = float(avg_height)
-                    else:
-                        count_2 += 1
-                        feature['properties']['height'] = 10
-                        print(f"No valid height data for feature: {feature['properties']}")
-                except ValueError as e:
-                    print(f"Error processing feature: {feature['properties']}. Error: {str(e)}")
-                    feature['properties']['extracted_height'] = None
+                # Calculate average height if valid samples exist
+                if len(heights) > 0:
+                    count_1 += 1
+                    gdf.at[idx, 'height'] = float(np.mean(heights))
+                else:
+                    count_2 += 1
+                    gdf.at[idx, 'height'] = 10
+                    print(f"No valid height data for building at index {idx}")
+            except ValueError as e:
+                print(f"Error processing building at index {idx}. Error: {str(e)}")
+                gdf.at[idx, 'height'] = None
 
     # Print statistics about height updates
     if count_0 > 0:
-        print(f"{count_0} of the total {len(geojson_data)} building footprint from OSM did not have height data.")
+        print(f"{count_0} of the total {len(gdf)} building footprint from OSM did not have height data.")
         print(f"For {count_1} of these building footprints without height, values from Open Building 2.5D Temporal were assigned.")
         print(f"For {count_2} of these building footprints without height, no data exist in Open Building 2.5D Temporal. Height values of 10m were set instead")
 
-    # Return result in same format as input
-    if input_was_string:
-        return json.dumps(geojson, indent=2)
-    else:
-        return geojson
+    return gdf
 
-def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
+def get_gdf_from_gpkg(gpkg_path, rectangle_vertices):
     """
     Read a GeoPackage file and convert it to GeoJSON format within a bounding rectangle.
     
@@ -657,8 +644,18 @@ def get_geojson_from_gpkg(gpkg_path, rectangle_vertices):
     # Open and read the GPKG file
     print(f"Opening GPKG file: {gpkg_path}")
     gdf = gpd.read_file(gpkg_path)
-    geojson = filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices)
-    return geojson
+
+    # Only set CRS if not already set
+    if gdf.crs is None:
+        gdf.set_crs(epsg=4326, inplace=True)
+    # Transform to WGS84 if needed
+    elif gdf.crs != "EPSG:4326":
+        gdf = gdf.to_crs(epsg=4326)
+
+    # Replace id column with index numbers
+    gdf['id'] = gdf.index
+    
+    return gdf
 
 def swap_coordinates(features):
     """
@@ -702,12 +699,12 @@ def save_geojson(features, save_path):
     with open(save_path, 'w') as f:
         json.dump(geojson, f, indent=2)
 
-def find_building_containing_point(features, target_point):
+def find_building_containing_point(building_gdf, target_point):
     """
     Find building IDs that contain a given point.
     
     Args:
-        features (list): List of GeoJSON feature dictionaries
+        building_gdf (GeoDataFrame): GeoDataFrame containing building geometries and IDs
         target_point (tuple): Tuple of (lon, lat)
         
     Returns:
@@ -717,42 +714,29 @@ def find_building_containing_point(features, target_point):
     point = Point(target_point[0], target_point[1])
     
     id_list = []
-    for feature in features:
-        # Get polygon coordinates and convert to Shapely polygon
-        coords = feature['geometry']['coordinates'][0]
-        polygon = Polygon(coords)
-        
+    for idx, row in building_gdf.iterrows():
+        # Skip any geometry that is not Polygon
+        if not isinstance(row.geometry, Polygon):
+            continue
+            
         # Check if point is within polygon
-        if polygon.contains(point):
-            id_list.append(feature['properties']['id'])
+        if row.geometry.contains(point):
+            id_list.append(row.get('id', None))
     
     return id_list
 
-def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices, 
+def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices, 
                                    operation='within'):
     """
-    Given a list of building footprints and a set of drawn polygon 
+    Given a GeoDataFrame of building footprints and a set of drawn polygon 
     vertices (in lon, lat), return the building IDs that fall within or 
     intersect the drawn polygon.
 
     Args:
-        building_geojson (list): 
-            A list of GeoJSON features, each feature is a dict with:
-            {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [lon1, lat1], [lon2, lat2], ...
-                        ]
-                    ]
-                },
-                "properties": {
-                    "id": ...
-                    ...
-                }
-            }
+        building_gdf (GeoDataFrame): 
+            A GeoDataFrame containing building footprints with:
+            - geometry column containing Polygon geometries
+            - id column containing building IDs
 
         drawn_polygon_vertices (list): 
             A list of (lon, lat) tuples representing the polygon drawn by the user.
@@ -771,25 +755,19 @@ def get_buildings_in_drawn_polygon(building_geojson, drawn_polygon_vertices,
 
     included_building_ids = []
 
-    # Check each building in the GeoJSON
-    for feature in building_geojson:
-        # Skip any feature that is not Polygon
-        if feature['geometry']['type'] != 'Polygon':
+    # Check each building in the GeoDataFrame
+    for idx, row in building_gdf.iterrows():
+        # Skip any geometry that is not Polygon
+        if not isinstance(row.geometry, Polygon):
             continue
-
-        # Extract coordinates
-        coords = feature['geometry']['coordinates'][0]
-
-        # Create a Shapely polygon for the building
-        building_polygon = Polygon(coords)
 
         # Depending on the operation, check the relationship
         if operation == 'intersect':
-            if building_polygon.intersects(drawn_polygon_shapely):
-                included_building_ids.append(feature['properties'].get('id', None))
+            if row.geometry.intersects(drawn_polygon_shapely):
+                included_building_ids.append(row.get('id', None))
         elif operation == 'within':
-            if building_polygon.within(drawn_polygon_shapely):
-                included_building_ids.append(feature['properties'].get('id', None))
+            if row.geometry.within(drawn_polygon_shapely):
+                included_building_ids.append(row.get('id', None))
         else:
             raise ValueError("operation must be 'intersect' or 'within'")
 

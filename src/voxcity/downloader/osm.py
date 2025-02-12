@@ -7,9 +7,6 @@ processing the responses, and converting them to standardized GeoJSON format wit
 """
 
 import requests
-from shapely.geometry import Polygon
-# Import libraries
-import requests
 from osm2geojson import json2geojson
 from shapely.geometry import Polygon, shape, mapping
 from shapely.ops import transform
@@ -21,15 +18,17 @@ from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import transform
 import pyproj
 from osm2geojson import json2geojson
+import pandas as pd
+import geopandas as gpd
 
-def load_geojsons_from_openstreetmap(rectangle_vertices):
+def load_gdf_from_openstreetmap(rectangle_vertices):
     """Download and process building footprint data from OpenStreetMap.
     
     Args:
         rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
         
     Returns:
-        list: List of GeoJSON features containing building footprints with standardized properties
+        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with standardized properties
     """
     # Create a bounding box from the rectangle vertices
     min_lon = min(v[0] for v in rectangle_vertices)
@@ -61,7 +60,7 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
     for element in data['elements']:
         id_map[(element['type'], element['id'])] = element
     
-    # Process the response and create GeoJSON features
+    # Process the response and create features list
     features = []
     
     def process_coordinates(geometry):
@@ -210,8 +209,20 @@ def load_geojsons_from_openstreetmap(rectangle_vertices):
                         if feature:
                             feature['properties']['role'] = member['role']
                             features.append(feature)
+    
+    # Convert features list to GeoDataFrame
+    if not features:
+        return gpd.GeoDataFrame()
         
-    return features
+    geometries = []
+    properties_list = []
+    
+    for feature in features:
+        geometries.append(shape(feature['geometry']))
+        properties_list.append(feature['properties'])
+        
+    gdf = gpd.GeoDataFrame(properties_list, geometry=geometries, crs="EPSG:4326")
+    return gdf
 
 def convert_feature(feature):
     """Convert a GeoJSON feature to the desired format with height information.
@@ -466,14 +477,14 @@ def swap_coordinates(geom_mapping):
     geom_mapping['coordinates'] = swap_coords(coords)
     return geom_mapping
 
-def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
+def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     """Load land cover data from OpenStreetMap within a given rectangular area.
     
     Args:
         rectangle_vertices_ori (list): List of (lon, lat) coordinates defining the rectangle
         
     Returns:
-        list: List of GeoJSON features with land cover classifications
+        GeoDataFrame: GeoDataFrame containing land cover classifications
     """
     # Close the rectangle polygon by adding first vertex at the end
     rectangle_vertices = rectangle_vertices_ori.copy()
@@ -558,8 +569,9 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
     project = pyproj.Transformer.from_crs(wgs84, aea, always_xy=True).transform
     project_back = pyproj.Transformer.from_crs(aea, wgs84, always_xy=True).transform
 
-    # Process and filter features
-    filtered_features = []
+    # Lists to store geometries and properties for GeoDataFrame
+    geometries = []
+    properties = []
 
     for feature in geojson_data['features']:
         # Convert feature geometry to shapely object
@@ -621,31 +633,15 @@ def load_land_cover_geojson_from_osm(rectangle_vertices_ori):
         if geom.is_empty:
             continue
 
-        # Convert geometry to GeoJSON feature
+        # Add geometries and properties
         if geom.geom_type == 'Polygon':
-            # Create single polygon feature
-            geom_mapping = mapping(geom)
-            geom_mapping = swap_coordinates(geom_mapping)
-            new_feature = {
-                'type': 'Feature',
-                'properties': {
-                    'class': classification_name
-                },
-                'geometry': geom_mapping
-            }
-            filtered_features.append(new_feature)
+            geometries.append(geom)
+            properties.append({'class': classification_name})
         elif geom.geom_type == 'MultiPolygon':
-            # Split into separate polygon features
             for poly in geom.geoms:
-                geom_mapping = mapping(poly)
-                geom_mapping = swap_coordinates(geom_mapping)
-                new_feature = {
-                    'type': 'Feature',
-                    'properties': {
-                        'class': classification_name
-                    },
-                    'geometry': geom_mapping
-                }
-                filtered_features.append(new_feature)
+                geometries.append(poly)
+                properties.append({'class': classification_name})
 
-    return filtered_features
+    # Create GeoDataFrame
+    gdf = gpd.GeoDataFrame(properties, geometry=geometries, crs="EPSG:4326")
+    return gdf

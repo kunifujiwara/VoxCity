@@ -167,7 +167,7 @@ from voxcity import get_voxcity
 
 voxcity_grid, building_height_grid, building_min_height_grid, \
 building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
-building_geojson = get_voxcity(
+building_gdf = get_voxcity(
     rectangle_vertices,
     building_source,
     land_cover_source,
@@ -352,7 +352,7 @@ landmark_kwargs = {
     "output_directory": "output",             # Directory to save output files
     "output_file_name": "landmark_visibility" # Base filename for outputs
 }
-landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
+landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, building_gdf, meshsize, **landmark_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">

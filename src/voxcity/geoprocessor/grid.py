@@ -13,6 +13,7 @@ from shapely.geometry import box
 from scipy.interpolate import griddata
 from shapely.errors import GEOSException
 import geopandas as gpd
+from rtree import index
 
 from .utils import (
     initialize_geod,
@@ -24,8 +25,8 @@ from .utils import (
 from ..geoprocessor.polygon import (
     filter_buildings, 
     extract_building_heights_from_geotiff, 
-    extract_building_heights_from_geojson,
-    complement_building_heights_from_geojson
+    extract_building_heights_from_gdf,
+    complement_building_heights_from_gdf
 )
 from ..utils.lc import (
     get_class_priority, 
@@ -304,11 +305,11 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     # Flip grid vertically to match geographic orientation
     return np.flipud(grid)
     
-def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, rectangle_vertices):
-    """Create a grid of land cover classes from GeoJSON polygon data.
+def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices):
+    """Create a grid of land cover classes from GeoDataFrame polygon data.
 
     Args:
-        geojson_data (dict): GeoJSON data containing land cover polygons
+        gdf (GeoDataFrame): GeoDataFrame containing land cover polygons
         meshsize (float): Size of each grid cell in meters
         source (str): Source of the land cover data to determine class priorities
         rectangle_vertices (list): List of 4 (lon,lat) coordinate pairs defining the rectangle bounds
@@ -366,7 +367,13 @@ def create_land_cover_grid_from_geojson_polygon(geojson_data, meshsize, source, 
     plotting_box = box(extent[2], extent[0], extent[3], extent[1])
 
     # Create spatial index for efficient polygon lookup
-    land_cover_polygons, idx = create_land_cover_polygons(geojson_data) 
+    land_cover_polygons = []
+    idx = index.Index()
+    for i, row in gdf.iterrows():
+        polygon = row.geometry
+        land_cover_class = row['class']
+        land_cover_polygons.append((polygon, land_cover_class))
+        idx.insert(i, polygon.bounds)
 
     # Iterate through each grid cell
     for i in range(grid_size[0]):
@@ -467,160 +474,261 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
 
     return np.flipud(grid)
 
-def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=None, geotiff_path_comp=None, complement_building_footprints=None):
+def create_building_height_grid_from_gdf_polygon(
+    gdf,
+    meshsize,
+    rectangle_vertices,
+    gdf_comp=None,
+    geotiff_path_comp=None,
+    complement_building_footprints=None
+):
     """
-    Create a building height grid from GeoJSON data within a polygon boundary.
+    Create a building height grid from GeoDataFrame data within a polygon boundary.
     
     Args:
-        geojson_data (dict): GeoJSON data containing building information
+        gdf (geopandas.GeoDataFrame): GeoDataFrame containing building information
         meshsize (float): Size of mesh cells
         rectangle_vertices (list): List of rectangle vertices defining the boundary
-        geojson_data_comp (dict, optional): Complementary GeoJSON data
+        gdf_comp (geopandas.GeoDataFrame, optional): Complementary GeoDataFrame
         geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
-        complement_building_footprints (bool, optional): Whether to complement building footprints
-        
+        complement_building_footprints (bool, optional): Whether to complement footprints
+
     Returns:
         tuple: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
             - building_height_grid (numpy.ndarray): Grid of building heights
-            - building_min_height_grid (numpy.ndarray): Grid of minimum building heights
+            - building_min_height_grid (numpy.ndarray): Grid of min building heights (list per cell)
             - building_id_grid (numpy.ndarray): Grid of building IDs
-            - filtered_buildings (list): List of filtered building features
+            - filtered_buildings (geopandas.GeoDataFrame): The buildings used (filtered_gdf)
     """
-    # Initialize geodesic calculator and extract vertices
+    # --------------------------------------------------------------------------
+    # 1) INITIAL SETUP AND DATA FILTERING
+    # --------------------------------------------------------------------------
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
 
-    # Calculate distances between vertices
+    # Distances for each side
     dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
     dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
 
-    # Calculate normalized vectors for grid orientation
+    # Normalized vectors
     side_1 = np.array(vertex_1) - np.array(vertex_0)
     side_2 = np.array(vertex_3) - np.array(vertex_0)
     u_vec = normalize_to_one_meter(side_1, dist_side_1)
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
-    # Set up grid parameters
+    # Grid parameters
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
     # Initialize output grids
     building_height_grid = np.zeros(grid_size)
     building_id_grid = np.zeros(grid_size)
+    # Use a Python list-of-lists or object array for min_height tracking
     building_min_height_grid = np.empty(grid_size, dtype=object)
-    
-    # Initialize min height grid with empty lists
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             building_min_height_grid[i, j] = []
 
-    # Create bounding box for filtering buildings
-    extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
-              min(coord[0] for coord in rectangle_vertices), max(coord[0] for coord in rectangle_vertices)]
+    # Filter the input GeoDataFrame by bounding box
+    extent = [
+        min(coord[1] for coord in rectangle_vertices),
+        max(coord[1] for coord in rectangle_vertices),
+        min(coord[0] for coord in rectangle_vertices),
+        max(coord[0] for coord in rectangle_vertices)
+    ]
     plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+    filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
 
-    # Filter and process buildings
-    filtered_buildings = filter_buildings(geojson_data, plotting_box)
-
-    # Handle complementary data sources
-    if geojson_data_comp:
-        filtered_geojson_data_comp = filter_buildings(geojson_data_comp, plotting_box)
+    # Optionally merge heights from complementary sources
+    if gdf_comp is not None:
+        filtered_gdf_comp = gdf_comp[gdf_comp.geometry.intersects(plotting_box)].copy()
         if complement_building_footprints:
-            filtered_buildings_comp = complement_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
+            filtered_gdf = complement_building_heights_gdf(filtered_gdf, filtered_gdf_comp)
         else:
-            filtered_buildings_comp = extract_building_heights_from_geojson(filtered_buildings, filtered_geojson_data_comp)
+            filtered_gdf = extract_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
     elif geotiff_path_comp:
-        filtered_buildings_comp = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_buildings)
-    else:
-        filtered_buildings_comp = filtered_buildings
+        filtered_gdf = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_gdf)
 
-    # Create building polygons and spatial index
-    building_polygons, idx = create_building_polygons(filtered_buildings_comp)
+    # --------------------------------------------------------------------------
+    # 2) PREPARE BUILDING POLYGONS & SPATIAL INDEX
+    #    - fix geometries if needed
+    #    - store bounding boxes
+    # --------------------------------------------------------------------------
+    building_polygons = []
+    for idx_b, row in filtered_gdf.iterrows():
+        polygon = row.geometry
+        height = row.get('height', None)
+        min_height = row.get('min_height', 0)
+        is_inner = row.get('is_inner', False)
+        feature_id = row.get('id', idx_b)
 
-    # Process each grid cell
+        # Fix invalid geometry (buffer(0) or simplify if needed)
+        # Doing this once per building avoids repeated overhead per cell.
+        if not polygon.is_valid:
+            try:
+                # Attempt simple fix
+                polygon = polygon.buffer(0)
+                if not polygon.is_valid:
+                    # Attempt a small simplify if buffer(0) didn't fix it
+                    polygon = polygon.simplify(1e-8)
+            except Exception as e:
+                # If still invalid, we keep it as-is; intersection attempts
+                # will be caught in the main loop's try/except
+                pass
+
+        bounding_box = polygon.bounds  # (minx, miny, maxx, maxy)
+        building_polygons.append(
+            (
+                polygon,
+                bounding_box,
+                height,
+                min_height,
+                is_inner,
+                feature_id
+            )
+        )
+
+    # Build R-tree index using bounding boxes
+    idx = index.Index()
+    for i_b, (poly, bbox, _, _, _, _) in enumerate(building_polygons):
+        idx.insert(i_b, bbox)
+
+    # --------------------------------------------------------------------------
+    # 3) MAIN GRID LOOP
+    # --------------------------------------------------------------------------
+    INTERSECTION_THRESHOLD = 0.3
+
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
+            # Create the cell polygon once
             cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
-            # Ensure cell geometry is valid
             if not cell.is_valid:
                 cell = cell.buffer(0)
-            
-            # Get potential intersecting buildings using spatial index
-            potential_intersections = list(idx.intersection(cell.bounds))
-            
-            if not potential_intersections:
+
+            cell_area = cell.area  # reused for intersection ratio checks
+
+            # Find possible intersections from the index
+            potential = list(idx.intersection(cell.bounds))
+            if not potential:
                 continue
-                
-            # Sort buildings by height for proper layering
-            cell_buildings = [(k, building_polygons[k]) for k in potential_intersections]
-            cell_buildings.sort(key=lambda x: x[1][1] if x[1][1] is not None else -float('inf'), reverse=True)
-            
-            # Track intersection status
+
+            # Sort buildings by height descending
+            # (height=None => treat as -inf so it sorts last)
+            cell_buildings = []
+            for k in potential:
+                bpoly, bbox, height, minh, inr, fid = building_polygons[k]
+                # We only sort by height for a stable layering
+                sort_val = height if (height is not None) else -float('inf')
+                cell_buildings.append((k, bpoly, bbox, height, minh, inr, fid, sort_val))
+
+            cell_buildings.sort(key=lambda x: x[-1], reverse=True)
+
             found_intersection = False
             all_zero_or_nan = True
-            
-            # Process each potential building intersection
-            for k, (polygon, height, min_height, is_inner, feature_id) in cell_buildings:
+
+            for (
+                k,
+                polygon,
+                bbox,
+                height,
+                min_height,
+                is_inner,
+                feature_id,
+                _
+            ) in cell_buildings:
                 try:
+                    # Quick bounding-box check to skip expensive geometry intersection
+                    # if bounding boxes cannot possibly meet the threshold
+                    # --------------------------------------------------------
+                    minx_p, miny_p, maxx_p, maxy_p = bbox
+                    minx_c, miny_c, maxx_c, maxy_c = cell.bounds
+
+                    # Overlap bounding box
+                    overlap_minx = max(minx_p, minx_c)
+                    overlap_miny = max(miny_p, miny_c)
+                    overlap_maxx = min(maxx_p, maxx_c)
+                    overlap_maxy = min(maxy_p, maxy_c)
+
+                    if (overlap_maxx <= overlap_minx) or (overlap_maxy <= overlap_miny):
+                        # No bounding-box overlap => skip
+                        continue
+
+                    # Area of bounding-box intersection
+                    bbox_intersect_area = (overlap_maxx - overlap_minx) * (overlap_maxy - overlap_miny)
+                    if bbox_intersect_area < INTERSECTION_THRESHOLD * cell_area:
+                        # Even if the polygons overlap, they can't exceed threshold
+                        continue
+                    # --------------------------------------------------------
+
                     # Ensure valid geometry
                     if not polygon.is_valid:
                         polygon = polygon.buffer(0)
-                    
-                    # Check for intersection
+                        # If still invalid, let intersection attempt fail
+
                     if cell.intersects(polygon):
                         intersection = cell.intersection(polygon)
-                        intersection_ratio = intersection.area / cell.area
-                        
-                        INTERSECTION_THRESHOLD = 0.3
-                        
-                        if intersection_ratio > INTERSECTION_THRESHOLD:
+                        inter_area = intersection.area
+
+                        # If the fraction of cell covered > threshold
+                        if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                             found_intersection = True
-                            
+
+                            # If not an inner courtyard
                             if not is_inner:
-                                # Store building information
                                 building_min_height_grid[i, j].append([min_height, height])
                                 building_id_grid[i, j] = feature_id
-                                
-                                # Update height if valid
-                                has_valid_height = height is not None and not np.isnan(height) and height > 0
-                                if has_valid_height:
+
+                                # Update building height if valid
+                                if (
+                                    height is not None
+                                    and not np.isnan(height)
+                                    and height > 0
+                                ):
                                     all_zero_or_nan = False
-                                    
                                     current_height = building_height_grid[i, j]
-                                    if (current_height == 0 or 
-                                        current_height < height or 
-                                        np.isnan(current_height)):
+
+                                    # Replace if we had 0, nan, or smaller height
+                                    if (
+                                        current_height == 0
+                                        or np.isnan(current_height)
+                                        or current_height < height
+                                    ):
                                         building_height_grid[i, j] = height
+
                             else:
-                                # Handle inner courtyards
+                                # Inner courtyards => override with 0
                                 building_min_height_grid[i, j] = [[0, 0]]
                                 building_height_grid[i, j] = 0
                                 found_intersection = True
                                 all_zero_or_nan = False
+                                # Because it's an inner courtyard, we can break
                                 break
-                                
+
                 except (GEOSException, ValueError) as e:
-                    # Attempt to fix topology errors
+                    # Attempt to fix in a fallback
                     try:
                         simplified_polygon = polygon.simplify(1e-8)
                         if simplified_polygon.is_valid:
                             intersection = cell.intersection(simplified_polygon)
-                            intersection_ratio = intersection.area / cell.area
-                            
-                            if intersection_ratio > INTERSECTION_THRESHOLD:
+                            inter_area = intersection.area
+
+                            if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                                 found_intersection = True
-                                
                                 if not is_inner:
                                     building_min_height_grid[i, j].append([min_height, height])
                                     building_id_grid[i, j] = feature_id
-                                    
-                                    has_valid_height = height is not None and not np.isnan(height) and height > 0
-                                    if has_valid_height:
+
+                                    if (
+                                        height is not None
+                                        and not np.isnan(height)
+                                        and height > 0
+                                    ):
                                         all_zero_or_nan = False
-                                        
-                                        if (building_height_grid[i, j] == 0 or 
-                                            building_height_grid[i, j] < height or 
-                                            np.isnan(building_height_grid[i, j])):
+                                        if (
+                                            building_height_grid[i, j] == 0
+                                            or np.isnan(building_height_grid[i, j])
+                                            or building_height_grid[i, j] < height
+                                        ):
                                             building_height_grid[i, j] = height
                                 else:
                                     building_min_height_grid[i, j] = [[0, 0]]
@@ -629,14 +737,15 @@ def create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rec
                                     all_zero_or_nan = False
                                     break
                     except Exception as fix_error:
+                        # Log and skip
                         print(f"Failed to process cell ({i}, {j}) - Building {k}: {str(fix_error)}")
                         continue
-            
-            # Set cell to NaN if all intersecting buildings had zero/NaN height
+
+            # If we found intersecting buildings but all were zero/NaN, mark as NaN
             if found_intersection and all_zero_or_nan:
                 building_height_grid[i, j] = np.nan
 
-    return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
+    return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
 def create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir):        
     """
@@ -671,7 +780,7 @@ def create_building_height_grid_from_open_building_temporal_polygon(meshsize, re
                 building_min_height_grid[i, j] = [[0, building_height_grid[i, j]]]
     
     # Create building ID grid with sequential numbering for non-zero heights
-    filtered_buildings = []
+    filtered_buildings = gpd.GeoDataFrame()
     building_id_grid = np.zeros_like(building_height_grid, dtype=int)        
     non_zero_positions = np.nonzero(building_height_grid)        
     sequence = np.arange(1, len(non_zero_positions[0]) + 1)        

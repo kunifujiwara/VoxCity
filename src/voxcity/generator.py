@@ -18,12 +18,12 @@ import numpy as np
 import os
 
 # Local application/library specific imports
-from .downloader.mbfp import get_mbfp_geojson
-from .downloader.osm import load_geojsons_from_openstreetmap, load_land_cover_geojson_from_osm
+from .downloader.mbfp import get_mbfp_gdf
+from .downloader.osm import load_gdf_from_openstreetmap, load_land_cover_gdf_from_osm
 from .downloader.oemj import save_oemj_as_geotiff
-from .downloader.omt import load_geojsons_from_openmaptiles
-from .downloader.eubucco import load_geojson_from_eubucco
-from .downloader.overture import load_geojsons_from_overture
+from .downloader.omt import load_gdf_from_openmaptiles
+from .downloader.eubucco import load_gdf_from_eubucco
+from .downloader.overture import load_gdf_from_overture
 from .downloader.gee import (
     initialize_earth_engine,
     get_roi,
@@ -41,13 +41,13 @@ from .geoprocessor.grid import (
     process_grid,
     create_land_cover_grid_from_geotiff_polygon,
     create_height_grid_from_geotiff_polygon,
-    create_building_height_grid_from_geojson_polygon,
+    create_building_height_grid_from_gdf_polygon,
     create_dem_grid_from_geotiff_polygon,
-    create_land_cover_grid_from_geojson_polygon,
+    create_land_cover_grid_from_gdf_polygon,
     create_building_height_grid_from_open_building_temporal_polygon
 )
 from .utils.lc import convert_land_cover, convert_land_cover_array
-from .geoprocessor.polygon import get_geojson_from_gpkg, save_geojson
+from .geoprocessor.polygon import get_gdf_from_gpkg, save_geojson
 from .utils.visualization import (
     get_land_cover_classes,
     visualize_land_cover_grid,
@@ -108,14 +108,14 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         save_oemj_as_geotiff(rectangle_vertices, geotiff_path)   
     elif source == 'OpenStreetMap':
         # For OSM, we get data directly as GeoJSON instead of GeoTIFF
-        land_cover_geojson = load_land_cover_geojson_from_osm(rectangle_vertices)
+        land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
     
     # Get mapping of land cover classes for the selected source
     land_cover_classes = get_land_cover_classes(source)
 
     # Create grid from either GeoJSON (OSM) or GeoTIFF (other sources)
     if source == 'OpenStreetMap':
-        land_cover_grid_str = create_land_cover_grid_from_geojson_polygon(land_cover_geojson, meshsize, source, rectangle_vertices)
+        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, source, rectangle_vertices)
     else:
         land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
 
@@ -165,23 +165,23 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     
     # Get building data from primary source
     if source == 'Microsoft Building Footprints':
-        geojson_data = get_mbfp_geojson(output_dir, rectangle_vertices)
+        gdf = get_mbfp_gdf(output_dir, rectangle_vertices)
     elif source == 'OpenStreetMap':
-        geojson_data = load_geojsons_from_openstreetmap(rectangle_vertices)
+        gdf = load_gdf_from_openstreetmap(rectangle_vertices)
     elif source == "Open Building 2.5D Temporal":
         # Special case: directly creates grids without intermediate GeoJSON
         building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
     elif source == 'EUBUCCO v0.1':
-        geojson_data = load_geojson_from_eubucco(rectangle_vertices, output_dir)
+        gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir)
     elif source == "OpenMapTiles":
-        geojson_data = load_geojsons_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+        gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
     elif source == "Overture":
-        geojson_data = load_geojsons_from_overture(rectangle_vertices)
+        gdf = load_gdf_from_overture(rectangle_vertices)
     elif source == "Local file":
         # Handle local GPKG files
         _, extension = os.path.splitext(kwargs["building_path"])
         if extension == ".gpkg":
-            geojson_data = get_geojson_from_gpkg(kwargs["building_path"], rectangle_vertices)
+            gdf = get_gdf_from_gpkg(kwargs["building_path"], rectangle_vertices)
     
     # Check for complementary building data source
     building_complementary_source = kwargs.get("building_complementary_source") 
@@ -189,7 +189,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     if (building_complementary_source is None) or (building_complementary_source=='None'):
         # Use only primary source
         if source != "Open Building 2.5D Temporal":
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices)
     else:
         # Handle complementary source
         if building_complementary_source == "Open Building 2.5D Temporal":
@@ -198,29 +198,29 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
             os.makedirs(output_dir, exist_ok=True)
             geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
             save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
         else:
             # Get complementary data from other sources
             if building_complementary_source == 'Microsoft Building Footprints':
-                geojson_data_comp = get_mbfp_geojson(output_dir, rectangle_vertices)
+                gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices)
             elif building_complementary_source == 'OpenStreetMap':
-                geojson_data_comp = load_geojsons_from_openstreetmap(rectangle_vertices)
+                gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
             elif building_complementary_source == 'OSM Buildings':
-                geojson_data_comp = load_geojsons_from_osmbuildings(rectangle_vertices)
+                gdf_comp = load_gdf_from_osmbuildings(rectangle_vertices)
             elif building_complementary_source == 'EUBUCCO v0.1':
-                geojson_data_comp = load_geojson_from_eubucco(rectangle_vertices, output_dir)
+                gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir)
             elif building_complementary_source == "OpenMapTiles":
-                geojson_data_comp = load_geojsons_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+                gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
             elif building_complementary_source == "Overture":
-                geojson_data_comp = load_geojsons_from_overture(rectangle_vertices)
+                gdf_comp = load_gdf_from_overture(rectangle_vertices)
             elif building_complementary_source == "Local file":
                 _, extension = os.path.splitext(kwargs["building_complementary_path"])
                 if extension == ".gpkg":
-                    geojson_data_comp = get_geojson_from_gpkg(kwargs["building_complementary_path"], rectangle_vertices)
+                    gdf_comp = get_gdf_from_gpkg(kwargs["building_complementary_path"], rectangle_vertices)
             
             # Option to complement footprints only or both footprints and heights
             complement_building_footprints = kwargs.get("complement_building_footprints")
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_geojson_polygon(geojson_data, meshsize, rectangle_vertices, geojson_data_comp=geojson_data_comp, complement_building_footprints=complement_building_footprints)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=gdf_comp, complement_building_footprints=complement_building_footprints)
 
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
@@ -552,11 +552,12 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
 
     # Generate all required 2D grids
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
-    building_height_grid, building_min_height_grid, building_id_grid, building_geojson = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
+    building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
     
     # Save building data to GeoJSON
-    save_path = f"{output_dir}/building.geojson"
-    save_geojson(building_geojson, save_path)
+    if not building_gdf.empty:
+        save_path = f"{output_dir}/building.gpkg"
+        building_gdf.to_file(save_path, driver='GPKG')
     
     # Get canopy height data
     canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
@@ -662,7 +663,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
         visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
 
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_geojson
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     """Replace NaN values in a nested array structure with a specified value.

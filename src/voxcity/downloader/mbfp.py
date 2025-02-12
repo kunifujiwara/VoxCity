@@ -10,7 +10,7 @@ import pandas as pd
 import os
 from .utils import download_file
 from ..geoprocessor.utils import tile_from_lat_lon, quadkey_to_tile
-from ..geoprocessor.polygon import load_geojsons_from_multiple_gz, swap_coordinates
+from ..geoprocessor.polygon import load_gdf_from_multiple_gz, swap_coordinates
 
 def get_geojson_links(output_dir):
     """Download and load the dataset links CSV file containing building footprint URLs.
@@ -68,7 +68,7 @@ def find_row_for_location(df, lon, lat):
             print(f"Error processing row {index}: {e}")
     return None
 
-def get_mbfp_geojson(output_dir, rectangle_vertices):
+def get_mbfp_gdf(output_dir, rectangle_vertices):
     """Download and process building footprint data for a rectangular region.
     
     Args:
@@ -98,7 +98,6 @@ def get_mbfp_geojson(output_dir, rectangle_vertices):
             print("No matching row found.")
 
     # Load GeoJSON data from downloaded files and fix coordinate ordering
-    geojson_data = load_geojsons_from_multiple_gz(filenames)
-    swap_coordinates(geojson_data)
+    gdf = load_gdf_from_multiple_gz(filenames)    
 
-    return geojson_data
+    return gdf

@@ -15,8 +15,8 @@ import shapely.ops
 import json
 from pyproj import Transformer
 import json
-
-def load_geojsons_from_openmaptiles(rectangle_vertices, API_KEY):
+import geopandas as gpd
+def load_gdf_from_openmaptiles(rectangle_vertices, API_KEY):
     """Download and process building footprint data from OpenMapTiles vector tiles.
 
     Args:
@@ -24,7 +24,7 @@ def load_geojsons_from_openmaptiles(rectangle_vertices, API_KEY):
         API_KEY: OpenMapTiles API key for authentication
 
     Returns:
-        list: List of GeoJSON features containing building footprints with standardized properties
+        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with standardized properties
     """
     # Extract longitudes and latitudes from vertices to find bounding box
     lons = [coord[0] for coord in rectangle_vertices]
@@ -112,7 +112,14 @@ def load_geojsons_from_openmaptiles(rectangle_vertices, API_KEY):
 
     # Convert features to standardized format with height information
     converted_geojson_data = convert_geojson_format(building_features)
-    return converted_geojson_data
+
+    gdf = gpd.GeoDataFrame.from_features(converted_geojson_data)
+    gdf.set_crs(epsg=4326, inplace=True)
+    
+    # Replace id column with index numbers
+    gdf['id'] = gdf.index
+    
+    return gdf
 
 def get_height_from_properties(properties):
     """Extract building height from properties, using levels if height is not available.

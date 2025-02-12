@@ -179,7 +179,7 @@ def join_gdfs_vertically(gdf1, gdf2):
     
     return combined_gdf
 
-def load_geojsons_from_overture(rectangle_vertices):
+def load_gdf_from_overture(rectangle_vertices):
     """
     Download and process building footprint data from Overture Maps.
     
@@ -199,7 +199,10 @@ def load_geojsons_from_overture(rectangle_vertices):
     # Combine building and building part data into single dataset
     joined_building_gdf = join_gdfs_vertically(building_gdf, building_part_gdf)
 
-    # Convert combined dataset to GeoJSON format
-    geojson_features = convert_gdf_to_geojson(joined_building_gdf)
+    # # Convert combined dataset to GeoJSON format
+    # geojson_features = convert_gdf_to_geojson(joined_building_gdf)
 
-    return geojson_features
+    # Replace id column with index numbers
+    joined_building_gdf['id'] = joined_building_gdf.index
+
+    return joined_building_gdf
