@@ -223,15 +223,16 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
     return m, rectangle_vertices
 
-def display_buildings_and_draw_polygon(building_gdf, zoom=17):
+def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=None, zoom=17):
     """
     Displays building footprints (in Lon-Lat order) on an ipyleaflet map,
     and allows the user to draw a polygon whose vertices are returned
     in a Python list (also in Lon-Lat).
 
     Args:
-        building_gdf (GeoDataFrame): A GeoDataFrame containing building footprints,
-                                   with geometry in [lon, lat] order.
+        building_gdf (GeoDataFrame, optional): A GeoDataFrame containing building footprints,
+                                             with geometry in [lon, lat] order.
+        rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
         zoom (int): Initial zoom level for the map. Default=17.
 
     Returns:
@@ -243,39 +244,48 @@ def display_buildings_and_draw_polygon(building_gdf, zoom=17):
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
     # ---------------------------------------------------------
-    if len(building_gdf) == 0:
-        # Fallback: If no footprints or invalid data, pick a default
-        center_lon, center_lat = -100.0, 40.0
-    else:
+    if rectangle_vertices is not None:
+        # Get bounds from rectangle vertices
+        lons = [v[0] for v in rectangle_vertices]
+        lats = [v[1] for v in rectangle_vertices]
+        min_lon, max_lon = min(lons), max(lons)
+        min_lat, max_lat = min(lats), max(lats)
+        center_lon = (min_lon + max_lon) / 2
+        center_lat = (min_lat + max_lat) / 2
+    elif building_gdf is not None and len(building_gdf) > 0:
         # Get bounds from GeoDataFrame
         bounds = building_gdf.total_bounds  # Returns [minx, miny, maxx, maxy]
         min_lon, min_lat, max_lon, max_lat = bounds
         center_lon = (min_lon + max_lon) / 2
         center_lat = (min_lat + max_lat) / 2
+    else:
+        # Fallback: If no inputs or invalid data, pick a default
+        center_lon, center_lat = -100.0, 40.0
 
     # Create the ipyleaflet map (needs lat,lon)
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
 
     # -----------------------------------------
-    # 2. Add each building footprint to the map
+    # 2. Add building footprints to the map if provided
     # -----------------------------------------
-    for idx, row in building_gdf.iterrows():
-        # Only handle simple Polygons
-        if isinstance(row.geometry, geom.Polygon):
-            # Get coordinates from geometry
-            coords = list(row.geometry.exterior.coords)
-            # Convert to (lat,lon) for ipyleaflet, skip last repeated coordinate
-            lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
+    if building_gdf is not None:
+        for idx, row in building_gdf.iterrows():
+            # Only handle simple Polygons
+            if isinstance(row.geometry, geom.Polygon):
+                # Get coordinates from geometry
+                coords = list(row.geometry.exterior.coords)
+                # Convert to (lat,lon) for ipyleaflet, skip last repeated coordinate
+                lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
 
-            # Create the polygon layer
-            bldg_layer = LeafletPolygon(
-                locations=lat_lon_coords,
-                color="blue",
-                fill_color="blue",
-                fill_opacity=0.2,
-                weight=2
-            )
-            m.add_layer(bldg_layer)
+                # Create the polygon layer
+                bldg_layer = LeafletPolygon(
+                    locations=lat_lon_coords,
+                    color="blue",
+                    fill_color="blue",
+                    fill_opacity=0.2,
+                    weight=2
+                )
+                m.add_layer(bldg_layer)
 
     # -----------------------------------------------------------------
     # 3. Enable drawing of polygons, capturing the vertices in Lon-Lat

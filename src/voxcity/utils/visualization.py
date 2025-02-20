@@ -4,6 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
 import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.cm as cm
 import contextily as ctx
 from shapely.geometry import Polygon
 import plotly.graph_objects as go
@@ -16,6 +17,10 @@ import seaborn as sns
 import random
 import folium
 import math
+import trimesh
+import pyvista as pv
+from IPython.display import display
+import os
 
 from .lc import get_land_cover_classes
 # from ..geo.geojson import filter_buildings
@@ -25,13 +30,18 @@ from ..geoprocessor.grid import (
     create_cell_polygon,
     grid_to_geodataframe
 )
-
 from ..geoprocessor.utils import (
     initialize_geod,
     calculate_distance,
     normalize_to_one_meter,
     setup_transformer,
     transform_coords,
+)
+from ..geoprocessor.mesh import (
+    create_voxel_mesh,
+    create_sim_surface_mesh,
+    create_city_meshes,
+    export_meshes
 )
 from .material import get_material_dict
 
@@ -777,3 +787,447 @@ def visualize_numerical_grid_on_basemap(grid, rectangle_vertices, meshsize, valu
     
     plt.tight_layout()
     plt.show()
+
+def visualize_numerical_grid_gdf_on_basemap(gdf, value_name="value", cmap='viridis', vmin=None, vmax=None,
+                            alpha=0.6, figsize=(12, 8), basemap='CartoDB light',
+                            show_edge=False, edge_color='black', edge_width=0.5):
+    """Visualizes a GeoDataFrame with numerical values on a basemap.
+    
+    Args:
+        gdf: GeoDataFrame containing grid cells with 'geometry' and 'value' columns
+        value_name: Name of the value column and legend label (default: "value")
+        cmap: Colormap to use (default: 'viridis')
+        vmin: Minimum value for colormap scaling (default: None)
+        vmax: Maximum value for colormap scaling (default: None)
+        alpha: Transparency of the grid overlay (default: 0.6)
+        figsize: Figure size in inches (default: (12, 8))
+        basemap: Basemap style (default: 'CartoDB light')
+        show_edge: Whether to show cell edges (default: False)
+        edge_color: Color of cell edges (default: 'black')
+        edge_width: Width of cell edges (default: 0.5)
+    """
+    # Convert to Web Mercator if not already in that CRS
+    if gdf.crs != 'EPSG:3857':
+        gdf_web = gdf.to_crs(epsg=3857)
+    else:
+        gdf_web = gdf
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot the GeoDataFrame
+    gdf_web.plot(column='value',
+                 ax=ax,
+                 alpha=alpha,
+                 cmap=cmap,
+                 vmin=vmin,
+                 vmax=vmax,
+                 legend=True,
+                 legend_kwds={'label': value_name},
+                 edgecolor=edge_color if show_edge else 'none',
+                 linewidth=edge_width if show_edge else 0)
+    
+    # Add basemap
+    basemaps = {
+        'CartoDB dark': ctx.providers.CartoDB.DarkMatter,
+        'CartoDB light': ctx.providers.CartoDB.Positron,
+        'CartoDB voyager': ctx.providers.CartoDB.Voyager,
+        'CartoDB light no labels': ctx.providers.CartoDB.PositronNoLabels,
+        'CartoDB dark no labels': ctx.providers.CartoDB.DarkMatterNoLabels,
+    }
+    ctx.add_basemap(ax, source=basemaps[basemap])
+    
+    # Set title and remove axes
+    ax.set_axis_off()
+    
+    plt.tight_layout()
+    plt.show()
+
+def visualize_point_grid_on_basemap(point_gdf, value_name='value', **kwargs):
+    """Visualizes a point GeoDataFrame on a basemap with colors based on values.
+    
+    Args:
+        point_gdf: GeoDataFrame with point geometries and values
+        value_name: Name of the column containing values to visualize (default: 'value')
+        **kwargs: Optional visualization parameters including:
+            - figsize: Tuple for figure size (default: (12, 8))
+            - colormap: Matplotlib colormap name (default: 'viridis')
+            - markersize: Size of points (default: 20)
+            - alpha: Transparency of points (default: 0.7)
+            - vmin: Minimum value for colormap scaling (default: None)
+            - vmax: Maximum value for colormap scaling (default: None)
+            - title: Plot title (default: None)
+            - basemap_style: Contextily basemap style (default: CartoDB.Positron)
+            - zoom: Basemap zoom level (default: 15)
+            
+    Returns:
+        matplotlib figure and axis objects
+    """
+    import matplotlib.pyplot as plt
+    import contextily as ctx
+    
+    # Set default parameters
+    defaults = {
+        'figsize': (12, 8),
+        'colormap': 'viridis',
+        'markersize': 20,
+        'alpha': 0.7,
+        'vmin': None,
+        'vmax': None,
+        'title': None,
+        'basemap_style': ctx.providers.CartoDB.Positron,
+        'zoom': 15
+    }
+    
+    # Update defaults with provided kwargs
+    settings = {**defaults, **kwargs}
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=settings['figsize'])
+    
+    # Convert to Web Mercator for basemap compatibility
+    point_gdf_web = point_gdf.to_crs(epsg=3857)
+    
+    # Plot points
+    scatter = point_gdf_web.plot(
+        column=value_name,
+        ax=ax,
+        cmap=settings['colormap'],
+        markersize=settings['markersize'],
+        alpha=settings['alpha'],
+        vmin=settings['vmin'],
+        vmax=settings['vmax'],
+        legend=True,
+        legend_kwds={
+            'label': value_name,
+            'orientation': 'vertical',
+            'shrink': 0.8
+        }
+    )
+    
+    # Add basemap
+    ctx.add_basemap(
+        ax,
+        source=settings['basemap_style'],
+        zoom=settings['zoom']
+    )
+    
+    # Set title if provided
+    if settings['title']:
+        plt.title(settings['title'])
+    
+    # Remove axes
+    ax.set_axis_off()
+    
+    # Adjust layout to prevent colorbar cutoff
+    plt.tight_layout()
+    plt.show()
+
+def create_multi_view_scene(meshes, output_directory="output", projection_type="perspective", distance_factor=1.0):
+    """
+    Create multiple views of the scene from different angles.
+    
+    Args:
+        meshes: Dictionary of meshes to visualize
+        output_directory: Directory to save output images
+        projection_type: Either "perspective" or "orthographic" (default: "perspective")
+    """
+    # Compute overall bounding box across all meshes
+    vertices_list = [mesh.vertices for mesh in meshes.values()]
+    all_vertices = np.vstack(vertices_list)
+    bbox = np.array([
+        [all_vertices[:, 0].min(), all_vertices[:, 1].min(), all_vertices[:, 2].min()],
+        [all_vertices[:, 0].max(), all_vertices[:, 1].max(), all_vertices[:, 2].max()]
+    ])
+
+    # Compute the center and diagonal of the bounding box
+    center = (bbox[1] + bbox[0]) / 2
+    diagonal = np.linalg.norm(bbox[1] - bbox[0])
+
+    # Adjust distance based on projection type
+    if projection_type.lower() == "orthographic":
+        distance = diagonal * 5  # Increase distance for orthographic to capture full scene
+    else:
+        distance = diagonal * 1.8 * distance_factor  # Original distance for perspective
+
+    # Define the isometric viewing angles
+    iso_angles = {
+        'iso_front_right': (1, 1, 0.7),
+        'iso_front_left': (-1, 1, 0.7),
+        'iso_back_right': (1, -1, 0.7),
+        'iso_back_left': (-1, -1, 0.7)
+    }
+
+    # Compute camera positions for isometric views
+    camera_positions = {}
+    for name, direction in iso_angles.items():
+        direction = np.array(direction)
+        direction = direction / np.linalg.norm(direction)
+        camera_pos = center + direction * distance
+        camera_positions[name] = [camera_pos, center, (0, 0, 1)]
+
+    # Add orthographic views
+    ortho_views = {
+        'xy_top': [center + np.array([0, 0, distance]), center, (0, 1, 0)],
+        'yz_right': [center + np.array([distance, 0, 0]), center, (0, 0, 1)],
+        'xz_front': [center + np.array([0, distance, 0]), center, (0, 0, 1)],
+        'yz_left': [center + np.array([-distance, 0, 0]), center, (0, 0, 1)],
+        'xz_back': [center + np.array([0, -distance, 0]), center, (0, 0, 1)]
+    }
+    camera_positions.update(ortho_views)
+
+    images = []
+    for view_name, camera_pos in camera_positions.items():
+        # Create new plotter for each view
+        plotter = pv.Plotter(notebook=True, off_screen=True)
+        
+        # Set the projection type
+        if projection_type.lower() == "orthographic":
+            plotter.enable_parallel_projection()
+            # Set parallel scale to ensure the whole scene is visible
+            plotter.camera.parallel_scale = diagonal * 0.4 * distance_factor  # Adjust this factor as needed
+
+        elif projection_type.lower() != "perspective":
+            print(f"Warning: Unknown projection_type '{projection_type}'. Using perspective projection.")
+
+        # Add each mesh to the scene
+        for class_id, mesh in meshes.items():
+            vertices = mesh.vertices
+            faces = np.hstack([[3, *face] for face in mesh.faces])
+            pv_mesh = pv.PolyData(vertices, faces)
+
+            if hasattr(mesh.visual, 'face_colors'):
+                colors = mesh.visual.face_colors
+                if colors.max() > 1:
+                    colors = colors / 255.0
+                pv_mesh.cell_data['colors'] = colors
+
+            plotter.add_mesh(pv_mesh,
+                           rgb=True,
+                           scalars='colors' if hasattr(mesh.visual, 'face_colors') else None)
+
+        # Set camera position for this view
+        plotter.camera_position = camera_pos
+
+        # Save screenshot
+        filename = f'{output_directory}/city_view_{view_name}.png'
+        plotter.screenshot(filename)
+        images.append((view_name, filename))
+        plotter.close()
+
+    return images
+
+def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
+    """
+    Create multiple views of the voxel city data.
+    """
+
+    os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
+    os.environ['DISPLAY'] = ':99'
+
+    # Configure PyVista settings
+    pv.set_plot_theme('document')
+    pv.global_theme.background = 'white'
+    pv.global_theme.window_size = [1024, 768]
+    pv.global_theme.jupyter_backend = 'static'
+
+# view_kwargs = {
+#     "view_point_height": 1.5, # To set height of view point in meters. Default: 1.5 m.
+#     "dem_grid": dem_grid,
+#     "colormap": 'viridis', # Choose a colormap. Default: 'viridis'.
+#     "obj_export": True, # Set "True" if you want to export the result in an OBJ file.
+#     "output_directory": f'output/{key}/obj', # To set directory path for output files. Default: False.
+#     "output_file_name": 'gvi', # To set file name excluding extension. Default: 'view_index'.
+#     "num_colors": 10, # Number of discrete colors
+#     "alpha": 1.0, # Set transparency (0.0 to 1.0)
+#     "vmin": 0.0, # Minimum value for colormap normalization
+#     "vmax": 1.0 # Maximum value for colormap normalization
+# }
+    # Parse kwargs
+    vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
+    output_directory = kwargs.get("output_directory", 'output')
+    base_filename = kwargs.get("output_file_name", None)
+    sim_grid = kwargs.get("sim_grid", None)
+    dem_grid_ori = kwargs.get("dem_grid", None)
+    if dem_grid_ori is not None:
+        dem_grid = dem_grid_ori - np.min(dem_grid_ori)
+    z_offset = kwargs.get("view_point_height", 1.5)
+    cmap_name = kwargs.get("colormap", "viridis")
+    vmin = kwargs.get("vmin", np.nanmin(sim_grid))
+    vmax = kwargs.get("vmax", np.nanmax(sim_grid))
+    projection_type = kwargs.get("projection_type", "perspective")
+    distance_factor = kwargs.get("distance_factor", 1.0)
+
+    # Create meshes
+    print("Creating voxel meshes...")
+    meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
+
+    # Create sim_grid surface mesh if provided
+    if sim_grid is not None and dem_grid is not None:
+        print("Creating sim_grid surface mesh...")
+        sim_mesh = create_sim_surface_mesh(
+            sim_grid, dem_grid,
+            meshsize=meshsize,
+            z_offset=z_offset,
+            cmap_name=cmap_name,
+            vmin=vmin,
+            vmax=vmax
+        )
+        if sim_mesh is not None:
+            meshes["sim_surface"] = sim_mesh
+            # If vmin/vmax not provided, use actual min/max of the valid sim data
+            
+        # Prepare the colormap and create colorbar
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+        
+        # Create a figure and axis for the colorbar but don't display
+        fig, ax = plt.subplots(figsize=(6, 1))
+        plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
+        plt.tight_layout()
+        plt.show()
+
+    # Export if filename provided
+    if base_filename is not None:
+        print(f"Exporting files to '{base_filename}.*' ...")# Create output directory if it doesn't exist
+        os.makedirs(output_directory, exist_ok=True)
+        export_meshes(meshes, output_directory, base_filename)
+
+    # Create and save multiple views
+    print("Creating multiple views...")        
+    # Create output directory if it doesn't exist
+    os.makedirs(output_directory, exist_ok=True)
+    image_files = create_multi_view_scene(meshes, output_directory=output_directory, projection_type=projection_type, distance_factor=distance_factor)
+
+    # Display each view separately
+    for view_name, img_file in image_files:
+        plt.figure(figsize=(12, 8))
+        img = plt.imread(img_file)
+        plt.imshow(img)
+        plt.title(view_name.replace('_', ' ').title(), pad=20)
+        plt.axis('off')
+        plt.show()
+        plt.close()
+
+# def create_interactive_scene(meshes):
+#     scene = trimesh.Scene()
+#     scene.ambient_light = np.array([0.1, 0.1, 0.1, 1.0])
+#     scene.directional_light = np.array([0.1, 0.1, 0.1, 1.0])
+
+#     for class_id, mesh in meshes.items():
+
+#         # If this is our sim_surface, do NOT override the per-face colors.
+#         if class_id == "sim_surface":
+#             # Just add the mesh as-is, retaining mesh.visual.face_colors
+#             scene.add_geometry(mesh, node_name=f"class_{class_id}")
+#         else:
+#             # Existing code for single-color classes
+#             material = trimesh.visual.material.PBRMaterial(
+#                 baseColorFactor=mesh.visual.face_colors[0],
+#                 metallicFactor=0.2,
+#                 roughnessFactor=0.8,
+#                 emissiveFactor=np.array([0.1, 0.1, 0.1]),
+#                 alphaMode='OPAQUE'
+#             )
+#             mesh.visual = trimesh.visual.TextureVisuals(
+#                 material=material,
+#                 uv=None
+#             )
+#             scene.add_geometry(mesh, node_name=f"class_{class_id}")
+
+#     # (Optional) add checkboxes if in Jupyter:
+#     try:
+#         import ipywidgets as widgets
+#         from IPython.display import display
+
+#         def update_visibility(cid, visible):
+#             scene.graph.nodes[f"class_{cid}"].visible = visible
+
+#         checkboxes = []
+#         for cid in meshes.keys():
+#             checkbox = widgets.Checkbox(value=True, description=f'Class {cid}')
+#             checkbox.observe(
+#                 lambda change, _cid=cid: update_visibility(_cid, change['new']),
+#                 names='value'
+#             )
+#             checkboxes.append(checkbox)
+#         display(widgets.VBox(checkboxes))
+#     except ImportError:
+#         pass  # Not running in Jupyter
+
+#     return scene
+
+# def visualize_voxcity_interactive(voxel_array, **kwargs):
+#     """
+#     Process voxel city data:
+#     - create voxel meshes,
+#     - optionally create a sim_grid surface mesh,
+#     - optionally export,
+#     - return a trimesh Scene for visualization.
+
+#     Optional arguments via **kwargs:
+#     --------------------------------
+#     base_filename : str, default "city_model"
+#         Base name for exported files (OBJ, STL).
+#     sim_grid : 2D np.ndarray or None, default None
+#         Simulation array for creating a 2D surface mesh.
+#     dem_grid : 2D np.ndarray or None, default None
+#         DEM array for the surface mesh. Must match sim_grid shape.
+#     meshsize : float, default 1.0
+#         Real-world size (in meters) per voxel/cell in x,y,z.
+#     z_offset : float, default 1.5
+#         Offset added to dem_grid when placing sim_grid surface.
+#     cmap_name : str, default 'viridis'
+#         Matplotlib colormap name for sim_grid.
+#     vmin : float or None, default 0
+#         Minimum value for color mapping. If None, auto from data.
+#     vmax : float or None, default 1
+#         Maximum value for color mapping. If None, auto from data.
+#     """
+
+#     # 1. Parse **kwargs
+#     vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
+#     base_filename = kwargs.get("base_filename", None)
+#     sim_grid = kwargs.get("sim_grid", None)
+#     dem_grid = kwargs.get("dem_grid", None)
+#     meshsize = kwargs.get("meshsize", 1.0) / 5
+#     z_offset = kwargs.get("z_offset", 1.5)
+#     cmap_name = kwargs.get("cmap_name", "viridis")
+#     vmin = kwargs.get("vmin", 0)
+#     vmax = kwargs.get("vmax", 1)
+
+#     # 2. Create voxel-based meshes (same logic as before)
+#     print("Creating voxel meshes...")
+#     meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
+
+#     # 3. Optionally create the sim_grid surface mesh
+#     if sim_grid is not None and dem_grid is not None:
+#         print("Creating sim_grid surface mesh...")
+#         sim_mesh = create_sim_surface_mesh(
+#             sim_grid,
+#             dem_grid,
+#             meshsize=meshsize,
+#             z_offset=z_offset,
+#             cmap_name=cmap_name,
+#             vmin=vmin,
+#             vmax=vmax
+#         )
+#         if sim_mesh is not None:
+#             meshes["sim_surface"] = sim_mesh
+#         else:
+#             print("No valid cells in sim_grid (all NaN?). Skipping surface mesh.")
+
+#     # 4. Optionally export
+#     if base_filename is not None:
+#         print(f"Exporting files to '{base_filename}.*' ...")
+#         export_meshes(meshes, base_filename)
+#     else:
+#         print("Skipping export step.")
+
+#     # 5. Create interactive visualization (voxel + optional sim_surface)
+#     print("Creating interactive visualization...")
+#     scene = create_interactive_scene(meshes)
+
+#     scene.show()
+
+#     return scene

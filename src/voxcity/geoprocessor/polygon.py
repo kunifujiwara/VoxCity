@@ -201,8 +201,9 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
     
     # Print statistics about height updates
     if count_0 > 0:
-        print(f"{count_0} of the total {len(gdf_primary)} building footprint from OSM did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from Microsoft Building Footprints were assigned.")
+        # print(f"{count_0} of the total {len(gdf_primary)} building footprint from OSM did not have height data.")
+        print(f"For {count_1} of these building footprints without height, values from the complementary source were assigned.")
+        print(f"For {count_2} of these building footprints without height, no data exist in complementary data.")
 
     return gdf_primary
 
@@ -377,7 +378,6 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
 
     Returns:
         gpd.GeoDataFrame: Updated GeoDataFrame (including new buildings).
-                         You can convert it back to a list of dict features if needed.
     """
     # Make a copy of input GeoDataFrames to avoid modifying originals
     gdf_primary = gdf_0.copy()
@@ -406,7 +406,6 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
 
     # Compute intersection area
     intersect_gdf['intersect_area'] = intersect_gdf.area
-    # Weighted area (height_ref * intersect_area)
     intersect_gdf['height_area'] = intersect_gdf['height_ref'] * intersect_gdf['intersect_area']
 
     # ----------------------------------------------------------------
@@ -417,7 +416,7 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
         'height_area': 'sum',
         'intersect_area': 'sum'
     }
-    grouped = intersect_gdf.groupby(gdf_primary[primary_id].name).agg(group_cols)
+    grouped = intersect_gdf.groupby(f'{primary_id}_1').agg(group_cols)
 
     # Weighted average
     grouped['weighted_height'] = grouped['height_area'] / grouped['intersect_area']
@@ -433,10 +432,10 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
 
     # Where primary had zero or missing height, we assign the new weighted height
     zero_or_nan_mask = (gdf_primary['height_primary'] == 0) | (gdf_primary['height_primary'].isna())
-    gdf_primary.loc[zero_or_nan_mask, 'height_primary'] = gdf_primary.loc[zero_or_nan_mask, 'weighted_height']
-
-    # For any building that had no overlap, 'weighted_height' might be NaN.
-    # Keep it as NaN or set to 0 if you prefer:
+    
+    # Only update heights where we have valid weighted heights
+    valid_weighted_height_mask = zero_or_nan_mask & gdf_primary['weighted_height'].notna()
+    gdf_primary.loc[valid_weighted_height_mask, 'height_primary'] = gdf_primary.loc[valid_weighted_height_mask, 'weighted_height']
     gdf_primary['height_primary'] = gdf_primary['height_primary'].fillna(np.nan)
 
     # ----------------------------------------------------------------
@@ -448,10 +447,11 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
     
     # For building-level intersection, do a left join of ref onto primary.
     # Then we'll identify which reference IDs are missing from the intersection result.
-    sjoin_gdf = gpd.sjoin(gdf_ref, gdf_primary, how='left', op='intersects')
-
-    # All reference buildings that did not intersect any primary building
-    non_intersect_ids = sjoin_gdf.loc[sjoin_gdf[primary_id].isna(), ref_id].unique()
+    sjoin_gdf = gpd.sjoin(gdf_ref, gdf_primary, how='left', predicate='intersects')
+    
+    # Find reference buildings that don't intersect with any primary building
+    non_intersect_mask = sjoin_gdf[f'{primary_id}_right'].isna()
+    non_intersect_ids = sjoin_gdf[non_intersect_mask][f'{ref_id}_left'].unique()
 
     # Extract them from the original reference GDF
     gdf_ref_non_intersect = gdf_ref[gdf_ref[ref_id].isin(non_intersect_ids)]
@@ -472,6 +472,29 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
 
     # Concatenate
     final_gdf = pd.concat([gdf_primary, gdf_ref_non_intersect], ignore_index=True)
+
+    # Calculate statistics
+    count_total = len(gdf_primary)
+    count_0 = len(gdf_primary[zero_or_nan_mask])
+    count_1 = len(gdf_primary[valid_weighted_height_mask])
+    count_2 = count_0 - count_1
+    count_3 = len(gdf_ref_non_intersect)
+    count_4 = count_3
+    height_mask = gdf_ref_non_intersect['height'].notna() & (gdf_ref_non_intersect['height'] > 0)
+    count_5 = len(gdf_ref_non_intersect[height_mask])
+    count_6 = count_4 - count_5
+    final_height_mask = final_gdf['height'].notna() & (final_gdf['height'] > 0)
+    count_7 = len(final_gdf[final_height_mask])
+    count_8 = len(final_gdf)
+
+    # Print statistics if there were buildings without height data
+    if count_0 > 0:
+        print(f"{count_0} of the total {count_total} building footprints from base data source did not have height data.")
+        print(f"For {count_1} of these building footprints without height, values from complementary data were assigned.")
+        print(f"For the rest {count_2}, no data exists in complementary data.")
+        print(f"Footprints of {count_3} buildings were added from the complementary source.")
+        print(f"Of these {count_4} additional building footprints, {count_5} had height data while {count_6} had no height data.")
+        print(f"In total, {count_7} buildings had height data out of {count_8} total building footprints.")
 
     return final_gdf
 
@@ -616,8 +639,8 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
                     gdf.at[idx, 'height'] = float(np.mean(heights))
                 else:
                     count_2 += 1
-                    gdf.at[idx, 'height'] = 10
-                    print(f"No valid height data for building at index {idx}")
+                    gdf.at[idx, 'height'] = np.nan
+                    # print(f"No valid height data for building at index {idx}")
             except ValueError as e:
                 print(f"Error processing building at index {idx}. Error: {str(e)}")
                 gdf.at[idx, 'height'] = None
@@ -625,8 +648,8 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
     # Print statistics about height updates
     if count_0 > 0:
         print(f"{count_0} of the total {len(gdf)} building footprint from OSM did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from Open Building 2.5D Temporal were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in Open Building 2.5D Temporal. Height values of 10m were set instead")
+        print(f"For {count_1} of these building footprints without height, values from complementary data were assigned.")
+        print(f"For {count_2} of these building footprints without height, no data exist in complementary data.")
 
     return gdf
 

@@ -480,7 +480,8 @@ def create_building_height_grid_from_gdf_polygon(
     rectangle_vertices,
     gdf_comp=None,
     geotiff_path_comp=None,
-    complement_building_footprints=None
+    complement_building_footprints=None,
+    complement_height=None
 ):
     """
     Create a building height grid from GeoDataFrame data within a polygon boundary.
@@ -492,6 +493,7 @@ def create_building_height_grid_from_gdf_polygon(
         gdf_comp (geopandas.GeoDataFrame, optional): Complementary GeoDataFrame
         geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
         complement_building_footprints (bool, optional): Whether to complement footprints
+        complement_height (float, optional): Height value to use for buildings with height=0
 
     Returns:
         tuple: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
@@ -539,11 +541,16 @@ def create_building_height_grid_from_gdf_polygon(
     plotting_box = box(extent[2], extent[0], extent[3], extent[1])
     filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
 
+    # Count buildings with height=0 or NaN
+    zero_height_count = len(filtered_gdf[filtered_gdf['height'] == 0])
+    nan_height_count = len(filtered_gdf[filtered_gdf['height'].isna()])
+    print(f"{zero_height_count+nan_height_count} of the total {len(filtered_gdf)} building footprint from the base data source did not have height data.")
+
     # Optionally merge heights from complementary sources
     if gdf_comp is not None:
         filtered_gdf_comp = gdf_comp[gdf_comp.geometry.intersects(plotting_box)].copy()
         if complement_building_footprints:
-            filtered_gdf = complement_building_heights_gdf(filtered_gdf, filtered_gdf_comp)
+            filtered_gdf = complement_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
         else:
             filtered_gdf = extract_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
     elif geotiff_path_comp:
@@ -558,6 +565,11 @@ def create_building_height_grid_from_gdf_polygon(
     for idx_b, row in filtered_gdf.iterrows():
         polygon = row.geometry
         height = row.get('height', None)
+        
+        # Replace height=0 with complement_height if specified
+        if complement_height is not None and (height == 0 or height is None):
+            height = complement_height
+            
         min_height = row.get('min_height', 0)
         is_inner = row.get('is_inner', False)
         feature_id = row.get('id', idx_b)
@@ -883,10 +895,19 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     
     rows, cols = grid.shape
     
-    # Calculate cell sizes in degrees (approximate)
-    # 111,111 meters = 1 degree at equator
-    cell_size_lon = meshsize / (111111 * np.cos(np.mean([min_lat, max_lat]) * np.pi / 180))
-    cell_size_lat = meshsize / 111111
+    # Set up transformers for accurate coordinate calculations
+    wgs84 = CRS.from_epsg(4326)
+    web_mercator = CRS.from_epsg(3857)
+    transformer_to_mercator = Transformer.from_crs(wgs84, web_mercator, always_xy=True)
+    transformer_to_wgs84 = Transformer.from_crs(web_mercator, wgs84, always_xy=True)
+    
+    # Convert bounds to Web Mercator for accurate distance calculations
+    min_x, min_y = transformer_to_mercator.transform(min_lon, min_lat)
+    max_x, max_y = transformer_to_mercator.transform(max_lon, max_lat)
+    
+    # Calculate cell sizes in Web Mercator coordinates
+    cell_size_x = (max_x - min_x) / cols
+    cell_size_y = (max_y - min_y) / rows
     
     # Create lists to store data
     polygons = []
@@ -895,12 +916,16 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     # Create grid cells
     for i in range(rows):
         for j in range(cols):
-            # Calculate cell bounds
-            cell_min_lon = min_lon + j * cell_size_lon
-            cell_max_lon = min_lon + (j + 1) * cell_size_lon
+            # Calculate cell bounds in Web Mercator
+            cell_min_x = min_x + j * cell_size_x
+            cell_max_x = min_x + (j + 1) * cell_size_x
             # Flip vertical axis since grid is stored with origin at top-left
-            cell_min_lat = max_lat - (i + 1) * cell_size_lat
-            cell_max_lat = max_lat - i * cell_size_lat
+            cell_min_y = max_y - (i + 1) * cell_size_y
+            cell_max_y = max_y - i * cell_size_y
+            
+            # Convert cell corners back to WGS84
+            cell_min_lon, cell_min_lat = transformer_to_wgs84.transform(cell_min_x, cell_min_y)
+            cell_max_lon, cell_max_lat = transformer_to_wgs84.transform(cell_max_x, cell_max_y)
             
             # Create polygon for cell
             cell_poly = box(cell_min_lon, cell_min_lat, cell_max_lon, cell_max_lat)
@@ -911,6 +936,73 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     # Create GeoDataFrame
     gdf = gpd.GeoDataFrame({
         'geometry': polygons,
+        'value': values
+    }, crs=CRS.from_epsg(4326))
+    
+    return gdf
+
+def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
+    """Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
+    
+    Args:
+        grid: 2D numpy array containing grid values
+        rectangle_vertices: List of [lon, lat] coordinates defining area corners
+        meshsize: Size of each grid cell in meters
+        
+    Returns:
+        GeoDataFrame with columns:
+            - geometry: Point geometry at center of each grid cell
+            - value: Value from the grid
+    """
+    grid = np.flipud(grid_ori.copy())
+    
+    # Extract bounds from rectangle vertices
+    min_lon = min(v[0] for v in rectangle_vertices)
+    max_lon = max(v[0] for v in rectangle_vertices)
+    min_lat = min(v[1] for v in rectangle_vertices)
+    max_lat = max(v[1] for v in rectangle_vertices)
+    
+    rows, cols = grid.shape
+    
+    # Set up transformers for accurate coordinate calculations
+    wgs84 = CRS.from_epsg(4326)
+    web_mercator = CRS.from_epsg(3857)
+    transformer_to_mercator = Transformer.from_crs(wgs84, web_mercator, always_xy=True)
+    transformer_to_wgs84 = Transformer.from_crs(web_mercator, wgs84, always_xy=True)
+    
+    # Convert bounds to Web Mercator for accurate distance calculations
+    min_x, min_y = transformer_to_mercator.transform(min_lon, min_lat)
+    max_x, max_y = transformer_to_mercator.transform(max_lon, max_lat)
+    
+    # Calculate cell sizes in Web Mercator coordinates
+    cell_size_x = (max_x - min_x) / cols
+    cell_size_y = (max_y - min_y) / rows
+    
+    # Create lists to store data
+    points = []
+    values = []
+    
+    # Create grid points at cell centers
+    for i in range(rows):
+        for j in range(cols):
+            # Calculate cell center in Web Mercator
+            cell_center_x = min_x + (j + 0.5) * cell_size_x
+            # Flip vertical axis since grid is stored with origin at top-left
+            cell_center_y = max_y - (i + 0.5) * cell_size_y
+            
+            # Convert cell center back to WGS84
+            center_lon, center_lat = transformer_to_wgs84.transform(cell_center_x, cell_center_y)
+            
+            # Create point for cell center
+            from shapely.geometry import Point
+            cell_point = Point(center_lon, center_lat)
+            
+            points.append(cell_point)
+            values.append(grid[i, j])
+    
+    # Create GeoDataFrame
+    gdf = gpd.GeoDataFrame({
+        'geometry': points,
         'value': values
     }, crs=CRS.from_epsg(4326))
     

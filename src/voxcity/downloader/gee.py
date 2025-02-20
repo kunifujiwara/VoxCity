@@ -135,6 +135,10 @@ def get_dem_image(roi_buffered, source):
         collection_name = 'AU/GA/AUSTRALIA_5M_DEM'
         collection = ee.ImageCollection(collection_name)
         dem = collection.select('elevation').mosaic()
+    elif source == 'Netherlands 0.5m DTM':
+        collection_name = 'AHN/AHN4'
+        collection = ee.ImageCollection(collection_name)
+        dem = collection.select('dtm').mosaic()
     elif source == 'USGS 3DEP 1m':
         collection_name = 'USGS/3DEP/1m'
         dem = ee.ImageCollection(collection_name).mosaic()
@@ -394,3 +398,42 @@ def save_geotiff_open_buildings_temporal(aoi, geotiff_path):
         region=aoi,
         file_per_band=False
     )
+
+def save_geotiff_dsm_minus_dtm(roi, geotiff_path, meshsize, source):
+    """Get the height difference between DSM and DTM from terrain data.
+    
+    Args:
+        roi: Earth Engine geometry defining area of interest
+        geotiff_path: Output path for GeoTIFF file
+        meshsize: Size of each grid cell in meters
+        source: Source of terrain data ('England' or 'Netherlands')
+        
+    Returns:
+        ee.Image: Image representing DSM minus DTM (building/vegetation heights)
+    """
+    # Initialize Earth Engine
+    ee.Initialize()
+
+    # Add buffer around ROI to ensure smooth interpolation at edges
+    buffer_distance = 100
+    roi_buffered = roi.buffer(buffer_distance)
+
+    if source == 'England 1m DSM - DTM':
+        collection_name = 'UK/EA/ENGLAND_1M_TERRAIN/2022'
+        dtm = ee.Image(collection_name).select('dtm')
+        dsm = ee.Image(collection_name).select('dsm_first')
+    elif source == 'Netherlands 0.5m DSM - DTM':
+        collection = ee.ImageCollection('AHN/AHN4').filterBounds(roi_buffered)
+        dtm = collection.select('dtm').mosaic()
+        dsm = collection.select('dsm').mosaic()
+    else:
+        raise ValueError("Source must be either 'England' or 'Netherlands'")
+    
+    # Subtract DTM from DSM to get height difference
+    height_diff = dsm.subtract(dtm)
+
+    # Clip to buffered ROI
+    image = height_diff.clip(roi_buffered)
+
+    # Export as GeoTIFF using meshsize as scale
+    save_geotiff(image, geotiff_path, scale=meshsize, region=roi_buffered, crs='EPSG:4326')

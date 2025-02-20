@@ -100,4 +100,7 @@ def get_mbfp_gdf(output_dir, rectangle_vertices):
     # Load GeoJSON data from downloaded files and fix coordinate ordering
     gdf = load_gdf_from_multiple_gz(filenames)    
 
+    # Replace id column with index numbers
+    gdf['id'] = gdf.index
+    
     return gdf

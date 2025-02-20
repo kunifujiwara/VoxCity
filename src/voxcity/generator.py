@@ -34,7 +34,8 @@ from .downloader.gee import (
     save_geotiff_esa_land_cover,
     save_geotiff_esri_landcover,
     save_geotiff_dynamic_world_v1,
-    save_geotiff_open_buildings_temporal
+    save_geotiff_open_buildings_temporal,
+    save_geotiff_dsm_minus_dtm
 )
 from .geoprocessor.grid import (
     group_and_label_cells, 
@@ -185,11 +186,12 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     
     # Check for complementary building data source
     building_complementary_source = kwargs.get("building_complementary_source") 
+    building_complement_height = kwargs.get("building_complement_height")
 
     if (building_complementary_source is None) or (building_complementary_source=='None'):
         # Use only primary source
         if source != "Open Building 2.5D Temporal":
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height)
     else:
         # Handle complementary source
         if building_complementary_source == "Open Building 2.5D Temporal":
@@ -198,7 +200,14 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
             os.makedirs(output_dir, exist_ok=True)
             geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
             save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp)   
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height)   
+        elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
+            # Special case: use temporal height data as complement
+            roi = get_roi(rectangle_vertices)
+            os.makedirs(output_dir, exist_ok=True)
+            geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
+            save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height)
         else:
             # Get complementary data from other sources
             if building_complementary_source == 'Microsoft Building Footprints':
@@ -220,7 +229,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
             
             # Option to complement footprints only or both footprints and heights
             complement_building_footprints = kwargs.get("complement_building_footprints")
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=gdf_comp, complement_building_footprints=complement_building_footprints)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=gdf_comp, complement_building_footprints=complement_building_footprints, complement_height=building_complement_height)
 
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
