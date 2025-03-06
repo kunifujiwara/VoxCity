@@ -82,7 +82,8 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     print(f"Data source: {source}")
     
     # Initialize Earth Engine for accessing satellite data
-    initialize_earth_engine()
+    if source is not "OpenStreetMap":
+        initialize_earth_engine()
 
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -157,7 +158,8 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     """
 
     # Initialize Earth Engine for accessing satellite data
-    initialize_earth_engine()
+    if source is not "OpenStreetMap":
+        initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
     print(f"Data source: {source}")
@@ -320,7 +322,7 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         image = get_dem_image(roi_buffered, source)
         
         # Save DEM data with appropriate resolution based on source
-        if source in ["England 1m DTM", 'DEM France 1m', 'DEM France 5m', 'AUSTRALIA 5M DEM']:
+        if source in ["England 1m DTM", 'DEM France 1m', 'DEM France 5m', 'AUSTRALIA 5M DEM', 'Netherlands 0.5m DTM']:
             save_geotiff(image, geotiff_path, scale=meshsize, region=roi_buffered, crs='EPSG:4326')
         elif source == 'USGS 3DEP 1m':
             scale = max(meshsize, 1.25)
@@ -569,7 +571,18 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         building_gdf.to_file(save_path, driver='GPKG')
     
     # Get canopy height data
-    canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
+    if canopy_height_source == "Static":
+        # Create canopy height grid with same shape as land cover grid
+        canopy_height_grid = np.zeros_like(land_cover_grid, dtype=float)
+        
+        # Set default static height for trees (20 meters is a typical average tree height)
+        static_tree_height = kwargs.get("static_tree_height", 10.0)
+        tree_mask = (land_cover_grid == 4)
+        
+        # Set static height for tree cells
+        canopy_height_grid[tree_mask] = static_tree_height
+    else:
+        canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     
     # Handle DEM - either flat or from source
     if dem_source == "Flat":

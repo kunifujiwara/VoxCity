@@ -1030,19 +1030,7 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     pv.global_theme.background = 'white'
     pv.global_theme.window_size = [1024, 768]
     pv.global_theme.jupyter_backend = 'static'
-
-# view_kwargs = {
-#     "view_point_height": 1.5, # To set height of view point in meters. Default: 1.5 m.
-#     "dem_grid": dem_grid,
-#     "colormap": 'viridis', # Choose a colormap. Default: 'viridis'.
-#     "obj_export": True, # Set "True" if you want to export the result in an OBJ file.
-#     "output_directory": f'output/{key}/obj', # To set directory path for output files. Default: False.
-#     "output_file_name": 'gvi', # To set file name excluding extension. Default: 'view_index'.
-#     "num_colors": 10, # Number of discrete colors
-#     "alpha": 1.0, # Set transparency (0.0 to 1.0)
-#     "vmin": 0.0, # Minimum value for colormap normalization
-#     "vmax": 1.0 # Maximum value for colormap normalization
-# }
+    
     # Parse kwargs
     vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
     output_directory = kwargs.get("output_directory", 'output')
@@ -1108,6 +1096,116 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
         plt.axis('off')
         plt.show()
         plt.close()
+
+def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, sim_configs, **kwargs):
+    """
+    Create multiple views of the voxel city data with multiple simulation grids.
+    
+    Args:
+        voxel_array: 3D numpy array containing voxel data
+        meshsize: Size of each voxel/cell
+        sim_configs: List of dictionaries, each containing configuration for a simulation grid:
+            {
+                'sim_grid': 2D numpy array of simulation values,
+                'z_offset': height offset in meters (default: 1.5),
+                'cmap_name': colormap name (default: 'viridis'),
+                'vmin': minimum value for colormap (optional),
+                'vmax': maximum value for colormap (optional),
+                'label': label for the colorbar (optional)
+            }
+        **kwargs: Additional arguments including:
+            - vox_dict: Dictionary mapping voxel values to colors
+            - output_directory: Directory to save output images
+            - output_file_name: Base filename for exports
+            - dem_grid: DEM grid for height information
+            - projection_type: 'perspective' or 'orthographic'
+            - distance_factor: Factor to adjust camera distance
+    """
+    os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
+    os.environ['DISPLAY'] = ':99'
+
+    # Configure PyVista settings
+    pv.set_plot_theme('document')
+    pv.global_theme.background = 'white'
+    pv.global_theme.window_size = [1024, 768]
+    pv.global_theme.jupyter_backend = 'static'
+
+    # Parse general kwargs
+    vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
+    output_directory = kwargs.get("output_directory", 'output')
+    base_filename = kwargs.get("output_file_name", None)
+    dem_grid_ori = kwargs.get("dem_grid", None)
+    projection_type = kwargs.get("projection_type", "perspective")
+    distance_factor = kwargs.get("distance_factor", 1.0)
+
+    if dem_grid_ori is not None:
+        dem_grid = dem_grid_ori - np.min(dem_grid_ori)
+    
+    # Create meshes
+    print("Creating voxel meshes...")
+    meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
+
+    # Process each simulation grid
+    for i, config in enumerate(sim_configs):
+        sim_grid = config['sim_grid']
+        if sim_grid is None or dem_grid is None:
+            continue
+
+        z_offset = config.get('z_offset', 1.5)
+        cmap_name = config.get('cmap_name', 'viridis')
+        vmin = config.get('vmin', np.nanmin(sim_grid))
+        vmax = config.get('vmax', np.nanmax(sim_grid))
+        label = config.get('label', f'Simulation {i+1}')
+
+        print(f"Creating sim_grid surface mesh for {label}...")
+        sim_mesh = create_sim_surface_mesh(
+            sim_grid, dem_grid,
+            meshsize=meshsize,
+            z_offset=z_offset,
+            cmap_name=cmap_name,
+            vmin=vmin,
+            vmax=vmax
+        )
+        
+        if sim_mesh is not None:
+            meshes[f"sim_surface_{i}"] = sim_mesh
+            
+            # Create colorbar for this simulation
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+            
+            fig, ax = plt.subplots(figsize=(6, 1))
+            plt.colorbar(scalar_map, cax=ax, orientation='horizontal', label=label)
+            plt.tight_layout()
+            plt.show()
+
+    # Export if filename provided
+    if base_filename is not None:
+        print(f"Exporting files to '{base_filename}.*' ...")
+        os.makedirs(output_directory, exist_ok=True)
+        export_meshes(meshes, output_directory, base_filename)
+
+    # Create and save multiple views
+    print("Creating multiple views...")        
+    os.makedirs(output_directory, exist_ok=True)
+    image_files = create_multi_view_scene(
+        meshes, 
+        output_directory=output_directory,
+        projection_type=projection_type,
+        distance_factor=distance_factor
+    )
+
+    # Display each view separately
+    for view_name, img_file in image_files:
+        plt.figure(figsize=(12, 8))
+        img = plt.imread(img_file)
+        plt.imshow(img)
+        plt.title(view_name.replace('_', ' ').title(), pad=20)
+        plt.axis('off')
+        plt.show()
+        plt.close()
+
+    return meshes
 
 # def create_interactive_scene(meshes):
 #     scene = trimesh.Scene()

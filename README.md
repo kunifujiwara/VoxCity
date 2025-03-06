@@ -119,7 +119,7 @@ rectangle_vertices = [
 Use the GUI map interface to draw a rectangular domain of interest.
 
 ```python
-from voxcity.geo.draw import draw_rectangle_map_cityname
+from voxcity.geoprocessor.draw import draw_rectangle_map_cityname
 
 cityname = "tokyo"
 m, rectangle_vertices = draw_rectangle_map_cityname(cityname, zoom=15)
@@ -130,7 +130,7 @@ m
 Choose the width and height in meters and select the center point on the map.
 
 ```python
-from voxcity.geo.draw import center_location_map_cityname
+from voxcity.geoprocessor.draw import center_location_map_cityname
 
 width = 500
 height = 500
@@ -163,7 +163,7 @@ kwargs = {
 Generate voxel data grids and corresponding building geoJSON:
 
 ```python
-from voxcity import get_voxcity
+from voxcity.generator import get_voxcity
 
 voxcity_grid, building_height_grid, building_min_height_grid, \
 building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
@@ -184,7 +184,7 @@ building_gdf = get_voxcity(
 [ENVI-MET](https://www.envi-met.com/) is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).
 
 ```python
-from voxcity.file.envimet import export_inx, generate_edb_file
+from voxcity.exporter.envimet import export_inx, generate_edb_file
 
 envimet_kwargs = {
     "output_directory": "output",                     # Directory where output files will be saved
@@ -210,7 +210,7 @@ generate_edb_file(**envimet_kwargs)
 #### OBJ Files:
 
 ```python
-from voxcity.file.obj import export_obj
+from voxcity.exporter.obj import export_obj
 
 output_directory = "output"  # Directory where output files will be saved
 output_file_name = "voxcity" # Base name for the output OBJ file
@@ -234,7 +234,7 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
 [MagicaVoxel](https://ephtracy.github.io/) is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.
 
 ```python
-from voxcity.file.magicavoxel import export_magicavoxel_vox
+from voxcity.exporter.magicavoxel import export_magicavoxel_vox
 
 output_path = "output"
 base_filename = "voxcity"
@@ -252,7 +252,7 @@ export_magicavoxel_vox(voxcity_grid, output_path, base_filename=base_filename)
 #### Compute Solar Irradiance:
 
 ```python
-from voxcity.sim.solar import get_global_solar_irradiance_using_epw
+from voxcity.simulator.solar import get_global_solar_irradiance_using_epw
 
 solar_kwargs = {
     "download_nearest_epw": True,  # Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org
@@ -308,7 +308,7 @@ cum_solar_grid = get_global_solar_irradiance_using_epw(
 #### Compute Green View Index (GVI) and Sky View Index (SVI):
 
 ```python
-from voxcity.sim.view import get_view_index
+from voxcity.simulator.view import get_view_index
 
 view_kwargs = {
     "view_point_height": 1.5,      # Height of observer viewpoint in meters
@@ -340,7 +340,7 @@ svi_grid = get_view_index(voxcity_grid, meshsize, mode='sky', **view_kwargs)
 #### Landmark Visibility Map:
 
 ```python
-from voxcity.sim.view import get_landmark_visibility_map
+from voxcity.simulator.view import get_landmark_visibility_map
 
 # Dictionary of parameters for landmark visibility analysis
 landmark_kwargs = {
@@ -364,7 +364,7 @@ landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, b
 #### Network Analysis:
 
 ```python
-from voxcity.geo.network import get_network_values
+from voxcity.geoprocessor.network import get_network_values
 
 network_kwargs = {
     "network_type": "walk",        # Type of network to download from OSM (walk, drive, all, etc.)

@@ -250,7 +250,7 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
             if hit:
                 if -2 in hit_values:
                     # For trees in hit_values, use the hit contribution (1 - transmittance)
-                    visibility_sum += (1.0 - value) if value < 1.0 else 1.0
+                    visibility_sum += value if value < 1.0 else 1.0
                 else:
                     visibility_sum += 1.0
         else:
