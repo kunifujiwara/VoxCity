@@ -8,7 +8,7 @@
 
 # voxcity
 
-**voxcity** is a Python package that facilitates the creation of voxel-based 3D urban environments and related geospatial analyses. It integrates various geospatial datasets—such as building footprints, land cover, canopy height, and digital elevation models (DEMs)—to generate 2D and 3D representations of urban areas. It can export data in formats compatible with popular simulation tools like ENVI-MET, as well as visualization tools like MagicaVoxel, and supports simulations such as sky view index and green view index calculations.
+**voxcity** is a Python package that provides a seamless solution for grid-based 3D city model generation and urban simulation for cities worldwide. VoxCity's generator module automatically downloads building heights, tree canopy heights, land cover, and terrain elevation within a specified target area, and voxelizes buildings, trees, land cover, and terrain to generate an integrated voxel city model. The simulator module enables users to conduct environmental simulations, including solar radiation and view index analyses. Users can export the generated models using several file formats compatible with external software, such as ENVI-met (INX), Blender, and Rhino (OBJ). Try it out using the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or your local environment.
 
 <!-- <p align="center">
   <picture>
