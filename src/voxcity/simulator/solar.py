@@ -801,6 +801,7 @@ def get_building_solar_irradiance(
     # Default parameters
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
+    progress_report = kwargs.get("progress_report", False)
     
     # Hit values and inclusion mode for sky detection
     hit_values = (0,)  # Sky is typically represented by 0
@@ -843,7 +844,9 @@ def get_building_solar_irradiance(
     # Small epsilon to detect boundary faces (within 0.5 voxel of boundary)
     boundary_epsilon = meshsize * 0.05
     
-    print(f"Calculating solar irradiance for {len(building_svf_mesh.faces)} building faces...")
+    if progress_report:
+        print(f"Calculating solar irradiance for {len(building_svf_mesh.faces)} building faces...")
+
     start_time = time.time()
     processed_count = 0
     boundary_face_count = 0
@@ -933,17 +936,19 @@ def get_building_solar_irradiance(
             face_global_values[face_idx] = 0
         
         processed_count += 1
-        if processed_count % 500 == 0 or processed_count == len(building_svf_mesh.faces):
-            elapsed = time.time() - start_time
-            # Fix division by zero issue
-            faces_per_second = processed_count / max(elapsed, 0.001)  # Ensure at least 0.001 to avoid division by zero
-            remaining = (len(building_svf_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_svf_mesh.faces) else 0
-            print(f"Processed {processed_count}/{len(building_svf_mesh.faces)} faces "
-                  f"({processed_count/len(building_svf_mesh.faces)*100:.1f}%) - "
-                  f"{faces_per_second:.1f} faces/sec - "
-                  f"Est. remaining: {remaining:.1f} sec")
+
+        if progress_report:
+            # Calculate frequency based on total number of faces, aiming for ~10 progress updates
+            progress_frequency = max(1, len(building_svf_mesh.faces) // 10)
+            if processed_count % progress_frequency == 0 or processed_count == len(building_svf_mesh.faces):
+                elapsed = time.time() - start_time
+                faces_per_second = processed_count / max(elapsed, 0.001)
+                remaining = (len(building_svf_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_svf_mesh.faces) else 0
+                print(f"Progress: {processed_count}/{len(building_svf_mesh.faces)} faces "
+                    f"({processed_count/len(building_svf_mesh.faces)*100:.1f}%) - "
+                    f"Est. remaining: {remaining:.1f} sec")
     
-    print(f"Identified {boundary_face_count} faces on domain vertical boundaries (set to NaN)")
+    # print(f"Identified {boundary_face_count} faces on domain vertical boundaries (set to NaN)")
     
     # Create a copy of the original mesh to preserve the original data
     irradiance_mesh = building_svf_mesh.copy()
@@ -961,18 +966,19 @@ def get_building_solar_irradiance(
     # Set mesh name
     irradiance_mesh.name = "Solar Irradiance (W/m²)"
     
-    # Optional statistics - only compute stats for non-NaN values
+    # Optional statistics - calculate only for non-NaN values
     valid_direct = face_direct_values[~np.isnan(face_direct_values)]
     valid_diffuse = face_diffuse_values[~np.isnan(face_diffuse_values)]
     valid_global = face_global_values[~np.isnan(face_global_values)]
     
-    print(f"Irradiance statistics (excluding boundary faces):")
-    if len(valid_direct) > 0:
-        print(f"  Direct - Min: {np.min(valid_direct):.1f} W/m², Max: {np.max(valid_direct):.1f} W/m², Mean: {np.mean(valid_direct):.1f} W/m²")
-    if len(valid_diffuse) > 0:
-        print(f"  Diffuse - Min: {np.min(valid_diffuse):.1f} W/m², Max: {np.max(valid_diffuse):.1f} W/m², Mean: {np.mean(valid_diffuse):.1f} W/m²")
-    if len(valid_global) > 0:
-        print(f"  Global - Min: {np.min(valid_global):.1f} W/m², Max: {np.max(valid_global):.1f} W/m², Mean: {np.mean(valid_global):.1f} W/m²")
+    if progress_report:
+        print(f"Irradiance statistics (excluding boundary faces):")
+        if len(valid_direct) > 0:
+            print(f"  Direct - Min: {np.min(valid_direct):.1f} W/m², Max: {np.max(valid_direct):.1f} W/m², Mean: {np.mean(valid_direct):.1f} W/m²")
+        if len(valid_diffuse) > 0:
+            print(f"  Diffuse - Min: {np.min(valid_diffuse):.1f} W/m², Max: {np.max(valid_diffuse):.1f} W/m², Mean: {np.mean(valid_diffuse):.1f} W/m²")
+        if len(valid_global) > 0:
+            print(f"  Global - Min: {np.min(valid_global):.1f} W/m², Max: {np.max(valid_global):.1f} W/m², Mean: {np.mean(valid_global):.1f} W/m²")
     
     # Handle optional OBJ export
     obj_export = kwargs.get("obj_export", False)
@@ -1103,7 +1109,7 @@ def get_cumulative_building_solar_irradiance(
     df_period_utc = df_period_local.tz_convert(pytz.UTC)
     
     # Get solar positions for all times
-    solar_positions = get_solar_positions_astral(df_period_utc.index, lat, lon)
+    solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
     
     # Initialize face values arrays
     face_cumulative_direct_values = np.zeros(len(building_svf_mesh.faces))
@@ -1143,10 +1149,11 @@ def get_cumulative_building_solar_irradiance(
         if elevation_degrees <= 0:
             continue
             
-        print(f"Time step {idx+1}/{len(df_period_utc)}: {time_local.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Sun position: Azimuth {azimuth_degrees:.1f}°, Elevation {elevation_degrees:.1f}°")
-        print(f"  DNI: {DNI:.1f} W/m², DHI: {DHI:.1f} W/m²")
-        
+        # Print current timestamp and progress
+        if idx % 24 == 0 or idx + 1 == len(df_period_utc):  # Print every 24 steps or at the end
+            print(f"Calculating for {time_local.strftime('%Y-%m-%d %H:%M:%S')} - "
+                  f"Progress: {(idx+1)/len(df_period_utc)*100:.1f}%")
+            
         # Calculate irradiance for this timestep
         irradiance_mesh = get_building_solar_irradiance(
             voxel_data,
@@ -1169,22 +1176,12 @@ def get_cumulative_building_solar_irradiance(
             if nan_mask is None:
                 nan_mask = np.isnan(timestep_global_values)
                 boundary_face_count = np.sum(nan_mask)
-                print(f"Identified {boundary_face_count} faces on domain vertical boundaries (set to NaN)")
             
             # Add to cumulative values (scaled by timestep duration in hours)
             # NaN values in timestep will propagate through to cumulative values
             face_cumulative_direct_values += np.nan_to_num(timestep_direct_values) * time_step_hours
             face_cumulative_diffuse_values += np.nan_to_num(timestep_diffuse_values) * time_step_hours
             face_cumulative_global_values += np.nan_to_num(timestep_global_values) * time_step_hours
-        
-        # Progress reporting
-        elapsed = time.time() - start_time
-        steps_per_second = (idx + 1) / max(elapsed, 0.001)  # Ensure at least 0.001 to avoid division by zero
-        remaining = (len(df_period_utc) - (idx + 1)) / steps_per_second if idx + 1 < len(df_period_utc) else 0
-        print(f"  Progress: {idx+1}/{len(df_period_utc)} steps "
-              f"({(idx+1)/len(df_period_utc)*100:.1f}%) - "
-              f"{steps_per_second:.2f} steps/sec - "
-              f"Est. remaining: {remaining:.1f} sec")
     
     # Apply NaN mask to cumulative values
     if nan_mask is not None:
@@ -1361,12 +1358,14 @@ def get_building_global_solar_irradiance_using_epw(
         raise ValueError("No data in EPW file.")
     
     # Step 1: Calculate Sky View Factor for building surfaces
+    print(f"Processing Sky View Factor for building surfaces...")
     building_svf_mesh = get_building_surface_svf(
         voxel_data,  # Your 3D voxel grid
         meshsize,      # Size of each voxel in meters
         show_plot=False
     )
 
+    print(f"Processing Solar Irradiance for building surfaces...")
     if calc_type == 'instantaneous':
         calc_time = kwargs.get("calc_time", "01-01 12:00:00")
 

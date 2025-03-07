@@ -912,6 +912,7 @@ def get_building_surface_svf(voxel_data, meshsize, show_plot=False, **kwargs):
     N_azimuth = kwargs.get("N_azimuth", 60)
     N_elevation = kwargs.get("N_elevation", 10)
     debug = kwargs.get("debug", False)
+    progress_report = kwargs.get("progress_report", False)
     
     # Tree transmittance parameters
     tree_k = kwargs.get("tree_k", 0.6)
@@ -924,21 +925,22 @@ def get_building_surface_svf(voxel_data, meshsize, show_plot=False, **kwargs):
     # Extract building mesh (building voxels have value -3)
     building_class_id = kwargs.get("building_class_id", -3)
     start_time = time.time()
-    print(f"Extracting building mesh for class ID {building_class_id}...")
+    # print(f"Extracting building mesh for class ID {building_class_id}...")
     try:
         building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize)
-        print(f"Mesh extraction took {time.time() - start_time:.2f} seconds")
+        # print(f"Mesh extraction took {time.time() - start_time:.2f} seconds")
         
         if building_mesh is None or len(building_mesh.faces) == 0:
             print("No building surfaces found in voxel data.")
             return None
             
-        print(f"Successfully extracted mesh with {len(building_mesh.faces)} faces")
+        # print(f"Successfully extracted mesh with {len(building_mesh.faces)} faces")
     except Exception as e:
         print(f"Error during mesh extraction: {e}")
         return None
     
-    print(f"Processing SVF for {len(building_mesh.faces)} building faces...")
+    if progress_report:
+        print(f"Processing SVF for {len(building_mesh.faces)} building faces...")
     
     try:
         # Calculate face centers and normals
@@ -1091,16 +1093,19 @@ def get_building_surface_svf(voxel_data, meshsize, show_plot=False, **kwargs):
             
             # Progress reporting
             processed_count += 1
-            if processed_count % 500 == 0 or processed_count == len(building_mesh.faces):
-                elapsed = time.time() - start_time
-                faces_per_second = processed_count / elapsed
-                remaining = (len(building_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_mesh.faces) else 0
-                print(f"Processed {processed_count}/{len(building_mesh.faces)} faces "
-                      f"({processed_count/len(building_mesh.faces)*100:.1f}%) - "
-                      f"{faces_per_second:.1f} faces/sec - "
-                      f"Est. remaining: {remaining:.1f} sec")
+            if progress_report:
+                # Calculate frequency based on total number of faces, aiming for ~10 progress updates
+                progress_frequency = max(1, len(building_mesh.faces) // 10)
+                if processed_count % progress_frequency == 0 or processed_count == len(building_mesh.faces):
+                    elapsed = time.time() - start_time
+                    faces_per_second = processed_count / elapsed
+                    remaining = (len(building_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_mesh.faces) else 0
+                    print(f"Processed {processed_count}/{len(building_mesh.faces)} faces "
+                        f"({processed_count/len(building_mesh.faces)*100:.1f}%) - "
+                        f"{faces_per_second:.1f} faces/sec - "
+                        f"Est. remaining: {remaining:.1f} sec")
         
-        print(f"Identified {nan_boundary_count} faces on domain vertical boundaries (set to NaN)")
+        # print(f"Identified {nan_boundary_count} faces on domain vertical boundaries (set to NaN)")
         
         # Store SVF values directly in mesh metadata
         if not hasattr(building_mesh, 'metadata'):
