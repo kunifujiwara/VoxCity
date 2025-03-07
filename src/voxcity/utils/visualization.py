@@ -45,37 +45,358 @@ from ..geoprocessor.mesh import (
 )
 from .material import get_material_dict
 
-def get_default_voxel_color_map():
-    return {
-        -99: [0, 0, 0],  # void,
-        -30: [255, 0, 102],  # (Pink) 'Landmark',
-        -17: [238, 242, 234],  # (light gray) 'plaster',
-        -16: [56, 78, 84],  # (Dark blue) 'glass',
-        -15: [147, 140, 114],  # (Light brown) 'stone',
-        -14: [139, 149, 159],  # (Gray) 'metal',
-        -13: [186, 187, 181],  # (Gray) 'concrete',
-        -12: [248, 166, 2],  # (Orange) 'wood',
-        -11: [81, 59, 56],  # (Dark red) 'brick',
-        -3: [180, 187, 216],  # Building
-        -2: [78, 99, 63],     # Tree
-        -1: [188, 143, 143],  # Underground
-        1: [239, 228, 176],   # 'Bareland (ground surface)',
-        2: [123, 130, 59],   # 'Rangeland (ground surface)',
-        3: [97, 140, 86],   # 'Shrub (ground surface)',
-        4: [112, 120, 56],   #  'Agriculture land (ground surface)',
-        5: [116, 150, 66],   #  'Tree (ground surface)',
-        6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
-        7: [77, 118, 99],    #  'Wet land (ground surface)',
-        8: [22, 61, 51],    #  'Mangrove (ground surface)',
-        9: [44, 66, 133],    #  'Water (ground surface)',
-        10: [205, 215, 224],    #  'Snow and ice (ground surface)',
-        11: [108, 119, 129],   #  'Developed space (ground surface)',
-        12: [59, 62, 87],      # 'Road (ground surface)',
-        13: [150, 166, 190],    #  'Building (ground surface)'
-        14: [239, 228, 176],    #  'No Data (ground surface)'
-    }
+# def get_voxel_color_map():
+#     return {
+#         -99: [0, 0, 0],  # void,
+#         -30: [255, 0, 102],  # (Pink) 'Landmark',
+#         -17: [238, 242, 234],  # (light gray) 'plaster',
+#         -16: [56, 78, 84],  # (Dark blue) 'glass',
+#         -15: [147, 140, 114],  # (Light brown) 'stone',
+#         -14: [139, 149, 159],  # (Gray) 'metal',
+#         -13: [186, 187, 181],  # (Gray) 'concrete',
+#         -12: [248, 166, 2],  # (Orange) 'wood',
+#         -11: [81, 59, 56],  # (Dark red) 'brick',
+#         -3: [180, 187, 216],  # Building
+#         -2: [78, 99, 63],     # Tree
+#         -1: [188, 143, 143],  # Underground
+#         1: [239, 228, 176],   # 'Bareland (ground surface)',
+#         2: [123, 130, 59],   # 'Rangeland (ground surface)',
+#         3: [97, 140, 86],   # 'Shrub (ground surface)',
+#         4: [112, 120, 56],   #  'Agriculture land (ground surface)',
+#         5: [116, 150, 66],   #  'Tree (ground surface)',
+#         6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
+#         7: [77, 118, 99],    #  'Wet land (ground surface)',
+#         8: [22, 61, 51],    #  'Mangrove (ground surface)',
+#         9: [44, 66, 133],    #  'Water (ground surface)',
+#         10: [205, 215, 224],    #  'Snow and ice (ground surface)',
+#         11: [108, 119, 129],   #  'Developed space (ground surface)',
+#         12: [59, 62, 87],      # 'Road (ground surface)',
+#         13: [150, 166, 190],    #  'Building (ground surface)'
+#         14: [239, 228, 176],    #  'No Data (ground surface)'
+#     }
+def get_voxel_color_map(color_scheme='default'):
+    """
+    Returns a color map for voxel visualization based on the specified color scheme.
+    
+    Parameters:
+    -----------
+    color_scheme : str, optional
+        The name of the color scheme to use. Options are:
+        - 'default': The original color scheme
+        - 'high_contrast': High contrast colors for better visibility
+        - 'monochrome': Shades of blue
+        - 'pastel': Softer, more muted colors
+        - 'dark_mode': Darker colors overall
+        - 'grayscale': Black and white gradient
+        - 'autumn': Warm reds, oranges, and browns
+        - 'cool': Cool blues, purples, and cyans
+        - 'earth_tones': Natural earth colors
+        - 'vibrant': Very bright, saturated colors
+        
+    Returns:
+    --------
+    dict
+        A dictionary mapping voxel IDs to RGB color values
+    """
+    if color_scheme == 'default':
+        return {
+            -99: [0, 0, 0],  # void,
+            -30: [255, 0, 102],  # (Pink) 'Landmark',
+            -17: [238, 242, 234],  # (light gray) 'plaster',
+            -16: [56, 78, 84],  # (Dark blue) 'glass',
+            -15: [147, 140, 114],  # (Light brown) 'stone',
+            -14: [139, 149, 159],  # (Gray) 'metal',
+            -13: [186, 187, 181],  # (Gray) 'concrete',
+            -12: [248, 166, 2],  # (Orange) 'wood',
+            -11: [81, 59, 56],  # (Dark red) 'brick',
+            -3: [180, 187, 216],  # Building
+            -2: [78, 99, 63],     # Tree
+            -1: [188, 143, 143],  # Underground
+            1: [239, 228, 176],   # 'Bareland (ground surface)',
+            2: [123, 130, 59],   # 'Rangeland (ground surface)',
+            3: [97, 140, 86],   # 'Shrub (ground surface)',
+            4: [112, 120, 56],   #  'Agriculture land (ground surface)',
+            5: [116, 150, 66],   #  'Tree (ground surface)',
+            6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
+            7: [77, 118, 99],    #  'Wet land (ground surface)',
+            8: [22, 61, 51],    #  'Mangrove (ground surface)',
+            9: [44, 66, 133],    #  'Water (ground surface)',
+            10: [205, 215, 224],    #  'Snow and ice (ground surface)',
+            11: [108, 119, 129],   #  'Developed space (ground surface)',
+            12: [59, 62, 87],      # 'Road (ground surface)',
+            13: [150, 166, 190],    #  'Building (ground surface)'
+            14: [239, 228, 176],    #  'No Data (ground surface)'
+        }
+    elif color_scheme == 'high_contrast':
+        return {
+            -99: [0, 0, 0],  # void
+            -30: [255, 0, 255],  # (Bright Magenta) 'Landmark'
+            -17: [255, 255, 255],  # (Pure White) 'plaster'
+            -16: [0, 0, 255],  # (Bright Blue) 'glass'
+            -15: [153, 76, 0],  # (Dark Brown) 'stone'
+            -14: [192, 192, 192],  # (Silver) 'metal'
+            -13: [128, 128, 128],  # (Gray) 'concrete'
+            -12: [255, 128, 0],  # (Bright Orange) 'wood'
+            -11: [153, 0, 0],  # (Dark Red) 'brick'
+            -3: [0, 255, 255],  # (Cyan) Building
+            -2: [0, 153, 0],  # (Green) Tree
+            -1: [204, 0, 102],  # (Dark Pink) Underground
+            1: [255, 255, 153],  # (Light Yellow) 'Bareland'
+            2: [102, 153, 0],  # (Olive Green) 'Rangeland'
+            3: [0, 204, 0],  # (Bright Green) 'Shrub'
+            4: [153, 204, 0],  # (Yellowish Green) 'Agriculture land'
+            5: [0, 102, 0],  # (Dark Green) 'Tree'
+            6: [204, 255, 51],  # (Lime Green) 'Moss and lichen'
+            7: [0, 153, 153],  # (Teal) 'Wet land'
+            8: [0, 51, 0],  # (Very Dark Green) 'Mangrove'
+            9: [0, 102, 204],  # (Bright Blue) 'Water'
+            10: [255, 255, 255],  # (White) 'Snow and ice'
+            11: [76, 76, 76],  # (Dark Gray) 'Developed space'
+            12: [0, 0, 0],  # (Black) 'Road'
+            13: [102, 102, 255],  # (Light Purple) 'Building'
+            14: [255, 204, 153],  # (Light Orange) 'No Data'
+        }
+    elif color_scheme == 'monochrome':
+        return {
+            -99: [0, 0, 0],  # void
+            -30: [28, 28, 99],  # 'Landmark'
+            -17: [242, 242, 242],  # 'plaster'
+            -16: [51, 51, 153],  # 'glass'
+            -15: [102, 102, 204],  # 'stone'
+            -14: [153, 153, 204],  # 'metal'
+            -13: [204, 204, 230],  # 'concrete'
+            -12: [76, 76, 178],  # 'wood'
+            -11: [25, 25, 127],  # 'brick'
+            -3: [179, 179, 230],  # Building
+            -2: [51, 51, 153],  # Tree
+            -1: [102, 102, 178],  # Underground
+            1: [230, 230, 255],  # 'Bareland'
+            2: [128, 128, 204],  # 'Rangeland'
+            3: [102, 102, 204],  # 'Shrub'
+            4: [153, 153, 230],  # 'Agriculture land'
+            5: [76, 76, 178],  # 'Tree'
+            6: [204, 204, 255],  # 'Moss and lichen'
+            7: [76, 76, 178],  # 'Wet land'
+            8: [25, 25, 127],  # 'Mangrove'
+            9: [51, 51, 204],  # 'Water'
+            10: [242, 242, 255],  # 'Snow and ice'
+            11: [128, 128, 178],  # 'Developed space'
+            12: [51, 51, 127],  # 'Road'
+            13: [153, 153, 204],  # 'Building'
+            14: [230, 230, 255],  # 'No Data'
+        }
+    elif color_scheme == 'pastel':
+        return {
+            -99: [0, 0, 0],  # void
+            -30: [255, 179, 217],  # (Pastel Pink) 'Landmark'
+            -17: [245, 245, 245],  # (Off White) 'plaster'
+            -16: [173, 196, 230],  # (Pastel Blue) 'glass'
+            -15: [222, 213, 196],  # (Pastel Brown) 'stone'
+            -14: [211, 219, 226],  # (Pastel Gray) 'metal'
+            -13: [226, 226, 226],  # (Light Gray) 'concrete'
+            -12: [255, 223, 179],  # (Pastel Orange) 'wood'
+            -11: [204, 168, 166],  # (Pastel Red) 'brick'
+            -3: [214, 217, 235],  # (Pastel Purple) Building
+            -2: [190, 207, 180],  # (Pastel Green) Tree
+            -1: [235, 204, 204],  # (Pastel Pink) Underground
+            1: [250, 244, 227],  # (Cream) 'Bareland'
+            2: [213, 217, 182],  # (Pastel Olive) 'Rangeland'
+            3: [200, 226, 195],  # (Pastel Green) 'Shrub'
+            4: [209, 214, 188],  # (Pastel Yellow-Green) 'Agriculture land'
+            5: [195, 220, 168],  # (Light Pastel Green) 'Tree'
+            6: [237, 241, 196],  # (Pastel Yellow) 'Moss and lichen'
+            7: [180, 210, 205],  # (Pastel Teal) 'Wet land'
+            8: [176, 196, 190],  # (Darker Pastel Teal) 'Mangrove'
+            9: [188, 206, 235],  # (Pastel Blue) 'Water'
+            10: [242, 245, 250],  # (Light Blue-White) 'Snow and ice'
+            11: [209, 213, 219],  # (Pastel Gray) 'Developed space'
+            12: [189, 190, 204],  # (Pastel Blue-Gray) 'Road'
+            13: [215, 221, 232],  # (Very Light Pastel Blue) 'Building'
+            14: [250, 244, 227],  # (Cream) 'No Data'
+        }
+    elif color_scheme == 'dark_mode':
+        return {
+            -99: [0, 0, 0],  # void
+            -30: [153, 51, 102],  # (Dark Pink) 'Landmark'
+            -17: [76, 76, 76],  # (Dark Gray) 'plaster'
+            -16: [33, 46, 51],  # (Very Dark Blue) 'glass'
+            -15: [89, 84, 66],  # (Very Dark Brown) 'stone'
+            -14: [83, 89, 94],  # (Dark Gray) 'metal'
+            -13: [61, 61, 61],  # (Dark Gray) 'concrete'
+            -12: [153, 102, 0],  # (Dark Orange) 'wood'
+            -11: [51, 35, 33],  # (Very Dark Red) 'brick'
+            -3: [78, 82, 99],  # (Dark Purple) Building
+            -2: [46, 58, 37],  # (Dark Green) Tree
+            -1: [99, 68, 68],  # (Dark Pink) Underground
+            1: [102, 97, 75],  # (Dark Yellow) 'Bareland'
+            2: [61, 66, 31],  # (Dark Olive) 'Rangeland'
+            3: [46, 77, 46],  # (Dark Green) 'Shrub'
+            4: [56, 61, 28],  # (Dark Yellow-Green) 'Agriculture land'
+            5: [54, 77, 31],  # (Dark Green) 'Tree'
+            6: [89, 97, 20],  # (Dark Yellow) 'Moss and lichen'
+            7: [38, 59, 49],  # (Dark Teal) 'Wet land'
+            8: [16, 31, 26],  # (Very Dark Green) 'Mangrove'
+            9: [22, 33, 66],  # (Dark Blue) 'Water'
+            10: [82, 87, 92],  # (Dark Blue-Gray) 'Snow and ice'
+            11: [46, 51, 56],  # (Dark Gray) 'Developed space'
+            12: [25, 31, 43],  # (Very Dark Blue) 'Road'
+            13: [56, 64, 82],  # (Dark Blue-Gray) 'Building'
+            14: [102, 97, 75],  # (Dark Yellow) 'No Data'
+        }
+    elif color_scheme == 'grayscale':
+        return {
+            -99: [0, 0, 0],      # void (black)
+            -30: [200, 200, 200], # 'Landmark'
+            -17: [240, 240, 240], # 'plaster'
+            -16: [60, 60, 60],    # 'glass'
+            -15: [130, 130, 130], # 'stone'
+            -14: [150, 150, 150], # 'metal'
+            -13: [180, 180, 180], # 'concrete'
+            -12: [170, 170, 170], # 'wood'
+            -11: [70, 70, 70],    # 'brick'
+            -3: [190, 190, 190],  # Building
+            -2: [90, 90, 90],     # Tree
+            -1: [160, 160, 160],  # Underground
+            1: [230, 230, 230],   # 'Bareland'
+            2: [120, 120, 120],   # 'Rangeland'
+            3: [110, 110, 110],   # 'Shrub'
+            4: [115, 115, 115],   # 'Agriculture land'
+            5: [100, 100, 100],   # 'Tree'
+            6: [210, 210, 210],   # 'Moss and lichen'
+            7: [95, 95, 95],      # 'Wet land'
+            8: [40, 40, 40],      # 'Mangrove'
+            9: [50, 50, 50],      # 'Water'
+            10: [220, 220, 220],  # 'Snow and ice'
+            11: [140, 140, 140],  # 'Developed space'
+            12: [30, 30, 30],     # 'Road'
+            13: [170, 170, 170],  # 'Building'
+            14: [230, 230, 230],  # 'No Data'
+        }
+    elif color_scheme == 'autumn':
+        return {
+            -99: [0, 0, 0],          # void
+            -30: [227, 66, 52],      # (Red) 'Landmark'
+            -17: [250, 240, 230],    # (Antique White) 'plaster'
+            -16: [94, 33, 41],       # (Dark Red) 'glass'
+            -15: [160, 120, 90],     # (Medium Brown) 'stone'
+            -14: [176, 141, 87],     # (Bronze) 'metal'
+            -13: [205, 186, 150],    # (Tan) 'concrete'
+            -12: [204, 85, 0],       # (Dark Orange) 'wood'
+            -11: [128, 55, 36],      # (Rust) 'brick'
+            -3: [222, 184, 135],     # (Tan) Building
+            -2: [107, 68, 35],       # (Brown) Tree
+            -1: [165, 105, 79],      # (Copper) Underground
+            1: [255, 235, 205],      # (Blanched Almond) 'Bareland'
+            2: [133, 99, 99],        # (Brown) 'Rangeland'
+            3: [139, 69, 19],        # (Saddle Brown) 'Shrub'
+            4: [160, 82, 45],        # (Sienna) 'Agriculture land'
+            5: [101, 67, 33],        # (Dark Brown) 'Tree'
+            6: [255, 228, 196],      # (Bisque) 'Moss and lichen'
+            7: [138, 51, 36],        # (Rust) 'Wet land'
+            8: [85, 45, 23],         # (Deep Brown) 'Mangrove'
+            9: [175, 118, 70],       # (Light Brown) 'Water'
+            10: [255, 250, 240],     # (Floral White) 'Snow and ice'
+            11: [188, 143, 143],     # (Rosy Brown) 'Developed space'
+            12: [69, 41, 33],        # (Very Dark Brown) 'Road'
+            13: [210, 180, 140],     # (Tan) 'Building'
+            14: [255, 235, 205],     # (Blanched Almond) 'No Data'
+        }
+    elif color_scheme == 'cool':
+        return {
+            -99: [0, 0, 0],          # void
+            -30: [180, 82, 205],     # (Purple) 'Landmark'
+            -17: [240, 248, 255],    # (Alice Blue) 'plaster'
+            -16: [70, 130, 180],     # (Steel Blue) 'glass'
+            -15: [100, 149, 237],    # (Cornflower Blue) 'stone'
+            -14: [176, 196, 222],    # (Light Steel Blue) 'metal'
+            -13: [240, 255, 255],    # (Azure) 'concrete'
+            -12: [65, 105, 225],     # (Royal Blue) 'wood'
+            -11: [95, 158, 160],     # (Cadet Blue) 'brick'
+            -3: [135, 206, 235],     # (Sky Blue) Building
+            -2: [0, 128, 128],       # (Teal) Tree
+            -1: [127, 255, 212],     # (Aquamarine) Underground
+            1: [220, 240, 250],      # (Light Blue) 'Bareland'
+            2: [72, 209, 204],       # (Medium Turquoise) 'Rangeland'
+            3: [0, 191, 255],        # (Deep Sky Blue) 'Shrub'
+            4: [100, 149, 237],      # (Cornflower Blue) 'Agriculture land'
+            5: [0, 128, 128],        # (Teal) 'Tree'
+            6: [175, 238, 238],      # (Pale Turquoise) 'Moss and lichen'
+            7: [32, 178, 170],       # (Light Sea Green) 'Wet land'
+            8: [25, 25, 112],        # (Midnight Blue) 'Mangrove'
+            9: [30, 144, 255],       # (Dodger Blue) 'Water'
+            10: [240, 255, 255],     # (Azure) 'Snow and ice'
+            11: [119, 136, 153],     # (Light Slate Gray) 'Developed space'
+            12: [25, 25, 112],       # (Midnight Blue) 'Road'
+            13: [173, 216, 230],     # (Light Blue) 'Building'
+            14: [220, 240, 250],     # (Light Blue) 'No Data'
+        }
+    elif color_scheme == 'earth_tones':
+        return {
+            -99: [0, 0, 0],          # void
+            -30: [210, 105, 30],     # (Chocolate) 'Landmark'
+            -17: [245, 245, 220],    # (Beige) 'plaster'
+            -16: [139, 137, 137],    # (Gray) 'glass'
+            -15: [160, 120, 90],     # (Medium Brown) 'stone'
+            -14: [169, 169, 169],    # (Dark Gray) 'metal'
+            -13: [190, 190, 180],    # (Light Gray-Tan) 'concrete'
+            -12: [160, 82, 45],      # (Sienna) 'wood'
+            -11: [139, 69, 19],      # (Saddle Brown) 'brick'
+            -3: [210, 180, 140],     # (Tan) Building
+            -2: [85, 107, 47],       # (Dark Olive Green) Tree
+            -1: [133, 94, 66],       # (Beaver) Underground
+            1: [222, 184, 135],      # (Burlywood) 'Bareland'
+            2: [107, 142, 35],       # (Olive Drab) 'Rangeland'
+            3: [85, 107, 47],        # (Dark Olive Green) 'Shrub'
+            4: [128, 128, 0],        # (Olive) 'Agriculture land'
+            5: [34, 139, 34],        # (Forest Green) 'Tree'
+            6: [189, 183, 107],      # (Dark Khaki) 'Moss and lichen'
+            7: [143, 188, 143],      # (Dark Sea Green) 'Wet land'
+            8: [46, 139, 87],        # (Sea Green) 'Mangrove'
+            9: [95, 158, 160],       # (Cadet Blue) 'Water'
+            10: [238, 232, 205],     # (Light Tan) 'Snow and ice'
+            11: [169, 169, 169],     # (Dark Gray) 'Developed space'
+            12: [90, 90, 90],        # (Dark Gray) 'Road'
+            13: [188, 170, 152],     # (Tan) 'Building'
+            14: [222, 184, 135],     # (Burlywood) 'No Data'
+        }
+    elif color_scheme == 'vibrant':
+        return {
+            -99: [0, 0, 0],          # void
+            -30: [255, 0, 255],      # (Magenta) 'Landmark'
+            -17: [255, 255, 255],    # (White) 'plaster'
+            -16: [0, 191, 255],      # (Deep Sky Blue) 'glass'
+            -15: [255, 215, 0],      # (Gold) 'stone'
+            -14: [0, 250, 154],      # (Medium Spring Green) 'metal'
+            -13: [211, 211, 211],    # (Light Gray) 'concrete'
+            -12: [255, 69, 0],       # (Orange Red) 'wood'
+            -11: [178, 34, 34],      # (Firebrick) 'brick'
+            -3: [123, 104, 238],     # (Medium Slate Blue) Building
+            -2: [50, 205, 50],       # (Lime Green) Tree
+            -1: [255, 20, 147],      # (Deep Pink) Underground
+            1: [255, 255, 0],        # (Yellow) 'Bareland'
+            2: [0, 255, 0],          # (Lime) 'Rangeland'
+            3: [0, 128, 0],          # (Green) 'Shrub'
+            4: [154, 205, 50],       # (Yellow Green) 'Agriculture land'
+            5: [34, 139, 34],        # (Forest Green) 'Tree'
+            6: [127, 255, 0],        # (Chartreuse) 'Moss and lichen'
+            7: [64, 224, 208],       # (Turquoise) 'Wet land'
+            8: [0, 100, 0],          # (Dark Green) 'Mangrove'
+            9: [0, 0, 255],          # (Blue) 'Water'
+            10: [240, 248, 255],     # (Alice Blue) 'Snow and ice'
+            11: [128, 128, 128],     # (Gray) 'Developed space'
+            12: [47, 79, 79],        # (Dark Slate Gray) 'Road'
+            13: [135, 206, 250],     # (Light Sky Blue) 'Building'
+            14: [255, 255, 224],     # (Light Yellow) 'No Data'
+        }
+    else:
+        # If an unknown color scheme is specified, return the default
+        print(f"Unknown color scheme '{color_scheme}'. Using default instead.")
+        return get_voxel_color_map('default')
 
-def visualize_3d_voxel(voxel_grid, color_map = get_default_voxel_color_map(), voxel_size=2.0, save_path=None):
+def visualize_3d_voxel(voxel_grid, voxel_color_map = 'default', voxel_size=2.0, save_path=None):
+
+    color_map = get_voxel_color_map(voxel_color_map)
+
     print("\tVisualizing 3D voxel data")
     # Create a figure and a 3D axis
     fig = plt.figure(figsize=(12, 10))
@@ -133,7 +454,10 @@ def visualize_3d_voxel(voxel_grid, color_map = get_default_voxel_color_map(), vo
     plt.show()
 
 
-def visualize_3d_voxel_plotly(voxel_grid, color_map = get_default_voxel_color_map(), voxel_size=2.0):
+def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_size=2.0):
+
+    color_map = get_voxel_color_map(voxel_color_map)
+
     print("Preparing visualization...")
 
     print("Processing voxels...")
@@ -1032,7 +1356,8 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     pv.global_theme.jupyter_backend = 'static'
     
     # Parse kwargs
-    vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
+    voxel_color_map = kwargs.get("voxel_color_map", 'default')
+    vox_dict = get_voxel_color_map(voxel_color_map)
     output_directory = kwargs.get("output_directory", 'output')
     base_filename = kwargs.get("output_file_name", None)
     sim_grid = kwargs.get("sim_grid", None)
@@ -1131,7 +1456,8 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
     pv.global_theme.jupyter_backend = 'static'
 
     # Parse general kwargs
-    vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
+    voxel_color_map = kwargs.get("voxel_color_map", 'default')
+    vox_dict = get_voxel_color_map(voxel_color_map)
     output_directory = kwargs.get("output_directory", 'output')
     base_filename = kwargs.get("output_file_name", None)
     dem_grid_ori = kwargs.get("dem_grid", None)
@@ -1207,125 +1533,252 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
 
     return meshes
 
-# def create_interactive_scene(meshes):
-#     scene = trimesh.Scene()
-#     scene.ambient_light = np.array([0.1, 0.1, 0.1, 1.0])
-#     scene.directional_light = np.array([0.1, 0.1, 0.1, 1.0])
+def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None, **kwargs):
+    """
+    Create multiple views of the voxel city data with custom simulation meshes replacing specific voxel classes.
+    
+    Parameters
+    ----------
+    voxel_array : np.ndarray
+        3D array of voxel values.
+    meshsize : float
+        Size of each voxel in meters.
+    custom_meshes : dict, optional
+        Dictionary mapping voxel class IDs to custom meshes (e.g., {-3: building_svf_mesh}).
+        These meshes will replace the original voxel meshes for visualization.
+    **kwargs:
+        vox_dict : dict
+            Dictionary mapping voxel class IDs to colors.
+        output_directory : str
+            Directory to save output files.
+        output_file_name : str
+            Base filename for exported meshes.
+        sim_grid : np.ndarray
+            2D array with simulation values to visualize as a surface.
+        dem_grid : np.ndarray
+            2D array with elevation values.
+        view_point_height : float
+            Height offset for simulation grid visualization.
+        colormap : str
+            Matplotlib colormap name for simulation results.
+        vmin, vmax : float
+            Min/max values for color mapping.
+        projection_type : str
+            'perspective' or 'orthogonal'
+        distance_factor : float
+            Adjusts camera distance.
+        colorbar_title : str
+            Title for the colorbar (for simulation results).
+        value_name : str
+            Name of the field in metadata containing values to visualize.
+        nan_color : str or tuple
+            Color to use for NaN values (default: 'gray')
+    
+    Returns
+    -------
+    list
+        List of (view_name, image_file_path) tuples for the generated views.
+    """
+    os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
+    os.environ['DISPLAY'] = ':99'
 
-#     for class_id, mesh in meshes.items():
+    # Configure PyVista settings
+    pv.set_plot_theme('document')
+    pv.global_theme.background = 'white'
+    pv.global_theme.window_size = [1024, 768]
+    pv.global_theme.jupyter_backend = 'static'
+    
+    # Parse kwargs
+    voxel_color_map = kwargs.get("voxel_color_map", 'default')
+    vox_dict = get_voxel_color_map(voxel_color_map)
+    output_directory = kwargs.get("output_directory", 'output')
+    base_filename = kwargs.get("output_file_name", None)
+    sim_grid = kwargs.get("sim_grid", None)
+    dem_grid_ori = kwargs.get("dem_grid", None)
+    if dem_grid_ori is not None:
+        dem_grid = dem_grid_ori - np.min(dem_grid_ori)
+    z_offset = kwargs.get("view_point_height", 1.5)
+    cmap_name = kwargs.get("colormap", "viridis")
+    vmin = kwargs.get("vmin", None)
+    vmax = kwargs.get("vmax", None)
+    projection_type = kwargs.get("projection_type", "perspective")
+    distance_factor = kwargs.get("distance_factor", 1.0)
+    colorbar_title = kwargs.get("colorbar_title", "")
+    value_name = kwargs.get("value_name", None)
+    nan_color = kwargs.get("nan_color", "gray")
+    
+    if value_name is None:
+        print("Set value_name")
 
-#         # If this is our sim_surface, do NOT override the per-face colors.
-#         if class_id == "sim_surface":
-#             # Just add the mesh as-is, retaining mesh.visual.face_colors
-#             scene.add_geometry(mesh, node_name=f"class_{class_id}")
-#         else:
-#             # Existing code for single-color classes
-#             material = trimesh.visual.material.PBRMaterial(
-#                 baseColorFactor=mesh.visual.face_colors[0],
-#                 metallicFactor=0.2,
-#                 roughnessFactor=0.8,
-#                 emissiveFactor=np.array([0.1, 0.1, 0.1]),
-#                 alphaMode='OPAQUE'
-#             )
-#             mesh.visual = trimesh.visual.TextureVisuals(
-#                 material=material,
-#                 uv=None
-#             )
-#             scene.add_geometry(mesh, node_name=f"class_{class_id}")
+    # Create meshes from voxel data
+    print("Creating voxel meshes...")
+    meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
+    
+    # Replace specific voxel class meshes with custom simulation meshes
+    if custom_meshes is not None:
+        for class_id, custom_mesh in custom_meshes.items():
+            # Apply coloring to custom meshes if they have metadata values
+            if hasattr(custom_mesh, 'metadata') and value_name in custom_mesh.metadata:
+                # Create a colored copy of the mesh for visualization
+                import matplotlib.cm as cm
+                import matplotlib.colors as mcolors
+                
+                # Get values from metadata
+                values = custom_mesh.metadata[value_name]
+                
+                # Set vmin/vmax if not provided
+                local_vmin = vmin if vmin is not None else np.nanmin(values[~np.isnan(values)])
+                local_vmax = vmax if vmax is not None else np.nanmax(values[~np.isnan(values)])
+                
+                # Create colors
+                cmap = cm.get_cmap(cmap_name)
+                norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)
+                
+                # Handle NaN values with custom color
+                face_colors = np.zeros((len(values), 4))
+                
+                # Convert string color to RGBA if needed
+                if isinstance(nan_color, str):
+                    import matplotlib.colors as mcolors
+                    nan_rgba = np.array(mcolors.to_rgba(nan_color))
+                else:
+                    # Assume it's already a tuple/list of RGBA values
+                    nan_rgba = np.array(nan_color)
+                
+                # Apply colors: NaN values get nan_color, others get colormap colors
+                nan_mask = np.isnan(values)
+                face_colors[~nan_mask] = cmap(norm(values[~nan_mask]))
+                face_colors[nan_mask] = nan_rgba
+                
+                # Create a copy with colors
+                vis_mesh = custom_mesh.copy()
+                vis_mesh.visual.face_colors = face_colors
+                
+                if class_id in meshes:
+                    print(f"Replacing voxel class {class_id} with colored custom simulation mesh")
+                    meshes[class_id] = vis_mesh
+                else:
+                    print(f"Adding colored custom simulation mesh for class {class_id}")
+                    meshes[class_id] = vis_mesh
+            else:
+                # No metadata values, use the mesh as is
+                if class_id in meshes:
+                    print(f"Replacing voxel class {class_id} with custom simulation mesh")
+                    meshes[class_id] = custom_mesh
+                else:
+                    print(f"Adding custom simulation mesh for class {class_id}")
+                    meshes[class_id] = custom_mesh
 
-#     # (Optional) add checkboxes if in Jupyter:
-#     try:
-#         import ipywidgets as widgets
-#         from IPython.display import display
+    # Create sim_grid surface mesh if provided
+    if sim_grid is not None and dem_grid is not None:
+        print("Creating sim_grid surface mesh...")
+        
+        # If vmin/vmax not provided, use actual min/max of the valid sim data
+        if vmin is None:
+            vmin = np.nanmin(sim_grid)
+        if vmax is None:
+            vmax = np.nanmax(sim_grid)
+            
+        sim_mesh = create_sim_surface_mesh(
+            sim_grid, dem_grid,
+            meshsize=meshsize,
+            z_offset=z_offset,
+            cmap_name=cmap_name,
+            vmin=vmin,
+            vmax=vmax,
+            nan_color=nan_color  # Pass nan_color to the mesh creation
+        )
+        if sim_mesh is not None:
+            meshes["sim_surface"] = sim_mesh
+            
+        # Prepare the colormap and create colorbar
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+        
+        # Create a figure and axis for the colorbar but don't display
+        fig, ax = plt.subplots(figsize=(6, 1))
+        cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
+        if colorbar_title:
+            cbar.set_label(colorbar_title)
+        plt.tight_layout()
+        plt.show()
 
-#         def update_visibility(cid, visible):
-#             scene.graph.nodes[f"class_{cid}"].visible = visible
+    # Export if filename provided
+    if base_filename is not None:
+        print(f"Exporting files to '{base_filename}.*' ...")
+        # Create output directory if it doesn't exist
+        os.makedirs(output_directory, exist_ok=True)
+        export_meshes(meshes, output_directory, base_filename)
 
-#         checkboxes = []
-#         for cid in meshes.keys():
-#             checkbox = widgets.Checkbox(value=True, description=f'Class {cid}')
-#             checkbox.observe(
-#                 lambda change, _cid=cid: update_visibility(_cid, change['new']),
-#                 names='value'
-#             )
-#             checkboxes.append(checkbox)
-#         display(widgets.VBox(checkboxes))
-#     except ImportError:
-#         pass  # Not running in Jupyter
+    # Create and save multiple views
+    print("Creating multiple views...")        
+    # Create output directory if it doesn't exist
+    os.makedirs(output_directory, exist_ok=True)
+    image_files = create_multi_view_scene(meshes, output_directory=output_directory, 
+                                         projection_type=projection_type, 
+                                         distance_factor=distance_factor)
 
-#     return scene
+    # Display each view separately
+    for view_name, img_file in image_files:
+        plt.figure(figsize=(12, 8))
+        img = plt.imread(img_file)
+        plt.imshow(img)
+        plt.title(view_name.replace('_', ' ').title(), pad=20)
+        plt.axis('off')
+        plt.show()
+        plt.close()
+        
+    return image_files
 
-# def visualize_voxcity_interactive(voxel_array, **kwargs):
-#     """
-#     Process voxel city data:
-#     - create voxel meshes,
-#     - optionally create a sim_grid surface mesh,
-#     - optionally export,
-#     - return a trimesh Scene for visualization.
-
-#     Optional arguments via **kwargs:
-#     --------------------------------
-#     base_filename : str, default "city_model"
-#         Base name for exported files (OBJ, STL).
-#     sim_grid : 2D np.ndarray or None, default None
-#         Simulation array for creating a 2D surface mesh.
-#     dem_grid : 2D np.ndarray or None, default None
-#         DEM array for the surface mesh. Must match sim_grid shape.
-#     meshsize : float, default 1.0
-#         Real-world size (in meters) per voxel/cell in x,y,z.
-#     z_offset : float, default 1.5
-#         Offset added to dem_grid when placing sim_grid surface.
-#     cmap_name : str, default 'viridis'
-#         Matplotlib colormap name for sim_grid.
-#     vmin : float or None, default 0
-#         Minimum value for color mapping. If None, auto from data.
-#     vmax : float or None, default 1
-#         Maximum value for color mapping. If None, auto from data.
-#     """
-
-#     # 1. Parse **kwargs
-#     vox_dict = kwargs.get("vox_dict", get_default_voxel_color_map())
-#     base_filename = kwargs.get("base_filename", None)
-#     sim_grid = kwargs.get("sim_grid", None)
-#     dem_grid = kwargs.get("dem_grid", None)
-#     meshsize = kwargs.get("meshsize", 1.0) / 5
-#     z_offset = kwargs.get("z_offset", 1.5)
-#     cmap_name = kwargs.get("cmap_name", "viridis")
-#     vmin = kwargs.get("vmin", 0)
-#     vmax = kwargs.get("vmax", 1)
-
-#     # 2. Create voxel-based meshes (same logic as before)
-#     print("Creating voxel meshes...")
-#     meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
-
-#     # 3. Optionally create the sim_grid surface mesh
-#     if sim_grid is not None and dem_grid is not None:
-#         print("Creating sim_grid surface mesh...")
-#         sim_mesh = create_sim_surface_mesh(
-#             sim_grid,
-#             dem_grid,
-#             meshsize=meshsize,
-#             z_offset=z_offset,
-#             cmap_name=cmap_name,
-#             vmin=vmin,
-#             vmax=vmax
-#         )
-#         if sim_mesh is not None:
-#             meshes["sim_surface"] = sim_mesh
-#         else:
-#             print("No valid cells in sim_grid (all NaN?). Skipping surface mesh.")
-
-#     # 4. Optionally export
-#     if base_filename is not None:
-#         print(f"Exporting files to '{base_filename}.*' ...")
-#         export_meshes(meshes, base_filename)
-#     else:
-#         print("Skipping export step.")
-
-#     # 5. Create interactive visualization (voxel + optional sim_surface)
-#     print("Creating interactive visualization...")
-#     scene = create_interactive_scene(meshes)
-
-#     scene.show()
-
-#     return scene
+def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **kwargs):
+    """
+    Visualize building simulation results by replacing building meshes in the original model.
+    
+    This is a specialized wrapper around visualize_voxcity_with_sim_meshes that specifically
+    targets building simulation meshes (assuming building class ID is -3).
+    
+    Parameters
+    ----------
+    voxel_array : np.ndarray
+        3D array of voxel values.
+    meshsize : float
+        Size of each voxel in meters.
+    building_sim_mesh : trimesh.Trimesh
+        Simulation result mesh for buildings with values stored in metadata.
+    **kwargs:
+        Same parameters as visualize_voxcity_with_sim_meshes.
+        Additional parameters:
+        value_name : str
+            Name of the field in metadata containing values to visualize (default: 'svf_values')
+        nan_color : str or tuple
+            Color for NaN values (default: 'gray')
+        
+    Returns
+    -------
+    list
+        List of (view_name, image_file_path) tuples for the generated views.
+    """
+    # Building class ID is typically -3 in voxcity
+    building_class_id = kwargs.get("building_class_id", -3)
+    
+    # Create custom meshes dictionary with the building simulation mesh
+    custom_meshes = {building_class_id: building_sim_mesh}
+    
+    # Add colorbar title if not provided
+    if "colorbar_title" not in kwargs:
+        # Try to guess a title based on the mesh name/type
+        if hasattr(building_sim_mesh, 'name') and building_sim_mesh.name:
+            kwargs["colorbar_title"] = building_sim_mesh.name
+        else:
+            # Use value_field name as fallback
+            value_name = kwargs.get("value_name", "svf_values")
+            pretty_name = value_name.replace('_', ' ').title()
+            kwargs["colorbar_title"] = pretty_name
+    
+    # Call the more general visualization function
+    return visualize_voxcity_with_sim_meshes(
+        voxel_array,
+        meshsize,
+        custom_meshes=custom_meshes,
+        **kwargs
+    )

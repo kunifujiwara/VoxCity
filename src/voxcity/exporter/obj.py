@@ -9,7 +9,7 @@ import numpy as np
 import os
 from numba import njit, prange
 import matplotlib.pyplot as plt
-from ..utils.visualization import get_default_voxel_color_map
+from ..utils.visualization import get_voxel_color_map
 
 def convert_colormap_indices(original_map):
     """
@@ -209,7 +209,7 @@ def export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None):
             If None, uses default color map.
     """
     if voxel_color_map is None:
-        voxel_color_map = get_default_voxel_color_map()
+        voxel_color_map = get_voxel_color_map()
 
     # Extract unique voxel values (excluding zero)
     unique_voxel_values = np.unique(array)

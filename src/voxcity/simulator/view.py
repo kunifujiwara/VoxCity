@@ -47,6 +47,7 @@ import matplotlib.patches as mpatches
 from numba import njit, prange
 
 from ..geoprocessor.polygon import find_building_containing_point, get_buildings_in_drawn_polygon
+from ..geoprocessor.mesh import create_voxel_mesh
 from ..exporter.obj import grid_to_obj, export_obj
 
 @njit
@@ -166,11 +167,15 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
         
         # Calculate segment length in current voxel
         segment_length = (t_next - last_t) * meshsize
+        segment_length = max(0.0, segment_length) 
         
         # Handle tree voxels (value -2)
         if voxel_value == -2:
             transmittance = calculate_transmittance(segment_length, tree_k, tree_lad)
             cumulative_transmittance *= transmittance
+
+            # if segment_length < 0:
+            #     print(f"segment_length = {segment_length}, transmittance = {transmittance}, cumulative_transmittance = {cumulative_transmittance}")
             
             # If transmittance becomes too low, consider it a hit
             if cumulative_transmittance < 0.01:
@@ -881,3 +886,298 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
         )
 
     return vi_map
+
+def get_building_surface_svf(voxel_data, meshsize, show_plot=False, **kwargs):
+    """
+    Compute and visualize the Sky View Factor (SVF) for building surface meshes.
+    
+    Args:
+        voxel_data (ndarray): 3D array of voxel values.
+        meshsize (float): Size of each voxel in meters.
+        show_plot (bool): Whether to display the visualization.
+        **kwargs: Additional parameters (colormap, ray counts, etc.)
+    
+    Returns:
+        trimesh.Trimesh: Mesh of building surfaces with SVF values stored in metadata.
+    """
+    # Import required modules
+    import trimesh
+    import numpy as np
+    import time
+    
+    # Default parameters
+    colormap = kwargs.get("colormap", 'BuPu_r')
+    vmin = kwargs.get("vmin", 0.0)
+    vmax = kwargs.get("vmax", 1.0)
+    N_azimuth = kwargs.get("N_azimuth", 60)
+    N_elevation = kwargs.get("N_elevation", 10)
+    debug = kwargs.get("debug", False)
+    
+    # Tree transmittance parameters
+    tree_k = kwargs.get("tree_k", 0.6)
+    tree_lad = kwargs.get("tree_lad", 1.0)
+    
+    # Sky detection parameters
+    hit_values = (0,)  # Sky is typically represented by 0
+    inclusion_mode = False  # We want rays that DON'T hit obstacles
+    
+    # Extract building mesh (building voxels have value -3)
+    building_class_id = kwargs.get("building_class_id", -3)
+    start_time = time.time()
+    print(f"Extracting building mesh for class ID {building_class_id}...")
+    try:
+        building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize)
+        print(f"Mesh extraction took {time.time() - start_time:.2f} seconds")
+        
+        if building_mesh is None or len(building_mesh.faces) == 0:
+            print("No building surfaces found in voxel data.")
+            return None
+            
+        print(f"Successfully extracted mesh with {len(building_mesh.faces)} faces")
+    except Exception as e:
+        print(f"Error during mesh extraction: {e}")
+        return None
+    
+    print(f"Processing SVF for {len(building_mesh.faces)} building faces...")
+    
+    try:
+        # Calculate face centers and normals
+        face_centers = building_mesh.triangles_center
+        face_normals = building_mesh.face_normals
+        
+        # Initialize array to store SVF values for each face
+        face_svf_values = np.zeros(len(building_mesh.faces))
+        
+        # Get voxel grid dimensions
+        grid_shape = voxel_data.shape
+        grid_bounds = np.array([
+            [0, 0, 0],  # Min bounds in voxel coordinates
+            [grid_shape[0], grid_shape[1], grid_shape[2]]  # Max bounds
+        ])
+        
+        # Convert bounds to real-world coordinates
+        grid_bounds_real = grid_bounds * meshsize
+        
+        # Small epsilon to detect boundary faces (within 0.5 voxel of boundary)
+        boundary_epsilon = meshsize * 0.05
+        
+        # Create hemisphere directions for ray casting
+        hemisphere_dirs = []
+        azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
+        elevation_angles = np.linspace(0, np.pi/2, N_elevation)  # 0 to 90 degrees
+        
+        for elevation in elevation_angles:
+            sin_elev = np.sin(elevation)
+            cos_elev = np.cos(elevation)
+            for azimuth in azimuth_angles:
+                x = cos_elev * np.cos(azimuth)
+                y = cos_elev * np.sin(azimuth)
+                z = sin_elev
+                hemisphere_dirs.append([x, y, z])
+        
+        hemisphere_dirs = np.array(hemisphere_dirs)
+        
+        # Process each face
+        from scipy.spatial.transform import Rotation
+        processed_count = 0
+        boundary_count = 0
+        nan_boundary_count = 0
+        
+        start_time = time.time()
+        for face_idx in range(len(building_mesh.faces)):
+            try:
+                center = face_centers[face_idx]
+                normal = face_normals[face_idx]
+                
+                # Check if this is a vertical surface (normal has no Z component)
+                is_vertical = abs(normal[2]) < 0.01
+                
+                # Check if this face is on the boundary of the voxel grid
+                on_x_min = abs(center[0] - grid_bounds_real[0, 0]) < boundary_epsilon
+                on_y_min = abs(center[1] - grid_bounds_real[0, 1]) < boundary_epsilon
+                on_x_max = abs(center[0] - grid_bounds_real[1, 0]) < boundary_epsilon
+                on_y_max = abs(center[1] - grid_bounds_real[1, 1]) < boundary_epsilon
+                
+                # Check if this is a vertical surface on the boundary
+                is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
+                
+                # Set NaN for all vertical surfaces on domain boundaries
+                if is_boundary_vertical:
+                    face_svf_values[face_idx] = np.nan
+                    nan_boundary_count += 1
+                    processed_count += 1
+                    continue
+                
+                # For non-boundary surfaces, proceed with normal SVF calculation
+                # Convert center to voxel coordinates (for ray origin)
+                center_voxel = center / meshsize
+                
+                # IMPORTANT: Offset ray origin slightly to avoid self-intersection
+                ray_origin = center_voxel + normal * 0.1  # Offset by 0.1 voxel units in normal direction
+                
+                # Create rotation from z-axis to face normal
+                z_axis = np.array([0, 0, 1])
+                
+                # Handle special case where normal is parallel to z-axis
+                if np.isclose(np.abs(np.dot(normal, z_axis)), 1.0, atol=1e-6):
+                    if np.dot(normal, z_axis) > 0:  # Normal points up
+                        rotation_matrix = np.eye(3)  # Identity matrix
+                    else:  # Normal points down
+                        rotation_matrix = np.array([
+                            [1, 0, 0],
+                            [0, -1, 0],
+                            [0, 0, -1]
+                        ])
+                    rotation = Rotation.from_matrix(rotation_matrix)
+                else:
+                    # For all other cases, find rotation that aligns z-axis with normal
+                    rotation_axis = np.cross(z_axis, normal)
+                    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+                    angle = np.arccos(np.clip(np.dot(z_axis, normal), -1.0, 1.0))
+                    rotation = Rotation.from_rotvec(rotation_axis * angle)
+                
+                # Transform hemisphere directions to align with face normal
+                local_dirs = rotation.apply(hemisphere_dirs)
+                
+                # Filter directions - keep only those that:
+                # 1. Are pointing outward from the face (dot product with normal > 0)
+                # 2. Have a positive z component (upward in world space)
+                valid_dirs = []
+                total_dirs = 0
+                
+                # Count total directions in the hemisphere (for normalization)
+                for dir_vector in local_dirs:
+                    dot_product = np.dot(dir_vector, normal)
+                    # Count this direction if it's pointing outward from the face
+                    if dot_product > 0.01:  # Small threshold to avoid precision issues
+                        total_dirs += 1
+                        # Only trace rays that have a positive z component (can reach sky)
+                        if dir_vector[2] > 0:
+                            valid_dirs.append(dir_vector)
+                
+                # If no valid directions, SVF is 0
+                if total_dirs == 0:
+                    face_svf_values[face_idx] = 0
+                    continue
+                    
+                # If no upward directions, SVF is 0 (all rays are blocked by ground)
+                if len(valid_dirs) == 0:
+                    face_svf_values[face_idx] = 0
+                    continue
+                    
+                # Convert to numpy array for compute_vi_generic
+                valid_dirs = np.array(valid_dirs, dtype=np.float64)
+                
+                # Calculate SVF using compute_vi_generic for the upward rays
+                # Then scale by the fraction of upward rays to total rays
+                upward_svf = compute_vi_generic(
+                    ray_origin,
+                    voxel_data,
+                    valid_dirs,
+                    hit_values,
+                    meshsize,
+                    tree_k,
+                    tree_lad,
+                    inclusion_mode
+                )
+                
+                # Scale SVF by the fraction of rays that could potentially reach the sky
+                # This accounts for downward rays that always have 0 SVF
+                face_svf_values[face_idx] = upward_svf * (len(valid_dirs) / total_dirs)
+            
+            except Exception as e:
+                print(f"Error processing face {face_idx}: {e}")
+                face_svf_values[face_idx] = 0
+            
+            # Progress reporting
+            processed_count += 1
+            if processed_count % 500 == 0 or processed_count == len(building_mesh.faces):
+                elapsed = time.time() - start_time
+                faces_per_second = processed_count / elapsed
+                remaining = (len(building_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_mesh.faces) else 0
+                print(f"Processed {processed_count}/{len(building_mesh.faces)} faces "
+                      f"({processed_count/len(building_mesh.faces)*100:.1f}%) - "
+                      f"{faces_per_second:.1f} faces/sec - "
+                      f"Est. remaining: {remaining:.1f} sec")
+        
+        print(f"Identified {nan_boundary_count} faces on domain vertical boundaries (set to NaN)")
+        
+        # Store SVF values directly in mesh metadata
+        if not hasattr(building_mesh, 'metadata'):
+            building_mesh.metadata = {}
+        building_mesh.metadata['svf_values'] = face_svf_values
+        
+        # Apply colors to the mesh based on SVF values (only for visualization)
+        if show_plot:
+            import matplotlib.cm as cm
+            import matplotlib.colors as mcolors
+            cmap = cm.get_cmap(colormap)
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            
+            # Get a copy of face_svf_values with NaN replaced by a specific value outside the range
+            # This ensures NaN faces get a distinct color in the visualization
+            vis_values = face_svf_values.copy()
+            nan_mask = np.isnan(vis_values)
+            if np.any(nan_mask):
+                # Use a color below vmin for NaN values (they'll be clipped to vmin in the colormap)
+                # But we can see them as the minimum color
+                vis_values[nan_mask] = vmin - 0.1
+            
+            # Apply colors
+            face_colors = cmap(norm(vis_values))
+            building_mesh.visual.face_colors = face_colors
+            
+            # Create a scene with the colored mesh
+            scene = trimesh.Scene()
+            scene.add_geometry(building_mesh)
+            scene.show()
+            
+            # Also create a matplotlib figure with colorbar for reference
+            import matplotlib.pyplot as plt
+            
+            fig, ax = plt.subplots(figsize=(8, 3))
+            cb = plt.colorbar(
+                cm.ScalarMappable(norm=norm, cmap=cmap),
+                ax=ax,
+                orientation='horizontal',
+                label='Sky View Factor'
+            )
+            ax.remove()  # Remove the axes, keep only colorbar
+            plt.tight_layout()
+            plt.show()
+        
+            # Plot histogram of SVF values (excluding NaN)
+            valid_svf = face_svf_values[~np.isnan(face_svf_values)]
+            plt.figure(figsize=(10, 6))
+            plt.hist(valid_svf, bins=50, color='skyblue', alpha=0.7)
+            plt.title('Distribution of Sky View Factor on Building Surfaces')
+            plt.xlabel('Sky View Factor')
+            plt.ylabel('Frequency')
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.show()
+        
+        # Handle optional OBJ export
+        obj_export = kwargs.get("obj_export", False)
+        if obj_export:
+            output_dir = kwargs.get("output_directory", "output")
+            output_file_name = kwargs.get("output_file_name", "building_surface_svf")
+            
+            # Ensure output directory exists
+            import os
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Export as OBJ with face colors
+            try:
+                building_mesh.export(f"{output_dir}/{output_file_name}.obj")
+                print(f"Exported building SVF mesh to {output_dir}/{output_file_name}.obj")
+            except Exception as e:
+                print(f"Error exporting mesh: {e}")
+        
+        return building_mesh
+        
+    except Exception as e:
+        print(f"Error during SVF calculation: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
