@@ -93,11 +93,20 @@ def get_voxel_color_map(color_scheme='default'):
         - 'earth_tones': Natural earth colors
         - 'vibrant': Very bright, saturated colors
         
+        # NEW:
+        - 'cyberpunk': Neon-like purples, pinks, and blues
+        - 'tropical': Vibrant greens, oranges, pinks (island vibes)
+        - 'vintage': Muted, sepia-like tones
+        - 'neon_dreams': Super-bright, nightclub neon palette
+
     Returns:
     --------
     dict
         A dictionary mapping voxel IDs to RGB color values
     """
+    # ----------------------
+    # DO NOT MODIFY DEFAULT
+    # ----------------------
     if color_scheme == 'default':
         return {
             -99: [0, 0, 0],  # void,
@@ -113,20 +122,21 @@ def get_voxel_color_map(color_scheme='default'):
             -2: [78, 99, 63],     # Tree
             -1: [188, 143, 143],  # Underground
             1: [239, 228, 176],   # 'Bareland (ground surface)',
-            2: [123, 130, 59],   # 'Rangeland (ground surface)',
-            3: [97, 140, 86],   # 'Shrub (ground surface)',
-            4: [112, 120, 56],   #  'Agriculture land (ground surface)',
-            5: [116, 150, 66],   #  'Tree (ground surface)',
-            6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
-            7: [77, 118, 99],    #  'Wet land (ground surface)',
-            8: [22, 61, 51],    #  'Mangrove (ground surface)',
-            9: [44, 66, 133],    #  'Water (ground surface)',
-            10: [205, 215, 224],    #  'Snow and ice (ground surface)',
-            11: [108, 119, 129],   #  'Developed space (ground surface)',
-            12: [59, 62, 87],      # 'Road (ground surface)',
-            13: [150, 166, 190],    #  'Building (ground surface)'
-            14: [239, 228, 176],    #  'No Data (ground surface)'
+            2: [123, 130, 59],    # 'Rangeland (ground surface)',
+            3: [97, 140, 86],     # 'Shrub (ground surface)',
+            4: [112, 120, 56],    # 'Agriculture land (ground surface)',
+            5: [116, 150, 66],    # 'Tree (ground surface)',
+            6: [187, 204, 40],    # 'Moss and lichen (ground surface)',
+            7: [77, 118, 99],     # 'Wet land (ground surface)',
+            8: [22, 61, 51],      # 'Mangrove (ground surface)',
+            9: [44, 66, 133],     # 'Water (ground surface)',
+            10: [205, 215, 224],  # 'Snow and ice (ground surface)',
+            11: [108, 119, 129],  # 'Developed space (ground surface)',
+            12: [59, 62, 87],     # 'Road (ground surface)',
+            13: [150, 166, 190],  # 'Building (ground surface)'
+            14: [239, 228, 176],  # 'No Data (ground surface)'
         }
+
     elif color_scheme == 'high_contrast':
         return {
             -99: [0, 0, 0],  # void
@@ -156,6 +166,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [102, 102, 255],  # (Light Purple) 'Building'
             14: [255, 204, 153],  # (Light Orange) 'No Data'
         }
+
     elif color_scheme == 'monochrome':
         return {
             -99: [0, 0, 0],  # void
@@ -185,6 +196,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [153, 153, 204],  # 'Building'
             14: [230, 230, 255],  # 'No Data'
         }
+
     elif color_scheme == 'pastel':
         return {
             -99: [0, 0, 0],  # void
@@ -196,53 +208,55 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [226, 226, 226],  # (Light Gray) 'concrete'
             -12: [255, 223, 179],  # (Pastel Orange) 'wood'
             -11: [204, 168, 166],  # (Pastel Red) 'brick'
-            -3: [214, 217, 235],  # (Pastel Purple) Building
-            -2: [190, 207, 180],  # (Pastel Green) Tree
-            -1: [235, 204, 204],  # (Pastel Pink) Underground
-            1: [250, 244, 227],  # (Cream) 'Bareland'
-            2: [213, 217, 182],  # (Pastel Olive) 'Rangeland'
-            3: [200, 226, 195],  # (Pastel Green) 'Shrub'
-            4: [209, 214, 188],  # (Pastel Yellow-Green) 'Agriculture land'
-            5: [195, 220, 168],  # (Light Pastel Green) 'Tree'
-            6: [237, 241, 196],  # (Pastel Yellow) 'Moss and lichen'
-            7: [180, 210, 205],  # (Pastel Teal) 'Wet land'
-            8: [176, 196, 190],  # (Darker Pastel Teal) 'Mangrove'
-            9: [188, 206, 235],  # (Pastel Blue) 'Water'
-            10: [242, 245, 250],  # (Light Blue-White) 'Snow and ice'
-            11: [209, 213, 219],  # (Pastel Gray) 'Developed space'
-            12: [189, 190, 204],  # (Pastel Blue-Gray) 'Road'
-            13: [215, 221, 232],  # (Very Light Pastel Blue) 'Building'
-            14: [250, 244, 227],  # (Cream) 'No Data'
+            -3: [214, 217, 235],   # (Pastel Purple) Building
+            -2: [190, 207, 180],   # (Pastel Green) Tree
+            -1: [235, 204, 204],   # (Pastel Pink) Underground
+            1: [250, 244, 227],    # (Cream) 'Bareland'
+            2: [213, 217, 182],    # (Pastel Olive) 'Rangeland'
+            3: [200, 226, 195],    # (Pastel Green) 'Shrub'
+            4: [209, 214, 188],    # (Pastel Yellow-Green) 'Agriculture land'
+            5: [195, 220, 168],    # (Light Pastel Green) 'Tree'
+            6: [237, 241, 196],    # (Pastel Yellow) 'Moss and lichen'
+            7: [180, 210, 205],    # (Pastel Teal) 'Wet land'
+            8: [176, 196, 190],    # (Darker Pastel Teal) 'Mangrove'
+            9: [188, 206, 235],    # (Pastel Blue) 'Water'
+            10: [242, 245, 250],   # (Light Blue-White) 'Snow and ice'
+            11: [209, 213, 219],   # (Pastel Gray) 'Developed space'
+            12: [189, 190, 204],   # (Pastel Blue-Gray) 'Road'
+            13: [215, 221, 232],   # (Very Light Pastel Blue) 'Building'
+            14: [250, 244, 227],   # (Cream) 'No Data'
         }
+
     elif color_scheme == 'dark_mode':
         return {
             -99: [0, 0, 0],  # void
-            -30: [153, 51, 102],  # (Dark Pink) 'Landmark'
-            -17: [76, 76, 76],  # (Dark Gray) 'plaster'
-            -16: [33, 46, 51],  # (Very Dark Blue) 'glass'
-            -15: [89, 84, 66],  # (Very Dark Brown) 'stone'
-            -14: [83, 89, 94],  # (Dark Gray) 'metal'
-            -13: [61, 61, 61],  # (Dark Gray) 'concrete'
-            -12: [153, 102, 0],  # (Dark Orange) 'wood'
-            -11: [51, 35, 33],  # (Very Dark Red) 'brick'
-            -3: [78, 82, 99],  # (Dark Purple) Building
-            -2: [46, 58, 37],  # (Dark Green) Tree
-            -1: [99, 68, 68],  # (Dark Pink) Underground
-            1: [102, 97, 75],  # (Dark Yellow) 'Bareland'
-            2: [61, 66, 31],  # (Dark Olive) 'Rangeland'
-            3: [46, 77, 46],  # (Dark Green) 'Shrub'
-            4: [56, 61, 28],  # (Dark Yellow-Green) 'Agriculture land'
-            5: [54, 77, 31],  # (Dark Green) 'Tree'
-            6: [89, 97, 20],  # (Dark Yellow) 'Moss and lichen'
-            7: [38, 59, 49],  # (Dark Teal) 'Wet land'
-            8: [16, 31, 26],  # (Very Dark Green) 'Mangrove'
-            9: [22, 33, 66],  # (Dark Blue) 'Water'
-            10: [82, 87, 92],  # (Dark Blue-Gray) 'Snow and ice'
-            11: [46, 51, 56],  # (Dark Gray) 'Developed space'
-            12: [25, 31, 43],  # (Very Dark Blue) 'Road'
-            13: [56, 64, 82],  # (Dark Blue-Gray) 'Building'
-            14: [102, 97, 75],  # (Dark Yellow) 'No Data'
+            -30: [153, 51, 102],   # (Dark Pink) 'Landmark'
+            -17: [76, 76, 76],     # (Dark Gray) 'plaster'
+            -16: [33, 46, 51],     # (Very Dark Blue) 'glass'
+            -15: [89, 84, 66],     # (Very Dark Brown) 'stone'
+            -14: [83, 89, 94],     # (Dark Gray) 'metal'
+            -13: [61, 61, 61],     # (Dark Gray) 'concrete'
+            -12: [153, 102, 0],    # (Dark Orange) 'wood'
+            -11: [51, 35, 33],     # (Very Dark Red) 'brick'
+            -3: [78, 82, 99],      # (Dark Purple) Building
+            -2: [46, 58, 37],      # (Dark Green) Tree
+            -1: [99, 68, 68],      # (Dark Pink) Underground
+            1: [102, 97, 75],      # (Dark Yellow) 'Bareland'
+            2: [61, 66, 31],       # (Dark Olive) 'Rangeland'
+            3: [46, 77, 46],       # (Dark Green) 'Shrub'
+            4: [56, 61, 28],       # (Dark Yellow-Green) 'Agriculture land'
+            5: [54, 77, 31],       # (Dark Green) 'Tree'
+            6: [89, 97, 20],       # (Dark Yellow) 'Moss and lichen'
+            7: [38, 59, 49],       # (Dark Teal) 'Wet land'
+            8: [16, 31, 26],       # (Very Dark Green) 'Mangrove'
+            9: [22, 33, 66],       # (Dark Blue) 'Water'
+            10: [82, 87, 92],      # (Dark Blue-Gray) 'Snow and ice'
+            11: [46, 51, 56],      # (Dark Gray) 'Developed space'
+            12: [25, 31, 43],      # (Very Dark Blue) 'Road'
+            13: [56, 64, 82],      # (Dark Blue-Gray) 'Building'
+            14: [102, 97, 75],     # (Dark Yellow) 'No Data'
         }
+
     elif color_scheme == 'grayscale':
         return {
             -99: [0, 0, 0],      # void (black)
@@ -272,6 +286,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [170, 170, 170],  # 'Building'
             14: [230, 230, 230],  # 'No Data'
         }
+
     elif color_scheme == 'autumn':
         return {
             -99: [0, 0, 0],          # void
@@ -301,6 +316,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [210, 180, 140],     # (Tan) 'Building'
             14: [255, 235, 205],     # (Blanched Almond) 'No Data'
         }
+
     elif color_scheme == 'cool':
         return {
             -99: [0, 0, 0],          # void
@@ -330,6 +346,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [173, 216, 230],     # (Light Blue) 'Building'
             14: [220, 240, 250],     # (Light Blue) 'No Data'
         }
+
     elif color_scheme == 'earth_tones':
         return {
             -99: [0, 0, 0],          # void
@@ -359,6 +376,7 @@ def get_voxel_color_map(color_scheme='default'):
             13: [188, 170, 152],     # (Tan) 'Building'
             14: [222, 184, 135],     # (Burlywood) 'No Data'
         }
+
     elif color_scheme == 'vibrant':
         return {
             -99: [0, 0, 0],          # void
@@ -388,6 +406,146 @@ def get_voxel_color_map(color_scheme='default'):
             13: [135, 206, 250],     # (Light Sky Blue) 'Building'
             14: [255, 255, 224],     # (Light Yellow) 'No Data'
         }
+
+    # ------------------------------------------------
+    # NEWLY ADDED STYLISH COLOR SCHEMES BELOW:
+    # ------------------------------------------------
+    elif color_scheme == 'cyberpunk':
+        """
+        Vibrant neon purples, pinks, and blues with deep blacks.
+        Think futuristic city vibes and bright neon signs.
+        """
+        return {
+            -99: [0, 0, 0],           # void (keep it pitch black)
+            -30: [255, 0, 255],       # (Neon Magenta) 'Landmark'
+            -17: [255, 255, 255],     # (Bright White) 'plaster'
+            -16: [0, 255, 255],       # (Neon Cyan) 'glass'
+            -15: [128, 0, 128],       # (Purple) 'stone'
+            -14: [50, 50, 50],        # (Dark Gray) 'metal'
+            -13: [102, 0, 102],       # (Dark Magenta) 'concrete'
+            -12: [255, 20, 147],      # (Deep Pink) 'wood'
+            -11: [153, 0, 76],        # (Deep Purple-Red) 'brick'
+            -3: [124, 0, 255],        # (Strong Neon Purple) Building
+            -2: [0, 255, 153],        # (Neon Greenish Cyan) Tree
+            -1: [255, 0, 102],        # (Hot Pink) Underground
+            1: [255, 255, 153],       # (Pale Yellow) 'Bareland'
+            2: [0, 204, 204],         # (Teal) 'Rangeland'
+            3: [153, 51, 255],        # (Light Purple) 'Shrub'
+            4: [0, 153, 255],         # (Bright Neon Blue) 'Agriculture land'
+            5: [0, 255, 153],         # (Neon Greenish Cyan) 'Tree'
+            6: [204, 0, 255],         # (Vivid Violet) 'Moss and lichen'
+            7: [0, 255, 255],         # (Neon Cyan) 'Wet land'
+            8: [0, 102, 102],         # (Dark Teal) 'Mangrove'
+            9: [51, 0, 102],          # (Deep Indigo) 'Water'
+            10: [255, 255, 255],      # (White) 'Snow and ice'
+            11: [102, 102, 102],      # (Gray) 'Developed space'
+            12: [0, 0, 0],            # (Black) 'Road'
+            13: [204, 51, 255],       # (Bright Magenta) 'Building'
+            14: [255, 255, 153],      # (Pale Yellow) 'No Data'
+        }
+
+    elif color_scheme == 'tropical':
+        """
+        Bold, bright 'tropical vacation' color palette.
+        Lots of greens, oranges, pinks, reminiscent of island florals.
+        """
+        return {
+            -99: [0, 0, 0],            # void
+            -30: [255, 99, 164],       # (Bright Tropical Pink) 'Landmark'
+            -17: [255, 248, 220],      # (Cornsilk) 'plaster'
+            -16: [0, 150, 136],        # (Teal) 'glass'
+            -15: [255, 140, 0],        # (Dark Orange) 'stone'
+            -14: [255, 215, 180],      # (Light Peach) 'metal'
+            -13: [210, 210, 210],      # (Light Gray) 'concrete'
+            -12: [255, 165, 0],        # (Orange) 'wood'
+            -11: [205, 92, 92],        # (Indian Red) 'brick'
+            -3: [255, 193, 37],        # (Tropical Yellow) Building
+            -2: [34, 139, 34],         # (Forest Green) Tree
+            -1: [255, 160, 122],       # (Light Salmon) Underground
+            1: [240, 230, 140],        # (Khaki) 'Bareland'
+            2: [60, 179, 113],         # (Medium Sea Green) 'Rangeland'
+            3: [46, 139, 87],          # (Sea Green) 'Shrub'
+            4: [255, 127, 80],         # (Coral) 'Agriculture land'
+            5: [50, 205, 50],          # (Lime Green) 'Tree'
+            6: [255, 239, 213],        # (Papaya Whip) 'Moss and lichen'
+            7: [255, 99, 71],          # (Tomato) 'Wet land'
+            8: [47, 79, 79],           # (Dark Slate Gray) 'Mangrove'
+            9: [0, 128, 128],          # (Teal) 'Water'
+            10: [224, 255, 255],       # (Light Cyan) 'Snow and ice'
+            11: [218, 112, 214],       # (Orchid) 'Developed space'
+            12: [85, 107, 47],         # (Dark Olive Green) 'Road'
+            13: [253, 245, 230],       # (Old Lace) 'Building'
+            14: [240, 230, 140],       # (Khaki) 'No Data'
+        }
+
+    elif color_scheme == 'vintage':
+        """
+        A muted, old-photo or sepia-inspired palette 
+        for a nostalgic or antique look.
+        """
+        return {
+            -99: [0, 0, 0],            # void
+            -30: [133, 94, 66],        # (Beaver/Brownish) 'Landmark'
+            -17: [250, 240, 230],      # (Antique White) 'plaster'
+            -16: [169, 157, 143],      # (Muted Brown-Gray) 'glass'
+            -15: [181, 166, 127],      # (Khaki Tan) 'stone'
+            -14: [120, 106, 93],       # (Faded Gray-Brown) 'metal'
+            -13: [190, 172, 145],      # (Light Brown) 'concrete'
+            -12: [146, 109, 83],       # (Leather Brown) 'wood'
+            -11: [125, 80, 70],        # (Dusty Brick) 'brick'
+            -3: [201, 174, 146],       # (Tanned Beige) Building
+            -2: [112, 98, 76],         # (Faded Olive-Brown) Tree
+            -1: [172, 140, 114],       # (Light Saddle Brown) Underground
+            1: [222, 202, 166],        # (Light Tan) 'Bareland'
+            2: [131, 114, 83],         # (Brownish) 'Rangeland'
+            3: [105, 96, 74],          # (Dark Olive Brown) 'Shrub'
+            4: [162, 141, 118],        # (Beige Brown) 'Agriculture land'
+            5: [95, 85, 65],           # (Muted Dark Brown) 'Tree'
+            6: [212, 200, 180],        # (Off-White Tan) 'Moss and lichen'
+            7: [140, 108, 94],         # (Dusky Mauve-Brown) 'Wet land'
+            8: [85, 73, 60],           # (Dark Taupe) 'Mangrove'
+            9: [166, 152, 121],        # (Pale Brown) 'Water'
+            10: [250, 245, 235],       # (Light Antique White) 'Snow and ice'
+            11: [120, 106, 93],        # (Faded Gray-Brown) 'Developed space'
+            12: [77, 66, 55],          # (Dark Taupe) 'Road'
+            13: [203, 188, 162],       # (Light Warm Gray) 'Building'
+            14: [222, 202, 166],       # (Light Tan) 'No Data'
+        }
+
+    elif color_scheme == 'neon_dreams':
+        """
+        A super-bright, high-energy neon palette.
+        Perfect if you want a 'nightclub in 2080' vibe.
+        """
+        return {
+            -99: [0, 0, 0],           # void
+            -30: [255, 0, 255],       # (Magenta) 'Landmark'
+            -17: [255, 255, 255],     # (White) 'plaster'
+            -16: [0, 255, 255],       # (Cyan) 'glass'
+            -15: [255, 255, 0],       # (Yellow) 'stone'
+            -14: [0, 255, 0],         # (Lime) 'metal'
+            -13: [128, 128, 128],     # (Gray) 'concrete'
+            -12: [255, 165, 0],       # (Neon Orange) 'wood'
+            -11: [255, 20, 147],      # (Deep Pink) 'brick'
+            -3: [75, 0, 130],         # (Indigo) Building
+            -2: [102, 255, 0],        # (Bright Lime Green) Tree
+            -1: [255, 51, 153],       # (Neon Pink) Underground
+            1: [255, 153, 0],         # (Bright Orange) 'Bareland'
+            2: [153, 204, 0],         # (Vivid Yellow-Green) 'Rangeland'
+            3: [102, 205, 170],       # (Aquamarine-ish) 'Shrub'
+            4: [0, 250, 154],         # (Medium Spring Green) 'Agriculture land'
+            5: [173, 255, 47],        # (Green-Yellow) 'Tree'
+            6: [127, 255, 0],         # (Chartreuse) 'Moss and lichen'
+            7: [64, 224, 208],        # (Turquoise) 'Wet land'
+            8: [0, 128, 128],         # (Teal) 'Mangrove'
+            9: [0, 0, 255],           # (Blue) 'Water'
+            10: [224, 255, 255],      # (Light Cyan) 'Snow and ice'
+            11: [192, 192, 192],      # (Silver) 'Developed space'
+            12: [25, 25, 25],         # (Near Black) 'Road'
+            13: [75, 0, 130],         # (Indigo) 'Building'
+            14: [255, 153, 0],        # (Bright Orange) 'No Data'
+        }
+
     else:
         # If an unknown color scheme is specified, return the default
         print(f"Unknown color scheme '{color_scheme}'. Using default instead.")
