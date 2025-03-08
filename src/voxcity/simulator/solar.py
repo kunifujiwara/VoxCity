@@ -766,6 +766,134 @@ def get_global_solar_irradiance_using_epw(
     
     return solar_map 
 
+import numpy as np
+import trimesh
+import time
+from numba import njit
+
+##############################################################################
+# 1) New Numba helper: per-face solar irradiance computation
+##############################################################################
+@njit
+def compute_solar_irradiance_for_all_faces(
+    face_centers,
+    face_normals,
+    face_svf_values,
+    sun_direction,
+    direct_normal_irradiance,
+    diffuse_irradiance,
+    voxel_data,
+    meshsize,
+    tree_k,
+    tree_lad,
+    hit_values,
+    inclusion_mode,
+    grid_bounds_real,
+    boundary_epsilon
+):
+    """
+    Numba-compiled function to compute direct, diffuse, and global solar irradiance
+    for each face in the mesh.
+    
+    Args:
+        face_centers (float64[:, :]): (N x 3) array of face center points
+        face_normals (float64[:, :]): (N x 3) array of face normals
+        face_svf_values (float64[:]): (N) array of SVF values for each face
+        sun_direction (float64[:]): (3) array for sun direction (dx, dy, dz)
+        direct_normal_irradiance (float): Direct normal irradiance (DNI) in W/m²
+        diffuse_irradiance (float): Diffuse horizontal irradiance (DHI) in W/m²
+        voxel_data (ndarray): 3D array of voxel values
+        meshsize (float): Size of each voxel in meters
+        tree_k (float): Tree extinction coefficient
+        tree_lad (float): Leaf area density
+        hit_values (tuple): Values considered 'sky' (e.g. (0,))
+        inclusion_mode (bool): Whether we want to "include" or "exclude" these hit_values
+        grid_bounds_real (float64[2,3]): [[x_min, y_min, z_min],[x_max, y_max, z_max]]
+        boundary_epsilon (float): Distance threshold for bounding-box check
+    
+    Returns:
+        (direct_irr, diffuse_irr, global_irr) as three float64[N] arrays
+    """
+    n_faces = face_centers.shape[0]
+    
+    face_direct = np.zeros(n_faces, dtype=np.float64)
+    face_diffuse = np.zeros(n_faces, dtype=np.float64)
+    face_global = np.zeros(n_faces, dtype=np.float64)
+    
+    x_min, y_min, z_min = grid_bounds_real[0, 0], grid_bounds_real[0, 1], grid_bounds_real[0, 2]
+    x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
+    
+    for fidx in range(n_faces):
+        center = face_centers[fidx]
+        normal = face_normals[fidx]
+        svf    = face_svf_values[fidx]
+        
+        # -- 1) Check for vertical boundary face
+        is_vertical = (abs(normal[2]) < 0.01)
+        
+        on_x_min = (abs(center[0] - x_min) < boundary_epsilon)
+        on_y_min = (abs(center[1] - y_min) < boundary_epsilon)
+        on_x_max = (abs(center[0] - x_max) < boundary_epsilon)
+        on_y_max = (abs(center[1] - y_max) < boundary_epsilon)
+        
+        is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
+        
+        if is_boundary_vertical:
+            face_direct[fidx]  = np.nan
+            face_diffuse[fidx] = np.nan
+            face_global[fidx]  = np.nan
+            continue
+        
+        # If SVF is NaN, skip (means it was set to boundary or invalid earlier)
+        if svf != svf:  # NaN check in Numba
+            face_direct[fidx]  = np.nan
+            face_diffuse[fidx] = np.nan
+            face_global[fidx]  = np.nan
+            continue
+        
+        # -- 2) Direct irradiance (if face is oriented towards sun)
+        cos_incidence = normal[0]*sun_direction[0] + \
+                        normal[1]*sun_direction[1] + \
+                        normal[2]*sun_direction[2]
+        
+        direct_val = 0.0
+        if cos_incidence > 0.0:
+            # Offset ray origin slightly to avoid self-intersection
+            offset_vox = 0.1
+            ray_origin_x = center[0]/meshsize + normal[0]*offset_vox
+            ray_origin_y = center[1]/meshsize + normal[1]*offset_vox
+            ray_origin_z = center[2]/meshsize + normal[2]*offset_vox
+            
+            # Single ray toward the sun            
+            hit_detected, transmittance = trace_ray_generic(
+                voxel_data,
+                np.array([ray_origin_x, ray_origin_y, ray_origin_z], dtype=np.float64),
+                sun_direction,
+                hit_values,
+                meshsize,
+                tree_k,
+                tree_lad,
+                inclusion_mode
+            )
+            if not hit_detected:
+                direct_val = direct_normal_irradiance * cos_incidence * transmittance
+        
+        # -- 3) Diffuse irradiance from sky: use SVF * DHI
+        diffuse_val = svf * diffuse_irradiance
+        if diffuse_val > diffuse_irradiance:
+            diffuse_val = diffuse_irradiance
+        
+        # -- 4) Sum up
+        face_direct[fidx]  = direct_val
+        face_diffuse[fidx] = diffuse_val
+        face_global[fidx]  = direct_val + diffuse_val
+    
+    return face_direct, face_diffuse, face_global
+
+
+##############################################################################
+# 2) Modified get_building_solar_irradiance: main Python wrapper
+##############################################################################
 def get_building_solar_irradiance(
     voxel_data,
     meshsize,
@@ -777,263 +905,153 @@ def get_building_solar_irradiance(
     **kwargs
 ):
     """
-    Calculate solar irradiance on building surfaces using SVF.
+    Calculate solar irradiance on building surfaces using SVF,
+    with the numeric per-face loop accelerated by Numba.
     
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        building_svf_mesh (trimesh.Trimesh): Building mesh with pre-calculated SVF values in metadata.
+        building_svf_mesh (trimesh.Trimesh): Building mesh with SVF values in metadata.
         azimuth_degrees (float): Sun azimuth angle in degrees (0=North, 90=East).
         elevation_degrees (float): Sun elevation angle in degrees above horizon.
-        direct_normal_irradiance (float): Direct Normal Irradiance in W/m².
-        diffuse_irradiance (float): Diffuse Horizontal Irradiance in W/m².
-        **kwargs: Additional parameters
+        direct_normal_irradiance (float): DNI in W/m².
+        diffuse_irradiance (float): DHI in W/m².
+        **kwargs: Additional parameters, e.g. tree_k, tree_lad, progress_report, obj_export, etc.
     
     Returns:
-        trimesh.Trimesh: Building mesh with irradiance values stored in metadata.
+        trimesh.Trimesh: A copy of the input mesh with direct/diffuse/global irradiance stored in metadata.
     """
-    import numpy as np
-    import trimesh
     import time
-    from scipy.spatial.transform import Rotation
-    from voxcity.simulator.view import trace_ray_generic
     
-    # Default parameters
-    tree_k = kwargs.get("tree_k", 0.6)
-    tree_lad = kwargs.get("tree_lad", 1.0)
+    tree_k          = kwargs.get("tree_k", 0.6)
+    tree_lad        = kwargs.get("tree_lad", 1.0)
     progress_report = kwargs.get("progress_report", False)
     
-    # Hit values and inclusion mode for sky detection
-    hit_values = (0,)  # Sky is typically represented by 0
-    inclusion_mode = False  # We want rays that DON'T hit obstacles
+    # Sky detection
+    hit_values     = (0,)    # '0' = sky
+    inclusion_mode = False
     
-    # Convert sun angles to direction vector
-    azimuth_radians = np.deg2rad(azimuth_degrees)
-    elevation_radians = np.deg2rad(elevation_degrees)
-    sun_dx = np.cos(elevation_radians) * np.sin(azimuth_radians)
-    sun_dy = np.cos(elevation_radians) * np.cos(azimuth_radians)
-    sun_dz = np.sin(elevation_radians)
+    # Convert angles -> direction
+    az_rad = np.deg2rad(180 - azimuth_degrees)
+    el_rad = np.deg2rad(elevation_degrees)
+    sun_dx = np.cos(el_rad) * np.sin(az_rad)
+    sun_dy = np.cos(el_rad) * np.cos(az_rad)
+    sun_dz = np.sin(el_rad)
     sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
     
-    # Get mesh face centers and normals
+    # Extract mesh data
     face_centers = building_svf_mesh.triangles_center
     face_normals = building_svf_mesh.face_normals
     
-    # Get pre-calculated SVF values from mesh metadata
-    if hasattr(building_svf_mesh, 'metadata') and 'svf_values' in building_svf_mesh.metadata:
+    # Get SVF from metadata
+    if hasattr(building_svf_mesh, 'metadata') and ('svf_values' in building_svf_mesh.metadata):
         face_svf_values = building_svf_mesh.metadata['svf_values']
     else:
-        print("WARNING: SVF values not found in mesh metadata. Using zeros.")
-        face_svf_values = np.zeros(len(building_svf_mesh.faces))
+        face_svf_values = np.zeros(len(building_svf_mesh.faces), dtype=np.float64)
     
-    # Initialize arrays for direct, diffuse and global irradiance
-    face_direct_values = np.zeros(len(building_svf_mesh.faces))
-    face_diffuse_values = np.zeros(len(building_svf_mesh.faces))
-    face_global_values = np.zeros(len(building_svf_mesh.faces))
-    
-    # Get voxel grid dimensions
+    # Prepare boundary checks
     grid_shape = voxel_data.shape
-    grid_bounds = np.array([
-        [0, 0, 0],  # Min bounds in voxel coordinates
-        [grid_shape[0], grid_shape[1], grid_shape[2]]  # Max bounds
-    ])
-    
-    # Convert bounds to real-world coordinates
-    grid_bounds_real = grid_bounds * meshsize
-    
-    # Small epsilon to detect boundary faces (within 0.5 voxel of boundary)
+    grid_bounds_voxel = np.array([[0,0,0],[grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
+    grid_bounds_real = grid_bounds_voxel * meshsize
     boundary_epsilon = meshsize * 0.05
     
+    # Call Numba-compiled function
+    t0 = time.time()
+    face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
+        face_centers,
+        face_normals,
+        face_svf_values,
+        sun_direction,
+        direct_normal_irradiance,
+        diffuse_irradiance,
+        voxel_data,
+        meshsize,
+        tree_k,
+        tree_lad,
+        hit_values,
+        inclusion_mode,
+        grid_bounds_real,
+        boundary_epsilon
+    )
     if progress_report:
-        print(f"Calculating solar irradiance for {len(building_svf_mesh.faces)} building faces...")
-
-    start_time = time.time()
-    processed_count = 0
-    boundary_face_count = 0
+        elapsed = time.time() - t0
+        print(f"Numba-based solar irradiance calculation took {elapsed:.2f} seconds")
     
-    # Process each face
-    for face_idx in range(len(building_svf_mesh.faces)):
-        try:
-            center = face_centers[face_idx]
-            normal = face_normals[face_idx]
-            
-            # Check if this is a vertical surface (normal has no Z component)
-            is_vertical = abs(normal[2]) < 0.01
-            
-            # Check if this face is on the boundary of the voxel grid
-            on_x_min = abs(center[0] - grid_bounds_real[0, 0]) < boundary_epsilon
-            on_y_min = abs(center[1] - grid_bounds_real[0, 1]) < boundary_epsilon
-            on_x_max = abs(center[0] - grid_bounds_real[1, 0]) < boundary_epsilon
-            on_y_max = abs(center[1] - grid_bounds_real[1, 1]) < boundary_epsilon
-            
-            # Check if this is a vertical surface on the boundary
-            is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
-            
-            # Set NaN for all vertical surfaces on domain boundaries and skip calculation
-            if is_boundary_vertical:
-                face_direct_values[face_idx] = np.nan
-                face_diffuse_values[face_idx] = np.nan
-                face_global_values[face_idx] = np.nan
-                boundary_face_count += 1
-                processed_count += 1
-                continue
-            
-            # Normal calculation for non-boundary faces
-            svf = face_svf_values[face_idx]
-            
-            # Skip calculation if SVF is NaN (typically means it was already marked as a boundary)
-            if np.isnan(svf):
-                face_direct_values[face_idx] = np.nan
-                face_diffuse_values[face_idx] = np.nan
-                face_global_values[face_idx] = np.nan
-                boundary_face_count += 1
-                processed_count += 1
-                continue
-            
-            # Calculate the cosine of the angle between the face normal and sun direction
-            cos_incidence = np.dot(normal, sun_direction)
-            
-            # Direct component: Only if the face is oriented toward the sun
-            if cos_incidence > 0:
-                # Convert center to voxel coordinates
-                center_voxel = center / meshsize
-                
-                # Offset ray origin slightly to avoid self-intersection
-                ray_origin = center_voxel + normal * 0.1
-                
-                # Cast a single ray toward the sun using trace_ray_generic
-                hit_detected, transmittance = trace_ray_generic(
-                    voxel_data,
-                    ray_origin,
-                    sun_direction,
-                    hit_values,
-                    meshsize,
-                    tree_k,
-                    tree_lad,
-                    inclusion_mode
-                )
-                
-                # If the ray did not hit any obstacles
-                if not hit_detected:
-                    # Direct irradiance = DNI * cosine * transmittance
-                    face_direct_values[face_idx] = direct_normal_irradiance * cos_incidence * transmittance
-            
-            # Diffuse component: Based on SVF and diffuse irradiance
-            face_diffuse_values[face_idx] = diffuse_irradiance * svf
-            
-            # Safety check - cap unreasonably high diffuse values
-            if face_diffuse_values[face_idx] > diffuse_irradiance:
-                face_diffuse_values[face_idx] = diffuse_irradiance
-            
-            # Global irradiance = direct + diffuse
-            face_global_values[face_idx] = face_direct_values[face_idx] + face_diffuse_values[face_idx]
-            
-        except Exception as e:
-            print(f"Error processing face {face_idx}: {e}")
-            # Set to zero in case of error
-            face_direct_values[face_idx] = 0
-            face_diffuse_values[face_idx] = 0
-            face_global_values[face_idx] = 0
-        
-        processed_count += 1
-
-        if progress_report:
-            # Calculate frequency based on total number of faces, aiming for ~10 progress updates
-            progress_frequency = max(1, len(building_svf_mesh.faces) // 10)
-            if processed_count % progress_frequency == 0 or processed_count == len(building_svf_mesh.faces):
-                elapsed = time.time() - start_time
-                faces_per_second = processed_count / max(elapsed, 0.001)
-                remaining = (len(building_svf_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_svf_mesh.faces) else 0
-                print(f"Progress: {processed_count}/{len(building_svf_mesh.faces)} faces "
-                    f"({processed_count/len(building_svf_mesh.faces)*100:.1f}%) - "
-                    f"Est. remaining: {remaining:.1f} sec")
-    
-    # print(f"Identified {boundary_face_count} faces on domain vertical boundaries (set to NaN)")
-    
-    # Create a copy of the original mesh to preserve the original data
+    # Create a copy of the mesh
     irradiance_mesh = building_svf_mesh.copy()
-    
-    # Store irradiance values in mesh metadata
     if not hasattr(irradiance_mesh, 'metadata'):
         irradiance_mesh.metadata = {}
     
-    # Store all values in metadata with consistent naming
-    irradiance_mesh.metadata['svf'] = face_svf_values
-    irradiance_mesh.metadata['direct'] = face_direct_values
-    irradiance_mesh.metadata['diffuse'] = face_diffuse_values
-    irradiance_mesh.metadata['global'] = face_global_values
+    # Store results
+    irradiance_mesh.metadata['svf']    = face_svf_values
+    irradiance_mesh.metadata['direct'] = face_direct
+    irradiance_mesh.metadata['diffuse'] = face_diffuse
+    irradiance_mesh.metadata['global'] = face_global
     
-    # Set mesh name
     irradiance_mesh.name = "Solar Irradiance (W/m²)"
     
-    # Optional statistics - calculate only for non-NaN values
-    valid_direct = face_direct_values[~np.isnan(face_direct_values)]
-    valid_diffuse = face_diffuse_values[~np.isnan(face_diffuse_values)]
-    valid_global = face_global_values[~np.isnan(face_global_values)]
-    
-    if progress_report:
-        print(f"Irradiance statistics (excluding boundary faces):")
-        if len(valid_direct) > 0:
-            print(f"  Direct - Min: {np.min(valid_direct):.1f} W/m², Max: {np.max(valid_direct):.1f} W/m², Mean: {np.mean(valid_direct):.1f} W/m²")
-        if len(valid_diffuse) > 0:
-            print(f"  Diffuse - Min: {np.min(valid_diffuse):.1f} W/m², Max: {np.max(valid_diffuse):.1f} W/m², Mean: {np.mean(valid_diffuse):.1f} W/m²")
-        if len(valid_global) > 0:
-            print(f"  Global - Min: {np.min(valid_global):.1f} W/m², Max: {np.max(valid_global):.1f} W/m², Mean: {np.mean(valid_global):.1f} W/m²")
-    
-    # Handle optional OBJ export
-    obj_export = kwargs.get("obj_export", False)
-    if obj_export:
-        output_dir = kwargs.get("output_directory", "output")
-        output_file_name = kwargs.get("output_file_name", "building_solar_irradiance")
-        
-        # Ensure output directory exists
-        import os
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # For OBJ export, we need to create a temporary mesh with colors for the global irradiance
-        export_mesh = irradiance_mesh.copy()
-        
-        # Apply colors based on global irradiance for export
-        import matplotlib.cm as cm
-        import matplotlib.colors as mcolors
-        
-        vmin = kwargs.get("vmin", 0.0)
-        vmax = kwargs.get("vmax", None)
-        if vmax is None:
-            vmax = max(np.nanmax(valid_global), 0.1)  # At least 0.1 to avoid division by zero
-        
-        colormap = kwargs.get("colormap", 'magma')
-        cmap = cm.get_cmap(colormap)
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-        
-        # Create colors, handling NaN separately
-        face_colors = np.zeros((len(face_global_values), 4))
-        nan_mask = np.isnan(face_global_values)
-        
-        # Use gray for NaN values (or specified color)
-        nan_color = kwargs.get("nan_color", "gray")
-        if isinstance(nan_color, str):
-            import matplotlib.colors as mcolors
-            nan_rgba = np.array(mcolors.to_rgba(nan_color))
-        else:
-            # Assume it's already a tuple/list of RGBA values
-            nan_rgba = np.array(nan_color)
-        
-        # Apply colors
-        face_colors[~nan_mask] = cmap(norm(face_global_values[~nan_mask]))
-        face_colors[nan_mask] = nan_rgba
-        
-        export_mesh.visual.face_colors = face_colors
-        
-        # Export as OBJ with face colors
-        try:
-            export_mesh.export(f"{output_dir}/{output_file_name}.obj")
-            print(f"Exported building solar irradiance mesh to {output_dir}/{output_file_name}.obj")
-        except Exception as e:
-            print(f"Error exporting mesh: {e}")
+    # # Optional OBJ export
+    # obj_export = kwargs.get("obj_export", False)
+    # if obj_export:
+    #     _export_solar_irradiance_mesh(
+    #         irradiance_mesh,
+    #         face_global,
+    #         **kwargs
+    #     )
     
     return irradiance_mesh
 
+
+# ##############################################################################
+# # 3) Small helper for OBJ export & color-mapping
+# ##############################################################################
+# def _export_solar_irradiance_mesh(mesh_obj, face_global_values, **kwargs):
+#     import os
+#     import matplotlib.cm as cm
+#     import matplotlib.colors as mcolors
+    
+#     output_dir       = kwargs.get("output_directory", "output")
+#     output_file_name = kwargs.get("output_file_name", "building_solar_irradiance")
+#     os.makedirs(output_dir, exist_ok=True)
+    
+#     vmin = kwargs.get("vmin", 0.0)
+#     vmax = kwargs.get("vmax", None)
+#     valid_mask = ~np.isnan(face_global_values)
+#     if vmax is None and np.any(valid_mask):
+#         vmax = max(np.nanmax(face_global_values), 0.1)
+#     elif vmax is None:
+#         vmax = 1.0  # fallback
+    
+#     colormap = kwargs.get("colormap", "magma")
+#     cmap = cm.get_cmap(colormap)
+#     norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    
+#     face_colors = np.zeros((len(face_global_values), 4))
+#     nan_mask = np.isnan(face_global_values)
+    
+#     # Use 'gray' or user-specified color for NaN
+#     nan_color = kwargs.get("nan_color", "gray")
+#     if isinstance(nan_color, str):
+#         nan_rgba = np.array(mcolors.to_rgba(nan_color))
+#     else:
+#         nan_rgba = np.array(nan_color)
+    
+#     face_colors[valid_mask] = cmap(norm(face_global_values[valid_mask]))
+#     face_colors[nan_mask]   = nan_rgba
+    
+#     # Apply and export
+#     export_mesh = mesh_obj.copy()
+#     export_mesh.visual.face_colors = face_colors
+#     try:
+#         export_mesh.export(f"{output_dir}/{output_file_name}.obj")
+#         print(f"Exported solar irradiance mesh to {output_dir}/{output_file_name}.obj")
+#     except Exception as e:
+#         print(f"Error exporting mesh: {e}")
+
+
+##############################################################################
+# 4) Modified get_cumulative_building_solar_irradiance
+##############################################################################
 def get_cumulative_building_solar_irradiance(
     voxel_data,
     meshsize,
@@ -1044,232 +1062,140 @@ def get_cumulative_building_solar_irradiance(
 ):
     """
     Calculate cumulative solar irradiance on building surfaces over a time period.
+    Uses the Numba-accelerated get_building_solar_irradiance for each time step.
     
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        building_svf_mesh (trimesh.Trimesh): Building mesh with pre-calculated SVF values in metadata.
-        weather_df (DataFrame): Weather data with DNI and DHI columns.
+        building_svf_mesh (trimesh.Trimesh): Mesh with pre-calculated SVF in metadata.
+        weather_df (DataFrame): Weather data with DNI (W/m²) and DHI (W/m²).
         lon (float): Longitude in degrees.
         lat (float): Latitude in degrees.
         tz (float): Timezone offset in hours.
-        **kwargs: Additional parameters:
-            - period_start (str): Start time in format "MM-DD HH:MM:SS"
-            - period_end (str): End time in format "MM-DD HH:MM:SS"
-            - time_step_hours (float): Time step in hours
-            - direct_normal_irradiance_scaling (float): Scaling factor for DNI
-            - diffuse_irradiance_scaling (float): Scaling factor for DHI
-            - obj_export (bool): Whether to export as OBJ
-            - nan_color (str or tuple): Color for NaN values (default: 'gray')
-            - output_directory/output_file_name (str): Export paths
+        **kwargs: Additional parameters for time range, scaling, OBJ export, etc.
     
     Returns:
-        trimesh.Trimesh: Building mesh with cumulative irradiance values stored in metadata.
+        trimesh.Trimesh: A mesh with cumulative (Wh/m²) irradiance in metadata.
     """
-    import numpy as np
-    import trimesh
-    import time
     import pytz
     from datetime import datetime
     
-    # Set default parameters
     period_start = kwargs.get("period_start", "01-01 00:00:00")
-    period_end = kwargs.get("period_end", "12-31 23:59:59")
+    period_end   = kwargs.get("period_end",   "12-31 23:59:59")
     time_step_hours = kwargs.get("time_step_hours", 1.0)
     direct_normal_irradiance_scaling = kwargs.get("direct_normal_irradiance_scaling", 1.0)
-    diffuse_irradiance_scaling = kwargs.get("diffuse_irradiance_scaling", 1.0)
+    diffuse_irradiance_scaling       = kwargs.get("diffuse_irradiance_scaling", 1.0)
     
-    # Parse start and end times without year
+    # Parse times, create local tz
     try:
         start_dt = datetime.strptime(period_start, "%m-%d %H:%M:%S")
-        end_dt = datetime.strptime(period_end, "%m-%d %H:%M:%S")
+        end_dt   = datetime.strptime(period_end,   "%m-%d %H:%M:%S")
     except ValueError as ve:
         raise ValueError("Time must be in format 'MM-DD HH:MM:SS'") from ve
     
-    # Create local timezone
     offset_minutes = int(tz * 60)
     local_tz = pytz.FixedOffset(offset_minutes)
     
-    # Filter weather data by month, day, hour
+    # Filter weather_df
     df_period = weather_df[
-        ((weather_df.index.month > start_dt.month) | 
-         ((weather_df.index.month == start_dt.month) & (weather_df.index.day >= start_dt.day) & 
+        ((weather_df.index.month > start_dt.month) |
+         ((weather_df.index.month == start_dt.month) &
+          (weather_df.index.day >= start_dt.day) &
           (weather_df.index.hour >= start_dt.hour))) &
-        ((weather_df.index.month < end_dt.month) | 
-         ((weather_df.index.month == end_dt.month) & (weather_df.index.day <= end_dt.day) & 
+        ((weather_df.index.month < end_dt.month) |
+         ((weather_df.index.month == end_dt.month) &
+          (weather_df.index.day <= end_dt.day) &
           (weather_df.index.hour <= end_dt.hour)))
     ]
-    
     if df_period.empty:
-        raise ValueError("No weather data available for the specified period.")
+        raise ValueError("No weather data in specified period.")
     
-    # Convert to local timezone and then to UTC for solar position calculation
+    # Convert to local time, then to UTC
     df_period_local = df_period.copy()
     df_period_local.index = df_period_local.index.tz_localize(local_tz)
     df_period_utc = df_period_local.tz_convert(pytz.UTC)
     
-    # Get solar positions for all times
+    # Get solar positions
+    # You presumably have a get_solar_positions_astral(...) that returns az/elev
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
     
-    # Initialize face values arrays
-    face_cumulative_direct_values = np.zeros(len(building_svf_mesh.faces))
-    face_cumulative_diffuse_values = np.zeros(len(building_svf_mesh.faces))
-    face_cumulative_global_values = np.zeros(len(building_svf_mesh.faces))
+    # Prepare arrays for accumulation
+    n_faces = len(building_svf_mesh.faces)
+    face_cum_direct  = np.zeros(n_faces, dtype=np.float64)
+    face_cum_diffuse = np.zeros(n_faces, dtype=np.float64)
+    face_cum_global  = np.zeros(n_faces, dtype=np.float64)
     
-    # Create a copy of the mesh for result
-    cumulative_mesh = building_svf_mesh.copy()
+    boundary_mask = None
     
-    # Settings for individual time step irradiance calculation
-    irradiance_kwargs = {
-        'show_each_timestep': kwargs.get("show_each_timestep", False),
-        'nan_color': kwargs.get("nan_color", "gray")  # Pass nan_color to inner function
-    }
-    
-    # Process each time step
-    print(f"Processing {len(df_period_utc)} time steps from {period_start} to {period_end}...")
-    start_time = time.time()
-    
-    # Initialize NaN mask for boundary faces to be populated after first timestep
-    nan_mask = None
-    boundary_face_count = 0
-    
-    # Process each timestep
+    # Iterate over each timestep
     for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
-        # Get scaled irradiance values
         DNI = row['DNI'] * direct_normal_irradiance_scaling
         DHI = row['DHI'] * diffuse_irradiance_scaling
-        time_local = df_period_local.index[idx]
         
-        # Get solar position for timestep
-        solpos = solar_positions.loc[time_utc]
-        azimuth_degrees = solpos['azimuth']
-        elevation_degrees = solpos['elevation']
+        # Sun angles
+        az_deg = solar_positions.loc[time_utc, 'azimuth']
+        el_deg = solar_positions.loc[time_utc, 'elevation']
         
-        # Skip if sun is below horizon
-        if elevation_degrees <= 0:
+        # Skip if sun below horizon
+        if el_deg <= 0:
             continue
-            
-        # Print current timestamp and progress
-        if idx % 24 == 0 or idx + 1 == len(df_period_utc):  # Print every 24 steps or at the end
-            print(f"Calculating for {time_local.strftime('%Y-%m-%d %H:%M:%S')} - "
-                  f"Progress: {(idx+1)/len(df_period_utc)*100:.1f}%")
-            
-        # Calculate irradiance for this timestep
-        irradiance_mesh = get_building_solar_irradiance(
+        
+        # Call instantaneous function (Numba-accelerated inside)
+        irr_mesh = get_building_solar_irradiance(
             voxel_data,
             meshsize,
             building_svf_mesh,
-            azimuth_degrees,
-            elevation_degrees,
+            az_deg,
+            el_deg,
             DNI,
             DHI,
-            **irradiance_kwargs
+            show_plot=False,  # or any other flags
+            **kwargs
         )
         
-        # Extract irradiance values from the mesh metadata
-        if hasattr(irradiance_mesh, 'metadata'):
-            timestep_direct_values = irradiance_mesh.metadata.get('direct', np.zeros(len(building_svf_mesh.faces)))
-            timestep_diffuse_values = irradiance_mesh.metadata.get('diffuse', np.zeros(len(building_svf_mesh.faces)))
-            timestep_global_values = irradiance_mesh.metadata.get('global', np.zeros(len(building_svf_mesh.faces)))
-            
-            # Capture NaN mask for domain boundary faces from first timestep
-            if nan_mask is None:
-                nan_mask = np.isnan(timestep_global_values)
-                boundary_face_count = np.sum(nan_mask)
-            
-            # Add to cumulative values (scaled by timestep duration in hours)
-            # NaN values in timestep will propagate through to cumulative values
-            face_cumulative_direct_values += np.nan_to_num(timestep_direct_values) * time_step_hours
-            face_cumulative_diffuse_values += np.nan_to_num(timestep_diffuse_values) * time_step_hours
-            face_cumulative_global_values += np.nan_to_num(timestep_global_values) * time_step_hours
+        # Extract arrays
+        face_dir  = irr_mesh.metadata['direct']
+        face_diff = irr_mesh.metadata['diffuse']
+        face_glob = irr_mesh.metadata['global']
+        
+        # If first time, note boundary mask from NaNs
+        if boundary_mask is None:
+            boundary_mask = np.isnan(face_glob)
+        
+        # Convert from W/m² to Wh/m² by multiplying time_step_hours
+        face_cum_direct  += np.nan_to_num(face_dir)  * time_step_hours
+        face_cum_diffuse += np.nan_to_num(face_diff) * time_step_hours
+        face_cum_global  += np.nan_to_num(face_glob) * time_step_hours
     
-    # Apply NaN mask to cumulative values
-    if nan_mask is not None:
-        face_cumulative_direct_values[nan_mask] = np.nan
-        face_cumulative_diffuse_values[nan_mask] = np.nan
-        face_cumulative_global_values[nan_mask] = np.nan
+    # Reapply NaN for boundary
+    if boundary_mask is not None:
+        face_cum_direct[boundary_mask]  = np.nan
+        face_cum_diffuse[boundary_mask] = np.nan
+        face_cum_global[boundary_mask]  = np.nan
     
-    # Store cumulative values in mesh metadata with consistent naming
+    # Create a new mesh with cumulative results
+    cumulative_mesh = building_svf_mesh.copy()
     if not hasattr(cumulative_mesh, 'metadata'):
         cumulative_mesh.metadata = {}
     
-    # Add SVF values if they exist in the original mesh
-    if hasattr(building_svf_mesh, 'metadata') and 'svf_values' in building_svf_mesh.metadata:
+    # If original mesh had SVF
+    if 'svf_values' in building_svf_mesh.metadata:
         cumulative_mesh.metadata['svf'] = building_svf_mesh.metadata['svf_values']
     
-    cumulative_mesh.metadata['direct'] = face_cumulative_direct_values
-    cumulative_mesh.metadata['diffuse'] = face_cumulative_diffuse_values
-    cumulative_mesh.metadata['global'] = face_cumulative_global_values
+    cumulative_mesh.metadata['direct']  = face_cum_direct
+    cumulative_mesh.metadata['diffuse'] = face_cum_diffuse
+    cumulative_mesh.metadata['global']  = face_cum_global
     
-    # Set mesh name
     cumulative_mesh.name = "Cumulative Solar Irradiance (Wh/m²)"
     
-    # Optional statistics - calculate only for non-NaN values
-    valid_direct = face_cumulative_direct_values[~np.isnan(face_cumulative_direct_values)]
-    valid_diffuse = face_cumulative_diffuse_values[~np.isnan(face_cumulative_diffuse_values)]
-    valid_global = face_cumulative_global_values[~np.isnan(face_cumulative_global_values)]
-    
-    print(f"Cumulative irradiance statistics (excluding boundary faces):")
-    if len(valid_direct) > 0:
-        print(f"  Direct - Min: {np.min(valid_direct):.1f} Wh/m², Max: {np.max(valid_direct):.1f} Wh/m², Mean: {np.mean(valid_direct):.1f} Wh/m²")
-    if len(valid_diffuse) > 0:
-        print(f"  Diffuse - Min: {np.min(valid_diffuse):.1f} Wh/m², Max: {np.max(valid_diffuse):.1f} Wh/m², Mean: {np.mean(valid_diffuse):.1f} Wh/m²")
-    if len(valid_global) > 0:
-        print(f"  Global - Min: {np.min(valid_global):.1f} Wh/m², Max: {np.max(valid_global):.1f} Wh/m², Mean: {np.mean(valid_global):.1f} Wh/m²")
-    
-    # Handle optional OBJ export
+    # Optional export
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
-        output_dir = kwargs.get("output_directory", "output")
-        output_file_name = kwargs.get("output_file_name", "building_cumulative_solar_irradiance")
-        
-        # Ensure output directory exists
-        import os
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # For OBJ export, we need to create a temporary mesh with colors for the global irradiance
-        export_mesh = cumulative_mesh.copy()
-        
-        # Apply colors based on global irradiance for export
-        import matplotlib.cm as cm
-        import matplotlib.colors as mcolors
-        
-        vmin = kwargs.get("vmin", 0.0)
-        vmax = kwargs.get("vmax", None)
-        if vmax is None and len(valid_global) > 0:
-            vmax = max(np.max(valid_global), 0.1)  # At least 0.1 to avoid division by zero
-        elif vmax is None:
-            vmax = 1.0  # Fallback if no valid values
-        
-        colormap = kwargs.get("colormap", 'magma')
-        cmap = cm.get_cmap(colormap)
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-        
-        # Create colors, handling NaN separately
-        face_colors = np.zeros((len(face_cumulative_global_values), 4))
-        nan_mask = np.isnan(face_cumulative_global_values)
-        
-        # Use specified color for NaN values
-        nan_color = kwargs.get("nan_color", "gray")
-        if isinstance(nan_color, str):
-            import matplotlib.colors as mcolors
-            nan_rgba = np.array(mcolors.to_rgba(nan_color))
-        else:
-            # Assume it's already a tuple/list of RGBA values
-            nan_rgba = np.array(nan_color)
-        
-        # Apply colors
-        face_colors[~nan_mask] = cmap(norm(face_cumulative_global_values[~nan_mask]))
-        face_colors[nan_mask] = nan_rgba
-        
-        export_mesh.visual.face_colors = face_colors
-        
-        # Export as OBJ with face colors
-        try:
-            export_mesh.export(f"{output_dir}/{output_file_name}.obj")
-            print(f"Exported building cumulative solar irradiance mesh to {output_dir}/{output_file_name}.obj")
-        except Exception as e:
-            print(f"Error exporting mesh: {e}")
+        _export_solar_irradiance_mesh(
+            cumulative_mesh,
+            face_cum_global,
+            **kwargs
+        )
     
     return cumulative_mesh
 
@@ -1479,7 +1405,6 @@ def get_building_global_solar_irradiance_using_epw(
             diffuse_irradiance_scaling=diffuse_irradiance_scaling,
             colormap=kwargs.get('colormap', 'jet'),
             show_each_timestep=kwargs.get('show_each_timestep', False),
-            show_plot=kwargs.get('show_plot', False),
             obj_export=kwargs.get('obj_export', False),
             output_directory=kwargs.get('output_directory', 'output'),
             output_file_name=kwargs.get('output_file_name', 'cumulative_solar')
