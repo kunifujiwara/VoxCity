@@ -1254,6 +1254,8 @@ def get_building_global_solar_irradiance_using_epw(
     download_nearest_epw = kwargs.get("download_nearest_epw", False)
     rectangle_vertices = kwargs.get("rectangle_vertices", None)
     epw_file_path = kwargs.get("epw_file_path", None)
+    building_id_grid = kwargs.get("building_id_grid", None)
+
     if download_nearest_epw:
         if rectangle_vertices is None:
             print("rectangle_vertices is required to download nearest EPW file")
@@ -1288,7 +1290,7 @@ def get_building_global_solar_irradiance_using_epw(
     building_svf_mesh = get_building_surface_svf(
         voxel_data,  # Your 3D voxel grid
         meshsize,      # Size of each voxel in meters
-        show_plot=False
+        building_id_grid=building_id_grid,
     )
 
     print(f"Processing Solar Irradiance for building surfaces...")

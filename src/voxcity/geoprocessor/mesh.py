@@ -4,7 +4,7 @@ import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 
-def create_voxel_mesh(voxel_array, class_id, meshsize=1.0):
+def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None):
     """
     Create a mesh from voxels preserving sharp edges, scaled by meshsize.
 
@@ -16,14 +16,20 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0):
         The ID of the class to extract.
     meshsize : float
         The real-world size of each voxel in meters, for x, y, and z.
+    building_id_grid : np.ndarray (2D), optional
+        2D grid of building IDs, shape (X, Y). Used when class_id=-3 (buildings).
 
     Returns
     -------
     mesh : trimesh.Trimesh or None
         The resulting mesh for the given class_id (or None if no voxels).
+        If class_id=-3, mesh.metadata['building_id'] contains building IDs.
     """
     # Find voxels of the current class
     voxel_coords = np.argwhere(voxel_array == class_id)
+
+    if building_id_grid is not None:
+        building_id_grid_flipud = np.flipud(building_id_grid)
 
     if len(voxel_coords) == 0:
         return None
@@ -57,8 +63,14 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0):
     vertices = []
     faces = []
     face_normals_list = []
+    building_ids = []  # List to store building IDs for each face
 
     for x, y, z in voxel_coords:
+        # For buildings, get the building ID from the grid
+        building_id = None
+        if class_id == -3 and building_id_grid is not None:
+            building_id = building_id_grid_flipud[x, y]
+            
         # Check each face of the current voxel
         adjacent_coords = [
             (x,   y,   z+1),  # Front
@@ -95,6 +107,10 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0):
                 ])
                 # Add face normals for both triangles
                 face_normals_list.extend([face_normals[face_idx], face_normals[face_idx]])
+                
+                # Store building ID for both triangles if this is a building
+                if class_id == -3 and building_id_grid is not None:
+                    building_ids.extend([building_id, building_id])
 
     if not vertices:
         return None
@@ -112,6 +128,10 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0):
 
     # Merge vertices that are at the same position
     mesh.merge_vertices()
+    
+    # Add building IDs as metadata for buildings
+    if class_id == -3 and building_id_grid is not None and building_ids:
+        mesh.metadata = {'building_id': np.array(building_ids)}
 
     return mesh
 

@@ -26,7 +26,8 @@ from ..geoprocessor.polygon import (
     filter_buildings, 
     extract_building_heights_from_geotiff, 
     extract_building_heights_from_gdf,
-    complement_building_heights_from_gdf
+    complement_building_heights_from_gdf,
+    process_building_footprints_by_overlap
 )
 from ..utils.lc import (
     get_class_priority, 
@@ -555,6 +556,9 @@ def create_building_height_grid_from_gdf_polygon(
             filtered_gdf = extract_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
     elif geotiff_path_comp:
         filtered_gdf = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_gdf)
+    
+    # After filtering and complementing heights, process overlapping buildings
+    filtered_gdf = process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
 
     # --------------------------------------------------------------------------
     # 2) PREPARE BUILDING POLYGONS & SPATIAL INDEX

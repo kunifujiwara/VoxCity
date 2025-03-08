@@ -1400,7 +1400,7 @@ def get_building_surface_svf(voxel_data, meshsize, **kwargs):
     N_elevation = kwargs.get("N_elevation", 10)
     debug = kwargs.get("debug", False)
     progress_report = kwargs.get("progress_report", False)
-    show_plot = kwargs.get("show_plot", False)
+    building_id_grid = kwargs.get("building_id_grid", None)
     
     # Tree parameters
     tree_k = kwargs.get("tree_k", 0.6)
@@ -1417,7 +1417,7 @@ def get_building_surface_svf(voxel_data, meshsize, **kwargs):
     # 1) Extract building mesh from voxel_data
     try:
         # This function is presumably in your codebase (not shown):
-        building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize)
+        building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize, building_id_grid=building_id_grid)
         if building_mesh is None or len(building_mesh.faces) == 0:
             print("No building surfaces found in voxel data.")
             return None

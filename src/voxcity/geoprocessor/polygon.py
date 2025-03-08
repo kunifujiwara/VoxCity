@@ -19,6 +19,7 @@ from pyproj import Transformer, CRS
 import rasterio
 from rasterio.mask import mask
 import copy
+from rtree import index
 
 from .utils import validate_polygon_coordinates
 
@@ -795,3 +796,96 @@ def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices,
             raise ValueError("operation must be 'intersect' or 'within'")
 
     return included_building_ids
+
+def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
+    """
+    Process building footprints to merge overlapping buildings.
+    
+    Args:
+        filtered_gdf (geopandas.GeoDataFrame): GeoDataFrame containing building footprints
+        overlap_threshold (float): Threshold for overlap ratio (0.0-1.0) to merge buildings
+        
+    Returns:
+        geopandas.GeoDataFrame: Processed GeoDataFrame with updated IDs
+    """
+    # Make a copy to avoid modifying the original
+    gdf = filtered_gdf.copy()
+    
+    # Ensure 'id' column exists
+    if 'id' not in gdf.columns:
+        gdf['id'] = gdf.index
+    
+    # Calculate areas and sort by area (descending)
+    gdf['area'] = gdf.geometry.area
+    gdf = gdf.sort_values(by='area', ascending=False)
+    gdf = gdf.reset_index(drop=True)
+    
+    # Create spatial index for efficient querying
+    spatial_idx = index.Index()
+    for i, geom in enumerate(gdf.geometry):
+        if geom.is_valid:
+            spatial_idx.insert(i, geom.bounds)
+        else:
+            # Fix invalid geometries
+            fixed_geom = geom.buffer(0)
+            if fixed_geom.is_valid:
+                spatial_idx.insert(i, fixed_geom.bounds)
+    
+    # Track ID replacements to avoid repeated processing
+    id_mapping = {}
+    
+    # Process each building (skip the largest one)
+    for i in range(1, len(gdf)):
+        current_poly = gdf.iloc[i].geometry
+        current_area = gdf.iloc[i].area
+        current_id = gdf.iloc[i]['id']
+        
+        # Skip if already mapped
+        if current_id in id_mapping:
+            continue
+        
+        # Ensure geometry is valid
+        if not current_poly.is_valid:
+            current_poly = current_poly.buffer(0)
+            if not current_poly.is_valid:
+                continue
+        
+        # Find potential overlaps with larger polygons
+        potential_overlaps = [j for j in spatial_idx.intersection(current_poly.bounds) if j < i]
+        
+        for j in potential_overlaps:
+            larger_poly = gdf.iloc[j].geometry
+            larger_id = gdf.iloc[j]['id']
+            
+            # Skip if already processed
+            if larger_id in id_mapping:
+                larger_id = id_mapping[larger_id]
+            
+            # Ensure geometry is valid
+            if not larger_poly.is_valid:
+                larger_poly = larger_poly.buffer(0)
+                if not larger_poly.is_valid:
+                    continue
+            
+            try:
+                # Calculate overlap
+                if current_poly.intersects(larger_poly):
+                    overlap = current_poly.intersection(larger_poly)
+                    overlap_ratio = overlap.area / current_area
+                    
+                    # Replace ID if overlap exceeds threshold
+                    if overlap_ratio > overlap_threshold:
+                        id_mapping[current_id] = larger_id
+                        gdf.at[i, 'id'] = larger_id
+                        break  # Stop at first significant overlap
+            except (GEOSException, ValueError) as e:
+                # Handle geometry errors gracefully
+                continue
+    
+    # Propagate ID changes through the original DataFrame
+    for i, row in filtered_gdf.iterrows():
+        orig_id = row.get('id')
+        if orig_id in id_mapping:
+            filtered_gdf.at[i, 'id'] = id_mapping[orig_id]
+    
+    return filtered_gdf
