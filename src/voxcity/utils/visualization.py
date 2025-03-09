@@ -1811,6 +1811,18 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
                 # Create a copy with colors
                 vis_mesh = custom_mesh.copy()
                 vis_mesh.visual.face_colors = face_colors
+
+                # Prepare the colormap and create colorbar
+                norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)
+                scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+                
+                # Create a figure and axis for the colorbar but don't display
+                fig, ax = plt.subplots(figsize=(6, 1))
+                cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
+                if colorbar_title:
+                    cbar.set_label(colorbar_title)
+                plt.tight_layout()
+                plt.show()  
                 
                 if class_id in meshes:
                     print(f"Replacing voxel class {class_id} with colored custom simulation mesh")
@@ -1849,17 +1861,17 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
         if sim_mesh is not None:
             meshes["sim_surface"] = sim_mesh
             
-        # Prepare the colormap and create colorbar
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-        scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+        # # Prepare the colormap and create colorbar
+        # norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        # scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
         
-        # Create a figure and axis for the colorbar but don't display
-        fig, ax = plt.subplots(figsize=(6, 1))
-        cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
-        if colorbar_title:
-            cbar.set_label(colorbar_title)
-        plt.tight_layout()
-        plt.show()
+        # # Create a figure and axis for the colorbar but don't display
+        # fig, ax = plt.subplots(figsize=(6, 1))
+        # cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
+        # if colorbar_title:
+        #     cbar.set_label(colorbar_title)
+        # plt.tight_layout()
+        # plt.show()
 
     # Export if filename provided
     if base_filename is not None:
@@ -1868,6 +1880,7 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
         os.makedirs(output_directory, exist_ok=True)
         export_meshes(meshes, output_directory, base_filename)
 
+ 
     # Create and save multiple views
     print("Creating multiple views...")        
     # Create output directory if it doesn't exist

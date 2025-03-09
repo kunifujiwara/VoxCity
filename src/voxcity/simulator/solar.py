@@ -7,7 +7,7 @@ import pytz
 from astral import Observer
 from astral.sun import elevation, azimuth
 
-from .view import trace_ray_generic, compute_vi_map_generic, get_sky_view_factor_map, get_building_surface_svf
+from .view import trace_ray_generic, compute_vi_map_generic, get_sky_view_factor_map, get_surface_view_factor
 from ..utils.weather import get_nearest_epw_from_climate_onebuilding, read_epw_for_solar_simulation
 from ..exporter.obj import grid_to_obj, export_obj
 
@@ -776,7 +776,7 @@ from numba import njit
 def compute_solar_irradiance_for_all_faces(
     face_centers,
     face_normals,
-    face_svf_values,
+    face_svf,
     sun_direction,
     direct_normal_irradiance,
     diffuse_irradiance,
@@ -796,7 +796,7 @@ def compute_solar_irradiance_for_all_faces(
     Args:
         face_centers (float64[:, :]): (N x 3) array of face center points
         face_normals (float64[:, :]): (N x 3) array of face normals
-        face_svf_values (float64[:]): (N) array of SVF values for each face
+        face_svf (float64[:]): (N) array of SVF values for each face
         sun_direction (float64[:]): (3) array for sun direction (dx, dy, dz)
         direct_normal_irradiance (float): Direct normal irradiance (DNI) in W/m²
         diffuse_irradiance (float): Diffuse horizontal irradiance (DHI) in W/m²
@@ -824,7 +824,7 @@ def compute_solar_irradiance_for_all_faces(
     for fidx in range(n_faces):
         center = face_centers[fidx]
         normal = face_normals[fidx]
-        svf    = face_svf_values[fidx]
+        svf    = face_svf[fidx]
         
         # -- 1) Check for vertical boundary face
         is_vertical = (abs(normal[2]) < 0.01)
@@ -932,8 +932,8 @@ def get_building_solar_irradiance(
     # Convert angles -> direction
     az_rad = np.deg2rad(180 - azimuth_degrees)
     el_rad = np.deg2rad(elevation_degrees)
-    sun_dx = np.cos(el_rad) * np.sin(az_rad)
-    sun_dy = np.cos(el_rad) * np.cos(az_rad)
+    sun_dx = np.cos(el_rad) * np.cos(az_rad)
+    sun_dy = np.cos(el_rad) * np.sin(az_rad)
     sun_dz = np.sin(el_rad)
     sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
     
@@ -942,10 +942,10 @@ def get_building_solar_irradiance(
     face_normals = building_svf_mesh.face_normals
     
     # Get SVF from metadata
-    if hasattr(building_svf_mesh, 'metadata') and ('svf_values' in building_svf_mesh.metadata):
-        face_svf_values = building_svf_mesh.metadata['svf_values']
+    if hasattr(building_svf_mesh, 'metadata') and ('svf' in building_svf_mesh.metadata):
+        face_svf = building_svf_mesh.metadata['svf']
     else:
-        face_svf_values = np.zeros(len(building_svf_mesh.faces), dtype=np.float64)
+        face_svf = np.zeros(len(building_svf_mesh.faces), dtype=np.float64)
     
     # Prepare boundary checks
     grid_shape = voxel_data.shape
@@ -958,7 +958,7 @@ def get_building_solar_irradiance(
     face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
         face_centers,
         face_normals,
-        face_svf_values,
+        face_svf,
         sun_direction,
         direct_normal_irradiance,
         diffuse_irradiance,
@@ -981,7 +981,7 @@ def get_building_solar_irradiance(
         irradiance_mesh.metadata = {}
     
     # Store results
-    irradiance_mesh.metadata['svf']    = face_svf_values
+    irradiance_mesh.metadata['svf']    = face_svf
     irradiance_mesh.metadata['direct'] = face_direct
     irradiance_mesh.metadata['diffuse'] = face_diffuse
     irradiance_mesh.metadata['global'] = face_global
@@ -998,54 +998,6 @@ def get_building_solar_irradiance(
     #     )
     
     return irradiance_mesh
-
-
-# ##############################################################################
-# # 3) Small helper for OBJ export & color-mapping
-# ##############################################################################
-# def _export_solar_irradiance_mesh(mesh_obj, face_global_values, **kwargs):
-#     import os
-#     import matplotlib.cm as cm
-#     import matplotlib.colors as mcolors
-    
-#     output_dir       = kwargs.get("output_directory", "output")
-#     output_file_name = kwargs.get("output_file_name", "building_solar_irradiance")
-#     os.makedirs(output_dir, exist_ok=True)
-    
-#     vmin = kwargs.get("vmin", 0.0)
-#     vmax = kwargs.get("vmax", None)
-#     valid_mask = ~np.isnan(face_global_values)
-#     if vmax is None and np.any(valid_mask):
-#         vmax = max(np.nanmax(face_global_values), 0.1)
-#     elif vmax is None:
-#         vmax = 1.0  # fallback
-    
-#     colormap = kwargs.get("colormap", "magma")
-#     cmap = cm.get_cmap(colormap)
-#     norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    
-#     face_colors = np.zeros((len(face_global_values), 4))
-#     nan_mask = np.isnan(face_global_values)
-    
-#     # Use 'gray' or user-specified color for NaN
-#     nan_color = kwargs.get("nan_color", "gray")
-#     if isinstance(nan_color, str):
-#         nan_rgba = np.array(mcolors.to_rgba(nan_color))
-#     else:
-#         nan_rgba = np.array(nan_color)
-    
-#     face_colors[valid_mask] = cmap(norm(face_global_values[valid_mask]))
-#     face_colors[nan_mask]   = nan_rgba
-    
-#     # Apply and export
-#     export_mesh = mesh_obj.copy()
-#     export_mesh.visual.face_colors = face_colors
-#     try:
-#         export_mesh.export(f"{output_dir}/{output_file_name}.obj")
-#         print(f"Exported solar irradiance mesh to {output_dir}/{output_file_name}.obj")
-#     except Exception as e:
-#         print(f"Error exporting mesh: {e}")
-
 
 ##############################################################################
 # 4) Modified get_cumulative_building_solar_irradiance
@@ -1177,8 +1129,8 @@ def get_cumulative_building_solar_irradiance(
         cumulative_mesh.metadata = {}
     
     # If original mesh had SVF
-    if 'svf_values' in building_svf_mesh.metadata:
-        cumulative_mesh.metadata['svf'] = building_svf_mesh.metadata['svf_values']
+    if 'svf' in building_svf_mesh.metadata:
+        cumulative_mesh.metadata['svf'] = building_svf_mesh.metadata['svf']
     
     cumulative_mesh.metadata['direct']  = face_cum_direct
     cumulative_mesh.metadata['diffuse'] = face_cum_diffuse
@@ -1285,9 +1237,12 @@ def get_building_global_solar_irradiance_using_epw(
     
     # Step 1: Calculate Sky View Factor for building surfaces
     print(f"Processing Sky View Factor for building surfaces...")
-    building_svf_mesh = get_building_surface_svf(
+    building_svf_mesh = get_surface_view_factor(
         voxel_data,  # Your 3D voxel grid
         meshsize,      # Size of each voxel in meters
+        value_name = 'svf',
+        target_values = (0,),
+        inclusion_mode = False,
         building_id_grid=building_id_grid,
     )
 

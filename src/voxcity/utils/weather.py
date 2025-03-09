@@ -164,7 +164,7 @@ def process_epw(epw_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict]:
     return df, headers
 
 def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, output_dir: str = "./", max_distance: Optional[float] = None, 
-                extract_zip: bool = True, load_data: bool = True) -> Tuple[Optional[str], Optional[pd.DataFrame], Optional[Dict]]:
+                extract_zip: bool = True, load_data: bool = True, region: Optional[Union[str, List[str]]] = None) -> Tuple[Optional[str], Optional[pd.DataFrame], Optional[Dict]]:
     """
     Download and process EPW weather file from Climate.OneBuilding.Org based on coordinates.
     
@@ -175,6 +175,8 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         max_distance (float, optional): Maximum distance in kilometers to search for stations
         extract_zip (bool): Whether to extract the ZIP file (default True)
         load_data (bool): Whether to load the EPW data into a DataFrame (default True)
+        region (str or List[str], optional): Specific region(s) to scan for stations (e.g., "Asia", ["Europe", "Africa"])
+                                            If None, will auto-detect region based on coordinates.
     
     Returns:
         Tuple containing:
@@ -197,6 +199,66 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         "Europe": "https://climate.onebuilding.org/sources/Region6_Europe_TMYx_EPW_Processing_locations.kml",
         "Antarctica": "https://climate.onebuilding.org/sources/Region7_Antarctica_TMYx_EPW_Processing_locations.kml"
     }
+    
+    # Define approximate geographical boundaries for regions
+    REGION_BOUNDS = {
+        "Africa": {"lon_min": -20, "lon_max": 55, "lat_min": -35, "lat_max": 40},
+        "Asia": {"lon_min": 25, "lon_max": 150, "lat_min": 0, "lat_max": 55},
+        "Japan": {"lon_min": 127, "lon_max": 146, "lat_min": 24, "lat_max": 46},
+        "India": {"lon_min": 68, "lon_max": 97, "lat_min": 6, "lat_max": 36},
+        "Argentina": {"lon_min": -75, "lon_max": -53, "lat_min": -55, "lat_max": -22},
+        "Canada": {"lon_min": -141, "lon_max": -52, "lat_min": 42, "lat_max": 83},
+        "USA": {"lon_min": -170, "lon_max": -65, "lat_min": 20, "lat_max": 72},
+        "Caribbean": {"lon_min": -90, "lon_max": -59, "lat_min": 10, "lat_max": 27},
+        "Southwest_Pacific": {"lon_min": 110, "lon_max": 180, "lat_min": -50, "lat_max": 0},
+        "Europe": {"lon_min": -25, "lon_max": 40, "lat_min": 35, "lat_max": 72},
+        "Antarctica": {"lon_min": -180, "lon_max": 180, "lat_min": -90, "lat_max": -60}
+    }
+
+    def detect_regions(lon: float, lat: float) -> List[str]:
+        """Detect which region(s) the coordinates belong to."""
+        matching_regions = []
+        
+        # Handle special case of longitude wrap around 180/-180
+        lon_adjusted = lon
+        if lon < -180:
+            lon_adjusted = lon + 360
+        elif lon > 180:
+            lon_adjusted = lon - 360
+            
+        for region_name, bounds in REGION_BOUNDS.items():
+            # Check if point is within region bounds
+            if (bounds["lon_min"] <= lon_adjusted <= bounds["lon_max"] and 
+                bounds["lat_min"] <= lat <= bounds["lat_max"]):
+                matching_regions.append(region_name)
+        
+        # If no regions matched, check the closest regions
+        if not matching_regions:
+            # Calculate "distance" to each region's boundary (simplified)
+            region_distances = []
+            for region_name, bounds in REGION_BOUNDS.items():
+                # Calculate distance to closest edge of region bounds
+                lon_dist = 0
+                if lon_adjusted < bounds["lon_min"]:
+                    lon_dist = bounds["lon_min"] - lon_adjusted
+                elif lon_adjusted > bounds["lon_max"]:
+                    lon_dist = lon_adjusted - bounds["lon_max"]
+                
+                lat_dist = 0
+                if lat < bounds["lat_min"]:
+                    lat_dist = bounds["lat_min"] - lat
+                elif lat > bounds["lat_max"]:
+                    lat_dist = lat - bounds["lat_max"]
+                
+                # Simple distance metric (not actual distance)
+                distance = (lon_dist**2 + lat_dist**2)**0.5
+                region_distances.append((region_name, distance))
+            
+            # Get 3 closest regions
+            closest_regions = sorted(region_distances, key=lambda x: x[1])[:3]
+            matching_regions = [r[0] for r in closest_regions]
+        
+        return matching_regions
 
     def try_decode(content: bytes) -> str:
         """Try different encodings to decode content."""
@@ -353,15 +415,46 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         # Create output directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         
-        # Get stations from all KML sources
+        # Determine which regions to scan
+        regions_to_scan = {}
+        if region is None:
+            # Auto-detect regions based on coordinates
+            detected_regions = detect_regions(longitude, latitude)
+            
+            if detected_regions:
+                print(f"Auto-detected regions: {', '.join(detected_regions)}")
+                for r in detected_regions:
+                    regions_to_scan[r] = KML_SOURCES[r]
+            else:
+                # Fallback to all regions if detection fails
+                print("Could not determine region from coordinates. Scanning all regions.")
+                regions_to_scan = KML_SOURCES
+        elif isinstance(region, str):
+            # Handle string input
+            if region.lower() == "all":
+                regions_to_scan = KML_SOURCES
+            elif region in KML_SOURCES:
+                regions_to_scan[region] = KML_SOURCES[region]
+            else:
+                valid_regions = ", ".join(KML_SOURCES.keys())
+                raise ValueError(f"Invalid region: '{region}'. Valid regions are: {valid_regions}")
+        else:
+            # Handle list input
+            for r in region:
+                if r not in KML_SOURCES:
+                    valid_regions = ", ".join(KML_SOURCES.keys())
+                    raise ValueError(f"Invalid region: '{r}'. Valid regions are: {valid_regions}")
+                regions_to_scan[r] = KML_SOURCES[r]
+        
+        # Get stations from selected KML sources
         print("Fetching weather station data from Climate.OneBuilding.Org...")
         all_stations = []
         
-        for region, url in KML_SOURCES.items():
-            print(f"Scanning {region}...")
+        for region_name, url in regions_to_scan.items():
+            print(f"Scanning {region_name}...")
             stations = get_stations_from_kml(url)
             all_stations.extend(stations)
-            print(f"Found {len(stations)} stations in {region}")
+            print(f"Found {len(stations)} stations in {region_name}")
         
         print(f"\nTotal stations found: {len(all_stations)}")
         
