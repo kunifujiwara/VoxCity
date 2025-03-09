@@ -703,13 +703,11 @@ def get_global_solar_irradiance_using_epw(
             )
 
     # Read EPW data
-    df, lat, lon, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
+    df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
     if df.empty:
         raise ValueError("No data in EPW file.")
 
     if calc_type == 'instantaneous':
-        if df.empty:
-            raise ValueError("No data in EPW file.")
 
         calc_time = kwargs.get("calc_time", "01-01 12:00:00")
 
@@ -734,7 +732,7 @@ def get_global_solar_irradiance_using_epw(
         df_period_utc = df_period_local.tz_convert(pytz.UTC)
 
         # Compute solar positions
-        solar_positions = get_solar_positions_astral(df_period_utc.index, lat, lon)
+        solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
         direct_normal_irradiance = df_period_utc.iloc[0]['DNI']
         diffuse_irradiance = df_period_utc.iloc[0]['DHI']
         azimuth_degrees = solar_positions.iloc[0]['azimuth']
@@ -760,7 +758,7 @@ def get_global_solar_irradiance_using_epw(
         solar_map = get_cumulative_global_solar_irradiance(
             voxel_data,
             meshsize,
-            df_filtered, lat, lon, tz,
+            df_filtered, lon, lat, tz,
             **kwargs
         )
     
@@ -1281,7 +1279,7 @@ def get_building_global_solar_irradiance_using_epw(
             )
 
     # Read EPW data
-    df, lat, lon, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
+    df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
     if df.empty:
         raise ValueError("No data in EPW file.")
     
