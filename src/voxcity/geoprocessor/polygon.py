@@ -156,7 +156,7 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
 
     # Process each building in primary dataset that needs height data
     for idx_primary, row in gdf_primary.iterrows():
-        if row['height'] == 0:
+        if row['height'] <= 0 or pd.isna(row['height']):
             count_0 += 1
             geom = row.geometry
             
@@ -619,7 +619,7 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
         transformer = Transformer.from_crs(CRS.from_epsg(4326), src.crs, always_xy=True)
 
         # Filter buildings that need height processing
-        mask_condition = (gdf.geometry.geom_type == 'Polygon') & (gdf.get('height', 0) <= 0)
+        mask_condition = (gdf.geometry.geom_type == 'Polygon') & ((gdf.get('height', 0) <= 0) | gdf.get('height').isna())
         buildings_to_process = gdf[mask_condition]
         count_0 = len(buildings_to_process)
 
@@ -815,14 +815,24 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
     if 'id' not in gdf.columns:
         gdf['id'] = gdf.index
     
-    # Calculate areas and sort by area (descending)
-    gdf['area'] = gdf.geometry.area
-    gdf = gdf.sort_values(by='area', ascending=False)
-    gdf = gdf.reset_index(drop=True)
+    # Check if CRS is set before transforming
+    if gdf.crs is None:
+        # Work with original geometries if no CRS is set
+        gdf_projected = gdf.copy()
+    else:
+        # Store original CRS to convert back later
+        original_crs = gdf.crs
+        # Project to Web Mercator for accurate area calculation
+        gdf_projected = gdf.to_crs("EPSG:3857")
+    
+    # Calculate areas on the geometries
+    gdf_projected['area'] = gdf_projected.geometry.area
+    gdf_projected = gdf_projected.sort_values(by='area', ascending=False)
+    gdf_projected = gdf_projected.reset_index(drop=True)
     
     # Create spatial index for efficient querying
     spatial_idx = index.Index()
-    for i, geom in enumerate(gdf.geometry):
+    for i, geom in enumerate(gdf_projected.geometry):
         if geom.is_valid:
             spatial_idx.insert(i, geom.bounds)
         else:
@@ -835,10 +845,10 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
     id_mapping = {}
     
     # Process each building (skip the largest one)
-    for i in range(1, len(gdf)):
-        current_poly = gdf.iloc[i].geometry
-        current_area = gdf.iloc[i].area
-        current_id = gdf.iloc[i]['id']
+    for i in range(1, len(gdf_projected)):
+        current_poly = gdf_projected.iloc[i].geometry
+        current_area = gdf_projected.iloc[i].area
+        current_id = gdf_projected.iloc[i]['id']
         
         # Skip if already mapped
         if current_id in id_mapping:
@@ -854,8 +864,8 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
         potential_overlaps = [j for j in spatial_idx.intersection(current_poly.bounds) if j < i]
         
         for j in potential_overlaps:
-            larger_poly = gdf.iloc[j].geometry
-            larger_id = gdf.iloc[j]['id']
+            larger_poly = gdf_projected.iloc[j].geometry
+            larger_id = gdf_projected.iloc[j]['id']
             
             # Skip if already processed
             if larger_id in id_mapping:
@@ -876,7 +886,7 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
                     # Replace ID if overlap exceeds threshold
                     if overlap_ratio > overlap_threshold:
                         id_mapping[current_id] = larger_id
-                        gdf.at[i, 'id'] = larger_id
+                        gdf_projected.at[i, 'id'] = larger_id
                         break  # Stop at first significant overlap
             except (GEOSException, ValueError) as e:
                 # Handle geometry errors gracefully

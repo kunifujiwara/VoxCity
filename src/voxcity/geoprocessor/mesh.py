@@ -4,7 +4,7 @@ import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 
-def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None):
+def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
     Create a mesh from voxels preserving sharp edges, scaled by meshsize.
 
@@ -18,6 +18,11 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         The real-world size of each voxel in meters, for x, y, and z.
     building_id_grid : np.ndarray (2D), optional
         2D grid of building IDs, shape (X, Y). Used when class_id=-3 (buildings).
+    mesh_type : str, optional
+        Type of mesh to create:
+        - None (default): create meshes for boundaries between different classes
+        - 'building_solar': only create meshes for boundaries between buildings (-3) 
+                           and void (0) or trees (-2)
 
     Returns
     -------
@@ -81,7 +86,7 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
             (x,   y-1, z)     # Bottom
         ]
 
-        # Only create faces where there's a transition between this class and "not this class"
+        # Only create faces where there's a transition based on mesh_type
         for face_idx, adj_coord in enumerate(adjacent_coords):
             try:
                 # If adj_coord is outside array bounds, it's a boundary => face is visible
@@ -89,7 +94,13 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
                     is_boundary = True
                 else:
                     adj_value = voxel_array[adj_coord]
-                    is_boundary = (adj_value == 0 or adj_value != class_id)
+                    
+                    if mesh_type == 'open_air' and class_id == -3:
+                        # For building_solar, only create faces at boundaries with void (0) or trees (-2)
+                        is_boundary = (adj_value == 0 or adj_value == -2)
+                    else:
+                        # Default behavior - create faces at any class change
+                        is_boundary = (adj_value == 0 or adj_value != class_id)
             except IndexError:
                 # Out of range => boundary
                 is_boundary = True

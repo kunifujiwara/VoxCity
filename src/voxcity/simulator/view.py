@@ -1708,7 +1708,8 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
             voxel_data, 
             building_class_id, 
             meshsize,
-            building_id_grid=building_id_grid
+            building_id_grid=building_id_grid,
+            mesh_type='open_air'
         )
         if building_mesh is None or len(building_mesh.faces) == 0:
             print("No surfaces found in voxel data for the specified class.")

@@ -3,6 +3,7 @@ This module provides functions for creating and manipulating grids of building h
 """
 
 import numpy as np
+import pandas as pd
 import os
 from shapely.geometry import Polygon, box
 from scipy.ndimage import label, generate_binary_structure
@@ -575,6 +576,8 @@ def create_building_height_grid_from_gdf_polygon(
             height = complement_height
             
         min_height = row.get('min_height', 0)
+        if pd.isna(min_height):
+            min_height = 0      
         is_inner = row.get('is_inner', False)
         feature_id = row.get('id', idx_b)
 

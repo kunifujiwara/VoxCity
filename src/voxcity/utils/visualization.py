@@ -1270,7 +1270,7 @@ def visualize_numerical_grid_on_basemap(grid, rectangle_vertices, meshsize, valu
     plt.tight_layout()
     plt.show()
 
-def visualize_numerical_grid_gdf_on_basemap(gdf, value_name="value", cmap='viridis', vmin=None, vmax=None,
+def visualize_numerical_gdf_on_basemap(gdf, value_name="value", cmap='viridis', vmin=None, vmax=None,
                             alpha=0.6, figsize=(12, 8), basemap='CartoDB light',
                             show_edge=False, edge_color='black', edge_width=0.5):
     """Visualizes a GeoDataFrame with numerical values on a basemap.
@@ -1298,7 +1298,7 @@ def visualize_numerical_grid_gdf_on_basemap(gdf, value_name="value", cmap='virid
     fig, ax = plt.subplots(figsize=figsize)
     
     # Plot the GeoDataFrame
-    gdf_web.plot(column='value',
+    gdf_web.plot(column=value_name,
                  ax=ax,
                  alpha=alpha,
                  cmap=cmap,
@@ -1325,7 +1325,7 @@ def visualize_numerical_grid_gdf_on_basemap(gdf, value_name="value", cmap='virid
     plt.tight_layout()
     plt.show()
 
-def visualize_point_grid_on_basemap(point_gdf, value_name='value', **kwargs):
+def visualize_point_gdf_on_basemap(point_gdf, value_name='value', **kwargs):
     """Visualizes a point GeoDataFrame on a basemap with colors based on values.
     
     Args:
@@ -1450,7 +1450,7 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
 
     # Add orthographic views
     ortho_views = {
-        'xy_top': [center + np.array([0, 0, distance]), center, (0, 1, 0)],
+        'xy_top': [center + np.array([0, 0, distance]), center, (-1, 0, 0)],
         'yz_right': [center + np.array([distance, 0, 0]), center, (0, 0, 1)],
         'xz_front': [center + np.array([0, distance, 0]), center, (0, 0, 1)],
         'yz_left': [center + np.array([-distance, 0, 0]), center, (0, 0, 1)],
@@ -1787,7 +1787,7 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
                 # Set vmin/vmax if not provided
                 local_vmin = vmin if vmin is not None else np.nanmin(values[~np.isnan(values)])
                 local_vmax = vmax if vmax is not None else np.nanmax(values[~np.isnan(values)])
-                
+
                 # Create colors
                 cmap = cm.get_cmap(cmap_name)
                 norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)

@@ -82,7 +82,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     print(f"Data source: {source}")
     
     # Initialize Earth Engine for accessing satellite data
-    if source is not "OpenStreetMap":
+    if source != "OpenStreetMap":
         initialize_earth_engine()
 
     # Create output directory if it doesn't exist
@@ -158,7 +158,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     """
 
     # Initialize Earth Engine for accessing satellite data
-    if source is not "OpenStreetMap":
+    if source not in ["OpenStreetMap", "Overture", "Local file"]:
         initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
@@ -236,7 +236,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
     if grid_vis:
-        visualize_numerical_grid(np.flipud(building_height_grid), meshsize, "building height (m)", cmap='viridis', label='Value')
+        building_height_grid_nan = building_height_grid.copy()
+        building_height_grid_nan[building_height_grid_nan == 0] = np.nan
+        visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
 
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
@@ -282,7 +284,9 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
     if grid_vis:
-        visualize_numerical_grid(np.flipud(canopy_height_grid), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+        canopy_height_grid_nan = canopy_height_grid.copy()
+        canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+        visualize_numerical_grid(np.flipud(canopy_height_grid_nan), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
 
     return canopy_height_grid
 
