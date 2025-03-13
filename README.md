@@ -5,6 +5,9 @@
 [![Downloads](https://pepy.tech/badge/voxcity)](https://pepy.tech/project/voxcity)
 <!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
 
+<p align="center">
+  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a>
+</p>
 
 # VoxCity
 
