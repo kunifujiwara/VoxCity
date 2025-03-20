@@ -24,6 +24,7 @@ from .downloader.oemj import save_oemj_as_geotiff
 from .downloader.omt import load_gdf_from_openmaptiles
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
+from .downloader.citygml import load_plateau_with_terrain
 from .downloader.gee import (
     initialize_earth_engine,
     get_roi,
@@ -688,6 +689,125 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         voxcity_grid_vis[:, :, :voxcity_grid.shape[2]] = voxcity_grid
         voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
         visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
+
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
+
+def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, canopy_height_source, meshsize, **kwargs):
+    """Main function to generate a complete voxel city model.
+
+    Args:
+        rectangle_vertices: List of coordinates defining the area of interest
+        building_source: Source for building height data (e.g. 'OSM', 'EUBUCCO')
+        land_cover_source: Source for land cover data (e.g. 'ESA', 'ESRI') 
+        canopy_height_source: Source for tree canopy height data
+        dem_source: Source for digital elevation model data ('Flat' or other source)
+        meshsize: Size of each grid cell in meters
+        **kwargs: Additional keyword arguments including:
+            - output_dir: Directory to save output files (default: 'output')
+            - min_canopy_height: Minimum height threshold for tree canopy
+            - remove_perimeter_object: Factor to remove objects near perimeter
+            - mapvis: Whether to visualize grids on map
+            - voxelvis: Whether to visualize 3D voxel model
+            - voxelvis_img_save_path: Path to save 3D visualization
+
+    Returns:
+        tuple containing:
+            - voxcity_grid: 3D voxel grid of the complete city model
+            - building_height_grid: 2D grid of building heights
+            - building_min_height_grid: 2D grid of minimum building heights
+            - building_id_grid: 2D grid of building IDs
+            - canopy_height_grid: 2D grid of tree canopy heights
+            - land_cover_grid: 2D grid of land cover classifications
+            - dem_grid: 2D grid of ground elevation
+            - building_geojson: GeoJSON of building footprints and metadata
+    """
+    # Create output directory if it doesn't exist
+    output_dir = kwargs.get("output_dir", "output")
+    os.makedirs(output_dir, exist_ok=True)
+        
+    # Remove 'output_dir' from kwargs to prevent duplication
+    kwargs.pop('output_dir', None)
+
+    # get all required gdfs    
+    building_gdf, terrain_gdf, vegetation_gdf = load_plateau_with_terrain(url_citygml, base_dir=output_dir)
+
+    land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)        
+
+    # building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
+    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(buildings_gdf, meshsize, rectangle_vertices, **kwargs)
+
+    # Visualize grid if requested
+    grid_vis = kwargs.get("gridvis", True)    
+    if grid_vis:
+        building_height_grid_nan = building_height_grid.copy()
+        building_height_grid_nan[building_height_grid_nan == 0] = np.nan
+        visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
+    
+    # Save building data to GeoJSON
+    if not building_gdf.empty:
+        save_path = f"{output_dir}/building.gpkg"
+        building_gdf.to_file(save_path, driver='GPKG')
+    
+    # Get canopy height data
+    if canopy_height_source == "Static":
+        # Create canopy height grid with same shape as land cover grid
+        canopy_height_grid_comp = np.zeros_like(land_cover_grid, dtype=float)
+        
+        # Set default static height for trees (20 meters is a typical average tree height)
+        static_tree_height = kwargs.get("static_tree_height", 10.0)
+        tree_mask = (land_cover_grid == 4)
+        
+        # Set static height for tree cells
+        canopy_height_grid_comp[tree_mask] = static_tree_height
+    else:
+        canopy_height_grid_comp = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
+    
+    canopy_height_grid = create_vegetation_height_grid_from_gdf_polygon(vegetation_gdf, meshsize, rectangle_vertices)
+    mask = (canopy_height_grid == 0) & (canopy_height_grid_comp != 0)
+    canopy_height_grid[mask] = canopy_height_grid_comp[mask]
+    
+    # Handle DEM - either flat or from source
+    if kwargs.pop('flat_dem', None):
+        dem_grid = np.zeros_like(land_cover_grid)
+    else:
+        dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
+        
+        # Visualize grid if requested
+        grid_vis = kwargs.get("gridvis", True)    
+        if grid_vis:
+            visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+        
+
+    # Apply minimum canopy height threshold if specified
+    min_canopy_height = kwargs.get("min_canopy_height")
+    if min_canopy_height is not None:
+        canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0        
+
+    # Remove objects near perimeter if specified
+    remove_perimeter_object = kwargs.get("remove_perimeter_object")
+    if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
+        # Calculate perimeter width based on grid dimensions
+        w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
+        h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
+        
+        # Clear canopy heights in perimeter
+        canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
+
+        # Find building IDs in perimeter regions
+        ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
+        ids2 = np.unique(building_id_grid[-w_peri:, :][building_id_grid[-w_peri:, :] > 0])
+        ids3 = np.unique(building_id_grid[:, :h_peri][building_id_grid[:, :h_peri] > 0])
+        ids4 = np.unique(building_id_grid[:, -h_peri:][building_id_grid[:, -h_peri:] > 0])
+        remove_ids = np.concatenate((ids1, ids2, ids3, ids4))
+        
+        # Remove buildings in perimeter
+        for remove_id in remove_ids:
+            positions = np.where(building_id_grid == remove_id)
+            building_height_grid[positions] = 0
+            building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))]    
+
+    # Generate 3D voxel grid
+    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
     return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
 

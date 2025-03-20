@@ -1014,3 +1014,252 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     }, crs=CRS.from_epsg(4326))
     
     return gdf
+
+def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
+    """
+    Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects
+    within the bounding box of a given polygon, at a specified mesh spacing.
+    Cells that intersect one or more vegetation polygons receive the
+    (by default) maximum vegetation height among intersecting polygons.
+    Cells that do not intersect any vegetation are set to 0.
+
+    Args:
+        veg_gdf (GeoDataFrame): A GeoDataFrame containing vegetation features
+                                (usually polygons) with a 'height' column
+                                (or a similarly named attribute). Must be in
+                                EPSG:4326 or reprojectable to it.
+        mesh_size (float):      Desired grid spacing in meters.
+        polygon (list or Polygon):
+          - If a list of (lon, lat) coords, will be converted to a shapely Polygon
+            in EPSG:4326.
+          - If a shapely Polygon, it must be in or reprojectable to EPSG:4326.
+
+    Returns:
+        np.ndarray: 2D array of vegetation height values covering the bounding box
+                    of the polygon. The array is indexed [row, col] from top row
+                    (north) to bottom row (south). Cells with no intersecting
+                    vegetation are set to 0.
+    """
+    # ------------------------------------------------------------------------
+    # 1. Ensure veg_gdf is in WGS84 (EPSG:4326)
+    # ------------------------------------------------------------------------
+    if veg_gdf.crs is None:
+        warnings.warn("veg_gdf has no CRS. Assuming EPSG:4326. "
+                      "If this is incorrect, please set the correct CRS and re-run.")
+        veg_gdf = veg_gdf.set_crs(epsg=4326)
+    else:
+        if veg_gdf.crs.to_epsg() != 4326:
+            veg_gdf = veg_gdf.to_crs(epsg=4326)
+
+    # Must have a 'height' column (or change to your column name)
+    if 'height' not in veg_gdf.columns:
+        raise ValueError("Vegetation GeoDataFrame must have a 'height' column.")
+
+    # ------------------------------------------------------------------------
+    # 2. Convert input polygon to shapely Polygon in WGS84
+    # ------------------------------------------------------------------------
+    if isinstance(polygon, list):
+        poly = Polygon(polygon)
+    elif isinstance(polygon, Polygon):
+        poly = polygon
+    else:
+        raise ValueError("polygon must be a list of (lon, lat) or a shapely Polygon.")
+
+    # ------------------------------------------------------------------------
+    # 3. Compute bounding box & grid dimensions
+    # ------------------------------------------------------------------------
+    left, bottom, right, top = poly.bounds
+    geod = Geod(ellps="WGS84")
+
+    # Horizontal (width) distance in meters
+    _, _, width_m = geod.inv(left, bottom, right, bottom)
+    # Vertical (height) distance in meters
+    _, _, height_m = geod.inv(left, bottom, left, top)
+
+    # Number of cells horizontally and vertically
+    num_cells_x = int(width_m / mesh_size + 0.5)
+    num_cells_y = int(height_m / mesh_size + 0.5)
+
+    if num_cells_x < 1 or num_cells_y < 1:
+        warnings.warn("Polygon bounding box is smaller than mesh_size; returning empty array.")
+        return np.array([])
+
+    # ------------------------------------------------------------------------
+    # 4. Generate the grid (cell centers) covering the bounding box
+    # ------------------------------------------------------------------------
+    xs = np.linspace(left, right, num_cells_x)
+    ys = np.linspace(top, bottom, num_cells_y)  # top→bottom
+    X, Y = np.meshgrid(xs, ys)
+
+    # Flatten these for convenience
+    xs_flat = X.ravel()
+    ys_flat = Y.ravel()
+
+    # Create cell-center points as a GeoDataFrame
+    grid_points = gpd.GeoDataFrame(
+        geometry=[Point(lon, lat) for lon, lat in zip(xs_flat, ys_flat)],
+        crs="EPSG:4326"
+    )
+
+    # ------------------------------------------------------------------------
+    # 5. Spatial join (INTERSECTION) to find which vegetation objects each cell intersects
+    #    - We only fill the cell if the point is actually inside (or intersects) a vegetation polygon
+    #      If your data is more consistent with "contains" or "within", adjust the predicate accordingly.
+    # ------------------------------------------------------------------------
+    # NOTE:
+    #   * If your vegetation is polygons, "predicate='intersects'" or "contains"
+    #     can be used. Typically we check whether the cell center is inside the polygon.
+    #   * If your vegetation is a point layer, you might do "predicate='within'"
+    #     or similar. Adjust as needed.
+    #
+    # We'll do a left join so that unmatched cells remain in the result with NaN values.
+    # Then we group by the index of the original grid_points to handle multiple intersects.
+    # The 'index_right' is from the vegetation layer.
+    # ------------------------------------------------------------------------
+
+    joined = gpd.sjoin(
+        grid_points,
+        veg_gdf[['height', 'geometry']],
+        how='left',
+        predicate='intersects'
+    )
+
+    # Because one cell (row in grid_points) can intersect multiple polygons,
+    # we need to aggregate them. We'll take the *maximum* height by default.
+    joined_agg = (
+        joined.groupby(joined.index)   # group by the index from grid_points
+              .agg({'height': 'max'})  # or 'mean' if you prefer an average
+    )
+
+    # joined_agg is now a DataFrame with the same index as grid_points.
+    # If a row didn't intersect any polygon, 'height' is NaN.
+
+    # ------------------------------------------------------------------------
+    # 6. Build the 2D height array, initializing with zeros
+    # ------------------------------------------------------------------------
+    veg_grid = np.zeros((num_cells_y, num_cells_x), dtype=float)
+
+    # The row, col in the final array corresponds to how we built 'grid_points':
+    #   row = i // num_cells_x
+    #   col = i % num_cells_x
+    for i, row_data in joined_agg.iterrows():
+        if not np.isnan(row_data['height']):  # Only set values for cells with vegetation
+            row_idx = i // num_cells_x
+            col_idx = i % num_cells_x
+            veg_grid[row_idx, col_idx] = row_data['height']
+
+    # Result: row=0 is the top-most row, row=-1 is bottom.
+    return np.flipud(veg_grid)
+
+def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
+    """
+    Create a height grid from a terrain GeoDataFrame within the bounding box
+    of the given polygon, using nearest-neighbor sampling of elevations.
+    Edges of the bounding box will also receive a nearest elevation,
+    so there should be no NaNs around edges if data coverage is sufficient.
+
+    Args:
+        terrain_gdf (GeoDataFrame): A GeoDataFrame containing terrain features
+                                    (points or centroids) with an 'elevation' column.
+                                    Must be in EPSG:4326 or reprojectable to it.
+        mesh_size (float):          Desired grid spacing in meters.
+        polygon (list or Polygon):  Polygon specifying the region of interest.
+                                    - If list of (lon, lat), will be made into a Polygon.
+                                    - If a shapely Polygon, must be in WGS84 (EPSG:4326)
+                                      or reprojected to it.
+
+    Returns:
+        np.ndarray: 2D array of height values covering the bounding box of the polygon,
+                    from top row (north) to bottom row (south). Any location not
+                    matched by terrain_gdf data remains NaN, but edges will not
+                    automatically be NaN if terrain coverage exists.
+    """
+
+    # ------------------------------------------------------------------------
+    # 1. Ensure terrain_gdf is in WGS84 (EPSG:4326)
+    # ------------------------------------------------------------------------
+    if terrain_gdf.crs is None:
+        warnings.warn("terrain_gdf has no CRS. Assuming EPSG:4326. "
+                      "If this is incorrect, please set the correct CRS and re-run.")
+        terrain_gdf = terrain_gdf.set_crs(epsg=4326)
+    else:
+        # Reproject if needed
+        if terrain_gdf.crs.to_epsg() != 4326:
+            terrain_gdf = terrain_gdf.to_crs(epsg=4326)
+
+    # Convert input polygon to shapely Polygon in WGS84
+    if isinstance(polygon, list):
+        poly = Polygon(polygon)  # assume coords are (lon, lat) in EPSG:4326
+    elif isinstance(polygon, Polygon):
+        poly = polygon
+    else:
+        raise ValueError("`polygon` must be a list of (lon, lat) or a shapely Polygon.")
+
+    # ------------------------------------------------------------------------
+    # 2. Compute bounding box and number of grid cells
+    # ------------------------------------------------------------------------
+    left, bottom, right, top = poly.bounds
+    geod = Geod(ellps="WGS84")
+
+    # Geodesic distances in meters
+    _, _, width_m = geod.inv(left, bottom, right, bottom)
+    _, _, height_m = geod.inv(left, bottom, left, top)
+
+    # Number of cells in X and Y directions
+    num_cells_x = int(width_m / mesh_size + 0.5)
+    num_cells_y = int(height_m / mesh_size + 0.5)
+
+    if num_cells_x < 1 or num_cells_y < 1:
+        warnings.warn("Polygon bounding box is smaller than mesh_size; returning empty array.")
+        return np.array([])
+
+    # ------------------------------------------------------------------------
+    # 3. Generate grid points covering the bounding box
+    #    (all points, not just inside the polygon)
+    # ------------------------------------------------------------------------
+    xs = np.linspace(left, right, num_cells_x)
+    ys = np.linspace(top, bottom, num_cells_y)  # top->bottom
+    X, Y = np.meshgrid(xs, ys)
+
+    # Flatten for convenience
+    xs_flat = X.ravel()
+    ys_flat = Y.ravel()
+
+    # Create GeoDataFrame of all bounding-box points
+    grid_points = gpd.GeoDataFrame(
+        geometry=[Point(lon, lat) for lon, lat in zip(xs_flat, ys_flat)],
+        crs="EPSG:4326"
+    )
+
+    # ------------------------------------------------------------------------
+    # 4. Nearest-neighbor join from terrain_gdf to grid points
+    # ------------------------------------------------------------------------
+    if 'elevation' not in terrain_gdf.columns:
+        raise ValueError("terrain_gdf must have an 'elevation' column.")
+
+    # Nearest spatial join (requires GeoPandas >= 0.10)
+    # This will assign each grid point the nearest terrain_gdf elevation.
+    grid_points_elev = gpd.sjoin_nearest(
+        grid_points,
+        terrain_gdf[['elevation', 'geometry']],
+        how="left",
+        distance_col="dist_to_terrain"
+    )
+
+    # ------------------------------------------------------------------------
+    # 5. Build the final 2D height array
+    #    (rows: top->bottom, columns: left->right)
+    # ------------------------------------------------------------------------
+    dem_grid = np.full((num_cells_y, num_cells_x), np.nan, dtype=float)
+
+    # The index mapping of grid_points_elev is the same as grid_points, so:
+    # row = i // num_cells_x, col = i % num_cells_x
+    for i, elevation_val in zip(grid_points_elev.index, grid_points_elev['elevation']):
+        row = i // num_cells_x
+        col = i % num_cells_x
+        dem_grid[row, col] = elevation_val  # could be NaN if no data
+
+    # By default, row=0 is the "north/top" row, row=-1 is "south/bottom" row.
+    # If you prefer the bottom row as index=0, you'd do: np.flipud(dem_grid)
+
+    return np.flipud(dem_grid)
