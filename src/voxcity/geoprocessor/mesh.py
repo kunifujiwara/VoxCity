@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import trimesh
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
@@ -341,3 +342,70 @@ def split_vertices_manual(mesh):
     # Concatenate all the single-face meshes
     out_mesh = trimesh.util.concatenate(new_meshes)
     return out_mesh
+
+def save_obj_from_colored_mesh(meshes, output_path, base_filename):
+    """
+    Save colored meshes as OBJ and MTL files.
+    
+    Parameters
+    ----------
+    meshes : dict
+        Dictionary of trimesh.Trimesh objects with face colors.
+    output_path : str
+        Directory path where to save the files.
+    base_filename : str
+        Base name for the output files (without extension).
+        
+    Returns
+    -------
+    tuple
+        Paths to the saved (obj_file, mtl_file).
+    """
+    
+    os.makedirs(output_path, exist_ok=True)
+    obj_path = os.path.join(output_path, f"{base_filename}.obj")
+    mtl_path = os.path.join(output_path, f"{base_filename}.mtl")
+    
+    # Combine all meshes
+    combined_mesh = trimesh.util.concatenate(list(meshes.values()))
+    combined_mesh = split_vertices_manual(combined_mesh)
+    
+    # Create unique materials for each unique face color
+    face_colors = combined_mesh.visual.face_colors
+    unique_colors = np.unique(face_colors, axis=0)
+    
+    # Write MTL file
+    with open(mtl_path, 'w') as mtl_file:
+        for i, color in enumerate(unique_colors):
+            material_name = f'material_{i}'
+            mtl_file.write(f'newmtl {material_name}\n')
+            # Convert RGBA to RGB float values
+            rgb = color[:3].astype(float) / 255.0
+            mtl_file.write(f'Kd {rgb[0]:.6f} {rgb[1]:.6f} {rgb[2]:.6f}\n')
+            mtl_file.write(f'd {color[3]/255.0:.6f}\n\n')  # Alpha value
+    
+    # Create material groups based on face colors
+    color_to_material = {tuple(c): f'material_{i}' for i, c in enumerate(unique_colors)}
+    
+    # Write OBJ file
+    with open(obj_path, 'w') as obj_file:
+        obj_file.write(f'mtllib {os.path.basename(mtl_path)}\n')
+        
+        # Write vertices
+        for vertex in combined_mesh.vertices:
+            obj_file.write(f'v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n')
+        
+        # Write faces grouped by material
+        current_material = None
+        for face_idx, face in enumerate(combined_mesh.faces):
+            face_color = tuple(face_colors[face_idx])
+            material_name = color_to_material[face_color]
+            
+            if material_name != current_material:
+                obj_file.write(f'usemtl {material_name}\n')
+                current_material = material_name
+            
+            # OBJ indices are 1-based
+            obj_file.write(f'f {face[0]+1} {face[1]+1} {face[2]+1}\n')
+    
+    return obj_path, mtl_path
