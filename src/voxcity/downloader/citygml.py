@@ -11,30 +11,126 @@ from shapely.geometry import Polygon, Point, MultiPolygon
 import pandas as pd
 from tqdm import tqdm
 
+# --------------------------------------------------------------------
+# Script to get tile boundary from file name
+# --------------------------------------------------------------------
+import re
+from shapely.geometry import Polygon
+
+def decode_2nd_level_mesh(mesh6):
+    """
+    Given exactly 6 digits (string) for a standard (2nd-level) mesh code,
+    return (lat_sw, lon_sw, lat_ne, lon_ne) in degrees.
+    """
+    code = int(mesh6)
+    # Extract each piece
+    N1 = code // 10000              # first 2 digits
+    M1 = (code // 100) % 100        # next 2 digits
+    row_2nd = (code // 10) % 10     # 5th digit
+    col_2nd = code % 10             # 6th digit
+    
+    # 1st-level mesh "southwest" corner
+    lat_sw_1 = (N1 * 40.0) / 60.0    # each N1 => 40' => 2/3 degrees
+    lon_sw_1 = 100.0 + M1           # each M1 => offset from 100°E
+    
+    # 2nd-level mesh subdivides that 8×8 => each cell = 1/12° lat x 0.125° lon
+    dlat_2nd = (40.0 / 60.0) / 8.0   # 1/12°
+    dlon_2nd = 1.0 / 8.0            # 0.125°
+    
+    lat_sw = lat_sw_1 + row_2nd * dlat_2nd
+    lon_sw = lon_sw_1 + col_2nd * dlon_2nd
+    lat_ne = lat_sw + dlat_2nd
+    lon_ne = lon_sw + dlon_2nd
+    
+    return (lat_sw, lon_sw, lat_ne, lon_ne)
+
+def decode_mesh_code(mesh_str):
+    """
+    Handles:
+      - 6-digit codes (standard 2nd-level mesh),
+      - 8-digit codes (2nd-level subdivided 10×10).
+
+    Returns a list of (lon, lat) forming a *closed* bounding polygon in WGS84.
+    """
+    if len(mesh_str) < 6:
+        raise ValueError(f"Mesh code '{mesh_str}' is too short.")
+    
+    # Decode the first 6 digits as a 2nd-level mesh
+    mesh6 = mesh_str[:6]
+    lat_sw_2, lon_sw_2, lat_ne_2, lon_ne_2 = decode_2nd_level_mesh(mesh6)
+    
+    # If exactly 6 digits => full 2nd-level tile
+    if len(mesh_str) == 6:
+        return [
+            (lon_sw_2, lat_sw_2),
+            (lon_ne_2, lat_sw_2),
+            (lon_ne_2, lat_ne_2),
+            (lon_sw_2, lat_ne_2),
+            (lon_sw_2, lat_sw_2)
+        ]
+    
+    # If 8 digits => last 2 subdivide the tile 10×10
+    elif len(mesh_str) == 8:
+        row_10 = int(mesh_str[6])  # 7th digit
+        col_10 = int(mesh_str[7])  # 8th digit
+        
+        # Sub-tile size in lat/lon
+        dlat_10 = (lat_ne_2 - lat_sw_2) / 10.0
+        dlon_10 = (lon_ne_2 - lon_sw_2) / 10.0
+        
+        lat_sw = lat_sw_2 + row_10 * dlat_10
+        lon_sw = lon_sw_2 + col_10 * dlon_10
+        lat_ne = lat_sw + dlat_10
+        lon_ne = lon_sw + dlon_10
+        
+        return [
+            (lon_sw, lat_sw),
+            (lon_ne, lat_sw),
+            (lon_ne, lat_ne),
+            (lon_sw, lat_ne),
+            (lon_sw, lat_sw)
+        ]
+    
+    else:
+        raise ValueError(
+            f"Unsupported mesh code length '{mesh_str}'. "
+            "This script only handles 6-digit or 8-digit codes."
+        )
+
+def get_tile_polygon_from_filename(filename):
+    """
+    Extract the mesh code from a typical Project PLATEAU filename 
+    (e.g. '51357348_bldg_6697_op.gml') and decode it. 
+    Returns the bounding polygon in WGS84 as a list of (lon, lat).
+    """
+    # Look for leading digits until the first underscore
+    m = re.match(r'^(\d+)_', filename)
+    if not m:
+        # If no match, you can either raise an error or return None
+        raise ValueError(f"No leading digit code found in filename: {filename}")
+    
+    mesh_code = m.group(1)
+    return decode_mesh_code(mesh_code)
+
+# --------------------------------------------------------------------
+# Original script logic
+# --------------------------------------------------------------------
+
 def download_and_extract_zip(url, extract_to='.'):
     """
     Download and extract a zip file from a URL
     """
-    # Send a GET request to the URL
     response = requests.get(url)
-
-    # Check if the request was successful
     if response.status_code == 200:
-        # Extract the base name of the zip file from the URL
         parsed_url = urlparse(url)
         zip_filename = os.path.basename(parsed_url.path)
         folder_name = os.path.splitext(zip_filename)[0]  # Remove the .zip extension
 
-        # Create the extraction directory
         extraction_path = os.path.join(extract_to, folder_name)
         os.makedirs(extraction_path, exist_ok=True)
 
-        # Create a BytesIO object from the response content
         zip_file = io.BytesIO(response.content)
-
-        # Open the zip file
         with zipfile.ZipFile(zip_file) as z:
-            # Extract all the contents of the zip file to the specified directory
             z.extractall(extraction_path)
             print(f"Extracted to {extraction_path}")
     else:
@@ -55,7 +151,6 @@ def swap_coordinates(polygon):
     Swap coordinates in a polygon (lat/lon to lon/lat or vice versa)
     """
     if isinstance(polygon, MultiPolygon):
-        # Handle MultiPolygon objects
         new_polygons = []
         for geom in polygon.geoms:
             coords = list(geom.exterior.coords)
@@ -63,7 +158,6 @@ def swap_coordinates(polygon):
             new_polygons.append(Polygon(swapped_coords))
         return MultiPolygon(new_polygons)
     else:
-        # Handle regular Polygon objects
         coords = list(polygon.exterior.coords)
         swapped_coords = [(y, x) for x, y in coords]
         return Polygon(swapped_coords)
@@ -87,25 +181,20 @@ def extract_terrain_info(file_path, namespaces):
             for tin in relief.findall('.//dem:TINRelief', namespaces):
                 tin_id = tin.get('{http://www.opengis.net/gml}id')
 
-                # Extract triangulated surface
                 triangles = tin.findall('.//gml:Triangle', namespaces)
                 for i, triangle in enumerate(triangles):
-                    # Extract the coordinates of each triangle
                     pos_lists = triangle.findall('.//gml:posList', namespaces)
-
                     for pos_list in pos_lists:
                         try:
-                            # Process the coordinates
                             coords_text = pos_list.text.strip().split()
                             coords = []
                             elevations = []
 
-                            # Process coordinates in triplets (x, y, z)
                             for j in range(0, len(coords_text), 3):
                                 if j + 2 < len(coords_text):
                                     x = float(coords_text[j])
-                                    y = float(coords_text[j + 1])
-                                    z = float(coords_text[j + 2])  # Elevation
+                                    y = float(coords_text[j+1])
+                                    z = float(coords_text[j+2])
 
                                     if not np.isinf(x) and not np.isinf(y) and not np.isinf(z):
                                         coords.append((x, y))
@@ -114,10 +203,8 @@ def extract_terrain_info(file_path, namespaces):
                             if len(coords) >= 3 and validate_coords(coords):
                                 polygon = Polygon(coords)
                                 if polygon.is_valid:
-                                    # Calculate centroid for point representation
                                     centroid = polygon.centroid
                                     avg_elevation = np.mean(elevations)
-
                                     terrain_elements.append({
                                         'relief_id': relief_id,
                                         'tin_id': tin_id,
@@ -136,7 +223,6 @@ def extract_terrain_info(file_path, namespaces):
                 for line in breakline.findall('.//gml:LineString', namespaces):
                     line_id = line.get('{http://www.opengis.net/gml}id')
                     pos_list = line.find('.//gml:posList', namespaces)
-
                     if pos_list is not None:
                         try:
                             coords_text = pos_list.text.strip().split()
@@ -146,9 +232,8 @@ def extract_terrain_info(file_path, namespaces):
                             for j in range(0, len(coords_text), 3):
                                 if j + 2 < len(coords_text):
                                     x = float(coords_text[j])
-                                    y = float(coords_text[j + 1])
-                                    z = float(coords_text[j + 2])
-
+                                    y = float(coords_text[j+1])
+                                    z = float(coords_text[j+2])
                                     if not np.isinf(x) and not np.isinf(y) and not np.isinf(z):
                                         points.append(Point(x, y))
                                         elevations.append(z)
@@ -173,7 +258,6 @@ def extract_terrain_info(file_path, namespaces):
                 for point in mass_point.findall('.//gml:Point', namespaces):
                     point_id = point.get('{http://www.opengis.net/gml}id')
                     pos = point.find('.//gml:pos', namespaces)
-
                     if pos is not None:
                         try:
                             coords = pos.text.strip().split()
@@ -181,7 +265,6 @@ def extract_terrain_info(file_path, namespaces):
                                 x = float(coords[0])
                                 y = float(coords[1])
                                 z = float(coords[2])
-
                                 if not np.isinf(x) and not np.isinf(y) and not np.isinf(z):
                                     point_geom = Point(x, y)
                                     if point_geom.is_valid:
@@ -204,13 +287,13 @@ def extract_terrain_info(file_path, namespaces):
         print(f"Error processing terrain in file {Path(file_path).name}: {e}")
         return []
 
+
 def extract_vegetation_info(file_path, namespaces):
     """
     Extract vegetation features (PlantCover, SolitaryVegetationObject)
     from a CityGML file, handling LOD0..LOD3 geometry and MultiSurface/CompositeSurface.
     """
     vegetation_elements = []
-
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
@@ -218,32 +301,23 @@ def extract_vegetation_info(file_path, namespaces):
         print(f"Error parsing CityGML file {Path(file_path).name}: {e}")
         return vegetation_elements
 
-    # ----------------------------------------------------------------------------
-    # Helper: parse all polygons from a <gml:MultiSurface> or <veg:lodXMultiSurface>
-    # ----------------------------------------------------------------------------
+    # Helper: parse polygons in <gml:MultiSurface> or <veg:lodXMultiSurface>
     def parse_lod_multisurface(lod_elem):
-        """Return a Shapely (Multi)Polygon from gml:Polygon elements under lod_elem."""
         polygons = []
-        # Find all Polygons (including nested in CompositeSurface)
         for poly_node in lod_elem.findall('.//gml:Polygon', namespaces):
             ring_node = poly_node.find('.//gml:exterior//gml:LinearRing//gml:posList', namespaces)
             if ring_node is None or ring_node.text is None:
                 continue
-
-            # Parse coordinate text
             coords_text = ring_node.text.strip().split()
             coords = []
-            # Typically posList is in triplets: (x, y, z)
             for i in range(0, len(coords_text), 3):
                 try:
                     x = float(coords_text[i])
                     y = float(coords_text[i+1])
-                    # z = float(coords_text[i+2])  # if you want z
+                    # z = float(coords_text[i+2])  # If you need Z
                     coords.append((x, y))
                 except:
-                    # Skip any parse error or incomplete coordinate
                     pass
-
             if len(coords) >= 3:
                 polygon = Polygon(coords)
                 if polygon.is_valid:
@@ -256,36 +330,27 @@ def extract_vegetation_info(file_path, namespaces):
         else:
             return MultiPolygon(polygons)
 
-    # ----------------------------------------------------------------------------
-    # Helper: retrieve geometry from all LOD tags
-    # ----------------------------------------------------------------------------
     def get_veg_geometry(veg_elem):
         """
         Search for geometry under lod0Geometry, lod1Geometry, lod2Geometry,
-        lod3Geometry, lod4Geometry, as well as lod0MultiSurface ... lod3MultiSurface, etc.
+        lod3Geometry, lod4Geometry, as well as lod0MultiSurface ... lod4MultiSurface.
         Return a Shapely geometry (Polygon or MultiPolygon) if found.
         """
         geometry_lods = [
             "lod0Geometry", "lod1Geometry", "lod2Geometry", "lod3Geometry", "lod4Geometry",
             "lod0MultiSurface", "lod1MultiSurface", "lod2MultiSurface", "lod3MultiSurface", "lod4MultiSurface"
         ]
-
         for lod_tag in geometry_lods:
-            # e.g. .//veg:lod3Geometry
             lod_elem = veg_elem.find(f'.//veg:{lod_tag}', namespaces)
             if lod_elem is not None:
                 geom = parse_lod_multisurface(lod_elem)
                 if geom is not None:
                     return geom
-
         return None
 
-    # ----------------------------------------------------------------------------
     # 1) PlantCover
-    # ----------------------------------------------------------------------------
     for plant_cover in root.findall('.//veg:PlantCover', namespaces):
         cover_id = plant_cover.get('{http://www.opengis.net/gml}id')
-        # averageHeight (if present)
         avg_height_elem = plant_cover.find('.//veg:averageHeight', namespaces)
         if avg_height_elem is not None and avg_height_elem.text:
             try:
@@ -295,9 +360,7 @@ def extract_vegetation_info(file_path, namespaces):
         else:
             vegetation_height = None
 
-        # parse geometry from LOD0..LOD3
         geometry = get_veg_geometry(plant_cover)
-
         if geometry is not None and not geometry.is_empty:
             vegetation_elements.append({
                 'object_type': 'PlantCover',
@@ -307,9 +370,7 @@ def extract_vegetation_info(file_path, namespaces):
                 'source_file': Path(file_path).name
             })
 
-    # ----------------------------------------------------------------------------
     # 2) SolitaryVegetationObject
-    # ----------------------------------------------------------------------------
     for solitary in root.findall('.//veg:SolitaryVegetationObject', namespaces):
         veg_id = solitary.get('{http://www.opengis.net/gml}id')
         height_elem = solitary.find('.//veg:height', namespaces)
@@ -335,6 +396,51 @@ def extract_vegetation_info(file_path, namespaces):
         print(f"Extracted {len(vegetation_elements)} vegetation objects from {Path(file_path).name}")
     return vegetation_elements
 
+
+def extract_building_footprint(building, namespaces):
+    """
+    Extract building footprint from possible LOD representations
+    """
+    lod_tags = [
+        # LOD0
+        './/bldg:lod0FootPrint//gml:MultiSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        './/bldg:lod0RoofEdge//gml:MultiSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        './/bldg:lod0Solid//gml:Solid//gml:exterior//gml:CompositeSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        
+        # LOD1
+        './/bldg:lod1Solid//gml:Solid//gml:exterior//gml:CompositeSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        
+        # LOD2
+        './/bldg:lod2Solid//gml:Solid//gml:exterior//gml:CompositeSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        
+        # fallback
+        './/gml:MultiSurface//gml:surfaceMember//gml:Polygon//gml:exterior//gml:LinearRing//gml:posList',
+        './/gml:Polygon//gml:exterior//gml:LinearRing//gml:posList'
+    ]
+    
+    for tag in lod_tags:
+        pos_list_elements = building.findall(tag, namespaces)
+        if pos_list_elements:
+            # If in LOD1/LOD2 solid, we look for the bottom face
+            if 'lod1Solid' in tag or 'lod2Solid' in tag or 'lod0Solid' in tag:
+                lowest_z = float('inf')
+                footprint_pos_list = None
+                for pos_list_elem in pos_list_elements:
+                    coords_text = pos_list_elem.text.strip().split()
+                    z_values = [float(coords_text[i+2]) 
+                                for i in range(0, len(coords_text), 3) 
+                                if i+2 < len(coords_text)]
+                    if z_values and all(z == z_values[0] for z in z_values) and z_values[0] < lowest_z:
+                        lowest_z = z_values[0]
+                        footprint_pos_list = pos_list_elem
+                if footprint_pos_list:
+                    return footprint_pos_list, lowest_z
+            else:
+                # For simpler LOD0 footprints, just return the first
+                return pos_list_elements[0], None
+    return None, None
+
+
 def process_citygml_file(file_path):
     """
     Process a CityGML file to extract building, terrain, and vegetation information
@@ -343,7 +449,6 @@ def process_citygml_file(file_path):
     terrain_elements = []
     vegetation_elements = []
 
-    # Namespaces (now includes 'veg')
     namespaces = {
         'core': 'http://www.opengis.net/citygml/2.0',
         'bldg': 'http://www.opengis.net/citygml/building/2.0',
@@ -354,27 +459,36 @@ def process_citygml_file(file_path):
     }
 
     try:
-        # Parse the file once at the start (optional; if you want to share 'root' among sub-extractors)
         tree = ET.parse(file_path)
         root = tree.getroot()
 
-        # --- Extract Building Info (existing approach) ---
+        # Extract Buildings
         for building in root.findall('.//bldg:Building', namespaces):
             building_id = building.get('{http://www.opengis.net/gml}id')
+            
             measured_height = building.find('.//bldg:measuredHeight', namespaces)
-            height = float(measured_height.text) if measured_height is not None else None
-
-            # Extract the footprint (LOD0)
-            lod0_roof_edge = building.find('.//bldg:lod0RoofEdge//gml:posList', namespaces)
-            if lod0_roof_edge is not None:
+            height = float(measured_height.text) if measured_height is not None and measured_height.text else None
+            
+            storeys = building.find('.//bldg:storeysAboveGround', namespaces)
+            num_storeys = int(storeys.text) if storeys is not None and storeys.text else None
+            
+            pos_list, ground_elevation = extract_building_footprint(building, namespaces)
+            if pos_list is not None:
                 try:
-                    pos_list = lod0_roof_edge.text.strip().split()
+                    coords_text = pos_list.text.strip().split()
                     coords = []
-                    for i in range(0, len(pos_list), 3):
-                        if i + 2 < len(pos_list):
-                            lon = float(pos_list[i])
-                            lat = float(pos_list[i + 1])
-                            elevation = float(pos_list[i + 2])  # z value
+                    
+                    # Decide if we have (x,y) pairs or (x,y,z) triplets
+                    coord_step = 3 if (len(coords_text) % 3) == 0 else 2
+
+                    for i in range(0, len(coords_text), coord_step):
+                        if i + coord_step - 1 < len(coords_text):
+                            lon = float(coords_text[i])
+                            lat = float(coords_text[i+1])
+                            if coord_step == 3 and i+2 < len(coords_text):
+                                z = float(coords_text[i+2])
+                                if ground_elevation is None:
+                                    ground_elevation = z
                             if not np.isinf(lon) and not np.isinf(lat):
                                 coords.append((lon, lat))
 
@@ -384,17 +498,18 @@ def process_citygml_file(file_path):
                             buildings.append({
                                 'building_id': building_id,
                                 'height': height,
-                                'ground_elevation': elevation,  # Add ground elevation if relevant
+                                'storeys': num_storeys,
+                                'ground_elevation': ground_elevation,
                                 'geometry': polygon,
                                 'source_file': Path(file_path).name
                             })
                 except (ValueError, IndexError) as e:
-                    print(f"Error processing building {building_id} in file {Path(file_path).name}: {e}")
+                    print(f"Error processing building {building_id} footprint in {Path(file_path).name}: {e}")
 
-        # --- Extract Terrain Info (existing function) ---
+        # Extract Terrain
         terrain_elements = extract_terrain_info(file_path, namespaces)
 
-        # --- Extract Vegetation Info (new function) ---
+        # Extract Vegetation
         vegetation_elements = extract_vegetation_info(file_path, namespaces)
 
         print(f"Processed {Path(file_path).name}: "
@@ -406,151 +521,189 @@ def process_citygml_file(file_path):
 
     return buildings, terrain_elements, vegetation_elements
 
-def load_plateau_with_terrain(url, base_dir):
-    """
-    Load PLATEAU data, extracting Buildings, Terrain, and Vegetation data from CityGML.
-    """
-    # 1) Download & unzip
-    citygml_path, foldername = download_and_extract_zip(url, extract_to=base_dir)
 
-    # 2) Identify CityGML files in typical folder structure
+def parse_file(file_path, file_type=None):
+    """
+    Parse a file based on its detected type
+    """
+    if file_type is None:
+        file_ext = os.path.splitext(file_path)[1].lower()
+        if file_ext == '.gml':
+            file_type = 'citygml'
+        elif file_ext == '.xml':
+            try:
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+                ns = root.nsmap
+                if any('citygml' in ns_uri.lower() for ns_uri in ns.values()):
+                    file_type = 'citygml'
+                else:
+                    file_type = 'xml'
+            except:
+                file_type = 'xml'
+        elif file_ext in ['.json', '.geojson']:
+            file_type = 'geojson'
+        else:
+            print(f"Unsupported file type: {file_ext}")
+            return None, None, None
+    
+    if file_type == 'citygml':
+        return process_citygml_file(file_path)
+    elif file_type == 'geojson':
+        print(f"GeoJSON processing not implemented for {file_path}")
+        return [], [], []
+    elif file_type == 'xml':
+        print(f"Generic XML processing not implemented for {file_path}")
+        return [], [], []
+    else:
+        print(f"Unsupported file type: {file_type}")
+        return [], [], []
+
+
+def swap_coordinates_if_needed(gdf, geometry_col='geometry'):
+    """
+    Swap lat/lon coordinates in a GeoDataFrame if its geometry is in lat-lon order.
+    We assume the original data is EPSG:6697 (which is a projected coordinate system).
+    But we frequently find that data is actually lat-lon. This function ensures
+    final geometry is in the correct coordinate order (lon, lat).
+    """
+    swapped_geometries = []
+    for geom in gdf[geometry_col]:
+        # If it's a Polygon or MultiPolygon, use swap_coordinates()
+        if isinstance(geom, (Polygon, MultiPolygon)):
+            swapped_geometries.append(swap_coordinates(geom))
+        elif isinstance(geom, Point):
+            swapped_geometries.append(Point(geom.y, geom.x))
+        else:
+            swapped_geometries.append(geom)
+    return swapped_geometries
+
+
+def load_buid_dem_veg_from_citygml(url=None, 
+                              base_dir='.', 
+                              citygml_path=None,
+                              rectangle_vertices=None):
+    """
+    Load PLATEAU data, extracting Buildings, Terrain, and Vegetation data.
+    Can process from URL (download & extract) or directly from local file.
+
+    If rectangle_vertices is provided (as [(lon1, lat1), (lon2, lat2), ...]),
+    only tiles intersecting that rectangle will be processed.
+    """
+    all_buildings = []
+    all_terrain = []
+    all_vegetation = []
+    
+    # Build the rectangle polygon if given
+    rectangle_polygon = None
+    if rectangle_vertices and len(rectangle_vertices) >= 3:
+        rectangle_polygon = Polygon(rectangle_vertices)
+    
+    if url:
+        citygml_path, foldername = download_and_extract_zip(url, extract_to=base_dir)
+    elif citygml_path:
+        foldername = os.path.basename(citygml_path)
+    else:
+        print("Either url or citygml_path must be specified")
+        return None, None, None
+
+    # Identify CityGML files in typical folder structure
     try:
         citygml_dir = os.path.join(citygml_path, 'udx')
         if not os.path.exists(citygml_dir):
-            citygml_dir = os.path.join(citygml_path, foldername, 'udx')
-
+            citygml_dir_2 = os.path.join(citygml_path, foldername, 'udx')
+            if os.path.exists(citygml_dir_2):
+                citygml_dir = citygml_dir_2
+        
+        # Potential sub-folders
         bldg_dir = os.path.join(citygml_dir, 'bldg')
         dem_dir = os.path.join(citygml_dir, 'dem')
-
-        # NEW: check for vegetation folder
         veg_dir = os.path.join(citygml_dir, 'veg')
-
+        
         citygml_files = []
+        for folder in [bldg_dir, dem_dir, veg_dir, citygml_dir]:
+            if os.path.exists(folder):
+                citygml_files += [
+                    os.path.join(folder, f) for f in os.listdir(folder) 
+                    if f.endswith(('.gml', '.xml'))
+                ]
+        
+        print(f"Found {len(citygml_files)} CityGML files to process")
 
-        # If there's a building folder, gather .gml from there
-        if os.path.exists(bldg_dir):
-            citygml_files += [
-                os.path.join(bldg_dir, f) for f in os.listdir(bldg_dir) if f.endswith('.gml')
-            ]
-        else:
-            # If no 'bldg' folder, look directly in 'udx'
-            citygml_files += [
-                os.path.join(citygml_dir, f) for f in os.listdir(citygml_dir) if f.endswith('.gml')
-            ]
+        for file_path in tqdm(citygml_files, desc="Processing files"):
+            filename = os.path.basename(file_path)
 
-        # Also gather DEM .gml (terrain)
-        if os.path.exists(dem_dir):
-            citygml_files += [
-                os.path.join(dem_dir, f) for f in os.listdir(dem_dir) if f.endswith('.gml')
-            ]
+            # If a rectangle is given, check tile intersection
+            if rectangle_polygon is not None:
+                try:
+                    tile_polygon_lonlat = get_tile_polygon_from_filename(filename)  # returns [(lon, lat), ...]
+                    tile_polygon = Polygon(tile_polygon_lonlat)
+                    
+                    # If no overlap, skip processing
+                    if not tile_polygon.intersects(rectangle_polygon):
+                        continue
+                except Exception as e:
+                    # If we cannot parse a tile boundary, skip or handle as you wish
+                    print(f"Warning: could not get tile boundary from {filename}: {e}, extracting the tile whether it is in the rectangle or not.")
+                    # continue
 
-        # ADD THIS: gather VEG .gml (vegetation)
-        if os.path.exists(veg_dir):
-            citygml_files += [
-                os.path.join(veg_dir, f) for f in os.listdir(veg_dir) if f.endswith('.gml')
-            ]
-
-        total_files = len(citygml_files)
-        print(f"Found {total_files} CityGML files to process")
-
+            # Parse the file
+            buildings, terrain_elements, vegetation_elements = parse_file(file_path)
+            all_buildings.extend(buildings)
+            all_terrain.extend(terrain_elements)
+            all_vegetation.extend(vegetation_elements)
+    
     except Exception as e:
         print(f"Error finding CityGML files: {e}")
         return None, None, None
 
-    all_buildings = []
-    all_terrain = []
-    all_vegetation = []
+    # Convert to GeoDataFrames
+    gdf_buildings = None
+    gdf_terrain = None
+    gdf_vegetation = None
 
-    # 3) Process each CityGML
-    for file_path in tqdm(citygml_files, desc="Processing CityGML files"):
-        buildings, terrain_elements, vegetation_elements = process_citygml_file(file_path)
-        all_buildings.extend(buildings)
-        all_terrain.extend(terrain_elements)
-        all_vegetation.extend(vegetation_elements)
-
-    # 4) Create GeoDataFrame for Buildings
     if all_buildings:
         gdf_buildings = gpd.GeoDataFrame(all_buildings, geometry='geometry')
-        gdf_buildings.set_crs(epsg=6697, inplace=True)
+        gdf_buildings.set_crs(epsg=6697, inplace=True)  # or "EPSG:4326", depending on your data
+        # Swap if needed
+        gdf_buildings['geometry'] = swap_coordinates_if_needed(gdf_buildings, geometry_col='geometry')
+        # Add an ID
+        gdf_buildings['id'] = range(len(gdf_buildings))
 
-        # Swap coords from (lon, lat) to (lat, lon) if needed
-        swapped_geometries = [swap_coordinates(geom) for geom in gdf_buildings.geometry]
-        gdf_buildings_swapped = gpd.GeoDataFrame(
-            {
-                'building_id': gdf_buildings['building_id'],
-                'height': gdf_buildings['height'],
-                'ground_elevation': gdf_buildings['ground_elevation'],
-                'source_file': gdf_buildings['source_file'],
-                'geometry': swapped_geometries
-            },
-            crs='EPSG:6697'
-        )
-
-        # Save
-        gdf_buildings_swapped['id'] = gdf_buildings_swapped.index
-        gdf_buildings_swapped.to_file('all_buildings_with_elevation.geojson', driver='GeoJSON')
-        print(f"\nBuildings saved to all_buildings_with_elevation.geojson")
-    else:
-        gdf_buildings_swapped = None
-
-    # 5) Create GeoDataFrame for Terrain
     if all_terrain:
         gdf_terrain = gpd.GeoDataFrame(all_terrain, geometry='geometry')
         gdf_terrain.set_crs(epsg=6697, inplace=True)
+        gdf_terrain['geometry'] = swap_coordinates_if_needed(gdf_terrain, geometry_col='geometry')
 
-        swapped_geometries = []
-        for geom in gdf_terrain.geometry:
-            if isinstance(geom, (Polygon, MultiPolygon)):
-                swapped_geometries.append(swap_coordinates(geom))
-            elif isinstance(geom, Point):
-                swapped_geometries.append(Point(geom.y, geom.x))
-            else:
-                swapped_geometries.append(geom)
-
-        terrain_data = {
-            'relief_id': gdf_terrain.get('relief_id', ''),
-            'tin_id': gdf_terrain.get('tin_id', ''),
-            'triangle_id': gdf_terrain.get('triangle_id', ''),
-            'breakline_id': gdf_terrain.get('breakline_id', ''),
-            'mass_point_id': gdf_terrain.get('mass_point_id', ''),
-            'point_id': gdf_terrain.get('point_id', ''),
-            'elevation': gdf_terrain['elevation'],
-            'source_file': gdf_terrain['source_file'],
-            'geometry': swapped_geometries
-        }
-
-        gdf_terrain_swapped = gpd.GeoDataFrame(terrain_data, geometry='geometry', crs='EPSG:6697')
-        gdf_terrain_swapped.to_file('terrain_elevation.geojson', driver='GeoJSON')
-        print(f"Terrain saved to terrain_elevation.geojson")
-    else:
-        gdf_terrain_swapped = None
-
-    # 6) Create GeoDataFrame for Vegetation
     if all_vegetation:
-        gdf_veg = gpd.GeoDataFrame(all_vegetation, geometry='geometry')
-        gdf_veg.set_crs(epsg=6697, inplace=True)
+        gdf_vegetation = gpd.GeoDataFrame(all_vegetation, geometry='geometry')
+        gdf_vegetation.set_crs(epsg=6697, inplace=True)
+        gdf_vegetation['geometry'] = swap_coordinates_if_needed(gdf_vegetation, geometry_col='geometry')
 
-        swapped_geometries = []
-        for geom in gdf_veg.geometry:
-            if isinstance(geom, (Polygon, MultiPolygon)):
-                swapped_geometries.append(swap_coordinates(geom))
-            elif isinstance(geom, Point):
-                swapped_geometries.append(Point(geom.y, geom.x))
-            else:
-                swapped_geometries.append(geom)
+    return gdf_buildings, gdf_terrain, gdf_vegetation
 
-        vegetation_data = {
-            'object_type':    gdf_veg.get('object_type', ''),
-            'vegetation_id':  gdf_veg.get('vegetation_id', ''),
-            'height':         gdf_veg.get('height', None),
-            'avg_elevation':  gdf_veg.get('avg_elevation', None),  # Use .get() with a default
-            'source_file':    gdf_veg.get('source_file', ''),
-            'geometry':       swapped_geometries
-        }
-        gdf_vegetation_swapped = gpd.GeoDataFrame(vegetation_data, geometry='geometry', crs='EPSG:6697')
-        gdf_vegetation_swapped.to_file('vegetation_elevation.geojson', driver='GeoJSON')
-        print(f"Vegetation saved to vegetation_elevation.geojson")
+
+def process_single_file(file_path):
+    """
+    Process a single file (for testing)
+    """
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext in ['.gml', '.xml']:
+        buildings, terrain, vegetation = parse_file(file_path)
+        print(f"\nProcessed {file_path}:")
+        print(f"  - {len(buildings)} buildings extracted")
+        print(f"  - {len(terrain)} terrain elements extracted")
+        print(f"  - {len(vegetation)} vegetation objects extracted")
+        
+        # Example: create building GeoDataFrame and save to GeoJSON
+        if buildings:
+            gdf_buildings = gpd.GeoDataFrame(buildings, geometry='geometry')
+            gdf_buildings.set_crs(epsg=6697, inplace=True)
+            output_file = os.path.splitext(file_path)[0] + "_buildings.geojson"
+            gdf_buildings.to_file(output_file, driver='GeoJSON')
+            print(f"Buildings saved to {output_file}")
+        
+        return buildings, terrain, vegetation
     else:
-        gdf_vegetation_swapped = None
-
-    return gdf_buildings_swapped, gdf_terrain_swapped, gdf_vegetation_swapped
+        print(f"Unsupported file type: {file_ext}")
+        return None, None, None

@@ -9,6 +9,8 @@ import numpy as np
 import os
 from numba import njit, prange
 import matplotlib.pyplot as plt
+import trimesh
+import numpy as np
 from ..utils.visualization import get_voxel_color_map
 
 def convert_colormap_indices(original_map):

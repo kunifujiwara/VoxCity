@@ -10,7 +10,9 @@ from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
 import rasterio
 from affine import Affine
-from shapely.geometry import box
+from shapely.geometry import box, Polygon, Point, MultiPolygon
+import warnings
+
 from scipy.interpolate import griddata
 from shapely.errors import GEOSException
 import geopandas as gpd

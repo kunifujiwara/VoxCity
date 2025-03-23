@@ -1,6 +1,6 @@
 [project]
 name = "voxcity"
-version = "0.5.0"
+version = "0.5.9"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",
@@ -47,7 +47,7 @@ dependencies = [
     "osm2geojson",
     "seaborn",
     "overturemaps",
-    "protobuf<=3.20.3",
+    "protobuf>=4.21,<6",
     "timezonefinder",
     "astral",
     "osmnx",
@@ -56,7 +56,6 @@ dependencies = [
     "pyvista",
     "IPython",
     "lxml"
-
 ]
 
 [project.optional-dependencies]

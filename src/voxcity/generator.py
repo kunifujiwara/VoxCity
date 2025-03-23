@@ -16,7 +16,6 @@ The main functions are:
 
 import numpy as np
 import os
-
 # Local application/library specific imports
 from .downloader.mbfp import get_mbfp_gdf
 from .downloader.osm import load_gdf_from_openstreetmap, load_land_cover_gdf_from_osm
@@ -24,7 +23,7 @@ from .downloader.oemj import save_oemj_as_geotiff
 from .downloader.omt import load_gdf_from_openmaptiles
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
-from .downloader.citygml import load_plateau_with_terrain
+from .downloader.citygml import load_buid_dem_veg_from_citygml
 from .downloader.gee import (
     initialize_earth_engine,
     get_roi,
@@ -46,7 +45,9 @@ from .geoprocessor.grid import (
     create_building_height_grid_from_gdf_polygon,
     create_dem_grid_from_geotiff_polygon,
     create_land_cover_grid_from_gdf_polygon,
-    create_building_height_grid_from_open_building_temporal_polygon
+    create_building_height_grid_from_open_building_temporal_polygon,
+    create_vegetation_height_grid_from_gdf_polygon,
+    create_dem_grid_from_gdf_polygon
 )
 from .utils.lc import convert_land_cover, convert_land_cover_array
 from .geoprocessor.polygon import get_gdf_from_gpkg, save_geojson
@@ -83,7 +84,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     print(f"Data source: {source}")
     
     # Initialize Earth Engine for accessing satellite data
-    if source != "OpenStreetMap":
+    if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
         initialize_earth_engine()
 
     # Create output directory if it doesn't exist
@@ -217,8 +218,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
                 gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices)
             elif building_complementary_source == 'OpenStreetMap':
                 gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
-            elif building_complementary_source == 'OSM Buildings':
-                gdf_comp = load_gdf_from_osmbuildings(rectangle_vertices)
             elif building_complementary_source == 'EUBUCCO v0.1':
                 gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir)
             elif building_complementary_source == "OpenMapTiles":
@@ -692,7 +691,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
 
     return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
 
-def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, canopy_height_source, meshsize, **kwargs):
+def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
     """Main function to generate a complete voxel city model.
 
     Args:
@@ -729,12 +728,13 @@ def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, cano
     kwargs.pop('output_dir', None)
 
     # get all required gdfs    
-    building_gdf, terrain_gdf, vegetation_gdf = load_plateau_with_terrain(url_citygml, base_dir=output_dir)
+    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(url=url_citygml, citygml_path=citygml_path, base_dir=output_dir, rectangle_vertices=rectangle_vertices)
 
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)        
 
     # building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
-    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(buildings_gdf, meshsize, rectangle_vertices, **kwargs)
+    print("Creating building height grid")
+    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(building_gdf, meshsize, rectangle_vertices, **kwargs)
 
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
@@ -762,7 +762,14 @@ def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, cano
     else:
         canopy_height_grid_comp = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     
-    canopy_height_grid = create_vegetation_height_grid_from_gdf_polygon(vegetation_gdf, meshsize, rectangle_vertices)
+    # In the get_voxcity_CityGML function, modify it to handle None vegetation_gdf
+    if vegetation_gdf is not None:
+        canopy_height_grid = create_vegetation_height_grid_from_gdf_polygon(vegetation_gdf, meshsize, rectangle_vertices)
+    else:
+        # Create an empty canopy_height_grid with the same shape as your other grids
+        # This depends on the expected shape, you might need to adjust
+        canopy_height_grid = np.zeros_like(building_height_grid)
+
     mask = (canopy_height_grid == 0) & (canopy_height_grid_comp != 0)
     canopy_height_grid[mask] = canopy_height_grid_comp[mask]
     
@@ -770,6 +777,7 @@ def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, cano
     if kwargs.pop('flat_dem', None):
         dem_grid = np.zeros_like(land_cover_grid)
     else:
+        print("Creating Digital Elevation Model (DEM) grid")
         dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
         
         # Visualize grid if requested
@@ -809,7 +817,7 @@ def get_voxcity_CityGML(rectangle_vertices, url_citygml, land_cover_source, cano
     # Generate 3D voxel grid
     voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, filtered_buildings
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     """Replace NaN values in a nested array structure with a specified value.

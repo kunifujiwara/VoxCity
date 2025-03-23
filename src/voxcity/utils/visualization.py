@@ -43,6 +43,7 @@ from ..geoprocessor.mesh import (
     create_city_meshes,
     export_meshes
 )
+# from ..exporter.obj import save_obj_from_colored_mesh
 from .material import get_material_dict
 
 # def get_voxel_color_map():
@@ -74,6 +75,7 @@ from .material import get_material_dict
 #         13: [150, 166, 190],    #  'Building (ground surface)'
 #         14: [239, 228, 176],    #  'No Data (ground surface)'
 #     }
+
 def get_voxel_color_map(color_scheme='default'):
     """
     Returns a color map for voxel visualization based on the specified color scheme.
@@ -1528,6 +1530,8 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     vmax = kwargs.get("vmax", np.nanmax(sim_grid))
     projection_type = kwargs.get("projection_type", "perspective")
     distance_factor = kwargs.get("distance_factor", 1.0)
+    save_obj = kwargs.get("save_obj", False)
+    show_views = kwargs.get("show_views", True)
 
     # Create meshes
     print("Creating voxel meshes...")
@@ -1564,21 +1568,29 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
         os.makedirs(output_directory, exist_ok=True)
         export_meshes(meshes, output_directory, base_filename)
 
-    # Create and save multiple views
-    print("Creating multiple views...")        
-    # Create output directory if it doesn't exist
-    os.makedirs(output_directory, exist_ok=True)
-    image_files = create_multi_view_scene(meshes, output_directory=output_directory, projection_type=projection_type, distance_factor=distance_factor)
+    if show_views:  
+        # Create and save multiple views
+        print("Creating multiple views...")        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_directory, exist_ok=True)
+        image_files = create_multi_view_scene(meshes, output_directory=output_directory, projection_type=projection_type, distance_factor=distance_factor)
 
-    # Display each view separately
-    for view_name, img_file in image_files:
-        plt.figure(figsize=(12, 8))
-        img = plt.imread(img_file)
-        plt.imshow(img)
-        plt.title(view_name.replace('_', ' ').title(), pad=20)
-        plt.axis('off')
-        plt.show()
-        plt.close()
+        # Display each view separately
+        for view_name, img_file in image_files:
+            plt.figure(figsize=(12, 8))
+            img = plt.imread(img_file)
+            plt.imshow(img)
+            plt.title(view_name.replace('_', ' ').title(), pad=20)
+            plt.axis('off')
+            plt.show()
+            plt.close()
+    
+        # After creating the meshes and before visualization
+    if save_obj:
+        output_directory = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")
 
 def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, sim_configs, **kwargs):
     """
@@ -1610,7 +1622,9 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
     # Configure PyVista settings
     pv.set_plot_theme('document')
     pv.global_theme.background = 'white'
-    pv.global_theme.window_size = [1024, 768]
+    window_width = kwargs.get("window_width", 1024)
+    window_height = kwargs.get("window_height", 768)
+    pv.global_theme.window_size = [window_width, window_height]
     pv.global_theme.jupyter_backend = 'static'
 
     # Parse general kwargs
@@ -1621,6 +1635,8 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
     dem_grid_ori = kwargs.get("dem_grid", None)
     projection_type = kwargs.get("projection_type", "perspective")
     distance_factor = kwargs.get("distance_factor", 1.0)
+    show_views = kwargs.get("show_views", True)
+    save_obj = kwargs.get("save_obj", False)
 
     if dem_grid_ori is not None:
         dem_grid = dem_grid_ori - np.min(dem_grid_ori)
@@ -1669,27 +1685,33 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
         os.makedirs(output_directory, exist_ok=True)
         export_meshes(meshes, output_directory, base_filename)
 
-    # Create and save multiple views
-    print("Creating multiple views...")        
-    os.makedirs(output_directory, exist_ok=True)
-    image_files = create_multi_view_scene(
-        meshes, 
-        output_directory=output_directory,
-        projection_type=projection_type,
-        distance_factor=distance_factor
-    )
+    if show_views:
+        # Create and save multiple views
+        print("Creating multiple views...")        
+        os.makedirs(output_directory, exist_ok=True)
+        image_files = create_multi_view_scene(
+            meshes, 
+            output_directory=output_directory,
+            projection_type=projection_type,
+            distance_factor=distance_factor
+        )
 
-    # Display each view separately
-    for view_name, img_file in image_files:
-        plt.figure(figsize=(12, 8))
-        img = plt.imread(img_file)
-        plt.imshow(img)
-        plt.title(view_name.replace('_', ' ').title(), pad=20)
-        plt.axis('off')
-        plt.show()
-        plt.close()
+        # Display each view separately
+        for view_name, img_file in image_files:
+            plt.figure(figsize=(12, 8))
+            img = plt.imread(img_file)
+            plt.imshow(img)
+            plt.title(view_name.replace('_', ' ').title(), pad=20)
+            plt.axis('off')
+            plt.show()
+            plt.close()
 
-    return meshes
+    # After creating the meshes and before visualization
+    if save_obj:
+        output_directory = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")
 
 def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None, **kwargs):
     """
@@ -1743,7 +1765,9 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     # Configure PyVista settings
     pv.set_plot_theme('document')
     pv.global_theme.background = 'white'
-    pv.global_theme.window_size = [1024, 768]
+    window_width = kwargs.get("window_width", 1024)
+    window_height = kwargs.get("window_height", 768)
+    pv.global_theme.window_size = [window_width, window_height]
     pv.global_theme.jupyter_backend = 'static'
     
     # Parse kwargs
@@ -1764,6 +1788,8 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     colorbar_title = kwargs.get("colorbar_title", "")
     value_name = kwargs.get("value_name", None)
     nan_color = kwargs.get("nan_color", "gray")
+    show_views = kwargs.get("show_views", True)
+    save_obj = kwargs.get("save_obj", False)
     
     if value_name is None:
         print("Set value_name")
@@ -1885,21 +1911,28 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     print("Creating multiple views...")        
     # Create output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
-    image_files = create_multi_view_scene(meshes, output_directory=output_directory, 
+
+    if show_views:
+        image_files = create_multi_view_scene(meshes, output_directory=output_directory, 
                                          projection_type=projection_type, 
                                          distance_factor=distance_factor)
 
-    # Display each view separately
-    for view_name, img_file in image_files:
-        plt.figure(figsize=(12, 8))
-        img = plt.imread(img_file)
-        plt.imshow(img)
-        plt.title(view_name.replace('_', ' ').title(), pad=20)
-        plt.axis('off')
-        plt.show()
-        plt.close()
+        # Display each view separately
+        for view_name, img_file in image_files:
+            plt.figure(figsize=(24, 16))
+            img = plt.imread(img_file)
+            plt.imshow(img)
+            plt.title(view_name.replace('_', ' ').title(), pad=20)
+            plt.axis('off')
+            plt.show()
+            plt.close()
         
-    return image_files
+    # After creating the meshes and before visualization
+    if save_obj:
+        output_directory = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")    
 
 def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **kwargs):
     """
@@ -1947,9 +1980,75 @@ def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **k
             kwargs["colorbar_title"] = pretty_name
     
     # Call the more general visualization function
-    return visualize_voxcity_with_sim_meshes(
+    visualize_voxcity_with_sim_meshes(
         voxel_array,
         meshsize,
         custom_meshes=custom_meshes,
         **kwargs
     )
+
+def save_obj_from_colored_mesh(meshes, output_path, base_filename):
+    """
+    Save colored meshes as OBJ and MTL files.
+    
+    Parameters
+    ----------
+    meshes : dict
+        Dictionary of trimesh.Trimesh objects with face colors.
+    output_path : str
+        Directory path where to save the files.
+    base_filename : str
+        Base name for the output files (without extension).
+        
+    Returns
+    -------
+    tuple
+        Paths to the saved (obj_file, mtl_file).
+    """
+    
+    os.makedirs(output_path, exist_ok=True)
+    obj_path = os.path.join(output_path, f"{base_filename}.obj")
+    mtl_path = os.path.join(output_path, f"{base_filename}.mtl")
+    
+    # Combine all meshes
+    combined_mesh = trimesh.util.concatenate(list(meshes.values()))
+    
+    # Create unique materials for each unique face color
+    face_colors = combined_mesh.visual.face_colors
+    unique_colors = np.unique(face_colors, axis=0)
+    
+    # Write MTL file
+    with open(mtl_path, 'w') as mtl_file:
+        for i, color in enumerate(unique_colors):
+            material_name = f'material_{i}'
+            mtl_file.write(f'newmtl {material_name}\n')
+            # Convert RGBA to RGB float values
+            rgb = color[:3].astype(float) / 255.0
+            mtl_file.write(f'Kd {rgb[0]:.6f} {rgb[1]:.6f} {rgb[2]:.6f}\n')
+            mtl_file.write(f'd {color[3]/255.0:.6f}\n\n')  # Alpha value
+    
+    # Create material groups based on face colors
+    color_to_material = {tuple(c): f'material_{i}' for i, c in enumerate(unique_colors)}
+    
+    # Write OBJ file
+    with open(obj_path, 'w') as obj_file:
+        obj_file.write(f'mtllib {os.path.basename(mtl_path)}\n')
+        
+        # Write vertices
+        for vertex in combined_mesh.vertices:
+            obj_file.write(f'v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n')
+        
+        # Write faces grouped by material
+        current_material = None
+        for face_idx, face in enumerate(combined_mesh.faces):
+            face_color = tuple(face_colors[face_idx])
+            material_name = color_to_material[face_color]
+            
+            if material_name != current_material:
+                obj_file.write(f'usemtl {material_name}\n')
+                current_material = material_name
+            
+            # OBJ indices are 1-based
+            obj_file.write(f'f {face[0]+1} {face[1]+1} {face[2]+1}\n')
+    
+    return obj_path, mtl_path
