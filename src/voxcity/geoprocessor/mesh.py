@@ -305,3 +305,39 @@ def export_meshes(meshes, output_directory, base_filename):
     for class_id, mesh in meshes.items():
         # Convert class_id to a string for filename
         mesh.export(f"{output_directory}/{base_filename}_{class_id}.stl")
+
+def split_vertices_manual(mesh):
+    """
+    Imitate trimesh's split_vertices() by giving each face its own copy of vertices.
+    This ensures every face is truly disconnected, preventing smooth shading in Rhino.
+    """
+    new_meshes = []
+    
+    # For each face, build a small, one-face mesh
+    for face_idx, face in enumerate(mesh.faces):
+        face_coords = mesh.vertices[face]
+        
+        # Create mini-mesh without colors first
+        mini_mesh = trimesh.Trimesh(
+            vertices=face_coords,
+            faces=[[0, 1, 2]],
+            process=False  # skip merging/cleaning
+        )
+        
+        # If the mesh has per-face colors, set the face color properly
+        if (mesh.visual.face_colors is not None 
+            and len(mesh.visual.face_colors) == len(mesh.faces)):
+            # Create a visual object with the face color (for one face)
+            face_color = mesh.visual.face_colors[face_idx]
+            color_visual = trimesh.visual.ColorVisuals(
+                mesh=mini_mesh,
+                face_colors=np.array([face_color]),  # One face, one color
+                vertex_colors=None
+            )
+            mini_mesh.visual = color_visual
+        
+        new_meshes.append(mini_mesh)
+    
+    # Concatenate all the single-face meshes
+    out_mesh = trimesh.util.concatenate(new_meshes)
+    return out_mesh

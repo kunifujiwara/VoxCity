@@ -41,7 +41,8 @@ from ..geoprocessor.mesh import (
     create_voxel_mesh,
     create_sim_surface_mesh,
     create_city_meshes,
-    export_meshes
+    export_meshes,
+    split_vertices_manual
 )
 # from ..exporter.obj import save_obj_from_colored_mesh
 from .material import get_material_dict
@@ -2012,6 +2013,22 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename):
     
     # Combine all meshes
     combined_mesh = trimesh.util.concatenate(list(meshes.values()))
+    # print("before split")
+    # print("combined_mesh.visual.face_colors")
+    # print(combined_mesh.visual.face_colors)
+    # print("combined_mesh.visual.face_colors.shape")
+    # print(combined_mesh.visual.face_colors.shape)
+    # print("combined_mesh.faces.shape")
+    # print(combined_mesh.faces.shape)
+
+    # print("after split")
+    combined_mesh = split_vertices_manual(combined_mesh)
+    # print("combined_mesh.visual.face_colors")
+    # print(combined_mesh.visual.face_colors)
+    # print("combined_mesh.visual.face_colors.shape")
+    # print(combined_mesh.visual.face_colors.shape)
+    # print("combined_mesh.faces.shape")
+    # print(combined_mesh.faces.shape)
     
     # Create unique materials for each unique face color
     face_colors = combined_mesh.visual.face_colors
