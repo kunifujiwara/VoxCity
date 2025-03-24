@@ -1139,13 +1139,13 @@ def get_cumulative_building_solar_irradiance(
     cumulative_mesh.name = "Cumulative Solar Irradiance (Wh/m²)"
     
     # Optional export
-    obj_export = kwargs.get("obj_export", False)
-    if obj_export:
-        _export_solar_irradiance_mesh(
-            cumulative_mesh,
-            face_cum_global,
-            **kwargs
-        )
+    # obj_export = kwargs.get("obj_export", False)
+    # if obj_export:
+    #     _export_solar_irradiance_mesh(
+    #         cumulative_mesh,
+    #         face_cum_global,
+    #         **kwargs
+    #     )
     
     return cumulative_mesh
 

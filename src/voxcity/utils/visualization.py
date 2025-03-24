@@ -1578,7 +1578,7 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
 
         # Display each view separately
         for view_name, img_file in image_files:
-            plt.figure(figsize=(12, 8))
+            plt.figure(figsize=(24, 16))
             img = plt.imread(img_file)
             plt.imshow(img)
             plt.title(view_name.replace('_', ' ').title(), pad=20)
@@ -1699,7 +1699,7 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
 
         # Display each view separately
         for view_name, img_file in image_files:
-            plt.figure(figsize=(12, 8))
+            plt.figure(figsize=(24, 16))
             img = plt.imread(img_file)
             plt.imshow(img)
             plt.title(view_name.replace('_', ' ').title(), pad=20)

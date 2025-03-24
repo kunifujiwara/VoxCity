@@ -689,6 +689,14 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
         visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
 
+    # Save all data if a save path is provided
+    save_voxcity = kwargs.get("save_voxctiy_data", True)
+    if save_voxcity:
+        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
+        save_voxcity_data(save_path, voxcity_grid, building_height_grid, building_min_height_grid, 
+                         building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
+                         building_gdf, meshsize, rectangle_vertices)
+    
     return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
@@ -817,6 +825,14 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # Generate 3D voxel grid
     voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
 
+    # Save all data if a save path is provided
+    save_voxcity = kwargs.get("save_voxctiy_data", True)
+    if save_voxcity:
+        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
+        save_voxcity_data(save_path, voxcity_grid, building_height_grid, building_min_height_grid, 
+                         building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
+                         building_gdf, meshsize, rectangle_vertices)
+    
     return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, filtered_buildings
 
 def replace_nan_in_nested(arr, replace_value=10.0):
@@ -845,3 +861,88 @@ def replace_nan_in_nested(arr, replace_value=10.0):
                                 arr[i][j][k][l] = replace_value
     
     return np.array(arr, dtype=object)
+
+def save_voxcity_data(output_path, voxcity_grid, building_height_grid, building_min_height_grid, 
+                     building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
+                     building_gdf, meshsize, rectangle_vertices):
+    """Save voxcity data to a file for later loading.
+    
+    Args:
+        output_path: Path to save the data file
+        voxcity_grid: 3D voxel grid of the complete city model
+        building_height_grid: 2D grid of building heights
+        building_min_height_grid: 2D grid of minimum building heights
+        building_id_grid: 2D grid of building IDs
+        canopy_height_grid: 2D grid of tree canopy heights
+        land_cover_grid: 2D grid of land cover classifications
+        dem_grid: 2D grid of ground elevation
+        building_gdf: GeoDataFrame of building footprints and metadata
+        meshsize: Size of each grid cell in meters
+        rectangle_vertices: List of coordinates defining the area of interest
+    """
+    import pickle
+    import os
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    # Create a dictionary with all the data
+    data_dict = {
+        'voxcity_grid': voxcity_grid,
+        'building_height_grid': building_height_grid,
+        'building_min_height_grid': building_min_height_grid,
+        'building_id_grid': building_id_grid,
+        'canopy_height_grid': canopy_height_grid,
+        'land_cover_grid': land_cover_grid,
+        'dem_grid': dem_grid,
+        'building_gdf': building_gdf,
+        'meshsize': meshsize,
+        'rectangle_vertices': rectangle_vertices
+    }
+    
+    # Save the data to a file using pickle
+    with open(output_path, 'wb') as f:
+        pickle.dump(data_dict, f)
+    
+    print(f"Voxcity data saved to {output_path}")
+
+def load_voxcity_data(input_path):
+    """Load voxcity data from a saved file.
+    
+    Args:
+        input_path: Path to the saved data file
+        
+    Returns:
+        tuple: All the voxcity data components including:
+            - voxcity_grid: 3D voxel grid of the complete city model
+            - building_height_grid: 2D grid of building heights
+            - building_min_height_grid: 2D grid of minimum building heights
+            - building_id_grid: 2D grid of building IDs
+            - canopy_height_grid: 2D grid of tree canopy heights
+            - land_cover_grid: 2D grid of land cover classifications
+            - dem_grid: 2D grid of ground elevation
+            - building_gdf: GeoDataFrame of building footprints and metadata
+            - meshsize: Size of each grid cell in meters
+            - rectangle_vertices: List of coordinates defining the area of interest
+    """
+    import pickle
+    
+    # Load the data from the file
+    with open(input_path, 'rb') as f:
+        data_dict = pickle.load(f)
+    
+    print(f"Voxcity data loaded from {input_path}")
+    
+    # Return all components as a tuple
+    return (
+        data_dict['voxcity_grid'],
+        data_dict['building_height_grid'],
+        data_dict['building_min_height_grid'],
+        data_dict['building_id_grid'],
+        data_dict['canopy_height_grid'],
+        data_dict['land_cover_grid'],
+        data_dict['dem_grid'],
+        data_dict['building_gdf'],
+        data_dict['meshsize'],
+        data_dict['rectangle_vertices']
+    )
