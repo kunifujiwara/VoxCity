@@ -1499,7 +1499,8 @@ def compute_view_factor_for_all_faces(
     target_values,
     inclusion_mode,
     grid_bounds_real,
-    boundary_epsilon
+    boundary_epsilon,
+    ignore_downward=True
 ):
     """
     Compute a per-face "view factor" for a specified set of target voxel classes.
@@ -1527,6 +1528,7 @@ def compute_view_factor_for_all_faces(
                                If False, hitting anything *not* in target_values (except -2 trees) blocks the ray.
         grid_bounds_real (np.ndarray): [[x_min,y_min,z_min],[x_max,y_max,z_max]] in real coords.
         boundary_epsilon (float): tolerance for marking boundary vertical faces.
+        ignore_downward (bool): If True, only consider upward rays. If False, consider all outward rays.
 
     Returns:
         np.ndarray of shape (n_faces,):
@@ -1592,34 +1594,34 @@ def compute_view_factor_for_all_faces(
                     angle
                 )
         
-        # -- 3) Count how many directions are outward & upward
+        # -- 3) Count valid directions based on ignore_downward setting
         total_outward = 0
-        num_upward = 0
+        num_valid = 0
         for i in range(local_dirs.shape[0]):
             dvec = local_dirs[i]
             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
             if dp > 0.0:
                 total_outward += 1
-                if dvec[2] > 0.0:
-                    num_upward += 1
+                if not ignore_downward or dvec[2] > 0.0:
+                    num_valid += 1
         
         # If no outward directions at all => view factor = 0
         if total_outward == 0:
             face_vf_values[fidx] = 0.0
             continue
         
-        # If no upward directions => view factor = 0
-        if num_upward == 0:
+        # If no valid directions => view factor = 0
+        if num_valid == 0:
             face_vf_values[fidx] = 0.0
             continue
         
-        # -- 4) Create an array for only the upward directions
-        valid_dirs_arr = np.empty((num_upward, 3), dtype=np.float64)
+        # -- 4) Create an array for valid directions
+        valid_dirs_arr = np.empty((num_valid, 3), dtype=np.float64)
         out_idx = 0
         for i in range(local_dirs.shape[0]):
             dvec = local_dirs[i]
             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
-            if dp > 0.0 and dvec[2] > 0.0:
+            if dp > 0.0 and (not ignore_downward or dvec[2] > 0.0):
                 valid_dirs_arr[out_idx, 0] = dvec[0]
                 valid_dirs_arr[out_idx, 1] = dvec[1]
                 valid_dirs_arr[out_idx, 2] = dvec[2]
@@ -1630,8 +1632,7 @@ def compute_view_factor_for_all_faces(
         ray_origin = (center / meshsize) + (normal / norm_n) * offset_vox
         
         # -- 6) Compute fraction of rays that "see" the target
-        #    (in the old code, "seeing the sky" meant the ray was NOT blocked by non‐sky voxels)
-        upward_vf = compute_vi_generic(
+        vf = compute_vi_generic(
             ray_origin,
             voxel_data,
             valid_dirs_arr,
@@ -1642,9 +1643,9 @@ def compute_view_factor_for_all_faces(
             inclusion_mode
         )
         
-        # Scale by fraction of directions that were outward
-        fraction_up = num_upward / total_outward
-        face_vf_values[fidx] = upward_vf * fraction_up
+        # Scale by fraction of directions that were valid
+        fraction_valid = num_valid / total_outward
+        face_vf_values[fidx] = vf * fraction_valid
     
     return face_vf_values
 

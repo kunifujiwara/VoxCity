@@ -7,19 +7,327 @@ processing the responses, and converting them to standardized GeoJSON format wit
 """
 
 import requests
-from osm2geojson import json2geojson
 from shapely.geometry import Polygon, shape, mapping
 from shapely.ops import transform
 import pyproj
 from collections import defaultdict
 import requests
 import json
-from shapely.geometry import shape, mapping, Polygon
+from shapely.geometry import shape, mapping, Polygon, LineString, Point, MultiPolygon
 from shapely.ops import transform
 import pyproj
-from osm2geojson import json2geojson
 import pandas as pd
 import geopandas as gpd
+
+def osm_json_to_geojson(osm_data):
+    """
+    Convert OSM JSON data to GeoJSON format with proper handling of complex relations.
+    
+    Args:
+        osm_data (dict): OSM JSON data from Overpass API
+        
+    Returns:
+        dict: GeoJSON FeatureCollection
+    """
+    features = []
+    
+    # Create a mapping of node IDs to their coordinates
+    nodes = {}
+    ways = {}
+    
+    # First pass: index all nodes and ways
+    for element in osm_data['elements']:
+        if element['type'] == 'node':
+            nodes[element['id']] = (element['lon'], element['lat'])
+        elif element['type'] == 'way':
+            ways[element['id']] = element
+    
+    # Second pass: generate features
+    for element in osm_data['elements']:
+        if element['type'] == 'node' and 'tags' in element and element['tags']:
+            # Convert POI nodes to Point features
+            feature = {
+                'type': 'Feature',
+                'properties': {
+                    'id': element['id'],
+                    'type': 'node',
+                    'tags': element.get('tags', {})
+                },
+                'geometry': {
+                    'type': 'Point',
+                    'coordinates': [element['lon'], element['lat']]
+                }
+            }
+            features.append(feature)
+            
+        elif element['type'] == 'way' and 'nodes' in element:
+            # Skip ways that are part of relations - we'll handle those in relation processing
+            if is_part_of_relation(element['id'], osm_data):
+                continue
+                
+            # Process standalone way
+            coords = get_way_coords(element, nodes)
+            if not coords or len(coords) < 2:
+                continue
+                
+            # Determine if it's a polygon or a line
+            is_polygon = is_way_polygon(element)
+            
+            # Make sure polygons have valid geometry (closed loop with at least 4 points)
+            if is_polygon:
+                # For closed ways, make sure first and last coordinates are the same
+                if coords[0] != coords[-1]:
+                    coords.append(coords[0])
+                
+                # Check if we have enough coordinates for a valid polygon (at least 4)
+                if len(coords) < 4:
+                    # Not enough coordinates for a polygon, convert to LineString
+                    is_polygon = False
+            
+            feature = {
+                'type': 'Feature',
+                'properties': {
+                    'id': element['id'],
+                    'type': 'way',
+                    'tags': element.get('tags', {})
+                },
+                'geometry': {
+                    'type': 'Polygon' if is_polygon else 'LineString',
+                    'coordinates': [coords] if is_polygon else coords
+                }
+            }
+            features.append(feature)
+            
+        elif element['type'] == 'relation' and 'members' in element and 'tags' in element:
+            tags = element.get('tags', {})
+            
+            # Process multipolygon relations
+            if tags.get('type') == 'multipolygon' or any(key in tags for key in ['natural', 'water', 'waterway']):
+                # Group member ways by role
+                members_by_role = {'outer': [], 'inner': []}
+                
+                for member in element['members']:
+                    if member['type'] == 'way' and member['ref'] in ways:
+                        role = member['role']
+                        if role not in ['outer', 'inner']:
+                            role = 'outer'  # Default to outer if role not specified
+                        members_by_role[role].append(member['ref'])
+                
+                # Skip if no outer members
+                if not members_by_role['outer']:
+                    continue
+                
+                # Create rings from member ways
+                outer_rings = create_rings_from_ways(members_by_role['outer'], ways, nodes)
+                inner_rings = create_rings_from_ways(members_by_role['inner'], ways, nodes)
+                
+                # Skip if no valid outer rings
+                if not outer_rings:
+                    continue
+                
+                # Create feature based on number of outer rings
+                if len(outer_rings) == 1:
+                    # Single polygon with possible inner rings
+                    feature = {
+                        'type': 'Feature',
+                        'properties': {
+                            'id': element['id'],
+                            'type': 'relation',
+                            'tags': tags
+                        },
+                        'geometry': {
+                            'type': 'Polygon',
+                            'coordinates': [outer_rings[0]] + inner_rings
+                        }
+                    }
+                else:
+                    # MultiPolygon
+                    # Each outer ring forms a polygon, and we assign inner rings to each polygon
+                    # This is a simplification - proper assignment would check for containment
+                    multipolygon_coords = []
+                    for outer_ring in outer_rings:
+                        polygon_coords = [outer_ring]
+                        # For simplicity, assign all inner rings to the first polygon
+                        # A more accurate implementation would check which outer ring contains each inner ring
+                        if len(multipolygon_coords) == 0:
+                            polygon_coords.extend(inner_rings)
+                        multipolygon_coords.append(polygon_coords)
+                    
+                    feature = {
+                        'type': 'Feature',
+                        'properties': {
+                            'id': element['id'],
+                            'type': 'relation',
+                            'tags': tags
+                        },
+                        'geometry': {
+                            'type': 'MultiPolygon',
+                            'coordinates': multipolygon_coords
+                        }
+                    }
+                
+                features.append(feature)
+    
+    return {
+        'type': 'FeatureCollection',
+        'features': features
+    }
+
+def is_part_of_relation(way_id, osm_data):
+    """Check if a way is part of any relation."""
+    for element in osm_data['elements']:
+        if element['type'] == 'relation' and 'members' in element:
+            for member in element['members']:
+                if member['type'] == 'way' and member['ref'] == way_id:
+                    return True
+    return False
+
+def is_way_polygon(way):
+    """Determine if a way should be treated as a polygon."""
+    # Check if the way is closed (first and last nodes are the same)
+    if 'nodes' in way and way['nodes'][0] == way['nodes'][-1]:
+        # Check for tags that indicate this is an area
+        if 'tags' in way:
+            tags = way['tags']
+            if 'building' in tags or ('area' in tags and tags['area'] == 'yes'):
+                return True
+            if any(k in tags for k in ['landuse', 'natural', 'water', 'leisure', 'amenity']):
+                return True
+    return False
+
+def get_way_coords(way, nodes):
+    """Get coordinates for a way."""
+    coords = []
+    if 'nodes' not in way:
+        return coords
+        
+    for node_id in way['nodes']:
+        if node_id in nodes:
+            coords.append(nodes[node_id])
+        else:
+            # Missing node - skip this way
+            return []
+    
+    return coords
+
+def create_rings_from_ways(way_ids, ways, nodes):
+    """
+    Create continuous rings by connecting ways.
+    
+    Args:
+        way_ids: List of way IDs that make up the ring(s)
+        ways: Dictionary mapping way IDs to way elements
+        nodes: Dictionary mapping node IDs to coordinates
+        
+    Returns:
+        List of rings, where each ring is a list of coordinates
+    """
+    if not way_ids:
+        return []
+    
+    # Extract node IDs for each way
+    way_nodes = {}
+    for way_id in way_ids:
+        if way_id in ways and 'nodes' in ways[way_id]:
+            way_nodes[way_id] = ways[way_id]['nodes']
+    
+    # If we have no valid ways, return empty list
+    if not way_nodes:
+        return []
+    
+    # Connect the ways to form rings
+    rings = []
+    unused_ways = set(way_nodes.keys())
+    
+    while unused_ways:
+        # Start a new ring with the first unused way
+        current_way_id = next(iter(unused_ways))
+        unused_ways.remove(current_way_id)
+        
+        # Get the first and last node IDs of the current way
+        current_nodes = way_nodes[current_way_id]
+        if not current_nodes:
+            continue
+            
+        # Start building a ring with the nodes of the first way
+        ring_nodes = list(current_nodes)
+        
+        # Try to connect more ways to complete the ring
+        connected = True
+        while connected and unused_ways:
+            connected = False
+            
+            # Get the first and last nodes of the current ring
+            first_node = ring_nodes[0]
+            last_node = ring_nodes[-1]
+            
+            # Try to find a way that connects to either end of our ring
+            for way_id in list(unused_ways):
+                nodes_in_way = way_nodes[way_id]
+                if not nodes_in_way:
+                    unused_ways.remove(way_id)
+                    continue
+                
+                # Check if this way connects at the start of our ring
+                if nodes_in_way[-1] == first_node:
+                    # This way connects to the start of our ring (reversed)
+                    ring_nodes = nodes_in_way[:-1] + ring_nodes
+                    unused_ways.remove(way_id)
+                    connected = True
+                    break
+                elif nodes_in_way[0] == first_node:
+                    # This way connects to the start of our ring
+                    ring_nodes = list(reversed(nodes_in_way))[:-1] + ring_nodes
+                    unused_ways.remove(way_id)
+                    connected = True
+                    break
+                # Check if this way connects at the end of our ring
+                elif nodes_in_way[0] == last_node:
+                    # This way connects to the end of our ring
+                    ring_nodes.extend(nodes_in_way[1:])
+                    unused_ways.remove(way_id)
+                    connected = True
+                    break
+                elif nodes_in_way[-1] == last_node:
+                    # This way connects to the end of our ring (reversed)
+                    ring_nodes.extend(list(reversed(nodes_in_way))[1:])
+                    unused_ways.remove(way_id)
+                    connected = True
+                    break
+        
+        # Check if the ring is closed (first node equals last node)
+        if ring_nodes and ring_nodes[0] == ring_nodes[-1] and len(ring_nodes) >= 4:
+            # Convert node IDs to coordinates
+            ring_coords = []
+            for node_id in ring_nodes:
+                if node_id in nodes:
+                    ring_coords.append(nodes[node_id])
+                else:
+                    # Missing node - skip this ring
+                    ring_coords = []
+                    break
+            
+            if ring_coords and len(ring_coords) >= 4:
+                rings.append(ring_coords)
+        else:
+            # Try to close the ring if it's almost complete
+            if ring_nodes and len(ring_nodes) >= 3 and ring_nodes[0] != ring_nodes[-1]:
+                ring_nodes.append(ring_nodes[0])
+                
+                # Convert node IDs to coordinates
+                ring_coords = []
+                for node_id in ring_nodes:
+                    if node_id in nodes:
+                        ring_coords.append(nodes[node_id])
+                    else:
+                        # Missing node - skip this ring
+                        ring_coords = []
+                        break
+                
+                if ring_coords and len(ring_coords) >= 4:
+                    rings.append(ring_coords)
+    
+    return rings
 
 def load_gdf_from_openstreetmap(rectangle_vertices):
     """Download and process building footprint data from OpenStreetMap.
@@ -549,9 +857,9 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     response.raise_for_status()
     data = response.json()
 
-    # Convert OSM data to GeoJSON format
+    # Convert OSM data to GeoJSON format using our custom converter instead of json2geojson
     print("Converting data to GeoJSON format...")
-    geojson_data = json2geojson(data)
+    geojson_data = osm_json_to_geojson(data)
 
     # Create shapely polygon from rectangle vertices (in lon,lat order)
     rectangle_polygon = Polygon(rectangle_vertices)
