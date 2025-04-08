@@ -1192,6 +1192,8 @@ def get_building_global_solar_irradiance_using_epw(
             - obj_export (bool): Whether to export as OBJ file
             - output_directory (str): Directory for OBJ export
             - output_file_name (str): Filename for OBJ export
+            - save_mesh (bool): Whether to save the mesh data using pickle
+            - mesh_output_path (str): Path to save the mesh data (if save_mesh is True)
 
     Returns:
         trimesh.Trimesh: Building mesh with irradiance values stored in metadata.
@@ -1247,6 +1249,8 @@ def get_building_global_solar_irradiance_using_epw(
     )
 
     print(f"Processing Solar Irradiance for building surfaces...")
+    result_mesh = None
+    
     if calc_type == 'instantaneous':
         calc_time = kwargs.get("calc_time", "01-01 12:00:00")
 
@@ -1288,21 +1292,19 @@ def get_building_global_solar_irradiance_using_epw(
         # Skip if sun is below horizon
         if elevation_degrees <= 0:
             print("Sun is below horizon, skipping calculation.")
-            return building_svf_mesh.copy()
-        
-        # Compute irradiance
-        irradiance_mesh = get_building_solar_irradiance(
-            voxel_data,
-            meshsize,
-            building_svf_mesh,
-            azimuth_degrees,
-            elevation_degrees,
-            direct_normal_irradiance,
-            diffuse_irradiance,
-            **kwargs
-        )
-        
-        return irradiance_mesh
+            result_mesh = building_svf_mesh.copy()
+        else:
+            # Compute irradiance
+            result_mesh = get_building_solar_irradiance(
+                voxel_data,
+                meshsize,
+                building_svf_mesh,
+                azimuth_degrees,
+                elevation_degrees,
+                direct_normal_irradiance,
+                diffuse_irradiance,
+                **kwargs
+            )
 
     elif calc_type == 'cumulative':
         # Set default parameters
@@ -1348,7 +1350,7 @@ def get_building_global_solar_irradiance_using_epw(
             del kwargs_copy['time_step_hours']
         
         # Get cumulative irradiance - adapt to match expected function signature
-        cumulative_mesh = get_cumulative_building_solar_irradiance(
+        result_mesh = get_cumulative_building_solar_irradiance(
             voxel_data,
             meshsize,
             building_svf_mesh,
@@ -1364,8 +1366,57 @@ def get_building_global_solar_irradiance_using_epw(
             output_directory=kwargs.get('output_directory', 'output'),
             output_file_name=kwargs.get('output_file_name', 'cumulative_solar')
         )
-        
-        return cumulative_mesh
     
     else:
         raise ValueError("calc_type must be either 'instantaneous' or 'cumulative'")
+    
+    # Save mesh data if requested
+    save_mesh = kwargs.get("save_mesh", False)
+    if save_mesh:
+        mesh_output_path = kwargs.get("mesh_output_path", None)
+        if mesh_output_path is None:
+            # Generate default path if none provided
+            output_directory = kwargs.get("output_directory", "output")
+            output_file_name = kwargs.get("output_file_name", f"{calc_type}_solar_irradiance")
+            mesh_output_path = f"{output_directory}/{output_file_name}.pkl"
+        
+        save_irradiance_mesh(result_mesh, mesh_output_path)
+        print(f"Saved irradiance mesh data to: {mesh_output_path}")
+    
+    return result_mesh
+
+def save_irradiance_mesh(irradiance_mesh, output_file_path):
+    """
+    Save the irradiance mesh data to a file using pickle.
+    
+    Args:
+        irradiance_mesh (trimesh.Trimesh): Mesh with irradiance data in metadata.
+        output_file_path (str): Path to save the mesh data (recommended extension: .pkl).
+    """
+    import pickle
+    import os
+
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+    
+    # Save mesh data using pickle
+    with open(output_file_path, 'wb') as f:
+        pickle.dump(irradiance_mesh, f)
+
+def load_irradiance_mesh(input_file_path):
+    """
+    Load the irradiance mesh data from a file.
+    
+    Args:
+        input_file_path (str): Path to the saved mesh data file.
+    
+    Returns:
+        trimesh.Trimesh: Mesh with irradiance data in metadata.
+    """
+    import pickle
+    
+    # Load mesh data using pickle
+    with open(input_file_path, 'rb') as f:
+        irradiance_mesh = pickle.load(f)
+    
+    return irradiance_mesh

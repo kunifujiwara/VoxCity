@@ -263,7 +263,7 @@ def get_voxel_color_map(color_scheme='default'):
     elif color_scheme == 'grayscale':
         return {
             -99: [0, 0, 0],      # void (black)
-            -30: [200, 200, 200], # 'Landmark'
+            -30: [255, 0, 102],  # (Pink) 'Landmark',
             -17: [240, 240, 240], # 'plaster'
             -16: [60, 60, 60],    # 'glass'
             -15: [130, 130, 130], # 'stone'
