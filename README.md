@@ -447,7 +447,7 @@ G, edge_gdf = get_network_values(
 
 Please cite the [paper](https://doi.org/10.48550/arXiv.2504.13934) if you use `voxcity` in a scientific publication:
 
-Fujiwara, K., XXX. XXX. XXX, XXX, XXX.
+Fujiwara K, Tsurumi R, Kiyono T, Fan Z, Liang X, Lei B, Yap W, Ito K, Biljecki F. VoxCity: A Seamless Framework for Open Geospatial Data Integration, Grid-Based Semantic 3D City Model Generation, and Urban Environment Simulation. arXiv preprint arXiv:2504.13934. 2025.
 
 ```bibtex
 @article{fujiwara2025voxcity,
