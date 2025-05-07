@@ -445,19 +445,17 @@ G, edge_gdf = get_network_values(
 
 ## Citation
 
-Please cite the [paper](https://doi.org) if you use `voxcity` in a scientific publication:
+Please cite the [paper](https://doi.org/10.48550/arXiv.2504.13934) if you use `voxcity` in a scientific publication:
 
 Fujiwara, K., XXX. XXX. XXX, XXX, XXX.
 
 ```bibtex
-@article{,
-  author = {Fujiwara, Kunihiko and XXX, XXX and XXX, XXX and XXX, XXX},
-  doi = {XXX},
-  journal = {XXX},
-  pages = {XXX},
-  title = {XXX},
-  volume = {XXX},
-  year = {XXX}
+@article{fujiwara2025voxcity,
+  title={VoxCity: A Seamless Framework for Open Geospatial Data Integration, Grid-Based Semantic 3D City Model Generation, and Urban Environment Simulation},
+  author={Fujiwara, Kunihiko and Tsurumi, Ryuta and Kiyono, Tomoki and Fan, Zicheng and Liang, Xiucheng and Lei, Binyu and Yap, Winston and Ito, Koichi and Biljecki, Filip},
+  journal={arXiv preprint arXiv:2504.13934},
+  year={2025},
+  doi = {10.48550/arXiv.2504.13934},
 }
 ```
 

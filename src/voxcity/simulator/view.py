@@ -368,7 +368,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     # Handle mode presets
     if mode == 'green':
         # GVI defaults - detect vegetation and trees
-        hit_values = (-2, 2, 5, 7)
+        hit_values = (-2, 2, 5, 6, 7, 8)
         inclusion_mode = True
     elif mode == 'sky':
         # SVI defaults - detect open sky
