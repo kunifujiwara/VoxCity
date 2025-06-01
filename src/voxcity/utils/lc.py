@@ -1,12 +1,40 @@
+"""
+Land Cover Classification Utilities for VoxelCity
+
+This module provides utilities for handling land cover data from various sources,
+including color-based classification, data conversion between different land cover
+classification systems, and spatial analysis of land cover polygons.
+
+Supported land cover data sources:
+- Urbanwatch
+- OpenEarthMapJapan
+- ESRI 10m Annual Land Cover
+- ESA WorldCover
+- Dynamic World V1
+- OpenStreetMap
+- Standard classification
+"""
+
 import numpy as np
 from shapely.geometry import Polygon
 from rtree import index
 from collections import Counter
 
 def rgb_distance(color1, color2):
+    """
+    Calculate the Euclidean distance between two RGB colors.
+    
+    Args:
+        color1 (tuple): RGB values as (R, G, B) tuple
+        color2 (tuple): RGB values as (R, G, B) tuple
+        
+    Returns:
+        float: Euclidean distance between the two colors
+    """
     return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
 
 
+# Legacy land cover classes mapping - kept for reference
 # land_cover_classes = {
 #     (128, 0, 0): 'Bareland',              0         
 #     (0, 255, 36): 'Rangeland',            1
@@ -24,7 +52,27 @@ def rgb_distance(color1, color2):
 # }
 
 def get_land_cover_classes(source):
+    """
+    Get land cover classification mapping for a specific data source.
+    
+    Each data source has its own color-to-class mapping system. This function
+    returns the appropriate RGB color to land cover class dictionary based on
+    the specified source.
+    
+    Args:
+        source (str): Name of the land cover data source. Supported sources:
+                     "Urbanwatch", "OpenEarthMapJapan", "ESRI 10m Annual Land Cover",
+                     "ESA WorldCover", "Dynamic World V1", "Standard", "OpenStreetMap"
+                     
+    Returns:
+        dict: Dictionary mapping RGB tuples to land cover class names
+        
+    Example:
+        >>> classes = get_land_cover_classes("Urbanwatch")
+        >>> print(classes[(255, 0, 0)])  # Returns 'Building'
+    """
     if source == "Urbanwatch":
+        # Urbanwatch color scheme - focused on urban features
         land_cover_classes = {
             (255, 0, 0): 'Building',
             (133, 133, 133): 'Road',
@@ -38,6 +86,7 @@ def get_land_cover_classes(source):
             (0, 0, 0): 'Sea'
         }    
     elif (source == "OpenEarthMapJapan"):
+        # OpenEarthMap Japan specific classification
         land_cover_classes = {
             (128, 0, 0): 'Bareland',
             (0, 255, 36): 'Rangeland',
@@ -49,6 +98,7 @@ def get_land_cover_classes(source):
             (222, 31, 7): 'Building'
         }
     elif source == "ESRI 10m Annual Land Cover":
+        # ESRI's global 10-meter resolution land cover classification
         land_cover_classes = {
             (255, 255, 255): 'No Data',
             (26, 91, 171): 'Water',
@@ -63,6 +113,7 @@ def get_land_cover_classes(source):
             (200, 200, 200): 'Clouds'
         }
     elif source == "ESA WorldCover":
+        # European Space Agency WorldCover 10m classification
         land_cover_classes = {
             (0, 112, 0): 'Trees',
             (255, 224, 80): 'Shrubland',
@@ -77,6 +128,7 @@ def get_land_cover_classes(source):
             (255, 255, 0): 'Moss and lichen'
         }
     elif source == "Dynamic World V1":
+        # Google's Dynamic World near real-time land cover
         # Convert hex colors to RGB tuples
         land_cover_classes = {
             (65, 155, 223): 'Water',            # #419bdf
@@ -90,6 +142,7 @@ def get_land_cover_classes(source):
             (179, 159, 225): 'Snow and Ice'     # #b39fe1
         }
     elif (source == 'Standard') or (source == "OpenStreetMap"):
+        # Standard/OpenStreetMap classification - comprehensive land cover types
         land_cover_classes = {
             (128, 0, 0): 'Bareland',
             (0, 255, 36): 'Rangeland',
@@ -108,6 +161,7 @@ def get_land_cover_classes(source):
         }
     return land_cover_classes
 
+# Legacy land cover classes with numeric indices - kept for reference
 # land_cover_classes = {
 #     (128, 0, 0): 'Bareland',              0         
 #     (0, 255, 36): 'Rangeland',            1
@@ -128,6 +182,37 @@ def get_land_cover_classes(source):
 
 
 def convert_land_cover(input_array, land_cover_source='Urbanwatch'):   
+    """
+    Convert land cover classification from source-specific indices to standardized indices.
+    
+    This function maps land cover classes from various data sources to a standardized
+    classification system. Each source has different class definitions and indices,
+    so this conversion enables consistent processing across different data sources.
+    
+    Args:
+        input_array (numpy.ndarray): Input array with source-specific land cover indices
+        land_cover_source (str): Name of the source land cover classification system
+                                Default is 'Urbanwatch'
+                                
+    Returns:
+        numpy.ndarray: Array with standardized land cover indices
+        
+    Standardized Classification System:
+        0: Bareland
+        1: Rangeland  
+        2: Shrub
+        3: Agriculture land
+        4: Tree
+        5: Moss and lichen
+        6: Wet land
+        7: Mangrove
+        8: Water
+        9: Snow and ice
+        10: Developed space
+        11: Road
+        12: Building
+        13: No Data
+    """
 
     if land_cover_source == 'Urbanwatch':
         # Define the mapping from Urbanwatch to new standardized classes
@@ -144,6 +229,7 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             9: 8    # Sea -> Water
         }
     elif land_cover_source == 'ESA WorldCover':
+        # ESA WorldCover to standardized mapping
         convert_dict = {
             0: 4,   # Trees -> Tree
             1: 2,   # Shrubland -> Shrub
@@ -158,6 +244,7 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             10: 5   # Moss and lichen
         }
     elif land_cover_source == "ESRI 10m Annual Land Cover":
+        # ESRI 10m to standardized mapping
         convert_dict = {
             0: 13,  # No Data
             1: 8,   # Water
@@ -172,6 +259,7 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             10: 13  # Clouds -> No Data
         }
     elif land_cover_source == "Dynamic World V1":
+        # Dynamic World to standardized mapping
         convert_dict = {
             0: 8,   # Water
             1: 4,   # Trees -> Tree
@@ -184,6 +272,7 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
             8: 9    # Snow and Ice
         }    
     elif land_cover_source == "OpenEarthMapJapan":
+        # OpenEarthMapJapan to standardized mapping
         convert_dict = {
             0: 0,   # Bareland
             1: 1,   # Rangeland
@@ -204,6 +293,26 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
     return converted_array
 
 def get_class_priority(source):
+    """
+    Get priority rankings for land cover classes to resolve conflicts during classification.
+    
+    When multiple land cover classes are present in the same area, this priority system
+    determines which class should take precedence. Higher priority values indicate
+    classes that should override lower priority classes.
+    
+    Args:
+        source (str): Name of the land cover data source
+        
+    Returns:
+        dict: Dictionary mapping class names to priority values (higher = more priority)
+        
+    Priority Logic for OpenStreetMap:
+        - Built Environment: Highest priority (most definitive structures)
+        - Water Bodies: High priority (clearly defined features)  
+        - Vegetation: Medium priority (managed vs natural)
+        - Natural Non-Vegetation: Lower priority (often default classifications)
+        - Uncertain/No Data: Lowest priority
+    """
     if source == "OpenStreetMap":
         return {
             # Built Environment (highest priority as they're most definitively mapped)
@@ -230,6 +339,7 @@ def get_class_priority(source):
             # Uncertain
             'No Data': 14            # Lowest priority as it represents uncertainty
         }
+        # Legacy priority system - kept for reference
         # return { 
         #     'Bareland': 4, 
         #     'Rangeland': 6, 
@@ -242,6 +352,26 @@ def get_class_priority(source):
         # }
 
 def create_land_cover_polygons(land_cover_geojson):
+    """
+    Create polygon geometries and spatial index from land cover GeoJSON data.
+    
+    This function processes GeoJSON land cover data to create Shapely polygon
+    geometries and builds an R-tree spatial index for efficient spatial queries.
+    
+    Args:
+        land_cover_geojson (list): List of GeoJSON feature dictionaries containing
+                                  land cover polygons with geometry and properties
+                                  
+    Returns:
+        tuple: A tuple containing:
+            - land_cover_polygons (list): List of tuples (polygon, class_name)
+            - idx (rtree.index.Index): Spatial index for efficient polygon lookup
+            
+    Note:
+        Each GeoJSON feature should have:
+        - geometry.coordinates[0]: List of coordinate pairs defining the polygon
+        - properties.class: String indicating the land cover class
+    """
     land_cover_polygons = []
     idx = index.Index()
     count = 0
@@ -262,19 +392,72 @@ def create_land_cover_polygons(land_cover_geojson):
     return land_cover_polygons, idx
 
 def get_nearest_class(pixel, land_cover_classes):
+    """
+    Find the nearest land cover class for a given pixel color using RGB distance.
+    
+    This function determines the most appropriate land cover class for a pixel
+    by finding the class with the minimum RGB color distance to the pixel's color.
+    
+    Args:
+        pixel (tuple): RGB color values as (R, G, B) tuple
+        land_cover_classes (dict): Dictionary mapping RGB tuples to class names
+        
+    Returns:
+        str: Name of the nearest land cover class
+        
+    Example:
+        >>> classes = {(255, 0, 0): 'Building', (0, 255, 0): 'Tree'}
+        >>> nearest = get_nearest_class((250, 5, 5), classes)
+        >>> print(nearest)  # Returns 'Building'
+    """
     distances = {class_name: rgb_distance(pixel, color) 
                  for color, class_name in land_cover_classes.items()}
     return min(distances, key=distances.get)
 
 def get_dominant_class(cell_data, land_cover_classes):
+    """
+    Determine the dominant land cover class in a cell based on pixel majority.
+    
+    This function analyzes all pixels within a cell, classifies each pixel to its
+    nearest land cover class, and returns the most frequently occurring class.
+    
+    Args:
+        cell_data (numpy.ndarray): 3D array of RGB pixel data for the cell
+        land_cover_classes (dict): Dictionary mapping RGB tuples to class names
+        
+    Returns:
+        str: Name of the dominant land cover class in the cell
+        
+    Note:
+        If the cell contains no data, returns 'No Data'
+    """
     if cell_data.size == 0:
         return 'No Data'
+    # Classify each pixel in the cell to its nearest land cover class
     pixel_classes = [get_nearest_class(tuple(pixel), land_cover_classes) 
                      for pixel in cell_data.reshape(-1, 3)]
+    # Count occurrences of each class
     class_counts = Counter(pixel_classes)
+    # Return the most common class
     return class_counts.most_common(1)[0][0]
 
 def convert_land_cover_array(input_array, land_cover_classes):
+    """
+    Convert an array of land cover class names to integer indices.
+    
+    This function maps string-based land cover class names to integer indices
+    for numerical processing and storage efficiency.
+    
+    Args:
+        input_array (numpy.ndarray): Array containing land cover class names as strings
+        land_cover_classes (dict): Dictionary mapping RGB tuples to class names
+        
+    Returns:
+        numpy.ndarray: Array with integer indices corresponding to land cover classes
+        
+    Note:
+        Classes not found in the mapping are assigned index -1
+    """
     # Create a mapping of class names to integers
     class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
 

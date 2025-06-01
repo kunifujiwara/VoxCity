@@ -3,6 +3,26 @@ Module for exporting voxel data to OBJ format.
 
 This module provides functionality for converting voxel arrays and grid data to OBJ files,
 including color mapping, material generation, and mesh optimization.
+
+Key Features:
+- Exports voxel data to industry-standard OBJ format with MTL materials
+- Supports color mapping for visualization
+- Performs greedy meshing for optimized face generation
+- Handles proper face orientation and winding order
+- Supports both regular voxel grids and terrain/elevation data
+- Generates complete OBJ files with materials and textures
+
+Main Functions:
+- convert_colormap_indices: Converts arbitrary color indices to sequential ones
+- create_face_vertices: Creates properly oriented face vertices
+- mesh_faces: Performs greedy meshing on voxel layers
+- export_obj: Main function to export voxel data to OBJ
+- grid_to_obj: Converts 2D grid data to OBJ with elevation
+
+Dependencies:
+- numpy: For array operations
+- matplotlib: For colormap handling
+- trimesh: For mesh operations
 """
 
 import numpy as np
@@ -17,11 +37,23 @@ def convert_colormap_indices(original_map):
     """
     Convert a color map with arbitrary indices to sequential indices starting from 0.
     
+    This function takes a color map with arbitrary integer keys and creates a new map
+    with sequential indices starting from 0, maintaining the original color values.
+    This is useful for ensuring consistent material indexing in OBJ files.
+    
     Args:
-        original_map (dict): Dictionary with integer keys and RGB color value lists
+        original_map (dict): Dictionary with integer keys and RGB color value lists.
+            Each value should be a list of 3 integers (0-255) representing RGB colors.
         
     Returns:
-        dict: New color map with sequential indices starting from 0
+        dict: New color map with sequential indices starting from 0.
+            The values maintain their original RGB color assignments.
+            
+    Example:
+        >>> original = {5: [255, 0, 0], 10: [0, 255, 0], 15: [0, 0, 255]}
+        >>> new_map = convert_colormap_indices(original)
+        >>> print(new_map)
+        {0: [255, 0, 0], 1: [0, 255, 0], 2: [0, 0, 255]}
     """
     # Sort the original keys to maintain consistent ordering
     keys = sorted(original_map.keys())
@@ -46,15 +78,29 @@ def convert_colormap_indices(original_map):
 
 def create_face_vertices(coords, positive_direction, axis):
     """
-    Helper function to create properly oriented face vertices.
+    Helper function to create properly oriented face vertices for OBJ export.
+    
+    This function handles the creation of face vertices with correct winding order
+    based on the face direction and axis. It accounts for OpenGL coordinate system
+    conventions and ensures proper face orientation for rendering.
     
     Args:
-        coords (list): List of vertex coordinates
-        positive_direction (bool): Whether face points in positive axis direction
-        axis (str): Axis the face is perpendicular to ('x', 'y', or 'z')
+        coords (list): List of 4 vertex coordinates defining the face corners.
+            Each coordinate should be a tuple of (x, y, z) values.
+        positive_direction (bool): Whether face points in positive axis direction.
+            True = face normal points in positive direction along the axis
+            False = face normal points in negative direction along the axis
+        axis (str): Axis the face is perpendicular to ('x', 'y', or 'z').
+            This determines how vertices are ordered for proper face orientation.
         
     Returns:
-        list: Ordered vertex coordinates for the face
+        list: Ordered vertex coordinates for the face, arranged to create proper
+            face orientation and winding order for rendering.
+            
+    Notes:
+        - Y-axis faces need special handling due to OpenGL coordinate system
+        - Winding order determines which side of the face is visible
+        - Consistent winding order is maintained for X and Z faces
     """
     # Y-axis faces need special handling due to OpenGL coordinate system
     if axis == 'y':
@@ -72,19 +118,41 @@ def create_face_vertices(coords, positive_direction, axis):
 def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_size_m, 
               vertex_dict, vertex_list, faces_per_material, voxel_value_to_material):
     """
-    Performs greedy meshing on the given mask and adds faces to the faces_per_material dictionary.
+    Performs greedy meshing on a 2D mask layer and adds optimized faces to the mesh.
+    
+    This function implements a greedy meshing algorithm to combine adjacent voxels
+    into larger faces, reducing the total number of faces in the final mesh while
+    maintaining visual accuracy. It processes each layer of voxels and generates
+    optimized faces with proper materials and orientations.
     
     Args:
-        mask (ndarray): 2D boolean array indicating voxel presence
-        layer_index (int): Index of current layer being processed
-        axis (str): Axis perpendicular to faces being generated ('x', 'y', or 'z')
-        positive_direction (bool): Whether faces point in positive axis direction
-        normal_idx (int): Index of normal vector to use for faces
-        voxel_size_m (float): Size of each voxel in meters
-        vertex_dict (dict): Dictionary mapping vertex coordinates to indices
-        vertex_list (list): List of unique vertex coordinates
-        faces_per_material (dict): Dictionary collecting faces by material
-        voxel_value_to_material (dict): Mapping from voxel values to material names
+        mask (ndarray): 2D boolean array indicating voxel presence.
+            Non-zero values indicate voxel presence, zero indicates empty space.
+        layer_index (int): Index of current layer being processed.
+            Used to position faces in 3D space.
+        axis (str): Axis perpendicular to faces being generated ('x', 'y', or 'z').
+            Determines how coordinates are generated for the faces.
+        positive_direction (bool): Whether faces point in positive axis direction.
+            Affects face normal orientation.
+        normal_idx (int): Index of normal vector to use for faces.
+            References pre-defined normal vectors in the OBJ file.
+        voxel_size_m (float): Size of each voxel in meters.
+            Used to scale coordinates to real-world units.
+        vertex_dict (dict): Dictionary mapping vertex coordinates to indices.
+            Used to avoid duplicate vertices in the mesh.
+        vertex_list (list): List of unique vertex coordinates.
+            Stores all vertices used in the mesh.
+        faces_per_material (dict): Dictionary collecting faces by material.
+            Keys are material names, values are lists of face definitions.
+        voxel_value_to_material (dict): Mapping from voxel values to material names.
+            Used to assign materials to faces based on voxel values.
+            
+    Notes:
+        - Uses greedy meshing to combine adjacent same-value voxels
+        - Handles coordinate system conversion for proper orientation
+        - Maintains consistent face winding order for rendering
+        - Optimizes mesh by reusing vertices and combining faces
+        - Supports different coordinate systems for each axis
     """
 
     voxel_size = voxel_size_m
@@ -200,15 +268,44 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
 
 def export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None):
     """
-    Export a voxel array to OBJ format with corrected face orientations.
+    Export a voxel array to OBJ format with materials and proper face orientations.
+    
+    This function converts a 3D voxel array into a complete OBJ file with materials,
+    performing mesh optimization and ensuring proper face orientations. It generates
+    both OBJ and MTL files with all necessary components for rendering.
     
     Args:
-        array (ndarray): 3D numpy array containing voxel values
-        output_dir (str): Directory to save the OBJ and MTL files
-        file_name (str): Base name for the output files
-        voxel_size (float): Size of each voxel in meters
+        array (ndarray): 3D numpy array containing voxel values.
+            Non-zero values indicate voxel presence and material type.
+        output_dir (str): Directory to save the OBJ and MTL files.
+            Will be created if it doesn't exist.
+        file_name (str): Base name for the output files.
+            Will be used for both .obj and .mtl files.
+        voxel_size (float): Size of each voxel in meters.
+            Used to scale the model to real-world units.
         voxel_color_map (dict, optional): Dictionary mapping voxel values to RGB colors.
-            If None, uses default color map.
+            If None, uses default color map. Colors should be RGB lists (0-255).
+            
+    Notes:
+        - Generates optimized mesh using greedy meshing
+        - Creates complete OBJ file with vertices, normals, and faces
+        - Generates MTL file with material definitions
+        - Handles proper face orientation and winding order
+        - Supports color mapping for visualization
+        - Uses consistent coordinate system throughout
+        
+    File Format Details:
+        OBJ file contains:
+        - Vertex coordinates (v)
+        - Normal vectors (vn)
+        - Material references (usemtl)
+        - Face definitions (f)
+        
+        MTL file contains:
+        - Material names and colors
+        - Ambient, diffuse, and specular properties
+        - Transparency settings
+        - Illumination model definitions
     """
     if voxel_color_map is None:
         voxel_color_map = get_voxel_color_map()
@@ -367,19 +464,45 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
     """
     Converts a 2D array of values and a corresponding DEM array to an OBJ file
     with specified colormap, transparency, and value range.
-
+    
+    This function creates a 3D visualization of 2D grid data by using elevation
+    data and color mapping. It's particularly useful for visualizing terrain data,
+    analysis results, or any 2D data that should be displayed with elevation.
+    
     Args:
-        value_array_ori (ndarray): 2D array of values to visualize
-        dem_array_ori (ndarray): 2D array of DEM values corresponding to value_array
-        output_dir (str): Directory to save the OBJ and MTL files
-        file_name (str): Base name for the output files
-        cell_size (float): Size of each cell in the grid (e.g., in meters)
-        offset (float): Elevation offset added after quantization
-        colormap_name (str, optional): Name of the Matplotlib colormap to use. Defaults to 'viridis'
-        num_colors (int, optional): Number of discrete colors to use from the colormap. Defaults to 256
-        alpha (float, optional): Transparency value between 0.0 (transparent) and 1.0 (opaque). Defaults to 1.0
-        vmin (float, optional): Minimum value for colormap normalization. If None, uses data minimum
-        vmax (float, optional): Maximum value for colormap normalization. If None, uses data maximum
+        value_array_ori (ndarray): 2D array of values to visualize.
+            These values will be mapped to colors using the specified colormap.
+        dem_array_ori (ndarray): 2D array of DEM values corresponding to value_array.
+            Provides elevation data for the 3D visualization.
+        output_dir (str): Directory to save the OBJ and MTL files.
+            Will be created if it doesn't exist.
+        file_name (str): Base name for the output files.
+            Used for both .obj and .mtl files.
+        cell_size (float): Size of each cell in the grid (e.g., in meters).
+            Used to scale the model to real-world units.
+        offset (float): Elevation offset added after quantization.
+            Useful for adjusting the base height of the model.
+        colormap_name (str, optional): Name of the Matplotlib colormap to use.
+            Defaults to 'viridis'. Must be a valid Matplotlib colormap name.
+        num_colors (int, optional): Number of discrete colors to use from the colormap.
+            Defaults to 256. Higher values give smoother color transitions.
+        alpha (float, optional): Transparency value between 0.0 (transparent) and 1.0 (opaque).
+            Defaults to 1.0 (fully opaque).
+        vmin (float, optional): Minimum value for colormap normalization.
+            If None, uses data minimum. Used to control color mapping range.
+        vmax (float, optional): Maximum value for colormap normalization.
+            If None, uses data maximum. Used to control color mapping range.
+            
+    Notes:
+        - Automatically handles NaN values in input arrays
+        - Creates triangulated mesh for proper rendering
+        - Supports transparency and color mapping
+        - Generates complete OBJ and MTL files
+        - Maintains consistent coordinate system
+        - Optimizes mesh generation for large grids
+        
+    Raises:
+        ValueError: If vmin equals vmax or if colormap_name is invalid
     """
     # Validate input arrays
     if value_array_ori.shape != dem_array_ori.shape:

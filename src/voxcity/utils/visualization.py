@@ -1,3 +1,27 @@
+"""
+VoxelCity Visualization Utilities
+
+This module provides comprehensive visualization tools for 3D voxel city data,
+including support for multiple color schemes, 3D plotting with matplotlib and plotly,
+grid visualization on basemaps, and mesh-based rendering with PyVista.
+
+The module handles various data types including:
+- Land cover classifications
+- Building heights and footprints
+- Digital elevation models (DEM)
+- Canopy heights
+- View indices (sky view factor, green view index)
+- Simulation results on building surfaces
+
+Key Features:
+- Multiple predefined color schemes for voxel visualization
+- 2D and 3D plotting capabilities
+- Interactive web maps with folium
+- Mesh export functionality (OBJ format)
+- Multi-view scene generation
+- Custom simulation result overlays
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -22,14 +46,19 @@ import pyvista as pv
 from IPython.display import display
 import os
 
+# Import utility functions for land cover classification
 from .lc import get_land_cover_classes
 # from ..geo.geojson import filter_buildings
+
+# Import grid processing functions
 from ..geoprocessor.grid import (
     calculate_grid_size,
     create_coordinate_mesh,
     create_cell_polygon,
     grid_to_geodataframe
 )
+
+# Import geospatial utility functions
 from ..geoprocessor.utils import (
     initialize_geod,
     calculate_distance,
@@ -37,6 +66,8 @@ from ..geoprocessor.utils import (
     setup_transformer,
     transform_coords,
 )
+
+# Import mesh generation and export functions
 from ..geoprocessor.mesh import (
     create_voxel_mesh,
     create_sim_surface_mesh,
@@ -45,58 +76,48 @@ from ..geoprocessor.mesh import (
     save_obj_from_colored_mesh
 )
 # from ..exporter.obj import save_obj_from_colored_mesh
-from .material import get_material_dict
 
-# def get_voxel_color_map():
-#     return {
-#         -99: [0, 0, 0],  # void,
-#         -30: [255, 0, 102],  # (Pink) 'Landmark',
-#         -17: [238, 242, 234],  # (light gray) 'plaster',
-#         -16: [56, 78, 84],  # (Dark blue) 'glass',
-#         -15: [147, 140, 114],  # (Light brown) 'stone',
-#         -14: [139, 149, 159],  # (Gray) 'metal',
-#         -13: [186, 187, 181],  # (Gray) 'concrete',
-#         -12: [248, 166, 2],  # (Orange) 'wood',
-#         -11: [81, 59, 56],  # (Dark red) 'brick',
-#         -3: [180, 187, 216],  # Building
-#         -2: [78, 99, 63],     # Tree
-#         -1: [188, 143, 143],  # Underground
-#         1: [239, 228, 176],   # 'Bareland (ground surface)',
-#         2: [123, 130, 59],   # 'Rangeland (ground surface)',
-#         3: [97, 140, 86],   # 'Shrub (ground surface)',
-#         4: [112, 120, 56],   #  'Agriculture land (ground surface)',
-#         5: [116, 150, 66],   #  'Tree (ground surface)',
-#         6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
-#         7: [77, 118, 99],    #  'Wet land (ground surface)',
-#         8: [22, 61, 51],    #  'Mangrove (ground surface)',
-#         9: [44, 66, 133],    #  'Water (ground surface)',
-#         10: [205, 215, 224],    #  'Snow and ice (ground surface)',
-#         11: [108, 119, 129],   #  'Developed space (ground surface)',
-#         12: [59, 62, 87],      # 'Road (ground surface)',
-#         13: [150, 166, 190],    #  'Building (ground surface)'
-#         14: [239, 228, 176],    #  'No Data (ground surface)'
-#     }
+# Import material property functions
+from .material import get_material_dict
 
 def get_voxel_color_map(color_scheme='default'):
     """
     Returns a color map for voxel visualization based on the specified color scheme.
     
+    This function provides multiple predefined color schemes for visualizing voxel data.
+    Each scheme maps voxel class IDs to RGB color values [0-255]. The class IDs follow
+    a specific convention where negative values represent built environment elements
+    and positive values represent natural/ground surface elements.
+    
+    Voxel Class ID Convention:
+        -99: Void/empty space (black)
+        -30: Landmark buildings (special highlighting)
+        -17 to -11: Building materials (plaster, glass, stone, metal, concrete, wood, brick)
+        -3: Generic building structures
+        -2: Trees/vegetation (above ground)
+        -1: Underground/subsurface
+        1-14: Ground surface land cover types (bareland, vegetation, water, etc.)
+    
     Parameters:
     -----------
     color_scheme : str, optional
-        The name of the color scheme to use. Options are:
-        - 'default': The original color scheme
+        The name of the color scheme to use. Available options:
+        
+        Basic Schemes:
+        - 'default': Original balanced color scheme for general use
         - 'high_contrast': High contrast colors for better visibility
-        - 'monochrome': Shades of blue
-        - 'pastel': Softer, more muted colors
-        - 'dark_mode': Darker colors overall
-        - 'grayscale': Black and white gradient
+        - 'monochrome': Shades of blue for academic presentations
+        - 'pastel': Softer, muted colors for aesthetic appeal
+        - 'dark_mode': Darker colors for dark backgrounds
+        - 'grayscale': Black and white gradient with color accents
+        
+        Thematic Schemes:
         - 'autumn': Warm reds, oranges, and browns
         - 'cool': Cool blues, purples, and cyans
         - 'earth_tones': Natural earth colors
         - 'vibrant': Very bright, saturated colors
         
-        # NEW:
+        Stylistic Schemes:
         - 'cyberpunk': Neon-like purples, pinks, and blues
         - 'tropical': Vibrant greens, oranges, pinks (island vibes)
         - 'vintage': Muted, sepia-like tones
@@ -105,7 +126,24 @@ def get_voxel_color_map(color_scheme='default'):
     Returns:
     --------
     dict
-        A dictionary mapping voxel IDs to RGB color values
+        A dictionary mapping voxel class IDs (int) to RGB color values (list of 3 ints [0-255])
+        
+    Examples:
+    ---------
+    >>> colors = get_voxel_color_map('default')
+    >>> print(colors[-3])  # Building color
+    [180, 187, 216]
+    
+    >>> colors = get_voxel_color_map('cyberpunk')
+    >>> print(colors[9])   # Water color in cyberpunk scheme
+    [51, 0, 102]
+    
+    Notes:
+    ------
+    - All color values are in RGB format with range [0, 255]
+    - The 'default' scheme should not be modified to maintain consistency
+    - Unknown color schemes will fall back to 'default' with a warning
+    - Color schemes can be extended by adding new elif blocks
     """
     # ----------------------
     # DO NOT MODIFY DEFAULT
@@ -125,19 +163,19 @@ def get_voxel_color_map(color_scheme='default'):
             -2: [78, 99, 63],     # Tree
             -1: [188, 143, 143],  # Underground
             1: [239, 228, 176],   # 'Bareland (ground surface)',
-            2: [123, 130, 59],    # 'Rangeland (ground surface)',
-            3: [97, 140, 86],     # 'Shrub (ground surface)',
-            4: [112, 120, 56],    # 'Agriculture land (ground surface)',
-            5: [116, 150, 66],    # 'Tree (ground surface)',
-            6: [187, 204, 40],    # 'Moss and lichen (ground surface)',
-            7: [77, 118, 99],     # 'Wet land (ground surface)',
-            8: [22, 61, 51],      # 'Mangrove (ground surface)',
-            9: [44, 66, 133],     # 'Water (ground surface)',
-            10: [205, 215, 224],  # 'Snow and ice (ground surface)',
-            11: [108, 119, 129],  # 'Developed space (ground surface)',
-            12: [59, 62, 87],     # 'Road (ground surface)',
-            13: [150, 166, 190],  # 'Building (ground surface)'
-            14: [239, 228, 176],  # 'No Data (ground surface)'
+            2: [123, 130, 59],   # 'Rangeland (ground surface)',
+            3: [97, 140, 86],   # 'Shrub (ground surface)',
+            4: [112, 120, 56],   #  'Agriculture land (ground surface)',
+            5: [116, 150, 66],   #  'Tree (ground surface)',
+            6: [187, 204, 40],   #  'Moss and lichen (ground surface)',
+            7: [77, 118, 99],    #  'Wet land (ground surface)',
+            8: [22, 61, 51],    #  'Mangrove (ground surface)',
+            9: [44, 66, 133],    #  'Water (ground surface)',
+            10: [205, 215, 224],    #  'Snow and ice (ground surface)',
+            11: [108, 119, 129],   #  'Developed space (ground surface)',
+            12: [59, 62, 87],      # 'Road (ground surface)',
+            13: [150, 166, 190],    #  'Building (ground surface)'
+            14: [239, 228, 176],    #  'No Data (ground surface)'
         }
 
     elif color_scheme == 'high_contrast':
@@ -555,7 +593,57 @@ def get_voxel_color_map(color_scheme='default'):
         return get_voxel_color_map('default')
 
 def visualize_3d_voxel(voxel_grid, voxel_color_map = 'default', voxel_size=2.0, save_path=None):
-
+    """
+    Visualizes 3D voxel data using matplotlib's 3D plotting capabilities.
+    
+    This function creates a 3D visualization of voxel data where each non-zero voxel
+    is rendered as a colored cube. The colors are determined by the voxel values
+    and the specified color scheme. The visualization includes proper transparency
+    handling and aspect ratio adjustment.
+    
+    Parameters:
+    -----------
+    voxel_grid : numpy.ndarray
+        3D numpy array containing voxel data. Shape should be (x, y, z) where
+        each element represents a voxel class ID. Zero values are treated as empty space.
+        
+    voxel_color_map : str, optional
+        Name of the color scheme to use for voxel coloring. Default is 'default'.
+        See get_voxel_color_map() for available options.
+        
+    voxel_size : float, optional
+        Physical size of each voxel in meters. Used for z-axis scaling and labels.
+        Default is 2.0 meters.
+        
+    save_path : str, optional
+        File path to save the generated plot. If None, the plot is only displayed.
+        Default is None.
+        
+    Returns:
+    --------
+    None
+        The function displays the plot and optionally saves it to file.
+        
+    Notes:
+    ------
+    - Void voxels (value -99) are rendered transparent
+    - Underground voxels (value -1) and trees (value -2) have reduced transparency
+    - Z-axis ticks are automatically scaled to show real-world heights
+    - The plot aspect ratio is adjusted to maintain proper voxel proportions
+    - For large voxel grids, this function may be slow due to matplotlib's 3D rendering
+    
+    Examples:
+    ---------
+    >>> # Basic visualization
+    >>> visualize_3d_voxel(voxel_array)
+    
+    >>> # Use cyberpunk color scheme and save to file
+    >>> visualize_3d_voxel(voxel_array, 'cyberpunk', save_path='city_view.png')
+    
+    >>> # Adjust voxel size for different scale
+    >>> visualize_3d_voxel(voxel_array, voxel_size=1.0)
+    """
+    # Get the color mapping for the specified scheme
     color_map = get_voxel_color_map(voxel_color_map)
 
     print("\tVisualizing 3D voxel data")
@@ -564,20 +652,33 @@ def visualize_3d_voxel(voxel_grid, voxel_color_map = 'default', voxel_size=2.0, 
     ax = fig.add_subplot(111, projection='3d')
 
     print("\tProcessing voxels...")
+    # Create boolean mask for voxels that should be rendered (non-zero values)
     filled_voxels = voxel_grid != 0
+    
+    # Initialize color array with RGBA values (Red, Green, Blue, Alpha)
     colors = np.zeros(voxel_grid.shape + (4,))  # RGBA
 
+    # Process each possible voxel value and assign colors
     for val in range(-99, 15):  # Updated range to include -3 and -2
+        # Create mask for voxels with this specific value
         mask = voxel_grid == val
+        
         if val in color_map:
+            # Convert RGB values from [0,255] to [0,1] range for matplotlib
             rgb = [x/255 for x in color_map[val]]  # Normalize RGB values to [0, 1]
+            
+            # Set transparency based on voxel type
             # alpha = 0.7 if ((val == -1) or (val == -2)) else 0.9  # More transparent for underground and below
-            alpha = 0.0 if (val == -99) else 1
+            alpha = 0.0 if (val == -99) else 1  # Void voxels are completely transparent
             # alpha = 1
+            
+            # Assign RGBA color to all voxels of this type
             colors[mask] = rgb + [alpha]
         else:
+            # Default color for undefined voxel types
             colors[mask] = [0, 0, 0, 0.9]  # Default color if not in color_map
 
+    # Render voxels with progress bar
     with tqdm(total=np.prod(voxel_grid.shape)) as pbar:
         ax.voxels(filled_voxels, facecolors=colors, edgecolors=None)
         pbar.update(np.prod(voxel_grid.shape))
@@ -589,88 +690,156 @@ def visualize_3d_voxel(voxel_grid, voxel_color_map = 'default', voxel_size=2.0, 
     # ax.set_zlabel('Z (meters)')
     # ax.set_title('3D Voxel Visualization')
 
+    # Configure z-axis ticks to show meaningful height values
     # Adjust z-axis ticks to show every 10 cells or less
     z_max = voxel_grid.shape[2]
     if z_max <= 10:
         z_ticks = range(0, z_max + 1)
     else:
         z_ticks = range(0, z_max + 1, 10)
-    # Remove axes
+        
+    # Remove axes for cleaner appearance
     ax.axis('off')
     # ax.set_zticks(z_ticks)
     # ax.set_zticklabels([f"{z * voxel_size:.1f}" for z in z_ticks])
 
-    # Set aspect ratio to be equal
+    # Set aspect ratio to be equal for realistic proportions
     max_range = np.array([voxel_grid.shape[0], voxel_grid.shape[1], voxel_grid.shape[2]]).max()
     ax.set_box_aspect((voxel_grid.shape[0]/max_range, voxel_grid.shape[1]/max_range, voxel_grid.shape[2]/max_range))
 
+    # Set z-axis limits to focus on the relevant height range
     ax.set_zlim(bottom=0)
     ax.set_zlim(top=150)
 
     # print("Visualization complete. Displaying plot...")
     plt.tight_layout()
 
+    # Save plot if path is provided
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
-
 def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_size=2.0):
-
+    """
+    Creates an interactive 3D visualization of voxel data using Plotly.
+    
+    This function generates an interactive 3D visualization using Plotly's Mesh3d
+    and Scatter3d objects. Each voxel is rendered as a cube with proper lighting
+    and edge visualization. The resulting plot supports interactive rotation,
+    zooming, and panning.
+    
+    Parameters:
+    -----------
+    voxel_grid : numpy.ndarray
+        3D numpy array containing voxel data. Shape should be (x, y, z) where
+        each element represents a voxel class ID. Zero values are treated as empty space.
+        
+    voxel_color_map : str, optional
+        Name of the color scheme to use for voxel coloring. Default is 'default'.
+        See get_voxel_color_map() for available options.
+        
+    voxel_size : float, optional
+        Physical size of each voxel in meters. Used for z-axis scaling and labels.
+        Default is 2.0 meters.
+        
+    Returns:
+    --------
+    None
+        The function displays the interactive plot in the browser or notebook.
+        
+    Notes:
+    ------
+    - Creates individual cube geometries for each non-zero voxel
+    - Includes edge lines for better visual definition
+    - Uses orthographic projection for technical visualization
+    - May be slow for very large voxel grids due to individual cube generation
+    - Lighting is optimized for clear visualization of building structures
+    
+    Technical Details:
+    ------------------
+    - Each cube is defined by 8 vertices and 12 triangular faces
+    - Edge lines are generated separately for visual clarity
+    - Color mapping follows the same convention as matplotlib version
+    - Camera is positioned for isometric view with orthographic projection
+    
+    Examples:
+    ---------
+    >>> # Basic interactive visualization
+    >>> visualize_3d_voxel_plotly(voxel_array)
+    
+    >>> # Use high contrast colors for better visibility
+    >>> visualize_3d_voxel_plotly(voxel_array, 'high_contrast')
+    
+    >>> # Adjust scale for different voxel sizes
+    >>> visualize_3d_voxel_plotly(voxel_array, voxel_size=1.0)
+    """
+    # Get the color mapping for the specified scheme
     color_map = get_voxel_color_map(voxel_color_map)
 
     print("Preparing visualization...")
 
     print("Processing voxels...")
-    x, y, z = [], [], []
-    i, j, k = [], [], []
-    colors = []
-    edge_x, edge_y, edge_z = [], [], []
-    vertex_index = 0
+    # Initialize lists to store mesh data
+    x, y, z = [], [], []  # Vertex coordinates
+    i, j, k = [], [], []  # Face indices (triangles)
+    colors = []           # Vertex colors
+    edge_x, edge_y, edge_z = [], [], []  # Edge line coordinates
+    vertex_index = 0      # Current vertex index counter
 
-    # Define cube faces
+    # Define cube faces using vertex indices
+    # Each cube has 12 triangular faces (2 per square face)
     cube_i = [7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2]
     cube_j = [3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3]
     cube_k = [0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6]
 
+    # Process each voxel in the grid
     with tqdm(total=np.prod(voxel_grid.shape)) as pbar:
         for xi in range(voxel_grid.shape[0]):
             for yi in range(voxel_grid.shape[1]):
                 for zi in range(voxel_grid.shape[2]):
+                    # Only process non-zero voxels
                     if voxel_grid[xi, yi, zi] != 0:
-                        # Add cube vertices
+                        # Define the 8 vertices of a unit cube at this position
+                        # Vertices are ordered: bottom face (z), then top face (z+1)
                         cube_vertices = [
-                            [xi, yi, zi], [xi+1, yi, zi], [xi+1, yi+1, zi], [xi, yi+1, zi],
-                            [xi, yi, zi+1], [xi+1, yi, zi+1], [xi+1, yi+1, zi+1], [xi, yi+1, zi+1]
+                            [xi, yi, zi], [xi+1, yi, zi], [xi+1, yi+1, zi], [xi, yi+1, zi],        # Bottom face
+                            [xi, yi, zi+1], [xi+1, yi, zi+1], [xi+1, yi+1, zi+1], [xi, yi+1, zi+1]  # Top face
                         ]
+                        
+                        # Add vertex coordinates to the mesh data
                         x.extend([v[0] for v in cube_vertices])
                         y.extend([v[1] for v in cube_vertices])
                         z.extend([v[2] for v in cube_vertices])
 
-                        # Add cube faces
+                        # Add face indices (offset by current vertex_index)
                         i.extend([x + vertex_index for x in cube_i])
                         j.extend([x + vertex_index for x in cube_j])
                         k.extend([x + vertex_index for x in cube_k])
 
-                        # Add color
+                        # Get color for this voxel type and replicate for all 8 vertices
                         color = color_map.get(voxel_grid[xi, yi, zi], [0, 0, 0])
                         colors.extend([color] * 8)
 
-                        # Add edges
+                        # Generate edge lines for visual clarity
+                        # Define the 12 edges of a cube (4 bottom + 4 top + 4 vertical)
                         edges = [
-                            (0,1), (1,2), (2,3), (3,0),  # Bottom face
-                            (4,5), (5,6), (6,7), (7,4),  # Top face
+                            (0,1), (1,2), (2,3), (3,0),  # Bottom face edges
+                            (4,5), (5,6), (6,7), (7,4),  # Top face edges
                             (0,4), (1,5), (2,6), (3,7)   # Vertical edges
                         ]
+                        
+                        # Add edge coordinates (None creates line breaks between edges)
                         for start, end in edges:
                             edge_x.extend([cube_vertices[start][0], cube_vertices[end][0], None])
                             edge_y.extend([cube_vertices[start][1], cube_vertices[end][1], None])
                             edge_z.extend([cube_vertices[start][2], cube_vertices[end][2], None])
 
+                        # Increment vertex index for next cube
                         vertex_index += 8
                     pbar.update(1)
 
     print("Creating Plotly figure...")
+    # Create 3D mesh object with vertices, faces, and colors
     mesh = go.Mesh3d(
         x=x, y=y, z=z,
         i=i, j=j, k=k,
@@ -680,21 +849,22 @@ def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_siz
         name='Voxel Grid'
     )
 
+    # Configure lighting for better visualization
     # Add lighting to the mesh
     mesh.update(
-        lighting=dict(ambient=0.7,
-                      diffuse=1,
-                      fresnel=0.1,
-                      specular=1,
-                      roughness=0.05,
+        lighting=dict(ambient=0.7,      # Ambient light (overall brightness)
+                      diffuse=1,        # Diffuse light (surface shading)
+                      fresnel=0.1,      # Fresnel effect (edge highlighting)
+                      specular=1,       # Specular highlights
+                      roughness=0.05,   # Surface roughness
                       facenormalsepsilon=1e-15,
                       vertexnormalsepsilon=1e-15),
-        lightposition=dict(x=100,
+        lightposition=dict(x=100,       # Light source position
                            y=200,
                            z=0)
     )
 
-    # Create edge lines
+    # Create edge lines for better visual definition
     edges = go.Scatter3d(
         x=edge_x, y=edge_y, z=edge_z,
         mode='lines',
@@ -702,22 +872,25 @@ def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_siz
         name='Edges'
     )
 
+    # Combine mesh and edges into a figure
     fig = go.Figure(data=[mesh, edges])
 
+    # Configure plot layout and camera settings
     # Set labels, title, and use orthographic projection
     fig.update_layout(
         scene=dict(
             xaxis_title='X',
             yaxis_title='Y',
             zaxis_title='Z (meters)',
-            aspectmode='data',
+            aspectmode='data',          # Maintain data aspect ratios
             camera=dict(
-                projection=dict(type="orthographic")
+                projection=dict(type="orthographic")  # Use orthographic projection
             )
         ),
         title='3D Voxel Visualization'
     )
 
+    # Configure z-axis to show real-world heights
     # Adjust z-axis ticks to show every 10 cells or less
     z_max = voxel_grid.shape[2]
     if z_max <= 10:
@@ -725,6 +898,7 @@ def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_siz
     else:
         z_ticks = list(range(0, z_max + 1, 10))
 
+    # Update z-axis with meaningful height labels
     fig.update_layout(
         scene=dict(
             zaxis=dict(
@@ -738,9 +912,84 @@ def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_siz
     fig.show()
 
 def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light', **kwargs):
+    """
+    Core function for plotting 2D grid data overlaid on basemaps.
+    
+    This function handles the visualization of various types of grid data by creating
+    colored polygons for each grid cell and overlaying them on a web basemap. It supports
+    different data types with appropriate color schemes and handles special values like
+    NaN and zero appropriately.
+    
+    Parameters:
+    -----------
+    grid : numpy.ndarray
+        2D array containing the grid data values to visualize.
+        
+    origin : numpy.ndarray
+        Geographic coordinates [lon, lat] of the grid's origin point.
+        
+    adjusted_meshsize : float
+        Size of each grid cell in meters after grid size adjustments.
+        
+    u_vec, v_vec : numpy.ndarray
+        Unit vectors defining the grid orientation in geographic space.
+        
+    transformer : pyproj.Transformer
+        Coordinate transformer for converting between geographic and projected coordinates.
+        
+    vertices : list
+        List of [lon, lat] coordinates defining the grid boundary.
+        
+    data_type : str
+        Type of data being visualized. Supported types:
+        - 'land_cover': Land use/land cover classifications
+        - 'building_height': Building height values
+        - 'dem': Digital elevation model
+        - 'canopy_height': Vegetation height
+        - 'green_view_index': Green visibility index
+        - 'sky_view_index': Sky visibility factor
+        
+    vmin, vmax : float, optional
+        Min/max values for color scaling. Auto-calculated if not provided.
+        
+    color_map : str, optional
+        Matplotlib colormap name to override default schemes.
+        
+    alpha : float, optional
+        Transparency of grid overlay (0-1). Default is 0.5.
+        
+    buf : float, optional
+        Buffer around grid for plot extent as fraction of grid size. Default is 0.2.
+        
+    edge : bool, optional
+        Whether to draw cell edges. Default is True.
+        
+    basemap : str, optional
+        Basemap style name. Default is 'CartoDB light'.
+        
+    **kwargs : dict
+        Additional parameters specific to data types:
+        - land_cover_classes: Dictionary for land cover data
+        - buildings: List of building polygons for building_height data
+        
+    Returns:
+    --------
+    None
+        Displays the plot with matplotlib.
+        
+    Notes:
+    ------
+    - Grid is transposed to match geographic orientation
+    - Special handling for NaN, zero, and negative values depending on data type
+    - Basemap is added using contextily for geographic context
+    - Plot extent is automatically calculated from grid vertices
+    """
+    # Create matplotlib figure and axis
     fig, ax = plt.subplots(figsize=(12, 12))
 
+    # Configure visualization parameters based on data type
     if data_type == 'land_cover':
+        # Land cover uses discrete color categories
         land_cover_classes = kwargs.get('land_cover_classes')
         colors = [mcolors.to_rgb(f'#{r:02x}{g:02x}{b:02x}') for r, g, b in land_cover_classes.keys()]
         cmap = mcolors.ListedColormap(colors)
@@ -748,7 +997,9 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
         title = 'Grid Cells with Dominant Land Cover Classes'
         label = 'Land Cover Class'
         tick_labels = list(land_cover_classes.values())
+        
     elif data_type == 'building_height':
+        # Building height uses continuous colormap with special handling for zero/NaN
         # Create a masked array to handle special values
         masked_grid = np.ma.masked_array(grid, mask=(np.isnan(grid) | (grid == 0)))
 
@@ -763,7 +1014,9 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
         title = 'Grid Cells with Building Heights'
         label = 'Building Height (m)'
         tick_labels = None
+        
     elif data_type == 'dem':
+        # Digital elevation model uses terrain colormap
         cmap = plt.cm.terrain
         if vmin is None:
             vmin = np.nanmin(grid)
@@ -915,34 +1168,239 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
     plt.tight_layout()
     plt.show()
 
-def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
+def display_builing_ids_on_map(building_geojson, rectangle_vertices):
+    """
+    Creates an interactive folium map displaying building footprints with selectable IDs.
+    
+    This function generates a web map showing building polygons within a circular area
+    around the center of the specified rectangle. Each building is labeled with its
+    ID and additional information, making it easy to identify specific buildings
+    for analysis or selection.
+    
+    Parameters:
+    -----------
+    building_geojson : list
+        List of GeoJSON feature dictionaries representing building polygons.
+        Each feature should have:
+        - 'geometry': GeoJSON polygon geometry
+        - 'properties': Dictionary with 'id' and optional 'name' fields
+        
+    rectangle_vertices : list
+        List of [lat, lon] coordinate pairs defining the area of interest.
+        Used to calculate the map center and intersection area.
+        
+    Returns:
+    --------
+    folium.Map
+        Interactive folium map object with building polygons and labels.
+        
+    Notes:
+    ------
+    - Only buildings intersecting with a 200m radius circle are displayed
+    - Building IDs are displayed as selectable text labels
+    - Map is automatically centered on the rectangle vertices
+    - Popup information includes building ID and name (if available)
+    - Building polygons are styled with blue color and semi-transparent fill
+    
+    Examples:
+    ---------
+    >>> vertices = [[40.7580, -73.9855], [40.7590, -73.9855], 
+    ...             [40.7590, -73.9845], [40.7580, -73.9845]]
+    >>> buildings = [{'geometry': {...}, 'properties': {'id': '123', 'name': 'Building A'}}]
+    >>> map_obj = display_builing_ids_on_map(buildings, vertices)
+    >>> map_obj.save('buildings_map.html')
+    """
+    # Parse the GeoJSON data
+    geojson_data = building_geojson
 
+    # Calculate the center point of the rectangle for map centering
+    # Extract all latitudes and longitudes
+    lats = [coord[0] for coord in rectangle_vertices]
+    lons = [coord[1] for coord in rectangle_vertices]
+    
+    # Calculate center by averaging min and max values
+    center_lat = (min(lats) + max(lats)) / 2
+    center_lon = (min(lons) + max(lons)) / 2
+
+    # Create circle polygon for intersection testing (200m radius)
+    circle = create_circle_polygon(center_lat, center_lon, 200)
+
+    # Create a map centered on the data
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=17)
+
+    # Process each building feature
+    # Add building footprints to the map
+    for feature in geojson_data:
+        # Convert coordinates if needed
+        coords = convert_coordinates(feature['geometry']['coordinates'][0])
+        building_polygon = Polygon(coords)
+        
+        # Only process buildings that intersect with the circular area
+        # Check if building intersects with circle
+        if building_polygon.intersects(circle):
+            # Extract building information from properties
+            # Get and format building properties
+            # building_id = format_building_id(feature['properties'].get('id', 0))
+            building_id = str(feature['properties'].get('id', 0))
+            building_name = feature['properties'].get('name:en', 
+                                                    feature['properties'].get('name', f'Building {building_id}'))
+            
+            # Create popup content with selectable ID
+            popup_content = f"""
+            <div>
+                Building ID: <span style="user-select: all">{building_id}</span><br>
+                Name: {building_name}
+            </div>
+            """
+            
+            # Add building polygon to map with popup information
+            # Add polygon to map
+            folium.Polygon(
+                locations=coords,
+                popup=folium.Popup(popup_content),
+                color='blue',
+                weight=2,
+                fill=True,
+                fill_color='blue',
+                fill_opacity=0.2
+            ).add_to(m)
+            
+            # Add building ID label at the polygon centroid
+            # Calculate centroid for label placement
+            centroid = calculate_centroid(coords)
+            
+            # Add building ID as a selectable label
+            folium.Marker(
+                centroid,
+                icon=folium.DivIcon(
+                    html=f'''
+                    <div style="
+                        position: relative;
+                        font-family: monospace;
+                        font-size: 12px;
+                        color: black;
+                        background-color: rgba(255, 255, 255, 0.9);
+                        padding: 5px 8px;
+                        margin: -10px -15px;
+                        border: 1px solid black;
+                        border-radius: 4px;
+                        user-select: all;
+                        cursor: text;
+                        white-space: nowrap;
+                        display: inline-block;
+                        box-shadow: 0 0 3px rgba(0,0,0,0.2);
+                    ">{building_id}</div>
+                    ''',
+                    class_name="building-label"
+                )
+            ).add_to(m)
+
+    # Save the map
+    return m
+
+def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source = 'Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
+    """
+    Visualizes land cover classification grid overlaid on a basemap.
+    
+    This function creates a map visualization of land cover data using predefined
+    color schemes for different land cover classes. Each grid cell is colored
+    according to its dominant land cover type and overlaid on a web basemap
+    for geographic context.
+    
+    Parameters:
+    -----------
+    grid : numpy.ndarray
+        2D array containing land cover class indices. Values should correspond
+        to indices in the land cover classification system.
+        
+    rectangle_vertices : list
+        List of [lon, lat] coordinate pairs defining the grid boundary corners.
+        Should contain exactly 4 vertices in geographic coordinates.
+        
+    meshsize : float
+        Target size of each grid cell in meters. May be adjusted during processing.
+        
+    source : str, optional
+        Source of land cover classification system. Default is 'Urbanwatch'.
+        See get_land_cover_classes() for available options.
+        
+    vmin, vmax : float, optional
+        Not used for land cover (discrete categories). Included for API consistency.
+        
+    alpha : float, optional
+        Transparency of grid overlay (0-1). Default is 0.5.
+        
+    buf : float, optional
+        Buffer around grid for plot extent as fraction of grid size. Default is 0.2.
+        
+    edge : bool, optional
+        Whether to draw cell edges. Default is True.
+        
+    basemap : str, optional
+        Basemap style name. Options include:
+        - 'CartoDB light' (default)
+        - 'CartoDB dark'
+        - 'CartoDB voyager'
+        Default is 'CartoDB light'.
+        
+    Returns:
+    --------
+    None
+        Displays the plot and prints information about unique land cover classes.
+        
+    Notes:
+    ------
+    - Grid coordinates are calculated using geodetic calculations
+    - Land cover classes are mapped to predefined colors
+    - Unique classes present in the grid are printed for reference
+    - Uses Web Mercator projection (EPSG:3857) for basemap compatibility
+    
+    Examples:
+    ---------
+    >>> # Basic land cover visualization
+    >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+    >>> visualize_land_cover_grid_on_map(lc_grid, vertices, 10.0)
+    
+    >>> # With custom styling
+    >>> visualize_land_cover_grid_on_map(lc_grid, vertices, 10.0, 
+    ...                                  alpha=0.7, edge=False, 
+    ...                                  basemap='CartoDB dark')
+    """
+    # Initialize geodetic calculator for distance measurements
     geod = initialize_geod()
 
+    # Get land cover class definitions and colors
     land_cover_classes = get_land_cover_classes(source)
 
+    # Extract key vertices for grid calculations
     vertex_0 = rectangle_vertices[0]
     vertex_1 = rectangle_vertices[1]
     vertex_3 = rectangle_vertices[3]
 
+    # Calculate distances between vertices using geodetic calculations
     dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
     dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
 
+    # Calculate side vectors in geographic coordinates
     side_1 = np.array(vertex_1) - np.array(vertex_0)
     side_2 = np.array(vertex_3) - np.array(vertex_0)
 
+    # Create normalized unit vectors for grid orientation
     u_vec = normalize_to_one_meter(side_1, dist_side_1)
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
 
+    # Set grid origin and calculate optimal grid size
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
 
     print(f"Calculated grid size: {grid_size}")
     # print(f"Adjusted mesh size: {adjusted_meshsize}")
 
+    # Set up coordinate transformation for basemap compatibility
     geotiff_crs = CRS.from_epsg(3857)
     transformer = setup_transformer(CRS.from_epsg(4326), geotiff_crs)
 
+    # Generate grid cell coordinates (not currently used but available for advanced processing)
     cell_coords = create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
     cell_coords_flat = cell_coords.reshape(2, -1).T
     transformed_coords = np.array([transform_coords(transformer, lon, lat) for lat, lon in cell_coords_flat])
@@ -950,9 +1408,11 @@ def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source 
 
     # print(f"Grid shape: {grid.shape}")
 
+    # Create the visualization using the general plot_grid function
     plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, 'land_cover', alpha=alpha, buf=buf, edge=edge, basemap=basemap, land_cover_classes=land_cover_classes)
 
+    # Display information about the land cover classes present in the grid
     unique_indices = np.unique(grid)
     unique_classes = [list(land_cover_classes.values())[i] for i in unique_indices]
     # print(f"Unique classes in the grid: {unique_classes}")
@@ -1067,88 +1527,6 @@ def create_circle_polygon(center_lat, center_lon, radius_meters):
         lon = center_lon + (radius_deg * math.sin(rad) / math.cos(math.radians(center_lat)))
         points.append((lat, lon))
     return Polygon(points)
-
-def display_builing_ids_on_map(building_geojson, rectangle_vertices):
-    # Parse the GeoJSON data
-    geojson_data = building_geojson
-
-    # Extract all latitudes and longitudes
-    lats = [coord[0] for coord in rectangle_vertices]
-    lons = [coord[1] for coord in rectangle_vertices]
-    
-    # Calculate center by averaging min and max values
-    center_lat = (min(lats) + max(lats)) / 2
-    center_lon = (min(lons) + max(lons)) / 2
-
-    # Create circle polygon for intersection testing
-    circle = create_circle_polygon(center_lat, center_lon, 200)
-
-    # Create a map centered on the data
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=17)
-
-    # Add building footprints to the map
-    for feature in geojson_data:
-        coords = convert_coordinates(feature['geometry']['coordinates'][0])
-        building_polygon = Polygon(coords)
-        
-        # Check if building intersects with circle
-        if building_polygon.intersects(circle):
-            # Get and format building properties
-            # building_id = format_building_id(feature['properties'].get('id', 0))
-            building_id = str(feature['properties'].get('id', 0))
-            building_name = feature['properties'].get('name:en', 
-                                                    feature['properties'].get('name', f'Building {building_id}'))
-            
-            # Create popup content with selectable ID
-            popup_content = f"""
-            <div>
-                Building ID: <span style="user-select: all">{building_id}</span><br>
-                Name: {building_name}
-            </div>
-            """
-            
-            # Add polygon to map
-            folium.Polygon(
-                locations=coords,
-                popup=folium.Popup(popup_content),
-                color='blue',
-                weight=2,
-                fill=True,
-                fill_color='blue',
-                fill_opacity=0.2
-            ).add_to(m)
-            
-            # Calculate centroid for label placement
-            centroid = calculate_centroid(coords)
-            
-            # Add building ID as a selectable label
-            folium.Marker(
-                centroid,
-                icon=folium.DivIcon(
-                    html=f'''
-                    <div style="
-                        position: relative;
-                        font-family: monospace;
-                        font-size: 12px;
-                        color: black;
-                        background-color: rgba(255, 255, 255, 0.9);
-                        padding: 5px 8px;
-                        margin: -10px -15px;
-                        border: 1px solid black;
-                        border-radius: 4px;
-                        user-select: all;
-                        cursor: text;
-                        white-space: nowrap;
-                        display: inline-block;
-                        box-shadow: 0 0 3px rgba(0,0,0,0.2);
-                    ">{building_id}</div>
-                    ''',
-                    class_name="building-label"
-                )
-            ).add_to(m)
-
-    # Save the map
-    return m
 
 def visualize_landcover_grid_on_basemap(landcover_grid, rectangle_vertices, meshsize, source='Standard', alpha=0.6, figsize=(12, 8), 
                                      basemap='CartoDB light', show_edge=False, edge_color='black', edge_width=0.5):
@@ -1410,12 +1788,56 @@ def visualize_point_gdf_on_basemap(point_gdf, value_name='value', **kwargs):
 
 def create_multi_view_scene(meshes, output_directory="output", projection_type="perspective", distance_factor=1.0):
     """
-    Create multiple views of the scene from different angles.
+    Creates multiple rendered views of 3D city meshes from different camera angles.
     
-    Args:
-        meshes: Dictionary of meshes to visualize
-        output_directory: Directory to save output images
-        projection_type: Either "perspective" or "orthographic" (default: "perspective")
+    This function generates a comprehensive set of views including isometric and
+    orthographic projections of the 3D city model. Each view is rendered as a
+    high-quality image and saved to the specified directory.
+    
+    Parameters:
+    -----------
+    meshes : dict
+        Dictionary mapping mesh names/IDs to trimesh.Trimesh objects.
+        Each mesh represents a different component of the city model.
+        
+    output_directory : str, optional
+        Directory path where rendered images will be saved. Default is "output".
+        
+    projection_type : str, optional
+        Camera projection type. Options:
+        - "perspective": Natural perspective projection (default)
+        - "orthographic": Technical orthographic projection
+        
+    distance_factor : float, optional
+        Multiplier for camera distance from the scene. Default is 1.0.
+        Higher values move camera further away, lower values bring it closer.
+        
+    Returns:
+    --------
+    list of tuple
+        List of (view_name, filename) pairs for each generated image.
+        
+    Notes:
+    ------
+    - Generates 9 different views: 4 isometric + 5 orthographic
+    - Isometric views: front-right, front-left, back-right, back-left
+    - Orthographic views: top, front, back, left, right
+    - Uses PyVista for high-quality rendering with proper lighting
+    - Camera positions are automatically calculated based on scene bounds
+    - Images are saved as PNG files with high DPI
+    
+    Technical Details:
+    ------------------
+    - Scene bounding box is computed from all mesh vertices
+    - Camera distance is scaled based on scene diagonal
+    - Orthographic projection uses parallel scaling for technical drawings
+    - Each view uses optimized lighting for clarity
+    
+    Examples:
+    ---------
+    >>> meshes = {'buildings': building_mesh, 'ground': ground_mesh}
+    >>> views = create_multi_view_scene(meshes, "renders/", "orthographic", 1.5)
+    >>> print(f"Generated {len(views)} views")
     """
     # Compute overall bounding box across all meshes
     vertices_list = [mesh.vertices for mesh in meshes.values()]
@@ -1504,41 +1926,127 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
 
 def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     """
-    Create multiple views of the voxel city data.
+    Creates comprehensive 3D visualizations of voxel city data with multiple viewing angles.
+    
+    This is the primary function for generating publication-quality renderings of voxel
+    city models. It converts voxel data to 3D meshes, optionally overlays simulation
+    results, and produces multiple rendered views from different camera positions.
+    
+    Parameters:
+    -----------
+    voxel_array : numpy.ndarray
+        3D array containing voxel class IDs. Shape should be (x, y, z).
+        
+    meshsize : float
+        Physical size of each voxel in meters.
+        
+    **kwargs : dict
+        Optional visualization parameters:
+        
+        Color and Style:
+        - voxel_color_map (str): Color scheme name, default 'default'
+        - output_directory (str): Directory for output files, default 'output'
+        - output_file_name (str): Base name for exported files
+        
+        Simulation Overlay:
+        - sim_grid (numpy.ndarray): 2D simulation results to overlay
+        - dem_grid (numpy.ndarray): Digital elevation model for height reference
+        - view_point_height (float): Height offset for simulation surface, default 1.5m
+        - colormap (str): Matplotlib colormap for simulation data, default 'viridis'
+        - vmin, vmax (float): Color scale limits for simulation data
+        
+        Camera and Rendering:
+        - projection_type (str): 'perspective' or 'orthographic', default 'perspective'
+        - distance_factor (float): Camera distance multiplier, default 1.0
+        - window_width, window_height (int): Render resolution, default 1024x768
+        
+        Output Control:
+        - show_views (bool): Whether to display rendered views, default True
+        - save_obj (bool): Whether to export OBJ mesh files, default False
+        
+    Returns:
+    --------
+    None
+        Displays rendered views and optionally saves files to disk.
+        
+    Notes:
+    ------
+    - Automatically configures PyVista for headless rendering
+    - Generates meshes for each voxel class with appropriate colors
+    - Creates colorbar for simulation data if provided
+    - Produces 9 different camera views (4 isometric + 5 orthographic)
+    - Exports mesh files in OBJ format if requested
+    
+    Technical Requirements:
+    -----------------------
+    - Requires Xvfb for headless rendering on Linux systems
+    - Uses PyVista for high-quality 3D rendering
+    - Simulation data is interpolated onto elevated surface mesh
+    
+    Examples:
+    ---------
+    >>> # Basic visualization
+    >>> visualize_voxcity_multi_view(voxel_array, meshsize=2.0)
+    
+    >>> # With simulation results overlay
+    >>> visualize_voxcity_multi_view(
+    ...     voxel_array, 2.0,
+    ...     sim_grid=temperature_data,
+    ...     dem_grid=elevation_data,
+    ...     colormap='plasma',
+    ...     output_file_name='temperature_analysis'
+    ... )
+    
+    >>> # High-resolution orthographic technical drawings
+    >>> visualize_voxcity_multi_view(
+    ...     voxel_array, 2.0,
+    ...     projection_type='orthographic',
+    ...     window_width=2048,
+    ...     window_height=1536,
+    ...     save_obj=True
+    ... )
     """
-
+    # Set up headless rendering environment for PyVista
     os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
     os.environ['DISPLAY'] = ':99'
 
-    # Configure PyVista settings
+    # Configure PyVista settings for high-quality rendering
     pv.set_plot_theme('document')
     pv.global_theme.background = 'white'
     pv.global_theme.window_size = [1024, 768]
     pv.global_theme.jupyter_backend = 'static'
     
-    # Parse kwargs
+    # Parse visualization parameters from kwargs
     voxel_color_map = kwargs.get("voxel_color_map", 'default')
     vox_dict = get_voxel_color_map(voxel_color_map)
     output_directory = kwargs.get("output_directory", 'output')
     base_filename = kwargs.get("output_file_name", None)
     sim_grid = kwargs.get("sim_grid", None)
     dem_grid_ori = kwargs.get("dem_grid", None)
+    
+    # Normalize DEM grid to start from zero elevation
     if dem_grid_ori is not None:
         dem_grid = dem_grid_ori - np.min(dem_grid_ori)
+        
+    # Simulation overlay parameters
     z_offset = kwargs.get("view_point_height", 1.5)
     cmap_name = kwargs.get("colormap", "viridis")
-    vmin = kwargs.get("vmin", np.nanmin(sim_grid))
-    vmax = kwargs.get("vmax", np.nanmax(sim_grid))
+    vmin = kwargs.get("vmin", np.nanmin(sim_grid) if sim_grid is not None else None)
+    vmax = kwargs.get("vmax", np.nanmax(sim_grid) if sim_grid is not None else None)
+    
+    # Camera and rendering parameters
     projection_type = kwargs.get("projection_type", "perspective")
     distance_factor = kwargs.get("distance_factor", 1.0)
+    
+    # Output control parameters
     save_obj = kwargs.get("save_obj", False)
     show_views = kwargs.get("show_views", True)
 
-    # Create meshes
+    # Create 3D meshes from voxel data
     print("Creating voxel meshes...")
     meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
 
-    # Create sim_grid surface mesh if provided
+    # Add simulation results as elevated surface mesh if provided
     if sim_grid is not None and dem_grid is not None:
         print("Creating sim_grid surface mesh...")
         sim_mesh = create_sim_surface_mesh(
@@ -1551,32 +2059,29 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
         )
         if sim_mesh is not None:
             meshes["sim_surface"] = sim_mesh
-            # If vmin/vmax not provided, use actual min/max of the valid sim data
             
-        # Prepare the colormap and create colorbar
+        # Create and display colorbar for simulation data
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
         scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
         
-        # Create a figure and axis for the colorbar but don't display
         fig, ax = plt.subplots(figsize=(6, 1))
         plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
         plt.tight_layout()
         plt.show()
 
-    # Export if filename provided
+    # Export mesh files if requested
     if base_filename is not None:
-        print(f"Exporting files to '{base_filename}.*' ...")# Create output directory if it doesn't exist
+        print(f"Exporting files to '{base_filename}.*' ...")
         os.makedirs(output_directory, exist_ok=True)
         export_meshes(meshes, output_directory, base_filename)
 
+    # Generate and display multiple camera views
     if show_views:  
-        # Create and save multiple views
         print("Creating multiple views...")        
-        # Create output directory if it doesn't exist
         os.makedirs(output_directory, exist_ok=True)
         image_files = create_multi_view_scene(meshes, output_directory=output_directory, projection_type=projection_type, distance_factor=distance_factor)
 
-        # Display each view separately
+        # Display each rendered view
         for view_name, img_file in image_files:
             plt.figure(figsize=(24, 16))
             img = plt.imread(img_file)
@@ -1586,7 +2091,7 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
             plt.show()
             plt.close()
     
-        # After creating the meshes and before visualization
+    # Export OBJ mesh files if requested
     if save_obj:
         output_directory = kwargs.get('output_directory', 'output')
         output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
@@ -1716,49 +2221,134 @@ def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, 
 
 def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None, **kwargs):
     """
-    Create multiple views of the voxel city data with custom simulation meshes replacing specific voxel classes.
+    Creates 3D visualizations of voxel city data with custom simulation mesh overlays.
     
-    Parameters
-    ----------
+    This advanced visualization function allows replacement of specific voxel classes
+    with custom simulation result meshes. It's particularly useful for overlaying
+    detailed simulation results (like computational fluid dynamics, thermal analysis,
+    or environmental factors) onto specific building or infrastructure components.
+    
+    The function supports simulation meshes with metadata containing numerical values
+    that can be visualized using color mapping, making it ideal for displaying
+    spatially-varying simulation results on building surfaces or other urban elements.
+    
+    Parameters:
+    -----------
     voxel_array : np.ndarray
-        3D array of voxel values.
+        3D array of voxel values representing the base city model.
+        Shape should be (x, y, z) where each element is a voxel class ID.
+        
     meshsize : float
-        Size of each voxel in meters.
+        Size of each voxel in meters, used for coordinate scaling.
+        
     custom_meshes : dict, optional
-        Dictionary mapping voxel class IDs to custom meshes (e.g., {-3: building_svf_mesh}).
-        These meshes will replace the original voxel meshes for visualization.
+        Dictionary mapping voxel class IDs to custom trimesh.Trimesh objects.
+        Example: {-3: building_simulation_mesh, -2: vegetation_mesh}
+        These meshes will replace the standard voxel representation for visualization.
+        Default is None.
+        
     **kwargs:
-        vox_dict : dict
-            Dictionary mapping voxel class IDs to colors.
-        output_directory : str
-            Directory to save output files.
-        output_file_name : str
-            Base filename for exported meshes.
-        sim_grid : np.ndarray
-            2D array with simulation values to visualize as a surface.
-        dem_grid : np.ndarray
-            2D array with elevation values.
-        view_point_height : float
-            Height offset for simulation grid visualization.
-        colormap : str
-            Matplotlib colormap name for simulation results.
-        vmin, vmax : float
-            Min/max values for color mapping.
-        projection_type : str
-            'perspective' or 'orthogonal'
-        distance_factor : float
-            Adjusts camera distance.
-        colorbar_title : str
-            Title for the colorbar (for simulation results).
-        value_name : str
-            Name of the field in metadata containing values to visualize.
-        nan_color : str or tuple
-            Color to use for NaN values (default: 'gray')
-    
-    Returns
-    -------
+        Extensive configuration options organized by category:
+        
+        Base Visualization:
+        - vox_dict (dict): Dictionary mapping voxel class IDs to colors
+        - output_directory (str): Directory for saving output files
+        - output_file_name (str): Base filename for exported meshes
+        
+        Simulation Result Display:
+        - value_name (str): Name of metadata field containing simulation values
+        - colormap (str): Matplotlib colormap name for simulation results
+        - vmin, vmax (float): Color scale limits for simulation data
+        - colorbar_title (str): Title for the simulation result colorbar
+        - nan_color (str/tuple): Color for NaN/invalid simulation values, default 'gray'
+        
+        Ground Surface Overlay:
+        - sim_grid (np.ndarray): 2D array with ground-level simulation values
+        - dem_grid (np.ndarray): Digital elevation model for terrain height
+        - view_point_height (float): Height offset for ground simulation surface
+        
+        Camera and Rendering:
+        - projection_type (str): 'perspective' or 'orthographic', default 'perspective'
+        - distance_factor (float): Camera distance multiplier, default 1.0
+        - window_width, window_height (int): Render resolution
+        
+        Output Control:
+        - show_views (bool): Whether to display rendered views, default True
+        - save_obj (bool): Whether to export OBJ mesh files, default False
+        
+    Returns:
+    --------
     list
-        List of (view_name, image_file_path) tuples for the generated views.
+        List of (view_name, image_file_path) tuples for generated views.
+        Only returned if show_views=True.
+        
+    Notes:
+    ------
+    Simulation Mesh Requirements:
+    - Custom meshes should have simulation values stored in mesh.metadata[value_name]
+    - Values can include NaN for areas without valid simulation data
+    - Mesh geometry should align with the voxel grid coordinate system
+    
+    Color Mapping:
+    - Simulation values are mapped to colors using the specified colormap
+    - NaN values are rendered in the specified nan_color
+    - A colorbar is automatically generated and displayed
+    
+    Technical Implementation:
+    - Uses PyVista for high-quality 3D rendering
+    - Supports both individual mesh coloring and ground surface overlays
+    - Automatically handles coordinate system transformations
+    - Generates multiple camera views for comprehensive visualization
+    
+    Examples:
+    ---------
+    >>> # Basic usage with building simulation results
+    >>> building_mesh = trimesh.load('building_with_cfd_results.ply')
+    >>> building_mesh.metadata = {'temperature': temperature_values}
+    >>> custom_meshes = {-3: building_mesh}  # -3 is building class ID
+    >>> 
+    >>> visualize_voxcity_with_sim_meshes(
+    ...     voxel_array, meshsize=2.0,
+    ...     custom_meshes=custom_meshes,
+    ...     value_name='temperature',
+    ...     colormap='plasma',
+    ...     colorbar_title='Temperature (°C)',
+    ...     vmin=15, vmax=35
+    ... )
+    
+    >>> # With ground-level wind simulation overlay
+    >>> wind_mesh = create_wind_simulation_mesh(wind_data)
+    >>> visualize_voxcity_with_sim_meshes(
+    ...     voxel_array, 2.0,
+    ...     custom_meshes={-3: wind_mesh},
+    ...     value_name='wind_speed',
+    ...     sim_grid=ground_wind_grid,
+    ...     dem_grid=elevation_grid,
+    ...     colormap='viridis',
+    ...     projection_type='orthographic',
+    ...     save_obj=True
+    ... )
+    
+    >>> # Multiple simulation types with custom styling
+    >>> meshes = {
+    ...     -3: building_thermal_mesh,  # Buildings with thermal data
+    ...     -2: vegetation_co2_mesh     # Vegetation with CO2 absorption
+    ... }
+    >>> visualize_voxcity_with_sim_meshes(
+    ...     voxel_array, 2.0,
+    ...     custom_meshes=meshes,
+    ...     value_name='co2_flux',
+    ...     colormap='RdYlBu_r',
+    ...     nan_color='lightgray',
+    ...     distance_factor=1.5,
+    ...     output_file_name='co2_analysis'
+    ... )
+    
+    See Also:
+    ---------
+    - visualize_building_sim_results(): Specialized function for building simulations
+    - visualize_voxcity_multi_view(): Basic voxel visualization without custom meshes
+    - create_multi_view_scene(): Lower-level rendering function
     """
     os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
     os.environ['DISPLAY'] = ':99'

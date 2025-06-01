@@ -1,3 +1,22 @@
+"""
+Solar Irradiance Simulation Module
+
+This module provides comprehensive solar irradiance calculations for urban environments,
+including direct and diffuse solar radiation analysis with consideration for tree transmittance
+and building shadows. It supports both instantaneous and cumulative irradiance calculations
+using weather data from EPW files.
+
+Key Features:
+- Direct solar irradiance with ray tracing and shadow analysis
+- Diffuse solar irradiance using Sky View Factor (SVF)
+- Tree transmittance modeling using Beer-Lambert law
+- Building surface irradiance calculation with 3D mesh support
+- Weather data integration from EPW files
+- Visualization and export capabilities
+
+The module uses numba for performance optimization in computationally intensive calculations.
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,6 +26,7 @@ import pytz
 from astral import Observer
 from astral.sun import elevation, azimuth
 
+# Import custom modules for view analysis and weather data processing
 from .view import trace_ray_generic, compute_vi_map_generic, get_sky_view_factor_map, get_surface_view_factor
 from ..utils.weather import get_nearest_epw_from_climate_onebuilding, read_epw_for_solar_simulation
 from ..exporter.obj import grid_to_obj, export_obj
@@ -16,63 +36,107 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
     """
     Compute a map of direct solar irradiation accounting for tree transmittance.
 
+    This function performs ray tracing from observer positions on the ground surface
+    towards the sun to determine direct solar irradiance at each location. It accounts
+    for shadows cast by buildings and vegetation, with special consideration for
+    tree transmittance using the Beer-Lambert law.
+
     The function:
     1. Places observers at valid locations (empty voxels above ground)
     2. Casts rays from each observer in the sun direction
     3. Computes transmittance through trees using Beer-Lambert law
     4. Returns a 2D map of transmittance values
 
+    Observer Placement Rules:
+    - Observers are placed in empty voxels (value 0 or -2 for trees) above solid ground
+    - Observers are NOT placed on buildings, vegetation, or water surfaces
+    - Observer height is added above the detected ground surface
+
+    Ray Tracing Process:
+    - Rays are cast from each valid observer position toward the sun
+    - Intersections with obstacles (non-sky voxels) are detected
+    - Tree voxels provide partial transmittance rather than complete blocking
+    - Final transmittance value represents solar energy reaching the surface
+
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        sun_direction (tuple): Direction vector of the sun.
-        view_point_height (float): Observer height in meters.
-        hit_values (tuple): Values considered non-obstacles if inclusion_mode=False.
-        meshsize (float): Size of each voxel in meters.
-        tree_k (float): Tree extinction coefficient.
-        tree_lad (float): Leaf area density in m^-1.
-        inclusion_mode (bool): False here, meaning any voxel not in hit_values is an obstacle.
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment.
+                             Common values: 0=sky, 1-6=buildings, 7-9=special surfaces, -2=trees
+        sun_direction (tuple): Direction vector of the sun (dx, dy, dz), should be normalized
+        view_point_height (float): Observer height above ground surface in meters
+        hit_values (tuple): Values considered non-obstacles if inclusion_mode=False
+                           Typically (0,) meaning only sky voxels are transparent
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        tree_k (float): Tree extinction coefficient for Beer-Lambert law (higher = more opaque)
+        tree_lad (float): Leaf area density in m^-1 (affects light attenuation through trees)
+        inclusion_mode (bool): False here, meaning any voxel not in hit_values is an obstacle
 
     Returns:
-        ndarray: 2D array of transmittance values (0.0-1.0), NaN = invalid observer position.
+        ndarray: 2D array of transmittance values (0.0-1.0)
+                - 1.0 = full sun exposure
+                - 0.0 = complete shadow
+                - 0.0-1.0 = partial transmittance through trees
+                - NaN = invalid observer position (cannot place observer)
+    
+    Note:
+        The returned map is vertically flipped to match standard visualization conventions
+        where the origin is at the bottom-left corner.
     """
     
+    # Convert observer height from meters to voxel units
     view_height_voxel = int(view_point_height / meshsize)
     
+    # Get dimensions of the voxel grid
     nx, ny, nz = voxel_data.shape
+    
+    # Initialize irradiance map with NaN (invalid positions)
     irradiance_map = np.full((nx, ny), np.nan, dtype=np.float64)
 
-    # Normalize sun direction vector for ray tracing
+    # Normalize sun direction vector for consistent ray tracing
+    # This ensures rays travel at unit speed through the voxel grid
     sd = np.array(sun_direction, dtype=np.float64)
     sd_len = np.sqrt(sd[0]**2 + sd[1]**2 + sd[2]**2)
     if sd_len == 0.0:
         return np.flipud(irradiance_map)
     sd /= sd_len
 
-    # Process each x,y position in parallel
+    # Process each x,y position in parallel for performance
+    # This is the main computational loop optimized with numba
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            # Search upward for valid observer position
+            
+            # Search upward through the vertical column to find valid observer position
+            # Start from z=1 to ensure we can check the voxel below
             for z in range(1, nz):
+                
                 # Check if current voxel is empty/tree and voxel below is solid
+                # This identifies the ground surface where observers can be placed
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    # Skip if standing on building/vegetation/water
+                    
+                    # Skip if standing on building/vegetation/water surfaces
+                    # These are considered invalid observer locations
                     if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         irradiance_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        # Place observer and cast a ray in sun direction
+                        # Place observer at valid ground location and cast ray toward sun
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                        
+                        # Trace ray from observer to sun, accounting for obstacles and tree transmittance
                         hit, transmittance = trace_ray_generic(voxel_data, observer_location, sd, 
                                                              hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+                        
+                        # Store transmittance value (0 if hit solid obstacle, 0-1 if through trees)
                         irradiance_map[x, y] = transmittance if not hit else 0.0
                         found_observer = True
                         break
+            
+            # If no valid observer position found in this column, mark as invalid
             if not found_observer:
                 irradiance_map[x, y] = np.nan
 
-    # Flip map vertically to match visualization conventions
+    # Flip map vertically to match visualization conventions (origin at bottom-left)
     return np.flipud(irradiance_map)
 
 def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, elevation_degrees, 
@@ -80,73 +144,105 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
     """
     Compute direct solar irradiance map with tree transmittance.
     
+    This function converts solar angles to a 3D direction vector, computes the binary
+    transmittance map using ray tracing, and scales the results by actual solar irradiance
+    values to produce physically meaningful irradiance measurements.
+    
+    Solar Geometry:
+    - Azimuth: Horizontal angle measured from North (0°) clockwise to East (90°)
+    - Elevation: Vertical angle above the horizon (0° = horizon, 90° = zenith)
+    - The coordinate system is adjusted by 180° to match the voxel grid orientation
+    
+    Physics Background:
+    - Direct Normal Irradiance (DNI): Solar energy on a surface perpendicular to sun rays
+    - Horizontal irradiance: DNI scaled by sine of elevation angle
+    - Tree transmittance: Applied using Beer-Lambert law for realistic light attenuation
+    
     The function:
-    1. Converts sun angles to direction vector
-    2. Computes binary transmittance map
-    3. Scales by direct normal irradiance and sun elevation
-    4. Optionally visualizes and exports results
+    1. Converts sun angles to direction vector using spherical coordinates
+    2. Computes binary transmittance map accounting for shadows and tree effects
+    3. Scales by direct normal irradiance and sun elevation for horizontal surfaces
+    4. Optionally visualizes and exports results in various formats
     
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
-        azimuth_degrees_ori (float): Sun azimuth angle in degrees (0° = North, 90° = East).
-        elevation_degrees (float): Sun elevation angle in degrees above horizon.
-        direct_normal_irradiance (float): Direct normal irradiance in W/m².
-        show_plot (bool): Whether to display visualization.
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        azimuth_degrees_ori (float): Sun azimuth angle in degrees (0° = North, 90° = East)
+        elevation_degrees (float): Sun elevation angle in degrees above horizon (0-90°)
+        direct_normal_irradiance (float): Direct normal irradiance in W/m² (from weather data)
+        show_plot (bool): Whether to display visualization of results
         **kwargs: Additional arguments including:
             - view_point_height (float): Observer height in meters (default: 1.5)
-            - colormap (str): Matplotlib colormap name (default: 'magma')
-            - vmin (float): Minimum value for colormap
-            - vmax (float): Maximum value for colormap
+                Height above ground where irradiance is measured
+            - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+            - vmin (float): Minimum value for colormap scaling
+            - vmax (float): Maximum value for colormap scaling  
             - tree_k (float): Tree extinction coefficient (default: 0.6)
+                Higher values mean trees block more light
             - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
-            - obj_export (bool): Whether to export as OBJ file
-            - output_directory (str): Directory for OBJ export
-            - output_file_name (str): Filename for OBJ export
-            - dem_grid (ndarray): DEM grid for OBJ export
-            - num_colors (int): Number of colors for OBJ export
-            - alpha (float): Alpha value for OBJ export
+                Affects light attenuation through tree canopies
+            - obj_export (bool): Whether to export results as 3D OBJ file
+            - output_directory (str): Directory for file exports
+            - output_file_name (str): Base filename for exports
+            - dem_grid (ndarray): Digital elevation model for 3D export
+            - num_colors (int): Number of discrete colors for OBJ export
+            - alpha (float): Transparency value for 3D visualization
 
     Returns:
-        ndarray: 2D array of direct solar irradiance values (W/m²).
+        ndarray: 2D array of direct solar irradiance values in W/m²
+                - Values represent energy flux on horizontal surfaces
+                - NaN indicates invalid measurement locations
+                - Range typically 0 to direct_normal_irradiance * sin(elevation)
+    
+    Note:
+        The azimuth is internally adjusted by 180° to match the coordinate system
+        where the voxel grid's y-axis points in the opposite direction from geographic north.
     """
+    # Extract parameters with defaults for observer and visualization settings
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
     vmin = kwargs.get("vmin", 0.0)
     vmax = kwargs.get("vmax", direct_normal_irradiance)
     
-    # Get tree transmittance parameters
+    # Get tree transmittance parameters for Beer-Lambert law calculations
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
 
-    # Convert sun angles to direction vector
-    # Note: azimuth is adjusted by 180° to match coordinate system
+    # Convert sun angles to 3D direction vector using spherical coordinates
+    # Note: azimuth is adjusted by 180° to match coordinate system orientation
     azimuth_degrees = 180 - azimuth_degrees_ori
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
+    
+    # Calculate direction vector components
+    # dx, dy: horizontal components, dz: vertical component (upward positive)
     dx = np.cos(elevation_radians) * np.cos(azimuth_radians)
     dy = np.cos(elevation_radians) * np.sin(azimuth_radians)
     dz = np.sin(elevation_radians)
     sun_direction = (dx, dy, dz)
 
+    # Define obstacle detection parameters for ray tracing
     # All non-zero voxels are obstacles except for trees which have transmittance
-    hit_values = (0,)
-    inclusion_mode = False
+    hit_values = (0,)    # Only sky voxels (value 0) are transparent
+    inclusion_mode = False  # Values NOT in hit_values are considered obstacles
 
-    # Compute transmittance map
+    # Compute transmittance map using optimized ray tracing
     transmittance_map = compute_direct_solar_irradiance_map_binary(
         voxel_data, sun_direction, view_point_height, hit_values, 
         meshsize, tree_k, tree_lad, inclusion_mode
     )
 
-    # Scale by direct normal irradiance and sun elevation
+    # Scale transmittance by solar irradiance and geometry
+    # For horizontal surfaces: multiply by sine of elevation angle
     sin_elev = dz
     direct_map = transmittance_map * direct_normal_irradiance * sin_elev
 
-    # Optional visualization
+    # Optional visualization of results
     if show_plot:
+        # Set up colormap with special handling for invalid data
         cmap = plt.cm.get_cmap(colormap).copy()
-        cmap.set_bad(color='lightgray')
+        cmap.set_bad(color='lightgray')  # NaN values shown in gray
+        
         plt.figure(figsize=(10, 8))
         # plt.title("Horizontal Direct Solar Irradiance Map (0° = North)")
         plt.imshow(direct_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -154,14 +250,17 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
         plt.axis('off')
         plt.show()
 
-    # Optional OBJ export
+    # Optional export to 3D OBJ format for external visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
+        # Get export parameters with defaults
         dem_grid = kwargs.get("dem_grid", np.zeros_like(direct_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "direct_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
         alpha = kwargs.get("alpha", 1.0)
+        
+        # Export as colored 3D mesh
         grid_to_obj(
             direct_map,
             dem_grid,
@@ -182,55 +281,93 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
     """
     Compute diffuse solar irradiance map using the Sky View Factor (SVF) with tree transmittance.
 
+    This function calculates the diffuse component of solar radiation, which consists of
+    sunlight scattered by the atmosphere and reaches surfaces from all directions across
+    the sky hemisphere. The calculation is based on the Sky View Factor (SVF), which
+    quantifies how much of the sky dome is visible from each location.
+    
+    Physics Background:
+    - Diffuse radiation: Solar energy scattered by atmospheric particles and clouds
+    - Sky View Factor (SVF): Fraction of sky hemisphere visible from a point (0.0 to 1.0)
+    - Isotropic sky model: Assumes uniform diffuse radiation distribution across the sky
+    - Tree effects: Partial transmittance through canopies reduces effective sky visibility
+    
+    SVF Characteristics:
+    - SVF = 1.0: Completely open sky (maximum diffuse radiation)
+    - SVF = 0.0: Completely blocked sky (no diffuse radiation)  
+    - SVF = 0.5: Half of sky visible (typical for urban canyons)
+    - Trees reduce SVF through partial light attenuation rather than complete blocking
+
     The function:
-    1. Computes SVF map accounting for tree transmittance
-    2. Scales SVF by diffuse horizontal irradiance
-    3. Optionally visualizes and exports results
+    1. Computes SVF map accounting for building shadows and tree transmittance
+    2. Scales SVF by diffuse horizontal irradiance from weather data
+    3. Optionally visualizes and exports results for analysis
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
-        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m².
-        show_plot (bool): Whether to display visualization.
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m² (from weather data)
+                                  Default 1.0 for normalized calculations
+        show_plot (bool): Whether to display visualization of results
         **kwargs: Additional arguments including:
             - view_point_height (float): Observer height in meters (default: 1.5)
-            - colormap (str): Matplotlib colormap name (default: 'magma')
-            - vmin (float): Minimum value for colormap
-            - vmax (float): Maximum value for colormap
-            - tree_k (float): Tree extinction coefficient
+                Height above ground where measurements are taken
+            - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+            - vmin (float): Minimum value for colormap scaling
+            - vmax (float): Maximum value for colormap scaling
+            - tree_k (float): Tree extinction coefficient for transmittance calculations
+                Higher values mean trees block more diffuse light
             - tree_lad (float): Leaf area density in m^-1
-            - obj_export (bool): Whether to export as OBJ file
-            - output_directory (str): Directory for OBJ export
-            - output_file_name (str): Filename for OBJ export
-            - dem_grid (ndarray): DEM grid for OBJ export
-            - num_colors (int): Number of colors for OBJ export
-            - alpha (float): Alpha value for OBJ export
+                Affects light attenuation through tree canopies
+            - obj_export (bool): Whether to export results as 3D OBJ file
+            - output_directory (str): Directory for file exports
+            - output_file_name (str): Base filename for exports
+            - dem_grid (ndarray): Digital elevation model for 3D export
+            - num_colors (int): Number of discrete colors for OBJ export  
+            - alpha (float): Transparency value for 3D visualization
 
     Returns:
-        ndarray: 2D array of diffuse solar irradiance values (W/m²).
+        ndarray: 2D array of diffuse solar irradiance values in W/m²
+                - Values represent diffuse energy flux on horizontal surfaces
+                - Range: 0.0 to diffuse_irradiance (input parameter)
+                - NaN indicates invalid measurement locations
+    
+    Note:
+        The SVF calculation internally handles tree transmittance effects, so trees
+        contribute partial sky visibility rather than complete obstruction.
     """
 
+    # Extract parameters with defaults for observer and visualization settings
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
     vmin = kwargs.get("vmin", 0.0)
     vmax = kwargs.get("vmax", diffuse_irradiance)
     
+    # Prepare parameters for SVF calculation with appropriate visualization settings
     # Pass tree transmittance parameters to SVF calculation
     svf_kwargs = kwargs.copy()
-    svf_kwargs["colormap"] = "BuPu_r"
-    svf_kwargs["vmin"] = 0
+    svf_kwargs["colormap"] = "BuPu_r"  # Purple colormap for SVF visualization
+    svf_kwargs["vmin"] = 0             # SVF ranges from 0 to 1
     svf_kwargs["vmax"] = 1
 
+    # Calculate Sky View Factor map accounting for all obstructions
     # SVF calculation now handles tree transmittance internally
     SVF_map = get_sky_view_factor_map(voxel_data, meshsize, **svf_kwargs)
+    
+    # Convert SVF to diffuse irradiance by scaling with weather data
+    # Each location receives diffuse radiation proportional to its sky visibility
     diffuse_map = SVF_map * diffuse_irradiance
 
-    # Optional visualization
+    # Optional visualization of diffuse irradiance results
     if show_plot:
+        # Use parameters from kwargs for consistent visualization
         vmin = kwargs.get("vmin", 0.0)
         vmax = kwargs.get("vmax", diffuse_irradiance)
+        
+        # Set up colormap with special handling for invalid data
         cmap = plt.cm.get_cmap(colormap).copy()
-        cmap.set_bad(color='lightgray')
+        cmap.set_bad(color='lightgray')  # NaN values shown in gray
+        
         plt.figure(figsize=(10, 8))
         # plt.title("Diffuse Solar Irradiance Map")
         plt.imshow(diffuse_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -238,14 +375,17 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
         plt.axis('off')
         plt.show()
 
-    # Optional OBJ export
+    # Optional export to 3D OBJ format for external visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
+        # Get export parameters with defaults
         dem_grid = kwargs.get("dem_grid", np.zeros_like(diffuse_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "diffuse_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
         alpha = kwargs.get("alpha", 1.0)
+        
+        # Export as colored 3D mesh
         grid_to_obj(
             diffuse_map,
             dem_grid,
@@ -276,47 +416,76 @@ def get_global_solar_irradiance_map(
     """
     Compute global solar irradiance (direct + diffuse) on a horizontal plane at each valid observer location.
 
+    This function combines both direct and diffuse components of solar radiation to calculate
+    the total solar irradiance at each location. Global horizontal irradiance (GHI) is the
+    most commonly used metric for solar energy assessment and represents the total solar
+    energy available on a horizontal surface.
+    
+    Global Irradiance Components:
+    - Direct component: Solar radiation from the sun's disk, affected by shadows and obstacles
+    - Diffuse component: Solar radiation scattered by the atmosphere, affected by sky view
+    - Total irradiance: Sum of direct and diffuse components at each location
+    
+    Physical Considerations:
+    - Direct radiation varies with sun position and local obstructions
+    - Diffuse radiation varies with sky visibility (Sky View Factor)
+    - Both components are affected by tree transmittance using Beer-Lambert law
+    - Invalid locations (e.g., on water, buildings) are marked as NaN
+
     The function:
-    1. Computes direct solar irradiance map
-    2. Computes diffuse solar irradiance map
-    3. Combines maps and optionally visualizes/exports results
+    1. Computes direct solar irradiance map accounting for sun position and shadows
+    2. Computes diffuse solar irradiance map based on Sky View Factor
+    3. Combines maps and optionally visualizes/exports results for analysis
 
     Args:
-        voxel_data (ndarray): 3D voxel array.
-        meshsize (float): Voxel size in meters.
-        azimuth_degrees (float): Sun azimuth angle in degrees (0° = North, 90° = East).
-        elevation_degrees (float): Sun elevation angle in degrees above horizon.
-        direct_normal_irradiance (float): Direct normal irradiance in W/m².
-        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m².
-        show_plot (bool): Whether to display visualization.
+        voxel_data (ndarray): 3D voxel array representing the urban environment
+        meshsize (float): Voxel size in meters (spatial resolution)
+        azimuth_degrees (float): Sun azimuth angle in degrees (0° = North, 90° = East)
+        elevation_degrees (float): Sun elevation angle in degrees above horizon (0-90°)
+        direct_normal_irradiance (float): Direct normal irradiance in W/m² (from weather data)
+        diffuse_irradiance (float): Diffuse horizontal irradiance in W/m² (from weather data)
+        show_plot (bool): Whether to display visualization of results
         **kwargs: Additional arguments including:
             - view_point_height (float): Observer height in meters (default: 1.5)
-            - colormap (str): Matplotlib colormap name (default: 'magma')
-            - vmin (float): Minimum value for colormap
-            - vmax (float): Maximum value for colormap
-            - tree_k (float): Tree extinction coefficient
+                Height above ground where measurements are taken
+            - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+            - vmin (float): Minimum value for colormap scaling
+            - vmax (float): Maximum value for colormap scaling
+            - tree_k (float): Tree extinction coefficient for transmittance calculations
+                Higher values mean trees block more light
             - tree_lad (float): Leaf area density in m^-1
-            - obj_export (bool): Whether to export as OBJ file
-            - output_directory (str): Directory for OBJ export
-            - output_file_name (str): Filename for OBJ export
-            - dem_grid (ndarray): DEM grid for OBJ export
-            - num_colors (int): Number of colors for OBJ export
-            - alpha (float): Alpha value for OBJ export
+                Affects light attenuation through tree canopies
+            - obj_export (bool): Whether to export results as 3D OBJ file
+            - output_directory (str): Directory for file exports
+            - output_file_name (str): Base filename for exports
+            - dem_grid (ndarray): Digital elevation model for 3D export
+            - num_colors (int): Number of discrete colors for OBJ export
+            - alpha (float): Transparency value for 3D visualization
 
     Returns:
-        ndarray: 2D array of global solar irradiance values (W/m²).
+        ndarray: 2D array of global solar irradiance values in W/m²
+                - Values represent total solar energy flux on horizontal surfaces
+                - Range: 0.0 to (direct_normal_irradiance * sin(elevation) + diffuse_irradiance)
+                - NaN indicates invalid measurement locations
+    
+    Note:
+        Global irradiance is the standard metric used for solar energy assessment
+        and represents the maximum solar energy available at each location.
     """    
     
+    # Extract visualization parameters
     colormap = kwargs.get("colormap", 'magma')
 
-    # Create kwargs for diffuse calculation
+    # Create kwargs for individual component calculations
+    # Both direct and diffuse calculations use the same base parameters
     direct_diffuse_kwargs = kwargs.copy()
     direct_diffuse_kwargs.update({
-        'show_plot': True,
-        'obj_export': False
+        'show_plot': True,   # Show intermediate results for debugging
+        'obj_export': False  # Don't export intermediate results
     })
 
-    # Compute direct irradiance map (no mode/hit_values/inclusion_mode needed)
+    # Compute direct irradiance component
+    # Accounts for sun position, shadows, and tree transmittance
     direct_map = get_direct_solar_irradiance_map(
         voxel_data,
         meshsize,
@@ -326,7 +495,8 @@ def get_global_solar_irradiance_map(
         **direct_diffuse_kwargs
     )
 
-    # Compute diffuse irradiance map
+    # Compute diffuse irradiance component  
+    # Based on Sky View Factor and atmospheric scattering
     diffuse_map = get_diffuse_solar_irradiance_map(
         voxel_data,
         meshsize,
@@ -334,16 +504,20 @@ def get_global_solar_irradiance_map(
         **direct_diffuse_kwargs
     )
 
-    # Sum the two components
+    # Sum the two components to get total global irradiance
+    # This represents the total solar energy available at each location
     global_map = direct_map + diffuse_map
 
+    # Determine colormap scaling range from actual data
     vmin = kwargs.get("vmin", np.nanmin(global_map))
     vmax = kwargs.get("vmax", np.nanmax(global_map))
 
-    # Optional visualization
+    # Optional visualization of combined results
     if show_plot:
+        # Set up colormap with special handling for invalid data
         cmap = plt.cm.get_cmap(colormap).copy()
-        cmap.set_bad(color='lightgray')
+        cmap.set_bad(color='lightgray')  # NaN values shown in gray
+        
         plt.figure(figsize=(10, 8))
         # plt.title("Global Solar Irradiance Map")
         plt.imshow(global_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -351,9 +525,10 @@ def get_global_solar_irradiance_map(
         plt.axis('off')
         plt.show()
 
-    # Optional OBJ export
+    # Optional export to 3D OBJ format for external visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
+        # Get export parameters with defaults
         dem_grid = kwargs.get("dem_grid", np.zeros_like(global_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "global_solar_irradiance")
@@ -361,6 +536,8 @@ def get_global_solar_irradiance_map(
         alpha = kwargs.get("alpha", 1.0)
         meshsize_param = kwargs.get("meshsize", meshsize)
         view_point_height = kwargs.get("view_point_height", 1.5)
+        
+        # Export as colored 3D mesh
         grid_to_obj(
             global_map,
             dem_grid,
@@ -381,26 +558,61 @@ def get_solar_positions_astral(times, lon, lat):
     """
     Compute solar azimuth and elevation using Astral for given times and location.
     
+    This function uses the Astral astronomical library to calculate precise solar positions
+    based on location coordinates and timestamps. The calculations account for Earth's
+    orbital mechanics, axial tilt, and atmospheric refraction effects.
+    
+    Astronomical Background:
+    - Solar position depends on date, time, and geographic location
+    - Azimuth: Horizontal angle measured clockwise from North (0°-360°)
+    - Elevation: Vertical angle above the horizon (-90° to +90°)
+    - Calculations use standard astronomical algorithms (e.g., NREL SPA)
+    
+    Coordinate System:
+    - Azimuth: 0° = North, 90° = East, 180° = South, 270° = West
+    - Elevation: 0° = horizon, 90° = zenith, negative values = below horizon
+    - All angles are in degrees for consistency with weather data formats
+    
     The function:
-    1. Creates an Astral observer at the specified location
-    2. Computes sun position for each timestamp
-    3. Returns DataFrame with azimuth and elevation angles
+    1. Creates an Astral observer at the specified geographic location
+    2. Computes sun position for each timestamp in the input array
+    3. Returns DataFrame with azimuth and elevation angles for further processing
     
     Args:
-        times (DatetimeIndex): Array of timezone-aware datetime objects.
-        lon (float): Longitude in degrees.
-        lat (float): Latitude in degrees.
+        times (DatetimeIndex): Array of timezone-aware datetime objects
+                              Must include timezone information for accurate calculations
+        lon (float): Longitude in degrees (positive = East, negative = West)
+                    Range: -180° to +180°
+        lat (float): Latitude in degrees (positive = North, negative = South)
+                    Range: -90° to +90°
 
     Returns:
-        DataFrame: DataFrame with columns 'azimuth' and 'elevation' containing solar positions.
+        DataFrame: DataFrame with columns 'azimuth' and 'elevation' containing solar positions
+                  - Index: Input timestamps (timezone-aware)
+                  - 'azimuth': Solar azimuth angles in degrees (0°-360°)
+                  - 'elevation': Solar elevation angles in degrees (-90° to +90°)
+                  - All values are float type for numerical calculations
+    
+    Note:
+        Input times must be timezone-aware. The function preserves the original
+        timezone information and performs calculations in the specified timezone.
     """
+    # Create an astronomical observer at the specified geographic location
     observer = Observer(latitude=lat, longitude=lon)
+    
+    # Initialize result DataFrame with appropriate structure
     df_pos = pd.DataFrame(index=times, columns=['azimuth', 'elevation'], dtype=float)
 
+    # Calculate solar position for each timestamp
     for t in times:
         # t is already timezone-aware; no need to replace tzinfo
+        # Calculate solar elevation (vertical angle above horizon)
         el = elevation(observer=observer, dateandtime=t)
+        
+        # Calculate solar azimuth (horizontal angle from North)
         az = azimuth(observer=observer, dateandtime=t)
+        
+        # Store results in DataFrame
         df_pos.at[t, 'elevation'] = el
         df_pos.at[t, 'azimuth'] = az
 
@@ -417,100 +629,150 @@ def get_cumulative_global_solar_irradiance(
     """
     Compute cumulative global solar irradiance over a specified period using data from an EPW file.
 
+    This function performs time-series analysis of solar irradiance by processing weather data
+    over a user-defined period and accumulating irradiance values at each location. The result
+    represents the total solar energy received during the specified time period, which is
+    essential for seasonal analysis, solar panel positioning, and energy yield predictions.
+    
+    Cumulative Analysis Concept:
+    - Instantaneous irradiance (W/m²): Power at a specific moment
+    - Cumulative irradiance (Wh/m²): Energy accumulated over time
+    - Integration: Sum of (irradiance × time_step) for all timesteps
+    - Applications: Annual energy yield, seasonal variations, optimal siting
+    
+    Time Period Processing:
+    - Supports flexible time ranges (daily, seasonal, annual analysis)
+    - Handles timezone conversions between local and UTC time
+    - Filters weather data based on user-specified start/end times
+    - Accounts for leap years and varying daylight hours
+    
+    Performance Optimization:
+    - Pre-calculates diffuse map once (scales linearly with DHI)
+    - Processes direct component for each timestep (varies with sun position)
+    - Uses efficient memory management for large time series
+    - Provides optional progress monitoring for long calculations
+
     The function:
-    1. Filters EPW data for specified time period
-    2. Computes sun positions for each timestep
-    3. Calculates and accumulates global irradiance maps
-    4. Handles tree transmittance and visualization
+    1. Filters EPW data for specified time period with timezone handling
+    2. Computes sun positions for each timestep using astronomical calculations
+    3. Calculates and accumulates global irradiance maps over the entire period
+    4. Handles tree transmittance and provides visualization/export options
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
-        df (DataFrame): EPW weather data.
-        lon (float): Longitude in degrees.
-        lat (float): Latitude in degrees.
-        tz (float): Timezone offset in hours.
-        direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
-        diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        df (DataFrame): EPW weather data with columns 'DNI', 'DHI' and datetime index
+                       Must include complete meteorological dataset
+        lon (float): Longitude in degrees for solar position calculations
+        lat (float): Latitude in degrees for solar position calculations  
+        tz (float): Timezone offset in hours from UTC (positive = East of UTC)
+        direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance
+                                                 Allows sensitivity analysis or unit conversions
+        diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance
+                                          Allows sensitivity analysis or unit conversions
         **kwargs: Additional arguments including:
             - view_point_height (float): Observer height in meters (default: 1.5)
+                Height above ground where measurements are taken
             - start_time (str): Start time in format 'MM-DD HH:MM:SS'
-            - end_time (str): End time in format 'MM-DD HH:MM:SS'
-            - tree_k (float): Tree extinction coefficient
+                Defines beginning of analysis period (default: "01-01 05:00:00")
+            - end_time (str): End time in format 'MM-DD HH:MM:SS'  
+                Defines end of analysis period (default: "01-01 20:00:00")
+            - tree_k (float): Tree extinction coefficient for transmittance calculations
+                Higher values mean trees block more light
             - tree_lad (float): Leaf area density in m^-1
-            - show_plot (bool): Whether to show final plot
+                Affects light attenuation through tree canopies
+            - show_plot (bool): Whether to show final accumulated results
             - show_each_timestep (bool): Whether to show plots for each timestep
-            - colormap (str): Matplotlib colormap name
-            - vmin (float): Minimum value for colormap
-            - vmax (float): Maximum value for colormap
-            - obj_export (bool): Whether to export as OBJ file
-            - output_directory (str): Directory for OBJ export
-            - output_file_name (str): Filename for OBJ export
-            - dem_grid (ndarray): DEM grid for OBJ export
-            - num_colors (int): Number of colors for OBJ export
-            - alpha (float): Alpha value for OBJ export
+                Useful for debugging but significantly increases computation time
+            - colormap (str): Matplotlib colormap name for visualization
+            - vmin (float): Minimum value for colormap scaling
+            - vmax (float): Maximum value for colormap scaling
+            - obj_export (bool): Whether to export results as 3D OBJ file
+            - output_directory (str): Directory for file exports
+            - output_file_name (str): Base filename for exports
+            - dem_grid (ndarray): Digital elevation model for 3D export
+            - num_colors (int): Number of discrete colors for OBJ export
+            - alpha (float): Transparency value for 3D visualization
 
     Returns:
-        ndarray: 2D array of cumulative global solar irradiance values (W/m²·hour).
+        ndarray: 2D array of cumulative global solar irradiance values in W/m²·hour
+                - Values represent total solar energy received during the analysis period
+                - Range depends on period length and local climate conditions
+                - NaN indicates invalid measurement locations (e.g., on buildings, water)
+    
+    Note:
+        The function efficiently handles large time series by pre-computing the diffuse
+        component once and scaling it for each timestep, significantly reducing
+        computation time for long-term analysis.
     """
+    # Extract parameters with defaults for observer positioning and visualization
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
     start_time = kwargs.get("start_time", "01-01 05:00:00")
     end_time = kwargs.get("end_time", "01-01 20:00:00")
 
+    # Validate input data
     if df.empty:
         raise ValueError("No data in EPW file.")
 
-    # Parse start and end times without year
+    # Parse start and end times without year (supports multi-year analysis)
     try:
         start_dt = datetime.strptime(start_time, "%m-%d %H:%M:%S")
         end_dt = datetime.strptime(end_time, "%m-%d %H:%M:%S")
     except ValueError as ve:
         raise ValueError("start_time and end_time must be in format 'MM-DD HH:MM:SS'") from ve
 
-    # Add hour of year column and filter data
+    # Add hour of year column for efficient time filtering
+    # Hour 1 = January 1st, 00:00; Hour 8760 = December 31st, 23:00
     df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
     
-    # Convert dates to day of year and hour
+    # Convert parsed dates to day of year and hour for filtering
     start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
     end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
     
     start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
     end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
 
-    # Handle period crossing year boundary
+    # Handle period crossing year boundary (e.g., Dec 15 to Jan 15)
     if start_hour <= end_hour:
+        # Normal period within single year
         df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
     else:
+        # Period crosses year boundary - include end and beginning of year
         df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
 
-    # Filter by minutes within start/end hours
+    # Apply minute-level filtering within start/end hours for precision
     df_period = df_period[
         ((df_period.index.hour != start_dt.hour) | (df_period.index.minute >= start_dt.minute)) &
         ((df_period.index.hour != end_dt.hour) | (df_period.index.minute <= end_dt.minute))
     ]
 
+    # Validate filtered data
     if df_period.empty:
         raise ValueError("No EPW data in the specified period.")
 
-    # Handle timezone conversion
+    # Handle timezone conversion for accurate solar position calculations
+    # Convert local time (from EPW) to UTC for astronomical calculations
     offset_minutes = int(tz * 60)
     local_tz = pytz.FixedOffset(offset_minutes)
     df_period_local = df_period.copy()
     df_period_local.index = df_period_local.index.tz_localize(local_tz)
     df_period_utc = df_period_local.tz_convert(pytz.UTC)
 
-    # Compute solar positions for period
+    # Compute solar positions for entire analysis period
+    # This is done once to optimize performance
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
 
-    # Create kwargs for diffuse calculation
+    # Prepare parameters for efficient diffuse irradiance calculation
+    # Create kwargs for diffuse calculation with visualization disabled
     diffuse_kwargs = kwargs.copy()
     diffuse_kwargs.update({
         'show_plot': False,
         'obj_export': False
     })
 
-    # Compute base diffuse map once with diffuse_irradiance=1.0
+    # Pre-compute base diffuse map once with unit irradiance
+    # This map will be scaled by actual DHI values for each timestep
     base_diffuse_map = get_diffuse_solar_irradiance_map(
         voxel_data,
         meshsize,
@@ -518,11 +780,12 @@ def get_cumulative_global_solar_irradiance(
         **diffuse_kwargs
     )
 
-    # Initialize accumulation maps
+    # Initialize accumulation arrays for energy integration
     cumulative_map = np.zeros((voxel_data.shape[0], voxel_data.shape[1]))
     mask_map = np.ones((voxel_data.shape[0], voxel_data.shape[1]), dtype=bool)
 
-    # Create kwargs for direct calculation
+    # Prepare parameters for direct irradiance calculations
+    # Create kwargs for direct calculation with visualization disabled
     direct_kwargs = kwargs.copy()
     direct_kwargs.update({
         'show_plot': False,
@@ -530,9 +793,10 @@ def get_cumulative_global_solar_irradiance(
         'obj_export': False
     })
 
-    # Process each timestep
+    # Main processing loop: iterate through each timestep in the analysis period
     for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
-        # Get scaled irradiance values
+        # Apply scaling factors to weather data
+        # Allows for sensitivity analysis or unit conversions
         DNI = row['DNI'] * direct_normal_irradiance_scaling
         DHI = row['DHI'] * diffuse_irradiance_scaling
         time_local = df_period_local.index[idx]
@@ -791,44 +1055,78 @@ def compute_solar_irradiance_for_all_faces(
 ):
     """
     Numba-compiled function to compute direct, diffuse, and global solar irradiance
-    for each face in the mesh.
+    for each face in a 3D building mesh.
+    
+    This optimized function processes all mesh faces in parallel to calculate solar
+    irradiance components. It handles both direct radiation (dependent on sun position
+    and surface orientation) and diffuse radiation (dependent on sky visibility).
+    The function is compiled with Numba for high-performance computation on large meshes.
+    
+    Surface Irradiance Physics:
+    - Direct component: DNI × cos(incidence_angle) × transmittance
+    - Diffuse component: DHI × sky_view_factor
+    - Incidence angle: Angle between sun direction and surface normal
+    - Transmittance: Attenuation factor from obstacles and vegetation
+    
+    Boundary Condition Handling:
+    - Vertical boundary faces are excluded (mesh edges touching domain boundaries)
+    - Invalid faces (NaN SVF) are skipped to maintain data consistency
+    - Surface orientation affects direct radiation calculation
+    
+    Performance Optimizations:
+    - Numba JIT compilation for near C-speed execution
+    - Parallel processing of face calculations
+    - Efficient geometric computations using vectorized operations
+    - Memory-optimized array operations
     
     Args:
-        face_centers (float64[:, :]): (N x 3) array of face center points
-        face_normals (float64[:, :]): (N x 3) array of face normals
-        face_svf (float64[:]): (N) array of SVF values for each face
-        sun_direction (float64[:]): (3) array for sun direction (dx, dy, dz)
+        face_centers (float64[:, :]): (N x 3) array of face center coordinates in real-world units
+        face_normals (float64[:, :]): (N x 3) array of outward-pointing unit normal vectors
+        face_svf (float64[:]): (N,) array of Sky View Factor values for each face (0.0-1.0)
+        sun_direction (float64[:]): (3,) array for normalized sun direction vector (dx, dy, dz)
         direct_normal_irradiance (float): Direct normal irradiance (DNI) in W/m²
         diffuse_irradiance (float): Diffuse horizontal irradiance (DHI) in W/m²
-        voxel_data (ndarray): 3D array of voxel values
-        meshsize (float): Size of each voxel in meters
-        tree_k (float): Tree extinction coefficient
-        tree_lad (float): Leaf area density
-        hit_values (tuple): Values considered 'sky' (e.g. (0,))
-        inclusion_mode (bool): Whether we want to "include" or "exclude" these hit_values
-        grid_bounds_real (float64[2,3]): [[x_min, y_min, z_min],[x_max, y_max, z_max]]
-        boundary_epsilon (float): Distance threshold for bounding-box check
+        voxel_data (ndarray): 3D array of voxel values for obstacle detection
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        tree_k (float): Tree extinction coefficient for Beer-Lambert law
+        tree_lad (float): Leaf area density in m^-1
+        hit_values (tuple): Values considered 'sky' for ray tracing (e.g. (0,))
+        inclusion_mode (bool): Whether hit_values are included (True) or excluded (False)
+        grid_bounds_real (float64[2,3]): Domain boundaries [[x_min,y_min,z_min],[x_max,y_max,z_max]]
+        boundary_epsilon (float): Distance threshold for boundary face detection
     
     Returns:
-        (direct_irr, diffuse_irr, global_irr) as three float64[N] arrays
+        tuple: Three float64[N] arrays containing:
+            - direct_irr: Direct solar irradiance for each face (W/m²)
+            - diffuse_irr: Diffuse solar irradiance for each face (W/m²)  
+            - global_irr: Global solar irradiance for each face (W/m²)
+    
+    Note:
+        This function is optimized with Numba and should not be called directly.
+        Use the higher-level wrapper functions for normal operation.
     """
     n_faces = face_centers.shape[0]
     
+    # Initialize output arrays for each irradiance component
     face_direct = np.zeros(n_faces, dtype=np.float64)
     face_diffuse = np.zeros(n_faces, dtype=np.float64)
     face_global = np.zeros(n_faces, dtype=np.float64)
     
+    # Extract domain boundaries for boundary face detection
     x_min, y_min, z_min = grid_bounds_real[0, 0], grid_bounds_real[0, 1], grid_bounds_real[0, 2]
     x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
     
+    # Process each face individually (Numba optimizes this loop)
     for fidx in range(n_faces):
         center = face_centers[fidx]
         normal = face_normals[fidx]
         svf    = face_svf[fidx]
         
-        # -- 1) Check for vertical boundary face
-        is_vertical = (abs(normal[2]) < 0.01)
+        # Check for vertical boundary faces that should be excluded
+        # These are mesh edges at domain boundaries, not actual building surfaces
+        is_vertical = (abs(normal[2]) < 0.01)  # Nearly vertical normal
         
+        # Check if face center is at domain boundary
         on_x_min = (abs(center[0] - x_min) < boundary_epsilon)
         on_y_min = (abs(center[1] - y_min) < boundary_epsilon)
         on_x_max = (abs(center[0] - x_max) < boundary_epsilon)
@@ -836,33 +1134,35 @@ def compute_solar_irradiance_for_all_faces(
         
         is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
         
+        # Skip boundary faces to avoid artifacts
         if is_boundary_vertical:
             face_direct[fidx]  = np.nan
             face_diffuse[fidx] = np.nan
             face_global[fidx]  = np.nan
             continue
         
-        # If SVF is NaN, skip (means it was set to boundary or invalid earlier)
-        if svf != svf:  # NaN check in Numba
+        # Skip faces with invalid SVF data
+        if svf != svf:  # NaN check in Numba-compatible way
             face_direct[fidx]  = np.nan
             face_diffuse[fidx] = np.nan
             face_global[fidx]  = np.nan
             continue
         
-        # -- 2) Direct irradiance (if face is oriented towards sun)
+        # Calculate direct irradiance component
+        # Only surfaces oriented towards the sun receive direct radiation
         cos_incidence = normal[0]*sun_direction[0] + \
                         normal[1]*sun_direction[1] + \
                         normal[2]*sun_direction[2]
         
         direct_val = 0.0
-        if cos_incidence > 0.0:
-            # Offset ray origin slightly to avoid self-intersection
-            offset_vox = 0.1
+        if cos_incidence > 0.0:  # Surface faces towards sun
+            # Offset ray origin slightly along normal to avoid self-intersection
+            offset_vox = 0.1  # Small offset in voxel units
             ray_origin_x = center[0]/meshsize + normal[0]*offset_vox
             ray_origin_y = center[1]/meshsize + normal[1]*offset_vox
             ray_origin_z = center[2]/meshsize + normal[2]*offset_vox
             
-            # Single ray toward the sun            
+            # Cast ray toward the sun to check for obstructions
             hit_detected, transmittance = trace_ray_generic(
                 voxel_data,
                 np.array([ray_origin_x, ray_origin_y, ray_origin_z], dtype=np.float64),
@@ -873,15 +1173,20 @@ def compute_solar_irradiance_for_all_faces(
                 tree_lad,
                 inclusion_mode
             )
+            
+            # Calculate direct irradiance if path to sun is clear/partially clear
             if not hit_detected:
                 direct_val = direct_normal_irradiance * cos_incidence * transmittance
         
-        # -- 3) Diffuse irradiance from sky: use SVF * DHI
+        # Calculate diffuse irradiance component using Sky View Factor
+        # All surfaces receive diffuse radiation proportional to their sky visibility
         diffuse_val = svf * diffuse_irradiance
+        
+        # Ensure diffuse irradiance doesn't exceed theoretical maximum
         if diffuse_val > diffuse_irradiance:
             diffuse_val = diffuse_irradiance
         
-        # -- 4) Sum up
+        # Store results for this face
         face_direct[fidx]  = direct_val
         face_diffuse[fidx] = diffuse_val
         face_global[fidx]  = direct_val + diffuse_val
@@ -903,57 +1208,100 @@ def get_building_solar_irradiance(
     **kwargs
 ):
     """
-    Calculate solar irradiance on building surfaces using SVF,
-    with the numeric per-face loop accelerated by Numba.
+    Calculate solar irradiance on building surfaces using Sky View Factor (SVF) analysis,
+    with high-performance computation accelerated by Numba JIT compilation.
+    
+    This function performs detailed solar irradiance analysis on 3D building surfaces
+    represented as triangulated meshes. It calculates both direct and diffuse components
+    of solar radiation for each mesh face, accounting for surface orientation, shadows,
+    and sky visibility. The computation is optimized for large urban models using
+    efficient algorithms and parallel processing.
+    
+    Mesh-Based Analysis Advantages:
+    - Surface-specific calculations for facades, roofs, and complex geometries
+    - Accurate accounting of surface orientation and local shading effects
+    - Integration with 3D visualization and CAD workflows
+    - Detailed irradiance data for building energy modeling
+    
+    Performance Features:
+    - Numba JIT compilation for near C-speed execution
+    - Parallel processing of mesh faces
+    - Efficient ray tracing with tree transmittance
+    - Memory-optimized operations for large datasets
+    
+    Physical Modeling:
+    - Direct irradiance: Based on sun position and surface orientation
+    - Diffuse irradiance: Based on Sky View Factor from each surface
+    - Tree effects: Partial transmittance using Beer-Lambert law
+    - Boundary handling: Automatic exclusion of domain boundary artifacts
     
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
-        building_svf_mesh (trimesh.Trimesh): Building mesh with SVF values in metadata.
-        azimuth_degrees (float): Sun azimuth angle in degrees (0=North, 90=East).
-        elevation_degrees (float): Sun elevation angle in degrees above horizon.
-        direct_normal_irradiance (float): DNI in W/m².
-        diffuse_irradiance (float): DHI in W/m².
-        **kwargs: Additional parameters, e.g. tree_k, tree_lad, progress_report, obj_export, etc.
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment
+        meshsize (float): Size of each voxel in meters (spatial resolution)
+        building_svf_mesh (trimesh.Trimesh): Building mesh with pre-calculated SVF values in metadata
+                                           Must have 'svf' array in mesh.metadata
+        azimuth_degrees (float): Sun azimuth angle in degrees (0=North, 90=East)
+        elevation_degrees (float): Sun elevation angle in degrees above horizon (0-90°)
+        direct_normal_irradiance (float): Direct normal irradiance (DNI) in W/m² from weather data
+        diffuse_irradiance (float): Diffuse horizontal irradiance (DHI) in W/m² from weather data
+        **kwargs: Additional parameters including:
+            - tree_k (float): Tree extinction coefficient (default: 0.6)
+                Higher values mean trees block more light
+            - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                Affects light attenuation through tree canopies
+            - progress_report (bool): Whether to print timing information (default: False)
+            - obj_export (bool): Whether to export results as OBJ file
+            - output_directory (str): Directory for file exports
+            - output_file_name (str): Base filename for exports
     
     Returns:
-        trimesh.Trimesh: A copy of the input mesh with direct/diffuse/global irradiance stored in metadata.
+        trimesh.Trimesh: A copy of the input mesh with irradiance data stored in metadata:
+                        - 'svf': Sky View Factor for each face (preserved from input)
+                        - 'direct': Direct solar irradiance for each face (W/m²)
+                        - 'diffuse': Diffuse solar irradiance for each face (W/m²)
+                        - 'global': Global solar irradiance for each face (W/m²)
+    
+    Note:
+        The input mesh must have SVF values pre-calculated and stored in metadata.
+        Use get_surface_view_factor() to compute SVF before calling this function.
     """
     import time
     
+    # Extract tree transmittance parameters with defaults
     tree_k          = kwargs.get("tree_k", 0.6)
     tree_lad        = kwargs.get("tree_lad", 1.0)
     progress_report = kwargs.get("progress_report", False)
     
-    # Sky detection
-    hit_values     = (0,)    # '0' = sky
-    inclusion_mode = False
+    # Define sky detection parameters for ray tracing
+    hit_values     = (0,)    # '0' = sky voxel value
+    inclusion_mode = False   # Treat non-sky values as obstacles
     
-    # Convert angles -> direction
-    az_rad = np.deg2rad(180 - azimuth_degrees)
+    # Convert solar angles to 3D direction vector using spherical coordinates
+    az_rad = np.deg2rad(180 - azimuth_degrees)  # Adjust for coordinate system
     el_rad = np.deg2rad(elevation_degrees)
     sun_dx = np.cos(el_rad) * np.cos(az_rad)
     sun_dy = np.cos(el_rad) * np.sin(az_rad)
     sun_dz = np.sin(el_rad)
     sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
     
-    # Extract mesh data
-    face_centers = building_svf_mesh.triangles_center
-    face_normals = building_svf_mesh.face_normals
+    # Extract mesh geometry data for processing
+    face_centers = building_svf_mesh.triangles_center  # Center point of each face
+    face_normals = building_svf_mesh.face_normals      # Normal vector for each face
     
-    # Get SVF from metadata
+    # Extract Sky View Factor data from mesh metadata
     if hasattr(building_svf_mesh, 'metadata') and ('svf' in building_svf_mesh.metadata):
         face_svf = building_svf_mesh.metadata['svf']
     else:
+        # Initialize with zeros if SVF not available (should be pre-calculated)
         face_svf = np.zeros(len(building_svf_mesh.faces), dtype=np.float64)
     
-    # Prepare boundary checks
+    # Set up domain boundaries for boundary face detection
     grid_shape = voxel_data.shape
     grid_bounds_voxel = np.array([[0,0,0],[grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
     grid_bounds_real = grid_bounds_voxel * meshsize
-    boundary_epsilon = meshsize * 0.05
+    boundary_epsilon = meshsize * 0.05  # Small tolerance for boundary detection
     
-    # Call Numba-compiled function
+    # Call high-performance Numba-compiled calculation function
     t0 = time.time()
     face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
         face_centers,
@@ -971,11 +1319,13 @@ def get_building_solar_irradiance(
         grid_bounds_real,
         boundary_epsilon
     )
+    
+    # Report performance timing if requested
     if progress_report:
         elapsed = time.time() - t0
         print(f"Numba-based solar irradiance calculation took {elapsed:.2f} seconds")
     
-    # Create a copy of the mesh
+    # Create a copy of the input mesh to store results
     irradiance_mesh = building_svf_mesh.copy()
     if not hasattr(irradiance_mesh, 'metadata'):
         irradiance_mesh.metadata = {}
@@ -1387,35 +1737,80 @@ def get_building_global_solar_irradiance_using_epw(
 
 def save_irradiance_mesh(irradiance_mesh, output_file_path):
     """
-    Save the irradiance mesh data to a file using pickle.
+    Save the irradiance mesh data to a file using pickle serialization.
+    
+    This function provides persistent storage for computed irradiance results,
+    enabling reuse of expensive calculations and sharing of results between
+    analysis sessions. The mesh data includes all geometry, irradiance values,
+    and metadata required for visualization and further analysis.
+    
+    Serialization Benefits:
+    - Preserves complete mesh structure with all computed data
+    - Enables offline analysis and visualization workflows
+    - Supports sharing results between different tools and users
+    - Avoids recomputation of expensive irradiance calculations
+    
+    Data Preservation:
+    - All mesh geometry (vertices, faces, normals)
+    - Computed irradiance values (direct, diffuse, global)
+    - Sky View Factor data and other metadata
+    - Material properties and visualization settings
     
     Args:
-        irradiance_mesh (trimesh.Trimesh): Mesh with irradiance data in metadata.
-        output_file_path (str): Path to save the mesh data (recommended extension: .pkl).
+        irradiance_mesh (trimesh.Trimesh): Mesh with irradiance data in metadata
+                                          Should contain computed irradiance results
+        output_file_path (str): Path to save the mesh data file
+                               Recommended extension: .pkl for clarity
+    
+    Note:
+        The function automatically creates the output directory if it doesn't exist.
+        Use pickle format for maximum compatibility with Python data structures.
     """
     import pickle
     import os
 
-    # Create output directory if it doesn't exist
+    # Create output directory structure if it doesn't exist
     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
     
-    # Save mesh data using pickle
+    # Serialize mesh data using pickle for complete data preservation
     with open(output_file_path, 'wb') as f:
         pickle.dump(irradiance_mesh, f)
 
 def load_irradiance_mesh(input_file_path):
     """
-    Load the irradiance mesh data from a file.
+    Load previously saved irradiance mesh data from a file.
+    
+    This function restores complete mesh data including geometry, computed
+    irradiance values, and all associated metadata. It enables continuation
+    of analysis workflows and reuse of expensive computation results.
+    
+    Restoration Capabilities:
+    - Complete mesh geometry with all topological information
+    - All computed irradiance data (direct, diffuse, global components)
+    - Sky View Factor values and analysis metadata
+    - Visualization settings and material properties
+    
+    Workflow Integration:
+    - Load results from previous analysis sessions
+    - Share computed data between team members
+    - Perform post-processing and visualization
+    - Compare results from different scenarios
     
     Args:
-        input_file_path (str): Path to the saved mesh data file.
+        input_file_path (str): Path to the saved mesh data file
+                              Should be a file created by save_irradiance_mesh()
     
     Returns:
-        trimesh.Trimesh: Mesh with irradiance data in metadata.
+        trimesh.Trimesh: Complete mesh with all irradiance data in metadata
+                        Ready for visualization, analysis, or further processing
+    
+    Note:
+        The loaded mesh maintains all original data structure and can be used
+        immediately for visualization or additional analysis operations.
     """
     import pickle
     
-    # Load mesh data using pickle
+    # Deserialize mesh data preserving all original structure
     with open(input_file_path, 'rb') as f:
         irradiance_mesh = pickle.load(f)
     

@@ -3,6 +3,19 @@ Module for handling MagicaVoxel .vox files.
 
 This module provides functionality for converting 3D numpy arrays to MagicaVoxel .vox files,
 including color mapping and splitting large models into smaller chunks.
+
+The module handles:
+- Color map conversion and optimization
+- Large model splitting into MagicaVoxel-compatible chunks
+- Custom palette creation
+- Coordinate system transformation
+- Batch export of multiple .vox files
+
+Key Features:
+- Supports models larger than MagicaVoxel's 256³ size limit
+- Automatic color palette optimization
+- Preserves color mapping across chunks
+- Handles coordinate system differences between numpy and MagicaVoxel
 """
 
 # Required imports for voxel file handling and array manipulation
@@ -10,21 +23,35 @@ import numpy as np
 from pyvox.models import Vox
 from pyvox.writer import VoxWriter
 import os
-from ..utils.visualization import get_default_voxel_color_map
+from ..utils.visualization import get_voxel_color_map
 
 def convert_colormap_and_array(original_map, original_array):
     """
     Convert a color map with arbitrary indices to sequential indices starting from 0
     and update the corresponding 3D numpy array.
     
+    This function optimizes the color mapping by:
+    1. Converting arbitrary color indices to sequential ones
+    2. Creating a new mapping that preserves color relationships
+    3. Updating the voxel array to use the new sequential indices
+    
     Args:
-        original_map (dict): Dictionary with integer keys and RGB color value lists
-        original_array (numpy.ndarray): 3D array with integer values corresponding to color map keys
+        original_map (dict): Dictionary with integer keys and RGB color value lists.
+            Each key is a color index, and each value is a list of [R,G,B] values.
+        original_array (numpy.ndarray): 3D array with integer values corresponding to color map keys.
+            The array contains indices that match the keys in original_map.
         
     Returns:
         tuple: (new_color_map, new_array)
             - new_color_map (dict): Color map with sequential indices starting from 0
-            - new_array (numpy.ndarray): Updated array with new indices
+            - new_array (numpy.ndarray): Updated array with new sequential indices
+    
+    Example:
+        >>> color_map = {5: [255,0,0], 10: [0,255,0]}
+        >>> array = np.array([[[5,10],[10,5]]])
+        >>> new_map, new_array = convert_colormap_and_array(color_map, array)
+        >>> print(new_map)
+        {0: [255,0,0], 1: [0,255,0]}
     """
     # Get all the keys and sort them
     keys = sorted(original_map.keys())
@@ -48,13 +75,25 @@ def convert_colormap_and_array(original_map, original_array):
 
 def create_custom_palette(color_map):
     """
-    Create a palette array from a color map dictionary.
+    Create a palette array from a color map dictionary suitable for MagicaVoxel format.
+    
+    This function:
+    1. Creates a 256x4 RGBA palette array
+    2. Sets full opacity (alpha=255) for all colors by default
+    3. Reserves index 0 for transparent black (void)
+    4. Maps colors sequentially starting from index 1
     
     Args:
-        color_map (dict): Dictionary mapping indices to RGB color values
+        color_map (dict): Dictionary mapping indices to RGB color values.
+            Each value should be a list of 3 integers [R,G,B] in range 0-255.
         
     Returns:
-        numpy.ndarray: 256x4 array containing RGBA color values
+        numpy.ndarray: 256x4 array containing RGBA color values.
+            - Shape: (256, 4)
+            - Type: uint8
+            - Format: [R,G,B,A] for each color
+            - Index 0: [0,0,0,0] (transparent)
+            - Indices 1-255: Colors from color_map with alpha=255
     """
     # Initialize empty palette with alpha channel
     palette = np.zeros((256, 4), dtype=np.uint8)
@@ -68,13 +107,20 @@ def create_custom_palette(color_map):
 
 def create_mapping(color_map):
     """
-    Create a mapping from color map keys to sequential indices.
+    Create a mapping from color map keys to sequential indices for MagicaVoxel compatibility.
+    
+    Creates a mapping that:
+    - Reserves index 0 for void space
+    - Reserves index 1 (typically for special use)
+    - Maps colors sequentially starting from index 2
     
     Args:
-        color_map (dict): Dictionary mapping indices to RGB color values
+        color_map (dict): Dictionary mapping indices to RGB color values.
+            The keys can be any integers, they will be remapped sequentially.
         
     Returns:
-        dict: Mapping from original indices to sequential indices starting at 2
+        dict: Mapping from original indices to sequential indices starting at 2.
+            Example: {original_index1: 2, original_index2: 3, ...}
     """
     # Create mapping starting at index 2 (0 is void, 1 is reserved)
     return {value: i+2 for i, value in enumerate(color_map.keys())}
@@ -83,12 +129,26 @@ def split_array(array, max_size=255):
     """
     Split a 3D array into smaller chunks that fit within MagicaVoxel size limits.
     
+    This function handles large voxel models by:
+    1. Calculating required splits in each dimension
+    2. Dividing the model into chunks of max_size or smaller
+    3. Yielding each chunk with its position information
+    
     Args:
-        array (numpy.ndarray): 3D array to split
-        max_size (int): Maximum size allowed for each dimension
+        array (numpy.ndarray): 3D array to split.
+            Can be any size, will be split into chunks of max_size or smaller.
+        max_size (int, optional): Maximum size allowed for each dimension.
+            Defaults to 255 (MagicaVoxel's limit is 256).
         
     Yields:
-        tuple: (sub_array, (i,j,k)) where sub_array is the chunk and (i,j,k) are the chunk indices
+        tuple: (sub_array, (i,j,k))
+            - sub_array: numpy.ndarray of size <= max_size in each dimension
+            - (i,j,k): tuple of indices indicating chunk position in the original model
+    
+    Example:
+        >>> array = np.ones((300, 300, 300))
+        >>> for chunk, (i,j,k) in split_array(array):
+        ...     print(f"Chunk at position {i},{j},{k} has shape {chunk.shape}")
     """
     # Calculate number of splits needed in each dimension
     x, y, z = array.shape
@@ -113,13 +173,29 @@ def numpy_to_vox(array, color_map, output_file):
     """
     Convert a numpy array to a MagicaVoxel .vox file.
     
+    This function handles the complete conversion process:
+    1. Creates a custom color palette from the color map
+    2. Generates value mapping for voxel indices
+    3. Transforms coordinates to match MagicaVoxel's system
+    4. Saves the model in .vox format
+    
     Args:
-        array (numpy.ndarray): 3D array containing voxel data
-        color_map (dict): Dictionary mapping indices to RGB color values
-        output_file (str): Path to save the .vox file
+        array (numpy.ndarray): 3D array containing voxel data.
+            Values should correspond to keys in color_map.
+        color_map (dict): Dictionary mapping indices to RGB color values.
+            Each value should be a list of [R,G,B] values (0-255).
+        output_file (str): Path to save the .vox file.
+            Will overwrite if file exists.
         
     Returns:
-        tuple: (value_mapping, palette, shape) containing the index mapping, color palette and output shape
+        tuple: (value_mapping, palette, shape)
+            - value_mapping: dict mapping original indices to MagicaVoxel indices
+            - palette: numpy.ndarray of shape (256,4) containing RGBA values
+            - shape: tuple of (width, height, depth) of the output model
+    
+    Note:
+        - Coordinates are transformed to match MagicaVoxel's coordinate system
+        - Z-axis is flipped and axes are reordered in the process
     """
     # Create color palette and value mapping
     palette = create_custom_palette(color_map)
@@ -142,15 +218,34 @@ def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base
     """
     Export a large voxel model by splitting it into multiple .vox files.
     
+    This function handles models of any size by:
+    1. Creating the output directory if needed
+    2. Splitting the model into manageable chunks
+    3. Saving each chunk as a separate .vox file
+    4. Maintaining consistent color mapping across all chunks
+    
     Args:
-        array (numpy.ndarray): 3D array containing voxel data
-        color_map (dict): Dictionary mapping indices to RGB color values
-        output_prefix (str): Directory to save the .vox files
-        max_size (int): Maximum size allowed for each dimension
-        base_filename (str): Base name for the output files
+        array (numpy.ndarray): 3D array containing voxel data.
+            Can be any size, will be split into chunks if needed.
+        color_map (dict): Dictionary mapping indices to RGB color values.
+            Each value should be a list of [R,G,B] values (0-255).
+        output_prefix (str): Directory to save the .vox files.
+            Will be created if it doesn't exist.
+        max_size (int, optional): Maximum size allowed for each dimension.
+            Defaults to 255 (MagicaVoxel's limit is 256).
+        base_filename (str, optional): Base name for the output files.
+            Defaults to 'chunk'. Final filenames will be {base_filename}_{i}_{j}_{k}.vox
         
     Returns:
-        tuple: (value_mapping, palette) containing the index mapping and color palette
+        tuple: (value_mapping, palette)
+            - value_mapping: dict mapping original indices to MagicaVoxel indices
+            - palette: numpy.ndarray of shape (256,4) containing RGBA values
+    
+    Example:
+        >>> array = np.ones((500,500,500))
+        >>> color_map = {1: [255,0,0]}
+        >>> export_large_voxel_model(array, color_map, "output/model")
+        # Creates files like: output/model/chunk_0_0_0.vox, chunk_0_0_1.vox, etc.
     """
     # Create output directory if it doesn't exist
     os.makedirs(output_prefix, exist_ok=True)
@@ -168,16 +263,31 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
     """
     Export a voxel model to MagicaVoxel .vox format.
     
+    This is the main entry point for voxel model export. It handles:
+    1. Color map management (using default if none provided)
+    2. Color index optimization
+    3. Large model splitting and export
+    4. Progress reporting
+    
     Args:
-        array (numpy.ndarray): 3D array containing voxel data
-        output_dir (str): Directory to save the .vox files
-        base_filename (str): Base name for the output files
+        array (numpy.ndarray): 3D array containing voxel data.
+            Values should correspond to keys in voxel_color_map.
+        output_dir (str): Directory to save the .vox files.
+            Will be created if it doesn't exist.
+        base_filename (str, optional): Base name for the output files.
+            Defaults to 'chunk'. Used when model is split into multiple files.
         voxel_color_map (dict, optional): Dictionary mapping indices to RGB color values.
-            If None, uses default color map.
+            If None, uses default color map from utils.visualization.
+            Each value should be a list of [R,G,B] values (0-255).
+    
+    Note:
+        - Large models are automatically split into multiple files
+        - Color mapping is optimized and made sequential
+        - Progress information is printed to stdout
     """
     # Use default color map if none provided
     if voxel_color_map is None:
-        voxel_color_map = get_default_voxel_color_map()
+        voxel_color_map = get_voxel_color_map()
     
     # Convert color map and array to sequential indices
     converted_voxel_color_map, converted_array = convert_colormap_and_array(voxel_color_map, array)

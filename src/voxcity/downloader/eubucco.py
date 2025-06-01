@@ -4,6 +4,26 @@ Module for downloading and processing building data from the EUBUCCO dataset.
 This module provides functionality to download, extract, filter and convert building footprint data 
 from the EUBUCCO (European Building Characteristics) dataset. It handles downloading zipped GeoPackage 
 files, extracting building geometries and heights, and converting them to GeoJSON format.
+
+The module supports:
+- Downloading building data for specific European countries
+- Extracting and processing GeoPackage files
+- Converting coordinates between different coordinate reference systems (CRS)
+- Filtering buildings by geographic area
+- Handling building height data and confidence values
+- Converting to standardized GeoJSON format
+
+Key functions:
+- filter_and_convert_gdf_to_geojson_eubucco(): Filters and converts GeoPackage data to GeoJSON
+- download_extract_open_gpkg_from_eubucco(): Downloads and extracts EUBUCCO data
+- get_gdf_from_eubucco(): Gets GeoDataFrame from EUBUCCO for a specific area
+- load_gdf_from_eubucco(): Main interface for loading EUBUCCO building data
+
+Dependencies:
+- shapely: For geometric operations
+- fiona: For reading GeoPackage files
+- geopandas: For GeoDataFrame operations
+- requests: For downloading data
 """
 
 import json
@@ -66,11 +86,27 @@ def filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_v
     """
     Filters features in a GeoPackage that intersect with a given rectangle and writes them to a GeoJSON file.
 
+    This function:
+    1. Creates a polygon from the input rectangle vertices
+    2. Handles coordinate system transformations if needed
+    3. Filters buildings that intersect with the target area
+    4. Processes building geometries and properties
+    5. Writes filtered data to GeoJSON format
+
     Parameters:
-    - gpkg_file (str): Path to the GeoPackage file.
-    - layer_name (str): Name of the layer within the GeoPackage to process.
-    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle.
-    - output_geojson (str): Path to the output GeoJSON file.
+    - gpkg_file (str): Path to the GeoPackage file containing building data
+    - layer_name (str): Name of the layer within the GeoPackage to process
+    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle vertices
+    - output_geojson (str): Path where the output GeoJSON file will be written
+
+    Returns:
+    None
+
+    Notes:
+    - The function assumes input coordinates are in WGS84 (EPSG:4326)
+    - Building heights are stored in meters
+    - Missing or invalid heights are assigned a default value of -1.0
+    - A confidence value of -1.0 indicates no confidence data available
     """
     # Create polygon from rectangle vertices (already in lon,lat format)
     rectangle_polygon = Polygon(rectangle_vertices)
@@ -211,12 +247,25 @@ def download_extract_open_gpkg_from_eubucco(url, output_dir):
     """
     Downloads a ZIP file from a URL, extracts the GeoPackage (.gpkg) file, and returns its path.
 
+    This function:
+    1. Downloads a ZIP file from the EUBUCCO API
+    2. Extracts the contents to a specified directory
+    3. Locates and returns the path to the GeoPackage file
+
     Parameters:
-    - url (str): URL to download the ZIP file containing the GeoPackage.
-    - output_dir (str): Directory to store extracted files
+    - url (str): URL to download the ZIP file containing the GeoPackage
+    - output_dir (str): Directory where extracted files will be stored
 
     Returns:
-    - str: Path to the extracted GeoPackage file.
+    - str: Absolute path to the extracted GeoPackage file
+
+    Raises:
+    - Exception: If download fails or no GeoPackage file is found
+    - requests.exceptions.RequestException: For network-related errors
+
+    Notes:
+    - Creates a subdirectory 'EUBUCCO_raw' in the output directory
+    - Logs progress and errors using the logging module
     """
     # Download ZIP file from URL
     logging.info("Downloading file...")
@@ -251,14 +300,27 @@ def get_gdf_from_eubucco(rectangle_vertices, country_links, output_dir, file_nam
     """
     Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.
 
+    This function:
+    1. Determines the target country based on input coordinates
+    2. Downloads and extracts EUBUCCO data for that country
+    3. Reads the GeoPackage into a GeoDataFrame
+    4. Ensures correct coordinate reference system
+    5. Assigns unique IDs to buildings
+
     Parameters:
-    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle.
-    - country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs.
-    - output_dir (str): Directory to save output files
-    - file_name (str): Name for output GeoJSON file
+    - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area of interest
+    - country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs
+    - output_dir (str): Directory to save downloaded and processed files
+    - file_name (str): Name for the output GeoJSON file
 
     Returns:
-    - None: Writes the output to a GeoJSON file.
+    - geopandas.GeoDataFrame: DataFrame containing building geometries and properties
+        or None if the target area has no EUBUCCO data
+
+    Notes:
+    - Automatically transforms coordinates to WGS84 (EPSG:4326) if needed
+    - Assigns sequential IDs to buildings starting from 0
+    - Logs errors if target area is not covered by EUBUCCO
     """
     # Determine country based on first vertex
     country_name = get_country_name(rectangle_vertices[0][0], rectangle_vertices[0][1])  # Swap order for get_country_name
@@ -290,12 +352,27 @@ def load_gdf_from_eubucco(rectangle_vertices, output_dir):
     """
     Downloads EUBUCCO data and loads it as GeoJSON.
 
+    This function serves as the main interface for loading EUBUCCO building data.
+    It handles the complete workflow from downloading to processing the data.
+
     Parameters:
     - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area
-    - output_dir (str): Directory to save intermediate files
+        The first vertex is used to determine which country's data to download
+    - output_dir (str): Directory to save intermediate and output files
+        Creates a subdirectory 'EUBUCCO_raw' for raw downloaded data
 
     Returns:
-    - list: List of GeoJSON features containing building footprints and heights
+    - geopandas.GeoDataFrame: DataFrame containing:
+        - geometry: Building footprint polygons
+        - height: Building heights in meters
+        - id: Unique identifier for each building
+        or None if the target area has no EUBUCCO data
+
+    Notes:
+    - Output is always in WGS84 (EPSG:4326) coordinate system
+    - Building heights are in meters
+    - Buildings without height data are assigned a height of -1.0
+    - The function automatically determines the appropriate country dataset
     """
     # Define output file path
     file_name = 'building.geojson' 

@@ -4,6 +4,13 @@ Module for downloading and processing OpenStreetMap data.
 This module provides functionality to download and process building footprints, land cover,
 and other geographic features from OpenStreetMap. It handles downloading data via the Overpass API,
 processing the responses, and converting them to standardized GeoJSON format with proper properties.
+
+The module includes functions for:
+- Converting OSM JSON to GeoJSON format
+- Processing building footprints with height information
+- Handling land cover classifications
+- Managing coordinate systems and projections
+- Processing roads and other geographic features
 """
 
 import requests
@@ -174,7 +181,15 @@ def osm_json_to_geojson(osm_data):
     }
 
 def is_part_of_relation(way_id, osm_data):
-    """Check if a way is part of any relation."""
+    """Check if a way is part of any relation in the OSM data.
+    
+    Args:
+        way_id (int): The ID of the way to check
+        osm_data (dict): OSM JSON data containing elements
+        
+    Returns:
+        bool: True if the way is part of a relation, False otherwise
+    """
     for element in osm_data['elements']:
         if element['type'] == 'relation' and 'members' in element:
             for member in element['members']:
@@ -183,7 +198,18 @@ def is_part_of_relation(way_id, osm_data):
     return False
 
 def is_way_polygon(way):
-    """Determine if a way should be treated as a polygon."""
+    """Determine if a way should be treated as a polygon based on OSM tags and geometry.
+    
+    A way is considered a polygon if:
+    1. It forms a closed loop (first and last nodes are the same)
+    2. It has tags indicating it represents an area (building, landuse, etc.)
+    
+    Args:
+        way (dict): OSM way element with nodes and tags
+        
+    Returns:
+        bool: True if the way should be treated as a polygon, False otherwise
+    """
     # Check if the way is closed (first and last nodes are the same)
     if 'nodes' in way and way['nodes'][0] == way['nodes'][-1]:
         # Check for tags that indicate this is an area
@@ -196,7 +222,16 @@ def is_way_polygon(way):
     return False
 
 def get_way_coords(way, nodes):
-    """Get coordinates for a way."""
+    """Extract coordinates for a way from its node references.
+    
+    Args:
+        way (dict): OSM way element containing node references
+        nodes (dict): Dictionary mapping node IDs to their coordinates
+        
+    Returns:
+        list: List of coordinate pairs [(lon, lat), ...] for the way,
+             or empty list if any nodes are missing
+    """
     coords = []
     if 'nodes' not in way:
         return coords
@@ -211,16 +246,22 @@ def get_way_coords(way, nodes):
     return coords
 
 def create_rings_from_ways(way_ids, ways, nodes):
-    """
-    Create continuous rings by connecting ways.
+    """Create continuous rings by connecting ways that share nodes.
+    
+    This function handles complex relations by:
+    1. Connecting ways that share end nodes
+    2. Handling reversed way directions
+    3. Closing rings when possible
+    4. Converting node references to coordinates
     
     Args:
-        way_ids: List of way IDs that make up the ring(s)
-        ways: Dictionary mapping way IDs to way elements
-        nodes: Dictionary mapping node IDs to coordinates
+        way_ids (list): List of way IDs that make up the ring(s)
+        ways (dict): Dictionary mapping way IDs to way elements
+        nodes (dict): Dictionary mapping node IDs to coordinates
         
     Returns:
-        List of rings, where each ring is a list of coordinates
+        list: List of rings, where each ring is a list of coordinate pairs [(lon, lat), ...]
+              forming a closed polygon with at least 4 points
     """
     if not way_ids:
         return []
@@ -332,11 +373,23 @@ def create_rings_from_ways(way_ids, ways, nodes):
 def load_gdf_from_openstreetmap(rectangle_vertices):
     """Download and process building footprint data from OpenStreetMap.
     
+    This function:
+    1. Downloads building data using the Overpass API
+    2. Processes complex relations and their members
+    3. Extracts height information and other properties
+    4. Converts features to a GeoDataFrame with standardized properties
+    
     Args:
-        rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
+        rectangle_vertices (list): List of (lon, lat) coordinates defining the bounding box
         
     Returns:
-        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with standardized properties
+        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with properties:
+            - geometry: Polygon or MultiPolygon
+            - height: Building height in meters
+            - levels: Number of building levels
+            - min_height: Minimum height (for elevated structures)
+            - building_type: Type of building
+            - And other OSM tags as properties
     """
     # Create a bounding box from the rectangle vertices
     min_lon = min(v[0] for v in rectangle_vertices)
@@ -533,13 +586,23 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
     return gdf
 
 def convert_feature(feature):
-    """Convert a GeoJSON feature to the desired format with height information.
+    """Convert a GeoJSON feature to a standardized format with height information.
+    
+    This function:
+    1. Handles both Polygon and MultiPolygon geometries
+    2. Extracts and validates height information
+    3. Ensures coordinate order consistency (lon, lat)
+    4. Adds confidence scores for height estimates
     
     Args:
-        feature (dict): Input GeoJSON feature
+        feature (dict): Input GeoJSON feature with geometry and properties
         
     Returns:
-        dict: Converted feature with height and confidence values, or None if invalid
+        dict: Converted feature with:
+            - Standardized geometry (always Polygon)
+            - Height information in properties
+            - Confidence score for height values
+            Or None if the feature is invalid or not a polygon
     """
     new_feature = {}
     new_feature['type'] = 'Feature'
@@ -736,13 +799,21 @@ tag_osm_key_value_mapping = {
 }
 
 def get_classification(tags):
-    """Determine the classification code and name for a feature based on its OSM tags.
+    """Determine the land cover/use classification based on OSM tags.
+    
+    This function maps OSM tags to standardized land cover classes using:
+    1. A hierarchical classification system (codes 0-13)
+    2. Tag matching patterns for different feature types
+    3. Special cases for roads, water bodies, etc.
     
     Args:
-        tags (dict): Dictionary of OSM tags
+        tags (dict): Dictionary of OSM tags (key-value pairs)
         
     Returns:
-        tuple: (classification_code, classification_name) or (None, None) if no match
+        tuple: (classification_code, classification_name) where:
+            - classification_code (int): Numeric code (0-13) for the land cover class
+            - classification_name (str): Human-readable name of the class
+            Or (None, None) if no matching classification is found
     """
     # Iterate through each classification code and its associated info
     for code, info in classification_mapping.items():
@@ -764,13 +835,18 @@ def get_classification(tags):
     return None, None
 
 def swap_coordinates(geom_mapping):
-    """Swap coordinates from (lon, lat) to (lat, lon) order.
+    """Swap coordinate order in a GeoJSON geometry object.
+    
+    This function:
+    1. Handles nested coordinate structures (Polygons, MultiPolygons)
+    2. Preserves the original coordinate order if already correct
+    3. Works recursively for complex geometries
     
     Args:
-        geom_mapping (dict): GeoJSON geometry object
+        geom_mapping (dict): GeoJSON geometry object with coordinates
         
     Returns:
-        dict: Geometry with swapped coordinates
+        dict: Geometry with coordinates in the correct order (lon, lat)
     """
     coords = geom_mapping['coordinates']
 
@@ -786,13 +862,23 @@ def swap_coordinates(geom_mapping):
     return geom_mapping
 
 def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
-    """Load land cover data from OpenStreetMap within a given rectangular area.
+    """Load and classify land cover data from OpenStreetMap.
+    
+    This function:
+    1. Downloads land cover features using the Overpass API
+    2. Classifies features based on OSM tags
+    3. Handles special cases like roads with width information
+    4. Projects geometries for accurate buffering
+    5. Creates a standardized GeoDataFrame with classifications
     
     Args:
-        rectangle_vertices_ori (list): List of (lon, lat) coordinates defining the rectangle
+        rectangle_vertices_ori (list): List of (lon, lat) coordinates defining the area
         
     Returns:
-        GeoDataFrame: GeoDataFrame containing land cover classifications
+        geopandas.GeoDataFrame: GeoDataFrame with:
+            - geometry: Polygon or MultiPolygon features
+            - class: Land cover classification name
+            - Additional properties from OSM tags
     """
     # Close the rectangle polygon by adding first vertex at the end
     rectangle_vertices = rectangle_vertices_ori.copy()

@@ -1,3 +1,17 @@
+"""
+CityGML Parser Module for PLATEAU Data
+
+This module provides functionality to parse CityGML files from Japan's PLATEAU dataset,
+extracting building footprints, terrain information, and vegetation data.
+The module handles various LOD (Level of Detail) representations and coordinate systems.
+
+Main features:
+- Download and extract PLATEAU data from URLs
+- Parse CityGML files for buildings, terrain, and vegetation
+- Handle coordinate transformations and validations
+- Support for mesh code decoding
+"""
+
 import requests
 import zipfile
 import io
@@ -19,8 +33,18 @@ from shapely.geometry import Polygon
 
 def decode_2nd_level_mesh(mesh6):
     """
-    Given exactly 6 digits (string) for a standard (2nd-level) mesh code,
-    return (lat_sw, lon_sw, lat_ne, lon_ne) in degrees.
+    Decode a standard (2nd-level) mesh code to geographic coordinates.
+
+    Args:
+        mesh6 (str): A 6-digit mesh code string.
+
+    Returns:
+        tuple: (lat_sw, lon_sw, lat_ne, lon_ne) coordinates in degrees representing
+               the southwest and northeast corners of the mesh.
+
+    Notes:
+        - The mesh system divides Japan into a grid of cells
+        - Each 2nd-level mesh is 1/12° latitude × 0.125° longitude
     """
     code = int(mesh6)
     # Extract each piece
@@ -46,11 +70,20 @@ def decode_2nd_level_mesh(mesh6):
 
 def decode_mesh_code(mesh_str):
     """
-    Handles:
-      - 6-digit codes (standard 2nd-level mesh),
-      - 8-digit codes (2nd-level subdivided 10×10).
+    Decode mesh codes into geographic boundary coordinates.
 
-    Returns a list of (lon, lat) forming a *closed* bounding polygon in WGS84.
+    Args:
+        mesh_str (str): A mesh code string (6 or 8 digits).
+
+    Returns:
+        list: List of (lon, lat) tuples forming a closed polygon in WGS84.
+
+    Raises:
+        ValueError: If mesh code length is invalid or unsupported.
+
+    Notes:
+        - 6-digit codes represent standard 2nd-level mesh
+        - 8-digit codes represent 2nd-level mesh subdivided 10×10
     """
     if len(mesh_str) < 6:
         raise ValueError(f"Mesh code '{mesh_str}' is too short.")
@@ -99,9 +132,16 @@ def decode_mesh_code(mesh_str):
 
 def get_tile_polygon_from_filename(filename):
     """
-    Extract the mesh code from a typical Project PLATEAU filename 
-    (e.g. '51357348_bldg_6697_op.gml') and decode it. 
-    Returns the bounding polygon in WGS84 as a list of (lon, lat).
+    Extract and decode mesh code from PLATEAU filename into boundary polygon.
+
+    Args:
+        filename (str): PLATEAU format filename (e.g. '51357348_bldg_6697_op.gml')
+
+    Returns:
+        list: List of (lon, lat) tuples forming the tile boundary polygon in WGS84.
+
+    Raises:
+        ValueError: If no mesh code found in filename.
     """
     # Look for leading digits until the first underscore
     m = re.match(r'^(\d+)_', filename)
@@ -118,7 +158,18 @@ def get_tile_polygon_from_filename(filename):
 
 def download_and_extract_zip(url, extract_to='.'):
     """
-    Download and extract a zip file from a URL
+    Download and extract a zip file from a URL to specified directory.
+
+    Args:
+        url (str): URL of the zip file to download.
+        extract_to (str): Directory to extract files to (default: current directory).
+
+    Returns:
+        tuple: (extraction_path, folder_name) where files were extracted.
+
+    Notes:
+        - Creates a subdirectory named after the zip file (without .zip)
+        - Prints status messages for success/failure
     """
     response = requests.get(url)
     if response.status_code == 200:
@@ -141,14 +192,30 @@ def download_and_extract_zip(url, extract_to='.'):
 
 def validate_coords(coords):
     """
-    Validate that coordinates are not infinite or NaN
+    Validate that coordinates are finite numbers.
+
+    Args:
+        coords (list): List of coordinate tuples.
+
+    Returns:
+        bool: True if all coordinates are valid (not inf/NaN), False otherwise.
     """
     return all(not np.isinf(x) and not np.isnan(x) for coord in coords for x in coord)
 
 
 def swap_coordinates(polygon):
     """
-    Swap coordinates in a polygon (lat/lon to lon/lat or vice versa)
+    Swap coordinate order in a polygon (lat/lon to lon/lat or vice versa).
+
+    Args:
+        polygon (Polygon/MultiPolygon): Input polygon with coordinates to swap.
+
+    Returns:
+        Polygon/MultiPolygon: New polygon with swapped coordinates.
+
+    Notes:
+        - Handles both single Polygon and MultiPolygon geometries
+        - Creates new geometry objects rather than modifying in place
     """
     if isinstance(polygon, MultiPolygon):
         new_polygons = []
@@ -165,7 +232,25 @@ def swap_coordinates(polygon):
 
 def extract_terrain_info(file_path, namespaces):
     """
-    Extract terrain elevation information from a CityGML file
+    Extract terrain elevation data from CityGML file.
+
+    Args:
+        file_path (str): Path to CityGML file.
+        namespaces (dict): XML namespace mappings.
+
+    Returns:
+        list: List of dictionaries containing terrain features:
+            - relief_id: Feature identifier
+            - tin_id: TIN surface identifier
+            - triangle_id/breakline_id/mass_point_id: Specific element ID
+            - elevation: Height value
+            - geometry: Shapely geometry object
+            - source_file: Original file name
+
+    Notes:
+        - Processes TIN Relief, breaklines, and mass points
+        - Validates all geometries before inclusion
+        - Handles coordinate conversion and validation
     """
     try:
         tree = ET.parse(file_path)
@@ -290,8 +375,24 @@ def extract_terrain_info(file_path, namespaces):
 
 def extract_vegetation_info(file_path, namespaces):
     """
-    Extract vegetation features (PlantCover, SolitaryVegetationObject)
-    from a CityGML file, handling LOD0..LOD3 geometry and MultiSurface/CompositeSurface.
+    Extract vegetation features from CityGML file.
+
+    Args:
+        file_path (str): Path to CityGML file.
+        namespaces (dict): XML namespace mappings.
+
+    Returns:
+        list: List of dictionaries containing vegetation features:
+            - object_type: 'PlantCover' or 'SolitaryVegetationObject'
+            - vegetation_id: Feature identifier
+            - height: Vegetation height (if available)
+            - geometry: Shapely geometry object
+            - source_file: Original file name
+
+    Notes:
+        - Handles both PlantCover and SolitaryVegetationObject features
+        - Processes multiple LOD representations
+        - Validates geometries before inclusion
     """
     vegetation_elements = []
     try:
@@ -399,7 +500,21 @@ def extract_vegetation_info(file_path, namespaces):
 
 def extract_building_footprint(building, namespaces):
     """
-    Extract building footprint from possible LOD representations
+    Extract building footprint from CityGML building element.
+
+    Args:
+        building (Element): XML element representing a building.
+        namespaces (dict): XML namespace mappings.
+
+    Returns:
+        tuple: (pos_list, ground_elevation) where:
+            - pos_list: XML element containing footprint coordinates
+            - ground_elevation: Ground level elevation if available
+
+    Notes:
+        - Tries multiple LOD representations (LOD0-LOD2)
+        - For LOD1/LOD2 solids, finds the bottom face
+        - Returns None if no valid footprint found
     """
     lod_tags = [
         # LOD0
@@ -443,7 +558,20 @@ def extract_building_footprint(building, namespaces):
 
 def process_citygml_file(file_path):
     """
-    Process a CityGML file to extract building, terrain, and vegetation information
+    Process a CityGML file to extract all relevant features.
+
+    Args:
+        file_path (str): Path to CityGML file.
+
+    Returns:
+        tuple: (buildings, terrain_elements, vegetation_elements) where each is a list
+               of dictionaries containing feature information.
+
+    Notes:
+        - Processes buildings, terrain, and vegetation features
+        - Validates all geometries
+        - Handles coordinate transformations
+        - Includes error handling and reporting
     """
     buildings = []
     terrain_elements = []
@@ -524,7 +652,20 @@ def process_citygml_file(file_path):
 
 def parse_file(file_path, file_type=None):
     """
-    Parse a file based on its detected type
+    Parse a file based on its type (auto-detected or specified).
+
+    Args:
+        file_path (str): Path to file to parse.
+        file_type (str, optional): Force specific file type parsing.
+            Valid values: 'citygml', 'geojson', 'xml'
+
+    Returns:
+        tuple: (buildings, terrain_elements, vegetation_elements) lists.
+
+    Notes:
+        - Auto-detects file type from extension if not specified
+        - Currently fully implements CityGML parsing only
+        - Returns empty lists for unsupported types
     """
     if file_type is None:
         file_ext = os.path.splitext(file_path)[1].lower()
@@ -562,10 +703,19 @@ def parse_file(file_path, file_type=None):
 
 def swap_coordinates_if_needed(gdf, geometry_col='geometry'):
     """
-    Swap lat/lon coordinates in a GeoDataFrame if its geometry is in lat-lon order.
-    We assume the original data is EPSG:6697 (which is a projected coordinate system).
-    But we frequently find that data is actually lat-lon. This function ensures
-    final geometry is in the correct coordinate order (lon, lat).
+    Ensure correct coordinate order in GeoDataFrame geometries.
+
+    Args:
+        gdf (GeoDataFrame): Input GeoDataFrame.
+        geometry_col (str): Name of geometry column.
+
+    Returns:
+        list: List of geometries with corrected coordinate order.
+
+    Notes:
+        - Assumes input is EPSG:6697 but may be in lat-lon order
+        - Handles Polygon, MultiPolygon, and Point geometries
+        - Returns geometries in lon-lat order
     """
     swapped_geometries = []
     for geom in gdf[geometry_col]:
@@ -584,11 +734,24 @@ def load_buid_dem_veg_from_citygml(url=None,
                               citygml_path=None,
                               rectangle_vertices=None):
     """
-    Load PLATEAU data, extracting Buildings, Terrain, and Vegetation data.
-    Can process from URL (download & extract) or directly from local file.
+    Load and process PLATEAU data from URL or local files.
 
-    If rectangle_vertices is provided (as [(lon1, lat1), (lon2, lat2), ...]),
-    only tiles intersecting that rectangle will be processed.
+    Args:
+        url (str, optional): URL to download PLATEAU data from.
+        base_dir (str): Base directory for file operations.
+        citygml_path (str, optional): Path to local CityGML files.
+        rectangle_vertices (list, optional): List of (lon, lat) tuples defining
+            a bounding rectangle for filtering tiles.
+
+    Returns:
+        tuple: (gdf_buildings, gdf_terrain, gdf_vegetation) GeoDataFrames
+            containing processed features.
+
+    Notes:
+        - Can process from URL (download & extract) or local files
+        - Optionally filters tiles by geographic extent
+        - Handles coordinate transformations
+        - Creates GeoDataFrames with proper CRS
     """
     all_buildings = []
     all_terrain = []
@@ -685,7 +848,18 @@ def load_buid_dem_veg_from_citygml(url=None,
 
 def process_single_file(file_path):
     """
-    Process a single file (for testing)
+    Process a single CityGML file for testing purposes.
+
+    Args:
+        file_path (str): Path to CityGML file.
+
+    Returns:
+        tuple: (buildings, terrain, vegetation) lists of extracted features.
+
+    Notes:
+        - Useful for testing and debugging
+        - Saves building data to GeoJSON if successful
+        - Prints processing statistics
     """
     file_ext = os.path.splitext(file_path)[1].lower()
     if file_ext in ['.gml', '.xml']:

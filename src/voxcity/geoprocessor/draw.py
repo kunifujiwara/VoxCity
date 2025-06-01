@@ -1,5 +1,26 @@
 """
-This module provides functions for drawing and manipulating rectangles on maps.
+This module provides functions for drawing and manipulating rectangles and polygons on interactive maps.
+It serves as a core component for defining geographical regions of interest in the VoxCity library.
+
+Key Features:
+    - Interactive rectangle drawing on maps using ipyleaflet
+    - Rectangle rotation with coordinate system transformations
+    - City-centered map initialization
+    - Fixed-dimension rectangle creation from center points
+    - Building footprint visualization and polygon drawing
+    - Support for both WGS84 and Web Mercator projections
+    - Coordinate format handling between (lon,lat) and (lat,lon)
+
+The module maintains consistent coordinate order conventions:
+    - Internal storage: (lon,lat) format to match GeoJSON standard
+    - ipyleaflet interface: (lat,lon) format as required by the library
+    - All return values: (lon,lat) format for consistency
+
+Dependencies:
+    - ipyleaflet: For interactive map display and drawing controls
+    - pyproj: For coordinate system transformations
+    - geopy: For distance calculations
+    - shapely: For geometric operations
 """
 
 import math
@@ -13,15 +34,36 @@ from .utils import get_coordinates_from_cityname
 
 def rotate_rectangle(m, rectangle_vertices, angle):
     """
-    Project rectangle to Mercator, rotate, and re-project to lat-lon.
+    Project rectangle to Mercator, rotate, and re-project to lat-lon coordinates.
+    
+    This function performs a rotation of a rectangle in geographic space by:
+    1. Converting coordinates from WGS84 (lat/lon) to Web Mercator projection
+    2. Performing the rotation in the projected space for accurate distance preservation
+    3. Converting back to WGS84 coordinates
+    4. Visualizing the result on the provided map
+    
+    The rotation is performed around the rectangle's centroid using a standard 2D rotation matrix.
+    The function handles coordinate system transformations to ensure geometrically accurate rotations
+    despite the distortions inherent in geographic projections.
 
     Args:
-        m (ipyleaflet.Map): Map object to draw the rotated rectangle on
-        rectangle_vertices (list): List of (lon, lat) tuples defining the rectangle vertices
-        angle (float): Rotation angle in degrees
+        m (ipyleaflet.Map): Map object to draw the rotated rectangle on.
+            The map must be initialized and have a valid center and zoom level.
+        rectangle_vertices (list): List of (lon, lat) tuples defining the rectangle vertices.
+            The vertices should be ordered in a counter-clockwise direction.
+            Example: [(lon1,lat1), (lon2,lat2), (lon3,lat3), (lon4,lat4)]
+        angle (float): Rotation angle in degrees.
+            Positive angles rotate counter-clockwise.
+            Negative angles rotate clockwise.
 
     Returns:
-        list: List of rotated (lon, lat) tuples defining the new rectangle vertices
+        list: List of rotated (lon, lat) tuples defining the new rectangle vertices.
+            The vertices maintain their original ordering.
+            Returns None if no rectangle vertices are provided.
+
+    Note:
+        The function uses EPSG:4326 (WGS84) for geographic coordinates and
+        EPSG:3857 (Web Mercator) for the rotation calculations.
     """
     if not rectangle_vertices:
         print("Draw a rectangle first!")
@@ -73,16 +115,43 @@ def rotate_rectangle(m, rectangle_vertices, angle):
 
 def draw_rectangle_map(center=(40, -100), zoom=4):
     """
-    Create an interactive map for drawing rectangles.
+    Create an interactive map for drawing rectangles with ipyleaflet.
+    
+    This function initializes an interactive map that allows users to draw rectangles
+    by clicking and dragging on the map surface. The drawn rectangles are captured
+    and their vertices are stored in geographic coordinates.
+
+    The map interface provides:
+    - A rectangle drawing tool activated by default
+    - Real-time coordinate capture of drawn shapes
+    - Automatic vertex ordering in counter-clockwise direction
+    - Console output of vertex coordinates for verification
+    
+    Drawing Controls:
+    - Click and drag to draw a rectangle
+    - Release to complete the rectangle
+    - Only one rectangle can be active at a time
+    - Drawing a new rectangle clears the previous one
 
     Args:
-        center (tuple): Center coordinates (lat, lon) for the map view. Defaults to (40, -100).
+        center (tuple): Center coordinates (lat, lon) for the map view.
+            Defaults to (40, -100) which centers on the continental United States.
+            Format: (latitude, longitude) in decimal degrees.
         zoom (int): Initial zoom level for the map. Defaults to 4.
+            Range: 0 (most zoomed out) to 18 (most zoomed in).
+            Recommended: 3-6 for countries, 10-15 for cities.
 
     Returns:
         tuple: (Map object, list of rectangle vertices)
-            - Map object for displaying and interacting with the map
-            - Empty list that will be populated with rectangle vertices when drawn
+            - Map object: ipyleaflet.Map instance for displaying and interacting with the map
+            - rectangle_vertices: Empty list that will be populated with (lon,lat) tuples
+              when a rectangle is drawn. Coordinates are stored in GeoJSON order (lon,lat).
+
+    Note:
+        The function disables all drawing tools except rectangles to ensure
+        consistent shape creation. The rectangle vertices are automatically
+        converted to (lon,lat) format when stored, regardless of the input
+        center coordinate order.
     """
     # Initialize the map centered at specified coordinates
     m = Map(center=center, zoom=zoom)
@@ -127,15 +196,34 @@ def draw_rectangle_map(center=(40, -100), zoom=4):
 def draw_rectangle_map_cityname(cityname, zoom=15):
     """
     Create an interactive map centered on a specified city for drawing rectangles.
+    
+    This function extends draw_rectangle_map() by automatically centering the map
+    on a specified city using geocoding. It provides a convenient way to focus
+    the drawing interface on a particular urban area without needing to know
+    its exact coordinates.
+
+    The function uses the utils.get_coordinates_from_cityname() function to
+    geocode the city name and obtain its coordinates. The resulting map is
+    zoomed to an appropriate level for urban-scale analysis.
 
     Args:
-        cityname (str): Name of the city to center the map on
+        cityname (str): Name of the city to center the map on.
+            Can include country or state for better accuracy.
+            Examples: "Tokyo, Japan", "New York, NY", "Paris, France"
         zoom (int): Initial zoom level for the map. Defaults to 15.
+            Range: 0 (most zoomed out) to 18 (most zoomed in).
+            Default of 15 is optimized for city-level visualization.
 
     Returns:
         tuple: (Map object, list of rectangle vertices)
-            - Map object centered on the specified city
-            - Empty list that will be populated with rectangle vertices when drawn
+            - Map object: ipyleaflet.Map instance centered on the specified city
+            - rectangle_vertices: Empty list that will be populated with (lon,lat)
+              tuples when a rectangle is drawn
+
+    Note:
+        If the city name cannot be geocoded, the function will raise an error.
+        For better results, provide specific city names with country/state context.
+        The function inherits all drawing controls and behavior from draw_rectangle_map().
     """
     # Get coordinates for the specified city
     center = get_coordinates_from_cityname(cityname)
@@ -145,17 +233,51 @@ def draw_rectangle_map_cityname(cityname, zoom=15):
 def center_location_map_cityname(cityname, east_west_length, north_south_length, zoom=15):
     """
     Create an interactive map centered on a city where clicking creates a rectangle of specified dimensions.
+    
+    This function provides a specialized interface for creating fixed-size rectangles
+    centered on user-selected points. Instead of drawing rectangles by dragging,
+    users click a point on the map and a rectangle of the specified dimensions
+    is automatically created centered on that point.
+
+    The function handles:
+    - Automatic city geocoding and map centering
+    - Distance calculations in meters using geopy
+    - Conversion between geographic and metric distances
+    - Rectangle creation with specified dimensions
+    - Visualization of created rectangles
+
+    Workflow:
+    1. Map is centered on the specified city
+    2. User clicks a point on the map
+    3. A rectangle is created centered on that point
+    4. Rectangle dimensions are maintained in meters regardless of latitude
+    5. Previous rectangles are automatically cleared
 
     Args:
-        cityname (str): Name of the city to center the map on
-        east_west_length (float): Width of the rectangle in meters
-        north_south_length (float): Height of the rectangle in meters
+        cityname (str): Name of the city to center the map on.
+            Can include country or state for better accuracy.
+            Examples: "Tokyo, Japan", "New York, NY"
+        east_west_length (float): Width of the rectangle in meters.
+            This is the dimension along the east-west direction.
+            The actual ground distance is maintained regardless of projection distortion.
+        north_south_length (float): Height of the rectangle in meters.
+            This is the dimension along the north-south direction.
+            The actual ground distance is maintained regardless of projection distortion.
         zoom (int): Initial zoom level for the map. Defaults to 15.
+            Range: 0 (most zoomed out) to 18 (most zoomed in).
+            Default of 15 is optimized for city-level visualization.
 
     Returns:
         tuple: (Map object, list of rectangle vertices)
-            - Map object centered on the specified city
-            - Empty list that will be populated with rectangle vertices when a point is clicked
+            - Map object: ipyleaflet.Map instance centered on the specified city
+            - rectangle_vertices: Empty list that will be populated with (lon,lat)
+              tuples when a point is clicked and the rectangle is created
+
+    Note:
+        - Rectangle dimensions are specified in meters but stored as geographic coordinates
+        - The function uses geopy's distance calculations for accurate metric distances
+        - Only one rectangle can exist at a time; clicking a new point removes the previous rectangle
+        - Rectangle vertices are returned in GeoJSON (lon,lat) order
     """
     
     # Get coordinates for the specified city
@@ -225,21 +347,52 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
 def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=None, zoom=17):
     """
-    Displays building footprints (in Lon-Lat order) on an ipyleaflet map,
-    and allows the user to draw a polygon whose vertices are returned
-    in a Python list (also in Lon-Lat).
+    Displays building footprints and enables polygon drawing on an interactive map.
+    
+    This function creates an interactive map that visualizes building footprints and
+    allows users to draw arbitrary polygons. It's particularly useful for selecting
+    specific buildings or areas within an urban context.
+
+    The function provides three key features:
+    1. Building Footprint Visualization:
+       - Displays building polygons from a GeoDataFrame
+       - Uses consistent styling for all buildings
+       - Handles simple polygon geometries only
+    
+    2. Interactive Polygon Drawing:
+       - Enables free-form polygon drawing
+       - Captures vertices in consistent (lon,lat) format
+       - Maintains GeoJSON compatibility
+    
+    3. Map Initialization:
+       - Automatic centering based on input data
+       - Fallback to default location if no data provided
+       - Support for both building data and rectangle bounds
 
     Args:
-        building_gdf (GeoDataFrame, optional): A GeoDataFrame containing building footprints,
-                                             with geometry in [lon, lat] order.
+        building_gdf (GeoDataFrame, optional): A GeoDataFrame containing building footprints.
+            Must have geometry column with Polygon type features.
+            Geometries should be in [lon, lat] coordinate order.
+            If None, only the base map is displayed.
         rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
+            Used to set the initial map view extent.
+            Takes precedence over building_gdf for determining map center.
         zoom (int): Initial zoom level for the map. Default=17.
+            Range: 0 (most zoomed out) to 18 (most zoomed in).
+            Default of 17 is optimized for building-level detail.
 
     Returns:
-        (map_object, drawn_polygon_vertices)
-          - map_object: ipyleaflet Map instance
-          - drawn_polygon_vertices: a Python list that gets updated whenever
-            a new polygon is created. The list is in (lon, lat) order.
+        tuple: (map_object, drawn_polygon_vertices)
+            - map_object: ipyleaflet Map instance with building footprints and drawing controls
+            - drawn_polygon_vertices: List that gets updated with (lon,lat) coordinates
+              whenever a new polygon is drawn. Coordinates are in GeoJSON order.
+
+    Note:
+        - Building footprints are displayed in blue with 20% opacity
+        - Only simple Polygon geometries are supported (no MultiPolygons)
+        - Drawing tools are restricted to polygon creation only
+        - All coordinates are handled in (lon,lat) order internally
+        - The function automatically determines appropriate map bounds
     """
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic

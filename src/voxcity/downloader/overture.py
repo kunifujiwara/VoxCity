@@ -3,6 +3,18 @@ Module for downloading and processing building footprint data from Overture Maps
 
 This module provides functionality to download and process building footprints,
 handling the conversion of Overture Maps data to GeoJSON format with standardized properties.
+
+The module includes functions for:
+- Converting data types between numpy and Python native types
+- Processing and validating building footprint data
+- Handling geometric operations and coordinate transformations
+- Combining and standardizing building data from multiple sources
+
+Main workflow:
+1. Download building data from Overture Maps using a bounding box
+2. Process and standardize the data format
+3. Combine building and building part data
+4. Add unique identifiers and standardize properties
 """
 
 from overturemaps import core
@@ -15,11 +27,26 @@ def convert_numpy_to_python(obj):
     """
     Recursively convert numpy types to native Python types.
     
+    This function handles various numpy data types and complex nested structures,
+    ensuring all data is converted to Python native types for JSON serialization.
+    
     Args:
-        obj: Object to convert, can be dict, list, tuple, numpy type or other
+        obj: Object to convert, can be:
+            - dict: Dictionary with potentially nested numpy types
+            - list/tuple: Sequence with potentially nested numpy types
+            - numpy.ndarray: Numpy array to be converted to list
+            - numpy.integer/numpy.floating: Numpy numeric types
+            - native Python types (bool, str, int, float)
+            - None values
         
     Returns:
-        Converted object with numpy types replaced by native Python types
+        object: Converted object with all numpy types replaced by native Python types
+        
+    Examples:
+        >>> convert_numpy_to_python(np.int64(42))
+        42
+        >>> convert_numpy_to_python({'a': np.array([1, 2, 3])})
+        {'a': [1, 2, 3]}
     """
     # Handle dictionary case - recursively convert all values
     if isinstance(obj, dict):
@@ -50,11 +77,21 @@ def is_valid_value(value):
     """
     Check if a value is valid (not NA/null) and handle array-like objects.
     
+    This function is used to validate data before processing, ensuring that
+    null/NA values are handled appropriately while preserving array-like structures.
+    
     Args:
-        value: Value to check
+        value: Value to check, can be:
+            - numpy.ndarray: Always considered valid
+            - list: Always considered valid
+            - scalar values: Checked for NA/null status
         
     Returns:
         bool: True if value is valid (not NA/null or is array-like), False otherwise
+        
+    Note:
+        Arrays and lists are always considered valid since they may contain
+        valid data that needs to be processed individually.
     """
     # Arrays and lists are always considered valid since they may contain valid data
     if isinstance(value, (np.ndarray, list)):
@@ -65,14 +102,32 @@ def is_valid_value(value):
 def convert_gdf_to_geojson(gdf):
     """
     Convert GeoDataFrame to GeoJSON format with coordinates in (lon, lat) order.
-    Extracts all columns as properties except for 'geometry' and 'bbox'.
-    Sets height and min_height to 0 if not present and handles arrays.
+    
+    This function processes a GeoDataFrame containing building data and converts it
+    to a standardized GeoJSON format. It handles special cases for height values
+    and ensures all properties are properly converted to JSON-serializable types.
     
     Args:
-        gdf (GeoDataFrame): Input GeoDataFrame to convert
+        gdf (GeoDataFrame): Input GeoDataFrame containing building data with columns:
+            - geometry: Shapely geometry objects
+            - height: Building height (optional)
+            - min_height: Minimum building height (optional)
+            - Additional property columns
         
     Returns:
-        list: List of GeoJSON feature dictionaries
+        list: List of GeoJSON feature dictionaries, each containing:
+            - type: Always "Feature"
+            - properties: Dictionary of building properties including:
+                - height: Building height (defaults to 0.0)
+                - min_height: Minimum height (defaults to 0.0)
+                - id: Sequential unique identifier
+                - All other columns from input GeoDataFrame
+            - geometry: GeoJSON geometry object
+            
+    Note:
+        - Height values default to 0.0 if missing or invalid
+        - All numpy types are converted to native Python types
+        - Sequential IDs are assigned starting from 1
     """
     features = []
     id_count = 1
@@ -117,14 +172,22 @@ def convert_gdf_to_geojson(gdf):
 
 def rectangle_to_bbox(vertices):
     """
-    Convert rectangle vertices in (lon, lat) format to a GeoDataFrame bbox
-    with Shapely box geometry in (minx, miny, maxx, maxy) format
+    Convert rectangle vertices in (lon, lat) format to a bounding box.
+    
+    This function takes a list of coordinate pairs defining a rectangle and
+    converts them to a bounding box format required by the Overture Maps API.
     
     Args:
         vertices (list): List of tuples containing (lon, lat) coordinates
+            defining the corners of a rectangle
         
     Returns:
-        tuple: Bounding box coordinates (min_lon, min_lat, max_lon, max_lat)
+        tuple: Bounding box coordinates in format (min_lon, min_lat, max_lon, max_lat)
+            suitable for use with Overture Maps API
+            
+    Note:
+        The function calculates the minimum and maximum coordinates to ensure
+        the bounding box encompasses all provided vertices.
     """
     # Extract lon, lat values from vertices
     lons = [vertex[0] for vertex in vertices]
@@ -141,14 +204,26 @@ def rectangle_to_bbox(vertices):
 
 def join_gdfs_vertically(gdf1, gdf2):
     """
-    Join two GeoDataFrames vertically, handling different columns.
+    Join two GeoDataFrames vertically, handling different column structures.
+    
+    This function combines two GeoDataFrames that may have different columns,
+    ensuring all columns from both datasets are preserved in the output.
+    It provides diagnostic information about the combining process.
     
     Args:
-        gdf1 (GeoDataFrame): First GeoDataFrame
-        gdf2 (GeoDataFrame): Second GeoDataFrame
+        gdf1 (GeoDataFrame): First GeoDataFrame (e.g., buildings)
+        gdf2 (GeoDataFrame): Second GeoDataFrame (e.g., building parts)
         
     Returns:
-        GeoDataFrame: Combined GeoDataFrame with all columns from both inputs
+        GeoDataFrame: Combined GeoDataFrame containing:
+            - All rows from both input GeoDataFrames
+            - All columns from both inputs (filled with None where missing)
+            - Preserved geometry column
+            
+    Note:
+        - Prints diagnostic information about column differences
+        - Handles missing columns by filling with None values
+        - Preserves the geometry column for spatial operations
     """
     # Print diagnostic information about column differences
     print("GDF1 columns:", list(gdf1.columns))
@@ -183,26 +258,36 @@ def load_gdf_from_overture(rectangle_vertices):
     """
     Download and process building footprint data from Overture Maps.
     
+    This function serves as the main entry point for downloading building data.
+    It handles the complete workflow of downloading both building and building
+    part data, combining them, and preparing them for further processing.
+    
     Args:
-        rectangle_vertices (list): List of (lon, lat) coordinates defining the bounding box
+        rectangle_vertices (list): List of (lon, lat) coordinates defining
+            the bounding box for data download
         
     Returns:
-        list: List of GeoJSON features containing building footprints with standardized properties
+        GeoDataFrame: Combined dataset containing:
+            - Building and building part geometries
+            - Standardized properties
+            - Sequential numeric IDs
+            
+    Note:
+        - Downloads both building and building_part data from Overture Maps
+        - Combines the datasets while preserving all properties
+        - Assigns sequential IDs based on the final dataset index
     """
-    # Convert vertices to bounding box format required by Overture Maps
+    # Convert input vertices to Overture Maps API bounding box format
     bbox = rectangle_to_bbox(rectangle_vertices)
 
-    # Download building and building part data from Overture Maps
+    # Download primary building footprints and additional building part data
     building_gdf = core.geodataframe("building", bbox=bbox)
     building_part_gdf = core.geodataframe("building_part", bbox=bbox)
     
-    # Combine building and building part data into single dataset
+    # Combine both datasets into a single comprehensive building dataset
     joined_building_gdf = join_gdfs_vertically(building_gdf, building_part_gdf)
 
-    # # Convert combined dataset to GeoJSON format
-    # geojson_features = convert_gdf_to_geojson(joined_building_gdf)
-
-    # Replace id column with index numbers
+    # Assign sequential IDs based on the final dataset index
     joined_building_gdf['id'] = joined_building_gdf.index
 
     return joined_building_gdf

@@ -1,5 +1,10 @@
 """
 This module provides functions for creating and manipulating grids of building heights, land cover, and elevation data.
+It includes functionality for:
+- Grid creation and manipulation for various data types (buildings, land cover, elevation)
+- Coordinate transformations and spatial operations
+- Data interpolation and aggregation
+- Vector to raster conversion
 """
 
 import numpy as np
@@ -44,7 +49,13 @@ from ..downloader.gee import (
 
 def apply_operation(arr, meshsize):
     """
-    Applies a sequence of operations to an array based on a mesh size.
+    Applies a sequence of operations to an array based on a mesh size to normalize and discretize values.
+    
+    This function performs the following sequence of operations:
+    1. Divides array by mesh size to normalize values
+    2. Adds 0.5 to round values to nearest integer
+    3. Floors the result to get integer values
+    4. Scales back to original units by multiplying by mesh size
     
     Args:
         arr (numpy.ndarray): Input array to transform
@@ -52,6 +63,11 @@ def apply_operation(arr, meshsize):
         
     Returns:
         numpy.ndarray: Transformed array after applying operations
+        
+    Example:
+        >>> arr = np.array([1.2, 2.7, 3.4])
+        >>> meshsize = 0.5
+        >>> result = apply_operation(arr, meshsize)
     """
     # Divide array by mesh size to normalize values
     step1 = arr / meshsize
@@ -66,12 +82,22 @@ def translate_array(input_array, translation_dict):
     """
     Translates values in an array according to a dictionary mapping.
     
+    This function creates a new array where each value from the input array
+    is replaced by its corresponding value from the translation dictionary.
+    Values not found in the dictionary are replaced with empty strings.
+    
     Args:
         input_array (numpy.ndarray): Array containing values to translate
         translation_dict (dict): Dictionary mapping input values to output values
         
     Returns:
-        numpy.ndarray: Array with translated values
+        numpy.ndarray: Array with translated values, with same shape as input array
+        
+    Example:
+        >>> arr = np.array([[1, 2], [3, 4]])
+        >>> trans_dict = {1: 'A', 2: 'B', 3: 'C', 4: 'D'}
+        >>> result = translate_array(arr, trans_dict)
+        >>> # result = array([['A', 'B'], ['C', 'D']], dtype=object)
     """
     # Create empty array of same shape that can hold objects (e.g. strings)
     translated_array = np.empty_like(input_array, dtype=object)
@@ -86,13 +112,22 @@ def translate_array(input_array, translation_dict):
 def group_and_label_cells(array):
     """
     Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
-    Zero values remain unchanged.
+    
+    This function creates a new array where all non-zero values are replaced with
+    sequential IDs (1, 2, 3, etc.) while preserving zero values. This is useful
+    for labeling distinct regions or features in a grid.
     
     Args:
-        array (numpy.ndarray): Input 2D array
+        array (numpy.ndarray): Input 2D array with non-zero values to be labeled
         
     Returns:
-        numpy.ndarray: Array with non-zero values converted to sequential IDs
+        numpy.ndarray: Array with non-zero values converted to sequential IDs,
+                      maintaining the same shape as input array
+        
+    Example:
+        >>> arr = np.array([[0, 5, 5], [0, 5, 8], [0, 0, 8]])
+        >>> result = group_and_label_cells(arr)
+        >>> # result = array([[0, 1, 1], [0, 1, 2], [0, 0, 2]])
     """
     # Create a copy to avoid modifying input
     result = array.copy()
@@ -113,12 +148,25 @@ def process_grid(grid_bi, dem_grid):
     """
     Process a binary grid and DEM grid to create averaged elevation values.
     
+    This function takes a binary grid identifying regions and a corresponding DEM
+    grid with elevation values. For each non-zero region in the binary grid, it
+    calculates the mean elevation from the DEM grid and assigns this average to
+    all cells in that region. The result is normalized by subtracting the minimum value.
+    
     Args:
-        grid_bi (numpy.ndarray): Binary grid indicating regions
-        dem_grid (numpy.ndarray): Grid of elevation values
+        grid_bi (numpy.ndarray): Binary grid indicating regions (0 for background,
+                                non-zero for different regions)
+        dem_grid (numpy.ndarray): Grid of elevation values corresponding to the
+                                same spatial extent as grid_bi
         
     Returns:
-        numpy.ndarray: Processed grid with averaged elevation values
+        numpy.ndarray: Processed grid with averaged and normalized elevation values.
+                      Same shape as input grids.
+        
+    Example:
+        >>> binary_grid = np.array([[1, 1, 0], [1, 1, 2], [0, 2, 2]])
+        >>> elevation = np.array([[100, 110, 90], [105, 115, 120], [95, 125, 130]])
+        >>> result = process_grid(binary_grid, elevation)
     """
     # Get unique non-zero region IDs
     unique_ids = np.unique(grid_bi[grid_bi != 0])
@@ -137,15 +185,29 @@ def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
     """
     Calculate grid size and adjusted mesh size based on input parameters.
     
+    This function determines the number of grid cells needed in each direction and
+    adjusts the mesh size to exactly fit the desired area. The calculation takes into
+    account the input vectors and desired mesh size to ensure proper coverage.
+    
     Args:
-        side_1 (numpy.ndarray): First side vector
-        side_2 (numpy.ndarray): Second side vector
+        side_1 (numpy.ndarray): First side vector defining the grid extent
+        side_2 (numpy.ndarray): Second side vector defining the grid extent
         u_vec (numpy.ndarray): Unit vector in first direction
         v_vec (numpy.ndarray): Unit vector in second direction
-        meshsize (float): Desired mesh size
+        meshsize (float): Desired mesh size in the same units as the vectors
         
     Returns:
-        tuple: Grid size (tuple of ints) and adjusted mesh size (tuple of floats)
+        tuple: A tuple containing:
+            - grid_size (tuple of ints): Number of cells in each direction (nx, ny)
+            - adjusted_mesh_size (tuple of floats): Actual mesh sizes that fit the area exactly
+        
+    Example:
+        >>> side1 = np.array([100, 0])  # 100 units in x direction
+        >>> side2 = np.array([0, 50])   # 50 units in y direction
+        >>> u = np.array([1, 0])        # Unit vector in x
+        >>> v = np.array([0, 1])        # Unit vector in y
+        >>> mesh = 10                    # Desired 10-unit mesh
+        >>> grid_size, adj_mesh = calculate_grid_size(side1, side2, u, v, mesh)
     """
     # Calculate number of cells needed in each direction, rounding to nearest integer
     grid_size_0 = int(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec) + 0.5)
@@ -161,15 +223,29 @@ def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
     """
     Create a coordinate mesh based on input parameters.
     
+    This function generates a 3D array representing a coordinate mesh, where each point
+    in the mesh is calculated by adding scaled vectors to the origin point. The mesh
+    is created using the specified grid size and adjusted mesh sizes.
+    
     Args:
-        origin (numpy.ndarray): Origin point coordinates
-        grid_size (tuple): Size of grid in each dimension
-        adjusted_meshsize (tuple): Adjusted mesh size in each dimension
+        origin (numpy.ndarray): Origin point coordinates (shape: (2,) or (3,))
+        grid_size (tuple): Size of grid in each dimension (nx, ny)
+        adjusted_meshsize (tuple): Adjusted mesh size in each dimension (dx, dy)
         u_vec (numpy.ndarray): Unit vector in first direction
         v_vec (numpy.ndarray): Unit vector in second direction
         
     Returns:
-        numpy.ndarray: Coordinate mesh
+        numpy.ndarray: 3D array of shape (coord_dim, ny, nx) containing the coordinates
+                      of each point in the mesh. coord_dim is the same as the
+                      dimensionality of the input vectors.
+        
+    Example:
+        >>> origin = np.array([0, 0])
+        >>> grid_size = (5, 4)
+        >>> mesh_size = (10, 10)
+        >>> u = np.array([1, 0])
+        >>> v = np.array([0, 1])
+        >>> coords = create_coordinate_mesh(origin, grid_size, mesh_size, u, v)
     """
     # Create evenly spaced points along each axis
     x = np.linspace(0, grid_size[0], grid_size[0])
@@ -189,16 +265,29 @@ def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
     """
     Create a polygon representing a grid cell.
     
+    This function generates a rectangular polygon for a specific grid cell by calculating
+    its four corners based on the cell indices and grid parameters. The polygon is
+    created in counter-clockwise order starting from the bottom-left corner.
+    
     Args:
-        origin (numpy.ndarray): Origin point coordinates
-        i (int): Row index
-        j (int): Column index
-        adjusted_meshsize (tuple): Adjusted mesh size in each dimension
+        origin (numpy.ndarray): Origin point coordinates (shape: (2,) or (3,))
+        i (int): Row index of the cell
+        j (int): Column index of the cell
+        adjusted_meshsize (tuple): Adjusted mesh size in each dimension (dx, dy)
         u_vec (numpy.ndarray): Unit vector in first direction
         v_vec (numpy.ndarray): Unit vector in second direction
         
     Returns:
-        shapely.geometry.Polygon: Polygon representing the grid cell
+        shapely.geometry.Polygon: Polygon representing the grid cell, with vertices
+                                ordered counter-clockwise from bottom-left
+        
+    Example:
+        >>> origin = np.array([0, 0])
+        >>> i, j = 1, 2  # Cell at row 1, column 2
+        >>> mesh_size = (10, 10)
+        >>> u = np.array([1, 0])
+        >>> v = np.array([0, 1])
+        >>> cell_poly = create_cell_polygon(origin, i, j, mesh_size, u, v)
     """
     # Calculate the four corners of the cell by adding scaled vectors
     bottom_left = origin + i * adjusted_meshsize[0] * u_vec + j * adjusted_meshsize[1] * v_vec
@@ -213,11 +302,25 @@ def tree_height_grid_from_land_cover(land_cover_grid_ori):
     """
     Convert a land cover grid to a tree height grid.
     
+    This function transforms a land cover classification grid into a grid of tree heights
+    by mapping land cover classes to predefined tree heights. The function first flips
+    the input grid vertically and adjusts class values, then applies a translation
+    dictionary to convert classes to heights.
+    
+    Land cover class to tree height mapping:
+    - Class 4 (Forest): 10m height
+    - All other classes: 0m height
+    
     Args:
-        land_cover_grid_ori (numpy.ndarray): Original land cover grid
+        land_cover_grid_ori (numpy.ndarray): Original land cover grid with class values
         
     Returns:
-        numpy.ndarray: Grid of tree heights
+        numpy.ndarray: Grid of tree heights in meters, with same dimensions as input
+        
+    Example:
+        >>> lc_grid = np.array([[1, 4, 2], [4, 3, 4], [2, 1, 3]])
+        >>> tree_heights = tree_height_grid_from_land_cover(lc_grid)
+        >>> # Result: array([[0, 10, 0], [10, 0, 10], [0, 0, 0]])
     """
     # Flip array vertically and add 1 to all values
     land_cover_grid = np.flipud(land_cover_grid_ori) + 1
@@ -882,17 +985,35 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
     return np.flipud(grid)
 
 def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
-    """Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+    """
+    Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+    
+    This function transforms a regular grid into a GeoDataFrame where each cell is
+    represented as a polygon. The transformation handles coordinate systems properly,
+    converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for accurate
+    distance calculations.
     
     Args:
-        grid: 2D numpy array containing grid values
-        rectangle_vertices: List of [lon, lat] coordinates defining area corners
-        meshsize: Size of each grid cell in meters
+        grid_ori (numpy.ndarray): 2D array containing grid values
+        rectangle_vertices (list): List of [lon, lat] coordinates defining area corners.
+                                 Should be in WGS84 (EPSG:4326) format.
+        meshsize (float): Size of each grid cell in meters
         
     Returns:
-        GeoDataFrame with columns:
-            - geometry: Polygon geometry of each grid cell
-            - value: Value from the grid
+        GeoDataFrame: A GeoDataFrame with columns:
+            - geometry: Polygon geometry of each grid cell in WGS84 (EPSG:4326)
+            - value: Value from the original grid
+            
+    Example:
+        >>> grid = np.array([[1, 2], [3, 4]])
+        >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+        >>> mesh_size = 100  # 100 meters
+        >>> gdf = grid_to_geodataframe(grid, vertices, mesh_size)
+    
+    Notes:
+        - The input grid is flipped vertically before processing to match geographic
+          orientation (north at top)
+        - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
     """
     grid = np.flipud(grid_ori.copy())
     
@@ -951,17 +1072,36 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     return gdf
 
 def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
-    """Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
+    """
+    Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
+    
+    This function transforms a regular grid into a GeoDataFrame where each cell is
+    represented by a point at its center. The transformation handles coordinate systems
+    properly, converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for
+    accurate distance calculations.
     
     Args:
-        grid: 2D numpy array containing grid values
-        rectangle_vertices: List of [lon, lat] coordinates defining area corners
-        meshsize: Size of each grid cell in meters
+        grid_ori (numpy.ndarray): 2D array containing grid values
+        rectangle_vertices (list): List of [lon, lat] coordinates defining area corners.
+                                 Should be in WGS84 (EPSG:4326) format.
+        meshsize (float): Size of each grid cell in meters
         
     Returns:
-        GeoDataFrame with columns:
-            - geometry: Point geometry at center of each grid cell
-            - value: Value from the grid
+        GeoDataFrame: A GeoDataFrame with columns:
+            - geometry: Point geometry at center of each grid cell in WGS84 (EPSG:4326)
+            - value: Value from the original grid
+            
+    Example:
+        >>> grid = np.array([[1, 2], [3, 4]])
+        >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+        >>> mesh_size = 100  # 100 meters
+        >>> gdf = grid_to_point_geodataframe(grid, vertices, mesh_size)
+    
+    Notes:
+        - The input grid is flipped vertically before processing to match geographic
+          orientation (north at top)
+        - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+        - Points are placed at the center of each grid cell
     """
     grid = np.flipud(grid_ori.copy())
     
@@ -1220,7 +1360,7 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     #    (all points, not just inside the polygon)
     # ------------------------------------------------------------------------
     xs = np.linspace(left, right, num_cells_x)
-    ys = np.linspace(top, bottom, num_cells_y)  # top->bottom
+    ys = np.linspace(top, bottom, num_cells_y)  # top→bottom
     X, Y = np.meshgrid(xs, ys)
 
     # Flatten for convenience

@@ -4,6 +4,21 @@ Module for downloading and processing building data from OpenMapTiles vector til
 This module provides functionality to download and process building footprint data from
 OpenMapTiles vector tile service. It handles downloading PBF tiles, extracting building
 geometries, and converting them to GeoJSON format with standardized properties.
+
+Key Features:
+    - Downloads vector tiles from OpenMapTiles API
+    - Extracts building footprints and properties
+    - Converts coordinates from tile-local to WGS84
+    - Standardizes building height information
+    - Handles both Polygon and MultiPolygon geometries
+    - Separates inner and outer rings of building footprints
+
+Dependencies:
+    - mercantile: For tile calculations and coordinate transformations
+    - mapbox_vector_tile: For decoding PBF vector tiles
+    - shapely: For geometry operations
+    - pyproj: For coordinate system transformations
+    - geopandas: For working with geospatial data
 """
 
 import mercantile
@@ -16,15 +31,33 @@ import json
 from pyproj import Transformer
 import json
 import geopandas as gpd
+
 def load_gdf_from_openmaptiles(rectangle_vertices, API_KEY):
     """Download and process building footprint data from OpenMapTiles vector tiles.
 
+    This function downloads vector tiles covering the specified area, extracts building
+    footprints, and converts them to a standardized format in a GeoDataFrame.
+
     Args:
-        rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
-        API_KEY: OpenMapTiles API key for authentication
+        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding box corners.
+            The coordinates should be in WGS84 (EPSG:4326) format.
+        API_KEY (str): OpenMapTiles API key for authentication. Must be valid for the v3 endpoint.
 
     Returns:
-        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with standardized properties
+        geopandas.GeoDataFrame: A GeoDataFrame containing building footprints with the following columns:
+            - geometry: Building footprint geometry in WGS84 coordinates
+            - height: Building height in meters
+            - min_height: Minimum height (e.g., for elevated structures) in meters
+            - confidence: Confidence score (-1.0 for OpenMapTiles data)
+            - is_inner: Boolean indicating if the polygon is an inner ring
+            - role: String indicating 'inner' or 'outer' ring
+            - id: Unique identifier for each building feature
+
+    Notes:
+        - Uses zoom level 15 for optimal detail vs data size balance
+        - Converts coordinates from Web Mercator (EPSG:3857) to WGS84 (EPSG:4326)
+        - Handles both Polygon and MultiPolygon geometries
+        - Separates complex building footprints into their constituent parts
     """
     # Extract longitudes and latitudes from vertices to find bounding box
     lons = [coord[0] for coord in rectangle_vertices]
@@ -124,11 +157,26 @@ def load_gdf_from_openmaptiles(rectangle_vertices, API_KEY):
 def get_height_from_properties(properties):
     """Extract building height from properties, using levels if height is not available.
 
+    This function implements a fallback strategy for determining building heights:
+    1. First tries to use explicit render_height property
+    2. If not available, estimates height from number of building levels
+    3. Returns 0 if no valid height information is found
+
     Args:
-        properties: Dictionary containing building properties
+        properties (dict): Dictionary containing building properties from OpenMapTiles.
+            Expected keys:
+            - render_height: Direct height specification in meters
+            - building:levels: Number of building floors/levels
 
     Returns:
-        float: Building height in meters, defaults to 0 if no valid height found
+        float: Building height in meters. Values can be:
+            - Explicit height from render_height property
+            - Estimated height (levels * 5.0 meters per level)
+            - 0.0 if no valid height information is found
+
+    Notes:
+        - Assumes average floor height of 5 meters when estimating from levels
+        - Handles potential invalid values gracefully by returning 0
     """
     # First try explicit render_height property
     height = properties.get('render_height')
@@ -152,11 +200,30 @@ def get_height_from_properties(properties):
 def convert_geojson_format(features):
     """Convert building features to standardized format with height information.
 
+    This function processes raw OpenMapTiles building features into a standardized format,
+    handling complex geometries and adding consistent property attributes.
+
     Args:
-        features: List of GeoJSON features containing building footprints
+        features (list): List of GeoJSON features containing building footprints.
+            Each feature should have:
+            - geometry: GeoJSON geometry (Polygon or MultiPolygon)
+            - properties: Dictionary of building properties
 
     Returns:
-        list: List of standardized GeoJSON features with height properties
+        list: List of standardized GeoJSON features where:
+            - Complex MultiPolygons are split into individual Polygons
+            - Each Polygon ring (outer and inner) becomes a separate feature
+            - Properties are standardized to include:
+                - height: Building height in meters
+                - min_height: Minimum height in meters
+                - confidence: Set to -1.0 for OpenMapTiles data
+                - is_inner: Boolean flag for inner rings
+                - role: String indicating 'inner' or 'outer' ring
+
+    Notes:
+        - Preserves coordinate order as (longitude, latitude)
+        - Maintains topological relationships through is_inner and role properties
+        - Splits complex geometries for easier processing downstream
     """
     new_features = []
 

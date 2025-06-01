@@ -27,24 +27,42 @@ def filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices):
     """
     Filter a GeoDataFrame by a bounding rectangle and convert to GeoJSON format.
     
+    This function performs spatial filtering on a GeoDataFrame using a bounding rectangle,
+    and converts the filtered data to GeoJSON format. It handles both Polygon and MultiPolygon
+    geometries, splitting MultiPolygons into separate Polygon features.
+    
     Args:
         gdf (GeoDataFrame): Input GeoDataFrame containing building data
+            Must have 'geometry' and 'height' columns
+            Any CRS is accepted, will be converted to WGS84 if needed
         rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle
+            Must be in WGS84 (EPSG:4326) coordinate system
+            Must form a valid rectangle (4 vertices, clockwise or counterclockwise)
         
     Returns:
         list: List of GeoJSON features within the bounding rectangle
+            Each feature contains:
+            - geometry: Polygon coordinates in WGS84
+            - properties: Dictionary with 'height', 'confidence', and 'id'
+            - type: Always "Feature"
+    
+    Memory Optimization:
+        - Uses spatial indexing for efficient filtering
+        - Downcasts numeric columns to save memory
+        - Cleans up intermediate data structures
+        - Splits MultiPolygons into separate features
     """
-    # Reproject to WGS84 if necessary
+    # Reproject to WGS84 if necessary for consistent coordinate system
     if gdf.crs != 'EPSG:4326':
         gdf = gdf.to_crs(epsg=4326)
 
-    # Downcast 'height' to save memory
+    # Downcast 'height' to float32 to save memory
     gdf['height'] = pd.to_numeric(gdf['height'], downcast='float')
 
-    # Add 'confidence' column with default value
+    # Add 'confidence' column with default value for height reliability
     gdf['confidence'] = -1.0
 
-    # Rectangle vertices already in (lon,lat) format for shapely
+    # Create shapely polygon from rectangle vertices for spatial filtering
     rectangle_polygon = Polygon(rectangle_vertices)
 
     # Use spatial index to efficiently filter geometries that intersect with rectangle
@@ -125,18 +143,39 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
     """
     Extract building heights from one GeoDataFrame and apply them to another based on spatial overlap.
     
+    This function transfers height information from a reference GeoDataFrame to a primary GeoDataFrame
+    based on the spatial overlap between building footprints. For each building in the primary dataset
+    that needs height data, it calculates a weighted average height from overlapping buildings in the
+    reference dataset.
+    
     Args:
         gdf_0 (gpd.GeoDataFrame): Primary GeoDataFrame to update with heights
+            Must have 'geometry' column with building footprints
+            Will be updated with height values where missing or zero
         gdf_1 (gpd.GeoDataFrame): Reference GeoDataFrame containing height data
+            Must have 'geometry' column with building footprints
+            Must have 'height' column with valid height values
         
     Returns:
         gpd.GeoDataFrame: Updated primary GeoDataFrame with extracted heights
+            Buildings with overlapping reference data get weighted average heights
+            Buildings without overlapping data retain original height or get NaN
+    
+    Statistics Tracked:
+        - count_0: Number of buildings without height in primary dataset
+        - count_1: Number of buildings successfully updated with height
+        - count_2: Number of buildings where no reference height data found
+    
+    Note:
+        - Uses R-tree spatial indexing for efficient overlap detection
+        - Handles invalid geometries by attempting to fix them with buffer(0)
+        - Weighted average is based on the area of overlap between buildings
     """
     # Make a copy of input GeoDataFrame to avoid modifying original
     gdf_primary = gdf_0.copy()
     gdf_ref = gdf_1.copy()
 
-    # Make sure height columns exist
+    # Make sure height columns exist with default values
     if 'height' not in gdf_primary.columns:
         gdf_primary['height'] = 0.0
     if 'height' not in gdf_ref.columns:
@@ -147,8 +186,7 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
     count_1 = 0  # Buildings updated with height
     count_2 = 0  # Buildings with no height data found
 
-    # Create spatial index for reference buildings
-    from rtree import index
+    # Create spatial index for reference buildings to speed up intersection tests
     spatial_index = index.Index()
     for i, geom in enumerate(gdf_ref.geometry):
         if geom.is_valid:
@@ -160,9 +198,9 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
             count_0 += 1
             geom = row.geometry
             
-            # Calculate weighted average height based on overlapping areas
-            overlapping_height_area = 0
-            overlapping_area = 0
+            # Variables for weighted average height calculation
+            overlapping_height_area = 0  # Sum of (height * overlap_area)
+            overlapping_area = 0         # Total overlap area
             
             # Get potential intersecting buildings using spatial index
             potential_matches = list(spatial_index.intersection(geom.bounds))
@@ -174,6 +212,7 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
                     
                 ref_row = gdf_ref.iloc[ref_idx]
                 try:
+                    # Calculate intersection if geometries overlap
                     if geom.intersects(ref_row.geometry):
                         overlap_area = geom.intersection(ref_row.geometry).area
                         overlapping_height_area += ref_row['height'] * overlap_area
@@ -193,7 +232,7 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
             # Update height if overlapping buildings found
             if overlapping_height_area > 0:
                 count_1 += 1
-                # Calculate weighted average height
+                # Calculate weighted average height based on overlap areas
                 new_height = overlapping_height_area / overlapping_area
                 gdf_primary.at[idx_primary, 'height'] = new_height
             else:
@@ -202,7 +241,6 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
     
     # Print statistics about height updates
     if count_0 > 0:
-        # print(f"{count_0} of the total {len(gdf_primary)} building footprint from OSM did not have height data.")
         print(f"For {count_1} of these building footprints without height, values from the complementary source were assigned.")
         print(f"For {count_2} of these building footprints without height, no data exist in complementary data.")
 
@@ -331,34 +369,55 @@ def geojson_to_gdf(geojson_data, id_col='id'):
     """
     Convert a list of GeoJSON-like dict features into a GeoDataFrame.
     
+    This function takes a list of GeoJSON feature dictionaries (Fiona-like format)
+    and converts them into a GeoDataFrame, handling geometry conversion and property
+    extraction. It ensures each feature has a unique identifier.
+    
     Args:
-        geojson_data (List[Dict]): A list of feature dicts (Fiona-like).
-        id_col (str): Name of property to use as an identifier. If not found,
-                      we'll try to create a unique ID.
-
+        geojson_data (List[Dict]): A list of feature dicts (Fiona-like)
+            Each dict must have 'geometry' and 'properties' keys
+            'geometry' must be a valid GeoJSON geometry
+            'properties' can be empty but must be a dict if present
+        id_col (str, optional): Name of property to use as an identifier
+            Default is 'id'
+            If not found in properties, a sequential ID will be created
+            Must be a string that can be used as a column name
+    
     Returns:
-        gpd.GeoDataFrame: GeoDataFrame with geometry and property columns.
+        gpd.GeoDataFrame: GeoDataFrame with geometry and property columns
+            Will have 'geometry' column with Shapely geometries
+            Will have columns for all properties found in features
+            Will have id_col with unique identifiers
+            Will be set to WGS84 (EPSG:4326) coordinate system
+    
+    Note:
+        - Handles missing properties gracefully
+        - Creates sequential IDs if id_col not found
+        - Converts GeoJSON geometries to Shapely objects
+        - Sets WGS84 as coordinate system
+        - Preserves all properties as columns
     """
     # Build lists for geometry and properties
     geometries = []
     all_props = []
 
     for i, feature in enumerate(geojson_data):
-        # Extract geometry
+        # Extract geometry and convert to Shapely object
         geom = feature.get('geometry')
         shapely_geom = shape(geom) if geom else None
 
-        # Extract properties
+        # Extract properties, ensuring they exist
         props = feature.get('properties', {})
         
-        # If an ID column is missing, create one
+        # If specified ID column is missing, create sequential ID
         if id_col not in props:
             props[id_col] = i  # fallback ID
 
-        # Capture geometry and all props
+        # Capture geometry and all properties
         geometries.append(shapely_geom)
         all_props.append(props)
 
+    # Create GeoDataFrame with geometries and properties
     gdf = gpd.GeoDataFrame(all_props, geometry=geometries, crs="EPSG:4326")
     return gdf
 
@@ -503,18 +562,50 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1,
 def gdf_to_geojson_dicts(gdf, id_col='id'):
     """
     Convert a GeoDataFrame to a list of dicts similar to GeoJSON features.
+    
+    This function converts a GeoDataFrame into a list of dictionary objects that
+    follow the GeoJSON Feature format. Each feature will have geometry and properties,
+    with an optional ID field handled separately from other properties.
+    
+    Args:
+        gdf (gpd.GeoDataFrame): GeoDataFrame to convert
+            Must have 'geometry' column with Shapely geometries
+            All non-geometry columns will become properties
+            Can optionally have id_col for unique identifiers
+        id_col (str, optional): Name of column to use as feature ID
+            Default is 'id'
+            If present, will be excluded from properties
+            If not present, features will not have explicit IDs
+    
+    Returns:
+        list: List of GeoJSON-like feature dictionaries
+            Each dict will have:
+            - type: Always "Feature"
+            - geometry: GeoJSON geometry from Shapely object
+            - properties: All columns except geometry and ID
+    
+    Note:
+        - Converts Shapely geometries to GeoJSON format
+        - Preserves all non-geometry columns as properties
+        - Handles missing ID column gracefully
+        - Maintains original property types
+        - Excludes ID from properties if specified
     """
+    # Convert GeoDataFrame to dictionary records for easier processing
     records = gdf.to_dict(orient='records')
     features = []
+    
     for rec in records:
-        # geometry is separate
+        # Extract and convert geometry to GeoJSON format using __geo_interface__
         geom = rec.pop('geometry', None)
         if geom is not None:
             geom = geom.__geo_interface__
-        # use or set ID
+            
+        # Extract ID if present and create properties dict excluding ID
         feature_id = rec.get(id_col, None)
         props = {k: v for k, v in rec.items() if k != id_col}
-        # build GeoJSON-like feature dict
+        
+        # Create GeoJSON Feature object with type, properties, and geometry
         feature = {
             'type': 'Feature',
             'properties': props,
@@ -526,38 +617,63 @@ def gdf_to_geojson_dicts(gdf, id_col='id'):
 
 def load_gdf_from_multiple_gz(file_paths):
     """
-    Load GeoJSON features from multiple gzipped files into a GeoDataFrame.
+    Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.
+    
+    This function reads multiple gzipped GeoJSON files, where each line in each file
+    represents a single GeoJSON feature. It combines all features into a single
+    GeoDataFrame, ensuring height properties are properly handled and coordinates
+    are in WGS84.
     
     Args:
         file_paths (list): List of paths to gzipped GeoJSON files
+            Each file should contain one GeoJSON feature per line
+            Files should be readable as UTF-8 text
+            Features should be in WGS84 coordinate system
         
     Returns:
-        gpd.GeoDataFrame: GeoDataFrame containing features from all files
+        gpd.GeoDataFrame: Combined GeoDataFrame containing all features
+            Will have 'geometry' column with building footprints
+            Will have 'height' column (0 for missing values)
+            Will be set to WGS84 (EPSG:4326) coordinate system
+    
+    Note:
+        - Skips lines that cannot be parsed as valid JSON
+        - Sets missing height values to 0
+        - Assumes input coordinates are in WGS84
+        - Memory usage scales with total number of features
+        - Reports JSON parsing errors but continues processing
     """
+    # Initialize list to store all GeoJSON features
     geojson_objects = []
+    
+    # Process each gzipped file
     for gz_file_path in file_paths:
-        # Read each gzipped file line by line
+        # Read each gzipped file line by line as UTF-8 text
         with gzip.open(gz_file_path, 'rt', encoding='utf-8') as file:
             for line in file:
                 try:
+                    # Parse each line as a GeoJSON feature
                     data = json.loads(line)
+                    
                     # Ensure height property exists and has valid value
                     if 'properties' in data and 'height' in data['properties']:
                         if data['properties']['height'] is None:
                             data['properties']['height'] = 0
                     else:
+                        # Create properties dict if missing
                         if 'properties' not in data:
                             data['properties'] = {}
+                        # Set default height value
                         data['properties']['height'] = 0
+                        
                     geojson_objects.append(data)
                 except json.JSONDecodeError as e:
                     print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
     
     # Convert list of GeoJSON features to GeoDataFrame
-    # swap_coordinates(geojson_objects)
     gdf = gpd.GeoDataFrame.from_features(geojson_objects)
     
-    # Set CRS to WGS84 which is typically used for these files
+    # Set coordinate reference system to WGS84
     gdf.set_crs(epsg=4326, inplace=True)
     
     return gdf
@@ -566,44 +682,92 @@ def filter_buildings(geojson_data, plotting_box):
     """
     Filter building features that intersect with a given bounding box.
     
+    This function filters a list of GeoJSON building features to keep only those
+    that intersect with a specified bounding box. It performs geometry validation
+    and handles invalid geometries gracefully.
+    
     Args:
-        geojson_data (list): List of GeoJSON features
+        geojson_data (list): List of GeoJSON features representing buildings
+            Each feature must have valid 'geometry' property
+            Coordinates must be in same CRS as plotting_box
+            Invalid geometries will be skipped with warning
         plotting_box (Polygon): Shapely polygon defining the bounding box
+            Must be a valid Shapely Polygon object
+            Must be in same coordinate system as geojson_data
+            Used for spatial intersection testing
         
     Returns:
         list: Filtered list of GeoJSON features that intersect with the bounding box
+            Features maintain their original structure
+            Invalid features are excluded
+            Order of features is preserved
+    
+    Note:
+        - Validates polygon coordinates before processing
+        - Skips features with invalid geometries
+        - Reports validation and geometry errors
+        - No coordinate system transformation is performed
+        - Memory efficient as it creates new list only for valid features
     """
+    # Initialize list for valid intersecting features
     filtered_features = []
+    
+    # Process each feature in the input data
     for feature in geojson_data:
         # Validate polygon coordinates before processing
         if not validate_polygon_coordinates(feature['geometry']):
             print("Skipping feature with invalid geometry")
             print(feature['geometry'])
             continue
+            
         try:
-            # Convert GeoJSON geometry to Shapely geometry
+            # Convert GeoJSON geometry to Shapely geometry for spatial operations
             geom = shape(feature['geometry'])
+            
+            # Skip invalid geometries that can't be fixed
             if not geom.is_valid:
                 print("Skipping invalid geometry")
                 print(geom)
                 continue
+                
             # Keep features that intersect with bounding box
             if plotting_box.intersects(geom):
                 filtered_features.append(feature)
+                
         except ShapelyError as e:
+            # Log geometry errors but continue processing
             print(f"Skipping feature due to geometry error: {e}")
+            
     return filtered_features
 
 def extract_building_heights_from_geotiff(geotiff_path, gdf):
     """
     Extract building heights from a GeoTIFF raster for building footprints in a GeoDataFrame.
     
+    This function processes building footprints to extract height information from a GeoTIFF
+    raster file. It handles coordinate transformation between WGS84 (EPSG:4326) and the raster's
+    CRS, and calculates average heights for each building footprint.
+    
     Args:
-        geotiff_path (str): Path to the GeoTIFF height raster
-        gdf (gpd.GeoDataFrame): GeoDataFrame containing building footprints
+        geotiff_path (str): Path to the GeoTIFF height raster file containing elevation data
+        gdf (gpd.GeoDataFrame): GeoDataFrame containing building footprints with geometry column
+            The GeoDataFrame should be in WGS84 (EPSG:4326) coordinate system
         
     Returns:
-        gpd.GeoDataFrame: Updated GeoDataFrame with extracted heights
+        gpd.GeoDataFrame: Updated GeoDataFrame with extracted heights in the 'height' column
+            - Buildings with valid height data will have their height values updated
+            - Buildings with no valid height data will have NaN values
+            - Original buildings with existing valid heights are preserved
+    
+    Statistics Reported:
+        - Total number of buildings without height data
+        - Number of buildings successfully updated with height data
+        - Number of buildings where no height data could be found
+    
+    Note:
+        - The function only processes Polygon geometries (not MultiPolygons or other types)
+        - Buildings are considered to need height processing if they have no height or height <= 0
+        - Heights are calculated as the mean of all valid raster values within the building footprint
     """
     # Make a copy to avoid modifying the input
     gdf = gdf.copy()
@@ -615,23 +779,28 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
 
     # Open GeoTIFF and process buildings
     with rasterio.open(geotiff_path) as src:
-        # Create coordinate transformer from WGS84 to raster CRS
+        # Create coordinate transformer from WGS84 to raster CRS for geometry transformation
         transformer = Transformer.from_crs(CRS.from_epsg(4326), src.crs, always_xy=True)
 
-        # Filter buildings that need height processing
+        # Filter buildings that need height processing:
+        # - Must be Polygon type (not MultiPolygon)
+        # - Either has no height or height <= 0
         mask_condition = (gdf.geometry.geom_type == 'Polygon') & ((gdf.get('height', 0) <= 0) | gdf.get('height').isna())
         buildings_to_process = gdf[mask_condition]
         count_0 = len(buildings_to_process)
 
         for idx, row in buildings_to_process.iterrows():
-            # Transform geometry to raster CRS
+            # Transform building polygon coordinates from WGS84 to raster CRS
             coords = list(row.geometry.exterior.coords)
             transformed_coords = [transformer.transform(lon, lat) for lon, lat in coords]
             polygon = shape({"type": "Polygon", "coordinates": [transformed_coords]})
             
             try:
-                # Extract height values from raster within polygon
+                # Extract height values from raster within the building polygon
+                # all_touched=True ensures we get all pixels that the polygon touches
                 masked_data, _ = rasterio.mask.mask(src, [polygon], crop=True, all_touched=True)
+                
+                # Filter out nodata values from the raster
                 heights = masked_data[0][masked_data[0] != src.nodata]
                 
                 # Calculate average height if valid samples exist
@@ -641,7 +810,6 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
                 else:
                     count_2 += 1
                     gdf.at[idx, 'height'] = np.nan
-                    # print(f"No valid height data for building at index {idx}")
             except ValueError as e:
                 print(f"Error processing building at index {idx}. Error: {str(e)}")
                 gdf.at[idx, 'height'] = None
@@ -656,14 +824,33 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
 
 def get_gdf_from_gpkg(gpkg_path, rectangle_vertices):
     """
-    Read a GeoPackage file and convert it to GeoJSON format within a bounding rectangle.
+    Read a GeoPackage file and convert it to a GeoDataFrame with consistent CRS.
+    
+    This function reads a GeoPackage file containing building footprints and ensures
+    the data is properly formatted with WGS84 coordinate system and unique identifiers.
+    It handles CRS conversion if needed and adds sequential IDs.
     
     Args:
         gpkg_path (str): Path to the GeoPackage file
+            File must exist and be readable
+            Must contain valid building footprint geometries
+            Any coordinate system is accepted
         rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle
+            Must be in WGS84 (EPSG:4326) coordinate system
+            Used for spatial filtering (not implemented in this function)
         
     Returns:
-        list: List of GeoJSON features within the bounding rectangle
+        gpd.GeoDataFrame: GeoDataFrame containing building footprints
+            Will have 'geometry' column with building geometries
+            Will have 'id' column with sequential integers
+            Will be in WGS84 (EPSG:4326) coordinate system
+    
+    Note:
+        - Prints informative message when opening file
+        - Sets CRS to WGS84 if not specified
+        - Transforms to WGS84 if different CRS
+        - Adds sequential IDs starting from 0
+        - rectangle_vertices parameter is currently unused
     """
     # Open and read the GPKG file
     print(f"Opening GPKG file: {gpkg_path}")
@@ -676,7 +863,7 @@ def get_gdf_from_gpkg(gpkg_path, rectangle_vertices):
     elif gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
 
-    # Replace id column with index numbers
+    # Replace id column with sequential index numbers
     gdf['id'] = gdf.index
     
     return gdf
@@ -685,66 +872,127 @@ def swap_coordinates(features):
     """
     Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).
     
+    This function modifies GeoJSON features in-place to swap the order of coordinates
+    from (latitude, longitude) to (longitude, latitude). It handles both Polygon and
+    MultiPolygon geometries, maintaining their structure while swapping coordinates.
+    
     Args:
         features (list): List of GeoJSON features to process
+            Features must have 'geometry' property
+            Supported geometry types: 'Polygon', 'MultiPolygon'
+            Coordinates must be in (lat, lon) order initially
+    
+    Returns:
+        None: Features are modified in-place
+    
+    Note:
+        - Modifies features directly (no copy created)
+        - Handles both Polygon and MultiPolygon geometries
+        - For Polygons: processes single coordinate ring
+        - For MultiPolygons: processes multiple coordinate rings
+        - Assumes input coordinates are in (lat, lon) order
+        - Resulting coordinates will be in (lon, lat) order
     """
     # Process each feature based on geometry type
     for feature in features:
         if feature['geometry']['type'] == 'Polygon':
             # Swap coordinates for simple polygons
+            # Each polygon is a list of rings (exterior and optional holes)
             new_coords = [[[lon, lat] for lat, lon in polygon] for polygon in feature['geometry']['coordinates']]
             feature['geometry']['coordinates'] = new_coords
         elif feature['geometry']['type'] == 'MultiPolygon':
             # Swap coordinates for multi-polygons (polygons with holes)
+            # Each multipolygon is a list of polygons, each with its own rings
             new_coords = [[[[lon, lat] for lat, lon in polygon] for polygon in multipolygon] for multipolygon in feature['geometry']['coordinates']]
             feature['geometry']['coordinates'] = new_coords
 
 def save_geojson(features, save_path):
     """
-    Save GeoJSON features to a file with swapped coordinates.
+    Save GeoJSON features to a file with coordinate swapping and pretty printing.
+    
+    This function takes a list of GeoJSON features, swaps their coordinate ordering
+    if needed, wraps them in a FeatureCollection, and saves to a file with proper
+    JSON formatting. It creates a deep copy to avoid modifying the original data.
     
     Args:
         features (list): List of GeoJSON features to save
+            Each feature should have valid GeoJSON structure
+            Features can be Polygon or MultiPolygon type
+            Coordinates will be swapped if in (lat, lon) order
         save_path (str): Path where the GeoJSON file should be saved
+            Will overwrite existing file if present
+            Directory must exist and be writable
+            File will be created with UTF-8 encoding
+        
+    Returns:
+        None
+    
+    Note:
+        - Creates deep copy to preserve original feature data
+        - Swaps coordinates from (lat, lon) to (lon, lat) order
+        - Wraps features in a FeatureCollection object
+        - Uses pretty printing with 2-space indentation
+        - Handles both Polygon and MultiPolygon geometries
     """
     # Create deep copy to avoid modifying original data
     geojson_features = copy.deepcopy(features)
     
-    # Swap coordinate ordering
+    # Swap coordinate ordering from (lat, lon) to (lon, lat)
     swap_coordinates(geojson_features)
 
-    # Create FeatureCollection
+    # Create FeatureCollection structure
     geojson = {
         "type": "FeatureCollection",
         "features": geojson_features
     }
 
-    # Write to file with pretty printing
+    # Write to file with pretty printing (2-space indentation)
     with open(save_path, 'w') as f:
         json.dump(geojson, f, indent=2)
 
 def find_building_containing_point(building_gdf, target_point):
     """
-    Find building IDs that contain a given point.
+    Find building IDs that contain a given point in their footprint.
+    
+    This function identifies all buildings in a GeoDataFrame whose footprint contains
+    a specified geographic point. Only Polygon geometries are considered, and the point
+    must be fully contained within the building footprint (not just touching).
     
     Args:
         building_gdf (GeoDataFrame): GeoDataFrame containing building geometries and IDs
-        target_point (tuple): Tuple of (lon, lat)
+            Must have 'geometry' column with Polygon geometries
+            Must have 'id' column or index will be used as fallback
+            Geometries must be in same CRS as target_point coordinates
+        target_point (tuple): Tuple of (lon, lat) coordinates to check
+            Must be in same coordinate system as building_gdf geometries
+            Order must be (longitude, latitude) if using WGS84
         
     Returns:
         list: List of building IDs containing the target point
+            Empty list if no buildings contain the point
+            Multiple IDs possible if buildings overlap
+            IDs are in arbitrary order
+    
+    Note:
+        - Only processes Polygon geometries (skips MultiPolygons and others)
+        - Uses Shapely's contains() method which requires point to be fully inside polygon
+        - No spatial indexing is used, performs linear search through all buildings
     """
-    # Create Shapely point
+    # Create Shapely point from input coordinates
     point = Point(target_point[0], target_point[1])
     
+    # Initialize list to store matching building IDs
     id_list = []
+    
+    # Check each building in the GeoDataFrame
     for idx, row in building_gdf.iterrows():
-        # Skip any geometry that is not Polygon
+        # Skip any geometry that is not a simple Polygon
         if not isinstance(row.geometry, Polygon):
             continue
             
-        # Check if point is within polygon
+        # Check if point is fully contained within building footprint
         if row.geometry.contains(point):
+            # Use specified ID column or None if not found
             id_list.append(row.get('id', None))
     
     return id_list
@@ -752,40 +1000,51 @@ def find_building_containing_point(building_gdf, target_point):
 def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices, 
                                    operation='within'):
     """
-    Given a GeoDataFrame of building footprints and a set of drawn polygon 
-    vertices (in lon, lat), return the building IDs that fall within or 
-    intersect the drawn polygon.
-
+    Find buildings that intersect with or are contained within a user-drawn polygon.
+    
+    This function identifies buildings from a GeoDataFrame that have a specified spatial
+    relationship with a polygon defined by user-drawn vertices. The relationship can be
+    either intersection (building overlaps polygon) or containment (building fully within
+    polygon).
+    
     Args:
-        building_gdf (GeoDataFrame): 
-            A GeoDataFrame containing building footprints with:
-            - geometry column containing Polygon geometries
-            - id column containing building IDs
-
-        drawn_polygon_vertices (list): 
-            A list of (lon, lat) tuples representing the polygon drawn by the user.
-
-        operation (str):
-            Determines how to include buildings. 
-            Use "intersect" to include buildings that intersect the drawn polygon. 
-            Use "within" to include buildings that lie entirely within the drawn polygon.
-
+        building_gdf (GeoDataFrame): GeoDataFrame containing building footprints
+            Must have 'geometry' column with Polygon geometries
+            Must have 'id' column or index will be used as fallback
+            Geometries must be in same CRS as drawn_polygon_vertices
+        drawn_polygon_vertices (list): List of (lon, lat) tuples defining polygon vertices
+            Must be in same coordinate system as building_gdf geometries
+            Must form a valid polygon (3+ vertices, first != last)
+            Order must be (longitude, latitude) if using WGS84
+        operation (str, optional): Type of spatial relationship to check
+            'within': buildings must be fully contained in drawn polygon (default)
+            'intersect': buildings must overlap with drawn polygon
+            
     Returns:
-        list:
-            A list of building IDs (strings or ints) that satisfy the condition.
+        list: List of building IDs that satisfy the spatial relationship
+            Empty list if no buildings meet the criteria
+            IDs are returned in order of processing
+            May contain None values if buildings lack IDs
+    
+    Note:
+        - Only processes Polygon geometries (skips MultiPolygons and others)
+        - No spatial indexing is used, performs linear search through all buildings
+        - Invalid operation parameter will raise ValueError
+        - Does not validate polygon closure (first vertex = last vertex)
     """
     # Create Shapely Polygon from drawn vertices
     drawn_polygon_shapely = Polygon(drawn_polygon_vertices)
 
+    # Initialize list to store matching building IDs
     included_building_ids = []
 
     # Check each building in the GeoDataFrame
     for idx, row in building_gdf.iterrows():
-        # Skip any geometry that is not Polygon
+        # Skip any geometry that is not a simple Polygon
         if not isinstance(row.geometry, Polygon):
             continue
 
-        # Depending on the operation, check the relationship
+        # Check spatial relationship based on specified operation
         if operation == 'intersect':
             if row.geometry.intersects(drawn_polygon_shapely):
                 included_building_ids.append(row.get('id', None))
@@ -799,23 +1058,41 @@ def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices,
 
 def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
     """
-    Process building footprints to merge overlapping buildings.
+    Process building footprints to merge overlapping buildings based on area overlap ratio.
+    
+    This function identifies and merges building footprints that significantly overlap with each other.
+    Buildings are processed in order of decreasing area, and smaller buildings that overlap significantly
+    with larger ones are assigned the ID of the larger building, effectively merging them.
     
     Args:
         filtered_gdf (geopandas.GeoDataFrame): GeoDataFrame containing building footprints
-        overlap_threshold (float): Threshold for overlap ratio (0.0-1.0) to merge buildings
+            Must have 'geometry' column with building polygons
+            If CRS is set, areas will be calculated in Web Mercator projection
+        overlap_threshold (float, optional): Threshold for overlap ratio (0.0-1.0) to merge buildings
+            Default is 0.5 (50% overlap)
+            Higher values require more overlap for merging
+            Lower values will result in more aggressive merging
         
     Returns:
         geopandas.GeoDataFrame: Processed GeoDataFrame with updated IDs
+            Overlapping buildings will share the same ID
+            Original geometries are preserved, only IDs are updated
+            All other columns remain unchanged
+    
+    Note:
+        - Uses R-tree spatial indexing for efficient overlap detection
+        - Projects to Web Mercator (EPSG:3857) for accurate area calculation if CRS is set
+        - Handles invalid geometries by attempting to fix them with buffer(0)
+        - Processes buildings in order of decreasing area (largest first)
     """
     # Make a copy to avoid modifying the original
     gdf = filtered_gdf.copy()
     
-    # Ensure 'id' column exists
+    # Ensure 'id' column exists, use index if not present
     if 'id' not in gdf.columns:
         gdf['id'] = gdf.index
     
-    # Check if CRS is set before transforming
+    # Project to Web Mercator for accurate area calculation if CRS is set
     if gdf.crs is None:
         # Work with original geometries if no CRS is set
         gdf_projected = gdf.copy()
@@ -825,18 +1102,18 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
         # Project to Web Mercator for accurate area calculation
         gdf_projected = gdf.to_crs("EPSG:3857")
     
-    # Calculate areas on the geometries
+    # Calculate areas and sort by decreasing area for processing largest buildings first
     gdf_projected['area'] = gdf_projected.geometry.area
     gdf_projected = gdf_projected.sort_values(by='area', ascending=False)
     gdf_projected = gdf_projected.reset_index(drop=True)
     
-    # Create spatial index for efficient querying
+    # Create spatial index for efficient querying of potential overlaps
     spatial_idx = index.Index()
     for i, geom in enumerate(gdf_projected.geometry):
         if geom.is_valid:
             spatial_idx.insert(i, geom.bounds)
         else:
-            # Fix invalid geometries
+            # Fix invalid geometries using buffer(0) technique
             fixed_geom = geom.buffer(0)
             if fixed_geom.is_valid:
                 spatial_idx.insert(i, fixed_geom.bounds)
@@ -844,52 +1121,52 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
     # Track ID replacements to avoid repeated processing
     id_mapping = {}
     
-    # Process each building (skip the largest one)
+    # Process each building (skip the largest one as it's our reference)
     for i in range(1, len(gdf_projected)):
         current_poly = gdf_projected.iloc[i].geometry
         current_area = gdf_projected.iloc[i].area
         current_id = gdf_projected.iloc[i]['id']
         
-        # Skip if already mapped
+        # Skip if already mapped to another ID
         if current_id in id_mapping:
             continue
         
-        # Ensure geometry is valid
+        # Ensure geometry is valid for processing
         if not current_poly.is_valid:
             current_poly = current_poly.buffer(0)
             if not current_poly.is_valid:
                 continue
         
-        # Find potential overlaps with larger polygons
+        # Find potential overlaps with larger polygons using spatial index
         potential_overlaps = [j for j in spatial_idx.intersection(current_poly.bounds) if j < i]
         
         for j in potential_overlaps:
             larger_poly = gdf_projected.iloc[j].geometry
             larger_id = gdf_projected.iloc[j]['id']
             
-            # Skip if already processed
+            # Follow ID mapping chain to get final ID
             if larger_id in id_mapping:
                 larger_id = id_mapping[larger_id]
             
-            # Ensure geometry is valid
+            # Ensure geometry is valid for intersection test
             if not larger_poly.is_valid:
                 larger_poly = larger_poly.buffer(0)
                 if not larger_poly.is_valid:
                     continue
             
             try:
-                # Calculate overlap
+                # Calculate overlap ratio relative to current building's area
                 if current_poly.intersects(larger_poly):
                     overlap = current_poly.intersection(larger_poly)
                     overlap_ratio = overlap.area / current_area
                     
-                    # Replace ID if overlap exceeds threshold
+                    # Merge buildings if overlap exceeds threshold
                     if overlap_ratio > overlap_threshold:
                         id_mapping[current_id] = larger_id
                         gdf_projected.at[i, 'id'] = larger_id
                         break  # Stop at first significant overlap
             except (GEOSException, ValueError) as e:
-                # Handle geometry errors gracefully
+                # Skip problematic geometries
                 continue
     
     # Propagate ID changes through the original DataFrame

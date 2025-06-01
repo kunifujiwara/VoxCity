@@ -114,7 +114,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
     x0, y0, z0 = origin
     dx, dy, dz = direction
 
-    # Normalize direction vector
+    # Normalize direction vector to ensure consistent step sizes
     length = np.sqrt(dx*dx + dy*dy + dz*dz)
     if length == 0.0:
         return False, 1.0
@@ -122,18 +122,19 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
     dy /= length
     dz /= length
 
-    # Initialize ray position
+    # Initialize ray position at center of starting voxel
     x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
     i, j, k = int(x0), int(y0), int(z0)
 
-    # Calculate step directions and initial distances
+    # Determine step direction for each axis (-1 or +1)
     step_x = 1 if dx >= 0 else -1
     step_y = 1 if dy >= 0 else -1
     step_z = 1 if dz >= 0 else -1
 
-    # Calculate DDA parameters with safety checks
+    # Calculate DDA parameters with safety checks to prevent division by zero
     EPSILON = 1e-10  # Small value to prevent division by zero
     
+    # Calculate distances to next voxel boundaries and step sizes for X-axis
     if abs(dx) > EPSILON:
         t_max_x = ((i + (step_x > 0)) - x) / dx
         t_delta_x = abs(1 / dx)
@@ -141,6 +142,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
         t_max_x = np.inf
         t_delta_x = np.inf
 
+    # Calculate distances to next voxel boundaries and step sizes for Y-axis
     if abs(dy) > EPSILON:
         t_max_y = ((j + (step_y > 0)) - y) / dy
         t_delta_y = abs(1 / dy)
@@ -148,6 +150,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
         t_max_y = np.inf
         t_delta_y = np.inf
 
+    # Calculate distances to next voxel boundaries and step sizes for Z-axis
     if abs(dz) > EPSILON:
         t_max_z = ((k + (step_z > 0)) - z) / dz
         t_delta_z = abs(1 / dz)
@@ -155,40 +158,39 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
         t_max_z = np.inf
         t_delta_z = np.inf
 
-    # Track cumulative values
+    # Track cumulative values for tree transmittance calculation
     cumulative_transmittance = 1.0
     cumulative_hit_contribution = 0.0
     last_t = 0.0
 
-    # Main ray traversal loop
+    # Main ray traversal loop using DDA algorithm
     while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
         voxel_value = voxel_data[i, j, k]
         
-        # Find next intersection
+        # Find next intersection point along the ray
         t_next = min(t_max_x, t_max_y, t_max_z)
         
-        # Calculate segment length in current voxel
+        # Calculate segment length in current voxel (in real world units)
         segment_length = (t_next - last_t) * meshsize
         segment_length = max(0.0, segment_length) 
         
-        # Handle tree voxels (value -2)
+        # Handle tree voxels (value -2) with Beer-Lambert law transmittance
         if voxel_value == -2:
             transmittance = calculate_transmittance(segment_length, tree_k, tree_lad)
             cumulative_transmittance *= transmittance
 
-            # if segment_length < 0:
-            #     print(f"segment_length = {segment_length}, transmittance = {transmittance}, cumulative_transmittance = {cumulative_transmittance}")
-            
-            # If transmittance becomes too low, consider it a hit
+            # If transmittance becomes too low, consider the ray blocked
             if cumulative_transmittance < 0.01:
                 return True, cumulative_transmittance
 
-        # Check for hits with other objects
+        # Check for hits with target objects based on inclusion/exclusion mode
         if inclusion_mode:
+            # Inclusion mode: hit if voxel value is in the target set
             for hv in hit_values:
                 if voxel_value == hv:
                     return True, cumulative_transmittance
         else:
+            # Exclusion mode: hit if voxel value is NOT in the allowed set
             in_set = False
             for hv in hit_values:
                 if voxel_value == hv:
@@ -200,22 +202,27 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
         # Update for next iteration
         last_t = t_next
         
-        # Move to next voxel
+        # Move to next voxel using DDA step logic
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
+                # Step in X direction
                 t_max_x += t_delta_x
                 i += step_x
             else:
+                # Step in Z direction
                 t_max_z += t_delta_z
                 k += step_z
         else:
             if t_max_y < t_max_z:
+                # Step in Y direction
                 t_max_y += t_delta_y
                 j += step_y
             else:
+                # Step in Z direction
                 t_max_z += t_delta_z
                 k += step_z
 
+    # Ray exited the grid without hitting a target
     return False, cumulative_transmittance
 
 @njit
@@ -248,23 +255,28 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
     total_rays = ray_directions.shape[0]
     visibility_sum = 0.0
 
+    # Cast rays in all specified directions
     for idx in range(total_rays):
         direction = ray_directions[idx]
         hit, value = trace_ray_generic(voxel_data, observer_location, direction, 
                                      hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
         
+        # Accumulate visibility contributions based on mode
         if inclusion_mode:
             if hit:
+                # For trees in hit_values, use partial visibility based on transmittance
                 if -2 in hit_values:
-                    # For trees in hit_values, use the hit contribution (1 - transmittance)
+                    # Use the hit contribution (1 - transmittance) for tree visibility
                     visibility_sum += value if value < 1.0 else 1.0
                 else:
+                    # Full visibility for non-tree targets
                     visibility_sum += 1.0
         else:
             if not hit:
-                # For exclusion mode, use transmittance value directly
+                # For exclusion mode, use transmittance value directly as visibility
                 visibility_sum += value
 
+    # Return average visibility across all rays
     return visibility_sum / total_rays
 
 @njit(parallel=True)
@@ -298,28 +310,33 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
 
+    # Process each horizontal position in parallel for efficiency
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
+            # Search from bottom to top for valid observer placement
             for z in range(1, nz):
-                # Check for valid observer location
+                # Check for valid observer location: empty space above solid ground
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    # Skip invalid ground types
+                    # Skip invalid ground types (water or negative values)
                     if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         vi_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        # Place observer and compute view index
+                        # Place observer at specified height above ground level
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                        # Compute view index for this location
                         vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, 
                                                     hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
                         vi_map[x, y] = vi_value
                         found_observer = True
                         break
+            # Mark locations where no valid observer position was found
             if not found_observer:
                 vi_map[x, y] = np.nan
 
+    # Flip vertically to match display orientation
     return np.flipud(vi_map)
 
 def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
@@ -365,7 +382,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     Returns:
         ndarray: 2D array of computed view index values.
     """
-    # Handle mode presets
+    # Handle predefined mode presets for common view indices
     if mode == 'green':
         # GVI defaults - detect vegetation and trees
         hit_values = (-2, 2, 5, 6, 7, 8)
@@ -379,22 +396,25 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
         if hit_values is None:
             raise ValueError("For custom mode, you must provide hit_values.")
 
-    # Get parameters from kwargs with defaults
+    # Extract parameters from kwargs with sensible defaults
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
     colormap = kwargs.get("colormap", 'viridis')
     vmin = kwargs.get("vmin", 0.0)
     vmax = kwargs.get("vmax", 1.0)
+    
+    # Ray casting parameters for hemisphere sampling
     N_azimuth = kwargs.get("N_azimuth", 60)
     N_elevation = kwargs.get("N_elevation", 10)
     elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
     
-    # Tree transmittance parameters
+    # Tree transmittance parameters for Beer-Lambert law
     tree_k = kwargs.get("tree_k", 0.5)
     tree_lad = kwargs.get("tree_lad", 1.0)
 
     # Generate ray directions using spherical coordinates
+    # Create uniform sampling over specified azimuth and elevation ranges
     azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
     elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
 
@@ -403,6 +423,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
         cos_elev = np.cos(elevation)
         sin_elev = np.sin(elevation)
         for azimuth in azimuth_angles:
+            # Convert spherical coordinates to Cartesian
             dx = cos_elev * np.cos(azimuth)
             dy = cos_elev * np.sin(azimuth)
             dz = sin_elev
@@ -413,17 +434,17 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
                                   hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
 
-    # Plot results
+    # Create visualization with custom colormap handling
     import matplotlib.pyplot as plt
     cmap = plt.cm.get_cmap(colormap).copy()
-    cmap.set_bad(color='lightgray')
+    cmap.set_bad(color='lightgray')  # Color for NaN values (invalid locations)
     plt.figure(figsize=(10, 8))
     plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
     plt.colorbar(label='View Index')
     plt.axis('off')
     plt.show()
 
-    # Optional OBJ export
+    # Optional OBJ export for 3D visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
@@ -450,28 +471,33 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
 def mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark):
     """Mark specific buildings in the voxel grid with a given value.
 
-    Used to identify landmark buildings for visibility analysis.
-    Flips building ID grid vertically to match voxel grid orientation.
+    This function is used to identify landmark buildings for visibility analysis
+    by replacing their voxel values with a special marker value. It handles
+    coordinate system alignment between the building ID grid and voxel grid.
 
     Args:
-        voxcity_grid (ndarray): 3D array of voxel values
-        building_id_grid_ori (ndarray): 2D array of building IDs
-        ids (list): List of building IDs to mark
-        mark (int): Value to mark the buildings with
-    """
+        voxcity_grid_ori (ndarray): 3D array of voxel values (original, will be copied)
+        building_id_grid_ori (ndarray): 2D array of building IDs (original, will be copied)
+        ids (list): List of building IDs to mark as landmarks
+        mark (int): Value to mark the landmark buildings with (typically negative)
 
+    Returns:
+        ndarray: Modified 3D voxel grid with landmark buildings marked
+    """
+    # Create working copies to avoid modifying original data
     voxcity_grid = voxcity_grid_ori.copy()
 
     # Flip building ID grid vertically to match voxel grid orientation
+    # This accounts for different coordinate system conventions
     building_id_grid = np.flipud(building_id_grid_ori.copy())
 
-    # Get x,y positions from building_id_grid where landmarks are
+    # Find x,y positions where target building IDs are located
     positions = np.where(np.isin(building_id_grid, ids))
 
-    # Loop through each x,y position and mark building voxels
+    # Process each location containing a target building
     for i in range(len(positions[0])):
         x, y = positions[0][i], positions[1][i]
-        # Replace building voxels (-3) with mark value at this x,y position
+        # Find all building voxels (-3) at this x,y location and mark them
         z_mask = voxcity_grid[x, y, :] == -3
         voxcity_grid[x, y, z_mask] = mark
     
@@ -500,7 +526,7 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
     dy = y1 - y0
     dz = z1 - z0
 
-    # Normalize direction vector
+    # Normalize direction vector for consistent traversal
     length = np.sqrt(dx*dx + dy*dy + dz*dz)
     if length == 0.0:
         return True  # Origin and target are at the same location
@@ -518,7 +544,7 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
     step_z = 1 if dz >= 0 else -1
 
     # Calculate distances to next voxel boundaries and step sizes
-    # Handle cases where direction components are zero
+    # Handle cases where direction components are zero to avoid division by zero
     if dx != 0:
         t_max_x = ((i + (step_x > 0)) - x) / dx
         t_delta_x = abs(1 / dx)
@@ -540,21 +566,22 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
         t_max_z = np.inf
         t_delta_z = np.inf
 
-    # Main ray traversal loop
+    # Main ray traversal loop using DDA algorithm
     while True:
-        # Check if current voxel is within bounds and opaque
+        # Check if current voxel is within bounds and contains opaque material
         if (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
             voxel_value = voxel_data[i, j, k]
             if voxel_value in opaque_values:
-                return False  # Ray is blocked
+                return False  # Ray is blocked by opaque voxel
         else:
-            return False  # Out of bounds
+            return False  # Ray went out of bounds before reaching target
 
-        # Check if we've reached target voxel
+        # Check if we've reached the target voxel
         if i == int(x1) and j == int(y1) and k == int(z1):
-            return True  # Ray has reached the target
+            return True  # Ray successfully reached the target
 
         # Move to next voxel using DDA algorithm
+        # Choose the axis with the smallest distance to next boundary
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
                 t_max = t_max_x
@@ -583,20 +610,21 @@ def compute_visibility_to_all_landmarks(observer_location, landmark_positions, v
 
     Args:
         observer_location (ndarray): Observer position (x,y,z) in voxel coordinates
-        landmark_positions (ndarray): Array of landmark positions
+        landmark_positions (ndarray): Array of landmark positions (n_landmarks, 3)
         voxel_data (ndarray): 3D array of voxel values
         opaque_values (ndarray): Array of voxel values that block visibility
 
     Returns:
         int: 1 if any landmark is visible, 0 if none are visible
     """
-    # Check visibility to each landmark until one is found visible
+    # Check visibility to each landmark sequentially
+    # Early exit strategy: return 1 as soon as any landmark is visible
     for idx in range(landmark_positions.shape[0]):
         target = landmark_positions[idx].astype(np.float64)
         is_visible = trace_ray_to_target(voxel_data, observer_location, target, opaque_values)
         if is_visible:
-            return 1  # Return as soon as one landmark is visible
-    return 0  # No landmarks were visible
+            return 1  # Return immediately when first visible landmark is found
+    return 0  # No landmarks were visible from this location
 
 @njit(parallel=True)
 def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel):
@@ -613,7 +641,7 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
 
     Args:
         voxel_data (ndarray): 3D array of voxel values
-        landmark_positions (ndarray): Array of landmark positions
+        landmark_positions (ndarray): Array of landmark positions (n_landmarks, 3)
         opaque_values (ndarray): Array of voxel values that block visibility
         view_height_voxel (int): Height offset for observer in voxels
 
@@ -626,25 +654,28 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
     nx, ny, nz = voxel_data.shape
     visibility_map = np.full((nx, ny), np.nan)
 
-    # Process each x,y position in parallel
+    # Process each x,y position in parallel for computational efficiency
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            # Find lowest empty voxel above ground
+            # Find the lowest valid observer location by searching from bottom up
             for z in range(1, nz):
+                # Valid observer location: empty voxel above non-empty ground
                 if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
-                    # Skip if standing on building or vegetation
+                    # Skip locations above building roofs or vegetation
                     if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
                         visibility_map[x, y] = np.nan
                         found_observer = True
                         break
                     else:
-                        # Place observer and check visibility
+                        # Place observer at specified height above ground level
                         observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
+                        # Check visibility to any landmark from this location
                         visible = compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
                         visibility_map[x, y] = visible
                         found_observer = True
                         break
+            # Mark locations where no valid observer position exists
             if not found_observer:
                 visibility_map[x, y] = np.nan
 
@@ -806,35 +837,55 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     """
     Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
 
+    Sky View Factor measures the proportion of the sky hemisphere that is visible from a given point.
+    It ranges from 0 (completely obstructed) to 1 (completely open sky). This implementation:
+    - Uses hemisphere ray casting to sample sky visibility
+    - Accounts for tree transmittance using Beer-Lambert law
+    - Places observers at valid street-level locations
+    - Provides optional visualization and OBJ export
+
     Args:
         voxel_data (ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        show_plot (bool): Whether to display the plot.
-        **kwargs: Additional parameters.
+        show_plot (bool): Whether to display the SVF visualization plot.
+        **kwargs: Additional parameters including:
+            view_point_height (float): Observer height in meters (default: 1.5)
+            colormap (str): Matplotlib colormap name (default: 'BuPu_r')
+            vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+            N_azimuth (int): Number of azimuth angles for ray sampling (default: 60)
+            N_elevation (int): Number of elevation angles for ray sampling (default: 10)
+            elevation_min_degrees (float): Minimum elevation angle (default: 0)
+            elevation_max_degrees (float): Maximum elevation angle (default: 90)
+            tree_k (float): Tree extinction coefficient (default: 0.6)
+            tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+            obj_export (bool): Whether to export as OBJ file (default: False)
 
     Returns:
-        ndarray: 2D array of SVF values at each cell (x, y).
+        ndarray: 2D array of SVF values at each valid observer location (x, y).
+                 NaN values indicate invalid observer positions.
     """
-    # Default parameters
+    # Extract default parameters with sky-specific settings
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
-    colormap = kwargs.get("colormap", 'BuPu_r')
+    colormap = kwargs.get("colormap", 'BuPu_r')  # Blue-purple colormap suitable for sky
     vmin = kwargs.get("vmin", 0.0)
     vmax = kwargs.get("vmax", 1.0)
-    N_azimuth = kwargs.get("N_azimuth", 60)
-    N_elevation = kwargs.get("N_elevation", 10)
-    elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)
-    elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)
+    
+    # Ray sampling parameters optimized for sky view factor
+    N_azimuth = kwargs.get("N_azimuth", 60)      # Full 360-degree azimuth sampling
+    N_elevation = kwargs.get("N_elevation", 10)   # Hemisphere elevation sampling
+    elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)   # Horizon
+    elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)  # Zenith
 
-    # Get tree transmittance parameters
-    tree_k = kwargs.get("tree_k", 0.6)  # Static extinction coefficient
-    tree_lad = kwargs.get("tree_lad", 1.0)  # Leaf area density in m^-1
+    # Tree transmittance parameters for Beer-Lambert law
+    tree_k = kwargs.get("tree_k", 0.6)    # Static extinction coefficient
+    tree_lad = kwargs.get("tree_lad", 1.0) # Leaf area density in m^-1
 
-    # Define hit_values and inclusion_mode for sky detection
-    hit_values = (0,)
-    inclusion_mode = False
+    # Sky view factor configuration: detect open sky (value 0)
+    hit_values = (0,)        # Sky voxels have value 0
+    inclusion_mode = False   # Count rays that DON'T hit obstacles (exclusion mode)
 
-    # Generate ray directions over the specified hemisphere
+    # Generate ray directions over the sky hemisphere (0 to 90 degrees elevation)
     azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
     elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
 
@@ -843,29 +894,29 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
         cos_elev = np.cos(elevation)
         sin_elev = np.sin(elevation)
         for azimuth in azimuth_angles:
+            # Convert spherical to Cartesian coordinates
             dx = cos_elev * np.cos(azimuth)
             dy = cos_elev * np.sin(azimuth)
-            dz = sin_elev
+            dz = sin_elev  # Always positive for sky hemisphere
             ray_directions.append([dx, dy, dz])
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
-    # Compute the SVF map using the compute function
+    # Compute the SVF map using the generic view index computation
     vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
                                   hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
 
-    # Plot results if requested
+    # Display visualization if requested
     if show_plot:
         import matplotlib.pyplot as plt
         cmap = plt.cm.get_cmap(colormap).copy()
-        cmap.set_bad(color='lightgray')
+        cmap.set_bad(color='lightgray')  # Gray for invalid observer locations
         plt.figure(figsize=(10, 8))
-        # plt.title("Sky View Factor Map")
         plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.colorbar(label='Sky View Factor')
         plt.axis('off')
         plt.show()
 
-    # Optional OBJ export
+    # Optional OBJ export for 3D visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:        
         dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
@@ -889,603 +940,61 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
 
     return vi_map
 
-# def get_building_surface_svf(voxel_data, meshsize, **kwargs):
-#     """
-#     Compute and visualize the Sky View Factor (SVF) for building surface meshes.
-    
-#     Args:
-#         voxel_data (ndarray): 3D array of voxel values.
-#         meshsize (float): Size of each voxel in meters.
-#         **kwargs: Additional parameters (colormap, ray counts, etc.)
-    
-#     Returns:
-#         trimesh.Trimesh: Mesh of building surfaces with SVF values stored in metadata.
-#     """
-#     # Import required modules
-#     import trimesh
-#     import numpy as np
-#     import time
-    
-#     # Default parameters
-#     colormap = kwargs.get("colormap", 'BuPu_r')
-#     vmin = kwargs.get("vmin", 0.0)
-#     vmax = kwargs.get("vmax", 1.0)
-#     N_azimuth = kwargs.get("N_azimuth", 60)
-#     N_elevation = kwargs.get("N_elevation", 10)
-#     debug = kwargs.get("debug", False)
-#     progress_report = kwargs.get("progress_report", False)
-    
-#     # Tree transmittance parameters
-#     tree_k = kwargs.get("tree_k", 0.6)
-#     tree_lad = kwargs.get("tree_lad", 1.0)
-    
-#     # Sky detection parameters
-#     hit_values = (0,)  # Sky is typically represented by 0
-#     inclusion_mode = False  # We want rays that DON'T hit obstacles
-    
-#     # Extract building mesh (building voxels have value -3)
-#     building_class_id = kwargs.get("building_class_id", -3)
-#     start_time = time.time()
-#     # print(f"Extracting building mesh for class ID {building_class_id}...")
-#     try:
-#         building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize)
-#         # print(f"Mesh extraction took {time.time() - start_time:.2f} seconds")
-        
-#         if building_mesh is None or len(building_mesh.faces) == 0:
-#             print("No building surfaces found in voxel data.")
-#             return None
-            
-#         # print(f"Successfully extracted mesh with {len(building_mesh.faces)} faces")
-#     except Exception as e:
-#         print(f"Error during mesh extraction: {e}")
-#         return None
-    
-#     if progress_report:
-#         print(f"Processing SVF for {len(building_mesh.faces)} building faces...")
-    
-#     try:
-#         # Calculate face centers and normals
-#         face_centers = building_mesh.triangles_center
-#         face_normals = building_mesh.face_normals
-        
-#         # Initialize array to store SVF values for each face
-#         face_svf_values = np.zeros(len(building_mesh.faces))
-        
-#         # Get voxel grid dimensions
-#         grid_shape = voxel_data.shape
-#         grid_bounds = np.array([
-#             [0, 0, 0],  # Min bounds in voxel coordinates
-#             [grid_shape[0], grid_shape[1], grid_shape[2]]  # Max bounds
-#         ])
-        
-#         # Convert bounds to real-world coordinates
-#         grid_bounds_real = grid_bounds * meshsize
-        
-#         # Small epsilon to detect boundary faces (within 0.5 voxel of boundary)
-#         boundary_epsilon = meshsize * 0.05
-        
-#         # Create hemisphere directions for ray casting
-#         hemisphere_dirs = []
-#         azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
-#         elevation_angles = np.linspace(0, np.pi/2, N_elevation)  # 0 to 90 degrees
-        
-#         for elevation in elevation_angles:
-#             sin_elev = np.sin(elevation)
-#             cos_elev = np.cos(elevation)
-#             for azimuth in azimuth_angles:
-#                 x = cos_elev * np.cos(azimuth)
-#                 y = cos_elev * np.sin(azimuth)
-#                 z = sin_elev
-#                 hemisphere_dirs.append([x, y, z])
-        
-#         hemisphere_dirs = np.array(hemisphere_dirs)
-        
-#         # Process each face
-#         from scipy.spatial.transform import Rotation
-#         processed_count = 0
-#         boundary_count = 0
-#         nan_boundary_count = 0
-        
-#         start_time = time.time()
-#         for face_idx in range(len(building_mesh.faces)):
-#             try:
-#                 center = face_centers[face_idx]
-#                 normal = face_normals[face_idx]
-                
-#                 # Check if this is a vertical surface (normal has no Z component)
-#                 is_vertical = abs(normal[2]) < 0.01
-                
-#                 # Check if this face is on the boundary of the voxel grid
-#                 on_x_min = abs(center[0] - grid_bounds_real[0, 0]) < boundary_epsilon
-#                 on_y_min = abs(center[1] - grid_bounds_real[0, 1]) < boundary_epsilon
-#                 on_x_max = abs(center[0] - grid_bounds_real[1, 0]) < boundary_epsilon
-#                 on_y_max = abs(center[1] - grid_bounds_real[1, 1]) < boundary_epsilon
-                
-#                 # Check if this is a vertical surface on the boundary
-#                 is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
-                
-#                 # Set NaN for all vertical surfaces on domain boundaries
-#                 if is_boundary_vertical:
-#                     face_svf_values[face_idx] = np.nan
-#                     nan_boundary_count += 1
-#                     processed_count += 1
-#                     continue
-                
-#                 # For non-boundary surfaces, proceed with normal SVF calculation
-#                 # Convert center to voxel coordinates (for ray origin)
-#                 center_voxel = center / meshsize
-                
-#                 # IMPORTANT: Offset ray origin slightly to avoid self-intersection
-#                 ray_origin = center_voxel + normal * 0.1  # Offset by 0.1 voxel units in normal direction
-                
-#                 # Create rotation from z-axis to face normal
-#                 z_axis = np.array([0, 0, 1])
-                
-#                 # Handle special case where normal is parallel to z-axis
-#                 if np.isclose(np.abs(np.dot(normal, z_axis)), 1.0, atol=1e-6):
-#                     if np.dot(normal, z_axis) > 0:  # Normal points up
-#                         rotation_matrix = np.eye(3)  # Identity matrix
-#                     else:  # Normal points down
-#                         rotation_matrix = np.array([
-#                             [1, 0, 0],
-#                             [0, -1, 0],
-#                             [0, 0, -1]
-#                         ])
-#                     rotation = Rotation.from_matrix(rotation_matrix)
-#                 else:
-#                     # For all other cases, find rotation that aligns z-axis with normal
-#                     rotation_axis = np.cross(z_axis, normal)
-#                     rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-#                     angle = np.arccos(np.clip(np.dot(z_axis, normal), -1.0, 1.0))
-#                     rotation = Rotation.from_rotvec(rotation_axis * angle)
-                
-#                 # Transform hemisphere directions to align with face normal
-#                 local_dirs = rotation.apply(hemisphere_dirs)
-                
-#                 # Filter directions - keep only those that:
-#                 # 1. Are pointing outward from the face (dot product with normal > 0)
-#                 # 2. Have a positive z component (upward in world space)
-#                 valid_dirs = []
-#                 total_dirs = 0
-                
-#                 # Count total directions in the hemisphere (for normalization)
-#                 for dir_vector in local_dirs:
-#                     dot_product = np.dot(dir_vector, normal)
-#                     # Count this direction if it's pointing outward from the face
-#                     if dot_product > 0.01:  # Small threshold to avoid precision issues
-#                         total_dirs += 1
-#                         # Only trace rays that have a positive z component (can reach sky)
-#                         if dir_vector[2] > 0:
-#                             valid_dirs.append(dir_vector)
-                
-#                 # If no valid directions, SVF is 0
-#                 if total_dirs == 0:
-#                     face_svf_values[face_idx] = 0
-#                     continue
-                    
-#                 # If no upward directions, SVF is 0 (all rays are blocked by ground)
-#                 if len(valid_dirs) == 0:
-#                     face_svf_values[face_idx] = 0
-#                     continue
-                    
-#                 # Convert to numpy array for compute_vi_generic
-#                 valid_dirs = np.array(valid_dirs, dtype=np.float64)
-                
-#                 # Calculate SVF using compute_vi_generic for the upward rays
-#                 # Then scale by the fraction of upward rays to total rays
-#                 upward_svf = compute_vi_generic(
-#                     ray_origin,
-#                     voxel_data,
-#                     valid_dirs,
-#                     hit_values,
-#                     meshsize,
-#                     tree_k,
-#                     tree_lad,
-#                     inclusion_mode
-#                 )
-                
-#                 # Scale SVF by the fraction of rays that could potentially reach the sky
-#                 # This accounts for downward rays that always have 0 SVF
-#                 face_svf_values[face_idx] = upward_svf * (len(valid_dirs) / total_dirs)
-            
-#             except Exception as e:
-#                 print(f"Error processing face {face_idx}: {e}")
-#                 face_svf_values[face_idx] = 0
-            
-#             # Progress reporting
-#             processed_count += 1
-#             if progress_report:
-#                 # Calculate frequency based on total number of faces, aiming for ~10 progress updates
-#                 progress_frequency = max(1, len(building_mesh.faces) // 10)
-#                 if processed_count % progress_frequency == 0 or processed_count == len(building_mesh.faces):
-#                     elapsed = time.time() - start_time
-#                     faces_per_second = processed_count / elapsed
-#                     remaining = (len(building_mesh.faces) - processed_count) / faces_per_second if processed_count < len(building_mesh.faces) else 0
-#                     print(f"Processed {processed_count}/{len(building_mesh.faces)} faces "
-#                         f"({processed_count/len(building_mesh.faces)*100:.1f}%) - "
-#                         f"{faces_per_second:.1f} faces/sec - "
-#                         f"Est. remaining: {remaining:.1f} sec")
-        
-#         # print(f"Identified {nan_boundary_count} faces on domain vertical boundaries (set to NaN)")
-        
-#         # Store SVF values directly in mesh metadata
-#         if not hasattr(building_mesh, 'metadata'):
-#             building_mesh.metadata = {}
-#         building_mesh.metadata['svf_values'] = face_svf_values
-        
-#         # Apply colors to the mesh based on SVF values (only for visualization)
-#         if show_plot:
-#             import matplotlib.cm as cm
-#             import matplotlib.colors as mcolors
-#             cmap = cm.get_cmap(colormap)
-#             norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-            
-#             # Get a copy of face_svf_values with NaN replaced by a specific value outside the range
-#             # This ensures NaN faces get a distinct color in the visualization
-#             vis_values = face_svf_values.copy()
-#             nan_mask = np.isnan(vis_values)
-#             if np.any(nan_mask):
-#                 # Use a color below vmin for NaN values (they'll be clipped to vmin in the colormap)
-#                 # But we can see them as the minimum color
-#                 vis_values[nan_mask] = vmin - 0.1
-            
-#             # Apply colors
-#             face_colors = cmap(norm(vis_values))
-#             building_mesh.visual.face_colors = face_colors
-            
-#             # Create a scene with the colored mesh
-#             scene = trimesh.Scene()
-#             scene.add_geometry(building_mesh)
-#             scene.show()
-            
-#             # Also create a matplotlib figure with colorbar for reference
-#             import matplotlib.pyplot as plt
-            
-#             fig, ax = plt.subplots(figsize=(8, 3))
-#             cb = plt.colorbar(
-#                 cm.ScalarMappable(norm=norm, cmap=cmap),
-#                 ax=ax,
-#                 orientation='horizontal',
-#                 label='Sky View Factor'
-#             )
-#             ax.remove()  # Remove the axes, keep only colorbar
-#             plt.tight_layout()
-#             plt.show()
-        
-#             # Plot histogram of SVF values (excluding NaN)
-#             valid_svf = face_svf_values[~np.isnan(face_svf_values)]
-#             plt.figure(figsize=(10, 6))
-#             plt.hist(valid_svf, bins=50, color='skyblue', alpha=0.7)
-#             plt.title('Distribution of Sky View Factor on Building Surfaces')
-#             plt.xlabel('Sky View Factor')
-#             plt.ylabel('Frequency')
-#             plt.grid(True, alpha=0.3)
-#             plt.tight_layout()
-#             plt.show()
-        
-#         # Handle optional OBJ export
-#         obj_export = kwargs.get("obj_export", False)
-#         if obj_export:
-#             output_dir = kwargs.get("output_directory", "output")
-#             output_file_name = kwargs.get("output_file_name", "building_surface_svf")
-            
-#             # Ensure output directory exists
-#             import os
-#             os.makedirs(output_dir, exist_ok=True)
-            
-#             # Export as OBJ with face colors
-#             try:
-#                 building_mesh.export(f"{output_dir}/{output_file_name}.obj")
-#                 print(f"Exported building SVF mesh to {output_dir}/{output_file_name}.obj")
-#             except Exception as e:
-#                 print(f"Error exporting mesh: {e}")
-        
-#         return building_mesh
-        
-#     except Exception as e:
-#         print(f"Error during SVF calculation: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return None
-
-##############################################################################
-# 1) New Numba helper: Rodrigues’ rotation formula for rotating vectors
-##############################################################################
 @njit
 def rotate_vector_axis_angle(vec, axis, angle):
     """
-    Rotate a 3D vector 'vec' around 'axis' by 'angle' (in radians),
-    using Rodrigues’ rotation formula.
+    Rotate a 3D vector around an arbitrary axis using Rodrigues' rotation formula.
+    
+    This function implements the Rodrigues rotation formula:
+    v_rot = v*cos(θ) + (k × v)*sin(θ) + k*(k·v)*(1-cos(θ))
+    where k is the unit rotation axis, θ is the rotation angle, and v is the input vector.
+    
+    Args:
+        vec (ndarray): 3D vector to rotate [x, y, z]
+        axis (ndarray): 3D rotation axis vector [x, y, z] (will be normalized)
+        angle (float): Rotation angle in radians
+        
+    Returns:
+        ndarray: Rotated 3D vector [x, y, z]
     """
-    # Normalize rotation axis
+    # Normalize rotation axis to unit length
     axis_len = np.sqrt(axis[0]**2 + axis[1]**2 + axis[2]**2)
     if axis_len < 1e-12:
-        # Axis is degenerate; return vec unchanged
+        # Degenerate axis case: return original vector unchanged
         return vec
     
     ux, uy, uz = axis / axis_len
     c = np.cos(angle)
     s = np.sin(angle)
+    
+    # Calculate dot product: k·v
     dot = vec[0]*ux + vec[1]*uy + vec[2]*uz
     
-    # cross = axis x vec
+    # Calculate cross product: k × v
     cross_x = uy*vec[2] - uz*vec[1]
     cross_y = uz*vec[0] - ux*vec[2]
     cross_z = ux*vec[1] - uy*vec[0]
     
-    # Rodrigues formula: v_rot = v*c + (k x v)*s + k*(k·v)*(1-c)
+    # Apply Rodrigues formula: v_rot = v*c + (k × v)*s + k*(k·v)*(1-c)
     v_rot = np.zeros(3, dtype=np.float64)
-    # v*c
+    
+    # First term: v*cos(θ)
     v_rot[0] = vec[0] * c
     v_rot[1] = vec[1] * c
     v_rot[2] = vec[2] * c
-    # + (k x v)*s
+    
+    # Second term: (k × v)*sin(θ)
     v_rot[0] += cross_x * s
     v_rot[1] += cross_y * s
     v_rot[2] += cross_z * s
-    # + k*(k·v)*(1-c)
+    
+    # Third term: k*(k·v)*(1-cos(θ))
     tmp = dot * (1.0 - c)
     v_rot[0] += ux * tmp
     v_rot[1] += uy * tmp
     v_rot[2] += uz * tmp
     
     return v_rot
-
-
-# ##############################################################################
-# # 2) New Numba helper: vectorized SVF computation for each face
-# ##############################################################################
-# @njit
-# def compute_svf_for_all_faces(
-#     face_centers,
-#     face_normals,
-#     hemisphere_dirs,
-#     voxel_data,
-#     meshsize,
-#     tree_k,
-#     tree_lad,
-#     hit_values,
-#     inclusion_mode,
-#     grid_bounds_real,
-#     boundary_epsilon
-# ):
-#     """
-#     Per-face SVF calculation in Numba:
-#       - Checks boundary conditions & sets NaN for boundary-vertical faces
-#       - Builds local hemisphere (rotates from +Z to face normal)
-#       - Filters directions that actually face outward (+ dot>0) and have z>0
-#       - Calls compute_vi_generic to get fraction that sees sky
-#       - Returns array of SVF values (same length as face_centers)
-#     """
-#     n_faces = face_centers.shape[0]
-#     face_svf_values = np.zeros(n_faces, dtype=np.float64)
-    
-#     z_axis = np.array([0.0, 0.0, 1.0])
-    
-#     for fidx in range(n_faces):
-#         center = face_centers[fidx]
-#         normal = face_normals[fidx]
-        
-#         # -- 1) Check for boundary + vertical face => NaN
-#         is_vertical = (abs(normal[2]) < 0.01)
-        
-#         on_x_min = (abs(center[0] - grid_bounds_real[0,0]) < boundary_epsilon)
-#         on_y_min = (abs(center[1] - grid_bounds_real[0,1]) < boundary_epsilon)
-#         on_x_max = (abs(center[0] - grid_bounds_real[1,0]) < boundary_epsilon)
-#         on_y_max = (abs(center[1] - grid_bounds_real[1,1]) < boundary_epsilon)
-        
-#         is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
-#         if is_boundary_vertical:
-#             face_svf_values[fidx] = np.nan
-#             continue
-        
-#         # -- 2) Compute rotation that aligns face normal -> +Z
-#         norm_n = np.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2)
-#         if norm_n < 1e-12:
-#             # Degenerate normal
-#             face_svf_values[fidx] = 0.0
-#             continue
-        
-#         dot_zn = z_axis[0]*normal[0] + z_axis[1]*normal[1] + z_axis[2]*normal[2]
-#         cos_angle = dot_zn / (norm_n)
-#         if cos_angle >  1.0: cos_angle =  1.0
-#         if cos_angle < -1.0: cos_angle = -1.0
-#         angle = np.arccos(cos_angle)
-        
-#         # Distinguish near +Z vs near -Z vs general case
-#         if abs(cos_angle - 1.0) < 1e-9:
-#             # normal ~ +Z => no rotation
-#             local_dirs = hemisphere_dirs
-#         elif abs(cos_angle + 1.0) < 1e-9:
-#             # normal ~ -Z => rotate 180 around X (or Y) axis
-#             axis_180 = np.array([1.0, 0.0, 0.0])
-#             local_dirs = np.empty_like(hemisphere_dirs)
-#             for i in range(hemisphere_dirs.shape[0]):
-#                 local_dirs[i] = rotate_vector_axis_angle(hemisphere_dirs[i], axis_180, np.pi)
-#         else:
-#             # normal is neither up nor down -> do standard axis-angle
-#             axis_x = z_axis[1]*normal[2] - z_axis[2]*normal[1]
-#             axis_y = z_axis[2]*normal[0] - z_axis[0]*normal[2]
-#             axis_z = z_axis[0]*normal[1] - z_axis[1]*normal[0]
-#             rot_axis = np.array([axis_x, axis_y, axis_z], dtype=np.float64)
-            
-#             local_dirs = np.empty_like(hemisphere_dirs)
-#             for i in range(hemisphere_dirs.shape[0]):
-#                 local_dirs[i] = rotate_vector_axis_angle(
-#                     hemisphere_dirs[i],
-#                     rot_axis,
-#                     angle
-#                 )
-        
-#         # -- 3) Count how many directions are outward & upward
-#         total_outward = 0
-#         num_upward = 0
-#         for i in range(local_dirs.shape[0]):
-#             dvec = local_dirs[i]
-#             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
-#             if dp > 0.0:
-#                 total_outward += 1
-#                 if dvec[2] > 0.0:
-#                     num_upward += 1
-        
-#         # If no outward directions at all => SVF=0
-#         if total_outward == 0:
-#             face_svf_values[fidx] = 0.0
-#             continue
-        
-#         # If no upward directions among them => SVF=0
-#         if num_upward == 0:
-#             face_svf_values[fidx] = 0.0
-#             continue
-        
-#         # -- 4) Create an array for only the upward directions
-#         valid_dirs_arr = np.empty((num_upward, 3), dtype=np.float64)
-#         out_idx = 0
-#         for i in range(local_dirs.shape[0]):
-#             dvec = local_dirs[i]
-#             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
-#             if dp > 0.0 and dvec[2] > 0.0:
-#                 valid_dirs_arr[out_idx, 0] = dvec[0]
-#                 valid_dirs_arr[out_idx, 1] = dvec[1]
-#                 valid_dirs_arr[out_idx, 2] = dvec[2]
-#                 out_idx += 1
-        
-#         # -- 5) Ray origin in voxel coords, offset along face normal
-#         offset_vox = 0.1
-#         ray_origin = (center / meshsize) + (normal / norm_n) * offset_vox
-        
-#         # -- 6) Compute fraction of rays that see sky
-#         upward_svf = compute_vi_generic(
-#             ray_origin,
-#             voxel_data,
-#             valid_dirs_arr,
-#             hit_values,
-#             meshsize,
-#             tree_k,
-#             tree_lad,
-#             inclusion_mode
-#         )
-        
-#         # Scale by fraction of directions that were outward
-#         fraction_up = num_upward / total_outward
-#         face_svf_values[fidx] = upward_svf * fraction_up
-    
-#     return face_svf_values
-
-
-# ##############################################################################
-# # 3) Modified get_building_surface_svf (only numeric loop changed)
-# ##############################################################################
-# def get_building_surface_svf(voxel_data, meshsize, **kwargs):
-#     """
-#     Compute and visualize the Sky View Factor (SVF) for building surface meshes.
-    
-#     Args:
-#         voxel_data (ndarray): 3D array of voxel values.
-#         meshsize (float): Size of each voxel in meters.
-#         **kwargs: Additional parameters (colormap, ray counts, etc.)
-    
-#     Returns:
-#         trimesh.Trimesh: Mesh of building surfaces with SVF values stored in metadata.
-#     """
-#     import matplotlib.pyplot as plt
-#     import matplotlib.cm as cm
-#     import matplotlib.colors as mcolors
-#     import os
-    
-#     # Default parameters
-#     colormap = kwargs.get("colormap", 'BuPu_r')
-#     vmin = kwargs.get("vmin", 0.0)
-#     vmax = kwargs.get("vmax", 1.0)
-#     N_azimuth = kwargs.get("N_azimuth", 60)
-#     N_elevation = kwargs.get("N_elevation", 10)
-#     debug = kwargs.get("debug", False)
-#     progress_report = kwargs.get("progress_report", False)
-#     building_id_grid = kwargs.get("building_id_grid", None)
-    
-#     # Tree parameters
-#     tree_k = kwargs.get("tree_k", 0.6)
-#     tree_lad = kwargs.get("tree_lad", 1.0)
-    
-#     # Sky detection parameters
-#     hit_values = (0,)  # '0' is sky
-#     inclusion_mode = False  # we want rays that DON'T hit obstacles (except sky)
-    
-#     # Building ID in voxel data
-#     building_class_id = kwargs.get("building_class_id", -3)
-    
-#     start_time = time.time()
-#     # 1) Extract building mesh from voxel_data
-#     try:
-#         # This function is presumably in your codebase (not shown):
-#         building_mesh = create_voxel_mesh(voxel_data, building_class_id, meshsize, building_id_grid=building_id_grid)
-#         if building_mesh is None or len(building_mesh.faces) == 0:
-#             print("No building surfaces found in voxel data.")
-#             return None
-#     except Exception as e:
-#         print(f"Error during mesh extraction: {e}")
-#         return None
-    
-#     if progress_report:
-#         print(f"Processing SVF for {len(building_mesh.faces)} building faces...")
-    
-#     # 2) Get face centers + normals as NumPy arrays
-#     face_centers = building_mesh.triangles_center
-#     face_normals = building_mesh.face_normals
-    
-#     # 3) Precompute hemisphere directions (global, pointing up)
-#     azimuth_angles   = np.linspace(0, 2*np.pi, N_azimuth, endpoint=False)
-#     elevation_angles = np.linspace(0, np.pi/2, N_elevation)
-#     hemisphere_list = []
-#     for elev in elevation_angles:
-#         sin_elev = np.sin(elev)
-#         cos_elev = np.cos(elev)
-#         for az in azimuth_angles:
-#             x = cos_elev * np.cos(az)
-#             y = cos_elev * np.sin(az)
-#             z = sin_elev
-#             hemisphere_list.append([x, y, z])
-#     hemisphere_dirs = np.array(hemisphere_list, dtype=np.float64)
-    
-#     # 4) Domain bounds in real coordinates
-#     grid_shape = voxel_data.shape
-#     grid_bounds_voxel = np.array([[0,0,0],[grid_shape[0],grid_shape[1],grid_shape[2]]], dtype=np.float64)
-#     grid_bounds_real = grid_bounds_voxel * meshsize
-#     boundary_epsilon = meshsize * 0.05
-    
-#     # 5) Call Numba-accelerated routine
-#     face_svf_values = compute_svf_for_all_faces(
-#         face_centers,
-#         face_normals,
-#         hemisphere_dirs,
-#         voxel_data,
-#         meshsize,
-#         tree_k,
-#         tree_lad,
-#         hit_values,
-#         inclusion_mode,
-#         grid_bounds_real,
-#         boundary_epsilon
-#     )
-    
-#     # 6) Store SVF values in mesh metadata
-#     if not hasattr(building_mesh, 'metadata'):
-#         building_mesh.metadata = {}
-#     building_mesh.metadata['svf_values'] = face_svf_values
-       
-#     # OBJ export if desired
-#     obj_export = kwargs.get("obj_export", False)
-#     if obj_export:
-#         output_dir = kwargs.get("output_directory", "output")
-#         output_file_name = kwargs.get("output_file_name", "building_surface_svf")
-#         os.makedirs(output_dir, exist_ok=True)
-#         try:
-#             building_mesh.export(f"{output_dir}/{output_file_name}.obj")
-#             print(f"Exported building SVF mesh to {output_dir}/{output_file_name}.obj")
-#         except Exception as e:
-#             print(f"Error exporting mesh: {e}")
-    
-#     return building_mesh
 
 @njit
 def compute_view_factor_for_all_faces(
@@ -1505,47 +1014,50 @@ def compute_view_factor_for_all_faces(
     """
     Compute a per-face "view factor" for a specified set of target voxel classes.
 
-    By default (as in the old SVF case), you would pass:
-        target_values = (0,)      # voxel value for 'sky'
-        inclusion_mode = False    # i.e. any *non*-sky voxel will block the ray
+    This function computes view factors from building surface faces to target voxel types
+    (e.g., sky, trees, other buildings). It uses hemisphere ray casting with rotation
+    to align rays with each face's normal direction.
 
-    But you can pass any other combination:
-        - E.g. target_values = (-2,), inclusion_mode=True
-          to measure fraction of directions that intersect 'trees' (-2).
-        - E.g. target_values = (-3,), inclusion_mode=True
-          to measure fraction of directions that intersect 'buildings' (-3).
-    
+    Typical usage examples:
+    - Sky View Factor: target_values=(0,), inclusion_mode=False (sky voxels)
+    - Tree View Factor: target_values=(-2,), inclusion_mode=True (tree voxels)  
+    - Building View Factor: target_values=(-3,), inclusion_mode=True (building voxels)
+
     Args:
-        face_centers (np.ndarray): (n_faces, 3) face centroid positions.
-        face_normals (np.ndarray): (n_faces, 3) face normals.
-        hemisphere_dirs (np.ndarray): (N, 3) set of direction vectors in the hemisphere.
+        face_centers (np.ndarray): (n_faces, 3) face centroid positions in real coordinates.
+        face_normals (np.ndarray): (n_faces, 3) face normal vectors (outward pointing).
+        hemisphere_dirs (np.ndarray): (N, 3) set of direction vectors in the upper hemisphere.
         voxel_data (np.ndarray): 3D array of voxel values.
         meshsize (float): Size of each voxel in meters.
-        tree_k (float): Tree extinction coefficient.
-        tree_lad (float): Leaf area density in m^-1.
-        target_values (tuple[int]): Voxel classes that define a 'hit'.
-        inclusion_mode (bool): If True, hitting any of target_values is considered "visible."
-                               If False, hitting anything *not* in target_values (except -2 trees) blocks the ray.
+        tree_k (float): Tree extinction coefficient for Beer-Lambert law.
+        tree_lad (float): Leaf area density in m^-1 for tree transmittance.
+        target_values (tuple[int]): Voxel classes that define a 'hit' or target.
+        inclusion_mode (bool): If True, hitting target_values counts as visibility.
+                               If False, hitting anything NOT in target_values blocks the ray.
         grid_bounds_real (np.ndarray): [[x_min,y_min,z_min],[x_max,y_max,z_max]] in real coords.
-        boundary_epsilon (float): tolerance for marking boundary vertical faces.
+        boundary_epsilon (float): Tolerance for identifying boundary vertical faces.
         ignore_downward (bool): If True, only consider upward rays. If False, consider all outward rays.
 
     Returns:
-        np.ndarray of shape (n_faces,):
-            The computed view factor for each face (NaN for boundary‐vertical faces).
+        np.ndarray of shape (n_faces,): Computed view factor for each face.
+            NaN values indicate boundary vertical faces that should be excluded.
     """
     n_faces = face_centers.shape[0]
     face_vf_values = np.zeros(n_faces, dtype=np.float64)
     
+    # Reference vector pointing upward (+Z direction)
     z_axis = np.array([0.0, 0.0, 1.0])
     
+    # Process each face individually
     for fidx in range(n_faces):
         center = face_centers[fidx]
         normal = face_normals[fidx]
         
-        # -- 1) Check for boundary + vertical face => NaN
-        is_vertical = (abs(normal[2]) < 0.01)
+        # Check for boundary vertical faces and mark as NaN
+        # This excludes faces on domain edges that may have artificial visibility
+        is_vertical = (abs(normal[2]) < 0.01)  # Face normal is nearly horizontal
         
+        # Check if face is near domain boundaries
         on_x_min = (abs(center[0] - grid_bounds_real[0,0]) < boundary_epsilon)
         on_y_min = (abs(center[1] - grid_bounds_real[0,1]) < boundary_epsilon)
         on_x_max = (abs(center[0] - grid_bounds_real[1,0]) < boundary_epsilon)
@@ -1556,31 +1068,33 @@ def compute_view_factor_for_all_faces(
             face_vf_values[fidx] = np.nan
             continue
         
-        # -- 2) Compute rotation that aligns face normal -> +Z
+        # Compute rotation to align face normal with +Z axis
+        # This allows us to use the same hemisphere directions for all faces
         norm_n = np.sqrt(normal[0]**2 + normal[1]**2 + normal[2]**2)
         if norm_n < 1e-12:
-            # Degenerate normal
+            # Degenerate normal vector
             face_vf_values[fidx] = 0.0
             continue
         
+        # Calculate angle between face normal and +Z axis
         dot_zn = z_axis[0]*normal[0] + z_axis[1]*normal[1] + z_axis[2]*normal[2]
         cos_angle = dot_zn / (norm_n)
         if cos_angle >  1.0: cos_angle =  1.0
         if cos_angle < -1.0: cos_angle = -1.0
         angle = np.arccos(cos_angle)
         
-        # Distinguish near +Z vs near -Z vs general case
+        # Handle special cases and general rotation
         if abs(cos_angle - 1.0) < 1e-9:
-            # normal ~ +Z => no rotation needed
+            # Face normal is already aligned with +Z => no rotation needed
             local_dirs = hemisphere_dirs
         elif abs(cos_angle + 1.0) < 1e-9:
-            # normal ~ -Z => rotate 180 around X (or Y) axis
+            # Face normal points in -Z direction => rotate 180 degrees around X axis
             axis_180 = np.array([1.0, 0.0, 0.0])
             local_dirs = np.empty_like(hemisphere_dirs)
             for i in range(hemisphere_dirs.shape[0]):
                 local_dirs[i] = rotate_vector_axis_angle(hemisphere_dirs[i], axis_180, np.pi)
         else:
-            # normal is neither up nor down -> do standard axis-angle
+            # General case: rotate around axis perpendicular to both +Z and face normal
             axis_x = z_axis[1]*normal[2] - z_axis[2]*normal[1]
             axis_y = z_axis[2]*normal[0] - z_axis[0]*normal[2]
             axis_z = z_axis[0]*normal[1] - z_axis[1]*normal[0]
@@ -1594,28 +1108,30 @@ def compute_view_factor_for_all_faces(
                     angle
                 )
         
-        # -- 3) Count valid directions based on ignore_downward setting
-        total_outward = 0
-        num_valid = 0
+        # Count valid ray directions based on face orientation and downward filtering
+        total_outward = 0  # Rays pointing away from face surface
+        num_valid = 0      # Rays that meet all criteria (outward + optionally upward)
+        
         for i in range(local_dirs.shape[0]):
             dvec = local_dirs[i]
+            # Check if ray points outward from face surface (positive dot product with normal)
             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
             if dp > 0.0:
                 total_outward += 1
+                # Apply downward filtering if requested
                 if not ignore_downward or dvec[2] > 0.0:
                     num_valid += 1
         
-        # If no outward directions at all => view factor = 0
+        # Handle cases with no valid directions
         if total_outward == 0:
             face_vf_values[fidx] = 0.0
             continue
         
-        # If no valid directions => view factor = 0
         if num_valid == 0:
             face_vf_values[fidx] = 0.0
             continue
         
-        # -- 4) Create an array for valid directions
+        # Create array containing only the valid ray directions
         valid_dirs_arr = np.empty((num_valid, 3), dtype=np.float64)
         out_idx = 0
         for i in range(local_dirs.shape[0]):
@@ -1627,11 +1143,11 @@ def compute_view_factor_for_all_faces(
                 valid_dirs_arr[out_idx, 2] = dvec[2]
                 out_idx += 1
         
-        # -- 5) Ray origin in voxel coords, offset along face normal
-        offset_vox = 0.1
+        # Set ray origin slightly offset from face surface to avoid self-intersection
+        offset_vox = 0.1  # Offset in voxel units
         ray_origin = (center / meshsize) + (normal / norm_n) * offset_vox
         
-        # -- 6) Compute fraction of rays that "see" the target
+        # Compute fraction of valid rays that "see" the target using generic ray tracing
         vf = compute_vi_generic(
             ray_origin,
             voxel_data,
@@ -1643,7 +1159,8 @@ def compute_view_factor_for_all_faces(
             inclusion_mode
         )
         
-        # Scale by fraction of directions that were valid
+        # Scale result by fraction of directions that were valid
+        # This normalizes for the hemisphere portion that the face can actually "see"
         fraction_valid = num_valid / total_outward
         face_vf_values[fidx] = vf * fraction_valid
     
@@ -1651,34 +1168,73 @@ def compute_view_factor_for_all_faces(
 
 def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     """
-    Compute and optionally visualize the "view factor" for surface meshes
-    with respect to a chosen target voxel class (or classes).
+    Compute and optionally visualize view factors for surface meshes with respect to target voxel classes.
     
-    By default, it computes Sky View Factor (target_values=(0,), inclusion_mode=False).
-    But you can pass different arguments for other view factors:
-      - target_values=(-2,), inclusion_mode=True  => Tree view factor
-      - target_values=(-3,), inclusion_mode=True  => Building view factor
-      etc.
+    This function provides a flexible framework for computing various surface-based view factors:
+    - Sky View Factor: Fraction of sky hemisphere visible from building surfaces
+    - Tree View Factor: Fraction of directions that intersect vegetation
+    - Building View Factor: Fraction of directions that intersect other buildings
+    - Custom View Factors: User-defined target voxel classes
+    
+    The function extracts surface meshes from the voxel data, then computes view factors
+    for each face using hemisphere ray casting with proper geometric transformations.
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values
-        meshsize (float): Size of each voxel in meters
-        **kwargs: Additional parameters (colormap, ray counts, etc.)
-                  including:
-            target_values (tuple[int]): voxel classes that define 'hits'
-            inclusion_mode (bool): interpretation of hits
-            building_class_id (int): which class to mesh for surface extraction
-            ...
-    
+        voxel_data (ndarray): 3D array of voxel values representing the urban environment.
+        meshsize (float): Size of each voxel in meters for coordinate scaling.
+        **kwargs: Extensive configuration options including:
+            # Target specification:
+            target_values (tuple[int]): Voxel classes to measure visibility to (default: (0,) for sky)
+            inclusion_mode (bool): Interpretation of target_values (default: False for sky)
+            
+            # Surface extraction:
+            building_class_id (int): Voxel class to extract surfaces from (default: -3 for buildings)
+            building_id_grid (ndarray): Optional grid mapping voxels to building IDs
+            
+            # Ray sampling:
+            N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 60)
+            N_elevation (int): Number of elevation angles for hemisphere sampling (default: 10)
+            
+            # Tree transmittance (Beer-Lambert law):
+            tree_k (float): Tree extinction coefficient (default: 0.6)
+            tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+            
+            # Visualization and export:
+            colormap (str): Matplotlib colormap for visualization (default: 'BuPu_r')
+            vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+            obj_export (bool): Whether to export mesh as OBJ file (default: False)
+            output_directory (str): Directory for OBJ export (default: "output")
+            output_file_name (str): Base filename for OBJ export (default: "surface_view_factor")
+            
+            # Other options:
+            progress_report (bool): Whether to print computation progress (default: False)
+            debug (bool): Enable debug output (default: False)
+
     Returns:
-        trimesh.Trimesh: The surface mesh with per-face view-factor values in metadata.
+        trimesh.Trimesh: Surface mesh with per-face view factor values stored in metadata.
+                        The view factor values can be accessed via mesh.metadata[value_name].
+                        Returns None if no surfaces are found or extraction fails.
+                        
+    Example Usage:
+        # Sky View Factor for building surfaces
+        mesh = get_surface_view_factor(voxel_data, meshsize, 
+                                     target_values=(0,), inclusion_mode=False)
+        
+        # Tree View Factor for building surfaces  
+        mesh = get_surface_view_factor(voxel_data, meshsize,
+                                     target_values=(-2,), inclusion_mode=True)
+        
+        # Custom view factor with OBJ export
+        mesh = get_surface_view_factor(voxel_data, meshsize,
+                                     target_values=(-3,), inclusion_mode=True,
+                                     obj_export=True, output_file_name="building_view_factor")
     """
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
     import os
     
-    # Default parameters
+    # Extract configuration parameters with appropriate defaults
     value_name     = kwargs.get("value_name", 'view_factor_values')
     colormap       = kwargs.get("colormap", 'BuPu_r')
     vmin           = kwargs.get("vmin", 0.0)
@@ -1689,28 +1245,25 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     progress_report= kwargs.get("progress_report", False)
     building_id_grid = kwargs.get("building_id_grid", None)
     
-    # Tree & bounding params
+    # Tree transmittance parameters for Beer-Lambert law
     tree_k         = kwargs.get("tree_k", 0.6)
     tree_lad       = kwargs.get("tree_lad", 1.0)
     
-    # ----------------------------------------
-    # NEW: user can override target classes
-    # defaults for "sky" factor:
-    target_values  = kwargs.get("target_values", (0,))  
-    inclusion_mode = kwargs.get("inclusion_mode", False)
-    # ----------------------------------------
+    # Target specification - defaults to sky view factor configuration
+    target_values  = kwargs.get("target_values", (0,))     # Sky voxels by default
+    inclusion_mode = kwargs.get("inclusion_mode", False)   # Exclusion mode for sky
     
-    # Voxel class used for building (or other) surface
-    building_class_id = kwargs.get("building_class_id", -3)
+    # Surface extraction parameters
+    building_class_id = kwargs.get("building_class_id", -3)  # Building voxel class
     
-    # 1) Extract mesh from voxel_data
+    # Extract surface mesh from the specified voxel class
     try:
         building_mesh = create_voxel_mesh(
             voxel_data, 
             building_class_id, 
             meshsize,
             building_id_grid=building_id_grid,
-            mesh_type='open_air'
+            mesh_type='open_air'  # Extract surfaces exposed to air
         )
         if building_mesh is None or len(building_mesh.faces) == 0:
             print("No surfaces found in voxel data for the specified class.")
@@ -1722,31 +1275,33 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     if progress_report:
         print(f"Processing view factor for {len(building_mesh.faces)} faces...")
 
-    # 2) Get face centers + normals
-    face_centers = building_mesh.triangles_center
-    face_normals = building_mesh.face_normals
+    # Extract geometric properties from the mesh
+    face_centers = building_mesh.triangles_center  # Centroid of each face
+    face_normals = building_mesh.face_normals      # Outward normal of each face
     
-    # 3) Precompute hemisphere directions
+    # Generate hemisphere ray directions using spherical coordinates
+    # These directions will be rotated to align with each face's normal
     azimuth_angles   = np.linspace(0, 2*np.pi, N_azimuth, endpoint=False)
-    elevation_angles = np.linspace(0, np.pi/2, N_elevation)
+    elevation_angles = np.linspace(0, np.pi/2, N_elevation)  # Upper hemisphere only
     hemisphere_list = []
     for elev in elevation_angles:
         sin_elev = np.sin(elev)
         cos_elev = np.cos(elev)
         for az in azimuth_angles:
+            # Convert spherical to Cartesian coordinates
             x = cos_elev * np.cos(az)
             y = cos_elev * np.sin(az)
-            z = sin_elev
+            z = sin_elev  # Always positive (upper hemisphere)
             hemisphere_list.append([x, y, z])
     hemisphere_dirs = np.array(hemisphere_list, dtype=np.float64)
     
-    # 4) Domain bounds in real coordinates
+    # Calculate domain bounds for boundary face detection
     nx, ny, nz = voxel_data.shape
     grid_bounds_voxel = np.array([[0,0,0],[nx, ny, nz]], dtype=np.float64)
     grid_bounds_real = grid_bounds_voxel * meshsize
-    boundary_epsilon = meshsize * 0.05
+    boundary_epsilon = meshsize * 0.05  # Tolerance for boundary detection
     
-    # 5) Call the new Numba routine for per-face view factor
+    # Compute view factors for all faces using optimized Numba implementation
     face_vf_values = compute_view_factor_for_all_faces(
         face_centers,
         face_normals,
@@ -1755,18 +1310,18 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
         meshsize,
         tree_k,
         tree_lad,
-        target_values,   # <--- new
-        inclusion_mode,  # <--- new
+        target_values,   # User-specified target voxel classes
+        inclusion_mode,  # User-specified hit interpretation
         grid_bounds_real,
         boundary_epsilon
     )
     
-    # 6) Store these values in the mesh metadata
+    # Store computed view factor values in mesh metadata for later access
     if not hasattr(building_mesh, 'metadata'):
         building_mesh.metadata = {}
     building_mesh.metadata[value_name] = face_vf_values
        
-    # Optionally export to OBJ
+    # Optional OBJ file export for external visualization/analysis
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         output_dir      = kwargs.get("output_directory", "output")

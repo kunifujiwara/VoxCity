@@ -5,6 +5,17 @@ This module provides functionality to download, compose, crop and save satellite
 from OpenEarthMap Japan as georeferenced GeoTIFF files. It handles coordinate conversions between
 latitude/longitude and tile coordinates, downloads tiles within a polygon region, and saves the
 final image with proper geospatial metadata.
+
+Key Features:
+    - Convert between geographic (lat/lon) and tile coordinates
+    - Download satellite imagery tiles for a specified region
+    - Compose multiple tiles into a single image
+    - Crop images to a specified polygon boundary
+    - Save results as georeferenced GeoTIFF files
+
+Example Usage:
+    polygon = [(139.7, 35.6), (139.8, 35.6), (139.8, 35.7), (139.7, 35.7)]  # Tokyo area
+    save_oemj_as_geotiff(polygon, "tokyo_satellite.tiff", zoom=16)
 """
 
 import requests
@@ -16,15 +27,22 @@ from osgeo import gdal, osr
 import pyproj
 
 def deg2num(lon_deg, lat_deg, zoom):
-    """Convert longitude/latitude coordinates to tile coordinates.
+    """Convert longitude/latitude coordinates to tile coordinates using Web Mercator projection.
+    
+    The function converts geographic coordinates to tile coordinates using the standard
+    Web Mercator tiling scheme (XYZ). The resulting coordinates can be used to identify
+    and download specific map tiles.
     
     Args:
-        lon_deg (float): Longitude in degrees
-        lat_deg (float): Latitude in degrees
-        zoom (int): Zoom level
+        lon_deg (float): Longitude in degrees (-180 to 180)
+        lat_deg (float): Latitude in degrees (-90 to 90)
+        zoom (int): Zoom level (0-20, where 0 is most zoomed out)
         
     Returns:
-        tuple: (x, y) tile coordinates
+        tuple: (x, y) tile coordinates as floats
+        
+    Example:
+        >>> x, y = deg2num(139.7, 35.6, 16)  # Tokyo coordinates
     """
     lat_rad = math.radians(lat_deg)
     n = 2.0 ** zoom
@@ -33,15 +51,21 @@ def deg2num(lon_deg, lat_deg, zoom):
     return (xtile, ytile)
 
 def num2deg(xtile, ytile, zoom):
-    """Convert tile coordinates to longitude/latitude coordinates.
+    """Convert tile coordinates back to longitude/latitude coordinates.
+    
+    This is the inverse operation of deg2num(). It converts tile coordinates
+    back to geographic coordinates using the Web Mercator projection.
     
     Args:
         xtile (float): X tile coordinate
         ytile (float): Y tile coordinate
-        zoom (int): Zoom level
+        zoom (int): Zoom level (0-20)
         
     Returns:
         tuple: (longitude, latitude) in degrees
+        
+    Example:
+        >>> lon, lat = num2deg(29326, 13249, 15)  # Sample tile coordinates
     """
     n = 2.0 ** zoom
     lon_deg = xtile / n * 360.0 - 180.0
@@ -52,12 +76,24 @@ def num2deg(xtile, ytile, zoom):
 def download_tiles(polygon, zoom):
     """Download satellite imagery tiles covering a polygon region.
     
+    Downloads all tiles that intersect with the given polygon at the specified zoom level
+    from the OpenEarthMap Japan server. The function calculates the minimum bounding box
+    that contains the polygon and downloads all tiles within that box.
+    
     Args:
-        polygon (list): List of (lon, lat) coordinates defining the region
-        zoom (int): Zoom level for tile detail
+        polygon (list): List of (lon, lat) tuples defining the region vertices in clockwise
+                       or counterclockwise order
+        zoom (int): Zoom level for tile detail (recommended range: 14-18)
         
     Returns:
-        tuple: (tiles dict mapping (x,y) to Image objects, bounds tuple)
+        tuple: (
+            tiles: dict mapping (x,y) tile coordinates to PIL Image objects,
+            bounds: tuple of (min_x, min_y, max_x, max_y) tile coordinates
+        )
+        
+    Note:
+        Higher zoom levels provide more detail but require downloading more tiles.
+        The function will print progress messages during download.
     """
     print(f"Downloading tiles")
 
@@ -85,14 +121,23 @@ def download_tiles(polygon, zoom):
     return tiles, (min(min_x, max_x), min(min_y, max_y), max(min_x, max_x), max(min_y, max_y))
 
 def compose_image(tiles, bounds):
-    """Compose downloaded tiles into a single image.
+    """Compose downloaded tiles into a single continuous image.
+    
+    Takes individual map tiles and combines them into a single large image based on
+    their relative positions. The tiles are placed according to their x,y coordinates
+    within the bounds.
     
     Args:
         tiles (dict): Mapping of (x,y) coordinates to tile Image objects
-        bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
+        bounds (tuple): (min_x, min_y, max_x, max_y) tile coordinate bounds
         
     Returns:
-        Image: Composed PIL Image
+        Image: Composed PIL Image with dimensions (width x height) where:
+              width = (max_x - min_x + 1) * 256
+              height = (max_y - min_y + 1) * 256
+              
+    Note:
+        Each tile is assumed to be 256x256 pixels, which is standard for web maps.
     """
     min_x, min_y, max_x, max_y = bounds
     width = abs(max_x - min_x + 1) * 256
@@ -104,16 +149,26 @@ def compose_image(tiles, bounds):
     return result
 
 def crop_image(image, polygon, bounds, zoom):
-    """Crop composed image to polygon boundary.
+    """Crop composed image to the exact polygon boundary.
+    
+    Creates a mask from the polygon coordinates and uses it to crop the image,
+    removing areas outside the polygon of interest. The polygon coordinates are
+    converted from geographic coordinates to pixel coordinates in the image space.
     
     Args:
         image (Image): PIL Image to crop
-        polygon (list): List of (lon, lat) coordinates
+        polygon (list): List of (lon, lat) coordinates defining the boundary
         bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
-        zoom (int): Zoom level
+        zoom (int): Zoom level used for coordinate conversion
         
     Returns:
-        tuple: (cropped Image, bounding box)
+        tuple: (
+            cropped Image: PIL Image cropped to polygon boundary,
+            bbox: tuple of (left, upper, right, lower) pixel coordinates of bounding box
+        )
+        
+    Raises:
+        ValueError: If the polygon does not intersect with the downloaded tiles
     """
     min_x, min_y, max_x, max_y = bounds
     img_width, img_height = image.size
@@ -139,15 +194,23 @@ def crop_image(image, polygon, bounds, zoom):
     return cropped.crop(bbox), bbox
 
 def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
-    """Save cropped image as georeferenced GeoTIFF.
+    """Save cropped image as a georeferenced GeoTIFF file.
+    
+    Converts the image to a GeoTIFF format with proper spatial reference information
+    using the Web Mercator projection (EPSG:3857). The function handles coordinate
+    transformation and sets up the necessary geospatial metadata.
     
     Args:
         image (Image): PIL Image to save
         polygon (list): List of (lon, lat) coordinates
-        zoom (int): Zoom level
-        bbox (tuple): Bounding box of cropped image
+        zoom (int): Zoom level used for coordinate calculations
+        bbox (tuple): Bounding box of cropped image in pixels (left, upper, right, lower)
         bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
-        output_path (str): Path to save GeoTIFF
+        output_path (str): Path where the GeoTIFF will be saved
+        
+    Note:
+        The output GeoTIFF will have 3 bands (RGB) and use the Web Mercator
+        projection (EPSG:3857) for compatibility with most GIS software.
     """
     min_x, min_y, max_x, max_y = bounds
     
@@ -187,12 +250,35 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     dataset = None
 
 def save_oemj_as_geotiff(polygon, filepath, zoom=16):
-    """Download and save OpenEarthMap Japan imagery as GeoTIFF.
+    """Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.
+    
+    This is the main function that orchestrates the entire process of downloading,
+    processing, and saving satellite imagery for a specified region.
     
     Args:
-        polygon (list): List of (lon, lat) coordinates defining region
-        filepath (str): Output path for GeoTIFF
+        polygon (list): List of (lon, lat) coordinates defining the region to download.
+                       Must be in clockwise or counterclockwise order.
+        filepath (str): Output path for the GeoTIFF file
         zoom (int, optional): Zoom level for detail. Defaults to 16.
+                            - 14: ~9.5m/pixel
+                            - 15: ~4.8m/pixel
+                            - 16: ~2.4m/pixel
+                            - 17: ~1.2m/pixel
+                            - 18: ~0.6m/pixel
+    
+    Example:
+        >>> polygon = [
+                (139.7, 35.6),  # Bottom-left
+                (139.8, 35.6),  # Bottom-right
+                (139.8, 35.7),  # Top-right
+                (139.7, 35.7)   # Top-left
+            ]
+        >>> save_oemj_as_geotiff(polygon, "tokyo_area.tiff", zoom=16)
+    
+    Note:
+        - Higher zoom levels provide better resolution but require more storage
+        - The polygon should be relatively small to avoid memory issues
+        - The output GeoTIFF will be in Web Mercator projection (EPSG:3857)
     """
     try:
         tiles, bounds = download_tiles(polygon, zoom)

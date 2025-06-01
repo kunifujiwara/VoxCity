@@ -19,17 +19,42 @@ from .grid import grid_to_geodataframe
 
 def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     """
-    Compute average polygon values along each edge by:
-    1) Building an Edge GeoDataFrame in linestring form
-    2) Using gpd.overlay or sjoin to get their intersection with polygons
-    3) Computing length-weighted average
+    Compute average polygon values along each edge in a network graph using vectorized operations.
+    
+    This function performs efficient computation of average values from polygons that intersect
+    with network edges. It uses GeoDataFrames for vectorized spatial operations instead of
+    iterating over individual edges.
+
+    Parameters
+    ----------
+    G : networkx.MultiDiGraph
+        OSMnx graph with edges containing either geometry attributes or node coordinates.
+    polygons_gdf : geopandas.GeoDataFrame
+        GeoDataFrame containing polygons with values to be averaged along edges.
+    value_col : str, default='value'
+        Name of the column in polygons_gdf containing the values to average.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping edge tuples (u, v, k) to their computed average values.
+        Values are length-weighted averages of intersecting polygon values.
+
+    Notes
+    -----
+    The process involves:
+    1. Converting edges to a GeoDataFrame with LineString geometries
+    2. Projecting geometries to a metric CRS (EPSG:3857) for accurate length calculations
+    3. Computing intersections between edges and polygons
+    4. Calculating length-weighted averages of polygon values for each edge
     """
-    # 1) Build edge GeoDataFrame (EPSG:4326)
+    # Build edge GeoDataFrame in WGS84 (EPSG:4326)
     records = []
     for i, (u, v, k, data) in enumerate(G.edges(keys=True, data=True)):
         if 'geometry' in data:
             edge_geom = data['geometry']
         else:
+            # Create LineString from node coordinates if no geometry exists
             start_node = G.nodes[u]
             end_node = G.nodes[v]
             edge_geom = LineString([(start_node['x'], start_node['y']),
@@ -46,32 +71,25 @@ def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     if polygons_gdf.crs != edges_gdf.crs:
         polygons_gdf = polygons_gdf.to_crs(edges_gdf.crs)
 
-    # 2) Use a projected CRS for length calculations
+    # Project to Web Mercator for accurate length calculations
     edges_3857 = edges_gdf.to_crs(epsg=3857)
     polys_3857 = polygons_gdf.to_crs(epsg=3857)
 
-    # 3) Intersection: lines vs polygons -> lines clipped to polygons
-    #    gpd.overlay with how='intersection' can yield partial lines
+    # Compute intersections between edges and polygons
     intersected = gpd.overlay(edges_3857, polys_3857, how='intersection')
 
-    # Now each row is a geometry representing the intersection segment,
-    # with columns from edges + polygons.
-    # For lines, 'intersection' yields the line portion inside each polygon.
-    # We'll compute the length, then do a length-weighted average of value_col.
-
+    # Calculate length-weighted averages
     intersected['seg_length'] = intersected.geometry.length
-    # Weighted contribution = seg_length * polygon_value
     intersected['weighted_val'] = intersected['seg_length'] * intersected[value_col]
 
-    # 4) Group by edge_id
+    # Group by edge and compute weighted averages
     grouped = intersected.groupby('edge_id')
     results = grouped.apply(
         lambda df: df['weighted_val'].sum() / df['seg_length'].sum()
         if df['seg_length'].sum() > 0 else np.nan
     )
-    # results is a Series with index=edge_id
 
-    # 5) Map results back to edges
+    # Map results back to edge tuples
     edge_values = {}
     for edge_id, val in results.items():
         rec = edges_gdf.iloc[edge_id]
@@ -86,6 +104,50 @@ def get_network_values(
     value_name='value',
     **kwargs
 ):
+    """
+    Extract and visualize values from a grid along a street network.
+
+    This function downloads a street network from OpenStreetMap for a given area,
+    computes average grid values along network edges, and optionally visualizes
+    the results on an interactive map.
+
+    Parameters
+    ----------
+    grid : array-like or geopandas.GeoDataFrame
+        Either a grid array of values or a pre-built GeoDataFrame with polygons and values.
+    rectangle_vertices : list of tuples
+        List of (lon, lat) coordinates defining the bounding rectangle in EPSG:4326.
+    meshsize : float
+        Size of each grid cell (used only if grid is array-like).
+    value_name : str, default='value'
+        Name to use for the edge attribute storing computed values.
+    **kwargs : dict
+        Additional visualization and processing parameters:
+        - network_type : str, default='walk'
+            Type of street network to download ('walk', 'drive', etc.)
+        - vis_graph : bool, default=True
+            Whether to display the visualization
+        - colormap : str, default='viridis'
+            Matplotlib colormap for edge colors
+        - vmin, vmax : float, optional
+            Value range for color mapping
+        - edge_width : float, default=1
+            Width of edge lines in visualization
+        - fig_size : tuple, default=(15,15)
+            Figure size in inches
+        - zoom : int, default=16
+            Zoom level for basemap
+        - basemap_style : ctx.providers, default=CartoDB.Positron
+            Contextily basemap provider
+        - save_path : str, optional
+            Path to save the edge GeoDataFrame as a GeoPackage
+
+    Returns
+    -------
+    tuple
+        (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+        The network graph with computed edge values and edge geometries as a GeoDataFrame.
+    """
     defaults = {
         'network_type': 'walk',
         'vis_graph': True,
@@ -174,6 +236,10 @@ def interpolate_points_along_line(line, interval):
     Interpolate points along a single LineString at a given interval (in meters).
     If the line is shorter than `interval`, only start/end points are returned.
 
+    This function handles coordinate system transformations to ensure accurate
+    distance measurements, working in Web Mercator (EPSG:3857) for distance
+    calculations while maintaining WGS84 (EPSG:4326) for input/output.
+
     Parameters
     ----------
     line : shapely.geometry.LineString
@@ -184,7 +250,9 @@ def interpolate_points_along_line(line, interval):
     Returns
     -------
     list of shapely.geometry.Point
-        Points in EPSG:4326 along the line.
+        Points in EPSG:4326 along the line, spaced approximately `interval` meters apart.
+        For lines shorter than interval, only start and end points are returned.
+        For empty lines, an empty list is returned.
     """
     if line.is_empty:
         return []
@@ -219,7 +287,11 @@ def interpolate_points_along_line(line, interval):
 def gather_interpolation_points(G, interval=10.0, n_jobs=1):
     """
     Gather all interpolation points for each edge in the graph into a single GeoDataFrame.
-    Can be parallelized with `n_jobs`.
+    Supports parallel processing for improved performance on large networks.
+
+    This function processes each edge in the graph, either using its geometry attribute
+    or creating a LineString from node coordinates, then interpolates points along it
+    at the specified interval.
 
     Parameters
     ----------
@@ -228,12 +300,16 @@ def gather_interpolation_points(G, interval=10.0, n_jobs=1):
     interval : float, default=10.0
         Interpolation distance interval in meters.
     n_jobs : int, default=1
-        Number of parallel jobs (1 => no parallelization).
+        Number of parallel jobs for processing edges. Set to 1 for sequential processing,
+        or -1 to use all available CPU cores.
 
     Returns
     -------
     gpd.GeoDataFrame
-        Columns: edge_id, index_in_edge, geometry (EPSG:4326).
+        GeoDataFrame in EPSG:4326 with columns:
+        - edge_id: Index of the edge in the graph
+        - index_in_edge: Position of the point along its edge
+        - geometry: Point geometry
     """
     edges = list(G.edges(keys=True, data=True))
 
@@ -268,21 +344,26 @@ def gather_interpolation_points(G, interval=10.0, n_jobs=1):
 
 def fetch_elevations_for_points(points_gdf_3857, dem_gdf_3857, elevation_col='value'):
     """
-    Do a spatial join (nearest) in a projected CRS (EPSG:3857) to fetch DEM elevations.
+    Perform a spatial join to fetch DEM elevations for interpolated points.
+    
+    Uses nearest neighbor matching in projected coordinates (EPSG:3857) to ensure
+    accurate distance calculations when finding the closest DEM cell for each point.
 
     Parameters
     ----------
     points_gdf_3857 : gpd.GeoDataFrame
-        Interpolation points in EPSG:3857.
+        Interpolation points in EPSG:3857 projection.
     dem_gdf_3857 : gpd.GeoDataFrame
-        DEM polygons in EPSG:3857, must have `elevation_col`.
+        DEM polygons in EPSG:3857 projection, containing elevation values.
     elevation_col : str, default='value'
-        Column with elevation values in dem_gdf_3857.
+        Name of the column containing elevation values in dem_gdf_3857.
 
     Returns
     -------
     gpd.GeoDataFrame
-        A copy of points_gdf_3857 with new column 'elevation'.
+        Copy of points_gdf_3857 with additional columns:
+        - elevation: Elevation value from nearest DEM cell
+        - dist_to_poly: Distance to nearest DEM cell
     """
     joined = gpd.sjoin_nearest(
         points_gdf_3857, 
@@ -296,10 +377,25 @@ def fetch_elevations_for_points(points_gdf_3857, dem_gdf_3857, elevation_col='va
 
 def compute_slope_for_group(df):
     """
-    Given a subset of points for a single edge, compute average slope between
-    consecutive points, using columns: geometry, elevation, index_in_edge.
+    Compute average slope between consecutive points along a single edge.
+    
+    Slopes are calculated as absolute percentage grade (rise/run * 100) between
+    consecutive points, then averaged for the entire edge. Points must be in
+    EPSG:3857 projection for accurate horizontal distance calculations.
 
-    Note: We assume df is already in EPSG:3857 for direct distance calculations.
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing points for a single edge with columns:
+        - geometry: Point geometries in EPSG:3857
+        - elevation: Elevation values in meters
+        - index_in_edge: Position along the edge for sorting
+
+    Returns
+    -------
+    float
+        Average slope as a percentage, or np.nan if no valid slopes can be computed
+        (e.g., when points are coincident or no elevation change).
     """
     # Sort by position along the edge
     df = df.sort_values("index_in_edge")
@@ -326,19 +422,28 @@ def compute_slope_for_group(df):
 
 def calculate_edge_slopes_from_join(joined_points_gdf, n_edges):
     """
-    Calculate average slopes for each edge by grouping joined points.
+    Calculate average slopes for all edges in the network from interpolated points.
+    
+    This function groups points by edge_id and computes the average slope for each edge
+    using the compute_slope_for_group function. It ensures all edges in the original
+    graph have a slope value, even if no valid slope could be computed.
 
     Parameters
     ----------
     joined_points_gdf : gpd.GeoDataFrame
-        Must have columns: edge_id, index_in_edge, elevation, geometry (EPSG:3857).
+        Points with elevations in EPSG:3857, must have columns:
+        - edge_id: Index of the edge in the graph
+        - index_in_edge: Position along the edge
+        - elevation: Elevation value
+        - geometry: Point geometry
     n_edges : int
-        Number of edges from the graph.
+        Total number of edges in the original graph.
 
     Returns
     -------
     dict
-        edge_id -> average slope (in %).
+        Dictionary mapping edge_id to average slope (in %). Edges with no valid
+        slope calculation are assigned np.nan.
     """
     # We'll group by edge_id, ignoring the group columns in apply (pandas >= 2.1).
     # If your pandas version < 2.1, just do a column subset after groupby.
@@ -369,27 +474,72 @@ def analyze_network_slopes(
     **kwargs
 ):
     """
-    Analyze and visualize network slopes based on DEM data, using vectorized + parallel methods.
+    Analyze and visualize street network slopes using Digital Elevation Model (DEM) data.
+
+    This function performs a comprehensive analysis of street network slopes by:
+    1. Converting DEM data to a GeoDataFrame of elevation polygons
+    2. Downloading the street network from OpenStreetMap
+    3. Interpolating points along network edges
+    4. Matching points to DEM elevations
+    5. Computing slopes between consecutive points
+    6. Aggregating slopes per edge
+    7. Optionally visualizing results on an interactive map
+
+    The analysis uses appropriate coordinate transformations between WGS84 (EPSG:4326)
+    for geographic operations and Web Mercator (EPSG:3857) for distance calculations.
 
     Parameters
     ----------
     dem_grid : array-like
-        DEM grid data.
+        Digital Elevation Model grid data containing elevation values.
     meshsize : float
-        Mesh grid size.
+        Size of each DEM grid cell.
     value_name : str, default='slope'
-        Column name for slopes assigned to each edge.
+        Name to use for the slope attribute in output data.
     interval : float, default=10.0
-        Interpolation distance in meters.
+        Distance in meters between interpolated points along edges.
     n_jobs : int, default=1
-        Parallelization for edge interpolation (1 => sequential).
+        Number of parallel jobs for edge processing.
     **kwargs : dict
-        Additional parameters:
-          - rectangle_vertices : list of (x, y) in EPSG:4326
-          - network_type : str, default='walk'
-          - vis_graph : bool, default=True
-          - colormap, vmin, vmax, edge_width, fig_size, zoom, basemap_style, alpha
-          - output_directory, output_file_name
+        Additional configuration parameters:
+        - rectangle_vertices : list of (lon, lat), required
+            Coordinates defining the analysis area in EPSG:4326
+        - network_type : str, default='walk'
+            Type of street network to download
+        - vis_graph : bool, default=True
+            Whether to create visualization
+        - colormap : str, default='viridis'
+            Matplotlib colormap for slope visualization
+        - vmin, vmax : float, optional
+            Value range for slope coloring
+        - edge_width : float, default=1
+            Width of edge lines in plot
+        - fig_size : tuple, default=(15,15)
+            Figure size in inches
+        - zoom : int, default=16
+            Zoom level for basemap
+        - basemap_style : ctx.providers, default=CartoDB.Positron
+            Contextily basemap provider
+        - output_directory : str, optional
+            Directory to save results
+        - output_file_name : str, default='network_slopes'
+            Base name for output files
+        - alpha : float, default=1.0
+            Transparency of edge lines in visualization
+
+    Returns
+    -------
+    tuple
+        (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+        - Graph with slope values as edge attributes
+        - GeoDataFrame of edges with geometries and slope values
+
+    Notes
+    -----
+    - Slopes are calculated as absolute percentage grades (rise/run * 100)
+    - Edge slopes are length-weighted averages of point-to-point slopes
+    - The visualization includes a basemap and legend showing slope percentages
+    - If output_directory is specified, results are saved as a GeoPackage
     """
     defaults = {
         'rectangle_vertices': None,
@@ -482,7 +632,7 @@ def analyze_network_slopes(
     # 10) Visualization
     if settings['vis_graph']:
         # Create a Polygon from the rectangle vertices
-        rectangle_polygon = Polygon(rectangle_vertices)
+        rectangle_polygon = Polygon(settings['rectangle_vertices'])
 
         # Convert the rectangle polygon to the same CRS as edge_gdf_web
         rectangle_gdf = gpd.GeoDataFrame(index=[0], crs='epsg:4326', geometry=[rectangle_polygon])
@@ -526,22 +676,5 @@ def analyze_network_slopes(
 
         # Show the plot
         plt.show()
-        # edge_gdf_web = edge_gdf.to_crs(epsg=3857)
-        # fig, ax = plt.subplots(figsize=settings['fig_size'])
-        # edge_gdf_web.plot(
-        #     column=value_name, 
-        #     ax=ax, 
-        #     cmap=settings['colormap'], 
-        #     legend=True, 
-        #     vmin=settings['vmin'], 
-        #     vmax=settings['vmax'],
-        #     linewidth=settings['edge_width'],
-        #     alpha=settings['alpha'],
-        #     legend_kwds={'label': f"{value_name} (%)"}
-        # )
-        # ctx.add_basemap(ax, source=settings['basemap_style'], zoom=settings['zoom'])
-        # ax.set_axis_off()
-        # plt.title(f'Network {value_name} Analysis', pad=20)
-        # plt.show()
 
     return G, edge_gdf
