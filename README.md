@@ -35,7 +35,7 @@
   
 - **Flexible Input Sources:**  
   Supports various building and terrain data sources including:
-  - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, OpenMapTiles, Open Building 2.5D
+  - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, Open Building 2.5D
   - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
   - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
   - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
