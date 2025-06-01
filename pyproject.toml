@@ -1,6 +1,6 @@
 [project]
 name = "voxcity"
-version = "0.5.15"
+version = "0.5.17"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",
@@ -40,13 +40,12 @@ dependencies = [
     "rio-cogeo",
     "geopy",
     "py-vox-io",
-    "mapbox_vector_tile",
     "numba",
     "reverse_geocoder",
     "pycountry",
     "seaborn",
     "overturemaps",
-    "protobuf>=3.20.0,<4.21.0",
+    "protobuf",
     "timezonefinder",
     "astral",
     "osmnx",
