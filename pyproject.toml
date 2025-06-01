@@ -1,6 +1,6 @@
 [project]
 name = "voxcity"
-version = "0.5.17"
+version = "0.5.18"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",

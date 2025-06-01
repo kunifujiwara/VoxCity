@@ -24,7 +24,7 @@ import os
 from .downloader.mbfp import get_mbfp_gdf
 from .downloader.osm import load_gdf_from_openstreetmap, load_land_cover_gdf_from_osm
 from .downloader.oemj import save_oemj_as_geotiff
-from .downloader.omt import load_gdf_from_openmaptiles
+# from .downloader.omt import load_gdf_from_openmaptiles
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
 from .downloader.citygml import load_buid_dem_veg_from_citygml
@@ -210,9 +210,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     elif source == 'EUBUCCO v0.1':
         # European building database with height information
         gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir)
-    elif source == "OpenMapTiles":
-        # Vector tiles service for building data
-        gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+    # elif source == "OpenMapTiles":
+    #     # Vector tiles service for building data
+    #     gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
     elif source == "Overture":
         # Open building dataset from Overture Maps Foundation
         gdf = load_gdf_from_overture(rectangle_vertices)
@@ -255,8 +255,8 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
                 gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
             elif building_complementary_source == 'EUBUCCO v0.1':
                 gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir)
-            elif building_complementary_source == "OpenMapTiles":
-                gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+            # elif building_complementary_source == "OpenMapTiles":
+            #     gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
             elif building_complementary_source == "Overture":
                 gdf_comp = load_gdf_from_overture(rectangle_vertices)
             elif building_complementary_source == "Local file":
