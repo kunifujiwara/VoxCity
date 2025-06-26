@@ -1,47 +1,35 @@
 # References
 
-VoxCity integrates multiple geospatial data sources and tools developed by various researchers and organizations. The following references are provided to give credit to the original authors of the tools and datasets used in VoxCity. Please cite them when using VoxCity in your research.
+VoxCity is a comprehensive Python package for grid-based 3D city model generation and urban simulation. The following references are provided to give credit to the original authors of the tools and datasets used in VoxCity. Please cite them when using VoxCity in your research.
 
-## Data Sources
+## Main Classes and Functions
 
-### Building Footprints
-- **OpenStreetMap**: Open-source mapping platform providing building footprints and heights {cite}`openstreetmap_2024`
-- **Overture Maps**: High-quality building footprint data {cite}`overture_2024`
-- **EUBUCCO**: European Building Stock Characteristics in a Common and Open Database {cite}`kopf_eubucco_2023`
-- **Microsoft Building Footprints**: Global building footprint dataset {cite}`microsoft_buildings_2024`
-- **Open Building 2.5D**: Building height dataset for Africa {cite}`open_building_2024`
+### Generator Module
+- `get_voxcity`: Main function for generating voxel city models
+- Building data sources: OpenStreetMap {cite}`openstreetmap_2023`, EUBUCCO {cite}`brussee_2023_eubucco`, Overture Maps {cite}`li_2023_overture`, Microsoft Building Footprints, OpenBuilding 2.5D {cite}`wang_2023_openbuilding`
+- Land cover data sources: UrbanWatch {cite}`liu_2023_urbanwatch`, ESA WorldCover {cite}`esa_2021_worldcover`, ESRI Land Cover {cite}`lang_2023_esri_landcover`, Dynamic World {cite}`potapov_2022_dynamic_world`, OpenStreetMap {cite}`openstreetmap_2023`
+- Canopy height data sources: High Resolution 1m Global Canopy Height Maps {cite}`lang_2023_global_canopy_height`, ETH Global Sentinel-2 10m {cite}`schug_2023_eth_canopy_height`
+- DEM data sources: DeltaDTM {cite}`hawker_2022_deltadtm`, FABDEM {cite}`hawker_2022_fabdem`, NASA {cite}`nasadem_2019`, COPERNICUS
 
-### Land Cover Data
-- **UrbanWatch**: High-resolution urban land cover mapping {cite}`urbanwatch_2024`
-- **OpenEarthMap Japan**: High-resolution land cover for Japan {cite}`openearthmap_japan_2024`
-- **ESA WorldCover**: Global land cover product {cite}`esa_worldcover_2024`
-- **ESRI Land Cover**: Global land cover classification {cite}`esri_landcover_2024`
-- **Dynamic World**: Near real-time global land cover {cite}`dynamic_world_2024`
+### Downloader Module
+- `OSMDownloader`: Downloader for OpenStreetMap building data {cite}`openstreetmap_2023`
+- `EUBUCCODownloader`: Downloader for EUBUCCO building data {cite}`brussee_2023_eubucco`
+- `OvertureDownloader`: Downloader for Overture Maps building data {cite}`li_2023_overture`
+- `GEEDownloader`: Downloader for Google Earth Engine data {cite}`google_earth_engine_2023`
 
-### Canopy Height Data
-- **High Resolution 1m Global Canopy Height Maps**: High-resolution global canopy height {cite}`global_canopy_height_2024`
-- **ETH Global Sentinel-2 10m**: Global canopy height from Sentinel-2 {cite}`eth_canopy_height_2024`
+### Exporter Module
+- `ENVIMETExporter`: Exporter for ENVI-met simulation files {cite}`envi_met_2020`
+- `MagicaVoxelExporter`: Exporter for MagicaVoxel voxel files {cite}`magicavoxel_2020`
+- `OBJExporter`: Exporter for OBJ 3D model files
 
-### Digital Elevation Models (DEM)
-- **DeltaDTM**: High-resolution digital terrain model {cite}`deltadtm_2024`
-- **FABDEM**: Forest And Buildings removed Copernicus DEM {cite}`fabdem_2024`
-- **NASA SRTM**: Shuttle Radar Topography Mission {cite}`nasa_srtm_2024`
-- **COPERNICUS DEM**: Copernicus Digital Elevation Model {cite}`copernicus_dem_2024`
+### Simulator Module
+- `SolarSimulator`: Class for solar radiation analysis
+- `ViewSimulator`: Class for view index and visibility analysis
 
-## Simulation and Analysis Tools
-
-### Solar Analysis
-- **Astral**: Sun position and solar calculations {cite}`astral_2024`
-- **EnergyPlus Weather Data**: Climate data for solar calculations {cite}`energyplus_2024`
-
-### View Analysis
-- **Sky View Index**: Urban canyon analysis methodology {cite}`sky_view_index_2024`
-- **Green View Index**: Urban greenery visibility analysis {cite}`green_view_index_2024`
-
-### Export Formats
-- **ENVI-MET**: Microclimate simulation software {cite}`envi_met_2024`
-- **MagicaVoxel**: Voxel art editor {cite}`magicavoxel_2024`
-- **OBJ Format**: Wavefront OBJ 3D file format {cite}`obj_format_2024`
+### Geoprocessor Module
+- `GridProcessor`: Class for grid-based data processing
+- `MeshProcessor`: Class for mesh generation and processing
+- `PolygonProcessor`: Class for polygon operations
 
 ## Bibliography
 

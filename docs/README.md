@@ -1,117 +1,80 @@
 # VoxCity Documentation
 
-This directory contains the documentation for VoxCity, a Python package for 3D voxel city model generation and urban simulation.
+This directory contains the documentation for the VoxCity project, built using Sphinx.
 
-## Building Documentation
+## Local Development
 
 ### Prerequisites
 
 - Python 3.12+
-- Required packages (install with `pip install -r requirements.txt`)
+- pip
 
-### Quick Start
+### Building Locally
 
 1. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Build documentation:**
+2. **Build the documentation:**
    ```bash
-   # Using make (Linux/Mac)
    make html
-   
-   # Using make.bat (Windows)
-   make.bat html
-   
-   # Using Python script
-   python build_docs.py
    ```
 
-3. **Serve locally (optional):**
+3. **View the documentation:**
+   Open `_build/html/index.html` in your web browser.
+
+### Using the build script
+
+Alternatively, you can use the provided build script:
+
+```bash
+python build_docs.py
+```
+
+## GitHub Pages Deployment
+
+The documentation is automatically deployed to GitHub Pages using GitHub Actions. The workflow is defined in `.github/workflows/docs.yml`.
+
+### Manual Deployment
+
+If you need to deploy manually:
+
+1. Build the documentation:
    ```bash
-   python build_docs.py --serve
+   make html
    ```
 
-### Build Options
+2. The built files will be in `_build/html/`
 
-- `make html` - Build HTML documentation
-- `make clean` - Clean build directory
-- `make help` - Show all available commands
-- `python build_docs.py --clean --serve` - Clean build and serve locally
+3. Deploy to GitHub Pages using the GitHub Actions workflow or manually upload to the `gh-pages` branch.
 
 ## Documentation Structure
 
-```
-docs/
-├── index.md              # Main documentation page
-├── examples/             # Tutorial notebooks
-│   ├── demo_basic.ipynb
-│   ├── demo_solar_analysis.ipynb
-│   ├── demo_view_index.ipynb
-│   ├── demo_landmark_visibility.ipynb
-│   ├── demo_network_analysis.ipynb
-│   └── demo_export_formats.ipynb
-├── references.md         # References and citations
-├── references.bib        # Bibliography file
-├── changelog.md          # Version history
-├── contributing.md       # Contribution guidelines
-├── conduct.md           # Code of conduct
-├── _static/             # Static assets (CSS, images)
-├── conf.py              # Sphinx configuration
-├── Makefile             # Build commands
-├── make.bat             # Windows build commands
-└── requirements.txt     # Python dependencies
-```
+- `index.md` - Main documentation page (includes README.md)
+- `examples/` - Tutorial and example notebooks
+- `autoapi/` - Auto-generated API documentation
+- `_static/` - Static assets (CSS, images, etc.)
+- `_build/` - Built documentation (generated)
 
-## Contributing to Documentation
+## Configuration
 
-### Adding New Tutorials
+The documentation is configured in `conf.py`. Key settings:
 
-1. Create a new Jupyter notebook in `examples/`
-2. Update `examples/index.md` to include the new tutorial
-3. Follow the existing notebook structure with markdown and code cells
+- Project name: `voxcity`
+- Theme: `furo`
+- Extensions: `myst-nb`, `autoapi`, `sphinxcontrib-bibtex`
+- AutoAPI: Generates documentation from source code in `../src/`
 
-### Updating References
+## Adding Content
 
-1. Add new references to `references.bib`
-2. Update `references.md` to include the new references
-3. Use the `{cite}` directive in markdown files to cite references
-
-### Styling
-
-- CSS customizations go in `_static/custom.css`
-- Images and other static assets go in `_static/`
-- Logo files should be placed in `_static/` and referenced in `conf.py`
-
-## Automated Deployment
-
-The documentation is automatically built and deployed to GitHub Pages when changes are pushed to the main branch. The deployment is handled by the GitHub Actions workflow in `.github/workflows/docs.yml`.
-
-## Local Development
-
-For local development, you can use the build script with the `--serve` flag to automatically open the documentation in your browser:
-
-```bash
-python build_docs.py --serve
-```
-
-This will build the documentation and serve it at `http://localhost:8000`.
+1. **New pages:** Add `.md` or `.rst` files and include them in the appropriate toctree
+2. **Examples:** Add Jupyter notebooks to the `examples/` directory
+3. **API docs:** Auto-generated from docstrings in the source code
+4. **References:** Update `references.bib` and `references.md`
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Import errors**: Make sure all dependencies are installed
-2. **Build failures**: Try cleaning the build directory with `make clean`
-3. **Missing images**: Check that all image files are in the `_static/` directory
-4. **Notebook execution**: Notebooks are set to not execute by default (`nbsphinx_execute = "never"`)
-
-### Getting Help
-
-If you encounter issues building the documentation:
-
-1. Check that all dependencies are installed correctly
-2. Ensure you're using Python 3.12+
-3. Try building with verbose output: `make html SPHINXOPTS="-v"`
-4. Check the build logs for specific error messages 
+- **Build errors:** Check that all dependencies are installed
+- **Missing modules:** Ensure the voxcity package is installed in editable mode (`pip install -e ..`)
+- **AutoAPI issues:** Check that the source code path in `conf.py` is correct 

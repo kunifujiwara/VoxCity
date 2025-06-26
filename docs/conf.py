@@ -91,25 +91,35 @@ html_css_files = ["custom.css"]
 
 def skip_util_classes(app, what, name, obj, skip, options):
     skip_packages = [
-        "downloader",
-        "geoprocessor", 
-        "exporter",
-        "simulator",
-        "utils"
+        "mapillary",
+        "kartaview",
+        "classification",
+        "segmentation",
+        "low_level",
+        "depth_estimation",
+        "embeddings",
+        "object_detection"
     ]
     skip_modules = [
         "base",
-        "draw",
-        "network",
-        "envimet",
-        "obj",
-        "magicavoxel",
-        "solar",
-        "view",
+        "font_property",
+        "gsv",
+        "ams",
+        "mly",
+        "kv",
+        "depth_estimation",
+        "embeddings",
+        "mly_metadata",
+        "image_to_pointcloud",
+        "transform_image",
+        "hist",
+        "image",
+        "kde",
+        "map",
         "config"
     ]
-    skip_classes = ["VoxCityGenerator", "VoxCitySimulator", "Logger"]
-    skip_keywords = ["utils", "download", "export", "simulate"]
+    skip_classes = ["ImageDataset", "GSVDownloader", "Logger"]
+    skip_keywords = ["utils", "torchhub", "zoedepth", "depth_anything", "dinov2"]
 
     if what == "package" and any(pkg in name for pkg in skip_packages):
         return True
