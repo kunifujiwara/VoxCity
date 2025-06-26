@@ -1,0 +1,6 @@
+myst-nb
+sphinx-autoapi
+sphinx-rtd-theme
+furo
+sphinxcontrib-bibtex
+recommonmark

@@ -9,7 +9,7 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
-set SPHINXPROJ=three_d_city_model_generator
+set SPHINXPROJ=voxcity
 
 if "%1" == "" goto help
 

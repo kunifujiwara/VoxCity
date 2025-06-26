@@ -1,0 +1,40 @@
+/* Ensure logos are visible in the documentation */
+.sidebar-logo-container img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* New styles for top-level navigation */
+.top-level-nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.top-level-nav section {
+    flex: 0 1 48%;
+    margin-bottom: 1rem;
+}
+
+.top-level-nav h2 {
+    margin-top: 0;
+}
+
+.top-level-nav ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.top-level-nav li {
+    margin-bottom: 0.5rem;
+}
+
+.top-level-nav a {
+    text-decoration: none;
+    color: #2980b9;
+}
+
+.top-level-nav a:hover {
+    text-decoration: underline;
+}

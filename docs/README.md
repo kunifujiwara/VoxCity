@@ -1,413 +1,117 @@
-[![PyPi version](https://img.shields.io/pypi/v/voxcity.svg)](https://pypi.python.org/pypi/voxcity)
-[![Python versions](https://img.shields.io/pypi/pyversions/voxcity.svg)](https://pypi.org/project/voxcity/)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing)
-[![License](https://img.shields.io/pypi/l/voxcity.svg)](https://pypi.org/project/voxcity/)
-[![Downloads](https://pepy.tech/badge/voxcity)](https://pepy.tech/project/voxcity)
-<!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
+# VoxCity Documentation
 
+This directory contains the documentation for VoxCity, a Python package for 3D voxel city model generation and urban simulation.
 
-# voxcity
+## Building Documentation
 
-**voxcity** is a Python package that provides a seamless solution for grid-based 3D city model generation and urban simulation for cities worldwide. VoxCity's generator module automatically downloads building heights, tree canopy heights, land cover, and terrain elevation within a specified target area, and voxelizes buildings, trees, land cover, and terrain to generate an integrated voxel city model. The simulator module enables users to conduct environmental simulations, including solar radiation and view index analyses. Users can export the generated models using several file formats compatible with external software, such as ENVI-met (INX), Blender, and Rhino (OBJ). Try it out using the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or your local environment.
+### Prerequisites
 
-<!-- <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png">
-    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
-  </picture>
-</p> -->
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
-</p>
+- Python 3.12+
+- Required packages (install with `pip install -r requirements.txt`)
 
+### Quick Start
 
-## Key Features
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-- **Integration of Multiple Data Sources:**  
-  Combines building footprints, land cover data, canopy height maps, and DEMs to generate a consistent 3D voxel representation of an urban scene.
-  
-- **Flexible Input Sources:**  
-  Supports various building and terrain data sources including:
-  - Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, OpenMapTiles, Open Building 2.5D
-  - Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap
-  - Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m
-  - DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more
+2. **Build documentation:**
+   ```bash
+   # Using make (Linux/Mac)
+   make html
+   
+   # Using make.bat (Windows)
+   make.bat html
+   
+   # Using Python script
+   python build_docs.py
+   ```
 
-  *Detailed information about each data source can be found in the [References of Data Sources](#references-of-data-sources) section.*
-  
-- **Customizable Domain and Resolution:**  
-  Easily define a target area by drawing a rectangle on a map or specifying center coordinates and dimensions. Adjust the mesh size to meet resolution needs.
-  
-- **Integration with Earth Engine:**  
-  Leverages Google Earth Engine for large-scale geospatial data processing (authentication and project setup required).
-  
-- **Output Formats:**
-  - **ENVI-MET**: Export INX and EDB files suitable for ENVI-MET microclimate simulations.
-  - **MagicaVoxel**: Export vox files for 3D editing and visualization in MagicaVoxel.
-  - **OBJ**: Export wavefront OBJ for rendering and integration into other workflows.
+3. **Serve locally (optional):**
+   ```bash
+   python build_docs.py --serve
+   ```
 
-- **Analytical Tools:**
-  - **View Index Simulations**: Compute sky view index (SVI) and green view index (GVI) from a specified viewpoint.
-  - **Landmark Visibility Maps**: Assess the visibility of selected landmarks within the voxelized environment.
+### Build Options
 
-## Installation
+- `make html` - Build HTML documentation
+- `make clean` - Clean build directory
+- `make help` - Show all available commands
+- `python build_docs.py --clean --serve` - Clean build and serve locally
 
-Make sure you have Python 3.12 installed. Install voxcity with:
+## Documentation Structure
 
-### For Local Environment
+```
+docs/
+├── index.md              # Main documentation page
+├── examples/             # Tutorial notebooks
+│   ├── demo_basic.ipynb
+│   ├── demo_solar_analysis.ipynb
+│   ├── demo_view_index.ipynb
+│   ├── demo_landmark_visibility.ipynb
+│   ├── demo_network_analysis.ipynb
+│   └── demo_export_formats.ipynb
+├── references.md         # References and citations
+├── references.bib        # Bibliography file
+├── changelog.md          # Version history
+├── contributing.md       # Contribution guidelines
+├── conduct.md           # Code of conduct
+├── _static/             # Static assets (CSS, images)
+├── conf.py              # Sphinx configuration
+├── Makefile             # Build commands
+├── make.bat             # Windows build commands
+└── requirements.txt     # Python dependencies
+```
+
+## Contributing to Documentation
+
+### Adding New Tutorials
+
+1. Create a new Jupyter notebook in `examples/`
+2. Update `examples/index.md` to include the new tutorial
+3. Follow the existing notebook structure with markdown and code cells
+
+### Updating References
+
+1. Add new references to `references.bib`
+2. Update `references.md` to include the new references
+3. Use the `{cite}` directive in markdown files to cite references
+
+### Styling
+
+- CSS customizations go in `_static/custom.css`
+- Images and other static assets go in `_static/`
+- Logo files should be placed in `_static/` and referenced in `conf.py`
+
+## Automated Deployment
+
+The documentation is automatically built and deployed to GitHub Pages when changes are pushed to the main branch. The deployment is handled by the GitHub Actions workflow in `.github/workflows/docs.yml`.
+
+## Local Development
+
+For local development, you can use the build script with the `--serve` flag to automatically open the documentation in your browser:
 
 ```bash
-conda create --name voxcity python=3.12
-conda activate voxcity
-conda install -c conda-forge gdal
-pip install voxcity
+python build_docs.py --serve
 ```
 
-### For Google Colab
+This will build the documentation and serve it at `http://localhost:8000`.
 
-```python
-!pip install voxcity
-```
+## Troubleshooting
 
-## Setup for Earth Engine
+### Common Issues
 
-To use Earth Engine data, set up your Earth Engine enabled Cloud Project by following the instructions here:
-https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
+1. **Import errors**: Make sure all dependencies are installed
+2. **Build failures**: Try cleaning the build directory with `make clean`
+3. **Missing images**: Check that all image files are in the `_static/` directory
+4. **Notebook execution**: Notebooks are set to not execute by default (`nbsphinx_execute = "never"`)
 
-After setting up, authenticate and initialize Earth Engine:
+### Getting Help
 
-### For Local Environment
+If you encounter issues building the documentation:
 
-```bash
-earthengine authenticate
-```
-
-### For Google Colab
-
-```python
-# Click displayed link, generate token, copy and paste the token
-!earthengine authenticate --auth_mode=notebook
-```
-
-## Usage Overview
-
-### 1. Authenticate Earth Engine
-
-```python
-import ee
-ee.Authenticate()
-ee.Initialize(project='your-project-id')
-```
-
-### 2. Define Target Area
-
-You can define your target area in three ways:
-
-#### Option 1: Direct Coordinate Input
-Define the target area by directly specifying the coordinates of the rectangle vertices.
-
-```python
-rectangle_vertices = [
-    (47.59830044521263, -122.33587348582083),  # Southwest corner (latitude, longitude)
-    (47.60279755390168, -122.33587348582083),  # Northwest corner (latitude, longitude)
-    (47.60279755390168, -122.32922451417917),  # Northeast corner (latitude, longitude)
-    (47.59830044521263, -122.32922451417917)   # Southeast corner (latitude, longitude)
-]
-```
-
-#### Option 2: Draw a Rectangle (for Jupyter Notebook)
-Use the GUI map interface to draw a rectangular domain of interest.
-
-```python
-from voxcity.geoprocessor.draw import draw_rectangle_map_cityname
-
-cityname = "tokyo"
-m, rectangle_vertices = draw_rectangle_map_cityname(cityname, zoom=15)
-m
-```
-
-#### Option 3: Specify Center and Dimensions (for Jupyter Notebook)
-Choose the width and height in meters and select the center point on the map.
-
-```python
-from voxcity.geoprocessor.draw import center_location_map_cityname
-
-width = 500
-height = 500
-m, rectangle_vertices = center_location_map_cityname(cityname, width, height, zoom=15)
-m
-```
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
-</p>
-
-### 3. Set Parameters
-
-Define data sources and mesh size (m):
-
-```python
-building_source = 'OpenStreetMap'                                     # Building footprint and height data source
-land_cover_source = 'OpenStreetMap'                                   # Land cover classification data source
-canopy_height_source = 'High Resolution 1m Global Canopy Height Maps' # Tree canopy height data source
-dem_source = 'DeltaDTM'                                               # Digital elevation model data source
-meshsize = 5                                                          # Grid cell size in meters
-
-kwargs = {
-    "output_dir": "output",   # Directory to save output files
-    "dem_interpolation": True # Enable DEM interpolation
-}
-```
-
-### 4. Get voxcity Output
-
-Generate voxel data grids and corresponding building geoJSON:
-
-```python
-from voxcity.generator import get_voxcity
-
-voxcity_grid, building_height_grid, building_min_height_grid, \
-building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
-building_geojson = get_voxcity(
-    rectangle_vertices,
-    building_source,
-    land_cover_source,
-    canopy_height_source,
-    dem_source,
-    meshsize,
-    **kwargs
-)
-```
-
-### 5. Exporting Files
-
-#### ENVI-MET INX/EDB Files:
-[ENVI-MET](https://www.envi-met.com/) is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).
-
-```python
-from voxcity.exporter.envimet import export_inx, generate_edb_file
-
-envimet_kwargs = {
-    "output_directory": "output",                     # Directory where output files will be saved
-    "author_name": "your name",                       # Name of the model author
-    "model_description": "generated with voxcity",  # Description text for the model
-    "domain_building_max_height_ratio": 2,            # Maximum ratio between domain height and tallest building height
-    "useTelescoping_grid": True,                      # Enable telescoping grid for better computational efficiency
-    "verticalStretch": 20,                            # Vertical grid stretching factor (%)
-    "min_grids_Z": 20,                                # Minimum number of vertical grid cells
-    "lad": 1.0                                        # Leaf Area Density (m2/m3) for vegetation modeling 
-}
-
-export_inx(building_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, meshsize, land_cover_source, rectangle_vertices, **envimet_kwargs)
-generate_edb_file(**envimet_kwargs)
-```
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
-</p>
-<p align="center">
-  <em>Example Output Exported in INX and Inported in ENVI-met</em>
-</p>
-
-#### OBJ Files:
-
-```python
-from voxcity.exporter.obj import export_obj
-
-output_directory = "output"  # Directory where output files will be saved
-output_file_name = "voxcity" # Base name for the output OBJ file
-export_obj(voxcity_grid, output_directory, output_file_name, meshsize)
-```
-The generated OBJ files can be opened and rendered in the following 3D visualization software:
-
-- [Twinmotion](https://www.twinmotion.com/): Real-time visualization tool (Free for personal use)
-- [Blender](https://www.blender.org/): Professional-grade 3D creation suite (Free)
-- [Rhino](https://www.rhino3d.com/): Professional 3D modeling software (Commercial, offers educational licenses)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
-</p>
-<p align="center">
-  <em>Example Output Exported in OBJ and Rendered in MagicaVoxel</em>
-</p>
-
-#### MagicaVoxel VOX Files:
-
-[MagicaVoxel](https://ephtracy.github.io/) is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.
-
-```python
-from voxcity.exporter.magicavoxel import export_magicavoxel_vox
-
-output_path = "output"
-base_filename = "voxcity"
-export_magicavoxel_vox(voxcity_grid, output_path, base_filename=base_filename)
-```
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
-</p>
-<p align="center">
-  <em>Example Output Exported in VOX and Rendered in MagicaVoxel</em>
-</p>
-
-### 6. Additional Use Cases
-
-#### Compute Green View Index (GVI) and Sky View Index (SVI):
-
-```python
-from voxcity.simulator.view import get_view_index
-
-view_kwargs = {
-    "view_point_height": 1.5,      # Height of observer viewpoint in meters
-    "dem_grid": dem_grid,          # Digital elevation model grid
-    "colormap": "viridis",         # Colormap for visualization
-    "obj_export": True,            # Whether to export as OBJ file
-    "output_directory": "output",  # Directory to save output files
-    "output_file_name": "gvi"      # Base filename for outputs
-}
-
-# Compute Green View Index using mode='green'
-gvi_grid = get_view_index(voxcity_grid, meshsize, mode='green', **view_kwargs)
-
-# Adjust parameters for Sky View Index
-view_kwargs["colormap"] = "BuPu_r"
-view_kwargs["output_file_name"] = "svi"
-view_kwargs["elevation_min_degrees"] = 0 # Start ray-tracing from the horizon
-
-# Compute Sky View Index using mode='sky'
-svi_grid = get_view_index(voxcity_grid, meshsize, mode='sky', **view_kwargs)
-```
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
-</p>
-<p align="center">
-  <em>Example Results Saved as OBJ and Rendered in Rhino</em>
-</p>
-
-#### Landmark Visibility Map:
-
-```python
-from voxcity.simulator.view import get_landmark_visibility_map
-
-# Dictionary of parameters for landmark visibility analysis
-landmark_kwargs = {
-    "view_point_height": 1.5,                 # Height of observer viewpoint in meters
-    "rectangle_vertices": rectangle_vertices, # Vertices defining simulation domain boundary
-    "dem_grid": dem_grid,                     # Digital elevation model grid
-    "colormap": "cool",                       # Colormap for visualization
-    "obj_export": True,                       # Whether to export as OBJ file
-    "output_directory": "output",             # Directory to save output files
-    "output_file_name": "landmark_visibility" # Base filename for outputs
-}
-landmark_vis_map = get_landmark_visibility_map(voxcity_grid, building_id_grid, building_geojson, meshsize, **landmark_kwargs)
-```
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">
-</p>
-<p align="center">
-  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
-</p>
-
-#### Output Result as Graph for Network Analysis:
-
-```python
-from voxcity.geoprocessor.network import get_network_values
-
-network_kwargs = {
-    "network_type": "walk",        # Type of network to download from OSM (walk, drive, all, etc.)
-    "colormap": "magma",          # Matplotlib colormap for visualization
-    "vis_graph": True,            # Whether to display the network visualization
-    "vmin": 0.0,                  # Minimum value for color scaling
-    "vmax": 600000,               # Maximum value for color scaling
-    "edge_width": 2,              # Width of network edges in visualization
-    "alpha": 0.8,                 # Transparency of network edges
-    "zoom": 16                    # Zoom level for basemap
-}
-
-G, edge_gdf = get_network_values(
-    cum_solar_grid,               # Grid of cumulative solar irradiance values
-    rectangle_vertices,           # Coordinates defining simulation domain boundary
-    meshsize,                     # Size of each grid cell in meters
-    value_name='Cumulative Global Solar Irradiance (W/m²·hour)',  # Label for values in visualization
-    **network_kwargs              # Additional visualization and network parameters
-)
-```
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/network.png" alt="Example of Graph Output" width="400">
-</p>
-<p align="center">
-  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
-</p>
-
-## References of Data Sources
-
-### Building 
-
-| Dataset | Spatial Coverage | Source/Data Acquisition |
-|---------|------------------|------------------------|
-| [OpenStreetMap](https://www.openstreetmap.org) | Worldwide (24% completeness in city centers) | Volunteered / updated continuously |
-| [Global ML Building Footprints](https://github.com/microsoft/GlobalMLBuildingFootprints) | North America, Europe, Australia | Prediction from satellite or aerial imagery / 2018-2019 for majority of the input imagery |
-| [Open Buildings 2.5D Temporal Dataset](https://sites.research.google/gr/open-buildings/temporal/) | Africa, Latin America, and South and Southeast Asia | Prediction from satellite imagery / 2016-2023 |
-| [EUBUCCO v0.1](https://eubucco.com/) | 27 EU countries and Switzerland (378 regions and 40,829 cities) | OpenStreetMap, government datasets / 2003-2021 (majority is after 2019) |
-| [UT-GLOBUS](https://zenodo.org/records/11156602) | Worldwide (more than 1200 cities or locales) | Prediction from building footprints, population, spaceborne nDSM / not provided |
-| [Overture Maps](https://overturemaps.org/) | Worldwide | OpenStreetMap, Esri Community Maps Program, Google Open Buildings, etc. / updated continuously |
-
-### Tree Canopy Height
-
-| Dataset | Coverage | Resolution | Source/Data Acquisition |
-|---------|-----------|------------|------------------------|
-| [High Resolution 1m Global Canopy Height Maps](https://sustainability.atmeta.com/blog/2024/04/22/using-artificial-intelligence-to-map-the-earths-forests/) | Worldwide | 1 m | Prediction from satellite imagery / 2009 and 2020 (80% are 2018-2020) |
-| [ETH Global Sentinel-2 10m Canopy Height (2020)](https://langnico.github.io/globalcanopyheight/) | Worldwide | 10 m | Prediction from satellite imagery / 2020 |
-
-### Land Cover
-
-| Dataset | Spatial Coverage | Resolution | Source/Data Acquisition |
-|---------|------------------|------------|----------------------|
-| [ESA World Cover 10m 2021 V200](https://zenodo.org/records/7254221) | Worldwide | 10 m | Prediction from satellite imagery / 2021 |
-| [ESRI 10m Annual Land Cover (2017-2023)](https://www.arcgis.com/home/item.html?id=cfcb7609de5f478eb7666240902d4d3d) | Worldwide | 10 m | Prediction from satellite imagery / 2017-2023 |
-| [Dynamic World V1](https://dynamicworld.app) | Worldwide | 10 m | Prediction from satellite imagery / updated continuously |
-| [OpenStreetMap](https://www.openstreetmap.org) | Worldwide | - (Vector) | Volunteered / updated continuously |
-| [OpenEarthMap Japan](https://www.open-earth-map.org/demo/Japan/leaflet.html) | Japan | ~1 m | Prediction from aerial imagery / 1974-2022 (mostly after 2018 in major cities) |
-| [UrbanWatch](https://urbanwatch.charlotte.edu/) | 22 major cities in the US | 1 m | Prediction from aerial imagery / 2014–2017 |
-
-### Terrain Elevation
-
-| Dataset | Coverage | Resolution | Source/Data Acquisition |
-|---------|-----------|------------|------------------------|
-| [FABDEM](https://doi.org/10.5523/bris.25wfy0f9ukoge2gs7a5mqpq2j7) | Worldwide | 30 m | Correction of Copernicus DEM using canopy height and building footprints data / 2011-2015 (Copernicus DEM) |
-| [DeltaDTM](https://gee-community-catalog.org/projects/delta_dtm/) | Worldwide (Only for coastal areas below 10m + mean sea level) | 30 m | Copernicus DEM, spaceborne LiDAR / 2011-2015 (Copernicus DEM) |
-| [USGS 3DEP 1m DEM](https://www.usgs.gov/3d-elevation-program) | United States | 1 m | Aerial LiDAR / 2004-2024 (mostly after 2015) |
-| [England 1m Composite DTM](https://environment.data.gov.uk/dataset/13787b9a-26a4-4775-8523-806d13af58fc) | England | 1 m | Aerial LiDAR / 2000-2022 |
-| [Australian 5M DEM](https://ecat.ga.gov.au/geonetwork/srv/eng/catalog.search#/metadata/89644) | Australia | 5 m | Aerial LiDAR / 2001-2015 |
-| [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
-
-
-## Citation
-
-Please cite the [paper](https://doi.org) if you use `voxcity` in a scientific publication:
-
-Fujiwara, K., XXX. XXX. XXX, XXX, XXX.
-
-```bibtex
-@article{,
-  author = {Fujiwara, Kunihiko and XXX, XXX and XXX, XXX and XXX, XXX},
-  doi = {XXX},
-  journal = {XXX},
-  pages = {XXX},
-  title = {XXX},
-  volume = {XXX},
-  year = {XXX}
-}
-```
-
-## Credit
-
-This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
-
---------------------------------------------------------------------------------
-<br>
-<br>
-<p align="center">
-  <a href="https://ual.sg/">
-    <img src="https://raw.githubusercontent.com/winstonyym/urbanity/main/images/ualsg.jpeg" width = 55% alt="Logo">
-  </a>
-</p>
-
+1. Check that all dependencies are installed correctly
+2. Ensure you're using Python 3.12+
+3. Try building with verbose output: `make html SPHINXOPTS="-v"`
+4. Check the build logs for specific error messages 
