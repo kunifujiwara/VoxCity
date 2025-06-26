@@ -32,9 +32,9 @@ Alternatively, you can use the provided build script:
 python build_docs.py
 ```
 
-## GitHub Pages Deployment
+## Documentation Branch Deployment
 
-The documentation is automatically deployed to GitHub Pages using GitHub Actions. The workflow is defined in `.github/workflows/docs.yml`.
+The documentation is automatically deployed to the `documentation` branch using GitHub Actions. The workflow is defined in `.github/workflows/docs.yml`.
 
 ### Manual Deployment
 
@@ -47,7 +47,14 @@ If you need to deploy manually:
 
 2. The built files will be in `_build/html/`
 
-3. Deploy to GitHub Pages using the GitHub Actions workflow or manually upload to the `gh-pages` branch.
+3. Deploy to the documentation branch:
+   ```bash
+   cd docs/_build/html
+   git init
+   git add -A .
+   git commit -m "Update documentation"
+   git push -f origin HEAD:documentation
+   ```
 
 ## Documentation Structure
 
