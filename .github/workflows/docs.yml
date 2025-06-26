@@ -2,14 +2,14 @@ name: Build and Deploy Documentation
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, documentation ]
     paths:
       - 'docs/**'
       - 'src/**'
       - 'README.md'
       - 'pyproject.toml'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, documentation ]
     paths:
       - 'docs/**'
       - 'src/**'
@@ -60,10 +60,9 @@ jobs:
         path: docs/_build/html/
         
     - name: Deploy to GitHub Pages
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/documentation'
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./docs/_build/html
-        force_orphan: true
-        cname: voxcity.readthedocs.io  # Optional: if you want to use a custom domain 
+        force_orphan: true 
