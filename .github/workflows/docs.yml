@@ -38,6 +38,8 @@ jobs:
       - name: Deploy to documentation branch
         run: |
           cd docs/_build/html
+          
+          # Create .nojekyll file in the root
           touch .nojekyll
           
           # Configure git
