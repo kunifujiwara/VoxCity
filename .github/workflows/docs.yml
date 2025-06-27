@@ -44,9 +44,9 @@ jobs:
           # Create .nojekyll file in the docs/_build/html directory
           touch docs/_build/html/.nojekyll
           
-          # Add the built documentation to git
-          git add docs/_build/html/
-          git add docs/_build/html/.nojekyll
+          # Force add the built documentation (ignored by .gitignore)
+          git add -f docs/_build/html/
+          git add -f docs/_build/html/.nojekyll
           
           # Commit the changes
           git commit -m "Deploy documentation from ${{ github.sha }}"
