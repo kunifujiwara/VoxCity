@@ -37,19 +37,19 @@ jobs:
 
       - name: Deploy to documentation branch
         run: |
-          cd docs/_build/html
-          
-          # Create .nojekyll file in the root
-          touch .nojekyll
-          
           # Configure git
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Create or update documentation branch
-          git init
-          git add -A .
+          # Create .nojekyll file in the docs/_build/html directory
+          touch docs/_build/html/.nojekyll
+          
+          # Add the built documentation to git
+          git add docs/_build/html/
+          git add docs/_build/html/.nojekyll
+          
+          # Commit the changes
           git commit -m "Deploy documentation from ${{ github.sha }}"
           
-          # Force push to documentation branch
-          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:documentation 
+          # Push to documentation branch
+          git push origin HEAD:documentation 
