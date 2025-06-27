@@ -508,7 +508,7 @@ def get_city_country_name_from_rectangle(coordinates):
         coordinates (list): List of (longitude, latitude) coordinates defining the rectangle
         
     Returns:
-        str: String in format "city/ country" or None if lookup fails
+        str: String in format "city/ country" or fallback value if lookup fails
         
     Example:
         >>> coords = [(139.65, 35.67), (139.66, 35.67),
@@ -538,8 +538,10 @@ def get_city_country_name_from_rectangle(coordinates):
             return f"{city}/ {country}"
         else:
             print("Location not found")
+            return "Unknown Location/ Unknown Country"
     except Exception as e:
         print(f"Error retrieving location for {center_coord}: {e}")
+        return "Unknown Location/ Unknown Country"
 
 def get_timezone_info(rectangle_coords):
     """
@@ -557,9 +559,6 @@ def get_timezone_info(rectangle_coords):
         
     Returns:
         tuple: (timezone string with UTC offset, central meridian longitude string)
-        
-    Raises:
-        ValueError: If timezone cannot be determined for the given location
         
     Example:
         >>> coords = [(139.65, 35.67), (139.66, 35.67),
@@ -591,7 +590,9 @@ def get_timezone_info(rectangle_coords):
 
         return utc_offset, timezone_longitude_str
     else:
-        raise ValueError("Time zone not found for the given location.")
+        # Return fallback values if timezone cannot be determined
+        print("Warning: Timezone not found for the given location, using UTC+00:00")
+        return "UTC+00:00", "0.00000"
 
 def validate_polygon_coordinates(geometry):
     """

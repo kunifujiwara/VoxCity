@@ -334,8 +334,23 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         "$locationTimeZone_Longitude$": timezone_info[1],
     }
 
+    # Ensure no None values are passed to replace()
     for placeholder, value in placeholders.items():
-        xml_template = xml_template.replace(placeholder, value)
+        if value is None:
+            print(f"Warning: {placeholder} is None, using fallback value")
+            if placeholder == "$locationName$":
+                value = "Unknown Location/ Unknown Country"
+            elif placeholder == "$locationTimeZone_Name$":
+                value = "UTC+00:00"
+            elif placeholder == "$locationTimeZone_Longitude$":
+                value = "0.00000"
+            elif placeholder == "$modelDescription$":
+                value = "[Enter model description]"
+            elif placeholder == "$modelAuthor$":
+                value = "[Enter model author name]"
+            else:
+                value = "Unknown"
+        xml_template = xml_template.replace(placeholder, str(value))
     
     # Calculate building heights including terrain elevation
     building_on_dem_grid = building_height_grid + dem_grid    
@@ -371,12 +386,17 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         r = (100 + verticalStretch) / 100  # Growth ratio
         S_target = (int(np.max(building_on_dem_grid)/meshsize + 0.5) * meshsize) * (domain_building_max_height_ratio - 1)
         min_n = find_min_n(a, r, S_target, max_n=1000000)
-        grids_Z_tent = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
-        if grids_Z_tent < min_grids_Z:
-            grids_Z = min_grids_Z
-            startStretch += (min_grids_Z - grids_Z)
+        if min_n is None:
+            # Fallback to non-telescoping grid if calculation fails
+            print("Warning: Telescoping grid calculation failed, using uniform grid")
+            grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
         else:
-            grids_Z = grids_Z_tent
+            grids_Z_tent = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n
+            if grids_Z_tent < min_grids_Z:
+                grids_Z = min_grids_Z
+                startStretch += (min_grids_Z - grids_Z)
+            else:
+                grids_Z = grids_Z_tent
     else:
         # Calculate vertical grid cells without telescoping
         grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
