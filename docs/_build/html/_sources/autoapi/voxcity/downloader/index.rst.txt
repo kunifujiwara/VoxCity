@@ -1,0 +1,1278 @@
+voxcity.downloader
+==================
+
+.. py:module:: voxcity.downloader
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/voxcity/downloader/citygml/index
+   /autoapi/voxcity/downloader/eubucco/index
+   /autoapi/voxcity/downloader/gee/index
+   /autoapi/voxcity/downloader/mbfp/index
+   /autoapi/voxcity/downloader/oemj/index
+   /autoapi/voxcity/downloader/osm/index
+   /autoapi/voxcity/downloader/overture/index
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   voxcity.downloader.classification_mapping
+   voxcity.downloader.tag_osm_key_value_mapping
+   voxcity.downloader.country_links
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.downloader.download_file
+   voxcity.downloader.tile_from_lat_lon
+   voxcity.downloader.quadkey_to_tile
+   voxcity.downloader.load_gdf_from_multiple_gz
+   voxcity.downloader.swap_coordinates
+   voxcity.downloader.get_geojson_links
+   voxcity.downloader.find_row_for_location
+   voxcity.downloader.get_mbfp_gdf
+   voxcity.downloader.download_file
+   voxcity.downloader.download_file_google_drive
+   voxcity.downloader.initialize_earth_engine
+   voxcity.downloader.get_roi
+   voxcity.downloader.get_center_point
+   voxcity.downloader.get_ee_image_collection
+   voxcity.downloader.get_ee_image
+   voxcity.downloader.save_geotiff
+   voxcity.downloader.get_dem_image
+   voxcity.downloader.save_geotiff_esa_land_cover
+   voxcity.downloader.save_geotiff_dynamic_world_v1
+   voxcity.downloader.save_geotiff_esri_landcover
+   voxcity.downloader.save_geotiff_open_buildings_temporal
+   voxcity.downloader.save_geotiff_dsm_minus_dtm
+   voxcity.downloader.osm_json_to_geojson
+   voxcity.downloader.is_part_of_relation
+   voxcity.downloader.is_way_polygon
+   voxcity.downloader.get_way_coords
+   voxcity.downloader.create_rings_from_ways
+   voxcity.downloader.load_gdf_from_openstreetmap
+   voxcity.downloader.convert_feature
+   voxcity.downloader.get_classification
+   voxcity.downloader.swap_coordinates
+   voxcity.downloader.load_land_cover_gdf_from_osm
+   voxcity.downloader.deg2num
+   voxcity.downloader.num2deg
+   voxcity.downloader.download_tiles
+   voxcity.downloader.compose_image
+   voxcity.downloader.crop_image
+   voxcity.downloader.save_as_geotiff
+   voxcity.downloader.save_oemj_as_geotiff
+   voxcity.downloader.get_country_name
+   voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco
+   voxcity.downloader.download_extract_open_gpkg_from_eubucco
+   voxcity.downloader.get_gdf_from_eubucco
+   voxcity.downloader.load_gdf_from_eubucco
+   voxcity.downloader.convert_numpy_to_python
+   voxcity.downloader.is_valid_value
+   voxcity.downloader.convert_gdf_to_geojson
+   voxcity.downloader.rectangle_to_bbox
+   voxcity.downloader.join_gdfs_vertically
+   voxcity.downloader.load_gdf_from_overture
+
+
+Package Contents
+----------------
+
+.. py:function:: download_file(url, filename)
+
+   Download a file from a URL and save it locally.
+
+   This function uses the requests library to download a file from any publicly
+   accessible URL and save it to the local filesystem. It handles the download
+   process and provides feedback on the operation's success or failure.
+
+   :param url: URL of the file to download. Must be a valid, accessible URL.
+   :type url: str
+   :param filename: Local path where the downloaded file will be saved.
+                    Include the full path and filename with extension.
+   :type filename: str
+
+   :returns: None
+
+   Prints:
+       - Success message with filename if download is successful (status code 200)
+       - Error message with status code if download fails
+
+   .. rubric:: Example
+
+   >>> download_file('https://example.com/file.pdf', 'local_file.pdf')
+   File downloaded successfully and saved as local_file.pdf
+
+
+.. py:function:: tile_from_lat_lon(lat, lon, level_of_detail)
+
+   Convert latitude/longitude coordinates to tile coordinates at a given zoom level.
+   Uses the Web Mercator projection (EPSG:3857) commonly used in web mapping.
+
+   :param lat: Latitude in degrees (-90 to 90)
+   :type lat: float
+   :param lon: Longitude in degrees (-180 to 180)
+   :type lon: float
+   :param level_of_detail: Zoom level (0-23, where 0 is the entire world)
+   :type level_of_detail: int
+
+   :returns: (tile_x, tile_y) tile coordinates in the global tile grid
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> tile_x, tile_y = tile_from_lat_lon(35.6762, 139.6503, 12)  # Tokyo at zoom 12
+
+
+.. py:function:: quadkey_to_tile(quadkey)
+
+   Convert a quadkey string to tile coordinates.
+   A quadkey is a string of digits (0-3) that identifies a tile at a certain zoom level.
+   Each digit in the quadkey represents a tile at a zoom level, with each subsequent digit
+   representing a more detailed zoom level.
+
+   The quadkey numbering scheme:
+       - 0: Top-left quadrant
+       - 1: Top-right quadrant
+       - 2: Bottom-left quadrant
+       - 3: Bottom-right quadrant
+
+   :param quadkey: Quadkey string (e.g., "120" for zoom level 3)
+   :type quadkey: str
+
+   :returns: (tile_x, tile_y, level_of_detail) tile coordinates and zoom level
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> x, y, zoom = quadkey_to_tile("120")  # Returns coordinates at zoom level 3
+
+
+.. py:function:: load_gdf_from_multiple_gz(file_paths)
+
+   Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.
+
+   This function reads multiple gzipped GeoJSON files, where each line in each file
+   represents a single GeoJSON feature. It combines all features into a single
+   GeoDataFrame, ensuring height properties are properly handled and coordinates
+   are in WGS84.
+
+   :param file_paths: List of paths to gzipped GeoJSON files
+                      Each file should contain one GeoJSON feature per line
+                      Files should be readable as UTF-8 text
+                      Features should be in WGS84 coordinate system
+   :type file_paths: list
+
+   :returns:
+
+             Combined GeoDataFrame containing all features
+                 Will have 'geometry' column with building footprints
+                 Will have 'height' column (0 for missing values)
+                 Will be set to WGS84 (EPSG:4326) coordinate system
+   :rtype: gpd.GeoDataFrame
+
+   .. note::
+
+      - Skips lines that cannot be parsed as valid JSON
+      - Sets missing height values to 0
+      - Assumes input coordinates are in WGS84
+      - Memory usage scales with total number of features
+      - Reports JSON parsing errors but continues processing
+
+
+.. py:function:: swap_coordinates(features)
+
+   Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).
+
+   This function modifies GeoJSON features in-place to swap the order of coordinates
+   from (latitude, longitude) to (longitude, latitude). It handles both Polygon and
+   MultiPolygon geometries, maintaining their structure while swapping coordinates.
+
+   :param features: List of GeoJSON features to process
+                    Features must have 'geometry' property
+                    Supported geometry types: 'Polygon', 'MultiPolygon'
+                    Coordinates must be in (lat, lon) order initially
+   :type features: list
+
+   :returns: Features are modified in-place
+   :rtype: None
+
+   .. note::
+
+      - Modifies features directly (no copy created)
+      - Handles both Polygon and MultiPolygon geometries
+      - For Polygons: processes single coordinate ring
+      - For MultiPolygons: processes multiple coordinate rings
+      - Assumes input coordinates are in (lat, lon) order
+      - Resulting coordinates will be in (lon, lat) order
+
+
+.. py:function:: get_geojson_links(output_dir)
+
+   Download and load the dataset links CSV file containing building footprint URLs.
+
+   This function downloads a master CSV file from Microsoft's server that contains
+   links to all available building footprint datasets. The CSV includes metadata
+   such as location names, quadkeys, URLs, and file sizes for each dataset tile.
+
+   :param output_dir: Directory path where the CSV file will be saved
+   :type output_dir: str
+
+   :returns:
+
+             DataFrame containing dataset links with columns:
+                 - Location: String identifier for the geographic region
+                 - QuadKey: String representing the tile's quadkey
+                 - Url: Direct download link for the GeoJSON data
+                 - Size: File size information
+   :rtype: pandas.DataFrame
+
+   .. note:: The CSV file is cached locally in the output directory for future use.
+
+
+.. py:function:: find_row_for_location(df, lon, lat)
+
+   Find the dataset row containing building data for a given lon/lat coordinate.
+
+   This function searches through the dataset links DataFrame to find the appropriate
+   tile containing the specified geographic coordinates. It converts the input
+   coordinates to tile coordinates at the same zoom level as each quadkey and
+   checks for a match.
+
+   :param df: DataFrame containing dataset links from get_geojson_links()
+   :type df: pandas.DataFrame
+   :param lon: Longitude coordinate to search for (-180 to 180)
+   :type lon: float
+   :param lat: Latitude coordinate to search for (-90 to 90)
+   :type lat: float
+
+   :returns:
+
+             Matching row from DataFrame containing the quadkey and download URL,
+                           or None if no matching tile is found
+   :rtype: pandas.Series
+
+   .. note::
+
+      The function handles invalid quadkeys gracefully by skipping them and
+      continues searching through all available tiles.
+
+
+.. py:function:: get_mbfp_gdf(output_dir, rectangle_vertices)
+
+   Download and process building footprint data for a rectangular region.
+
+   This function takes a list of coordinates defining a rectangular region and:
+   1. Downloads the necessary building footprint data files covering the region
+   2. Loads and combines the GeoJSON data from all relevant files
+   3. Processes the data to ensure consistent coordinate ordering
+   4. Assigns unique sequential IDs to each building
+
+   :param output_dir: Directory path where downloaded files will be saved
+   :type output_dir: str
+   :param rectangle_vertices: List of (lon, lat) tuples defining the rectangle corners.
+                              The coordinates should define a bounding box of the
+                              area of interest.
+   :type rectangle_vertices: list
+
+   :returns:
+
+             GeoDataFrame containing building footprints with columns:
+                 - geometry: Building polygon geometries
+                 - id: Sequential unique identifier for each building
+   :rtype: geopandas.GeoDataFrame
+
+   .. note::
+
+      - Files are downloaded only if not already present in the output directory
+      - Coordinates in the input vertices should be in (longitude, latitude) order
+      - The function handles cases where some vertices might not have available data
+
+
+.. py:function:: download_file(url, filename)
+
+   Download a file from a URL and save it locally.
+
+   This function uses the requests library to download a file from any publicly
+   accessible URL and save it to the local filesystem. It handles the download
+   process and provides feedback on the operation's success or failure.
+
+   :param url: URL of the file to download. Must be a valid, accessible URL.
+   :type url: str
+   :param filename: Local path where the downloaded file will be saved.
+                    Include the full path and filename with extension.
+   :type filename: str
+
+   :returns: None
+
+   Prints:
+       - Success message with filename if download is successful (status code 200)
+       - Error message with status code if download fails
+
+   .. rubric:: Example
+
+   >>> download_file('https://example.com/file.pdf', 'local_file.pdf')
+   File downloaded successfully and saved as local_file.pdf
+
+
+.. py:function:: download_file_google_drive(file_id, output_path)
+
+   Download a file from Google Drive using its file ID.
+
+   This function specifically handles downloads from Google Drive using the gdown
+   library, which is designed to bypass Google Drive's download restrictions.
+   It's useful for downloading large files or files that require authentication.
+
+   :param file_id: Google Drive file ID. This is the unique identifier in the
+                   sharing URL after '/d/' or 'id='.
+   :type file_id: str
+   :param output_path: Local path where the downloaded file will be saved.
+                       Include the full path and filename with extension.
+   :type output_path: str
+
+   :returns: True if download was successful, False if any error occurred
+   :rtype: bool
+
+   Prints:
+       Error message with exception details if download fails
+
+   .. rubric:: Example
+
+   >>> success = download_file_google_drive('1234abcd...', 'downloaded_file.zip')
+   >>> if success:
+   >>>     print("Download completed successfully")
+
+
+.. py:function:: initialize_earth_engine()
+
+   Initialize the Earth Engine API.
+
+   This function must be called before using any other Earth Engine functionality.
+   It assumes that Earth Engine authentication has been set up properly.
+
+   :raises ee.EEException: If authentication fails or Earth Engine is unavailable
+
+
+.. py:function:: get_roi(input_coords)
+
+   Create an Earth Engine region of interest polygon from coordinates.
+
+   :param input_coords: List of coordinate pairs defining the polygon vertices in (lon, lat) format.
+                        The coordinates should form a valid polygon (non-self-intersecting).
+
+   :returns: Earth Engine polygon geometry representing the ROI
+   :rtype: ee.Geometry.Polygon
+
+   .. note::
+
+      The function automatically closes the polygon by connecting the last vertex
+      to the first vertex if they are not the same.
+
+
+.. py:function:: get_center_point(roi)
+
+   Get the centroid coordinates of a region of interest.
+
+   :param roi: Earth Engine geometry object representing the region of interest
+
+   :returns: (longitude, latitude) coordinates of the centroid
+   :rtype: tuple
+
+   .. note::
+
+      The centroid is calculated using Earth Engine's geometric centroid algorithm,
+      which may not always fall within the geometry for complex shapes.
+
+
+.. py:function:: get_ee_image_collection(collection_name, roi)
+
+   Get the first image from an Earth Engine ImageCollection filtered by region.
+
+   :param collection_name: Name of the Earth Engine ImageCollection (e.g., 'LANDSAT/LC08/C02/T1_TOA')
+   :param roi: Earth Engine geometry to filter by
+
+   :returns: First image from collection clipped to ROI, with any masked pixels unmasked
+   :rtype: ee.Image
+
+   .. note::
+
+      The function sorts images by time (earliest first) and unmasks any masked pixels
+      in the final image. This is useful for ensuring complete coverage of the ROI.
+
+
+.. py:function:: get_ee_image(collection_name, roi)
+
+   Get an Earth Engine Image clipped to a region.
+
+   :param collection_name: Name of the Earth Engine Image asset
+   :param roi: Earth Engine geometry to clip to
+
+   :returns: Image clipped to ROI
+   :rtype: ee.Image
+
+   .. note::
+
+      Unlike get_ee_image_collection(), this function works with single image assets
+      rather than image collections. It's useful for static datasets like DEMs.
+
+
+.. py:function:: save_geotiff(image, filename, resolution=1, scale=None, region=None, crs=None)
+
+   Save an Earth Engine image as a GeoTIFF file.
+
+   This function provides flexible options for exporting Earth Engine images to GeoTIFF format.
+   It handles different export scenarios based on the provided parameters.
+
+   :param image: Earth Engine image to save
+   :param filename: Output filename for the GeoTIFF
+   :param resolution: Output resolution in degrees (default: 1), used when scale is not provided
+   :param scale: Output scale in meters (overrides resolution if provided)
+   :param region: Region to export (required if scale is provided)
+   :param crs: Coordinate reference system (e.g., 'EPSG:4326')
+
+   .. note::
+
+      - If scale and region are provided, uses ee_export_image()
+      - Otherwise, uses ee_to_geotiff() with resolution parameter
+      - The function automatically converts output to Cloud Optimized GeoTIFF (COG)
+        format when using ee_to_geotiff()
+
+
+.. py:function:: get_dem_image(roi_buffered, source)
+
+   Get a digital elevation model (DEM) image for a region.
+
+   This function provides access to various global and regional Digital Elevation Model (DEM)
+   datasets through Earth Engine. Each source has different coverage areas and resolutions.
+
+   :param roi_buffered: Earth Engine geometry with buffer - should be larger than the actual
+                        area of interest to ensure smooth interpolation at edges
+   :param source: DEM source, one of:
+                  - 'NASA': SRTM 30m global DEM
+                  - 'COPERNICUS': Copernicus 30m global DEM
+                  - 'DeltaDTM': Deltares global DTM
+                  - 'FABDEM': Forest And Buildings removed MERIT DEM
+                  - 'England 1m DTM': UK Environment Agency 1m terrain model
+                  - 'DEM France 5m': IGN RGE ALTI 5m France coverage
+                  - 'DEM France 1m': IGN RGE ALTI 1m France coverage
+                  - 'AUSTRALIA 5M DEM': Geoscience Australia 5m DEM
+                  - 'USGS 3DEP 1m': USGS 3D Elevation Program 1m DEM
+
+   :returns: DEM image clipped to region
+   :rtype: ee.Image
+
+   .. note::
+
+      Some sources may have limited coverage or require special access permissions.
+      The function will raise an error if the selected source is not available for
+      the specified region.
+
+
+.. py:function:: save_geotiff_esa_land_cover(roi, geotiff_path)
+
+   Save ESA WorldCover land cover data as a colored GeoTIFF.
+
+   Downloads and exports the ESA WorldCover 10m resolution global land cover map.
+   The output is a colored GeoTIFF where each land cover class is represented by
+   a unique color as defined in the color_map.
+
+   :param roi: Earth Engine geometry defining region of interest
+   :param geotiff_path: Output path for GeoTIFF file
+
+   Land cover classes and their corresponding colors:
+       - Trees (10): Dark green
+       - Shrubland (20): Orange
+       - Grassland (30): Yellow
+       - Cropland (40): Purple
+       - Built-up (50): Red
+       - Barren/sparse vegetation (60): Gray
+       - Snow and ice (70): White
+       - Open water (80): Blue
+       - Herbaceous wetland (90): Teal
+       - Mangroves (95): Light green
+       - Moss and lichen (100): Beige
+
+   .. note::
+
+      The output GeoTIFF is exported at 10m resolution, which is the native
+      resolution of the ESA WorldCover dataset.
+
+
+.. py:function:: save_geotiff_dynamic_world_v1(roi, geotiff_path, date=None)
+
+   Save Dynamic World land cover data as a colored GeoTIFF.
+
+   Downloads and exports Google's Dynamic World near real-time land cover classification.
+   The data is available globally at 10m resolution from 2015 onwards, updated every 2-5 days.
+
+   :param roi: Earth Engine geometry defining region of interest
+   :param geotiff_path: Output path for GeoTIFF file
+   :param date: Optional date string (YYYY-MM-DD) to get data for specific time.
+                If None, uses the most recent available image.
+
+   Land cover classes and their colors:
+       - water: Blue (#419bdf)
+       - trees: Dark green (#397d49)
+       - grass: Light green (#88b053)
+       - flooded_vegetation: Purple (#7a87c6)
+       - crops: Orange (#e49635)
+       - shrub_and_scrub: Tan (#dfc35a)
+       - built: Red (#c4281b)
+       - bare: Gray (#a59b8f)
+       - snow_and_ice: Light purple (#b39fe1)
+
+   .. note::
+
+      If a specific date is provided but no image is available, the function
+      will use the closest available date and print a message indicating the
+      actual date used.
+
+
+.. py:function:: save_geotiff_esri_landcover(roi, geotiff_path, year=None)
+
+   Save ESRI Land Cover data as a colored GeoTIFF.
+
+   Downloads and exports ESRI's 10m resolution global land cover classification.
+   This dataset is updated annually and provides consistent global coverage.
+
+   :param roi: Earth Engine geometry defining region of interest
+   :param geotiff_path: Output path for GeoTIFF file
+   :param year: Optional year (YYYY) to get data for specific time.
+                If None, uses the most recent available year.
+
+   Land cover classes and colors:
+       - Water (#1A5BAB): Water bodies
+       - Trees (#358221): Tree cover
+       - Flooded Vegetation (#87D19E): Vegetation in water-logged areas
+       - Crops (#FFDB5C): Agricultural areas
+       - Built Area (#ED022A): Urban and built-up areas
+       - Bare Ground (#EDE9E4): Exposed soil and rock
+       - Snow/Ice (#F2FAFF): Permanent snow and ice
+       - Clouds (#C8C8C8): Cloud cover
+       - Rangeland (#C6AD8D): Natural vegetation
+
+   .. note::
+
+      The function will print the year of the data actually used, which may
+      differ from the requested year if data is not available for that time.
+
+
+.. py:function:: save_geotiff_open_buildings_temporal(aoi, geotiff_path)
+
+   Save Open Buildings temporal data as a GeoTIFF.
+
+   Downloads and exports building height data from Google's Open Buildings dataset.
+   This dataset provides building footprints and heights derived from satellite imagery.
+
+   :param aoi: Earth Engine geometry defining area of interest
+   :param geotiff_path: Output path for GeoTIFF file
+
+   .. note::
+
+      - The output GeoTIFF contains building heights in meters
+      - The dataset is updated periodically and may not cover all regions
+      - Resolution is fixed at 4 meters per pixel
+      - Areas without buildings will have no-data values
+
+
+.. py:function:: save_geotiff_dsm_minus_dtm(roi, geotiff_path, meshsize, source)
+
+   Get the height difference between DSM and DTM from terrain data.
+
+   Calculates the difference between Digital Surface Model (DSM) and Digital Terrain
+   Model (DTM) to estimate heights of buildings, vegetation, and other above-ground
+   features.
+
+   :param roi: Earth Engine geometry defining area of interest
+   :param geotiff_path: Output path for GeoTIFF file
+   :param meshsize: Size of each grid cell in meters - determines output resolution
+   :param source: Source of terrain data, one of:
+                  - 'England 1m DSM - DTM': UK Environment Agency 1m resolution
+                  - 'Netherlands 0.5m DSM - DTM': AHN4 0.5m resolution
+
+   .. note::
+
+      - A 100m buffer is automatically added around the ROI to ensure smooth
+        interpolation at edges
+      - The output represents height above ground level in meters
+      - Negative values may indicate data artifacts or actual below-ground features
+      - The function requires both DSM and DTM data to be available for the region
+
+
+.. py:function:: osm_json_to_geojson(osm_data)
+
+   Convert OSM JSON data to GeoJSON format with proper handling of complex relations.
+
+   :param osm_data: OSM JSON data from Overpass API
+   :type osm_data: dict
+
+   :returns: GeoJSON FeatureCollection
+   :rtype: dict
+
+
+.. py:function:: is_part_of_relation(way_id, osm_data)
+
+   Check if a way is part of any relation in the OSM data.
+
+   :param way_id: The ID of the way to check
+   :type way_id: int
+   :param osm_data: OSM JSON data containing elements
+   :type osm_data: dict
+
+   :returns: True if the way is part of a relation, False otherwise
+   :rtype: bool
+
+
+.. py:function:: is_way_polygon(way)
+
+   Determine if a way should be treated as a polygon based on OSM tags and geometry.
+
+   A way is considered a polygon if:
+   1. It forms a closed loop (first and last nodes are the same)
+   2. It has tags indicating it represents an area (building, landuse, etc.)
+
+   :param way: OSM way element with nodes and tags
+   :type way: dict
+
+   :returns: True if the way should be treated as a polygon, False otherwise
+   :rtype: bool
+
+
+.. py:function:: get_way_coords(way, nodes)
+
+   Extract coordinates for a way from its node references.
+
+   :param way: OSM way element containing node references
+   :type way: dict
+   :param nodes: Dictionary mapping node IDs to their coordinates
+   :type nodes: dict
+
+   :returns:
+
+             List of coordinate pairs [(lon, lat), ...] for the way,
+                  or empty list if any nodes are missing
+   :rtype: list
+
+
+.. py:function:: create_rings_from_ways(way_ids, ways, nodes)
+
+   Create continuous rings by connecting ways that share nodes.
+
+   This function handles complex relations by:
+   1. Connecting ways that share end nodes
+   2. Handling reversed way directions
+   3. Closing rings when possible
+   4. Converting node references to coordinates
+
+   :param way_ids: List of way IDs that make up the ring(s)
+   :type way_ids: list
+   :param ways: Dictionary mapping way IDs to way elements
+   :type ways: dict
+   :param nodes: Dictionary mapping node IDs to coordinates
+   :type nodes: dict
+
+   :returns:
+
+             List of rings, where each ring is a list of coordinate pairs [(lon, lat), ...]
+                   forming a closed polygon with at least 4 points
+   :rtype: list
+
+
+.. py:function:: load_gdf_from_openstreetmap(rectangle_vertices)
+
+   Download and process building footprint data from OpenStreetMap.
+
+   This function:
+   1. Downloads building data using the Overpass API
+   2. Processes complex relations and their members
+   3. Extracts height information and other properties
+   4. Converts features to a GeoDataFrame with standardized properties
+
+   :param rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
+   :type rectangle_vertices: list
+
+   :returns:
+
+             GeoDataFrame containing building footprints with properties:
+                 - geometry: Polygon or MultiPolygon
+                 - height: Building height in meters
+                 - levels: Number of building levels
+                 - min_height: Minimum height (for elevated structures)
+                 - building_type: Type of building
+                 - And other OSM tags as properties
+   :rtype: geopandas.GeoDataFrame
+
+
+.. py:function:: convert_feature(feature)
+
+   Convert a GeoJSON feature to a standardized format with height information.
+
+   This function:
+   1. Handles both Polygon and MultiPolygon geometries
+   2. Extracts and validates height information
+   3. Ensures coordinate order consistency (lon, lat)
+   4. Adds confidence scores for height estimates
+
+   :param feature: Input GeoJSON feature with geometry and properties
+   :type feature: dict
+
+   :returns:
+
+             Converted feature with:
+                 - Standardized geometry (always Polygon)
+                 - Height information in properties
+                 - Confidence score for height values
+                 Or None if the feature is invalid or not a polygon
+   :rtype: dict
+
+
+.. py:data:: classification_mapping
+
+.. py:data:: tag_osm_key_value_mapping
+
+.. py:function:: get_classification(tags)
+
+   Determine the land cover/use classification based on OSM tags.
+
+   This function maps OSM tags to standardized land cover classes using:
+   1. A hierarchical classification system (codes 0-13)
+   2. Tag matching patterns for different feature types
+   3. Special cases for roads, water bodies, etc.
+
+   :param tags: Dictionary of OSM tags (key-value pairs)
+   :type tags: dict
+
+   :returns:
+
+             (classification_code, classification_name) where:
+                 - classification_code (int): Numeric code (0-13) for the land cover class
+                 - classification_name (str): Human-readable name of the class
+                 Or (None, None) if no matching classification is found
+   :rtype: tuple
+
+
+.. py:function:: swap_coordinates(geom_mapping)
+
+   Swap coordinate order in a GeoJSON geometry object.
+
+   This function:
+   1. Handles nested coordinate structures (Polygons, MultiPolygons)
+   2. Preserves the original coordinate order if already correct
+   3. Works recursively for complex geometries
+
+   :param geom_mapping: GeoJSON geometry object with coordinates
+   :type geom_mapping: dict
+
+   :returns: Geometry with coordinates in the correct order (lon, lat)
+   :rtype: dict
+
+
+.. py:function:: load_land_cover_gdf_from_osm(rectangle_vertices_ori)
+
+   Load and classify land cover data from OpenStreetMap.
+
+   This function:
+   1. Downloads land cover features using the Overpass API
+   2. Classifies features based on OSM tags
+   3. Handles special cases like roads with width information
+   4. Projects geometries for accurate buffering
+   5. Creates a standardized GeoDataFrame with classifications
+
+   :param rectangle_vertices_ori: List of (lon, lat) coordinates defining the area
+   :type rectangle_vertices_ori: list
+
+   :returns:
+
+             GeoDataFrame with:
+                 - geometry: Polygon or MultiPolygon features
+                 - class: Land cover classification name
+                 - Additional properties from OSM tags
+   :rtype: geopandas.GeoDataFrame
+
+
+.. py:function:: deg2num(lon_deg, lat_deg, zoom)
+
+   Convert longitude/latitude coordinates to tile coordinates using Web Mercator projection.
+
+   The function converts geographic coordinates to tile coordinates using the standard
+   Web Mercator tiling scheme (XYZ). The resulting coordinates can be used to identify
+   and download specific map tiles.
+
+   :param lon_deg: Longitude in degrees (-180 to 180)
+   :type lon_deg: float
+   :param lat_deg: Latitude in degrees (-90 to 90)
+   :type lat_deg: float
+   :param zoom: Zoom level (0-20, where 0 is most zoomed out)
+   :type zoom: int
+
+   :returns: (x, y) tile coordinates as floats
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> x, y = deg2num(139.7, 35.6, 16)  # Tokyo coordinates
+
+
+.. py:function:: num2deg(xtile, ytile, zoom)
+
+   Convert tile coordinates back to longitude/latitude coordinates.
+
+   This is the inverse operation of deg2num(). It converts tile coordinates
+   back to geographic coordinates using the Web Mercator projection.
+
+   :param xtile: X tile coordinate
+   :type xtile: float
+   :param ytile: Y tile coordinate
+   :type ytile: float
+   :param zoom: Zoom level (0-20)
+   :type zoom: int
+
+   :returns: (longitude, latitude) in degrees
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> lon, lat = num2deg(29326, 13249, 15)  # Sample tile coordinates
+
+
+.. py:function:: download_tiles(polygon, zoom)
+
+   Download satellite imagery tiles covering a polygon region.
+
+   Downloads all tiles that intersect with the given polygon at the specified zoom level
+   from the OpenEarthMap Japan server. The function calculates the minimum bounding box
+   that contains the polygon and downloads all tiles within that box.
+
+   :param polygon: List of (lon, lat) tuples defining the region vertices in clockwise
+                   or counterclockwise order
+   :type polygon: list
+   :param zoom: Zoom level for tile detail (recommended range: 14-18)
+   :type zoom: int
+
+   :returns:
+
+             (
+                 tiles: dict mapping (x,y) tile coordinates to PIL Image objects,
+                 bounds: tuple of (min_x, min_y, max_x, max_y) tile coordinates
+             )
+   :rtype: tuple
+
+   .. note::
+
+      Higher zoom levels provide more detail but require downloading more tiles.
+      The function will print progress messages during download.
+
+
+.. py:function:: compose_image(tiles, bounds)
+
+   Compose downloaded tiles into a single continuous image.
+
+   Takes individual map tiles and combines them into a single large image based on
+   their relative positions. The tiles are placed according to their x,y coordinates
+   within the bounds.
+
+   :param tiles: Mapping of (x,y) coordinates to tile Image objects
+   :type tiles: dict
+   :param bounds: (min_x, min_y, max_x, max_y) tile coordinate bounds
+   :type bounds: tuple
+
+   :returns:
+
+             Composed PIL Image with dimensions (width x height) where:
+                   width = (max_x - min_x + 1) * 256
+                   height = (max_y - min_y + 1) * 256
+   :rtype: Image
+
+   .. note:: Each tile is assumed to be 256x256 pixels, which is standard for web maps.
+
+
+.. py:function:: crop_image(image, polygon, bounds, zoom)
+
+   Crop composed image to the exact polygon boundary.
+
+   Creates a mask from the polygon coordinates and uses it to crop the image,
+   removing areas outside the polygon of interest. The polygon coordinates are
+   converted from geographic coordinates to pixel coordinates in the image space.
+
+   :param image: PIL Image to crop
+   :type image: Image
+   :param polygon: List of (lon, lat) coordinates defining the boundary
+   :type polygon: list
+   :param bounds: (min_x, min_y, max_x, max_y) tile bounds
+   :type bounds: tuple
+   :param zoom: Zoom level used for coordinate conversion
+   :type zoom: int
+
+   :returns:
+
+             (
+                 cropped Image: PIL Image cropped to polygon boundary,
+                 bbox: tuple of (left, upper, right, lower) pixel coordinates of bounding box
+             )
+   :rtype: tuple
+
+   :raises ValueError: If the polygon does not intersect with the downloaded tiles
+
+
+.. py:function:: save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path)
+
+   Save cropped image as a georeferenced GeoTIFF file.
+
+   Converts the image to a GeoTIFF format with proper spatial reference information
+   using the Web Mercator projection (EPSG:3857). The function handles coordinate
+   transformation and sets up the necessary geospatial metadata.
+
+   :param image: PIL Image to save
+   :type image: Image
+   :param polygon: List of (lon, lat) coordinates
+   :type polygon: list
+   :param zoom: Zoom level used for coordinate calculations
+   :type zoom: int
+   :param bbox: Bounding box of cropped image in pixels (left, upper, right, lower)
+   :type bbox: tuple
+   :param bounds: (min_x, min_y, max_x, max_y) tile bounds
+   :type bounds: tuple
+   :param output_path: Path where the GeoTIFF will be saved
+   :type output_path: str
+
+   .. note::
+
+      The output GeoTIFF will have 3 bands (RGB) and use the Web Mercator
+      projection (EPSG:3857) for compatibility with most GIS software.
+
+
+.. py:function:: save_oemj_as_geotiff(polygon, filepath, zoom=16)
+
+   Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.
+
+   This is the main function that orchestrates the entire process of downloading,
+   processing, and saving satellite imagery for a specified region.
+
+   :param polygon: List of (lon, lat) coordinates defining the region to download.
+                   Must be in clockwise or counterclockwise order.
+   :type polygon: list
+   :param filepath: Output path for the GeoTIFF file
+   :type filepath: str
+   :param zoom: Zoom level for detail. Defaults to 16.
+                - 14: ~9.5m/pixel
+                - 15: ~4.8m/pixel
+                - 16: ~2.4m/pixel
+                - 17: ~1.2m/pixel
+                - 18: ~0.6m/pixel
+   :type zoom: int, optional
+
+   .. rubric:: Example
+
+   >>> polygon = [
+           (139.7, 35.6),  # Bottom-left
+           (139.8, 35.6),  # Bottom-right
+           (139.8, 35.7),  # Top-right
+           (139.7, 35.7)   # Top-left
+       ]
+   >>> save_oemj_as_geotiff(polygon, "tokyo_area.tiff", zoom=16)
+
+   .. note::
+
+      - Higher zoom levels provide better resolution but require more storage
+      - The polygon should be relatively small to avoid memory issues
+      - The output GeoTIFF will be in Web Mercator projection (EPSG:3857)
+
+
+.. py:function:: get_country_name(lon, lat)
+
+   Get country name from coordinates using reverse geocoding.
+   Uses a local database for fast reverse geocoding to country level,
+   then converts the country code to full name using pycountry.
+
+   :param lon: Longitude in decimal degrees
+   :type lon: float
+   :param lat: Latitude in decimal degrees
+   :type lat: float
+
+   :returns: Full country name or None if lookup fails
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> country = get_country_name(139.6503, 35.6762)
+   >>> print(f"Country: {country}")  # "Japan"
+
+
+.. py:data:: country_links
+
+.. py:function:: filter_and_convert_gdf_to_geojson_eubucco(gpkg_file, layer_name, rectangle_vertices, output_geojson)
+
+   Filters features in a GeoPackage that intersect with a given rectangle and writes them to a GeoJSON file.
+
+   This function:
+   1. Creates a polygon from the input rectangle vertices
+   2. Handles coordinate system transformations if needed
+   3. Filters buildings that intersect with the target area
+   4. Processes building geometries and properties
+   5. Writes filtered data to GeoJSON format
+
+   Parameters:
+   - gpkg_file (str): Path to the GeoPackage file containing building data
+   - layer_name (str): Name of the layer within the GeoPackage to process
+   - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle vertices
+   - output_geojson (str): Path where the output GeoJSON file will be written
+
+   Returns:
+   None
+
+   Notes:
+   - The function assumes input coordinates are in WGS84 (EPSG:4326)
+   - Building heights are stored in meters
+   - Missing or invalid heights are assigned a default value of -1.0
+   - A confidence value of -1.0 indicates no confidence data available
+
+
+.. py:function:: download_extract_open_gpkg_from_eubucco(url, output_dir)
+
+   Downloads a ZIP file from a URL, extracts the GeoPackage (.gpkg) file, and returns its path.
+
+   This function:
+   1. Downloads a ZIP file from the EUBUCCO API
+   2. Extracts the contents to a specified directory
+   3. Locates and returns the path to the GeoPackage file
+
+   Parameters:
+   - url (str): URL to download the ZIP file containing the GeoPackage
+   - output_dir (str): Directory where extracted files will be stored
+
+   Returns:
+   - str: Absolute path to the extracted GeoPackage file
+
+   Raises:
+   - Exception: If download fails or no GeoPackage file is found
+   - requests.exceptions.RequestException: For network-related errors
+
+   Notes:
+   - Creates a subdirectory 'EUBUCCO_raw' in the output directory
+   - Logs progress and errors using the logging module
+
+
+.. py:function:: get_gdf_from_eubucco(rectangle_vertices, country_links, output_dir, file_name)
+
+   Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.
+
+   This function:
+   1. Determines the target country based on input coordinates
+   2. Downloads and extracts EUBUCCO data for that country
+   3. Reads the GeoPackage into a GeoDataFrame
+   4. Ensures correct coordinate reference system
+   5. Assigns unique IDs to buildings
+
+   Parameters:
+   - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area of interest
+   - country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs
+   - output_dir (str): Directory to save downloaded and processed files
+   - file_name (str): Name for the output GeoJSON file
+
+   Returns:
+   - geopandas.GeoDataFrame: DataFrame containing building geometries and properties
+       or None if the target area has no EUBUCCO data
+
+   Notes:
+   - Automatically transforms coordinates to WGS84 (EPSG:4326) if needed
+   - Assigns sequential IDs to buildings starting from 0
+   - Logs errors if target area is not covered by EUBUCCO
+
+
+.. py:function:: load_gdf_from_eubucco(rectangle_vertices, output_dir)
+
+   Downloads EUBUCCO data and loads it as GeoJSON.
+
+   This function serves as the main interface for loading EUBUCCO building data.
+   It handles the complete workflow from downloading to processing the data.
+
+   Parameters:
+   - rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area
+       The first vertex is used to determine which country's data to download
+   - output_dir (str): Directory to save intermediate and output files
+       Creates a subdirectory 'EUBUCCO_raw' for raw downloaded data
+
+   Returns:
+   - geopandas.GeoDataFrame: DataFrame containing:
+       - geometry: Building footprint polygons
+       - height: Building heights in meters
+       - id: Unique identifier for each building
+       or None if the target area has no EUBUCCO data
+
+   Notes:
+   - Output is always in WGS84 (EPSG:4326) coordinate system
+   - Building heights are in meters
+   - Buildings without height data are assigned a height of -1.0
+   - The function automatically determines the appropriate country dataset
+
+
+.. py:function:: convert_numpy_to_python(obj)
+
+   Recursively convert numpy types to native Python types.
+
+   This function handles various numpy data types and complex nested structures,
+   ensuring all data is converted to Python native types for JSON serialization.
+
+   :param obj: Object to convert, can be:
+               - dict: Dictionary with potentially nested numpy types
+               - list/tuple: Sequence with potentially nested numpy types
+               - numpy.ndarray: Numpy array to be converted to list
+               - numpy.integer/numpy.floating: Numpy numeric types
+               - native Python types (bool, str, int, float)
+               - None values
+
+   :returns: Converted object with all numpy types replaced by native Python types
+   :rtype: object
+
+   .. rubric:: Examples
+
+   >>> convert_numpy_to_python(np.int64(42))
+   42
+   >>> convert_numpy_to_python({'a': np.array([1, 2, 3])})
+   {'a': [1, 2, 3]}
+
+
+.. py:function:: is_valid_value(value)
+
+   Check if a value is valid (not NA/null) and handle array-like objects.
+
+   This function is used to validate data before processing, ensuring that
+   null/NA values are handled appropriately while preserving array-like structures.
+
+   :param value: Value to check, can be:
+                 - numpy.ndarray: Always considered valid
+                 - list: Always considered valid
+                 - scalar values: Checked for NA/null status
+
+   :returns: True if value is valid (not NA/null or is array-like), False otherwise
+   :rtype: bool
+
+   .. note::
+
+      Arrays and lists are always considered valid since they may contain
+      valid data that needs to be processed individually.
+
+
+.. py:function:: convert_gdf_to_geojson(gdf)
+
+   Convert GeoDataFrame to GeoJSON format with coordinates in (lon, lat) order.
+
+   This function processes a GeoDataFrame containing building data and converts it
+   to a standardized GeoJSON format. It handles special cases for height values
+   and ensures all properties are properly converted to JSON-serializable types.
+
+   :param gdf: Input GeoDataFrame containing building data with columns:
+               - geometry: Shapely geometry objects
+               - height: Building height (optional)
+               - min_height: Minimum building height (optional)
+               - Additional property columns
+   :type gdf: GeoDataFrame
+
+   :returns:
+
+             List of GeoJSON feature dictionaries, each containing:
+                 - type: Always "Feature"
+                 - properties: Dictionary of building properties including:
+                     - height: Building height (defaults to 0.0)
+                     - min_height: Minimum height (defaults to 0.0)
+                     - id: Sequential unique identifier
+                     - All other columns from input GeoDataFrame
+                 - geometry: GeoJSON geometry object
+   :rtype: list
+
+   .. note::
+
+      - Height values default to 0.0 if missing or invalid
+      - All numpy types are converted to native Python types
+      - Sequential IDs are assigned starting from 1
+
+
+.. py:function:: rectangle_to_bbox(vertices)
+
+   Convert rectangle vertices in (lon, lat) format to a bounding box.
+
+   This function takes a list of coordinate pairs defining a rectangle and
+   converts them to a bounding box format required by the Overture Maps API.
+
+   :param vertices: List of tuples containing (lon, lat) coordinates
+                    defining the corners of a rectangle
+   :type vertices: list
+
+   :returns:
+
+             Bounding box coordinates in format (min_lon, min_lat, max_lon, max_lat)
+                 suitable for use with Overture Maps API
+   :rtype: tuple
+
+   .. note::
+
+      The function calculates the minimum and maximum coordinates to ensure
+      the bounding box encompasses all provided vertices.
+
+
+.. py:function:: join_gdfs_vertically(gdf1, gdf2)
+
+   Join two GeoDataFrames vertically, handling different column structures.
+
+   This function combines two GeoDataFrames that may have different columns,
+   ensuring all columns from both datasets are preserved in the output.
+   It provides diagnostic information about the combining process.
+
+   :param gdf1: First GeoDataFrame (e.g., buildings)
+   :type gdf1: GeoDataFrame
+   :param gdf2: Second GeoDataFrame (e.g., building parts)
+   :type gdf2: GeoDataFrame
+
+   :returns:
+
+             Combined GeoDataFrame containing:
+                 - All rows from both input GeoDataFrames
+                 - All columns from both inputs (filled with None where missing)
+                 - Preserved geometry column
+   :rtype: GeoDataFrame
+
+   .. note::
+
+      - Prints diagnostic information about column differences
+      - Handles missing columns by filling with None values
+      - Preserves the geometry column for spatial operations
+
+
+.. py:function:: load_gdf_from_overture(rectangle_vertices)
+
+   Download and process building footprint data from Overture Maps.
+
+   This function serves as the main entry point for downloading building data.
+   It handles the complete workflow of downloading both building and building
+   part data, combining them, and preparing them for further processing.
+
+   :param rectangle_vertices: List of (lon, lat) coordinates defining
+                              the bounding box for data download
+   :type rectangle_vertices: list
+
+   :returns:
+
+             Combined dataset containing:
+                 - Building and building part geometries
+                 - Standardized properties
+                 - Sequential numeric IDs
+   :rtype: GeoDataFrame
+
+   .. note::
+
+      - Downloads both building and building_part data from Overture Maps
+      - Combines the datasets while preserving all properties
+      - Assigns sequential IDs based on the final dataset index
+
+

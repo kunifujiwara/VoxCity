@@ -1,0 +1,1084 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.geoprocessor.mesh - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.geoprocessor.mesh</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">trimesh</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.colors</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mcolors</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.cm</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">cm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<div class="viewcode-block" id="create_voxel_mesh">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.geoprocessor.create_voxel_mesh">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_voxel_mesh</span><span class="p">(</span><span class="n">voxel_array</span><span class="p">,</span> <span class="n">class_id</span><span class="p">,</span> <span class="n">meshsize</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mesh_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.</span>
+<span class="sd">    </span>
+<span class="sd">    This function converts a 3D voxel array into a triangulated mesh, where each voxel</span>
+<span class="sd">    face is converted into two triangles. The function preserves sharp edges between</span>
+<span class="sd">    different classes and handles special cases for buildings.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    voxel_array : np.ndarray (3D)</span>
+<span class="sd">        The voxel array of shape (X, Y, Z) where each cell contains a class ID.</span>
+<span class="sd">        - 0: typically represents void/air</span>
+<span class="sd">        - -2: typically represents trees</span>
+<span class="sd">        - -3: typically represents buildings</span>
+<span class="sd">        Other values can represent different classes as defined by the application.</span>
+<span class="sd">    </span>
+<span class="sd">    class_id : int</span>
+<span class="sd">        The ID of the class to extract. Only voxels with this ID will be included</span>
+<span class="sd">        in the output mesh.</span>
+<span class="sd">    </span>
+<span class="sd">    meshsize : float, default=1.0</span>
+<span class="sd">        The real-world size of each voxel in meters, applied uniformly to x, y, and z</span>
+<span class="sd">        dimensions. Used to scale the output mesh to real-world coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    building_id_grid : np.ndarray (2D), optional</span>
+<span class="sd">        2D grid of building IDs with shape (X, Y). Only used when class_id=-3 (buildings).</span>
+<span class="sd">        Each cell contains a unique identifier for the building at that location.</span>
+<span class="sd">        This allows tracking which faces belong to which building.</span>
+<span class="sd">    </span>
+<span class="sd">    mesh_type : str, optional</span>
+<span class="sd">        Type of mesh to create, controlling which faces are included:</span>
+<span class="sd">        - None (default): create faces at boundaries between different classes</span>
+<span class="sd">        - &#39;building_solar&#39;: only create faces at boundaries between buildings (-3)</span>
+<span class="sd">                          and either void (0) or trees (-2). Useful for solar analysis</span>
+<span class="sd">                          where only exposed surfaces matter.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    mesh : trimesh.Trimesh or None</span>
+<span class="sd">        The resulting triangulated mesh for the given class_id. Returns None if no</span>
+<span class="sd">        voxels of the specified class are found.</span>
+<span class="sd">        </span>
+<span class="sd">        The mesh includes:</span>
+<span class="sd">        - vertices: 3D coordinates of each vertex</span>
+<span class="sd">        - faces: triangles defined by vertex indices</span>
+<span class="sd">        - face_normals: normal vectors for each face</span>
+<span class="sd">        - metadata: If class_id=-3, includes &#39;building_id&#39; mapping faces to buildings</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic usage for a simple voxel array:</span>
+<span class="sd">    &gt;&gt;&gt; voxels = np.zeros((10, 10, 10))</span>
+<span class="sd">    &gt;&gt;&gt; voxels[4:7, 4:7, 0:5] = 1  # Create a simple column</span>
+<span class="sd">    &gt;&gt;&gt; mesh = create_voxel_mesh(voxels, class_id=1, meshsize=0.5)</span>
+<span class="sd">    </span>
+<span class="sd">    Creating a building mesh with IDs:</span>
+<span class="sd">    &gt;&gt;&gt; building_ids = np.zeros((10, 10))</span>
+<span class="sd">    &gt;&gt;&gt; building_ids[4:7, 4:7] = 1  # Mark building #1</span>
+<span class="sd">    &gt;&gt;&gt; mesh = create_voxel_mesh(voxels, class_id=-3, </span>
+<span class="sd">    ...                         building_id_grid=building_ids,</span>
+<span class="sd">    ...                         meshsize=1.0)</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - The function creates faces only at boundaries between different classes or at</span>
+<span class="sd">      the edges of the voxel array.</span>
+<span class="sd">    - Each face is split into two triangles for compatibility with graphics engines.</span>
+<span class="sd">    - Face normals are computed to ensure correct lighting and rendering.</span>
+<span class="sd">    - For buildings (class_id=-3), building IDs are tracked to maintain building identity.</span>
+<span class="sd">    - The mesh preserves sharp edges, which is important for architectural visualization.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Find voxels of the current class</span>
+    <span class="n">voxel_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argwhere</span><span class="p">(</span><span class="n">voxel_array</span> <span class="o">==</span> <span class="n">class_id</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">building_id_grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">building_id_grid_flipud</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">building_id_grid</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">voxel_coords</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># Define the 6 faces of a unit cube (local coordinates 0..1)</span>
+    <span class="n">unit_faces</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+        <span class="c1"># Front</span>
+        <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+        <span class="c1"># Back</span>
+        <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span>
+        <span class="c1"># Right</span>
+        <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+        <span class="c1"># Left</span>
+        <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span>
+        <span class="c1"># Top</span>
+        <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span>
+        <span class="c1"># Bottom</span>
+        <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]]</span>
+    <span class="p">])</span>
+
+    <span class="c1"># Define face normals</span>
+    <span class="n">face_normals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+        <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>   <span class="c1"># Front</span>
+        <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">],</span>  <span class="c1"># Back</span>
+        <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>   <span class="c1"># Right</span>
+        <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>  <span class="c1"># Left</span>
+        <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>   <span class="c1"># Top</span>
+        <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>   <span class="c1"># Bottom</span>
+    <span class="p">])</span>
+
+    <span class="n">vertices</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">faces</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">face_normals_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">building_ids</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># List to store building IDs for each face</span>
+
+    <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="ow">in</span> <span class="n">voxel_coords</span><span class="p">:</span>
+        <span class="c1"># For buildings, get the building ID from the grid</span>
+        <span class="n">building_id</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">class_id</span> <span class="o">==</span> <span class="o">-</span><span class="mi">3</span> <span class="ow">and</span> <span class="n">building_id_grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">building_id</span> <span class="o">=</span> <span class="n">building_id_grid_flipud</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">]</span>
+            
+        <span class="c1"># Check each face of the current voxel</span>
+        <span class="n">adjacent_coords</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">x</span><span class="p">,</span>   <span class="n">y</span><span class="p">,</span>   <span class="n">z</span><span class="o">+</span><span class="mi">1</span><span class="p">),</span>  <span class="c1"># Front</span>
+            <span class="p">(</span><span class="n">x</span><span class="p">,</span>   <span class="n">y</span><span class="p">,</span>   <span class="n">z</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span>  <span class="c1"># Back</span>
+            <span class="p">(</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span>   <span class="n">z</span><span class="p">),</span>    <span class="c1"># Right</span>
+            <span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span>   <span class="n">z</span><span class="p">),</span>    <span class="c1"># Left</span>
+            <span class="p">(</span><span class="n">x</span><span class="p">,</span>   <span class="n">y</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span>    <span class="c1"># Top</span>
+            <span class="p">(</span><span class="n">x</span><span class="p">,</span>   <span class="n">y</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>     <span class="c1"># Bottom</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Only create faces where there&#39;s a transition based on mesh_type</span>
+        <span class="k">for</span> <span class="n">face_idx</span><span class="p">,</span> <span class="n">adj_coord</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">adjacent_coords</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># If adj_coord is outside array bounds, it&#39;s a boundary =&gt; face is visible</span>
+                <span class="k">if</span> <span class="n">adj_coord</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">adj_coord</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">adj_coord</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">is_boundary</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">adj_value</span> <span class="o">=</span> <span class="n">voxel_array</span><span class="p">[</span><span class="n">adj_coord</span><span class="p">]</span>
+                    
+                    <span class="k">if</span> <span class="n">mesh_type</span> <span class="o">==</span> <span class="s1">&#39;open_air&#39;</span> <span class="ow">and</span> <span class="n">class_id</span> <span class="o">==</span> <span class="o">-</span><span class="mi">3</span><span class="p">:</span>
+                        <span class="c1"># For building_solar, only create faces at boundaries with void (0) or trees (-2)</span>
+                        <span class="n">is_boundary</span> <span class="o">=</span> <span class="p">(</span><span class="n">adj_value</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">adj_value</span> <span class="o">==</span> <span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Default behavior - create faces at any class change</span>
+                        <span class="n">is_boundary</span> <span class="o">=</span> <span class="p">(</span><span class="n">adj_value</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">adj_value</span> <span class="o">!=</span> <span class="n">class_id</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+                <span class="c1"># Out of range =&gt; boundary</span>
+                <span class="n">is_boundary</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="k">if</span> <span class="n">is_boundary</span><span class="p">:</span>
+                <span class="c1"># Local face in (0..1) for x,y,z, then shift by voxel coords</span>
+                <span class="n">face_verts</span> <span class="o">=</span> <span class="p">(</span><span class="n">unit_faces</span><span class="p">[</span><span class="n">face_idx</span><span class="p">]</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">]))</span> <span class="o">*</span> <span class="n">meshsize</span>
+                <span class="n">current_vert_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vertices</span><span class="p">)</span>
+
+                <span class="n">vertices</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">face_verts</span><span class="p">)</span>
+                <span class="c1"># Convert quad to two triangles</span>
+                <span class="n">faces</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span>
+                    <span class="p">[</span><span class="n">current_vert_count</span><span class="p">,</span> <span class="n">current_vert_count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">current_vert_count</span> <span class="o">+</span> <span class="mi">2</span><span class="p">],</span>
+                    <span class="p">[</span><span class="n">current_vert_count</span><span class="p">,</span> <span class="n">current_vert_count</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="n">current_vert_count</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span>
+                <span class="p">])</span>
+                <span class="c1"># Add face normals for both triangles</span>
+                <span class="n">face_normals_list</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">face_normals</span><span class="p">[</span><span class="n">face_idx</span><span class="p">],</span> <span class="n">face_normals</span><span class="p">[</span><span class="n">face_idx</span><span class="p">]])</span>
+                
+                <span class="c1"># Store building ID for both triangles if this is a building</span>
+                <span class="k">if</span> <span class="n">class_id</span> <span class="o">==</span> <span class="o">-</span><span class="mi">3</span> <span class="ow">and</span> <span class="n">building_id_grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">building_ids</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">building_id</span><span class="p">,</span> <span class="n">building_id</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">vertices</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">vertices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">vertices</span><span class="p">)</span>
+    <span class="n">faces</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">faces</span><span class="p">)</span>
+    <span class="n">face_normals_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">face_normals_list</span><span class="p">)</span>
+
+    <span class="c1"># Create mesh</span>
+    <span class="n">mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">Trimesh</span><span class="p">(</span>
+        <span class="n">vertices</span><span class="o">=</span><span class="n">vertices</span><span class="p">,</span>
+        <span class="n">faces</span><span class="o">=</span><span class="n">faces</span><span class="p">,</span>
+        <span class="n">face_normals</span><span class="o">=</span><span class="n">face_normals_list</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Merge vertices that are at the same position</span>
+    <span class="n">mesh</span><span class="o">.</span><span class="n">merge_vertices</span><span class="p">()</span>
+    
+    <span class="c1"># Add building IDs as metadata for buildings</span>
+    <span class="k">if</span> <span class="n">class_id</span> <span class="o">==</span> <span class="o">-</span><span class="mi">3</span> <span class="ow">and</span> <span class="n">building_id_grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">building_ids</span><span class="p">:</span>
+        <span class="n">mesh</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;building_id&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">building_ids</span><span class="p">)}</span>
+
+    <span class="k">return</span> <span class="n">mesh</span></div>
+
+
+<div class="viewcode-block" id="create_sim_surface_mesh">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.create_sim_surface_mesh">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_sim_surface_mesh</span><span class="p">(</span><span class="n">sim_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">,</span>
+                            <span class="n">meshsize</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">z_offset</span><span class="o">=</span><span class="mf">1.5</span><span class="p">,</span>
+                            <span class="n">cmap_name</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span>
+                            <span class="n">vmin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a colored planar surface mesh from simulation data, positioned above a DEM.</span>
+<span class="sd">    </span>
+<span class="sd">    This function generates a 3D visualization mesh for 2D simulation results (like</span>
+<span class="sd">    Green View Index, solar radiation, etc.). The mesh is positioned above the Digital</span>
+<span class="sd">    Elevation Model (DEM) by a specified offset, and colored according to the simulation</span>
+<span class="sd">    values using a matplotlib colormap.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sim_grid : 2D np.ndarray</span>
+<span class="sd">        2D array of simulation values (e.g., Green View Index, solar radiation).</span>
+<span class="sd">        NaN values in this grid will be skipped in the output mesh.</span>
+<span class="sd">        The grid should be oriented with north at the top.</span>
+<span class="sd">    </span>
+<span class="sd">    dem_grid : 2D np.ndarray</span>
+<span class="sd">        2D array of ground elevations in meters. Must have the same shape as sim_grid.</span>
+<span class="sd">        Used to position the visualization mesh at the correct height above terrain.</span>
+<span class="sd">    </span>
+<span class="sd">    meshsize : float, default=1.0</span>
+<span class="sd">        Size of each cell in meters. Applied uniformly to x and y dimensions.</span>
+<span class="sd">        Determines the resolution of the output mesh.</span>
+<span class="sd">    </span>
+<span class="sd">    z_offset : float, default=1.5</span>
+<span class="sd">        Additional height offset in meters added to dem_grid elevations.</span>
+<span class="sd">        Used to position the visualization above ground level for better visibility.</span>
+<span class="sd">    </span>
+<span class="sd">    cmap_name : str, default=&#39;viridis&#39;</span>
+<span class="sd">        Matplotlib colormap name used for coloring the mesh based on sim_grid values.</span>
+<span class="sd">        Common options:</span>
+<span class="sd">        - &#39;viridis&#39;: Default, perceptually uniform, colorblind-friendly</span>
+<span class="sd">        - &#39;RdYlBu&#39;: Red-Yellow-Blue, good for diverging data</span>
+<span class="sd">        - &#39;jet&#39;: Rainbow colormap (not recommended for scientific visualization)</span>
+<span class="sd">    </span>
+<span class="sd">    vmin : float, optional</span>
+<span class="sd">        Minimum value for color mapping. If None, uses min of sim_grid (excluding NaN).</span>
+<span class="sd">        Used to control the range of the colormap.</span>
+<span class="sd">    </span>
+<span class="sd">    vmax : float, optional</span>
+<span class="sd">        Maximum value for color mapping. If None, uses max of sim_grid (excluding NaN).</span>
+<span class="sd">        Used to control the range of the colormap.</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    mesh : trimesh.Trimesh or None</span>
+<span class="sd">        A single mesh containing one colored square face (two triangles) per non-NaN cell.</span>
+<span class="sd">        Returns None if there are no valid (non-NaN) cells in sim_grid.</span>
+<span class="sd">        </span>
+<span class="sd">        The mesh includes:</span>
+<span class="sd">        - vertices: 3D coordinates of each vertex</span>
+<span class="sd">        - faces: triangles defined by vertex indices</span>
+<span class="sd">        - face_colors: RGBA colors for each face based on sim_grid values</span>
+<span class="sd">        - visual: trimesh.visual.ColorVisuals object storing the face colors</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic usage with Green View Index data:</span>
+<span class="sd">    &gt;&gt;&gt; gvi = np.array([[0.5, 0.6], [0.4, 0.8]])  # GVI values</span>
+<span class="sd">    &gt;&gt;&gt; dem = np.array([[10.0, 10.2], [9.8, 10.1]])  # Ground heights</span>
+<span class="sd">    &gt;&gt;&gt; mesh = create_sim_surface_mesh(gvi, dem, meshsize=1.0, z_offset=1.5)</span>
+<span class="sd">    </span>
+<span class="sd">    Custom color range and colormap:</span>
+<span class="sd">    &gt;&gt;&gt; mesh = create_sim_surface_mesh(gvi, dem,</span>
+<span class="sd">    ...                               cmap_name=&#39;RdYlBu&#39;,</span>
+<span class="sd">    ...                               vmin=0.0, vmax=1.0)</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - The function automatically creates a matplotlib colorbar figure for visualization</span>
+<span class="sd">    - Both input grids are flipped vertically to match the voxel_array orientation</span>
+<span class="sd">    - Each grid cell is converted to two triangles for compatibility with 3D engines</span>
+<span class="sd">    - The mesh is positioned at dem_grid + z_offset to float above the terrain</span>
+<span class="sd">    - Face colors are interpolated from the colormap based on sim_grid values</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Flip arrays vertically</span>
+    <span class="n">sim_grid_flipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">sim_grid</span><span class="p">)</span>
+    <span class="n">dem_grid_flipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">dem_grid</span><span class="p">)</span>
+
+    <span class="c1"># Identify valid (non-NaN) values</span>
+    <span class="n">valid_mask</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">sim_grid_flipped</span><span class="p">)</span>
+    <span class="n">valid_values</span> <span class="o">=</span> <span class="n">sim_grid_flipped</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">valid_values</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># If vmin/vmax not provided, use actual min/max of the valid sim data</span>
+    <span class="k">if</span> <span class="n">vmin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">vmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">valid_values</span><span class="p">)</span> 
+    <span class="k">if</span> <span class="n">vmax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">vmax</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">valid_values</span><span class="p">)</span>
+        
+    <span class="c1"># Prepare the colormap and create colorbar</span>
+    <span class="n">norm</span> <span class="o">=</span> <span class="n">mcolors</span><span class="o">.</span><span class="n">Normalize</span><span class="p">(</span><span class="n">vmin</span><span class="o">=</span><span class="n">vmin</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="n">vmax</span><span class="p">)</span>
+    <span class="n">scalar_map</span> <span class="o">=</span> <span class="n">cm</span><span class="o">.</span><span class="n">ScalarMappable</span><span class="p">(</span><span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="n">cmap_name</span><span class="p">)</span>
+    
+    <span class="c1"># Create a figure just for the colorbar</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">scalar_map</span><span class="p">,</span> <span class="n">cax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="s1">&#39;horizontal&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="n">vertices</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">faces</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">face_colors</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">vert_index</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span> <span class="o">=</span> <span class="n">sim_grid_flipped</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Build a quad (two triangles) for each valid cell</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nrows</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ncols</span><span class="p">):</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">sim_grid_flipped</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+                <span class="k">continue</span>
+
+            <span class="n">z_base</span> <span class="o">=</span> <span class="n">meshsize</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">dem_grid_flipped</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">]</span> <span class="o">/</span> <span class="n">meshsize</span> <span class="o">+</span> <span class="mf">1.5</span><span class="p">)</span> <span class="o">+</span> <span class="n">z_offset</span>            
+
+            <span class="c1"># 4 corners in (x,y)*meshsize</span>
+            <span class="n">v0</span> <span class="o">=</span> <span class="p">[</span> <span class="n">x</span>      <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span>  <span class="n">y</span>      <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">z_base</span> <span class="p">]</span>
+            <span class="n">v1</span> <span class="o">=</span> <span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span>  <span class="n">y</span>      <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">z_base</span> <span class="p">]</span>
+            <span class="n">v2</span> <span class="o">=</span> <span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="p">(</span><span class="n">y</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">z_base</span> <span class="p">]</span>
+            <span class="n">v3</span> <span class="o">=</span> <span class="p">[</span> <span class="n">x</span>      <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="p">(</span><span class="n">y</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">z_base</span> <span class="p">]</span>
+
+            <span class="n">vertices</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">v0</span><span class="p">,</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">v3</span><span class="p">])</span>
+            <span class="n">faces</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span>
+                <span class="p">[</span><span class="n">vert_index</span><span class="p">,</span>     <span class="n">vert_index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">vert_index</span> <span class="o">+</span> <span class="mi">2</span><span class="p">],</span>
+                <span class="p">[</span><span class="n">vert_index</span><span class="p">,</span>     <span class="n">vert_index</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="n">vert_index</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span>
+            <span class="p">])</span>
+
+            <span class="c1"># Get color from colormap</span>
+            <span class="n">color_rgba</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">scalar_map</span><span class="o">.</span><span class="n">to_rgba</span><span class="p">(</span><span class="n">val</span><span class="p">))</span>  <span class="c1"># shape (4,)</span>
+
+            <span class="c1"># Each cell has 2 faces =&gt; add the color twice</span>
+            <span class="n">face_colors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">color_rgba</span><span class="p">)</span>
+            <span class="n">face_colors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">color_rgba</span><span class="p">)</span>
+
+            <span class="n">vert_index</span> <span class="o">+=</span> <span class="mi">4</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">vertices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">vertices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">vertices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">faces</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">faces</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">face_colors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">face_colors</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+    <span class="n">mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">Trimesh</span><span class="p">(</span>
+        <span class="n">vertices</span><span class="o">=</span><span class="n">vertices</span><span class="p">,</span>
+        <span class="n">faces</span><span class="o">=</span><span class="n">faces</span><span class="p">,</span>
+        <span class="n">face_colors</span><span class="o">=</span><span class="n">face_colors</span><span class="p">,</span>
+        <span class="n">process</span><span class="o">=</span><span class="kc">False</span>  <span class="c1"># skip auto merge if you want to preserve quads</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mesh</span></div>
+
+
+<div class="viewcode-block" id="create_city_meshes">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.create_city_meshes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_city_meshes</span><span class="p">(</span><span class="n">voxel_array</span><span class="p">,</span> <span class="n">vox_dict</span><span class="p">,</span> <span class="n">meshsize</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a collection of colored 3D meshes representing different city elements.</span>
+<span class="sd">    </span>
+<span class="sd">    This function processes a voxelized city model and creates separate meshes for</span>
+<span class="sd">    different urban elements (buildings, trees, etc.), each with its own color.</span>
+<span class="sd">    The function preserves sharp edges and applies appropriate colors based on the</span>
+<span class="sd">    provided color dictionary.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    voxel_array : np.ndarray (3D)</span>
+<span class="sd">        3D array representing the voxelized city model. Each voxel contains a class ID</span>
+<span class="sd">        that maps to an urban element type:</span>
+<span class="sd">        - 0: Void/air (automatically skipped)</span>
+<span class="sd">        - -2: Trees</span>
+<span class="sd">        - -3: Buildings</span>
+<span class="sd">        Other values can represent different urban elements as defined in vox_dict.</span>
+<span class="sd">    </span>
+<span class="sd">    vox_dict : dict</span>
+<span class="sd">        Dictionary mapping class IDs to RGB colors. Each entry should be:</span>
+<span class="sd">        {class_id: [R, G, B]} where R, G, B are 0-255 integer values.</span>
+<span class="sd">        Example: {-3: [200, 200, 200], -2: [0, 255, 0]} for grey buildings and</span>
+<span class="sd">        green trees. The key 0 (air) is automatically excluded.</span>
+<span class="sd">    </span>
+<span class="sd">    meshsize : float, default=1.0</span>
+<span class="sd">        Size of each voxel in meters, applied uniformly to x, y, and z dimensions.</span>
+<span class="sd">        Used to scale the output meshes to real-world coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    meshes : dict</span>
+<span class="sd">        Dictionary mapping class IDs to their corresponding trimesh.Trimesh objects.</span>
+<span class="sd">        Each mesh includes:</span>
+<span class="sd">        - vertices: 3D coordinates scaled by meshsize</span>
+<span class="sd">        - faces: triangulated faces preserving sharp edges</span>
+<span class="sd">        - face_colors: RGBA colors from vox_dict</span>
+<span class="sd">        - visual: trimesh.visual.ColorVisuals object storing the face colors</span>
+<span class="sd">        </span>
+<span class="sd">        Classes with no voxels are automatically excluded from the output.</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic usage with buildings and trees:</span>
+<span class="sd">    &gt;&gt;&gt; voxels = np.zeros((10, 10, 10))</span>
+<span class="sd">    &gt;&gt;&gt; voxels[4:7, 4:7, 0:5] = -3  # Add a building</span>
+<span class="sd">    &gt;&gt;&gt; voxels[2:4, 2:4, 0:3] = -2  # Add some trees</span>
+<span class="sd">    &gt;&gt;&gt; colors = {</span>
+<span class="sd">    ...     -3: [200, 200, 200],  # Grey buildings</span>
+<span class="sd">    ...     -2: [0, 255, 0]       # Green trees</span>
+<span class="sd">    ... }</span>
+<span class="sd">    &gt;&gt;&gt; meshes = create_city_meshes(voxels, colors, meshsize=1.0)</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - The function automatically skips class_id=0 (typically air/void)</span>
+<span class="sd">    - Each urban element type gets its own separate mesh for efficient rendering</span>
+<span class="sd">    - Colors are converted from RGB [0-255] to RGBA [0-1] format</span>
+<span class="sd">    - Sharp edges are preserved to maintain architectural features</span>
+<span class="sd">    - Empty classes (no voxels) are automatically excluded from the output</span>
+<span class="sd">    - Errors during mesh creation for a class are caught and reported</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">meshes</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Convert RGB colors to hex for material properties</span>
+    <span class="n">color_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">mcolors</span><span class="o">.</span><span class="n">rgb2hex</span><span class="p">([</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="mi">255</span><span class="p">,</span> <span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="mi">255</span><span class="p">,</span> <span class="n">v</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">/</span><span class="mi">255</span><span class="p">])</span>
+                 <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">vox_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">}</span>  <span class="c1"># Exclude air</span>
+
+    <span class="c1"># Create vertices and faces for each object class</span>
+    <span class="k">for</span> <span class="n">class_id</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">voxel_array</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">class_id</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Skip air</span>
+            <span class="k">continue</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">mesh</span> <span class="o">=</span> <span class="n">create_voxel_mesh</span><span class="p">(</span><span class="n">voxel_array</span><span class="p">,</span> <span class="n">class_id</span><span class="p">,</span> <span class="n">meshsize</span><span class="o">=</span><span class="n">meshsize</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">mesh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Convert hex color to RGBA</span>
+            <span class="n">rgb_color</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">mcolors</span><span class="o">.</span><span class="n">hex2color</span><span class="p">(</span><span class="n">color_dict</span><span class="p">[</span><span class="n">class_id</span><span class="p">]))</span>
+            <span class="n">rgba_color</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">rgb_color</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]])</span>
+
+            <span class="c1"># Assign color to all faces</span>
+            <span class="n">mesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">face_colors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">rgba_color</span><span class="p">,</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mesh</span><span class="o">.</span><span class="n">faces</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="n">meshes</span><span class="p">[</span><span class="n">class_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">mesh</span>
+
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping class </span><span class="si">{</span><span class="n">class_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">meshes</span></div>
+
+
+<div class="viewcode-block" id="export_meshes">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.export_meshes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">export_meshes</span><span class="p">(</span><span class="n">meshes</span><span class="p">,</span> <span class="n">output_directory</span><span class="p">,</span> <span class="n">base_filename</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Export a collection of meshes to both OBJ (with MTL) and STL formats.</span>
+<span class="sd">    </span>
+<span class="sd">    This function exports meshes in two ways:</span>
+<span class="sd">    1. A single combined OBJ file with materials (and associated MTL file)</span>
+<span class="sd">    2. Separate STL files for each mesh, named with their class IDs</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    meshes : dict</span>
+<span class="sd">        Dictionary mapping class IDs to trimesh.Trimesh objects.</span>
+<span class="sd">        Each mesh should have:</span>
+<span class="sd">        - vertices: 3D coordinates</span>
+<span class="sd">        - faces: triangulated faces</span>
+<span class="sd">        - face_colors: RGBA colors (if using materials)</span>
+<span class="sd">    </span>
+<span class="sd">    output_directory : str</span>
+<span class="sd">        Directory path where the output files will be saved.</span>
+<span class="sd">        Will be created if it doesn&#39;t exist.</span>
+<span class="sd">    </span>
+<span class="sd">    base_filename : str</span>
+<span class="sd">        Base name for the output files (without extension).</span>
+<span class="sd">        Will be used to create:</span>
+<span class="sd">        - {base_filename}.obj : Combined mesh with materials</span>
+<span class="sd">        - {base_filename}.mtl : Material definitions for OBJ</span>
+<span class="sd">        - {base_filename}_{class_id}.stl : Individual STL files</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    None</span>
+<span class="sd">        Files are written directly to the specified output directory.</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; meshes = {</span>
+<span class="sd">    ...     -3: building_mesh,  # Building mesh with grey color</span>
+<span class="sd">    ...     -2: tree_mesh      # Tree mesh with green color</span>
+<span class="sd">    ... }</span>
+<span class="sd">    &gt;&gt;&gt; export_meshes(meshes, &#39;output/models&#39;, &#39;city_model&#39;)</span>
+<span class="sd">    </span>
+<span class="sd">    This will create:</span>
+<span class="sd">    - output/models/city_model.obj</span>
+<span class="sd">    - output/models/city_model.mtl</span>
+<span class="sd">    - output/models/city_model_-3.stl</span>
+<span class="sd">    - output/models/city_model_-2.stl</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - OBJ/MTL format preserves colors and materials but is more complex</span>
+<span class="sd">    - STL format is simpler but doesn&#39;t support colors</span>
+<span class="sd">    - STL files are exported separately for each class for easier processing</span>
+<span class="sd">    - The OBJ file combines all meshes while preserving their materials</span>
+<span class="sd">    - File extensions are automatically added to the base filename</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Export combined mesh as OBJ with materials</span>
+    <span class="n">combined_mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">meshes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+    <span class="n">combined_mesh</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_directory</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">base_filename</span><span class="si">}</span><span class="s2">.obj&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Export individual meshes as STL</span>
+    <span class="k">for</span> <span class="n">class_id</span><span class="p">,</span> <span class="n">mesh</span> <span class="ow">in</span> <span class="n">meshes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># Convert class_id to a string for filename</span>
+        <span class="n">mesh</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_directory</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">base_filename</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">class_id</span><span class="si">}</span><span class="s2">.stl&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="split_vertices_manual">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.split_vertices_manual">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">split_vertices_manual</span><span class="p">(</span><span class="n">mesh</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split a mesh into independent faces by duplicating shared vertices.</span>
+<span class="sd">    </span>
+<span class="sd">    This function imitates trimesh&#39;s split_vertices() functionality but ensures</span>
+<span class="sd">    complete face independence by giving each face its own copy of vertices.</span>
+<span class="sd">    This is particularly useful for rendering applications where smooth shading</span>
+<span class="sd">    between faces is undesirable, such as architectural visualization in Rhino.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mesh : trimesh.Trimesh</span>
+<span class="sd">        Input mesh to split. Should have:</span>
+<span class="sd">        - vertices: array of vertex coordinates</span>
+<span class="sd">        - faces: array of vertex indices forming triangles</span>
+<span class="sd">        - visual: Optional ColorVisuals object with face colors</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    out_mesh : trimesh.Trimesh</span>
+<span class="sd">        New mesh where each face is completely independent, with:</span>
+<span class="sd">        - Duplicated vertices for each face</span>
+<span class="sd">        - No vertex sharing between faces</span>
+<span class="sd">        - Preserved face colors if present in input</span>
+<span class="sd">        - Each face as a separate component</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic usage:</span>
+<span class="sd">    &gt;&gt;&gt; vertices = np.array([[0,0,0], [1,0,0], [1,1,0], [0,1,0]])</span>
+<span class="sd">    &gt;&gt;&gt; faces = np.array([[0,1,2], [0,2,3]])  # Two triangles sharing vertices</span>
+<span class="sd">    &gt;&gt;&gt; mesh = trimesh.Trimesh(vertices=vertices, faces=faces)</span>
+<span class="sd">    &gt;&gt;&gt; split_mesh = split_vertices_manual(mesh)</span>
+<span class="sd">    &gt;&gt;&gt; print(f&quot;Original vertices: {len(mesh.vertices)}&quot;)  # 4 vertices</span>
+<span class="sd">    &gt;&gt;&gt; print(f&quot;Split vertices: {len(split_mesh.vertices)}&quot;)  # 6 vertices</span>
+<span class="sd">    </span>
+<span class="sd">    With face colors:</span>
+<span class="sd">    &gt;&gt;&gt; colors = np.array([[255,0,0,255], [0,255,0,255]])  # Red and green faces</span>
+<span class="sd">    &gt;&gt;&gt; mesh.visual = trimesh.visual.ColorVisuals(mesh, face_colors=colors)</span>
+<span class="sd">    &gt;&gt;&gt; split_mesh = split_vertices_manual(mesh)  # Colors are preserved</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - Each output face has exactly 3 unique vertices</span>
+<span class="sd">    - Face colors are preserved in the output mesh</span>
+<span class="sd">    - Useful for:</span>
+<span class="sd">        - Preventing smooth shading artifacts</span>
+<span class="sd">        - Ensuring face color independence</span>
+<span class="sd">        - Preparing meshes for CAD software</span>
+<span class="sd">        - Creating sharp edges in architectural models</span>
+<span class="sd">    - Memory usage increases as vertices are duplicated</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">new_meshes</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="c1"># For each face, build a small, one-face mesh</span>
+    <span class="k">for</span> <span class="n">face_idx</span><span class="p">,</span> <span class="n">face</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">mesh</span><span class="o">.</span><span class="n">faces</span><span class="p">):</span>
+        <span class="n">face_coords</span> <span class="o">=</span> <span class="n">mesh</span><span class="o">.</span><span class="n">vertices</span><span class="p">[</span><span class="n">face</span><span class="p">]</span>
+        
+        <span class="c1"># Create mini-mesh without colors first</span>
+        <span class="n">mini_mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">Trimesh</span><span class="p">(</span>
+            <span class="n">vertices</span><span class="o">=</span><span class="n">face_coords</span><span class="p">,</span>
+            <span class="n">faces</span><span class="o">=</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span>
+            <span class="n">process</span><span class="o">=</span><span class="kc">False</span>  <span class="c1"># skip merging/cleaning</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># If the mesh has per-face colors, set the face color properly</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">mesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">face_colors</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> 
+            <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">mesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">face_colors</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">mesh</span><span class="o">.</span><span class="n">faces</span><span class="p">)):</span>
+            <span class="c1"># Create a visual object with the face color (for one face)</span>
+            <span class="n">face_color</span> <span class="o">=</span> <span class="n">mesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">face_colors</span><span class="p">[</span><span class="n">face_idx</span><span class="p">]</span>
+            <span class="n">color_visual</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">ColorVisuals</span><span class="p">(</span>
+                <span class="n">mesh</span><span class="o">=</span><span class="n">mini_mesh</span><span class="p">,</span>
+                <span class="n">face_colors</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">face_color</span><span class="p">]),</span>  <span class="c1"># One face, one color</span>
+                <span class="n">vertex_colors</span><span class="o">=</span><span class="kc">None</span>
+            <span class="p">)</span>
+            <span class="n">mini_mesh</span><span class="o">.</span><span class="n">visual</span> <span class="o">=</span> <span class="n">color_visual</span>
+        
+        <span class="n">new_meshes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mini_mesh</span><span class="p">)</span>
+    
+    <span class="c1"># Concatenate all the single-face meshes</span>
+    <span class="n">out_mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">new_meshes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out_mesh</span></div>
+
+
+<div class="viewcode-block" id="save_obj_from_colored_mesh">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.save_obj_from_colored_mesh">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_obj_from_colored_mesh</span><span class="p">(</span><span class="n">meshes</span><span class="p">,</span> <span class="n">output_path</span><span class="p">,</span> <span class="n">base_filename</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Save a collection of colored meshes as OBJ and MTL files with material support.</span>
+<span class="sd">    </span>
+<span class="sd">    This function exports colored meshes to the Wavefront OBJ format with an</span>
+<span class="sd">    accompanying MTL file for material definitions. It handles the conversion of</span>
+<span class="sd">    face colors to materials and ensures proper material assignment in the OBJ file.</span>
+<span class="sd">    The function is particularly useful for preserving color information in</span>
+<span class="sd">    architectural and urban visualization models.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    meshes : dict</span>
+<span class="sd">        Dictionary mapping class IDs to trimesh.Trimesh objects.</span>
+<span class="sd">        Each mesh should have:</span>
+<span class="sd">        - vertices: array of 3D coordinates</span>
+<span class="sd">        - faces: array of vertex indices forming triangles</span>
+<span class="sd">        - visual.face_colors: RGBA colors for each face</span>
+<span class="sd">    </span>
+<span class="sd">    output_path : str</span>
+<span class="sd">        Directory path where to save the files.</span>
+<span class="sd">        Will be created if it doesn&#39;t exist.</span>
+<span class="sd">        Should be writable by the current user.</span>
+<span class="sd">    </span>
+<span class="sd">    base_filename : str</span>
+<span class="sd">        Base name for the output files (without extension).</span>
+<span class="sd">        Will be used to create:</span>
+<span class="sd">        - {base_filename}.obj : The main geometry file</span>
+<span class="sd">        - {base_filename}.mtl : The material definitions file</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple</span>
+<span class="sd">        (obj_path, mtl_path) : Paths to the saved OBJ and MTL files.</span>
+<span class="sd">        Both paths are absolute or relative depending on the input output_path.</span>
+<span class="sd">    </span>
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic usage with multiple colored meshes:</span>
+<span class="sd">    &gt;&gt;&gt; building_mesh = trimesh.Trimesh(</span>
+<span class="sd">    ...     vertices=[[0,0,0], [1,0,0], [1,1,0]],</span>
+<span class="sd">    ...     faces=[[0,1,2]],</span>
+<span class="sd">    ...     face_colors=[[200,200,200,255]]  # Grey color</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; tree_mesh = trimesh.Trimesh(</span>
+<span class="sd">    ...     vertices=[[2,0,0], [3,0,0], [2.5,1,0]],</span>
+<span class="sd">    ...     faces=[[0,1,2]],</span>
+<span class="sd">    ...     face_colors=[[0,255,0,255]]  # Green color</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; meshes = {-3: building_mesh, -2: tree_mesh}</span>
+<span class="sd">    &gt;&gt;&gt; obj_path, mtl_path = save_obj_from_colored_mesh(</span>
+<span class="sd">    ...     meshes, &#39;output/models&#39;, &#39;city&#39;</span>
+<span class="sd">    ... )</span>
+<span class="sd">    </span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - Creates unique materials for each distinct face color</span>
+<span class="sd">    - Material names are auto-generated as &#39;material_0&#39;, &#39;material_1&#39;, etc.</span>
+<span class="sd">    - Handles both RGB and RGBA colors (alpha channel supported)</span>
+<span class="sd">    - Colors are normalized from [0-255] to [0-1] range for MTL format</span>
+<span class="sd">    - Vertices are written in OBJ&#39;s 1-based indexing format</span>
+<span class="sd">    - Faces are grouped by material for efficient rendering</span>
+<span class="sd">    - The MTL file is automatically referenced in the OBJ file</span>
+<span class="sd">    </span>
+<span class="sd">    File Format Details</span>
+<span class="sd">    -----------------</span>
+<span class="sd">    OBJ file structure:</span>
+<span class="sd">    - mtllib reference to MTL file</span>
+<span class="sd">    - All vertex coordinates (v)</span>
+<span class="sd">    - Face definitions (f) grouped by material (usemtl)</span>
+<span class="sd">    </span>
+<span class="sd">    MTL file structure:</span>
+<span class="sd">    - newmtl: Material name</span>
+<span class="sd">    - Kd: Diffuse color (RGB)</span>
+<span class="sd">    - d: Alpha/transparency</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">obj_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base_filename</span><span class="si">}</span><span class="s2">.obj&quot;</span><span class="p">)</span>
+    <span class="n">mtl_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base_filename</span><span class="si">}</span><span class="s2">.mtl&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Combine all meshes</span>
+    <span class="n">combined_mesh</span> <span class="o">=</span> <span class="n">trimesh</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">meshes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+    <span class="n">combined_mesh</span> <span class="o">=</span> <span class="n">split_vertices_manual</span><span class="p">(</span><span class="n">combined_mesh</span><span class="p">)</span>
+    
+    <span class="c1"># Create unique materials for each unique face color</span>
+    <span class="n">face_colors</span> <span class="o">=</span> <span class="n">combined_mesh</span><span class="o">.</span><span class="n">visual</span><span class="o">.</span><span class="n">face_colors</span>
+    <span class="n">unique_colors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">face_colors</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    
+    <span class="c1"># Write MTL file</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mtl_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">mtl_file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">color</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">unique_colors</span><span class="p">):</span>
+            <span class="n">material_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;material_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">mtl_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;newmtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="c1"># Convert RGBA to RGB float values</span>
+            <span class="n">rgb</span> <span class="o">=</span> <span class="n">color</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span> <span class="o">/</span> <span class="mf">255.0</span>
+            <span class="n">mtl_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Kd </span><span class="si">{</span><span class="n">rgb</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">rgb</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">rgb</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">mtl_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;d </span><span class="si">{</span><span class="n">color</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">/</span><span class="mf">255.0</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Alpha value</span>
+    
+    <span class="c1"># Create material groups based on face colors</span>
+    <span class="n">color_to_material</span> <span class="o">=</span> <span class="p">{</span><span class="nb">tuple</span><span class="p">(</span><span class="n">c</span><span class="p">):</span> <span class="sa">f</span><span class="s1">&#39;material_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">unique_colors</span><span class="p">)}</span>
+    
+    <span class="c1"># Write OBJ file</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">obj_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">obj_file</span><span class="p">:</span>
+        <span class="n">obj_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;mtllib </span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">mtl_path</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Write vertices</span>
+        <span class="k">for</span> <span class="n">vertex</span> <span class="ow">in</span> <span class="n">combined_mesh</span><span class="o">.</span><span class="n">vertices</span><span class="p">:</span>
+            <span class="n">obj_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;v </span><span class="si">{</span><span class="n">vertex</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vertex</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vertex</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Write faces grouped by material</span>
+        <span class="n">current_material</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">face_idx</span><span class="p">,</span> <span class="n">face</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">combined_mesh</span><span class="o">.</span><span class="n">faces</span><span class="p">):</span>
+            <span class="n">face_color</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">face_colors</span><span class="p">[</span><span class="n">face_idx</span><span class="p">])</span>
+            <span class="n">material_name</span> <span class="o">=</span> <span class="n">color_to_material</span><span class="p">[</span><span class="n">face_color</span><span class="p">]</span>
+            
+            <span class="k">if</span> <span class="n">material_name</span> <span class="o">!=</span> <span class="n">current_material</span><span class="p">:</span>
+                <span class="n">obj_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;usemtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="n">current_material</span> <span class="o">=</span> <span class="n">material_name</span>
+            
+            <span class="c1"># OBJ indices are 1-based</span>
+            <span class="n">obj_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;f </span><span class="si">{</span><span class="n">face</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">face</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">face</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">obj_path</span><span class="p">,</span> <span class="n">mtl_path</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

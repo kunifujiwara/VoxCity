@@ -1,0 +1,1574 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.geoprocessor.polygon - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.geoprocessor.polygon</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Module for handling GeoJSON data related to building footprints and heights.</span>
+
+<span class="sd">This module provides functionality for loading, filtering, transforming and saving GeoJSON data,</span>
+<span class="sd">with a focus on building footprints and their height information. It includes functions for</span>
+<span class="sd">coordinate transformations, spatial filtering, and height data extraction from various sources.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># Required imports for GIS operations, data manipulation and file handling</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">Point</span><span class="p">,</span> <span class="n">shape</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">GEOSException</span><span class="p">,</span> <span class="n">ShapelyError</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">gzip</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyproj</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transformer</span><span class="p">,</span> <span class="n">CRS</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rasterio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.mask</span><span class="w"> </span><span class="kn">import</span> <span class="n">mask</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">index</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_polygon_coordinates</span>
+
+<div class="viewcode-block" id="filter_and_convert_gdf_to_geojson">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.filter_and_convert_gdf_to_geojson">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">filter_and_convert_gdf_to_geojson</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter a GeoDataFrame by a bounding rectangle and convert to GeoJSON format.</span>
+<span class="sd">    </span>
+<span class="sd">    This function performs spatial filtering on a GeoDataFrame using a bounding rectangle,</span>
+<span class="sd">    and converts the filtered data to GeoJSON format. It handles both Polygon and MultiPolygon</span>
+<span class="sd">    geometries, splitting MultiPolygons into separate Polygon features.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gdf (GeoDataFrame): Input GeoDataFrame containing building data</span>
+<span class="sd">            Must have &#39;geometry&#39; and &#39;height&#39; columns</span>
+<span class="sd">            Any CRS is accepted, will be converted to WGS84 if needed</span>
+<span class="sd">        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle</span>
+<span class="sd">            Must be in WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">            Must form a valid rectangle (4 vertices, clockwise or counterclockwise)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of GeoJSON features within the bounding rectangle</span>
+<span class="sd">            Each feature contains:</span>
+<span class="sd">            - geometry: Polygon coordinates in WGS84</span>
+<span class="sd">            - properties: Dictionary with &#39;height&#39;, &#39;confidence&#39;, and &#39;id&#39;</span>
+<span class="sd">            - type: Always &quot;Feature&quot;</span>
+<span class="sd">    </span>
+<span class="sd">    Memory Optimization:</span>
+<span class="sd">        - Uses spatial indexing for efficient filtering</span>
+<span class="sd">        - Downcasts numeric columns to save memory</span>
+<span class="sd">        - Cleans up intermediate data structures</span>
+<span class="sd">        - Splits MultiPolygons into separate features</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Reproject to WGS84 if necessary for consistent coordinate system</span>
+    <span class="k">if</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="s1">&#39;EPSG:4326&#39;</span><span class="p">:</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">)</span>
+
+    <span class="c1"># Downcast &#39;height&#39; to float32 to save memory</span>
+    <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">],</span> <span class="n">downcast</span><span class="o">=</span><span class="s1">&#39;float&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Add &#39;confidence&#39; column with default value for height reliability</span>
+    <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;confidence&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+
+    <span class="c1"># Create shapely polygon from rectangle vertices for spatial filtering</span>
+    <span class="n">rectangle_polygon</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Use spatial index to efficiently filter geometries that intersect with rectangle</span>
+    <span class="n">gdf</span><span class="o">.</span><span class="n">sindex</span>  <span class="c1"># Ensure spatial index is built</span>
+    <span class="n">possible_matches_index</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">gdf</span><span class="o">.</span><span class="n">sindex</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">rectangle_polygon</span><span class="o">.</span><span class="n">bounds</span><span class="p">))</span>
+    <span class="n">possible_matches</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">possible_matches_index</span><span class="p">]</span>
+    <span class="n">precise_matches</span> <span class="o">=</span> <span class="n">possible_matches</span><span class="p">[</span><span class="n">possible_matches</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">rectangle_polygon</span><span class="p">)]</span>
+    <span class="n">filtered_gdf</span> <span class="o">=</span> <span class="n">precise_matches</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Delete intermediate data to save memory</span>
+    <span class="k">del</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">possible_matches</span><span class="p">,</span> <span class="n">precise_matches</span>
+
+    <span class="c1"># Create GeoJSON features from filtered geometries</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">feature_id</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">filtered_gdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">geom</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">__geo_interface__</span>
+        <span class="n">properties</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;height&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;confidence&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;confidence&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">feature_id</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Handle MultiPolygon by splitting into separate Polygon features</span>
+        <span class="k">if</span> <span class="n">geom</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">polygon_coords</span> <span class="ow">in</span> <span class="n">geom</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]:</span>
+                <span class="n">single_geom</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;coordinates&#39;</span><span class="p">:</span> <span class="n">polygon_coords</span>
+                <span class="p">}</span>
+                <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>  <span class="c1"># Use copy to avoid shared references</span>
+                    <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">single_geom</span>
+                <span class="p">}</span>
+                <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+                <span class="n">feature_id</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">geom</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+            <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="n">properties</span><span class="p">,</span>
+                <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">geom</span>
+            <span class="p">}</span>
+            <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+            <span class="n">feature_id</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">pass</span>  <span class="c1"># Skip other geometry types</span>
+
+    <span class="c1"># Create a FeatureCollection</span>
+    <span class="n">geojson</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;FeatureCollection&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;features&#39;</span><span class="p">:</span> <span class="n">features</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Clean up memory</span>
+    <span class="k">del</span> <span class="n">filtered_gdf</span><span class="p">,</span> <span class="n">features</span>
+
+    <span class="k">return</span> <span class="n">geojson</span><span class="p">[</span><span class="s2">&quot;features&quot;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="get_geojson_from_gpkg">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.get_geojson_from_gpkg">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_geojson_from_gpkg</span><span class="p">(</span><span class="n">gpkg_path</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read a GeoPackage file and convert it to GeoJSON format within a bounding rectangle.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gpkg_path (str): Path to the GeoPackage file</span>
+<span class="sd">        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of GeoJSON features within the bounding rectangle</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Open and read the GPKG file</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Opening GPKG file: </span><span class="si">{</span><span class="n">gpkg_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">gpkg_path</span><span class="p">)</span>
+    <span class="n">geojson</span> <span class="o">=</span> <span class="n">filter_and_convert_gdf_to_geojson</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">geojson</span></div>
+
+
+<div class="viewcode-block" id="extract_building_heights_from_gdf">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.extract_building_heights_from_gdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_building_heights_from_gdf</span><span class="p">(</span><span class="n">gdf_0</span><span class="p">:</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">gdf_1</span><span class="p">:</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract building heights from one GeoDataFrame and apply them to another based on spatial overlap.</span>
+<span class="sd">    </span>
+<span class="sd">    This function transfers height information from a reference GeoDataFrame to a primary GeoDataFrame</span>
+<span class="sd">    based on the spatial overlap between building footprints. For each building in the primary dataset</span>
+<span class="sd">    that needs height data, it calculates a weighted average height from overlapping buildings in the</span>
+<span class="sd">    reference dataset.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gdf_0 (gpd.GeoDataFrame): Primary GeoDataFrame to update with heights</span>
+<span class="sd">            Must have &#39;geometry&#39; column with building footprints</span>
+<span class="sd">            Will be updated with height values where missing or zero</span>
+<span class="sd">        gdf_1 (gpd.GeoDataFrame): Reference GeoDataFrame containing height data</span>
+<span class="sd">            Must have &#39;geometry&#39; column with building footprints</span>
+<span class="sd">            Must have &#39;height&#39; column with valid height values</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: Updated primary GeoDataFrame with extracted heights</span>
+<span class="sd">            Buildings with overlapping reference data get weighted average heights</span>
+<span class="sd">            Buildings without overlapping data retain original height or get NaN</span>
+<span class="sd">    </span>
+<span class="sd">    Statistics Tracked:</span>
+<span class="sd">        - count_0: Number of buildings without height in primary dataset</span>
+<span class="sd">        - count_1: Number of buildings successfully updated with height</span>
+<span class="sd">        - count_2: Number of buildings where no reference height data found</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Uses R-tree spatial indexing for efficient overlap detection</span>
+<span class="sd">        - Handles invalid geometries by attempting to fix them with buffer(0)</span>
+<span class="sd">        - Weighted average is based on the area of overlap between buildings</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Make a copy of input GeoDataFrame to avoid modifying original</span>
+    <span class="n">gdf_primary</span> <span class="o">=</span> <span class="n">gdf_0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">gdf_ref</span> <span class="o">=</span> <span class="n">gdf_1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Make sure height columns exist with default values</span>
+    <span class="k">if</span> <span class="s1">&#39;height&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">if</span> <span class="s1">&#39;height&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf_ref</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf_ref</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># Initialize counters for statistics</span>
+    <span class="n">count_0</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings without height</span>
+    <span class="n">count_1</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings updated with height</span>
+    <span class="n">count_2</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings with no height data found</span>
+
+    <span class="c1"># Create spatial index for reference buildings to speed up intersection tests</span>
+    <span class="n">spatial_index</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">Index</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">geom</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">gdf_ref</span><span class="o">.</span><span class="n">geometry</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+            <span class="n">spatial_index</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">geom</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span>
+
+    <span class="c1"># Process each building in primary dataset that needs height data</span>
+    <span class="k">for</span> <span class="n">idx_primary</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]):</span>
+            <span class="n">count_0</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">geometry</span>
+            
+            <span class="c1"># Variables for weighted average height calculation</span>
+            <span class="n">overlapping_height_area</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Sum of (height * overlap_area)</span>
+            <span class="n">overlapping_area</span> <span class="o">=</span> <span class="mi">0</span>         <span class="c1"># Total overlap area</span>
+            
+            <span class="c1"># Get potential intersecting buildings using spatial index</span>
+            <span class="n">potential_matches</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">spatial_index</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">geom</span><span class="o">.</span><span class="n">bounds</span><span class="p">))</span>
+            
+            <span class="c1"># Check intersections with reference buildings</span>
+            <span class="k">for</span> <span class="n">ref_idx</span> <span class="ow">in</span> <span class="n">potential_matches</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">ref_idx</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_ref</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                    
+                <span class="n">ref_row</span> <span class="o">=</span> <span class="n">gdf_ref</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">]</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="c1"># Calculate intersection if geometries overlap</span>
+                    <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">ref_row</span><span class="o">.</span><span class="n">geometry</span><span class="p">):</span>
+                        <span class="n">overlap_area</span> <span class="o">=</span> <span class="n">geom</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">ref_row</span><span class="o">.</span><span class="n">geometry</span><span class="p">)</span><span class="o">.</span><span class="n">area</span>
+                        <span class="n">overlapping_height_area</span> <span class="o">+=</span> <span class="n">ref_row</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">overlap_area</span>
+                        <span class="n">overlapping_area</span> <span class="o">+=</span> <span class="n">overlap_area</span>
+                <span class="k">except</span> <span class="n">GEOSException</span><span class="p">:</span>
+                    <span class="c1"># Try to fix invalid geometries using buffer(0)</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">fixed_ref_geom</span> <span class="o">=</span> <span class="n">ref_row</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">fixed_ref_geom</span><span class="p">):</span>
+                            <span class="n">overlap_area</span> <span class="o">=</span> <span class="n">geom</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">fixed_ref_geom</span><span class="p">)</span><span class="o">.</span><span class="n">area</span>
+                            <span class="n">overlapping_height_area</span> <span class="o">+=</span> <span class="n">ref_row</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">overlap_area</span>
+                            <span class="n">overlapping_area</span> <span class="o">+=</span> <span class="n">overlap_area</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to fix polygon&quot;</span><span class="p">)</span>
+                    <span class="k">continue</span>
+            
+            <span class="c1"># Update height if overlapping buildings found</span>
+            <span class="k">if</span> <span class="n">overlapping_height_area</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">count_1</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="c1"># Calculate weighted average height based on overlap areas</span>
+                <span class="n">new_height</span> <span class="o">=</span> <span class="n">overlapping_height_area</span> <span class="o">/</span> <span class="n">overlapping_area</span>
+                <span class="n">gdf_primary</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">idx_primary</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_height</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">count_2</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">gdf_primary</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">idx_primary</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    
+    <span class="c1"># Print statistics about height updates</span>
+    <span class="k">if</span> <span class="n">count_0</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For </span><span class="si">{</span><span class="n">count_1</span><span class="si">}</span><span class="s2"> of these building footprints without height, values from the complementary source were assigned.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For </span><span class="si">{</span><span class="n">count_2</span><span class="si">}</span><span class="s2"> of these building footprints without height, no data exist in complementary data.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">gdf_primary</span></div>
+
+
+<span class="c1"># from typing import List, Dict</span>
+<span class="c1"># from shapely.geometry import shape</span>
+<span class="c1"># from shapely.errors import GEOSException</span>
+<span class="c1"># import numpy as np</span>
+
+<span class="c1"># def complement_building_heights_from_geojson(geojson_data_0: List[Dict], geojson_data_1: List[Dict]) -&gt; List[Dict]:</span>
+<span class="c1">#     &quot;&quot;&quot;</span>
+<span class="c1">#     Complement building heights in one GeoJSON dataset with data from another and add non-intersecting buildings.</span>
+    
+<span class="c1">#     Args:</span>
+<span class="c1">#         geojson_data_0 (List[Dict]): Primary GeoJSON features to update with heights</span>
+<span class="c1">#         geojson_data_1 (List[Dict]): Reference GeoJSON features containing height data</span>
+        
+<span class="c1">#     Returns:</span>
+<span class="c1">#         List[Dict]: Updated GeoJSON features with complemented heights and additional buildings</span>
+<span class="c1">#     &quot;&quot;&quot;</span>
+<span class="c1">#     # Convert primary dataset to Shapely polygons for intersection checking</span>
+<span class="c1">#     existing_buildings = []</span>
+<span class="c1">#     for feature in geojson_data_0:</span>
+<span class="c1">#         geom = shape(feature[&#39;geometry&#39;])</span>
+<span class="c1">#         existing_buildings.append(geom)</span>
+    
+<span class="c1">#     # Convert reference dataset to Shapely polygons with height info</span>
+<span class="c1">#     reference_buildings = []</span>
+<span class="c1">#     for feature in geojson_data_1:</span>
+<span class="c1">#         geom = shape(feature[&#39;geometry&#39;])</span>
+<span class="c1">#         height = feature[&#39;properties&#39;][&#39;height&#39;]</span>
+<span class="c1">#         reference_buildings.append((geom, height, feature))</span>
+    
+<span class="c1">#     # Initialize counters for statistics</span>
+<span class="c1">#     count_0 = 0  # Buildings without height</span>
+<span class="c1">#     count_1 = 0  # Buildings updated with height</span>
+<span class="c1">#     count_2 = 0  # Buildings with no height data found</span>
+<span class="c1">#     count_3 = 0  # New non-intersecting buildings added</span>
+    
+<span class="c1">#     # Process primary dataset and update heights where needed</span>
+<span class="c1">#     updated_geojson_data_0 = []</span>
+<span class="c1">#     for feature in geojson_data_0:</span>
+<span class="c1">#         geom = shape(feature[&#39;geometry&#39;])</span>
+<span class="c1">#         height = feature[&#39;properties&#39;][&#39;height&#39;]</span>
+<span class="c1">#         if height == 0:     </span>
+<span class="c1">#             count_0 += 1       </span>
+<span class="c1">#             # Calculate weighted average height based on overlapping areas</span>
+<span class="c1">#             overlapping_height_area = 0</span>
+<span class="c1">#             overlapping_area = 0</span>
+<span class="c1">#             for ref_geom, ref_height, _ in reference_buildings:</span>
+<span class="c1">#                 try:</span>
+<span class="c1">#                     if geom.intersects(ref_geom):</span>
+<span class="c1">#                         overlap_area = geom.intersection(ref_geom).area</span>
+<span class="c1">#                         overlapping_height_area += ref_height * overlap_area</span>
+<span class="c1">#                         overlapping_area += overlap_area</span>
+<span class="c1">#                 except GEOSException as e:</span>
+<span class="c1">#                     # Try to fix invalid geometries</span>
+<span class="c1">#                     try:</span>
+<span class="c1">#                         fixed_ref_geom = ref_geom.buffer(0)</span>
+<span class="c1">#                         if geom.intersects(fixed_ref_geom):</span>
+<span class="c1">#                             overlap_area = geom.intersection(ref_geom).area</span>
+<span class="c1">#                             overlapping_height_area += ref_height * overlap_area</span>
+<span class="c1">#                             overlapping_area += overlap_area</span>
+<span class="c1">#                     except Exception as fix_error:</span>
+<span class="c1">#                         print(f&quot;Failed to fix polygon&quot;)</span>
+<span class="c1">#                     continue</span>
+            
+<span class="c1">#             # Update height if overlapping buildings found</span>
+<span class="c1">#             if overlapping_height_area &gt; 0:</span>
+<span class="c1">#                 count_1 += 1</span>
+<span class="c1">#                 new_height = overlapping_height_area / overlapping_area</span>
+<span class="c1">#                 feature[&#39;properties&#39;][&#39;height&#39;] = new_height</span>
+<span class="c1">#             else:</span>
+<span class="c1">#                 count_2 += 1</span>
+<span class="c1">#                 feature[&#39;properties&#39;][&#39;height&#39;] = np.nan</span>
+        
+<span class="c1">#         updated_geojson_data_0.append(feature)</span>
+    
+<span class="c1">#     # Add non-intersecting buildings from reference dataset</span>
+<span class="c1">#     for ref_geom, ref_height, ref_feature in reference_buildings:</span>
+<span class="c1">#         has_intersection = False</span>
+<span class="c1">#         try:</span>
+<span class="c1">#             # Check if reference building intersects with any existing building</span>
+<span class="c1">#             for existing_geom in existing_buildings:</span>
+<span class="c1">#                 if ref_geom.intersects(existing_geom):</span>
+<span class="c1">#                     has_intersection = True</span>
+<span class="c1">#                     break</span>
+            
+<span class="c1">#             # Add building if it doesn&#39;t intersect with any existing ones</span>
+<span class="c1">#             if not has_intersection:</span>
+<span class="c1">#                 updated_geojson_data_0.append(ref_feature)</span>
+<span class="c1">#                 count_3 += 1</span>
+                
+<span class="c1">#         except GEOSException as e:</span>
+<span class="c1">#             # Try to fix invalid geometries</span>
+<span class="c1">#             try:</span>
+<span class="c1">#                 fixed_ref_geom = ref_geom.buffer(0)</span>
+<span class="c1">#                 for existing_geom in existing_buildings:</span>
+<span class="c1">#                     if fixed_ref_geom.intersects(existing_geom):</span>
+<span class="c1">#                         has_intersection = True</span>
+<span class="c1">#                         break</span>
+                
+<span class="c1">#                 if not has_intersection:</span>
+<span class="c1">#                     updated_geojson_data_0.append(ref_feature)</span>
+<span class="c1">#                     count_3 += 1</span>
+<span class="c1">#             except Exception as fix_error:</span>
+<span class="c1">#                 print(f&quot;Failed to process non-intersecting building&quot;)</span>
+<span class="c1">#             continue</span>
+    
+<span class="c1">#     # Print statistics about updates</span>
+<span class="c1">#     if count_0 &gt; 0:</span>
+<span class="c1">#         print(f&quot;{count_0} of the total {len(geojson_data_0)} building footprint from base source did not have height data.&quot;)</span>
+<span class="c1">#         print(f&quot;For {count_1} of these building footprints without height, values from complement source were assigned.&quot;)</span>
+<span class="c1">#         print(f&quot;{count_3} non-intersecting buildings from Microsoft Building Footprints were added to the output.&quot;)</span>
+    
+<span class="c1">#     return updated_geojson_data_0</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">shape</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.errors</span><span class="w"> </span><span class="kn">import</span> <span class="n">GEOSException</span>
+
+<div class="viewcode-block" id="geojson_to_gdf">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.geojson_to_gdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">geojson_to_gdf</span><span class="p">(</span><span class="n">geojson_data</span><span class="p">,</span> <span class="n">id_col</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a list of GeoJSON-like dict features into a GeoDataFrame.</span>
+<span class="sd">    </span>
+<span class="sd">    This function takes a list of GeoJSON feature dictionaries (Fiona-like format)</span>
+<span class="sd">    and converts them into a GeoDataFrame, handling geometry conversion and property</span>
+<span class="sd">    extraction. It ensures each feature has a unique identifier.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geojson_data (List[Dict]): A list of feature dicts (Fiona-like)</span>
+<span class="sd">            Each dict must have &#39;geometry&#39; and &#39;properties&#39; keys</span>
+<span class="sd">            &#39;geometry&#39; must be a valid GeoJSON geometry</span>
+<span class="sd">            &#39;properties&#39; can be empty but must be a dict if present</span>
+<span class="sd">        id_col (str, optional): Name of property to use as an identifier</span>
+<span class="sd">            Default is &#39;id&#39;</span>
+<span class="sd">            If not found in properties, a sequential ID will be created</span>
+<span class="sd">            Must be a string that can be used as a column name</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: GeoDataFrame with geometry and property columns</span>
+<span class="sd">            Will have &#39;geometry&#39; column with Shapely geometries</span>
+<span class="sd">            Will have columns for all properties found in features</span>
+<span class="sd">            Will have id_col with unique identifiers</span>
+<span class="sd">            Will be set to WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Handles missing properties gracefully</span>
+<span class="sd">        - Creates sequential IDs if id_col not found</span>
+<span class="sd">        - Converts GeoJSON geometries to Shapely objects</span>
+<span class="sd">        - Sets WGS84 as coordinate system</span>
+<span class="sd">        - Preserves all properties as columns</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Build lists for geometry and properties</span>
+    <span class="n">geometries</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">all_props</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">feature</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">geojson_data</span><span class="p">):</span>
+        <span class="c1"># Extract geometry and convert to Shapely object</span>
+        <span class="n">geom</span> <span class="o">=</span> <span class="n">feature</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;geometry&#39;</span><span class="p">)</span>
+        <span class="n">shapely_geom</span> <span class="o">=</span> <span class="n">shape</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span> <span class="k">if</span> <span class="n">geom</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="c1"># Extract properties, ensuring they exist</span>
+        <span class="n">props</span> <span class="o">=</span> <span class="n">feature</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;properties&#39;</span><span class="p">,</span> <span class="p">{})</span>
+        
+        <span class="c1"># If specified ID column is missing, create sequential ID</span>
+        <span class="k">if</span> <span class="n">id_col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">props</span><span class="p">:</span>
+            <span class="n">props</span><span class="p">[</span><span class="n">id_col</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span>  <span class="c1"># fallback ID</span>
+
+        <span class="c1"># Capture geometry and all properties</span>
+        <span class="n">geometries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">shapely_geom</span><span class="p">)</span>
+        <span class="n">all_props</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">props</span><span class="p">)</span>
+
+    <span class="c1"># Create GeoDataFrame with geometries and properties</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">all_props</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">geometries</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+
+<div class="viewcode-block" id="complement_building_heights_from_gdf">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.complement_building_heights_from_gdf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">complement_building_heights_from_gdf</span><span class="p">(</span><span class="n">gdf_0</span><span class="p">,</span> <span class="n">gdf_1</span><span class="p">,</span>
+                                    <span class="n">primary_id</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="n">ref_id</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use a vectorized approach with GeoPandas to:</span>
+<span class="sd">      1) Find intersections and compute weighted average heights</span>
+<span class="sd">      2) Update heights in the primary dataset</span>
+<span class="sd">      3) Add non-intersecting buildings from the reference dataset</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gdf_0 (gpd.GeoDataFrame): Primary GeoDataFrame</span>
+<span class="sd">        gdf_1 (gpd.GeoDataFrame): Reference GeoDataFrame</span>
+<span class="sd">        primary_id (str): Name of the unique identifier in primary dataset&#39;s properties</span>
+<span class="sd">        ref_id (str): Name of the unique identifier in reference dataset&#39;s properties</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: Updated GeoDataFrame (including new buildings).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Make a copy of input GeoDataFrames to avoid modifying originals</span>
+    <span class="n">gdf_primary</span> <span class="o">=</span> <span class="n">gdf_0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">gdf_ref</span> <span class="o">=</span> <span class="n">gdf_1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Ensure both are in the same CRS, e.g. EPSG:4326 or some projected CRS</span>
+    <span class="c1"># If needed, do something like:</span>
+    <span class="c1"># gdf_primary = gdf_primary.to_crs(&quot;EPSG:xxxx&quot;)</span>
+    <span class="c1"># gdf_ref = gdf_ref.to_crs(&quot;EPSG:xxxx&quot;)</span>
+
+    <span class="c1"># Make sure height columns exist</span>
+    <span class="k">if</span> <span class="s1">&#39;height&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">if</span> <span class="s1">&#39;height&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf_ref</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf_ref</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># 1) Intersection to compute areas for overlapping buildings</span>
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># We&#39;ll rename columns to avoid collision after overlay</span>
+    <span class="n">gdf_primary</span> <span class="o">=</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;height&#39;</span><span class="p">:</span> <span class="s1">&#39;height_primary&#39;</span><span class="p">})</span>
+    <span class="n">gdf_ref</span> <span class="o">=</span> <span class="n">gdf_ref</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;height&#39;</span><span class="p">:</span> <span class="s1">&#39;height_ref&#39;</span><span class="p">})</span>
+
+    <span class="c1"># We perform an &#39;intersection&#39; overlay to get the overlapping polygons</span>
+    <span class="n">intersect_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">overlay</span><span class="p">(</span><span class="n">gdf_primary</span><span class="p">,</span> <span class="n">gdf_ref</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;intersection&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Compute intersection area</span>
+    <span class="n">intersect_gdf</span><span class="p">[</span><span class="s1">&#39;intersect_area&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">intersect_gdf</span><span class="o">.</span><span class="n">area</span>
+    <span class="n">intersect_gdf</span><span class="p">[</span><span class="s1">&#39;height_area&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">intersect_gdf</span><span class="p">[</span><span class="s1">&#39;height_ref&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">intersect_gdf</span><span class="p">[</span><span class="s1">&#39;intersect_area&#39;</span><span class="p">]</span>
+
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># 2) Aggregate to get weighted average height for each primary building</span>
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># We group by the primary building ID, summing up the area and the &#39;height_area&#39;</span>
+    <span class="n">group_cols</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;height_area&#39;</span><span class="p">:</span> <span class="s1">&#39;sum&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;intersect_area&#39;</span><span class="p">:</span> <span class="s1">&#39;sum&#39;</span>
+    <span class="p">}</span>
+    <span class="n">grouped</span> <span class="o">=</span> <span class="n">intersect_gdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">primary_id</span><span class="si">}</span><span class="s1">_1&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">group_cols</span><span class="p">)</span>
+
+    <span class="c1"># Weighted average</span>
+    <span class="n">grouped</span><span class="p">[</span><span class="s1">&#39;weighted_height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grouped</span><span class="p">[</span><span class="s1">&#39;height_area&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="n">grouped</span><span class="p">[</span><span class="s1">&#39;intersect_area&#39;</span><span class="p">]</span>
+
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># 3) Merge aggregated results back to the primary GDF</span>
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># After merging, the primary GDF will have a column &#39;weighted_height&#39;</span>
+    <span class="n">gdf_primary</span> <span class="o">=</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">grouped</span><span class="p">[</span><span class="s1">&#39;weighted_height&#39;</span><span class="p">],</span>
+                                    <span class="n">left_on</span><span class="o">=</span><span class="n">primary_id</span><span class="p">,</span>
+                                    <span class="n">right_index</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                    <span class="n">how</span><span class="o">=</span><span class="s1">&#39;left&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Where primary had zero or missing height, we assign the new weighted height</span>
+    <span class="n">zero_or_nan_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height_primary&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height_primary&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">())</span>
+    
+    <span class="c1"># Only update heights where we have valid weighted heights</span>
+    <span class="n">valid_weighted_height_mask</span> <span class="o">=</span> <span class="n">zero_or_nan_mask</span> <span class="o">&amp;</span> <span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;weighted_height&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span>
+    <span class="n">gdf_primary</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">valid_weighted_height_mask</span><span class="p">,</span> <span class="s1">&#39;height_primary&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">valid_weighted_height_mask</span><span class="p">,</span> <span class="s1">&#39;weighted_height&#39;</span><span class="p">]</span>
+    <span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height_primary&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf_primary</span><span class="p">[</span><span class="s1">&#39;height_primary&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># 4) Identify reference buildings that do not intersect any primary building</span>
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># Another overlay or spatial join can do this:</span>
+    <span class="c1"># Option A: use &#39;difference&#39; on reference to get non-overlapping parts, but that can chop polygons.</span>
+    <span class="c1"># Option B: check building-level intersection. We&#39;ll do a bounding test with sjoin.</span>
+    
+    <span class="c1"># For building-level intersection, do a left join of ref onto primary.</span>
+    <span class="c1"># Then we&#39;ll identify which reference IDs are missing from the intersection result.</span>
+    <span class="n">sjoin_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin</span><span class="p">(</span><span class="n">gdf_ref</span><span class="p">,</span> <span class="n">gdf_primary</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;left&#39;</span><span class="p">,</span> <span class="n">predicate</span><span class="o">=</span><span class="s1">&#39;intersects&#39;</span><span class="p">)</span>
+    
+    <span class="c1"># Find reference buildings that don&#39;t intersect with any primary building</span>
+    <span class="n">non_intersect_mask</span> <span class="o">=</span> <span class="n">sjoin_gdf</span><span class="p">[</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">primary_id</span><span class="si">}</span><span class="s1">_right&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span>
+    <span class="n">non_intersect_ids</span> <span class="o">=</span> <span class="n">sjoin_gdf</span><span class="p">[</span><span class="n">non_intersect_mask</span><span class="p">][</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">ref_id</span><span class="si">}</span><span class="s1">_left&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+
+    <span class="c1"># Extract them from the original reference GDF</span>
+    <span class="n">gdf_ref_non_intersect</span> <span class="o">=</span> <span class="n">gdf_ref</span><span class="p">[</span><span class="n">gdf_ref</span><span class="p">[</span><span class="n">ref_id</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">non_intersect_ids</span><span class="p">)]</span>
+
+    <span class="c1"># We&#39;ll rename columns back to &#39;height&#39; to be consistent</span>
+    <span class="n">gdf_ref_non_intersect</span> <span class="o">=</span> <span class="n">gdf_ref_non_intersect</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;height_ref&#39;</span><span class="p">:</span> <span class="s1">&#39;height&#39;</span><span class="p">})</span>
+
+    <span class="c1"># Also rename any other properties you prefer. For clarity, keep an ID so you know they came from reference.</span>
+
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># 5) Combine the updated primary GDF with the new reference buildings</span>
+    <span class="c1"># ----------------------------------------------------------------</span>
+    <span class="c1"># First, rename columns in updated primary GDF</span>
+    <span class="n">gdf_primary</span> <span class="o">=</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;height_primary&#39;</span><span class="p">:</span> <span class="s1">&#39;height&#39;</span><span class="p">})</span>
+    <span class="c1"># Drop the &#39;weighted_height&#39; column to clean up</span>
+    <span class="k">if</span> <span class="s1">&#39;weighted_height&#39;</span> <span class="ow">in</span> <span class="n">gdf_primary</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf_primary</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="s1">&#39;weighted_height&#39;</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Concatenate</span>
+    <span class="n">final_gdf</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">gdf_primary</span><span class="p">,</span> <span class="n">gdf_ref_non_intersect</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Calculate statistics</span>
+    <span class="n">count_total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_primary</span><span class="p">)</span>
+    <span class="n">count_0</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_primary</span><span class="p">[</span><span class="n">zero_or_nan_mask</span><span class="p">])</span>
+    <span class="n">count_1</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_primary</span><span class="p">[</span><span class="n">valid_weighted_height_mask</span><span class="p">])</span>
+    <span class="n">count_2</span> <span class="o">=</span> <span class="n">count_0</span> <span class="o">-</span> <span class="n">count_1</span>
+    <span class="n">count_3</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_ref_non_intersect</span><span class="p">)</span>
+    <span class="n">count_4</span> <span class="o">=</span> <span class="n">count_3</span>
+    <span class="n">height_mask</span> <span class="o">=</span> <span class="n">gdf_ref_non_intersect</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">gdf_ref_non_intersect</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">count_5</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_ref_non_intersect</span><span class="p">[</span><span class="n">height_mask</span><span class="p">])</span>
+    <span class="n">count_6</span> <span class="o">=</span> <span class="n">count_4</span> <span class="o">-</span> <span class="n">count_5</span>
+    <span class="n">final_height_mask</span> <span class="o">=</span> <span class="n">final_gdf</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">final_gdf</span><span class="p">[</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">count_7</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">final_gdf</span><span class="p">[</span><span class="n">final_height_mask</span><span class="p">])</span>
+    <span class="n">count_8</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">final_gdf</span><span class="p">)</span>
+
+    <span class="c1"># Print statistics if there were buildings without height data</span>
+    <span class="k">if</span> <span class="n">count_0</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">count_0</span><span class="si">}</span><span class="s2"> of the total </span><span class="si">{</span><span class="n">count_total</span><span class="si">}</span><span class="s2"> building footprints from base data source did not have height data.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For </span><span class="si">{</span><span class="n">count_1</span><span class="si">}</span><span class="s2"> of these building footprints without height, values from complementary data were assigned.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For the rest </span><span class="si">{</span><span class="n">count_2</span><span class="si">}</span><span class="s2">, no data exists in complementary data.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Footprints of </span><span class="si">{</span><span class="n">count_3</span><span class="si">}</span><span class="s2"> buildings were added from the complementary source.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Of these </span><span class="si">{</span><span class="n">count_4</span><span class="si">}</span><span class="s2"> additional building footprints, </span><span class="si">{</span><span class="n">count_5</span><span class="si">}</span><span class="s2"> had height data while </span><span class="si">{</span><span class="n">count_6</span><span class="si">}</span><span class="s2"> had no height data.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;In total, </span><span class="si">{</span><span class="n">count_7</span><span class="si">}</span><span class="s2"> buildings had height data out of </span><span class="si">{</span><span class="n">count_8</span><span class="si">}</span><span class="s2"> total building footprints.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">final_gdf</span></div>
+
+
+
+<div class="viewcode-block" id="gdf_to_geojson_dicts">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.gdf_to_geojson_dicts">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">gdf_to_geojson_dicts</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">id_col</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a GeoDataFrame to a list of dicts similar to GeoJSON features.</span>
+<span class="sd">    </span>
+<span class="sd">    This function converts a GeoDataFrame into a list of dictionary objects that</span>
+<span class="sd">    follow the GeoJSON Feature format. Each feature will have geometry and properties,</span>
+<span class="sd">    with an optional ID field handled separately from other properties.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gdf (gpd.GeoDataFrame): GeoDataFrame to convert</span>
+<span class="sd">            Must have &#39;geometry&#39; column with Shapely geometries</span>
+<span class="sd">            All non-geometry columns will become properties</span>
+<span class="sd">            Can optionally have id_col for unique identifiers</span>
+<span class="sd">        id_col (str, optional): Name of column to use as feature ID</span>
+<span class="sd">            Default is &#39;id&#39;</span>
+<span class="sd">            If present, will be excluded from properties</span>
+<span class="sd">            If not present, features will not have explicit IDs</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of GeoJSON-like feature dictionaries</span>
+<span class="sd">            Each dict will have:</span>
+<span class="sd">            - type: Always &quot;Feature&quot;</span>
+<span class="sd">            - geometry: GeoJSON geometry from Shapely object</span>
+<span class="sd">            - properties: All columns except geometry and ID</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Converts Shapely geometries to GeoJSON format</span>
+<span class="sd">        - Preserves all non-geometry columns as properties</span>
+<span class="sd">        - Handles missing ID column gracefully</span>
+<span class="sd">        - Maintains original property types</span>
+<span class="sd">        - Excludes ID from properties if specified</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert GeoDataFrame to dictionary records for easier processing</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s1">&#39;records&#39;</span><span class="p">)</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="k">for</span> <span class="n">rec</span> <span class="ow">in</span> <span class="n">records</span><span class="p">:</span>
+        <span class="c1"># Extract and convert geometry to GeoJSON format using __geo_interface__</span>
+        <span class="n">geom</span> <span class="o">=</span> <span class="n">rec</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">geom</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">geom</span><span class="o">.</span><span class="n">__geo_interface__</span>
+            
+        <span class="c1"># Extract ID if present and create properties dict excluding ID</span>
+        <span class="n">feature_id</span> <span class="o">=</span> <span class="n">rec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">id_col</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">props</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rec</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">id_col</span><span class="p">}</span>
+        
+        <span class="c1"># Create GeoJSON Feature object with type, properties, and geometry</span>
+        <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+            <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="n">props</span><span class="p">,</span>
+            <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">geom</span>
+        <span class="p">}</span>
+        <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">features</span></div>
+
+
+<div class="viewcode-block" id="load_gdf_from_multiple_gz">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.load_gdf_from_multiple_gz">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_gdf_from_multiple_gz</span><span class="p">(</span><span class="n">file_paths</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.</span>
+<span class="sd">    </span>
+<span class="sd">    This function reads multiple gzipped GeoJSON files, where each line in each file</span>
+<span class="sd">    represents a single GeoJSON feature. It combines all features into a single</span>
+<span class="sd">    GeoDataFrame, ensuring height properties are properly handled and coordinates</span>
+<span class="sd">    are in WGS84.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        file_paths (list): List of paths to gzipped GeoJSON files</span>
+<span class="sd">            Each file should contain one GeoJSON feature per line</span>
+<span class="sd">            Files should be readable as UTF-8 text</span>
+<span class="sd">            Features should be in WGS84 coordinate system</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: Combined GeoDataFrame containing all features</span>
+<span class="sd">            Will have &#39;geometry&#39; column with building footprints</span>
+<span class="sd">            Will have &#39;height&#39; column (0 for missing values)</span>
+<span class="sd">            Will be set to WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Skips lines that cannot be parsed as valid JSON</span>
+<span class="sd">        - Sets missing height values to 0</span>
+<span class="sd">        - Assumes input coordinates are in WGS84</span>
+<span class="sd">        - Memory usage scales with total number of features</span>
+<span class="sd">        - Reports JSON parsing errors but continues processing</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize list to store all GeoJSON features</span>
+    <span class="n">geojson_objects</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="c1"># Process each gzipped file</span>
+    <span class="k">for</span> <span class="n">gz_file_path</span> <span class="ow">in</span> <span class="n">file_paths</span><span class="p">:</span>
+        <span class="c1"># Read each gzipped file line by line as UTF-8 text</span>
+        <span class="k">with</span> <span class="n">gzip</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">gz_file_path</span><span class="p">,</span> <span class="s1">&#39;rt&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">file</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="c1"># Parse each line as a GeoJSON feature</span>
+                    <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                    
+                    <span class="c1"># Ensure height property exists and has valid value</span>
+                    <span class="k">if</span> <span class="s1">&#39;properties&#39;</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">and</span> <span class="s1">&#39;height&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]:</span>
+                        <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Create properties dict if missing</span>
+                        <span class="k">if</span> <span class="s1">&#39;properties&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                        <span class="c1"># Set default height value</span>
+                        <span class="n">data</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                        
+                    <span class="n">geojson_objects</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping line in </span><span class="si">{</span><span class="n">gz_file_path</span><span class="si">}</span><span class="s2"> due to JSONDecodeError: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Convert list of GeoJSON features to GeoDataFrame</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="o">.</span><span class="n">from_features</span><span class="p">(</span><span class="n">geojson_objects</span><span class="p">)</span>
+    
+    <span class="c1"># Set coordinate reference system to WGS84</span>
+    <span class="n">gdf</span><span class="o">.</span><span class="n">set_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="filter_buildings">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.filter_buildings">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">filter_buildings</span><span class="p">(</span><span class="n">geojson_data</span><span class="p">,</span> <span class="n">plotting_box</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter building features that intersect with a given bounding box.</span>
+<span class="sd">    </span>
+<span class="sd">    This function filters a list of GeoJSON building features to keep only those</span>
+<span class="sd">    that intersect with a specified bounding box. It performs geometry validation</span>
+<span class="sd">    and handles invalid geometries gracefully.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geojson_data (list): List of GeoJSON features representing buildings</span>
+<span class="sd">            Each feature must have valid &#39;geometry&#39; property</span>
+<span class="sd">            Coordinates must be in same CRS as plotting_box</span>
+<span class="sd">            Invalid geometries will be skipped with warning</span>
+<span class="sd">        plotting_box (Polygon): Shapely polygon defining the bounding box</span>
+<span class="sd">            Must be a valid Shapely Polygon object</span>
+<span class="sd">            Must be in same coordinate system as geojson_data</span>
+<span class="sd">            Used for spatial intersection testing</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: Filtered list of GeoJSON features that intersect with the bounding box</span>
+<span class="sd">            Features maintain their original structure</span>
+<span class="sd">            Invalid features are excluded</span>
+<span class="sd">            Order of features is preserved</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Validates polygon coordinates before processing</span>
+<span class="sd">        - Skips features with invalid geometries</span>
+<span class="sd">        - Reports validation and geometry errors</span>
+<span class="sd">        - No coordinate system transformation is performed</span>
+<span class="sd">        - Memory efficient as it creates new list only for valid features</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize list for valid intersecting features</span>
+    <span class="n">filtered_features</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="c1"># Process each feature in the input data</span>
+    <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">geojson_data</span><span class="p">:</span>
+        <span class="c1"># Validate polygon coordinates before processing</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">validate_polygon_coordinates</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Skipping feature with invalid geometry&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">])</span>
+            <span class="k">continue</span>
+            
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Convert GeoJSON geometry to Shapely geometry for spatial operations</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">shape</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">])</span>
+            
+            <span class="c1"># Skip invalid geometries that can&#39;t be fixed</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">geom</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Skipping invalid geometry&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
+                <span class="k">continue</span>
+                
+            <span class="c1"># Keep features that intersect with bounding box</span>
+            <span class="k">if</span> <span class="n">plotting_box</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">geom</span><span class="p">):</span>
+                <span class="n">filtered_features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+                
+        <span class="k">except</span> <span class="n">ShapelyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Log geometry errors but continue processing</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping feature due to geometry error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            
+    <span class="k">return</span> <span class="n">filtered_features</span></div>
+
+
+<div class="viewcode-block" id="extract_building_heights_from_geotiff">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.extract_building_heights_from_geotiff">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_building_heights_from_geotiff</span><span class="p">(</span><span class="n">geotiff_path</span><span class="p">,</span> <span class="n">gdf</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract building heights from a GeoTIFF raster for building footprints in a GeoDataFrame.</span>
+<span class="sd">    </span>
+<span class="sd">    This function processes building footprints to extract height information from a GeoTIFF</span>
+<span class="sd">    raster file. It handles coordinate transformation between WGS84 (EPSG:4326) and the raster&#39;s</span>
+<span class="sd">    CRS, and calculates average heights for each building footprint.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geotiff_path (str): Path to the GeoTIFF height raster file containing elevation data</span>
+<span class="sd">        gdf (gpd.GeoDataFrame): GeoDataFrame containing building footprints with geometry column</span>
+<span class="sd">            The GeoDataFrame should be in WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: Updated GeoDataFrame with extracted heights in the &#39;height&#39; column</span>
+<span class="sd">            - Buildings with valid height data will have their height values updated</span>
+<span class="sd">            - Buildings with no valid height data will have NaN values</span>
+<span class="sd">            - Original buildings with existing valid heights are preserved</span>
+<span class="sd">    </span>
+<span class="sd">    Statistics Reported:</span>
+<span class="sd">        - Total number of buildings without height data</span>
+<span class="sd">        - Number of buildings successfully updated with height data</span>
+<span class="sd">        - Number of buildings where no height data could be found</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - The function only processes Polygon geometries (not MultiPolygons or other types)</span>
+<span class="sd">        - Buildings are considered to need height processing if they have no height or height &lt;= 0</span>
+<span class="sd">        - Heights are calculated as the mean of all valid raster values within the building footprint</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Make a copy to avoid modifying the input</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Initialize counters for statistics</span>
+    <span class="n">count_0</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings without height</span>
+    <span class="n">count_1</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings updated with height</span>
+    <span class="n">count_2</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Buildings with no height data found</span>
+
+    <span class="c1"># Open GeoTIFF and process buildings</span>
+    <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">geotiff_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">src</span><span class="p">:</span>
+        <span class="c1"># Create coordinate transformer from WGS84 to raster CRS for geometry transformation</span>
+        <span class="n">transformer</span> <span class="o">=</span> <span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="n">CRS</span><span class="o">.</span><span class="n">from_epsg</span><span class="p">(</span><span class="mi">4326</span><span class="p">),</span> <span class="n">src</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Filter buildings that need height processing:</span>
+        <span class="c1"># - Must be Polygon type (not MultiPolygon)</span>
+        <span class="c1"># - Either has no height or height &lt;= 0</span>
+        <span class="n">mask_condition</span> <span class="o">=</span> <span class="p">(</span><span class="n">gdf</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">((</span><span class="n">gdf</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="n">gdf</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">isna</span><span class="p">())</span>
+        <span class="n">buildings_to_process</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">mask_condition</span><span class="p">]</span>
+        <span class="n">count_0</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">buildings_to_process</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">buildings_to_process</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="c1"># Transform building polygon coordinates from WGS84 to raster CRS</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">exterior</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+            <span class="n">transformed_coords</span> <span class="o">=</span> <span class="p">[</span><span class="n">transformer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">)</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">]</span>
+            <span class="n">polygon</span> <span class="o">=</span> <span class="n">shape</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;Polygon&quot;</span><span class="p">,</span> <span class="s2">&quot;coordinates&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">transformed_coords</span><span class="p">]})</span>
+            
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Extract height values from raster within the building polygon</span>
+                <span class="c1"># all_touched=True ensures we get all pixels that the polygon touches</span>
+                <span class="n">masked_data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">mask</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="p">[</span><span class="n">polygon</span><span class="p">],</span> <span class="n">crop</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">all_touched</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                
+                <span class="c1"># Filter out nodata values from the raster</span>
+                <span class="n">heights</span> <span class="o">=</span> <span class="n">masked_data</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">masked_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">src</span><span class="o">.</span><span class="n">nodata</span><span class="p">]</span>
+                
+                <span class="c1"># Calculate average height if valid samples exist</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">heights</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">count_1</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">gdf</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">heights</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">count_2</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">gdf</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+            <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error processing building at index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">. Error: </span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">gdf</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Print statistics about height updates</span>
+    <span class="k">if</span> <span class="n">count_0</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">count_0</span><span class="si">}</span><span class="s2"> of the total </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span><span class="si">}</span><span class="s2"> building footprint from OSM did not have height data.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For </span><span class="si">{</span><span class="n">count_1</span><span class="si">}</span><span class="s2"> of these building footprints without height, values from complementary data were assigned.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;For </span><span class="si">{</span><span class="n">count_2</span><span class="si">}</span><span class="s2"> of these building footprints without height, no data exist in complementary data.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="get_gdf_from_gpkg">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.get_gdf_from_gpkg">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_gdf_from_gpkg</span><span class="p">(</span><span class="n">gpkg_path</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read a GeoPackage file and convert it to a GeoDataFrame with consistent CRS.</span>
+<span class="sd">    </span>
+<span class="sd">    This function reads a GeoPackage file containing building footprints and ensures</span>
+<span class="sd">    the data is properly formatted with WGS84 coordinate system and unique identifiers.</span>
+<span class="sd">    It handles CRS conversion if needed and adds sequential IDs.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        gpkg_path (str): Path to the GeoPackage file</span>
+<span class="sd">            File must exist and be readable</span>
+<span class="sd">            Must contain valid building footprint geometries</span>
+<span class="sd">            Any coordinate system is accepted</span>
+<span class="sd">        rectangle_vertices (list): List of (lon, lat) tuples defining the bounding rectangle</span>
+<span class="sd">            Must be in WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">            Used for spatial filtering (not implemented in this function)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        gpd.GeoDataFrame: GeoDataFrame containing building footprints</span>
+<span class="sd">            Will have &#39;geometry&#39; column with building geometries</span>
+<span class="sd">            Will have &#39;id&#39; column with sequential integers</span>
+<span class="sd">            Will be in WGS84 (EPSG:4326) coordinate system</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Prints informative message when opening file</span>
+<span class="sd">        - Sets CRS to WGS84 if not specified</span>
+<span class="sd">        - Transforms to WGS84 if different CRS</span>
+<span class="sd">        - Adds sequential IDs starting from 0</span>
+<span class="sd">        - rectangle_vertices parameter is currently unused</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Open and read the GPKG file</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Opening GPKG file: </span><span class="si">{</span><span class="n">gpkg_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">gpkg_path</span><span class="p">)</span>
+
+    <span class="c1"># Only set CRS if not already set</span>
+    <span class="k">if</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">gdf</span><span class="o">.</span><span class="n">set_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># Transform to WGS84 if needed</span>
+    <span class="k">elif</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="s2">&quot;EPSG:4326&quot;</span><span class="p">:</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">)</span>
+
+    <span class="c1"># Replace id column with sequential index numbers</span>
+    <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">index</span>
+    
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="swap_coordinates">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.swap_coordinates">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">swap_coordinates</span><span class="p">(</span><span class="n">features</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).</span>
+<span class="sd">    </span>
+<span class="sd">    This function modifies GeoJSON features in-place to swap the order of coordinates</span>
+<span class="sd">    from (latitude, longitude) to (longitude, latitude). It handles both Polygon and</span>
+<span class="sd">    MultiPolygon geometries, maintaining their structure while swapping coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        features (list): List of GeoJSON features to process</span>
+<span class="sd">            Features must have &#39;geometry&#39; property</span>
+<span class="sd">            Supported geometry types: &#39;Polygon&#39;, &#39;MultiPolygon&#39;</span>
+<span class="sd">            Coordinates must be in (lat, lon) order initially</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        None: Features are modified in-place</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Modifies features directly (no copy created)</span>
+<span class="sd">        - Handles both Polygon and MultiPolygon geometries</span>
+<span class="sd">        - For Polygons: processes single coordinate ring</span>
+<span class="sd">        - For MultiPolygons: processes multiple coordinate rings</span>
+<span class="sd">        - Assumes input coordinates are in (lat, lon) order</span>
+<span class="sd">        - Resulting coordinates will be in (lon, lat) order</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Process each feature based on geometry type</span>
+    <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">features</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+            <span class="c1"># Swap coordinates for simple polygons</span>
+            <span class="c1"># Each polygon is a list of rings (exterior and optional holes)</span>
+            <span class="n">new_coords</span> <span class="o">=</span> <span class="p">[[[</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">]</span> <span class="k">for</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span> <span class="ow">in</span> <span class="n">polygon</span><span class="p">]</span> <span class="k">for</span> <span class="n">polygon</span> <span class="ow">in</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]]</span>
+            <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_coords</span>
+        <span class="k">elif</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+            <span class="c1"># Swap coordinates for multi-polygons (polygons with holes)</span>
+            <span class="c1"># Each multipolygon is a list of polygons, each with its own rings</span>
+            <span class="n">new_coords</span> <span class="o">=</span> <span class="p">[[[[</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">]</span> <span class="k">for</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span> <span class="ow">in</span> <span class="n">polygon</span><span class="p">]</span> <span class="k">for</span> <span class="n">polygon</span> <span class="ow">in</span> <span class="n">multipolygon</span><span class="p">]</span> <span class="k">for</span> <span class="n">multipolygon</span> <span class="ow">in</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]]</span>
+            <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_coords</span></div>
+
+
+<div class="viewcode-block" id="save_geojson">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.save_geojson">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geojson</span><span class="p">(</span><span class="n">features</span><span class="p">,</span> <span class="n">save_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Save GeoJSON features to a file with coordinate swapping and pretty printing.</span>
+<span class="sd">    </span>
+<span class="sd">    This function takes a list of GeoJSON features, swaps their coordinate ordering</span>
+<span class="sd">    if needed, wraps them in a FeatureCollection, and saves to a file with proper</span>
+<span class="sd">    JSON formatting. It creates a deep copy to avoid modifying the original data.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        features (list): List of GeoJSON features to save</span>
+<span class="sd">            Each feature should have valid GeoJSON structure</span>
+<span class="sd">            Features can be Polygon or MultiPolygon type</span>
+<span class="sd">            Coordinates will be swapped if in (lat, lon) order</span>
+<span class="sd">        save_path (str): Path where the GeoJSON file should be saved</span>
+<span class="sd">            Will overwrite existing file if present</span>
+<span class="sd">            Directory must exist and be writable</span>
+<span class="sd">            File will be created with UTF-8 encoding</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Creates deep copy to preserve original feature data</span>
+<span class="sd">        - Swaps coordinates from (lat, lon) to (lon, lat) order</span>
+<span class="sd">        - Wraps features in a FeatureCollection object</span>
+<span class="sd">        - Uses pretty printing with 2-space indentation</span>
+<span class="sd">        - Handles both Polygon and MultiPolygon geometries</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create deep copy to avoid modifying original data</span>
+    <span class="n">geojson_features</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
+    
+    <span class="c1"># Swap coordinate ordering from (lat, lon) to (lon, lat)</span>
+    <span class="n">swap_coordinates</span><span class="p">(</span><span class="n">geojson_features</span><span class="p">)</span>
+
+    <span class="c1"># Create FeatureCollection structure</span>
+    <span class="n">geojson</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;FeatureCollection&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;features&quot;</span><span class="p">:</span> <span class="n">geojson_features</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Write to file with pretty printing (2-space indentation)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">save_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">geojson</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="find_building_containing_point">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.geoprocessor.find_building_containing_point">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_building_containing_point</span><span class="p">(</span><span class="n">building_gdf</span><span class="p">,</span> <span class="n">target_point</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find building IDs that contain a given point in their footprint.</span>
+<span class="sd">    </span>
+<span class="sd">    This function identifies all buildings in a GeoDataFrame whose footprint contains</span>
+<span class="sd">    a specified geographic point. Only Polygon geometries are considered, and the point</span>
+<span class="sd">    must be fully contained within the building footprint (not just touching).</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        building_gdf (GeoDataFrame): GeoDataFrame containing building geometries and IDs</span>
+<span class="sd">            Must have &#39;geometry&#39; column with Polygon geometries</span>
+<span class="sd">            Must have &#39;id&#39; column or index will be used as fallback</span>
+<span class="sd">            Geometries must be in same CRS as target_point coordinates</span>
+<span class="sd">        target_point (tuple): Tuple of (lon, lat) coordinates to check</span>
+<span class="sd">            Must be in same coordinate system as building_gdf geometries</span>
+<span class="sd">            Order must be (longitude, latitude) if using WGS84</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of building IDs containing the target point</span>
+<span class="sd">            Empty list if no buildings contain the point</span>
+<span class="sd">            Multiple IDs possible if buildings overlap</span>
+<span class="sd">            IDs are in arbitrary order</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Only processes Polygon geometries (skips MultiPolygons and others)</span>
+<span class="sd">        - Uses Shapely&#39;s contains() method which requires point to be fully inside polygon</span>
+<span class="sd">        - No spatial indexing is used, performs linear search through all buildings</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create Shapely point from input coordinates</span>
+    <span class="n">point</span> <span class="o">=</span> <span class="n">Point</span><span class="p">(</span><span class="n">target_point</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">target_point</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    
+    <span class="c1"># Initialize list to store matching building IDs</span>
+    <span class="n">id_list</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="c1"># Check each building in the GeoDataFrame</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">building_gdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="c1"># Skip any geometry that is not a simple Polygon</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="p">,</span> <span class="n">Polygon</span><span class="p">):</span>
+            <span class="k">continue</span>
+            
+        <span class="c1"># Check if point is fully contained within building footprint</span>
+        <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">point</span><span class="p">):</span>
+            <span class="c1"># Use specified ID column or None if not found</span>
+            <span class="n">id_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+    
+    <span class="k">return</span> <span class="n">id_list</span></div>
+
+
+<div class="viewcode-block" id="get_buildings_in_drawn_polygon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.geoprocessor.get_buildings_in_drawn_polygon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_buildings_in_drawn_polygon</span><span class="p">(</span><span class="n">building_gdf</span><span class="p">,</span> <span class="n">drawn_polygon_vertices</span><span class="p">,</span> 
+                                   <span class="n">operation</span><span class="o">=</span><span class="s1">&#39;within&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find buildings that intersect with or are contained within a user-drawn polygon.</span>
+<span class="sd">    </span>
+<span class="sd">    This function identifies buildings from a GeoDataFrame that have a specified spatial</span>
+<span class="sd">    relationship with a polygon defined by user-drawn vertices. The relationship can be</span>
+<span class="sd">    either intersection (building overlaps polygon) or containment (building fully within</span>
+<span class="sd">    polygon).</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        building_gdf (GeoDataFrame): GeoDataFrame containing building footprints</span>
+<span class="sd">            Must have &#39;geometry&#39; column with Polygon geometries</span>
+<span class="sd">            Must have &#39;id&#39; column or index will be used as fallback</span>
+<span class="sd">            Geometries must be in same CRS as drawn_polygon_vertices</span>
+<span class="sd">        drawn_polygon_vertices (list): List of (lon, lat) tuples defining polygon vertices</span>
+<span class="sd">            Must be in same coordinate system as building_gdf geometries</span>
+<span class="sd">            Must form a valid polygon (3+ vertices, first != last)</span>
+<span class="sd">            Order must be (longitude, latitude) if using WGS84</span>
+<span class="sd">        operation (str, optional): Type of spatial relationship to check</span>
+<span class="sd">            &#39;within&#39;: buildings must be fully contained in drawn polygon (default)</span>
+<span class="sd">            &#39;intersect&#39;: buildings must overlap with drawn polygon</span>
+<span class="sd">            </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of building IDs that satisfy the spatial relationship</span>
+<span class="sd">            Empty list if no buildings meet the criteria</span>
+<span class="sd">            IDs are returned in order of processing</span>
+<span class="sd">            May contain None values if buildings lack IDs</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Only processes Polygon geometries (skips MultiPolygons and others)</span>
+<span class="sd">        - No spatial indexing is used, performs linear search through all buildings</span>
+<span class="sd">        - Invalid operation parameter will raise ValueError</span>
+<span class="sd">        - Does not validate polygon closure (first vertex = last vertex)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create Shapely Polygon from drawn vertices</span>
+    <span class="n">drawn_polygon_shapely</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">drawn_polygon_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Initialize list to store matching building IDs</span>
+    <span class="n">included_building_ids</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># Check each building in the GeoDataFrame</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">building_gdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="c1"># Skip any geometry that is not a simple Polygon</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="p">,</span> <span class="n">Polygon</span><span class="p">):</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Check spatial relationship based on specified operation</span>
+        <span class="k">if</span> <span class="n">operation</span> <span class="o">==</span> <span class="s1">&#39;intersect&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">drawn_polygon_shapely</span><span class="p">):</span>
+                <span class="n">included_building_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">operation</span> <span class="o">==</span> <span class="s1">&#39;within&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">within</span><span class="p">(</span><span class="n">drawn_polygon_shapely</span><span class="p">):</span>
+                <span class="n">included_building_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;operation must be &#39;intersect&#39; or &#39;within&#39;&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">included_building_ids</span></div>
+
+
+<div class="viewcode-block" id="process_building_footprints_by_overlap">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.process_building_footprints_by_overlap">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_building_footprints_by_overlap</span><span class="p">(</span><span class="n">filtered_gdf</span><span class="p">,</span> <span class="n">overlap_threshold</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Process building footprints to merge overlapping buildings based on area overlap ratio.</span>
+<span class="sd">    </span>
+<span class="sd">    This function identifies and merges building footprints that significantly overlap with each other.</span>
+<span class="sd">    Buildings are processed in order of decreasing area, and smaller buildings that overlap significantly</span>
+<span class="sd">    with larger ones are assigned the ID of the larger building, effectively merging them.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        filtered_gdf (geopandas.GeoDataFrame): GeoDataFrame containing building footprints</span>
+<span class="sd">            Must have &#39;geometry&#39; column with building polygons</span>
+<span class="sd">            If CRS is set, areas will be calculated in Web Mercator projection</span>
+<span class="sd">        overlap_threshold (float, optional): Threshold for overlap ratio (0.0-1.0) to merge buildings</span>
+<span class="sd">            Default is 0.5 (50% overlap)</span>
+<span class="sd">            Higher values require more overlap for merging</span>
+<span class="sd">            Lower values will result in more aggressive merging</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        geopandas.GeoDataFrame: Processed GeoDataFrame with updated IDs</span>
+<span class="sd">            Overlapping buildings will share the same ID</span>
+<span class="sd">            Original geometries are preserved, only IDs are updated</span>
+<span class="sd">            All other columns remain unchanged</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - Uses R-tree spatial indexing for efficient overlap detection</span>
+<span class="sd">        - Projects to Web Mercator (EPSG:3857) for accurate area calculation if CRS is set</span>
+<span class="sd">        - Handles invalid geometries by attempting to fix them with buffer(0)</span>
+<span class="sd">        - Processes buildings in order of decreasing area (largest first)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Make a copy to avoid modifying the original</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">filtered_gdf</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    
+    <span class="c1"># Ensure &#39;id&#39; column exists, use index if not present</span>
+    <span class="k">if</span> <span class="s1">&#39;id&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">index</span>
+    
+    <span class="c1"># Project to Web Mercator for accurate area calculation if CRS is set</span>
+    <span class="k">if</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Work with original geometries if no CRS is set</span>
+        <span class="n">gdf_projected</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Store original CRS to convert back later</span>
+        <span class="n">original_crs</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span>
+        <span class="c1"># Project to Web Mercator for accurate area calculation</span>
+        <span class="n">gdf_projected</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="s2">&quot;EPSG:3857&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Calculate areas and sort by decreasing area for processing largest buildings first</span>
+    <span class="n">gdf_projected</span><span class="p">[</span><span class="s1">&#39;area&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">area</span>
+    <span class="n">gdf_projected</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s1">&#39;area&#39;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">gdf_projected</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="c1"># Create spatial index for efficient querying of potential overlaps</span>
+    <span class="n">spatial_idx</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">Index</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">geom</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">gdf_projected</span><span class="o">.</span><span class="n">geometry</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+            <span class="n">spatial_idx</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">geom</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Fix invalid geometries using buffer(0) technique</span>
+            <span class="n">fixed_geom</span> <span class="o">=</span> <span class="n">geom</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">fixed_geom</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                <span class="n">spatial_idx</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">fixed_geom</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span>
+    
+    <span class="c1"># Track ID replacements to avoid repeated processing</span>
+    <span class="n">id_mapping</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="c1"># Process each building (skip the largest one as it&#39;s our reference)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf_projected</span><span class="p">)):</span>
+        <span class="n">current_poly</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">geometry</span>
+        <span class="n">current_area</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">area</span>
+        <span class="n">current_id</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+        
+        <span class="c1"># Skip if already mapped to another ID</span>
+        <span class="k">if</span> <span class="n">current_id</span> <span class="ow">in</span> <span class="n">id_mapping</span><span class="p">:</span>
+            <span class="k">continue</span>
+        
+        <span class="c1"># Ensure geometry is valid for processing</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">current_poly</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+            <span class="n">current_poly</span> <span class="o">=</span> <span class="n">current_poly</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">current_poly</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                <span class="k">continue</span>
+        
+        <span class="c1"># Find potential overlaps with larger polygons using spatial index</span>
+        <span class="n">potential_overlaps</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">spatial_idx</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">current_poly</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span> <span class="k">if</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">i</span><span class="p">]</span>
+        
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">potential_overlaps</span><span class="p">:</span>
+            <span class="n">larger_poly</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">geometry</span>
+            <span class="n">larger_id</span> <span class="o">=</span> <span class="n">gdf_projected</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">j</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+            
+            <span class="c1"># Follow ID mapping chain to get final ID</span>
+            <span class="k">if</span> <span class="n">larger_id</span> <span class="ow">in</span> <span class="n">id_mapping</span><span class="p">:</span>
+                <span class="n">larger_id</span> <span class="o">=</span> <span class="n">id_mapping</span><span class="p">[</span><span class="n">larger_id</span><span class="p">]</span>
+            
+            <span class="c1"># Ensure geometry is valid for intersection test</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">larger_poly</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                <span class="n">larger_poly</span> <span class="o">=</span> <span class="n">larger_poly</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">larger_poly</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                    <span class="k">continue</span>
+            
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Calculate overlap ratio relative to current building&#39;s area</span>
+                <span class="k">if</span> <span class="n">current_poly</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">larger_poly</span><span class="p">):</span>
+                    <span class="n">overlap</span> <span class="o">=</span> <span class="n">current_poly</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">larger_poly</span><span class="p">)</span>
+                    <span class="n">overlap_ratio</span> <span class="o">=</span> <span class="n">overlap</span><span class="o">.</span><span class="n">area</span> <span class="o">/</span> <span class="n">current_area</span>
+                    
+                    <span class="c1"># Merge buildings if overlap exceeds threshold</span>
+                    <span class="k">if</span> <span class="n">overlap_ratio</span> <span class="o">&gt;</span> <span class="n">overlap_threshold</span><span class="p">:</span>
+                        <span class="n">id_mapping</span><span class="p">[</span><span class="n">current_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">larger_id</span>
+                        <span class="n">gdf_projected</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">larger_id</span>
+                        <span class="k">break</span>  <span class="c1"># Stop at first significant overlap</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">GEOSException</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="c1"># Skip problematic geometries</span>
+                <span class="k">continue</span>
+    
+    <span class="c1"># Propagate ID changes through the original DataFrame</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">filtered_gdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">orig_id</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">orig_id</span> <span class="ow">in</span> <span class="n">id_mapping</span><span class="p">:</span>
+            <span class="n">filtered_gdf</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">id_mapping</span><span class="p">[</span><span class="n">orig_id</span><span class="p">]</span>
+    
+    <span class="k">return</span> <span class="n">filtered_gdf</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

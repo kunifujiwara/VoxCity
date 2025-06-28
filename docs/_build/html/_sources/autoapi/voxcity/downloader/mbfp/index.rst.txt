@@ -1,0 +1,120 @@
+voxcity.downloader.mbfp
+=======================
+
+.. py:module:: voxcity.downloader.mbfp
+
+.. autoapi-nested-parse::
+
+   Module for downloading and processing Microsoft Building Footprints data.
+
+   This module provides functionality to download building footprint data from Microsoft's
+   open dataset, which contains building polygons extracted from satellite imagery using
+   AI. It handles downloading quadkey-based data files and converting them to GeoJSON format.
+
+   The data is organized using quadkeys, which are hierarchical spatial indexing strings
+   that identify tiles on the map at different zoom levels. Each quadkey corresponds to
+   a specific geographic area and zoom level.
+
+   Key Features:
+   - Downloads building footprint data from Microsoft's global buildings dataset
+   - Handles quadkey-based spatial queries
+   - Converts compressed data files to GeoJSON format
+   - Supports rectangular region queries using vertex coordinates
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.downloader.mbfp.get_geojson_links
+   voxcity.downloader.mbfp.find_row_for_location
+   voxcity.downloader.mbfp.get_mbfp_gdf
+
+
+Module Contents
+---------------
+
+.. py:function:: get_geojson_links(output_dir)
+
+   Download and load the dataset links CSV file containing building footprint URLs.
+
+   This function downloads a master CSV file from Microsoft's server that contains
+   links to all available building footprint datasets. The CSV includes metadata
+   such as location names, quadkeys, URLs, and file sizes for each dataset tile.
+
+   :param output_dir: Directory path where the CSV file will be saved
+   :type output_dir: str
+
+   :returns:
+
+             DataFrame containing dataset links with columns:
+                 - Location: String identifier for the geographic region
+                 - QuadKey: String representing the tile's quadkey
+                 - Url: Direct download link for the GeoJSON data
+                 - Size: File size information
+   :rtype: pandas.DataFrame
+
+   .. note:: The CSV file is cached locally in the output directory for future use.
+
+
+.. py:function:: find_row_for_location(df, lon, lat)
+
+   Find the dataset row containing building data for a given lon/lat coordinate.
+
+   This function searches through the dataset links DataFrame to find the appropriate
+   tile containing the specified geographic coordinates. It converts the input
+   coordinates to tile coordinates at the same zoom level as each quadkey and
+   checks for a match.
+
+   :param df: DataFrame containing dataset links from get_geojson_links()
+   :type df: pandas.DataFrame
+   :param lon: Longitude coordinate to search for (-180 to 180)
+   :type lon: float
+   :param lat: Latitude coordinate to search for (-90 to 90)
+   :type lat: float
+
+   :returns:
+
+             Matching row from DataFrame containing the quadkey and download URL,
+                           or None if no matching tile is found
+   :rtype: pandas.Series
+
+   .. note::
+
+      The function handles invalid quadkeys gracefully by skipping them and
+      continues searching through all available tiles.
+
+
+.. py:function:: get_mbfp_gdf(output_dir, rectangle_vertices)
+
+   Download and process building footprint data for a rectangular region.
+
+   This function takes a list of coordinates defining a rectangular region and:
+   1. Downloads the necessary building footprint data files covering the region
+   2. Loads and combines the GeoJSON data from all relevant files
+   3. Processes the data to ensure consistent coordinate ordering
+   4. Assigns unique sequential IDs to each building
+
+   :param output_dir: Directory path where downloaded files will be saved
+   :type output_dir: str
+   :param rectangle_vertices: List of (lon, lat) tuples defining the rectangle corners.
+                              The coordinates should define a bounding box of the
+                              area of interest.
+   :type rectangle_vertices: list
+
+   :returns:
+
+             GeoDataFrame containing building footprints with columns:
+                 - geometry: Building polygon geometries
+                 - id: Sequential unique identifier for each building
+   :rtype: geopandas.GeoDataFrame
+
+   .. note::
+
+      - Files are downloaded only if not already present in the output directory
+      - Coordinates in the input vertices should be in (longitude, latitude) order
+      - The function handles cases where some vertices might not have available data
+
+

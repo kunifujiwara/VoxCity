@@ -1,0 +1,731 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html" /><link rel="search" title="Search" href="../../../../search.html" /><link rel="next" title="voxcity.geoprocessor.grid" href="../grid/index.html" /><link rel="prev" title="voxcity.geoprocessor" href="../index.html" />
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.geoprocessor.draw - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">voxcity</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">voxcity.geoprocessor</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l4 current current-page"><a class="current reference internal" href="#">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/voxcity/geoprocessor/draw/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-voxcity.geoprocessor.draw">
+<span id="voxcity-geoprocessor-draw"></span><h1>voxcity.geoprocessor.draw<a class="headerlink" href="#module-voxcity.geoprocessor.draw" title="Link to this heading">¶</a></h1>
+<p>This module provides functions for drawing and manipulating rectangles and polygons on interactive maps.
+It serves as a core component for defining geographical regions of interest in the VoxCity library.</p>
+<dl class="simple">
+<dt>Key Features:</dt><dd><ul class="simple">
+<li><p>Interactive rectangle drawing on maps using ipyleaflet</p></li>
+<li><p>Rectangle rotation with coordinate system transformations</p></li>
+<li><p>City-centered map initialization</p></li>
+<li><p>Fixed-dimension rectangle creation from center points</p></li>
+<li><p>Building footprint visualization and polygon drawing</p></li>
+<li><p>Support for both WGS84 and Web Mercator projections</p></li>
+<li><p>Coordinate format handling between (lon,lat) and (lat,lon)</p></li>
+</ul>
+</dd>
+<dt>The module maintains consistent coordinate order conventions:</dt><dd><ul class="simple">
+<li><p>Internal storage: (lon,lat) format to match GeoJSON standard</p></li>
+<li><p>ipyleaflet interface: (lat,lon) format as required by the library</p></li>
+<li><p>All return values: (lon,lat) format for consistency</p></li>
+</ul>
+</dd>
+<dt>Dependencies:</dt><dd><ul class="simple">
+<li><p>ipyleaflet: For interactive map display and drawing controls</p></li>
+<li><p>pyproj: For coordinate system transformations</p></li>
+<li><p>geopy: For distance calculations</p></li>
+<li><p>shapely: For geometric operations</p></li>
+</ul>
+</dd>
+</dl>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.geoprocessor.draw.rotate_rectangle" title="voxcity.geoprocessor.draw.rotate_rectangle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rotate_rectangle</span></code></a>(m, rectangle_vertices, angle)</p></td>
+<td><p>Project rectangle to Mercator, rotate, and re-project to lat-lon coordinates.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.geoprocessor.draw.draw_rectangle_map" title="voxcity.geoprocessor.draw.draw_rectangle_map"><code class="xref py py-obj docutils literal notranslate"><span class="pre">draw_rectangle_map</span></code></a>([center, zoom])</p></td>
+<td><p>Create an interactive map for drawing rectangles with ipyleaflet.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.geoprocessor.draw.draw_rectangle_map_cityname" title="voxcity.geoprocessor.draw.draw_rectangle_map_cityname"><code class="xref py py-obj docutils literal notranslate"><span class="pre">draw_rectangle_map_cityname</span></code></a>(cityname[, zoom])</p></td>
+<td><p>Create an interactive map centered on a specified city for drawing rectangles.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.geoprocessor.draw.center_location_map_cityname" title="voxcity.geoprocessor.draw.center_location_map_cityname"><code class="xref py py-obj docutils literal notranslate"><span class="pre">center_location_map_cityname</span></code></a>(cityname, ...[, zoom])</p></td>
+<td><p>Create an interactive map centered on a city where clicking creates a rectangle of specified dimensions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.geoprocessor.draw.display_buildings_and_draw_polygon" title="voxcity.geoprocessor.draw.display_buildings_and_draw_polygon"><code class="xref py py-obj docutils literal notranslate"><span class="pre">display_buildings_and_draw_polygon</span></code></a>([building_gdf, ...])</p></td>
+<td><p>Displays building footprints and enables polygon drawing on an interactive map.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.geoprocessor.draw.rotate_rectangle">
+<span class="sig-prename descclassname"><span class="pre">voxcity.geoprocessor.draw.</span></span><span class="sig-name descname"><span class="pre">rotate_rectangle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">m</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angle</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/geoprocessor/draw.html#rotate_rectangle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.geoprocessor.draw.rotate_rectangle" title="Link to this definition">¶</a></dt>
+<dd><p>Project rectangle to Mercator, rotate, and re-project to lat-lon coordinates.</p>
+<p>This function performs a rotation of a rectangle in geographic space by:
+1. Converting coordinates from WGS84 (lat/lon) to Web Mercator projection
+2. Performing the rotation in the projected space for accurate distance preservation
+3. Converting back to WGS84 coordinates
+4. Visualizing the result on the provided map</p>
+<p>The rotation is performed around the rectangle’s centroid using a standard 2D rotation matrix.
+The function handles coordinate system transformations to ensure geometrically accurate rotations
+despite the distortions inherent in geographic projections.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>m</strong> (<em>ipyleaflet.Map</em>) – Map object to draw the rotated rectangle on.
+The map must be initialized and have a valid center and zoom level.</p></li>
+<li><p><strong>rectangle_vertices</strong> (<em>list</em>) – List of (lon, lat) tuples defining the rectangle vertices.
+The vertices should be ordered in a counter-clockwise direction.
+Example: [(lon1,lat1), (lon2,lat2), (lon3,lat3), (lon4,lat4)]</p></li>
+<li><p><strong>angle</strong> (<em>float</em>) – Rotation angle in degrees.
+Positive angles rotate counter-clockwise.
+Negative angles rotate clockwise.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>List of rotated (lon, lat) tuples defining the new rectangle vertices.</dt><dd><p>The vertices maintain their original ordering.
+Returns None if no rectangle vertices are provided.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function uses EPSG:4326 (WGS84) for geographic coordinates and
+EPSG:3857 (Web Mercator) for the rotation calculations.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.geoprocessor.draw.draw_rectangle_map">
+<span class="sig-prename descclassname"><span class="pre">voxcity.geoprocessor.draw.</span></span><span class="sig-name descname"><span class="pre">draw_rectangle_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(40,</span> <span class="pre">-100)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/geoprocessor/draw.html#draw_rectangle_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.geoprocessor.draw.draw_rectangle_map" title="Link to this definition">¶</a></dt>
+<dd><p>Create an interactive map for drawing rectangles with ipyleaflet.</p>
+<p>This function initializes an interactive map that allows users to draw rectangles
+by clicking and dragging on the map surface. The drawn rectangles are captured
+and their vertices are stored in geographic coordinates.</p>
+<p>The map interface provides:
+- A rectangle drawing tool activated by default
+- Real-time coordinate capture of drawn shapes
+- Automatic vertex ordering in counter-clockwise direction
+- Console output of vertex coordinates for verification</p>
+<p>Drawing Controls:
+- Click and drag to draw a rectangle
+- Release to complete the rectangle
+- Only one rectangle can be active at a time
+- Drawing a new rectangle clears the previous one</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>center</strong> (<em>tuple</em>) – Center coordinates (lat, lon) for the map view.
+Defaults to (40, -100) which centers on the continental United States.
+Format: (latitude, longitude) in decimal degrees.</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Initial zoom level for the map. Defaults to 4.
+Range: 0 (most zoomed out) to 18 (most zoomed in).
+Recommended: 3-6 for countries, 10-15 for cities.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(Map object, list of rectangle vertices)</dt><dd><ul class="simple">
+<li><p>Map object: ipyleaflet.Map instance for displaying and interacting with the map</p></li>
+<li><p>rectangle_vertices: Empty list that will be populated with (lon,lat) tuples
+when a rectangle is drawn. Coordinates are stored in GeoJSON order (lon,lat).</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function disables all drawing tools except rectangles to ensure
+consistent shape creation. The rectangle vertices are automatically
+converted to (lon,lat) format when stored, regardless of the input
+center coordinate order.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.geoprocessor.draw.draw_rectangle_map_cityname">
+<span class="sig-prename descclassname"><span class="pre">voxcity.geoprocessor.draw.</span></span><span class="sig-name descname"><span class="pre">draw_rectangle_map_cityname</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cityname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">15</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/geoprocessor/draw.html#draw_rectangle_map_cityname"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.geoprocessor.draw.draw_rectangle_map_cityname" title="Link to this definition">¶</a></dt>
+<dd><p>Create an interactive map centered on a specified city for drawing rectangles.</p>
+<p>This function extends draw_rectangle_map() by automatically centering the map
+on a specified city using geocoding. It provides a convenient way to focus
+the drawing interface on a particular urban area without needing to know
+its exact coordinates.</p>
+<p>The function uses the utils.get_coordinates_from_cityname() function to
+geocode the city name and obtain its coordinates. The resulting map is
+zoomed to an appropriate level for urban-scale analysis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cityname</strong> (<em>str</em>) – Name of the city to center the map on.
+Can include country or state for better accuracy.
+Examples: “Tokyo, Japan”, “New York, NY”, “Paris, France”</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Initial zoom level for the map. Defaults to 15.
+Range: 0 (most zoomed out) to 18 (most zoomed in).
+Default of 15 is optimized for city-level visualization.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(Map object, list of rectangle vertices)</dt><dd><ul class="simple">
+<li><p>Map object: ipyleaflet.Map instance centered on the specified city</p></li>
+<li><p>rectangle_vertices: Empty list that will be populated with (lon,lat)
+tuples when a rectangle is drawn</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If the city name cannot be geocoded, the function will raise an error.
+For better results, provide specific city names with country/state context.
+The function inherits all drawing controls and behavior from draw_rectangle_map().</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.geoprocessor.draw.center_location_map_cityname">
+<span class="sig-prename descclassname"><span class="pre">voxcity.geoprocessor.draw.</span></span><span class="sig-name descname"><span class="pre">center_location_map_cityname</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cityname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">east_west_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">north_south_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">15</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/geoprocessor/draw.html#center_location_map_cityname"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.geoprocessor.draw.center_location_map_cityname" title="Link to this definition">¶</a></dt>
+<dd><p>Create an interactive map centered on a city where clicking creates a rectangle of specified dimensions.</p>
+<p>This function provides a specialized interface for creating fixed-size rectangles
+centered on user-selected points. Instead of drawing rectangles by dragging,
+users click a point on the map and a rectangle of the specified dimensions
+is automatically created centered on that point.</p>
+<p>The function handles:
+- Automatic city geocoding and map centering
+- Distance calculations in meters using geopy
+- Conversion between geographic and metric distances
+- Rectangle creation with specified dimensions
+- Visualization of created rectangles</p>
+<p>Workflow:
+1. Map is centered on the specified city
+2. User clicks a point on the map
+3. A rectangle is created centered on that point
+4. Rectangle dimensions are maintained in meters regardless of latitude
+5. Previous rectangles are automatically cleared</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cityname</strong> (<em>str</em>) – Name of the city to center the map on.
+Can include country or state for better accuracy.
+Examples: “Tokyo, Japan”, “New York, NY”</p></li>
+<li><p><strong>east_west_length</strong> (<em>float</em>) – Width of the rectangle in meters.
+This is the dimension along the east-west direction.
+The actual ground distance is maintained regardless of projection distortion.</p></li>
+<li><p><strong>north_south_length</strong> (<em>float</em>) – Height of the rectangle in meters.
+This is the dimension along the north-south direction.
+The actual ground distance is maintained regardless of projection distortion.</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Initial zoom level for the map. Defaults to 15.
+Range: 0 (most zoomed out) to 18 (most zoomed in).
+Default of 15 is optimized for city-level visualization.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(Map object, list of rectangle vertices)</dt><dd><ul class="simple">
+<li><p>Map object: ipyleaflet.Map instance centered on the specified city</p></li>
+<li><p>rectangle_vertices: Empty list that will be populated with (lon,lat)
+tuples when a point is clicked and the rectangle is created</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Rectangle dimensions are specified in meters but stored as geographic coordinates</p></li>
+<li><p>The function uses geopy’s distance calculations for accurate metric distances</p></li>
+<li><p>Only one rectangle can exist at a time; clicking a new point removes the previous rectangle</p></li>
+<li><p>Rectangle vertices are returned in GeoJSON (lon,lat) order</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.geoprocessor.draw.display_buildings_and_draw_polygon">
+<span class="sig-prename descclassname"><span class="pre">voxcity.geoprocessor.draw.</span></span><span class="sig-name descname"><span class="pre">display_buildings_and_draw_polygon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">building_gdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">17</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/geoprocessor/draw.html#display_buildings_and_draw_polygon"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.geoprocessor.draw.display_buildings_and_draw_polygon" title="Link to this definition">¶</a></dt>
+<dd><p>Displays building footprints and enables polygon drawing on an interactive map.</p>
+<p>This function creates an interactive map that visualizes building footprints and
+allows users to draw arbitrary polygons. It’s particularly useful for selecting
+specific buildings or areas within an urban context.</p>
+<p>The function provides three key features:
+1. Building Footprint Visualization:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Displays building polygons from a GeoDataFrame</p></li>
+<li><p>Uses consistent styling for all buildings</p></li>
+<li><p>Handles simple polygon geometries only</p></li>
+</ul>
+</div></blockquote>
+<ol class="arabic simple" start="2">
+<li><p>Interactive Polygon Drawing:
+- Enables free-form polygon drawing
+- Captures vertices in consistent (lon,lat) format
+- Maintains GeoJSON compatibility</p></li>
+<li><p>Map Initialization:
+- Automatic centering based on input data
+- Fallback to default location if no data provided
+- Support for both building data and rectangle bounds</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>building_gdf</strong> (<em>GeoDataFrame</em><em>, </em><em>optional</em>) – A GeoDataFrame containing building footprints.
+Must have geometry column with Polygon type features.
+Geometries should be in [lon, lat] coordinate order.
+If None, only the base map is displayed.</p></li>
+<li><p><strong>rectangle_vertices</strong> (<em>list</em><em>, </em><em>optional</em>) – List of [lon, lat] coordinates defining rectangle corners.
+Used to set the initial map view extent.
+Takes precedence over building_gdf for determining map center.</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Initial zoom level for the map. Default=17.
+Range: 0 (most zoomed out) to 18 (most zoomed in).
+Default of 17 is optimized for building-level detail.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(map_object, drawn_polygon_vertices)</dt><dd><ul class="simple">
+<li><p>map_object: ipyleaflet Map instance with building footprints and drawing controls</p></li>
+<li><p>drawn_polygon_vertices: List that gets updated with (lon,lat) coordinates
+whenever a new polygon is drawn. Coordinates are in GeoJSON order.</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Building footprints are displayed in blue with 20% opacity</p></li>
+<li><p>Only simple Polygon geometries are supported (no MultiPolygons)</p></li>
+<li><p>Drawing tools are restricted to polygon creation only</p></li>
+<li><p>All coordinates are handled in (lon,lat) order internally</p></li>
+<li><p>The function automatically determines appropriate map bounds</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../grid/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">voxcity.geoprocessor.grid</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">voxcity.geoprocessor</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">voxcity.geoprocessor.draw</a><ul>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#voxcity.geoprocessor.draw.rotate_rectangle"><code class="docutils literal notranslate"><span class="pre">rotate_rectangle()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.geoprocessor.draw.draw_rectangle_map"><code class="docutils literal notranslate"><span class="pre">draw_rectangle_map()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.geoprocessor.draw.draw_rectangle_map_cityname"><code class="docutils literal notranslate"><span class="pre">draw_rectangle_map_cityname()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.geoprocessor.draw.center_location_map_cityname"><code class="docutils literal notranslate"><span class="pre">center_location_map_cityname()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.geoprocessor.draw.display_buildings_and_draw_polygon"><code class="docutils literal notranslate"><span class="pre">display_buildings_and_draw_polygon()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

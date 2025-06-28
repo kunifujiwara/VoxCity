@@ -1,0 +1,595 @@
+voxcity.simulator.view
+======================
+
+.. py:module:: voxcity.simulator.view
+
+.. autoapi-nested-parse::
+
+   Functions for computing and visualizing various view indices in a voxel city model.
+
+   This module provides functionality to compute and visualize:
+   - Green View Index (GVI): Measures visibility of green elements like trees and vegetation
+   - Sky View Index (SVI): Measures visibility of open sky from street level
+   - Sky View Factor (SVF): Measures the ratio of visible sky hemisphere to total hemisphere
+   - Landmark Visibility: Measures visibility of specified landmark buildings from different locations
+
+   The module uses optimized ray tracing techniques with Numba JIT compilation for efficient computation.
+   Key features:
+   - Generic ray tracing framework that can be customized for different view indices
+   - Parallel processing for fast computation of view maps
+   - Tree transmittance modeling using Beer-Lambert law
+   - Visualization tools including matplotlib plots and OBJ exports
+   - Support for both inclusion and exclusion based visibility checks
+
+   The module provides several key functions:
+   - trace_ray_generic(): Core ray tracing function that handles tree transmittance
+   - compute_vi_generic(): Computes view indices by casting rays in specified directions
+   - compute_vi_map_generic(): Generates 2D maps of view indices
+   - get_view_index(): High-level function to compute various view indices
+   - compute_landmark_visibility(): Computes visibility of landmark buildings
+   - get_sky_view_factor_map(): Computes sky view factor maps
+
+   The module uses a voxel-based representation where:
+   - Empty space is represented by 0
+   - Trees are represented by -2
+   - Buildings are represented by -3
+   - Other values can be used for different features
+
+   Tree transmittance is modeled using the Beer-Lambert law with configurable parameters:
+   - tree_k: Static extinction coefficient (default 0.6)
+   - tree_lad: Leaf area density in m^-1 (default 1.0)
+
+   Additional implementation details:
+   - Uses DDA (Digital Differential Analyzer) algorithm for efficient ray traversal
+   - Handles edge cases like zero-length rays and division by zero
+   - Supports early exit optimizations for performance
+   - Provides flexible observer placement rules
+   - Includes comprehensive error checking and validation
+   - Allows customization of visualization parameters
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.simulator.view.calculate_transmittance
+   voxcity.simulator.view.trace_ray_generic
+   voxcity.simulator.view.compute_vi_generic
+   voxcity.simulator.view.compute_vi_map_generic
+   voxcity.simulator.view.get_view_index
+   voxcity.simulator.view.mark_building_by_id
+   voxcity.simulator.view.trace_ray_to_target
+   voxcity.simulator.view.compute_visibility_to_all_landmarks
+   voxcity.simulator.view.compute_visibility_map
+   voxcity.simulator.view.compute_landmark_visibility
+   voxcity.simulator.view.get_landmark_visibility_map
+   voxcity.simulator.view.get_sky_view_factor_map
+   voxcity.simulator.view.rotate_vector_axis_angle
+   voxcity.simulator.view.compute_view_factor_for_all_faces
+   voxcity.simulator.view.get_surface_view_factor
+
+
+Module Contents
+---------------
+
+.. py:function:: calculate_transmittance(length, tree_k=0.6, tree_lad=1.0)
+
+   Calculate tree transmittance using the Beer-Lambert law.
+
+   Uses the Beer-Lambert law to model light attenuation through tree canopy:
+   transmittance = exp(-k * LAD * L)
+   where:
+   - k is the extinction coefficient
+   - LAD is the leaf area density
+   - L is the path length through the canopy
+
+   :param length: Path length through tree voxel in meters
+   :type length: float
+   :param tree_k: Static extinction coefficient (default: 0.6)
+                  Controls overall light attenuation strength
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1 (default: 1.0)
+                    Higher values = denser foliage = more attenuation
+   :type tree_lad: float
+
+   :returns:
+
+             Transmittance value between 0 and 1
+                 1.0 = fully transparent
+                 0.0 = fully opaque
+   :rtype: float
+
+
+.. py:function:: trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Trace a ray through a voxel grid and check for hits with specified values.
+
+   Uses DDA algorithm to efficiently traverse voxels along ray path.
+   Handles tree transmittance using Beer-Lambert law.
+
+   The DDA algorithm:
+   1. Initializes ray at origin voxel
+   2. Calculates distances to next voxel boundaries in each direction
+   3. Steps to next voxel by choosing smallest distance
+   4. Repeats until hit or out of bounds
+
+   Tree transmittance:
+   - When ray passes through tree voxels (-2), transmittance is accumulated
+   - Uses Beer-Lambert law with configurable extinction coefficient and leaf area density
+   - Ray is considered blocked if cumulative transmittance falls below 0.01
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param origin: Starting point (x,y,z) of ray in voxel coordinates
+   :type origin: ndarray
+   :param direction: Direction vector of ray (will be normalized)
+   :type direction: ndarray
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             (hit_detected, transmittance_value)
+                 hit_detected (bool): Whether ray hit a target voxel
+                 transmittance_value (float): Cumulative transmittance through trees
+   :rtype: tuple
+
+
+.. py:function:: compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Compute view index accounting for tree transmittance.
+
+   Casts rays in specified directions and computes visibility index based on hits and transmittance.
+   The view index is the ratio of visible rays to total rays cast, where:
+   - For inclusion mode: Counts hits with target values
+   - For exclusion mode: Counts rays that don't hit obstacles
+   Tree transmittance is handled specially:
+   - In inclusion mode with trees as targets: Uses (1 - transmittance) as contribution
+   - In exclusion mode: Uses transmittance value directly
+
+   :param observer_location: Observer position (x,y,z) in voxel coordinates
+   :type observer_location: ndarray
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param ray_directions: Array of direction vectors for rays
+   :type ray_directions: ndarray
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             View index value between 0 and 1
+                 0.0 = no visibility in any direction
+                 1.0 = full visibility in all directions
+   :rtype: float
+
+
+.. py:function:: compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Compute view index map incorporating tree transmittance.
+
+   Places observers at valid locations and computes view index for each position.
+   Valid observer locations are:
+   - Empty voxels (0) or tree voxels (-2)
+   - Above non-empty, non-tree voxels
+   - Not above water (7,8,9) or negative values
+
+   The function processes each x,y position in parallel for efficiency.
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param ray_directions: Array of direction vectors for rays
+   :type ray_directions: ndarray
+   :param view_height_voxel: Observer height in voxel units
+   :type view_height_voxel: int
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             2D array of view index values
+                 NaN = invalid observer location
+                 0.0-1.0 = view index value
+   :rtype: ndarray
+
+
+.. py:function:: get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs)
+
+   Calculate and visualize a generic view index for a voxel city model.
+
+   This is a high-level function that provides a flexible interface for computing
+   various view indices. It handles:
+   - Mode presets for common indices (green, sky)
+   - Ray direction generation
+   - Tree transmittance parameters
+   - Visualization
+   - Optional OBJ export
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param mode: Predefined mode. Options: 'green', 'sky', or None.
+                If 'green': GVI mode - measures visibility of vegetation
+                If 'sky': SVI mode - measures visibility of open sky
+                If None: Custom mode requiring hit_values parameter
+   :type mode: str
+   :param hit_values: Voxel values considered as hits (if inclusion_mode=True)
+                      or allowed values (if inclusion_mode=False), if mode is None.
+   :type hit_values: tuple
+   :param inclusion_mode: True = voxel_value in hit_values is success.
+                          False = voxel_value not in hit_values is success.
+   :type inclusion_mode: bool
+   :param \*\*kwargs: Additional arguments:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                      - colormap (str): Matplotlib colormap name (default: 'viridis')
+                      - obj_export (bool): Export as OBJ (default: False)
+                      - output_directory (str): Directory for OBJ output
+                      - output_file_name (str): Base filename for OBJ output
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for OBJ export
+                      - vmin (float): Minimum value for color mapping
+                      - vmax (float): Maximum value for color mapping
+                      - N_azimuth (int): Number of azimuth angles for ray directions
+                      - N_elevation (int): Number of elevation angles for ray directions
+                      - elevation_min_degrees (float): Minimum elevation angle in degrees
+                      - elevation_max_degrees (float): Maximum elevation angle in degrees
+                      - tree_k (float): Tree extinction coefficient (default: 0.5)
+                      - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+
+   :returns: 2D array of computed view index values.
+   :rtype: ndarray
+
+
+.. py:function:: mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark)
+
+   Mark specific buildings in the voxel grid with a given value.
+
+   This function is used to identify landmark buildings for visibility analysis
+   by replacing their voxel values with a special marker value. It handles
+   coordinate system alignment between the building ID grid and voxel grid.
+
+   :param voxcity_grid_ori: 3D array of voxel values (original, will be copied)
+   :type voxcity_grid_ori: ndarray
+   :param building_id_grid_ori: 2D array of building IDs (original, will be copied)
+   :type building_id_grid_ori: ndarray
+   :param ids: List of building IDs to mark as landmarks
+   :type ids: list
+   :param mark: Value to mark the landmark buildings with (typically negative)
+   :type mark: int
+
+   :returns: Modified 3D voxel grid with landmark buildings marked
+   :rtype: ndarray
+
+
+.. py:function:: trace_ray_to_target(voxel_data, origin, target, opaque_values)
+
+   Trace a ray from origin to target through voxel data.
+
+   Uses DDA algorithm to efficiently traverse voxels along ray path.
+   Checks for any opaque voxels blocking the line of sight.
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param origin: Starting point (x,y,z) in voxel coordinates
+   :type origin: tuple
+   :param target: End point (x,y,z) in voxel coordinates
+   :type target: tuple
+   :param opaque_values: Array of voxel values that block the ray
+   :type opaque_values: ndarray
+
+   :returns: True if target is visible from origin, False otherwise
+   :rtype: bool
+
+
+.. py:function:: compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
+
+   Check if any landmark is visible from the observer location.
+
+   Traces rays to each landmark position until finding one that's visible.
+   Uses optimized ray tracing with early exit on first visible landmark.
+
+   :param observer_location: Observer position (x,y,z) in voxel coordinates
+   :type observer_location: ndarray
+   :param landmark_positions: Array of landmark positions (n_landmarks, 3)
+   :type landmark_positions: ndarray
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param opaque_values: Array of voxel values that block visibility
+   :type opaque_values: ndarray
+
+   :returns: 1 if any landmark is visible, 0 if none are visible
+   :rtype: int
+
+
+.. py:function:: compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel)
+
+   Compute visibility map for landmarks in the voxel grid.
+
+   Places observers at valid locations (empty voxels above ground, excluding building
+   roofs and vegetation) and checks visibility to any landmark.
+
+   The function processes each x,y position in parallel for efficiency.
+   Valid observer locations are:
+   - Empty voxels (0) or tree voxels (-2)
+   - Above non-empty, non-tree voxels
+   - Not above water (7,8,9) or negative values
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param landmark_positions: Array of landmark positions (n_landmarks, 3)
+   :type landmark_positions: ndarray
+   :param opaque_values: Array of voxel values that block visibility
+   :type opaque_values: ndarray
+   :param view_height_voxel: Height offset for observer in voxels
+   :type view_height_voxel: int
+
+   :returns:
+
+             2D array of visibility values
+                 NaN = invalid observer location
+                 0 = no landmarks visible
+                 1 = at least one landmark visible
+   :rtype: ndarray
+
+
+.. py:function:: compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis')
+
+   Compute and visualize landmark visibility in a voxel grid.
+
+   Places observers at valid locations and checks visibility to any landmark voxel.
+   Generates a binary visibility map and visualization.
+
+   The function:
+   1. Identifies all landmark voxels (target_value)
+   2. Determines which voxel values block visibility
+   3. Computes visibility from each valid observer location
+   4. Generates visualization with legend
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param target_value: Value used to identify landmark voxels. Defaults to -30.
+   :type target_value: int, optional
+   :param view_height_voxel: Height offset for observer in voxels. Defaults to 0.
+   :type view_height_voxel: int, optional
+   :param colormap: Matplotlib colormap name. Defaults to 'viridis'.
+   :type colormap: str, optional
+
+   :returns:
+
+             2D array of visibility values (0 or 1) with y-axis flipped
+                 NaN = invalid observer location
+                 0 = no landmarks visible
+                 1 = at least one landmark visible
+   :rtype: ndarray
+
+   :raises ValueError: If no landmark voxels are found with the specified target_value
+
+
+.. py:function:: get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf, meshsize, **kwargs)
+
+   Generate a visibility map for landmark buildings in a voxel city.
+
+   Places observers at valid locations and checks visibility to any part of the
+   specified landmark buildings. Can identify landmarks either by ID or by finding
+   buildings within a specified rectangle.
+
+   :param voxcity_grid: 3D array representing the voxel city
+   :type voxcity_grid: ndarray
+   :param building_id_grid: 3D array mapping voxels to building IDs
+   :type building_id_grid: ndarray
+   :param building_gdf: GeoDataFrame containing building features
+   :type building_gdf: GeoDataFrame
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param \*\*kwargs: Additional keyword arguments
+                      view_point_height (float): Height of observer viewpoint in meters
+                      colormap (str): Matplotlib colormap name
+                      landmark_building_ids (list): List of building IDs to mark as landmarks
+                      rectangle_vertices (list): List of (lat,lon) coordinates defining rectangle
+                      obj_export (bool): Whether to export visibility map as OBJ file
+                      dem_grid (ndarray): Digital elevation model grid for OBJ export
+                      output_directory (str): Directory for OBJ file output
+                      output_file_name (str): Base filename for OBJ output
+                      alpha (float): Alpha transparency value for OBJ export
+                      vmin (float): Minimum value for color mapping
+                      vmax (float): Maximum value for color mapping
+
+   :returns: 2D array of visibility values for landmark buildings
+   :rtype: ndarray
+
+
+.. py:function:: get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs)
+
+   Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
+
+   Sky View Factor measures the proportion of the sky hemisphere that is visible from a given point.
+   It ranges from 0 (completely obstructed) to 1 (completely open sky). This implementation:
+   - Uses hemisphere ray casting to sample sky visibility
+   - Accounts for tree transmittance using Beer-Lambert law
+   - Places observers at valid street-level locations
+   - Provides optional visualization and OBJ export
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param show_plot: Whether to display the SVF visualization plot.
+   :type show_plot: bool
+   :param \*\*kwargs: Additional parameters including:
+                      view_point_height (float): Observer height in meters (default: 1.5)
+                      colormap (str): Matplotlib colormap name (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      N_azimuth (int): Number of azimuth angles for ray sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for ray sampling (default: 10)
+                      elevation_min_degrees (float): Minimum elevation angle (default: 0)
+                      elevation_max_degrees (float): Maximum elevation angle (default: 90)
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                      obj_export (bool): Whether to export as OBJ file (default: False)
+
+   :returns:
+
+             2D array of SVF values at each valid observer location (x, y).
+                      NaN values indicate invalid observer positions.
+   :rtype: ndarray
+
+
+.. py:function:: rotate_vector_axis_angle(vec, axis, angle)
+
+   Rotate a 3D vector around an arbitrary axis using Rodrigues' rotation formula.
+
+   This function implements the Rodrigues rotation formula:
+   v_rot = v*cos(θ) + (k × v)*sin(θ) + k*(k·v)*(1-cos(θ))
+   where k is the unit rotation axis, θ is the rotation angle, and v is the input vector.
+
+   :param vec: 3D vector to rotate [x, y, z]
+   :type vec: ndarray
+   :param axis: 3D rotation axis vector [x, y, z] (will be normalized)
+   :type axis: ndarray
+   :param angle: Rotation angle in radians
+   :type angle: float
+
+   :returns: Rotated 3D vector [x, y, z]
+   :rtype: ndarray
+
+
+.. py:function:: compute_view_factor_for_all_faces(face_centers, face_normals, hemisphere_dirs, voxel_data, meshsize, tree_k, tree_lad, target_values, inclusion_mode, grid_bounds_real, boundary_epsilon, ignore_downward=True)
+
+   Compute a per-face "view factor" for a specified set of target voxel classes.
+
+   This function computes view factors from building surface faces to target voxel types
+   (e.g., sky, trees, other buildings). It uses hemisphere ray casting with rotation
+   to align rays with each face's normal direction.
+
+   Typical usage examples:
+   - Sky View Factor: target_values=(0,), inclusion_mode=False (sky voxels)
+   - Tree View Factor: target_values=(-2,), inclusion_mode=True (tree voxels)
+   - Building View Factor: target_values=(-3,), inclusion_mode=True (building voxels)
+
+   :param face_centers: (n_faces, 3) face centroid positions in real coordinates.
+   :type face_centers: np.ndarray
+   :param face_normals: (n_faces, 3) face normal vectors (outward pointing).
+   :type face_normals: np.ndarray
+   :param hemisphere_dirs: (N, 3) set of direction vectors in the upper hemisphere.
+   :type hemisphere_dirs: np.ndarray
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: np.ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient for Beer-Lambert law.
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1 for tree transmittance.
+   :type tree_lad: float
+   :param target_values: Voxel classes that define a 'hit' or target.
+   :type target_values: tuple[int]
+   :param inclusion_mode: If True, hitting target_values counts as visibility.
+                          If False, hitting anything NOT in target_values blocks the ray.
+   :type inclusion_mode: bool
+   :param grid_bounds_real: [[x_min,y_min,z_min],[x_max,y_max,z_max]] in real coords.
+   :type grid_bounds_real: np.ndarray
+   :param boundary_epsilon: Tolerance for identifying boundary vertical faces.
+   :type boundary_epsilon: float
+   :param ignore_downward: If True, only consider upward rays. If False, consider all outward rays.
+   :type ignore_downward: bool
+
+   :returns:
+
+             Computed view factor for each face.
+                 NaN values indicate boundary vertical faces that should be excluded.
+   :rtype: np.ndarray of shape (n_faces,)
+
+
+.. py:function:: get_surface_view_factor(voxel_data, meshsize, **kwargs)
+
+   Compute and optionally visualize view factors for surface meshes with respect to target voxel classes.
+
+   This function provides a flexible framework for computing various surface-based view factors:
+   - Sky View Factor: Fraction of sky hemisphere visible from building surfaces
+   - Tree View Factor: Fraction of directions that intersect vegetation
+   - Building View Factor: Fraction of directions that intersect other buildings
+   - Custom View Factors: User-defined target voxel classes
+
+   The function extracts surface meshes from the voxel data, then computes view factors
+   for each face using hemisphere ray casting with proper geometric transformations.
+
+   :param voxel_data: 3D array of voxel values representing the urban environment.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters for coordinate scaling.
+   :type meshsize: float
+   :param \*\*kwargs: Extensive configuration options including:
+                      # Target specification:
+                      target_values (tuple[int]): Voxel classes to measure visibility to (default: (0,) for sky)
+                      inclusion_mode (bool): Interpretation of target_values (default: False for sky)
+
+                      # Surface extraction:
+                      building_class_id (int): Voxel class to extract surfaces from (default: -3 for buildings)
+                      building_id_grid (ndarray): Optional grid mapping voxels to building IDs
+
+                      # Ray sampling:
+                      N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for hemisphere sampling (default: 10)
+
+                      # Tree transmittance (Beer-Lambert law):
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+
+                      # Visualization and export:
+                      colormap (str): Matplotlib colormap for visualization (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      obj_export (bool): Whether to export mesh as OBJ file (default: False)
+                      output_directory (str): Directory for OBJ export (default: "output")
+                      output_file_name (str): Base filename for OBJ export (default: "surface_view_factor")
+
+                      # Other options:
+                      progress_report (bool): Whether to print computation progress (default: False)
+                      debug (bool): Enable debug output (default: False)
+
+   :returns:
+
+             Surface mesh with per-face view factor values stored in metadata.
+                             The view factor values can be accessed via mesh.metadata[value_name].
+                             Returns None if no surfaces are found or extraction fails.
+   :rtype: trimesh.Trimesh
+
+   Example Usage:
+       # Sky View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(0,), inclusion_mode=False)
+
+       # Tree View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-2,), inclusion_mode=True)
+
+       # Custom view factor with OBJ export
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-3,), inclusion_mode=True,
+                                    obj_export=True, output_file_name="building_view_factor")
+
+

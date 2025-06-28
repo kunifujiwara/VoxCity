@@ -1,0 +1,260 @@
+voxcity.generator
+=================
+
+.. py:module:: voxcity.generator
+
+.. autoapi-nested-parse::
+
+   Main module for voxcity.
+
+   This module provides functions to generate 3D voxel representations of cities using various data sources.
+   It handles land cover, building heights, canopy heights, and digital elevation models to create detailed
+   3D city models.
+
+   The main functions are:
+   - get_land_cover_grid: Creates a grid of land cover classifications
+   - get_building_height_grid: Creates a grid of building heights
+   - get_canopy_height_grid: Creates a grid of tree canopy heights
+   - get_dem_grid: Creates a digital elevation model grid
+   - create_3d_voxel: Combines the grids into a 3D voxel representation
+   - create_3d_voxel_individuals: Creates separate voxel grids for each component
+   - get_voxcity: Main function to generate a complete voxel city model
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.generator.get_land_cover_grid
+   voxcity.generator.get_building_height_grid
+   voxcity.generator.get_canopy_height_grid
+   voxcity.generator.get_dem_grid
+   voxcity.generator.create_3d_voxel
+   voxcity.generator.create_3d_voxel_individuals
+   voxcity.generator.get_voxcity
+   voxcity.generator.get_voxcity_CityGML
+   voxcity.generator.replace_nan_in_nested
+   voxcity.generator.save_voxcity_data
+   voxcity.generator.load_voxcity_data
+
+
+Module Contents
+---------------
+
+.. py:function:: get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs)
+
+   Creates a grid of land cover classifications.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param meshsize: Size of each grid cell in meters
+   :param source: Data source for land cover (e.g. 'ESA WorldCover', 'OpenStreetMap')
+   :param output_dir: Directory to save output files
+   :param \*\*kwargs: Additional arguments including:
+                      - esri_landcover_year: Year for ESRI land cover data
+                      - dynamic_world_date: Date for Dynamic World data
+                      - gridvis: Whether to visualize the grid
+
+   :returns: Grid of land cover classifications as integer values
+   :rtype: numpy.ndarray
+
+
+.. py:function:: get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs)
+
+   Creates a grid of building heights.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param meshsize: Size of each grid cell in meters
+   :param source: Data source for buildings (e.g. 'OpenStreetMap', 'Microsoft Building Footprints')
+   :param output_dir: Directory to save output files
+   :param \*\*kwargs: Additional arguments including:
+                      - maptiler_API_key: API key for MapTiler
+                      - building_path: Path to local building data file
+                      - building_complementary_source: Additional building data source
+                      - gridvis: Whether to visualize the grid
+
+   :returns:     - numpy.ndarray: Grid of building heights
+                 - numpy.ndarray: Grid of building minimum heights
+                 - numpy.ndarray: Grid of building IDs
+                 - list: Filtered building features
+   :rtype: tuple
+
+
+.. py:function:: get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs)
+
+   Creates a grid of tree canopy heights.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param meshsize: Size of each grid cell in meters
+   :param source: Data source for canopy heights
+   :param output_dir: Directory to save output files
+   :param \*\*kwargs: Additional arguments including:
+                      - gridvis: Whether to visualize the grid
+
+   :returns: Grid of canopy heights
+   :rtype: numpy.ndarray
+
+
+.. py:function:: get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs)
+
+   Creates a digital elevation model grid.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param meshsize: Size of each grid cell in meters
+   :param source: Data source for DEM
+   :param output_dir: Directory to save output files
+   :param \*\*kwargs: Additional arguments including:
+                      - dem_interpolation: Interpolation method for DEM
+                      - gridvis: Whether to visualize the grid
+
+   :returns: Grid of elevation values
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, **kwargs)
+
+   Creates a 3D voxel representation combining all input grids.
+
+   :param building_height_grid_ori: Grid of building heights
+   :param building_min_height_grid_ori: Grid of building minimum heights
+   :param building_id_grid_ori: Grid of building IDs
+   :param land_cover_grid_ori: Grid of land cover classifications
+   :param dem_grid_ori: Grid of elevation values
+   :param tree_grid_ori: Grid of tree heights
+   :param voxel_size: Size of each voxel in meters
+   :param land_cover_source: Source of land cover data
+   :param \*\*kwargs: Additional arguments including:
+                      - trunk_height_ratio: Ratio of trunk height to total tree height
+
+   :returns: 3D voxel grid with encoded values for different features
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, layered_interval=None)
+
+   Creates separate 3D voxel grids for each component.
+
+   :param building_height_grid_ori: Grid of building heights
+   :param land_cover_grid_ori: Grid of land cover classifications
+   :param dem_grid_ori: Grid of elevation values
+   :param tree_grid_ori: Grid of tree heights
+   :param voxel_size: Size of each voxel in meters
+   :param land_cover_source: Source of land cover data
+   :param layered_interval: Interval for layered output
+
+   :returns:     - numpy.ndarray: Land cover voxel grid
+                 - numpy.ndarray: Building voxel grid
+                 - numpy.ndarray: Tree voxel grid
+                 - numpy.ndarray: DEM voxel grid
+                 - numpy.ndarray: Combined layered voxel grid
+   :rtype: tuple
+
+
+.. py:function:: get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, **kwargs)
+
+   Main function to generate a complete voxel city model.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param building_source: Source for building height data (e.g. 'OSM', 'EUBUCCO')
+   :param land_cover_source: Source for land cover data (e.g. 'ESA', 'ESRI')
+   :param canopy_height_source: Source for tree canopy height data
+   :param dem_source: Source for digital elevation model data ('Flat' or other source)
+   :param meshsize: Size of each grid cell in meters
+   :param \*\*kwargs: Additional keyword arguments including:
+                      - output_dir: Directory to save output files (default: 'output')
+                      - min_canopy_height: Minimum height threshold for tree canopy
+                      - remove_perimeter_object: Factor to remove objects near perimeter
+                      - mapvis: Whether to visualize grids on map
+                      - voxelvis: Whether to visualize 3D voxel model
+                      - voxelvis_img_save_path: Path to save 3D visualization
+
+   :returns:     - voxcity_grid: 3D voxel grid of the complete city model
+                 - building_height_grid: 2D grid of building heights
+                 - building_min_height_grid: 2D grid of minimum building heights
+                 - building_id_grid: 2D grid of building IDs
+                 - canopy_height_grid: 2D grid of tree canopy heights
+                 - land_cover_grid: 2D grid of land cover classifications
+                 - dem_grid: 2D grid of ground elevation
+                 - building_geojson: GeoJSON of building footprints and metadata
+   :rtype: tuple containing
+
+
+.. py:function:: get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs)
+
+   Main function to generate a complete voxel city model.
+
+   :param rectangle_vertices: List of coordinates defining the area of interest
+   :param building_source: Source for building height data (e.g. 'OSM', 'EUBUCCO')
+   :param land_cover_source: Source for land cover data (e.g. 'ESA', 'ESRI')
+   :param canopy_height_source: Source for tree canopy height data
+   :param dem_source: Source for digital elevation model data ('Flat' or other source)
+   :param meshsize: Size of each grid cell in meters
+   :param \*\*kwargs: Additional keyword arguments including:
+                      - output_dir: Directory to save output files (default: 'output')
+                      - min_canopy_height: Minimum height threshold for tree canopy
+                      - remove_perimeter_object: Factor to remove objects near perimeter
+                      - mapvis: Whether to visualize grids on map
+                      - voxelvis: Whether to visualize 3D voxel model
+                      - voxelvis_img_save_path: Path to save 3D visualization
+
+   :returns:     - voxcity_grid: 3D voxel grid of the complete city model
+                 - building_height_grid: 2D grid of building heights
+                 - building_min_height_grid: 2D grid of minimum building heights
+                 - building_id_grid: 2D grid of building IDs
+                 - canopy_height_grid: 2D grid of tree canopy heights
+                 - land_cover_grid: 2D grid of land cover classifications
+                 - dem_grid: 2D grid of ground elevation
+                 - building_geojson: GeoJSON of building footprints and metadata
+   :rtype: tuple containing
+
+
+.. py:function:: replace_nan_in_nested(arr, replace_value=10.0)
+
+   Replace NaN values in a nested array structure with a specified value.
+
+   :param arr: Numpy array containing nested lists and potentially NaN values
+   :param replace_value: Value to replace NaN with (default: 10.0)
+
+   :returns: Numpy array with NaN values replaced
+
+
+.. py:function:: save_voxcity_data(output_path, voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf, meshsize, rectangle_vertices)
+
+   Save voxcity data to a file for later loading.
+
+   :param output_path: Path to save the data file
+   :param voxcity_grid: 3D voxel grid of the complete city model
+   :param building_height_grid: 2D grid of building heights
+   :param building_min_height_grid: 2D grid of minimum building heights
+   :param building_id_grid: 2D grid of building IDs
+   :param canopy_height_grid: 2D grid of tree canopy heights
+   :param land_cover_grid: 2D grid of land cover classifications
+   :param dem_grid: 2D grid of ground elevation
+   :param building_gdf: GeoDataFrame of building footprints and metadata
+   :param meshsize: Size of each grid cell in meters
+   :param rectangle_vertices: List of coordinates defining the area of interest
+
+
+.. py:function:: load_voxcity_data(input_path)
+
+   Load voxcity data from a saved file.
+
+   :param input_path: Path to the saved data file
+
+   :returns:
+
+             All the voxcity data components including:
+                 - voxcity_grid: 3D voxel grid of the complete city model
+                 - building_height_grid: 2D grid of building heights
+                 - building_min_height_grid: 2D grid of minimum building heights
+                 - building_id_grid: 2D grid of building IDs
+                 - canopy_height_grid: 2D grid of tree canopy heights
+                 - land_cover_grid: 2D grid of land cover classifications
+                 - dem_grid: 2D grid of ground elevation
+                 - building_gdf: GeoDataFrame of building footprints and metadata
+                 - meshsize: Size of each grid cell in meters
+                 - rectangle_vertices: List of coordinates defining the area of interest
+   :rtype: tuple
+
+

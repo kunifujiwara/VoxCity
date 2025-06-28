@@ -1,0 +1,665 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html" /><link rel="search" title="Search" href="../../../../search.html" /><link rel="next" title="voxcity.generator" href="../../generator/index.html" /><link rel="prev" title="voxcity.exporter.magicavoxel" href="../magicavoxel/index.html" />
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.exporter.obj - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">voxcity</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current has-children"><a class="reference internal" href="../index.html">voxcity.exporter</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4 current current-page"><a class="current reference internal" href="#">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/voxcity/exporter/obj/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-voxcity.exporter.obj">
+<span id="voxcity-exporter-obj"></span><h1>voxcity.exporter.obj<a class="headerlink" href="#module-voxcity.exporter.obj" title="Link to this heading">¶</a></h1>
+<p>Module for exporting voxel data to OBJ format.</p>
+<p>This module provides functionality for converting voxel arrays and grid data to OBJ files,
+including color mapping, material generation, and mesh optimization.</p>
+<p>Key Features:
+- Exports voxel data to industry-standard OBJ format with MTL materials
+- Supports color mapping for visualization
+- Performs greedy meshing for optimized face generation
+- Handles proper face orientation and winding order
+- Supports both regular voxel grids and terrain/elevation data
+- Generates complete OBJ files with materials and textures</p>
+<p>Main Functions:
+- convert_colormap_indices: Converts arbitrary color indices to sequential ones
+- create_face_vertices: Creates properly oriented face vertices
+- mesh_faces: Performs greedy meshing on voxel layers
+- export_obj: Main function to export voxel data to OBJ
+- grid_to_obj: Converts 2D grid data to OBJ with elevation</p>
+<p>Dependencies:
+- numpy: For array operations
+- matplotlib: For colormap handling
+- trimesh: For mesh operations</p>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.exporter.obj.convert_colormap_indices" title="voxcity.exporter.obj.convert_colormap_indices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_colormap_indices</span></code></a>(original_map)</p></td>
+<td><p>Convert a color map with arbitrary indices to sequential indices starting from 0.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.exporter.obj.create_face_vertices" title="voxcity.exporter.obj.create_face_vertices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">create_face_vertices</span></code></a>(coords, positive_direction, axis)</p></td>
+<td><p>Helper function to create properly oriented face vertices for OBJ export.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.exporter.obj.mesh_faces" title="voxcity.exporter.obj.mesh_faces"><code class="xref py py-obj docutils literal notranslate"><span class="pre">mesh_faces</span></code></a>(mask, layer_index, axis, ...)</p></td>
+<td><p>Performs greedy meshing on a 2D mask layer and adds optimized faces to the mesh.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.exporter.obj.export_obj" title="voxcity.exporter.obj.export_obj"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_obj</span></code></a>(array, output_dir, file_name, voxel_size[, ...])</p></td>
+<td><p>Export a voxel array to OBJ format with materials and proper face orientations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.exporter.obj.grid_to_obj" title="voxcity.exporter.obj.grid_to_obj"><code class="xref py py-obj docutils literal notranslate"><span class="pre">grid_to_obj</span></code></a>(value_array_ori, dem_array_ori, ...[, ...])</p></td>
+<td><p>Converts a 2D array of values and a corresponding DEM array to an OBJ file</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.exporter.obj.convert_colormap_indices">
+<span class="sig-prename descclassname"><span class="pre">voxcity.exporter.obj.</span></span><span class="sig-name descname"><span class="pre">convert_colormap_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">original_map</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/exporter/obj.html#convert_colormap_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.exporter.obj.convert_colormap_indices" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a color map with arbitrary indices to sequential indices starting from 0.</p>
+<p>This function takes a color map with arbitrary integer keys and creates a new map
+with sequential indices starting from 0, maintaining the original color values.
+This is useful for ensuring consistent material indexing in OBJ files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>original_map</strong> (<em>dict</em>) – Dictionary with integer keys and RGB color value lists.
+Each value should be a list of 3 integers (0-255) representing RGB colors.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>New color map with sequential indices starting from 0.</dt><dd><p>The values maintain their original RGB color assignments.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">original</span> <span class="o">=</span> <span class="p">{</span><span class="mi">5</span><span class="p">:</span> <span class="p">[</span><span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="mi">10</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="mi">15</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">]}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">new_map</span> <span class="o">=</span> <span class="n">convert_colormap_indices</span><span class="p">(</span><span class="n">original</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">new_map</span><span class="p">)</span>
+<span class="go">{0: [255, 0, 0], 1: [0, 255, 0], 2: [0, 0, 255]}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.exporter.obj.create_face_vertices">
+<span class="sig-prename descclassname"><span class="pre">voxcity.exporter.obj.</span></span><span class="sig-name descname"><span class="pre">create_face_vertices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positive_direction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/exporter/obj.html#create_face_vertices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.exporter.obj.create_face_vertices" title="Link to this definition">¶</a></dt>
+<dd><p>Helper function to create properly oriented face vertices for OBJ export.</p>
+<p>This function handles the creation of face vertices with correct winding order
+based on the face direction and axis. It accounts for OpenGL coordinate system
+conventions and ensures proper face orientation for rendering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>coords</strong> (<em>list</em>) – List of 4 vertex coordinates defining the face corners.
+Each coordinate should be a tuple of (x, y, z) values.</p></li>
+<li><p><strong>positive_direction</strong> (<em>bool</em>) – Whether face points in positive axis direction.
+True = face normal points in positive direction along the axis
+False = face normal points in negative direction along the axis</p></li>
+<li><p><strong>axis</strong> (<em>str</em>) – Axis the face is perpendicular to (‘x’, ‘y’, or ‘z’).
+This determines how vertices are ordered for proper face orientation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Ordered vertex coordinates for the face, arranged to create proper</dt><dd><p>face orientation and winding order for rendering.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>Y-axis faces need special handling due to OpenGL coordinate system</p></li>
+<li><p>Winding order determines which side of the face is visible</p></li>
+<li><p>Consistent winding order is maintained for X and Z faces</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.exporter.obj.mesh_faces">
+<span class="sig-prename descclassname"><span class="pre">voxcity.exporter.obj.</span></span><span class="sig-name descname"><span class="pre">mesh_faces</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positive_direction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normal_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_size_m</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vertex_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vertex_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">faces_per_material</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_value_to_material</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/exporter/obj.html#mesh_faces"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.exporter.obj.mesh_faces" title="Link to this definition">¶</a></dt>
+<dd><p>Performs greedy meshing on a 2D mask layer and adds optimized faces to the mesh.</p>
+<p>This function implements a greedy meshing algorithm to combine adjacent voxels
+into larger faces, reducing the total number of faces in the final mesh while
+maintaining visual accuracy. It processes each layer of voxels and generates
+optimized faces with proper materials and orientations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mask</strong> (<em>ndarray</em>) – 2D boolean array indicating voxel presence.
+Non-zero values indicate voxel presence, zero indicates empty space.</p></li>
+<li><p><strong>layer_index</strong> (<em>int</em>) – Index of current layer being processed.
+Used to position faces in 3D space.</p></li>
+<li><p><strong>axis</strong> (<em>str</em>) – Axis perpendicular to faces being generated (‘x’, ‘y’, or ‘z’).
+Determines how coordinates are generated for the faces.</p></li>
+<li><p><strong>positive_direction</strong> (<em>bool</em>) – Whether faces point in positive axis direction.
+Affects face normal orientation.</p></li>
+<li><p><strong>normal_idx</strong> (<em>int</em>) – Index of normal vector to use for faces.
+References pre-defined normal vectors in the OBJ file.</p></li>
+<li><p><strong>voxel_size_m</strong> (<em>float</em>) – Size of each voxel in meters.
+Used to scale coordinates to real-world units.</p></li>
+<li><p><strong>vertex_dict</strong> (<em>dict</em>) – Dictionary mapping vertex coordinates to indices.
+Used to avoid duplicate vertices in the mesh.</p></li>
+<li><p><strong>vertex_list</strong> (<em>list</em>) – List of unique vertex coordinates.
+Stores all vertices used in the mesh.</p></li>
+<li><p><strong>faces_per_material</strong> (<em>dict</em>) – Dictionary collecting faces by material.
+Keys are material names, values are lists of face definitions.</p></li>
+<li><p><strong>voxel_value_to_material</strong> (<em>dict</em>) – Mapping from voxel values to material names.
+Used to assign materials to faces based on voxel values.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>Uses greedy meshing to combine adjacent same-value voxels</p></li>
+<li><p>Handles coordinate system conversion for proper orientation</p></li>
+<li><p>Maintains consistent face winding order for rendering</p></li>
+<li><p>Optimizes mesh by reusing vertices and combining faces</p></li>
+<li><p>Supports different coordinate systems for each axis</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.exporter.obj.export_obj">
+<span class="sig-prename descclassname"><span class="pre">voxcity.exporter.obj.</span></span><span class="sig-name descname"><span class="pre">export_obj</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">array</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">voxel_color_map</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/exporter/obj.html#export_obj"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.exporter.obj.export_obj" title="Link to this definition">¶</a></dt>
+<dd><p>Export a voxel array to OBJ format with materials and proper face orientations.</p>
+<p>This function converts a 3D voxel array into a complete OBJ file with materials,
+performing mesh optimization and ensuring proper face orientations. It generates
+both OBJ and MTL files with all necessary components for rendering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>array</strong> (<em>ndarray</em>) – 3D numpy array containing voxel values.
+Non-zero values indicate voxel presence and material type.</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em>) – Directory to save the OBJ and MTL files.
+Will be created if it doesn’t exist.</p></li>
+<li><p><strong>file_name</strong> (<em>str</em>) – Base name for the output files.
+Will be used for both .obj and .mtl files.</p></li>
+<li><p><strong>voxel_size</strong> (<em>float</em>) – Size of each voxel in meters.
+Used to scale the model to real-world units.</p></li>
+<li><p><strong>voxel_color_map</strong> (<em>dict</em><em>, </em><em>optional</em>) – Dictionary mapping voxel values to RGB colors.
+If None, uses default color map. Colors should be RGB lists (0-255).</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>Generates optimized mesh using greedy meshing</p></li>
+<li><p>Creates complete OBJ file with vertices, normals, and faces</p></li>
+<li><p>Generates MTL file with material definitions</p></li>
+<li><p>Handles proper face orientation and winding order</p></li>
+<li><p>Supports color mapping for visualization</p></li>
+<li><p>Uses consistent coordinate system throughout</p></li>
+</ul>
+<dl>
+<dt>File Format Details:</dt><dd><p>OBJ file contains:
+- Vertex coordinates (v)
+- Normal vectors (vn)
+- Material references (usemtl)
+- Face definitions (f)</p>
+<p>MTL file contains:
+- Material names and colors
+- Ambient, diffuse, and specular properties
+- Transparency settings
+- Illumination model definitions</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.exporter.obj.grid_to_obj">
+<span class="sig-prename descclassname"><span class="pre">voxcity.exporter.obj.</span></span><span class="sig-name descname"><span class="pre">grid_to_obj</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value_array_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dem_array_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">colormap_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'viridis'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_colors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">256</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vmin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/voxcity/exporter/obj.html#grid_to_obj"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#voxcity.exporter.obj.grid_to_obj" title="Link to this definition">¶</a></dt>
+<dd><p>Converts a 2D array of values and a corresponding DEM array to an OBJ file
+with specified colormap, transparency, and value range.</p>
+<p>This function creates a 3D visualization of 2D grid data by using elevation
+data and color mapping. It’s particularly useful for visualizing terrain data,
+analysis results, or any 2D data that should be displayed with elevation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>value_array_ori</strong> (<em>ndarray</em>) – 2D array of values to visualize.
+These values will be mapped to colors using the specified colormap.</p></li>
+<li><p><strong>dem_array_ori</strong> (<em>ndarray</em>) – 2D array of DEM values corresponding to value_array.
+Provides elevation data for the 3D visualization.</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em>) – Directory to save the OBJ and MTL files.
+Will be created if it doesn’t exist.</p></li>
+<li><p><strong>file_name</strong> (<em>str</em>) – Base name for the output files.
+Used for both .obj and .mtl files.</p></li>
+<li><p><strong>cell_size</strong> (<em>float</em>) – Size of each cell in the grid (e.g., in meters).
+Used to scale the model to real-world units.</p></li>
+<li><p><strong>offset</strong> (<em>float</em>) – Elevation offset added after quantization.
+Useful for adjusting the base height of the model.</p></li>
+<li><p><strong>colormap_name</strong> (<em>str</em><em>, </em><em>optional</em>) – Name of the Matplotlib colormap to use.
+Defaults to ‘viridis’. Must be a valid Matplotlib colormap name.</p></li>
+<li><p><strong>num_colors</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of discrete colors to use from the colormap.
+Defaults to 256. Higher values give smoother color transitions.</p></li>
+<li><p><strong>alpha</strong> (<em>float</em><em>, </em><em>optional</em>) – Transparency value between 0.0 (transparent) and 1.0 (opaque).
+Defaults to 1.0 (fully opaque).</p></li>
+<li><p><strong>vmin</strong> (<em>float</em><em>, </em><em>optional</em>) – Minimum value for colormap normalization.
+If None, uses data minimum. Used to control color mapping range.</p></li>
+<li><p><strong>vmax</strong> (<em>float</em><em>, </em><em>optional</em>) – Maximum value for colormap normalization.
+If None, uses data maximum. Used to control color mapping range.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>Automatically handles NaN values in input arrays</p></li>
+<li><p>Creates triangulated mesh for proper rendering</p></li>
+<li><p>Supports transparency and color mapping</p></li>
+<li><p>Generates complete OBJ and MTL files</p></li>
+<li><p>Maintains consistent coordinate system</p></li>
+<li><p>Optimizes mesh generation for large grids</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If vmin equals vmax or if colormap_name is invalid</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../../generator/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">voxcity.generator</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../magicavoxel/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">voxcity.exporter.magicavoxel</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">voxcity.exporter.obj</a><ul>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#voxcity.exporter.obj.convert_colormap_indices"><code class="docutils literal notranslate"><span class="pre">convert_colormap_indices()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.exporter.obj.create_face_vertices"><code class="docutils literal notranslate"><span class="pre">create_face_vertices()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.exporter.obj.mesh_faces"><code class="docutils literal notranslate"><span class="pre">mesh_faces()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.exporter.obj.export_obj"><code class="docutils literal notranslate"><span class="pre">export_obj()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.exporter.obj.grid_to_obj"><code class="docutils literal notranslate"><span class="pre">grid_to_obj()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

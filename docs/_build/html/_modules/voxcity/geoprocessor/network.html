@@ -1,0 +1,1055 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.geoprocessor.network - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.geoprocessor.network</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">contextily</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ctx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">LineString</span><span class="p">,</span> <span class="n">Polygon</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shapely.ops</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ops</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">networkx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">osmnx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ox</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shapely</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Point</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyproj</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyproj</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transformer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">joblib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Parallel</span><span class="p">,</span> <span class="n">delayed</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.grid</span><span class="w"> </span><span class="kn">import</span> <span class="n">grid_to_geodataframe</span>
+
+<div class="viewcode-block" id="vectorized_edge_values">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.vectorized_edge_values">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">vectorized_edge_values</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">polygons_gdf</span><span class="p">,</span> <span class="n">value_col</span><span class="o">=</span><span class="s1">&#39;value&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute average polygon values along each edge in a network graph using vectorized operations.</span>
+<span class="sd">    </span>
+<span class="sd">    This function performs efficient computation of average values from polygons that intersect</span>
+<span class="sd">    with network edges. It uses GeoDataFrames for vectorized spatial operations instead of</span>
+<span class="sd">    iterating over individual edges.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    G : networkx.MultiDiGraph</span>
+<span class="sd">        OSMnx graph with edges containing either geometry attributes or node coordinates.</span>
+<span class="sd">    polygons_gdf : geopandas.GeoDataFrame</span>
+<span class="sd">        GeoDataFrame containing polygons with values to be averaged along edges.</span>
+<span class="sd">    value_col : str, default=&#39;value&#39;</span>
+<span class="sd">        Name of the column in polygons_gdf containing the values to average.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Dictionary mapping edge tuples (u, v, k) to their computed average values.</span>
+<span class="sd">        Values are length-weighted averages of intersecting polygon values.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The process involves:</span>
+<span class="sd">    1. Converting edges to a GeoDataFrame with LineString geometries</span>
+<span class="sd">    2. Projecting geometries to a metric CRS (EPSG:3857) for accurate length calculations</span>
+<span class="sd">    3. Computing intersections between edges and polygons</span>
+<span class="sd">    4. Calculating length-weighted averages of polygon values for each edge</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Build edge GeoDataFrame in WGS84 (EPSG:4326)</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">edge_geom</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Create LineString from node coordinates if no geometry exists</span>
+            <span class="n">start_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">u</span><span class="p">]</span>
+            <span class="n">end_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">v</span><span class="p">]</span>
+            <span class="n">edge_geom</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([(</span><span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]),</span>
+                                    <span class="p">(</span><span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">])])</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s1">&#39;edge_id&#39;</span><span class="p">:</span> <span class="n">i</span><span class="p">,</span>  <span class="c1"># unique ID for grouping</span>
+            <span class="s1">&#39;u&#39;</span><span class="p">:</span> <span class="n">u</span><span class="p">,</span>
+            <span class="s1">&#39;v&#39;</span><span class="p">:</span> <span class="n">v</span><span class="p">,</span>
+            <span class="s1">&#39;k&#39;</span><span class="p">:</span> <span class="n">k</span><span class="p">,</span>
+            <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">edge_geom</span>
+        <span class="p">})</span>
+
+    <span class="n">edges_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">polygons_gdf</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="n">edges_gdf</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+        <span class="n">polygons_gdf</span> <span class="o">=</span> <span class="n">polygons_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">edges_gdf</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+
+    <span class="c1"># Project to Web Mercator for accurate length calculations</span>
+    <span class="n">edges_3857</span> <span class="o">=</span> <span class="n">edges_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+    <span class="n">polys_3857</span> <span class="o">=</span> <span class="n">polygons_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+
+    <span class="c1"># Compute intersections between edges and polygons</span>
+    <span class="n">intersected</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">overlay</span><span class="p">(</span><span class="n">edges_3857</span><span class="p">,</span> <span class="n">polys_3857</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">&#39;intersection&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Calculate length-weighted averages</span>
+    <span class="n">intersected</span><span class="p">[</span><span class="s1">&#39;seg_length&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">intersected</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">length</span>
+    <span class="n">intersected</span><span class="p">[</span><span class="s1">&#39;weighted_val&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">intersected</span><span class="p">[</span><span class="s1">&#39;seg_length&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">intersected</span><span class="p">[</span><span class="n">value_col</span><span class="p">]</span>
+
+    <span class="c1"># Group by edge and compute weighted averages</span>
+    <span class="n">grouped</span> <span class="o">=</span> <span class="n">intersected</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;edge_id&#39;</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">grouped</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;weighted_val&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;seg_length&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;seg_length&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Map results back to edge tuples</span>
+    <span class="n">edge_values</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">edge_id</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">rec</span> <span class="o">=</span> <span class="n">edges_gdf</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">edge_id</span><span class="p">]</span>
+        <span class="n">edge_values</span><span class="p">[(</span><span class="n">rec</span><span class="p">[</span><span class="s1">&#39;u&#39;</span><span class="p">],</span> <span class="n">rec</span><span class="p">[</span><span class="s1">&#39;v&#39;</span><span class="p">],</span> <span class="n">rec</span><span class="p">[</span><span class="s1">&#39;k&#39;</span><span class="p">])]</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="k">return</span> <span class="n">edge_values</span></div>
+
+
+<div class="viewcode-block" id="get_network_values">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.get_network_values">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_network_values</span><span class="p">(</span>
+    <span class="n">grid</span><span class="p">,</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">value_name</span><span class="o">=</span><span class="s1">&#39;value&#39;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract and visualize values from a grid along a street network.</span>
+
+<span class="sd">    This function downloads a street network from OpenStreetMap for a given area,</span>
+<span class="sd">    computes average grid values along network edges, and optionally visualizes</span>
+<span class="sd">    the results on an interactive map.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    grid : array-like or geopandas.GeoDataFrame</span>
+<span class="sd">        Either a grid array of values or a pre-built GeoDataFrame with polygons and values.</span>
+<span class="sd">    rectangle_vertices : list of tuples</span>
+<span class="sd">        List of (lon, lat) coordinates defining the bounding rectangle in EPSG:4326.</span>
+<span class="sd">    meshsize : float</span>
+<span class="sd">        Size of each grid cell (used only if grid is array-like).</span>
+<span class="sd">    value_name : str, default=&#39;value&#39;</span>
+<span class="sd">        Name to use for the edge attribute storing computed values.</span>
+<span class="sd">    **kwargs : dict</span>
+<span class="sd">        Additional visualization and processing parameters:</span>
+<span class="sd">        - network_type : str, default=&#39;walk&#39;</span>
+<span class="sd">            Type of street network to download (&#39;walk&#39;, &#39;drive&#39;, etc.)</span>
+<span class="sd">        - vis_graph : bool, default=True</span>
+<span class="sd">            Whether to display the visualization</span>
+<span class="sd">        - colormap : str, default=&#39;viridis&#39;</span>
+<span class="sd">            Matplotlib colormap for edge colors</span>
+<span class="sd">        - vmin, vmax : float, optional</span>
+<span class="sd">            Value range for color mapping</span>
+<span class="sd">        - edge_width : float, default=1</span>
+<span class="sd">            Width of edge lines in visualization</span>
+<span class="sd">        - fig_size : tuple, default=(15,15)</span>
+<span class="sd">            Figure size in inches</span>
+<span class="sd">        - zoom : int, default=16</span>
+<span class="sd">            Zoom level for basemap</span>
+<span class="sd">        - basemap_style : ctx.providers, default=CartoDB.Positron</span>
+<span class="sd">            Contextily basemap provider</span>
+<span class="sd">        - save_path : str, optional</span>
+<span class="sd">            Path to save the edge GeoDataFrame as a GeoPackage</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple</span>
+<span class="sd">        (networkx.MultiDiGraph, geopandas.GeoDataFrame)</span>
+<span class="sd">        The network graph with computed edge values and edge geometries as a GeoDataFrame.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">defaults</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;network_type&#39;</span><span class="p">:</span> <span class="s1">&#39;walk&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;vis_graph&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;colormap&#39;</span><span class="p">:</span> <span class="s1">&#39;viridis&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;vmin&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;vmax&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;edge_width&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;fig_size&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">15</span><span class="p">,</span><span class="mi">15</span><span class="p">),</span>
+        <span class="s1">&#39;zoom&#39;</span><span class="p">:</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="s1">&#39;basemap_style&#39;</span><span class="p">:</span> <span class="n">ctx</span><span class="o">.</span><span class="n">providers</span><span class="o">.</span><span class="n">CartoDB</span><span class="o">.</span><span class="n">Positron</span><span class="p">,</span>
+        <span class="s1">&#39;save_path&#39;</span><span class="p">:</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="n">settings</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">defaults</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">}</span>
+
+    <span class="c1"># Build polygons GDF if needed</span>
+    <span class="n">polygons_gdf</span> <span class="o">=</span> <span class="p">(</span><span class="n">grid</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">)</span> 
+                    <span class="k">else</span> <span class="n">grid_to_geodataframe</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">polygons_gdf</span><span class="o">.</span><span class="n">crs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">polygons_gdf</span><span class="o">.</span><span class="n">set_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># BBox</span>
+    <span class="n">north</span><span class="p">,</span> <span class="n">south</span> <span class="o">=</span> <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">east</span><span class="p">,</span>  <span class="n">west</span>  <span class="o">=</span> <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">bbox</span> <span class="o">=</span> <span class="p">(</span><span class="n">west</span><span class="p">,</span> <span class="n">south</span><span class="p">,</span> <span class="n">east</span><span class="p">,</span> <span class="n">north</span><span class="p">)</span>
+
+    <span class="c1"># Download OSMnx network</span>
+    <span class="n">G</span> <span class="o">=</span> <span class="n">ox</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">graph_from_bbox</span><span class="p">(</span>
+        <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span>
+        <span class="n">network_type</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;network_type&#39;</span><span class="p">],</span>
+        <span class="n">simplify</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Compute edge values with the vectorized function</span>
+    <span class="n">edge_values</span> <span class="o">=</span> <span class="n">vectorized_edge_values</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">polygons_gdf</span><span class="p">,</span> <span class="n">value_col</span><span class="o">=</span><span class="s2">&quot;value&quot;</span><span class="p">)</span>
+    <span class="n">nx</span><span class="o">.</span><span class="n">set_edge_attributes</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">edge_values</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">value_name</span><span class="p">)</span>
+
+    <span class="c1"># Build edge GDF</span>
+    <span class="n">edges_with_values</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">u</span><span class="p">]</span>
+            <span class="n">end_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">v</span><span class="p">]</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([(</span><span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]),</span>
+                               <span class="p">(</span><span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">])])</span>
+
+        <span class="n">val</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">value_name</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+        <span class="n">edges_with_values</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s1">&#39;u&#39;</span><span class="p">:</span> <span class="n">u</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span> <span class="n">v</span><span class="p">,</span> <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="n">k</span><span class="p">,</span>
+            <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">geom</span><span class="p">,</span>
+            <span class="n">value_name</span><span class="p">:</span> <span class="n">val</span>
+        <span class="p">})</span>
+
+    <span class="n">edge_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">edges_with_values</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Save</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;save_path&#39;</span><span class="p">]:</span>
+        <span class="n">edge_gdf</span><span class="o">.</span><span class="n">to_file</span><span class="p">(</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;save_path&#39;</span><span class="p">],</span> <span class="n">driver</span><span class="o">=</span><span class="s2">&quot;GPKG&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vis_graph&#39;</span><span class="p">]:</span>
+        <span class="n">edge_gdf_web</span> <span class="o">=</span> <span class="n">edge_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;fig_size&#39;</span><span class="p">])</span>
+        <span class="n">edge_gdf_web</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="n">column</span><span class="o">=</span><span class="n">value_name</span><span class="p">,</span>
+            <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span>
+            <span class="n">cmap</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;colormap&#39;</span><span class="p">],</span>
+            <span class="n">legend</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">vmin</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vmin&#39;</span><span class="p">],</span>
+            <span class="n">vmax</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vmax&#39;</span><span class="p">],</span>
+            <span class="n">linewidth</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;edge_width&#39;</span><span class="p">],</span>
+            <span class="n">legend_kwds</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;label&#39;</span><span class="p">:</span> <span class="n">value_name</span><span class="p">,</span> <span class="s1">&#39;shrink&#39;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">add_basemap</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;basemap_style&#39;</span><span class="p">],</span> <span class="n">zoom</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;zoom&#39;</span><span class="p">])</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_axis_off</span><span class="p">()</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">G</span><span class="p">,</span> <span class="n">edge_gdf</span></div>
+
+
+<span class="c1"># -------------------------------------------------------------------</span>
+<span class="c1"># 1) Functions for interpolation, parallelization, and slope</span>
+<span class="c1"># -------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="interpolate_points_along_line">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.interpolate_points_along_line">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">interpolate_points_along_line</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">interval</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Interpolate points along a single LineString at a given interval (in meters).</span>
+<span class="sd">    If the line is shorter than `interval`, only start/end points are returned.</span>
+
+<span class="sd">    This function handles coordinate system transformations to ensure accurate</span>
+<span class="sd">    distance measurements, working in Web Mercator (EPSG:3857) for distance</span>
+<span class="sd">    calculations while maintaining WGS84 (EPSG:4326) for input/output.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    line : shapely.geometry.LineString</span>
+<span class="sd">        Edge geometry in EPSG:4326 (lon/lat).</span>
+<span class="sd">    interval : float</span>
+<span class="sd">        Distance in meters between interpolated points.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list of shapely.geometry.Point</span>
+<span class="sd">        Points in EPSG:4326 along the line, spaced approximately `interval` meters apart.</span>
+<span class="sd">        For lines shorter than interval, only start and end points are returned.</span>
+<span class="sd">        For empty lines, an empty list is returned.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">is_empty</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="c1"># Transformers for metric distance calculations</span>
+    <span class="n">project</span> <span class="o">=</span> <span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">,</span> <span class="s2">&quot;EPSG:3857&quot;</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">transform</span>
+    <span class="n">project_rev</span> <span class="o">=</span> <span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="s2">&quot;EPSG:3857&quot;</span><span class="p">,</span> <span class="s2">&quot;EPSG:4326&quot;</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">transform</span>
+
+    <span class="c1"># Project line to Web Mercator</span>
+    <span class="n">line_merc</span> <span class="o">=</span> <span class="n">shapely</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">project</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+    <span class="n">length_m</span> <span class="o">=</span> <span class="n">line_merc</span><span class="o">.</span><span class="n">length</span>
+    <span class="k">if</span> <span class="n">length_m</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">Point</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span>
+
+    <span class="c1"># If line is shorter than interval, just start &amp; end</span>
+    <span class="k">if</span> <span class="n">length_m</span> <span class="o">&lt;</span> <span class="n">interval</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">Point</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">Point</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])]</span>
+
+    <span class="c1"># Otherwise, create distances</span>
+    <span class="n">num_points</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">length_m</span> <span class="o">//</span> <span class="n">interval</span><span class="p">)</span>
+    <span class="n">dists</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">interval</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_points</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="c1"># Ensure end</span>
+    <span class="k">if</span> <span class="n">dists</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">length_m</span><span class="p">:</span>
+        <span class="n">dists</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">length_m</span><span class="p">)</span>
+
+    <span class="c1"># Interpolate</span>
+    <span class="n">points_merc</span> <span class="o">=</span> <span class="p">[</span><span class="n">line_merc</span><span class="o">.</span><span class="n">interpolate</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dists</span><span class="p">]</span>
+    <span class="c1"># Reproject back</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">shapely</span><span class="o">.</span><span class="n">ops</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">project_rev</span><span class="p">,</span> <span class="n">pt</span><span class="p">)</span> <span class="k">for</span> <span class="n">pt</span> <span class="ow">in</span> <span class="n">points_merc</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="gather_interpolation_points">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.gather_interpolation_points">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">gather_interpolation_points</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">n_jobs</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Gather all interpolation points for each edge in the graph into a single GeoDataFrame.</span>
+<span class="sd">    Supports parallel processing for improved performance on large networks.</span>
+
+<span class="sd">    This function processes each edge in the graph, either using its geometry attribute</span>
+<span class="sd">    or creating a LineString from node coordinates, then interpolates points along it</span>
+<span class="sd">    at the specified interval.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    G : networkx.MultiDiGraph</span>
+<span class="sd">        OSMnx graph with &#39;geometry&#39; attributes or x,y coordinates in the nodes.</span>
+<span class="sd">    interval : float, default=10.0</span>
+<span class="sd">        Interpolation distance interval in meters.</span>
+<span class="sd">    n_jobs : int, default=1</span>
+<span class="sd">        Number of parallel jobs for processing edges. Set to 1 for sequential processing,</span>
+<span class="sd">        or -1 to use all available CPU cores.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    gpd.GeoDataFrame</span>
+<span class="sd">        GeoDataFrame in EPSG:4326 with columns:</span>
+<span class="sd">        - edge_id: Index of the edge in the graph</span>
+<span class="sd">        - index_in_edge: Position of the point along its edge</span>
+<span class="sd">        - geometry: Point geometry</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_edge</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># If no geometry, build from node coords</span>
+            <span class="n">start_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">u</span><span class="p">]</span>
+            <span class="n">end_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">v</span><span class="p">]</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([(</span><span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]),</span>
+                               <span class="p">(</span><span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">])])</span>
+
+        <span class="n">pts</span> <span class="o">=</span> <span class="n">interpolate_points_along_line</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">interval</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;edge_id&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">pts</span><span class="p">),</span>
+            <span class="s1">&#39;index_in_edge&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pts</span><span class="p">)),</span>
+            <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">pts</span>
+        <span class="p">})</span>
+        <span class="k">return</span> <span class="n">df</span>
+
+    <span class="c1"># Parallel interpolation</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">Parallel</span><span class="p">(</span><span class="n">n_jobs</span><span class="o">=</span><span class="n">n_jobs</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="s1">&#39;threading&#39;</span><span class="p">)(</span>
+        <span class="n">delayed</span><span class="p">(</span><span class="n">process_edge</span><span class="p">)(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">all_points_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">points_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">all_points_df</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">points_gdf</span></div>
+
+
+
+<div class="viewcode-block" id="fetch_elevations_for_points">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.fetch_elevations_for_points">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fetch_elevations_for_points</span><span class="p">(</span><span class="n">points_gdf_3857</span><span class="p">,</span> <span class="n">dem_gdf_3857</span><span class="p">,</span> <span class="n">elevation_col</span><span class="o">=</span><span class="s1">&#39;value&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform a spatial join to fetch DEM elevations for interpolated points.</span>
+<span class="sd">    </span>
+<span class="sd">    Uses nearest neighbor matching in projected coordinates (EPSG:3857) to ensure</span>
+<span class="sd">    accurate distance calculations when finding the closest DEM cell for each point.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    points_gdf_3857 : gpd.GeoDataFrame</span>
+<span class="sd">        Interpolation points in EPSG:3857 projection.</span>
+<span class="sd">    dem_gdf_3857 : gpd.GeoDataFrame</span>
+<span class="sd">        DEM polygons in EPSG:3857 projection, containing elevation values.</span>
+<span class="sd">    elevation_col : str, default=&#39;value&#39;</span>
+<span class="sd">        Name of the column containing elevation values in dem_gdf_3857.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    gpd.GeoDataFrame</span>
+<span class="sd">        Copy of points_gdf_3857 with additional columns:</span>
+<span class="sd">        - elevation: Elevation value from nearest DEM cell</span>
+<span class="sd">        - dist_to_poly: Distance to nearest DEM cell</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">joined</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">sjoin_nearest</span><span class="p">(</span>
+        <span class="n">points_gdf_3857</span><span class="p">,</span> 
+        <span class="n">dem_gdf_3857</span><span class="p">[[</span><span class="n">elevation_col</span><span class="p">,</span> <span class="s1">&#39;geometry&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+        <span class="n">how</span><span class="o">=</span><span class="s1">&#39;left&#39;</span><span class="p">,</span>
+        <span class="n">distance_col</span><span class="o">=</span><span class="s1">&#39;dist_to_poly&#39;</span>
+    <span class="p">)</span>
+    <span class="n">joined</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="n">elevation_col</span><span class="p">:</span> <span class="s1">&#39;elevation&#39;</span><span class="p">},</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">joined</span></div>
+
+
+
+<div class="viewcode-block" id="compute_slope_for_group">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.compute_slope_for_group">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_slope_for_group</span><span class="p">(</span><span class="n">df</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute average slope between consecutive points along a single edge.</span>
+<span class="sd">    </span>
+<span class="sd">    Slopes are calculated as absolute percentage grade (rise/run * 100) between</span>
+<span class="sd">    consecutive points, then averaged for the entire edge. Points must be in</span>
+<span class="sd">    EPSG:3857 projection for accurate horizontal distance calculations.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    df : pd.DataFrame</span>
+<span class="sd">        DataFrame containing points for a single edge with columns:</span>
+<span class="sd">        - geometry: Point geometries in EPSG:3857</span>
+<span class="sd">        - elevation: Elevation values in meters</span>
+<span class="sd">        - index_in_edge: Position along the edge for sorting</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        Average slope as a percentage, or np.nan if no valid slopes can be computed</span>
+<span class="sd">        (e.g., when points are coincident or no elevation change).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Sort by position along the edge</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;index_in_edge&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Coordinates</span>
+    <span class="n">xs</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+    <span class="n">ys</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">y</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+    <span class="n">elevs</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;elevation&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+
+    <span class="c1"># Differences</span>
+    <span class="n">dx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+    <span class="n">dy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">ys</span><span class="p">)</span>
+    <span class="n">horizontal_dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dx</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">dy</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">elev_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">elevs</span><span class="p">)</span>
+
+    <span class="c1"># Slope in %</span>
+    <span class="n">valid_mask</span> <span class="o">=</span> <span class="n">horizontal_dist</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="n">slopes</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">elev_diff</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">])</span> <span class="o">/</span> <span class="n">horizontal_dist</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">])</span> <span class="o">*</span> <span class="mi">100</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">slopes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="k">return</span> <span class="n">slopes</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="calculate_edge_slopes_from_join">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.calculate_edge_slopes_from_join">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_edge_slopes_from_join</span><span class="p">(</span><span class="n">joined_points_gdf</span><span class="p">,</span> <span class="n">n_edges</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate average slopes for all edges in the network from interpolated points.</span>
+<span class="sd">    </span>
+<span class="sd">    This function groups points by edge_id and computes the average slope for each edge</span>
+<span class="sd">    using the compute_slope_for_group function. It ensures all edges in the original</span>
+<span class="sd">    graph have a slope value, even if no valid slope could be computed.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    joined_points_gdf : gpd.GeoDataFrame</span>
+<span class="sd">        Points with elevations in EPSG:3857, must have columns:</span>
+<span class="sd">        - edge_id: Index of the edge in the graph</span>
+<span class="sd">        - index_in_edge: Position along the edge</span>
+<span class="sd">        - elevation: Elevation value</span>
+<span class="sd">        - geometry: Point geometry</span>
+<span class="sd">    n_edges : int</span>
+<span class="sd">        Total number of edges in the original graph.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Dictionary mapping edge_id to average slope (in %). Edges with no valid</span>
+<span class="sd">        slope calculation are assigned np.nan.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># We&#39;ll group by edge_id, ignoring the group columns in apply (pandas &gt;= 2.1).</span>
+    <span class="c1"># If your pandas version &lt; 2.1, just do a column subset after groupby.</span>
+    <span class="c1"># E.g. .groupby(&quot;edge_id&quot;, group_keys=False)[[&quot;geometry&quot;,&quot;elevation&quot;,&quot;index_in_edge&quot;]]...</span>
+    <span class="n">grouped</span> <span class="o">=</span> <span class="n">joined_points_gdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;edge_id&quot;</span><span class="p">,</span> <span class="n">group_keys</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">grouped</span><span class="p">[[</span><span class="s2">&quot;geometry&quot;</span><span class="p">,</span> <span class="s2">&quot;elevation&quot;</span><span class="p">,</span> <span class="s2">&quot;index_in_edge&quot;</span><span class="p">]]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">compute_slope_for_group</span><span class="p">)</span>
+
+    <span class="c1"># Convert series -&gt; dict</span>
+    <span class="n">slope_dict</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+
+    <span class="c1"># Fill any missing edge IDs with NaN</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_edges</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">slope_dict</span><span class="p">:</span>
+            <span class="n">slope_dict</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="k">return</span> <span class="n">slope_dict</span></div>
+
+
+<span class="c1"># -------------------------------------------------------------------</span>
+<span class="c1"># 2) Main function to analyze network slopes</span>
+<span class="c1"># -------------------------------------------------------------------</span>
+
+<div class="viewcode-block" id="analyze_network_slopes">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.analyze_network_slopes">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">analyze_network_slopes</span><span class="p">(</span>
+    <span class="n">dem_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">value_name</span><span class="o">=</span><span class="s1">&#39;slope&#39;</span><span class="p">,</span>
+    <span class="n">interval</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span>
+    <span class="n">n_jobs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Analyze and visualize street network slopes using Digital Elevation Model (DEM) data.</span>
+
+<span class="sd">    This function performs a comprehensive analysis of street network slopes by:</span>
+<span class="sd">    1. Converting DEM data to a GeoDataFrame of elevation polygons</span>
+<span class="sd">    2. Downloading the street network from OpenStreetMap</span>
+<span class="sd">    3. Interpolating points along network edges</span>
+<span class="sd">    4. Matching points to DEM elevations</span>
+<span class="sd">    5. Computing slopes between consecutive points</span>
+<span class="sd">    6. Aggregating slopes per edge</span>
+<span class="sd">    7. Optionally visualizing results on an interactive map</span>
+
+<span class="sd">    The analysis uses appropriate coordinate transformations between WGS84 (EPSG:4326)</span>
+<span class="sd">    for geographic operations and Web Mercator (EPSG:3857) for distance calculations.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    dem_grid : array-like</span>
+<span class="sd">        Digital Elevation Model grid data containing elevation values.</span>
+<span class="sd">    meshsize : float</span>
+<span class="sd">        Size of each DEM grid cell.</span>
+<span class="sd">    value_name : str, default=&#39;slope&#39;</span>
+<span class="sd">        Name to use for the slope attribute in output data.</span>
+<span class="sd">    interval : float, default=10.0</span>
+<span class="sd">        Distance in meters between interpolated points along edges.</span>
+<span class="sd">    n_jobs : int, default=1</span>
+<span class="sd">        Number of parallel jobs for edge processing.</span>
+<span class="sd">    **kwargs : dict</span>
+<span class="sd">        Additional configuration parameters:</span>
+<span class="sd">        - rectangle_vertices : list of (lon, lat), required</span>
+<span class="sd">            Coordinates defining the analysis area in EPSG:4326</span>
+<span class="sd">        - network_type : str, default=&#39;walk&#39;</span>
+<span class="sd">            Type of street network to download</span>
+<span class="sd">        - vis_graph : bool, default=True</span>
+<span class="sd">            Whether to create visualization</span>
+<span class="sd">        - colormap : str, default=&#39;viridis&#39;</span>
+<span class="sd">            Matplotlib colormap for slope visualization</span>
+<span class="sd">        - vmin, vmax : float, optional</span>
+<span class="sd">            Value range for slope coloring</span>
+<span class="sd">        - edge_width : float, default=1</span>
+<span class="sd">            Width of edge lines in plot</span>
+<span class="sd">        - fig_size : tuple, default=(15,15)</span>
+<span class="sd">            Figure size in inches</span>
+<span class="sd">        - zoom : int, default=16</span>
+<span class="sd">            Zoom level for basemap</span>
+<span class="sd">        - basemap_style : ctx.providers, default=CartoDB.Positron</span>
+<span class="sd">            Contextily basemap provider</span>
+<span class="sd">        - output_directory : str, optional</span>
+<span class="sd">            Directory to save results</span>
+<span class="sd">        - output_file_name : str, default=&#39;network_slopes&#39;</span>
+<span class="sd">            Base name for output files</span>
+<span class="sd">        - alpha : float, default=1.0</span>
+<span class="sd">            Transparency of edge lines in visualization</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple</span>
+<span class="sd">        (networkx.MultiDiGraph, geopandas.GeoDataFrame)</span>
+<span class="sd">        - Graph with slope values as edge attributes</span>
+<span class="sd">        - GeoDataFrame of edges with geometries and slope values</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    - Slopes are calculated as absolute percentage grades (rise/run * 100)</span>
+<span class="sd">    - Edge slopes are length-weighted averages of point-to-point slopes</span>
+<span class="sd">    - The visualization includes a basemap and legend showing slope percentages</span>
+<span class="sd">    - If output_directory is specified, results are saved as a GeoPackage</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">defaults</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;network_type&#39;</span><span class="p">:</span> <span class="s1">&#39;walk&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;vis_graph&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="s1">&#39;colormap&#39;</span><span class="p">:</span> <span class="s1">&#39;viridis&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;vmin&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;vmax&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;edge_width&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;fig_size&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">15</span><span class="p">,</span> <span class="mi">15</span><span class="p">),</span>
+        <span class="s1">&#39;zoom&#39;</span><span class="p">:</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="s1">&#39;basemap_style&#39;</span><span class="p">:</span> <span class="n">ctx</span><span class="o">.</span><span class="n">providers</span><span class="o">.</span><span class="n">CartoDB</span><span class="o">.</span><span class="n">Positron</span><span class="p">,</span>
+        <span class="s1">&#39;output_directory&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s1">&#39;output_file_name&#39;</span><span class="p">:</span> <span class="s1">&#39;network_slopes&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;alpha&#39;</span><span class="p">:</span> <span class="mf">1.0</span>
+    <span class="p">}</span>
+    <span class="n">settings</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">defaults</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">}</span>
+
+    <span class="c1"># Validate bounding box</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Must supply &#39;rectangle_vertices&#39; in kwargs.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 1) Build DEM GeoDataFrame in EPSG:4326</span>
+    <span class="n">dem_gdf</span> <span class="o">=</span> <span class="n">grid_to_geodataframe</span><span class="p">(</span><span class="n">dem_grid</span><span class="p">,</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">],</span> <span class="n">meshsize</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dem_gdf</span><span class="o">.</span><span class="n">crs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">dem_gdf</span><span class="o">.</span><span class="n">set_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">4326</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># 2) Download bounding box from rectangle_vertices</span>
+    <span class="n">north</span><span class="p">,</span> <span class="n">south</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">east</span><span class="p">,</span> <span class="n">west</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">][</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">bbox</span> <span class="o">=</span> <span class="p">(</span><span class="n">west</span><span class="p">,</span> <span class="n">south</span><span class="p">,</span> <span class="n">east</span><span class="p">,</span> <span class="n">north</span><span class="p">)</span>
+
+    <span class="n">G</span> <span class="o">=</span> <span class="n">ox</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">graph_from_bbox</span><span class="p">(</span>
+        <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span>
+        <span class="n">network_type</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;network_type&#39;</span><span class="p">],</span>
+        <span class="n">simplify</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="c1"># 3) Interpolate points along edges (EPSG:4326)</span>
+    <span class="n">points_gdf_4326</span> <span class="o">=</span> <span class="n">gather_interpolation_points</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="n">interval</span><span class="p">,</span> <span class="n">n_jobs</span><span class="o">=</span><span class="n">n_jobs</span><span class="p">)</span>
+    
+    <span class="c1"># 4) Reproject DEM + Points to EPSG:3857 for correct distance operations</span>
+    <span class="n">dem_gdf_3857</span> <span class="o">=</span> <span class="n">dem_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+    <span class="n">points_gdf_3857</span> <span class="o">=</span> <span class="n">points_gdf_4326</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+
+    <span class="c1"># 5) Perform spatial join to get elevations</span>
+    <span class="n">joined_points_3857</span> <span class="o">=</span> <span class="n">fetch_elevations_for_points</span><span class="p">(</span><span class="n">points_gdf_3857</span><span class="p">,</span> <span class="n">dem_gdf_3857</span><span class="p">,</span> <span class="n">elevation_col</span><span class="o">=</span><span class="s1">&#39;value&#39;</span><span class="p">)</span>
+
+    <span class="c1"># 6) Compute slopes for each edge</span>
+    <span class="n">n_edges</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">keys</span><span class="o">=</span><span class="kc">True</span><span class="p">)))</span>
+    <span class="n">slope_dict</span> <span class="o">=</span> <span class="n">calculate_edge_slopes_from_join</span><span class="p">(</span><span class="n">joined_points_3857</span><span class="p">,</span> <span class="n">n_edges</span><span class="p">)</span>
+
+    <span class="c1"># 7) Assign slopes back to G</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="n">edge_slopes</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">edges</span><span class="p">):</span>
+        <span class="n">edge_slopes</span><span class="p">[(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">slope_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+    <span class="n">nx</span><span class="o">.</span><span class="n">set_edge_attributes</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">edge_slopes</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">value_name</span><span class="p">)</span>
+
+    <span class="c1"># 8) Build an edge GeoDataFrame in EPSG:4326</span>
+    <span class="n">edges_with_values</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">data</span><span class="p">),</span> <span class="n">edge_id</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">edges</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">edges</span><span class="p">))):</span>
+        <span class="k">if</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">u</span><span class="p">]</span>
+            <span class="n">end_node</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">v</span><span class="p">]</span>
+            <span class="n">geom</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([(</span><span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">start_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]),</span>
+                               <span class="p">(</span><span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">],</span> <span class="n">end_node</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">])])</span>
+
+        <span class="n">edges_with_values</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s1">&#39;u&#39;</span><span class="p">:</span> <span class="n">u</span><span class="p">,</span>
+            <span class="s1">&#39;v&#39;</span><span class="p">:</span> <span class="n">v</span><span class="p">,</span>
+            <span class="s1">&#39;key&#39;</span><span class="p">:</span> <span class="n">k</span><span class="p">,</span>
+            <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="n">geom</span><span class="p">,</span>
+            <span class="n">value_name</span><span class="p">:</span> <span class="n">slope_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">edge_id</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+        <span class="p">})</span>
+
+    <span class="n">edge_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">edges_with_values</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 9) Save output if requested</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;output_directory&#39;</span><span class="p">]:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;output_directory&#39;</span><span class="p">],</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;output_directory&#39;</span><span class="p">],</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;output_file_name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">.gpkg&quot;</span>
+        <span class="p">)</span>
+        <span class="n">edge_gdf</span><span class="o">.</span><span class="n">to_file</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">driver</span><span class="o">=</span><span class="s2">&quot;GPKG&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 10) Visualization</span>
+    <span class="k">if</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vis_graph&#39;</span><span class="p">]:</span>
+        <span class="c1"># Create a Polygon from the rectangle vertices</span>
+        <span class="n">rectangle_polygon</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rectangle_vertices&#39;</span><span class="p">])</span>
+
+        <span class="c1"># Convert the rectangle polygon to the same CRS as edge_gdf_web</span>
+        <span class="n">rectangle_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">crs</span><span class="o">=</span><span class="s1">&#39;epsg:4326&#39;</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="p">[</span><span class="n">rectangle_polygon</span><span class="p">])</span>
+        <span class="n">rectangle_gdf_web</span> <span class="o">=</span> <span class="n">rectangle_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+
+        <span class="c1"># Get the bounding box of the rectangle</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="n">rectangle_gdf_web</span><span class="o">.</span><span class="n">total_bounds</span>
+
+        <span class="c1"># Plot the edges</span>
+        <span class="n">edge_gdf_web</span> <span class="o">=</span> <span class="n">edge_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;fig_size&#39;</span><span class="p">])</span>
+        <span class="n">edge_gdf_web</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="n">column</span><span class="o">=</span><span class="n">value_name</span><span class="p">,</span> 
+            <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> 
+            <span class="n">cmap</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;colormap&#39;</span><span class="p">],</span> 
+            <span class="n">legend</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+            <span class="n">vmin</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vmin&#39;</span><span class="p">],</span> 
+            <span class="n">vmax</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;vmax&#39;</span><span class="p">],</span>
+            <span class="n">linewidth</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;edge_width&#39;</span><span class="p">],</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">],</span>
+            <span class="n">legend_kwds</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;label&#39;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value_name</span><span class="si">}</span><span class="s2"> (%)&quot;</span><span class="p">}</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Add basemap with the same extent as the rectangle</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">add_basemap</span><span class="p">(</span>
+            <span class="n">ax</span><span class="p">,</span>
+            <span class="n">source</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;basemap_style&#39;</span><span class="p">],</span>
+            <span class="n">zoom</span><span class="o">=</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;zoom&#39;</span><span class="p">],</span>
+            <span class="n">bounds</span><span class="o">=</span><span class="p">(</span><span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span><span class="p">)</span>  <span class="c1"># Explicitly set the bounds of the basemap</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Set the plot limits to the bounding box of the rectangle</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlim</span><span class="p">(</span><span class="n">minx</span><span class="p">,</span> <span class="n">maxx</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">(</span><span class="n">miny</span><span class="p">,</span> <span class="n">maxy</span><span class="p">)</span>
+
+        <span class="c1"># Turn off the axis</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_axis_off</span><span class="p">()</span>
+
+        <span class="c1"># Add title</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Network </span><span class="si">{</span><span class="n">value_name</span><span class="si">}</span><span class="s1"> Analysis&#39;</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+        <span class="c1"># Show the plot</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">G</span><span class="p">,</span> <span class="n">edge_gdf</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

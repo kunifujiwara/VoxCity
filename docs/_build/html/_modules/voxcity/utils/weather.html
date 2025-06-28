@@ -1,0 +1,1174 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.utils.weather - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.utils.weather</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Weather data utilities for VoxelCity.</span>
+
+<span class="sd">This module provides functionality to download and process Energyplus Weather (EPW) files</span>
+<span class="sd">from Climate.OneBuilding.Org based on geographical coordinates. It includes utilities for:</span>
+
+<span class="sd">- Automatically finding the nearest weather station to given coordinates</span>
+<span class="sd">- Downloading EPW files from various global regions</span>
+<span class="sd">- Processing EPW files into pandas DataFrames for analysis</span>
+<span class="sd">- Extracting solar radiation data for solar simulations</span>
+
+<span class="sd">The main function get_nearest_epw_from_climate_onebuilding() provides a comprehensive</span>
+<span class="sd">solution for obtaining weather data for any global location by automatically detecting</span>
+<span class="sd">the appropriate region and finding the closest available weather station.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">xml.etree.ElementTree</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ET</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">radians</span><span class="p">,</span> <span class="n">sin</span><span class="p">,</span> <span class="n">cos</span><span class="p">,</span> <span class="n">sqrt</span><span class="p">,</span> <span class="n">atan2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">zipfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+
+<span class="c1"># =============================================================================</span>
+<span class="c1"># FILE HANDLING UTILITIES</span>
+<span class="c1"># =============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">safe_rename</span><span class="p">(</span><span class="n">src</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">dst</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Safely rename a file, handling existing files by adding a number suffix.</span>
+<span class="sd">    </span>
+<span class="sd">    This function prevents file conflicts by automatically generating unique filenames</span>
+<span class="sd">    when the target destination already exists. It appends incremental numbers to</span>
+<span class="sd">    the base filename until a unique name is found.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        src: Source file path</span>
+<span class="sd">        dst: Destination file path</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Path: Final destination path used</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># If destination doesn&#39;t exist, simple rename</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">dst</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">src</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dst</span>
+        
+    <span class="c1"># If file exists, add number suffix</span>
+    <span class="n">base</span> <span class="o">=</span> <span class="n">dst</span><span class="o">.</span><span class="n">stem</span>
+    <span class="n">ext</span> <span class="o">=</span> <span class="n">dst</span><span class="o">.</span><span class="n">suffix</span>
+    <span class="n">counter</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="c1"># Keep incrementing counter until we find a name that doesn&#39;t exist</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">new_dst</span> <span class="o">=</span> <span class="n">dst</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">counter</span><span class="si">}{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">new_dst</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">src</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">new_dst</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">new_dst</span>
+        <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">safe_extract</span><span class="p">(</span><span class="n">zip_ref</span><span class="p">:</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">extract_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Safely extract a file from zip, handling existing files.</span>
+<span class="sd">    </span>
+<span class="sd">    This function handles the case where a file with the same name already exists</span>
+<span class="sd">    in the extraction directory by using a temporary filename with random suffix.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        zip_ref: Open ZipFile reference</span>
+<span class="sd">        filename: Name of file to extract</span>
+<span class="sd">        extract_dir: Directory to extract to</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Path: Path to extracted file</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">zip_ref</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">extract_dir</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">extract_dir</span> <span class="o">/</span> <span class="n">filename</span>
+    <span class="k">except</span> <span class="ne">FileExistsError</span><span class="p">:</span>
+        <span class="c1"># If file exists, extract to temporary name and return path</span>
+        <span class="n">temp_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;temp_</span><span class="si">{</span><span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">zip_ref</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">extract_dir</span><span class="p">,</span> <span class="n">temp_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">extract_dir</span> <span class="o">/</span> <span class="n">temp_name</span>
+
+<span class="c1"># =============================================================================</span>
+<span class="c1"># EPW FILE PROCESSING</span>
+<span class="c1"># =============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">process_epw</span><span class="p">(</span><span class="n">epw_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Process an EPW file into a pandas DataFrame.</span>
+<span class="sd">    </span>
+<span class="sd">    EPW (EnergyPlus Weather) files contain standardized weather data in a specific format.</span>
+<span class="sd">    The first 8 lines contain metadata, followed by 8760 lines of hourly weather data</span>
+<span class="sd">    for a typical meteorological year.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        epw_path: Path to the EPW file</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple containing:</span>
+<span class="sd">        - DataFrame with hourly weather data indexed by datetime</span>
+<span class="sd">        - Dictionary with EPW header metadata including location information</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># EPW column names (these are standardized across all EPW files)</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;Year&#39;</span><span class="p">,</span> <span class="s1">&#39;Month&#39;</span><span class="p">,</span> <span class="s1">&#39;Day&#39;</span><span class="p">,</span> <span class="s1">&#39;Hour&#39;</span><span class="p">,</span> <span class="s1">&#39;Minute&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Data Source and Uncertainty Flags&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Dry Bulb Temperature&#39;</span><span class="p">,</span> <span class="s1">&#39;Dew Point Temperature&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Relative Humidity&#39;</span><span class="p">,</span> <span class="s1">&#39;Atmospheric Station Pressure&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Extraterrestrial Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Extraterrestrial Direct Normal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Horizontal Infrared Radiation Intensity&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Global Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Direct Normal Radiation&#39;</span><span class="p">,</span> <span class="s1">&#39;Diffuse Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Global Horizontal Illuminance&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Direct Normal Illuminance&#39;</span><span class="p">,</span> <span class="s1">&#39;Diffuse Horizontal Illuminance&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Zenith Luminance&#39;</span><span class="p">,</span> <span class="s1">&#39;Wind Direction&#39;</span><span class="p">,</span> <span class="s1">&#39;Wind Speed&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Total Sky Cover&#39;</span><span class="p">,</span> <span class="s1">&#39;Opaque Sky Cover&#39;</span><span class="p">,</span> <span class="s1">&#39;Visibility&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Ceiling Height&#39;</span><span class="p">,</span> <span class="s1">&#39;Present Weather Observation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Present Weather Codes&#39;</span><span class="p">,</span> <span class="s1">&#39;Precipitable Water&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Aerosol Optical Depth&#39;</span><span class="p">,</span> <span class="s1">&#39;Snow Depth&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Days Since Last Snowfall&#39;</span><span class="p">,</span> <span class="s1">&#39;Albedo&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Liquid Precipitation Depth&#39;</span><span class="p">,</span> <span class="s1">&#39;Liquid Precipitation Quantity&#39;</span>
+    <span class="p">]</span>
+    
+    <span class="c1"># Read EPW file - EPW files are always in comma-separated format</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">epw_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+    
+    <span class="c1"># Extract header metadata (first 8 lines contain standardized metadata)</span>
+    <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;LOCATION&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;DESIGN_CONDITIONS&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;TYPICAL_EXTREME_PERIODS&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;GROUND_TEMPERATURES&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;HOLIDAYS_DAYLIGHT_SAVINGS&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;COMMENTS_1&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;COMMENTS_2&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+        <span class="s1">&#39;DATA_PERIODS&#39;</span><span class="p">:</span> <span class="n">lines</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="p">}</span>
+    
+    <span class="c1"># Parse location data from first header line</span>
+    <span class="c1"># Format: LOCATION,City,State,Country,Source,WMO,Latitude,Longitude,TimeZone,Elevation</span>
+    <span class="n">location</span> <span class="o">=</span> <span class="n">headers</span><span class="p">[</span><span class="s1">&#39;LOCATION&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">location</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">10</span><span class="p">:</span>
+        <span class="n">headers</span><span class="p">[</span><span class="s1">&#39;LOCATION&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;City&#39;</span><span class="p">:</span> <span class="n">location</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="s1">&#39;State&#39;</span><span class="p">:</span> <span class="n">location</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="s1">&#39;Country&#39;</span><span class="p">:</span> <span class="n">location</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="s1">&#39;Data Source&#39;</span><span class="p">:</span> <span class="n">location</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="s1">&#39;WMO&#39;</span><span class="p">:</span> <span class="n">location</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(),</span>
+            <span class="s1">&#39;Latitude&#39;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">6</span><span class="p">]),</span>
+            <span class="s1">&#39;Longitude&#39;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">7</span><span class="p">]),</span>
+            <span class="s1">&#39;Time Zone&#39;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">8</span><span class="p">]),</span>
+            <span class="s1">&#39;Elevation&#39;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">location</span><span class="p">[</span><span class="mi">9</span><span class="p">])</span>
+        <span class="p">}</span>
+    
+    <span class="c1"># Create DataFrame from weather data (skipping 8 header lines)</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[</span><span class="mi">8</span><span class="p">:]]</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">columns</span><span class="p">)</span>
+    
+    <span class="c1"># Convert numeric columns to appropriate data types</span>
+    <span class="c1"># All weather parameters should be numeric except uncertainty flags and weather codes</span>
+    <span class="n">numeric_columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;Year&#39;</span><span class="p">,</span> <span class="s1">&#39;Month&#39;</span><span class="p">,</span> <span class="s1">&#39;Day&#39;</span><span class="p">,</span> <span class="s1">&#39;Hour&#39;</span><span class="p">,</span> <span class="s1">&#39;Minute&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Dry Bulb Temperature&#39;</span><span class="p">,</span> <span class="s1">&#39;Dew Point Temperature&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Relative Humidity&#39;</span><span class="p">,</span> <span class="s1">&#39;Atmospheric Station Pressure&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Extraterrestrial Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Extraterrestrial Direct Normal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Horizontal Infrared Radiation Intensity&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Global Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Direct Normal Radiation&#39;</span><span class="p">,</span> <span class="s1">&#39;Diffuse Horizontal Radiation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Global Horizontal Illuminance&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Direct Normal Illuminance&#39;</span><span class="p">,</span> <span class="s1">&#39;Diffuse Horizontal Illuminance&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Zenith Luminance&#39;</span><span class="p">,</span> <span class="s1">&#39;Wind Direction&#39;</span><span class="p">,</span> <span class="s1">&#39;Wind Speed&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Total Sky Cover&#39;</span><span class="p">,</span> <span class="s1">&#39;Opaque Sky Cover&#39;</span><span class="p">,</span> <span class="s1">&#39;Visibility&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Ceiling Height&#39;</span><span class="p">,</span> <span class="s1">&#39;Precipitable Water&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Aerosol Optical Depth&#39;</span><span class="p">,</span> <span class="s1">&#39;Snow Depth&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Days Since Last Snowfall&#39;</span><span class="p">,</span> <span class="s1">&#39;Albedo&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;Liquid Precipitation Depth&#39;</span><span class="p">,</span> <span class="s1">&#39;Liquid Precipitation Quantity&#39;</span>
+    <span class="p">]</span>
+    
+    <span class="c1"># Convert to numeric, handling any parsing errors gracefully</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">numeric_columns</span><span class="p">:</span>
+        <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;coerce&#39;</span><span class="p">)</span>
+    
+    <span class="c1"># Create datetime index for time series analysis</span>
+    <span class="c1"># EPW hours are 1-24, but pandas expects 0-23 for proper datetime handling</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;datetime&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">({</span>
+        <span class="s1">&#39;year&#39;</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;Year&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;month&#39;</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;Month&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;day&#39;</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;Day&#39;</span><span class="p">],</span>
+        <span class="s1">&#39;hour&#39;</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;Hour&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>  <span class="c1"># EPW hours are 1-24, pandas expects 0-23</span>
+        <span class="s1">&#39;minute&#39;</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;Minute&#39;</span><span class="p">]</span>
+    <span class="p">})</span>
+    <span class="n">df</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;datetime&#39;</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">df</span><span class="p">,</span> <span class="n">headers</span>
+
+<span class="c1"># =============================================================================</span>
+<span class="c1"># MAIN WEATHER DATA DOWNLOAD FUNCTION</span>
+<span class="c1"># =============================================================================</span>
+
+<div class="viewcode-block" id="get_nearest_epw_from_climate_onebuilding">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.simulator.get_nearest_epw_from_climate_onebuilding">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_nearest_epw_from_climate_onebuilding</span><span class="p">(</span><span class="n">longitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">latitude</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;./&quot;</span><span class="p">,</span> <span class="n">max_distance</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+                <span class="n">extract_zip</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">load_data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">region</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Download and process EPW weather file from Climate.OneBuilding.Org based on coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    This function automatically finds and downloads the nearest available weather station</span>
+<span class="sd">    data from Climate.OneBuilding.Org&#39;s global database. It supports region-based searching</span>
+<span class="sd">    for improved performance and can automatically detect the appropriate region based on</span>
+<span class="sd">    coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    The function performs the following steps:</span>
+<span class="sd">    1. Determines which regional KML files to scan based on coordinates or user input</span>
+<span class="sd">    2. Downloads and parses KML files to extract weather station metadata</span>
+<span class="sd">    3. Calculates distances to find the nearest station</span>
+<span class="sd">    4. Downloads the EPW file from the nearest station</span>
+<span class="sd">    5. Optionally processes the EPW data into a pandas DataFrame</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        longitude (float): Longitude of the location (-180 to 180)</span>
+<span class="sd">        latitude (float): Latitude of the location (-90 to 90)</span>
+<span class="sd">        output_dir (str): Directory to save the EPW file (defaults to current directory)</span>
+<span class="sd">        max_distance (float, optional): Maximum distance in kilometers to search for stations.</span>
+<span class="sd">                                       If no stations within this distance, uses closest available.</span>
+<span class="sd">        extract_zip (bool): Whether to extract the ZIP file (default True)</span>
+<span class="sd">        load_data (bool): Whether to load the EPW data into a DataFrame (default True)</span>
+<span class="sd">        region (str or List[str], optional): Specific region(s) to scan for stations.</span>
+<span class="sd">                                            Options: &quot;Africa&quot;, &quot;Asia&quot;, &quot;Japan&quot;, &quot;India&quot;, &quot;Argentina&quot;,</span>
+<span class="sd">                                            &quot;Canada&quot;, &quot;USA&quot;, &quot;Caribbean&quot;, &quot;Southwest_Pacific&quot;, </span>
+<span class="sd">                                            &quot;Europe&quot;, &quot;Antarctica&quot;, or &quot;all&quot;.</span>
+<span class="sd">                                            If None, will auto-detect region based on coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple containing:</span>
+<span class="sd">        - Path to the EPW file (or None if download fails)</span>
+<span class="sd">        - DataFrame with hourly weather data (if load_data=True, else None)</span>
+<span class="sd">        - Dictionary with EPW header metadata (if load_data=True, else None)</span>
+<span class="sd">    </span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If invalid region specified or no weather stations found</span>
+<span class="sd">        requests.exceptions.RequestException: If network requests fail</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Regional KML sources from Climate.OneBuilding.Org</span>
+    <span class="c1"># Each region maintains its own KML file with weather station locations and metadata</span>
+    <span class="n">KML_SOURCES</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;Africa&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/WMO_Region_1_Africa/Region1_Africa_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Asia&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/WMO_Region_2_Asia/Region2_Asia_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Japan&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/JGMY_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;India&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/ITMY_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Argentina&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/ArgTMY_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Canada&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region4_Canada_TMYx_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;USA&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region4_USA_TMYx_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Caribbean&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region4_NA_CA_Caribbean_TMYx_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Southwest_Pacific&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region5_Southwest_Pacific_TMYx_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Europe&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region6_Europe_TMYx_EPW_Processing_locations.kml&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Antarctica&quot;</span><span class="p">:</span> <span class="s2">&quot;https://climate.onebuilding.org/sources/Region7_Antarctica_TMYx_EPW_Processing_locations.kml&quot;</span>
+    <span class="p">}</span>
+    
+    <span class="c1"># Define approximate geographical boundaries for automatic region detection</span>
+    <span class="c1"># These bounds help determine which regional KML files to scan based on coordinates</span>
+    <span class="n">REGION_BOUNDS</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;Africa&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">20</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">55</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">35</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">40</span><span class="p">},</span>
+        <span class="s2">&quot;Asia&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="mi">25</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">55</span><span class="p">},</span>
+        <span class="s2">&quot;Japan&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="mi">127</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">146</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">24</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">46</span><span class="p">},</span>
+        <span class="s2">&quot;India&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="mi">68</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">97</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">36</span><span class="p">},</span>
+        <span class="s2">&quot;Argentina&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">75</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">53</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">55</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">22</span><span class="p">},</span>
+        <span class="s2">&quot;Canada&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">141</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">52</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">42</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">83</span><span class="p">},</span>
+        <span class="s2">&quot;USA&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">170</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">65</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">72</span><span class="p">},</span>
+        <span class="s2">&quot;Caribbean&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">90</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">59</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">27</span><span class="p">},</span>
+        <span class="s2">&quot;Southwest_Pacific&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="mi">110</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">180</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">50</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
+        <span class="s2">&quot;Europe&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">25</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">40</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="mi">35</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="mi">72</span><span class="p">},</span>
+        <span class="s2">&quot;Antarctica&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;lon_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">180</span><span class="p">,</span> <span class="s2">&quot;lon_max&quot;</span><span class="p">:</span> <span class="mi">180</span><span class="p">,</span> <span class="s2">&quot;lat_min&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">90</span><span class="p">,</span> <span class="s2">&quot;lat_max&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">60</span><span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">detect_regions</span><span class="p">(</span><span class="n">lon</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">lat</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Detect which region(s) the coordinates belong to.</span>
+<span class="sd">        </span>
+<span class="sd">        Uses the REGION_BOUNDS to determine appropriate regions to search.</span>
+<span class="sd">        If coordinates don&#39;t fall within any region, returns the 3 closest regions.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            lon: Longitude coordinate</span>
+<span class="sd">            lat: Latitude coordinate</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            List of region names to search</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">matching_regions</span> <span class="o">=</span> <span class="p">[]</span>
+        
+        <span class="c1"># Handle special case of longitude wrap around 180/-180</span>
+        <span class="c1"># Normalize longitude to standard -180 to 180 range</span>
+        <span class="n">lon_adjusted</span> <span class="o">=</span> <span class="n">lon</span>
+        <span class="k">if</span> <span class="n">lon</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">180</span><span class="p">:</span>
+            <span class="n">lon_adjusted</span> <span class="o">=</span> <span class="n">lon</span> <span class="o">+</span> <span class="mi">360</span>
+        <span class="k">elif</span> <span class="n">lon</span> <span class="o">&gt;</span> <span class="mi">180</span><span class="p">:</span>
+            <span class="n">lon_adjusted</span> <span class="o">=</span> <span class="n">lon</span> <span class="o">-</span> <span class="mi">360</span>
+            
+        <span class="c1"># Check if coordinates fall within any region bounds</span>
+        <span class="k">for</span> <span class="n">region_name</span><span class="p">,</span> <span class="n">bounds</span> <span class="ow">in</span> <span class="n">REGION_BOUNDS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Check if point is within region bounds</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_min&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">lon_adjusted</span> <span class="o">&lt;=</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_max&quot;</span><span class="p">]</span> <span class="ow">and</span> 
+                <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_min&quot;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">lat</span> <span class="o">&lt;=</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_max&quot;</span><span class="p">]):</span>
+                <span class="n">matching_regions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">region_name</span><span class="p">)</span>
+        
+        <span class="c1"># If no regions matched, find the closest regions by boundary distance</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">matching_regions</span><span class="p">:</span>
+            <span class="c1"># Calculate &quot;distance&quot; to each region&#39;s boundary (simplified metric)</span>
+            <span class="n">region_distances</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">region_name</span><span class="p">,</span> <span class="n">bounds</span> <span class="ow">in</span> <span class="n">REGION_BOUNDS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="c1"># Calculate distance to closest edge of region bounds</span>
+                <span class="n">lon_dist</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="n">lon_adjusted</span> <span class="o">&lt;</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_min&quot;</span><span class="p">]:</span>
+                    <span class="n">lon_dist</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_min&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">lon_adjusted</span>
+                <span class="k">elif</span> <span class="n">lon_adjusted</span> <span class="o">&gt;</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_max&quot;</span><span class="p">]:</span>
+                    <span class="n">lon_dist</span> <span class="o">=</span> <span class="n">lon_adjusted</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lon_max&quot;</span><span class="p">]</span>
+                
+                <span class="n">lat_dist</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="n">lat</span> <span class="o">&lt;</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_min&quot;</span><span class="p">]:</span>
+                    <span class="n">lat_dist</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_min&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">lat</span>
+                <span class="k">elif</span> <span class="n">lat</span> <span class="o">&gt;</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_max&quot;</span><span class="p">]:</span>
+                    <span class="n">lat_dist</span> <span class="o">=</span> <span class="n">lat</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="s2">&quot;lat_max&quot;</span><span class="p">]</span>
+                
+                <span class="c1"># Simple Euclidean distance metric (not actual geographic distance)</span>
+                <span class="n">distance</span> <span class="o">=</span> <span class="p">(</span><span class="n">lon_dist</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">lat_dist</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span>
+                <span class="n">region_distances</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">region_name</span><span class="p">,</span> <span class="n">distance</span><span class="p">))</span>
+            
+            <span class="c1"># Get 3 closest regions to ensure we find stations</span>
+            <span class="n">closest_regions</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">region_distances</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])[:</span><span class="mi">3</span><span class="p">]</span>
+            <span class="n">matching_regions</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">closest_regions</span><span class="p">]</span>
+        
+        <span class="k">return</span> <span class="n">matching_regions</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">try_decode</span><span class="p">(</span><span class="n">content</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Try different encodings to decode content.</span>
+<span class="sd">        </span>
+<span class="sd">        KML files from different regions may use various text encodings.</span>
+<span class="sd">        This function tries common encodings to successfully decode the content.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            content: Raw bytes content</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Decoded string content</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Try common encodings in order of preference</span>
+        <span class="n">encodings</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;utf-8&#39;</span><span class="p">,</span> <span class="s1">&#39;latin1&#39;</span><span class="p">,</span> <span class="s1">&#39;iso-8859-1&#39;</span><span class="p">,</span> <span class="s1">&#39;cp1252&#39;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">encoding</span> <span class="ow">in</span> <span class="n">encodings</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">content</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">encoding</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">UnicodeDecodeError</span><span class="p">:</span>
+                <span class="k">continue</span>
+        
+        <span class="c1"># If all else fails, try to decode with replacement characters</span>
+        <span class="k">return</span> <span class="n">content</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;replace&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean_xml</span><span class="p">(</span><span class="n">content</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clean XML content of invalid characters.</span>
+<span class="sd">        </span>
+<span class="sd">        Some KML files contain characters that cause XML parsing issues.</span>
+<span class="sd">        This function replaces or removes problematic characters to ensure</span>
+<span class="sd">        successful XML parsing.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            content: Raw XML content string</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Cleaned XML content string</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Replace problematic Spanish characters that cause XML parsing issues</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&amp;ntilde;&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&amp;Ntilde;&#39;</span><span class="p">,</span> <span class="s1">&#39;N&#39;</span><span class="p">)</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;ñ&#39;</span><span class="p">,</span> <span class="s1">&#39;n&#39;</span><span class="p">)</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">content</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;Ñ&#39;</span><span class="p">,</span> <span class="s1">&#39;N&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Remove other invalid XML characters using regex</span>
+        <span class="c1"># Keep only valid XML characters: tab, newline, carriage return, printable ASCII, and extended Latin</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;[^\x09\x0A\x0D\x20-\x7E\x85\xA0-\xFF]&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">content</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">haversine_distance</span><span class="p">(</span><span class="n">lon1</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">lat1</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">lon2</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">lat2</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the great circle distance between two points on Earth.</span>
+<span class="sd">        </span>
+<span class="sd">        Uses the Haversine formula to calculate the shortest distance between</span>
+<span class="sd">        two points on a sphere (Earth) given their latitude and longitude.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            lon1, lat1: Coordinates of first point</span>
+<span class="sd">            lon2, lat2: Coordinates of second point</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Distance in kilometers</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">R</span> <span class="o">=</span> <span class="mi">6371</span>  <span class="c1"># Earth&#39;s radius in kilometers</span>
+        
+        <span class="c1"># Convert coordinates to radians</span>
+        <span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">radians</span><span class="p">,</span> <span class="p">[</span><span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span><span class="p">])</span>
+        <span class="n">dlat</span> <span class="o">=</span> <span class="n">lat2</span> <span class="o">-</span> <span class="n">lat1</span>
+        <span class="n">dlon</span> <span class="o">=</span> <span class="n">lon2</span> <span class="o">-</span> <span class="n">lon1</span>
+        
+        <span class="c1"># Haversine formula calculation</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlat</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat1</span><span class="p">)</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat2</span><span class="p">)</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlon</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">atan2</span><span class="p">(</span><span class="n">sqrt</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">a</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">R</span> <span class="o">*</span> <span class="n">c</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_coordinates</span><span class="p">(</span><span class="n">point_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse coordinates from KML Point text.</span>
+<span class="sd">        </span>
+<span class="sd">        KML Point elements contain coordinates in the format &quot;longitude,latitude,elevation&quot;.</span>
+<span class="sd">        This function extracts and converts these values to float.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            point_text: Raw coordinate text from KML Point element</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Tuple of (latitude, longitude, elevation) or None if parsing fails</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="n">point_text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">coords</span><span class="p">[:</span><span class="mi">2</span><span class="p">])</span>
+                <span class="n">elevation</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="k">return</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">elevation</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">IndexError</span><span class="p">):</span>
+            <span class="k">pass</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">parse_station_from_description</span><span class="p">(</span><span class="n">desc</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">point_coords</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parse station metadata from KML description.</span>
+<span class="sd">        </span>
+<span class="sd">        KML description fields contain detailed station information including:</span>
+<span class="sd">        - Download URL for EPW file</span>
+<span class="sd">        - Coordinates in degrees/minutes format</span>
+<span class="sd">        - Station metadata (WMO code, climate zone, etc.)</span>
+<span class="sd">        - Design conditions and climate statistics</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            desc: KML description text containing station metadata</span>
+<span class="sd">            point_coords: Fallback coordinates from KML Point element</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary with parsed station metadata or None if parsing fails</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">desc</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+            
+        <span class="c1"># Extract download URL - this is required for station to be valid</span>
+        <span class="n">url_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;URL (https://.*?\.zip)&#39;</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">url_match</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+            
+        <span class="n">url</span> <span class="o">=</span> <span class="n">url_match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        
+        <span class="c1"># First try to parse coordinates in degrees/minutes format from description</span>
+        <span class="c1"># Format: N XX°YY.YY&#39; W ZZ°AA.AA&#39;</span>
+        <span class="n">coord_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;([NS]) (\d+)&amp;deg;\s*(\d+\.\d+)</span><span class="se">\&#39;</span><span class="s1">.*?([EW]) (\d+)&amp;deg;\s*(\d+\.\d+)</span><span class="se">\&#39;</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">coord_match</span><span class="p">:</span>
+            <span class="c1"># Convert degrees/minutes to decimal degrees</span>
+            <span class="n">ns</span><span class="p">,</span> <span class="n">lat_deg</span><span class="p">,</span> <span class="n">lat_min</span><span class="p">,</span> <span class="n">ew</span><span class="p">,</span> <span class="n">lon_deg</span><span class="p">,</span> <span class="n">lon_min</span> <span class="o">=</span> <span class="n">coord_match</span><span class="o">.</span><span class="n">groups</span><span class="p">()</span>
+            <span class="n">lat</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lat_deg</span><span class="p">)</span> <span class="o">+</span> <span class="nb">float</span><span class="p">(</span><span class="n">lat_min</span><span class="p">)</span><span class="o">/</span><span class="mi">60</span>
+            <span class="k">if</span> <span class="n">ns</span> <span class="o">==</span> <span class="s1">&#39;S&#39;</span><span class="p">:</span>
+                <span class="n">lat</span> <span class="o">=</span> <span class="o">-</span><span class="n">lat</span>
+            <span class="n">lon</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lon_deg</span><span class="p">)</span> <span class="o">+</span> <span class="nb">float</span><span class="p">(</span><span class="n">lon_min</span><span class="p">)</span><span class="o">/</span><span class="mi">60</span>
+            <span class="k">if</span> <span class="n">ew</span> <span class="o">==</span> <span class="s1">&#39;W&#39;</span><span class="p">:</span>
+                <span class="n">lon</span> <span class="o">=</span> <span class="o">-</span><span class="n">lon</span>
+        <span class="k">elif</span> <span class="n">point_coords</span><span class="p">:</span>
+            <span class="c1"># Fall back to coordinates from KML Point element</span>
+            <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">point_coords</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No coordinates available - station is not usable</span>
+            <span class="k">return</span> <span class="kc">None</span>
+            
+        <span class="c1"># Extract metadata with error handling using helper function</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">extract_value</span><span class="p">(</span><span class="n">pattern</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Extract value using regex pattern, return default if not found.&quot;&quot;&quot;</span>
+            <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">desc</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">match</span> <span class="k">else</span> <span class="n">default</span>
+
+        <span class="c1"># Build comprehensive station metadata dictionary</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;url&#39;</span><span class="p">:</span> <span class="n">url</span><span class="p">,</span>
+            <span class="s1">&#39;longitude&#39;</span><span class="p">:</span> <span class="n">lon</span><span class="p">,</span>
+            <span class="s1">&#39;latitude&#39;</span><span class="p">:</span> <span class="n">lat</span><span class="p">,</span>
+            <span class="s1">&#39;elevation&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;Elevation &lt;b&gt;(-?\d+)&lt;/b&gt;&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)),</span>
+            <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;&lt;b&gt;(.*?)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;wmo&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;WMO &lt;b&gt;(\d+)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;climate_zone&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;Climate Zone &lt;b&gt;(.*?)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;period&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;Period of Record=(\d</span><span class="si">{4}</span><span class="s1">-\d</span><span class="si">{4}</span><span class="s1">)&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;heating_db&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;99% Heating DB &lt;b&gt;(.*?)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;cooling_db&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;1% Cooling DB &lt;b&gt;(.*?)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;hdd18&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;HDD18 &lt;b&gt;(\d+)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;cdd10&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;CDD10 &lt;b&gt;(\d+)&lt;/b&gt;&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;time_zone&#39;</span><span class="p">:</span> <span class="n">extract_value</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;Time Zone {GMT &lt;b&gt;([-+]?\d+\.\d+)&lt;/b&gt;&#39;</span><span class="p">)</span>
+        <span class="p">}</span>
+        
+        <span class="k">return</span> <span class="n">metadata</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_stations_from_kml</span><span class="p">(</span><span class="n">kml_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get weather stations from a KML file.</span>
+<span class="sd">        </span>
+<span class="sd">        Downloads and parses a KML file containing weather station information.</span>
+<span class="sd">        Each Placemark in the KML represents a weather station with metadata</span>
+<span class="sd">        in the description field and coordinates in Point elements.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            kml_url: URL to the KML file</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            List of dictionaries containing station metadata</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Download KML file with timeout</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">kml_url</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+            <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+            
+            <span class="c1"># Try to decode content with multiple encodings</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">try_decode</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">clean_xml</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+            
+            <span class="c1"># Parse XML content</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">root</span> <span class="o">=</span> <span class="n">ET</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">content</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">))</span>
+            <span class="k">except</span> <span class="n">ET</span><span class="o">.</span><span class="n">ParseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error parsing KML file </span><span class="si">{</span><span class="n">kml_url</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="p">[]</span>
+
+            <span class="c1"># Define KML namespace for element searching</span>
+            <span class="n">ns</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;kml&#39;</span><span class="p">:</span> <span class="s1">&#39;http://earth.google.com/kml/2.1&#39;</span><span class="p">}</span>
+            
+            <span class="n">stations</span> <span class="o">=</span> <span class="p">[]</span>
+            
+            <span class="c1"># Find all Placemark elements (each represents a weather station)</span>
+            <span class="k">for</span> <span class="n">placemark</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="s1">&#39;.//kml:Placemark&#39;</span><span class="p">,</span> <span class="n">ns</span><span class="p">):</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">placemark</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;kml:name&#39;</span><span class="p">,</span> <span class="n">ns</span><span class="p">)</span>
+                <span class="n">desc</span> <span class="o">=</span> <span class="n">placemark</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;kml:description&#39;</span><span class="p">,</span> <span class="n">ns</span><span class="p">)</span>
+                <span class="n">point</span> <span class="o">=</span> <span class="n">placemark</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;.//kml:Point/kml:coordinates&#39;</span><span class="p">,</span> <span class="n">ns</span><span class="p">)</span>
+                
+                <span class="c1"># Skip placemarks without description or that don&#39;t contain weather data</span>
+                <span class="k">if</span> <span class="n">desc</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">desc</span><span class="o">.</span><span class="n">text</span> <span class="ow">or</span> <span class="s2">&quot;Data Source&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">desc</span><span class="o">.</span><span class="n">text</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="c1"># Get coordinates from Point element if available</span>
+                <span class="n">point_coords</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="n">point</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">point</span><span class="o">.</span><span class="n">text</span><span class="p">:</span>
+                    <span class="n">point_coords</span> <span class="o">=</span> <span class="n">parse_coordinates</span><span class="p">(</span><span class="n">point</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+                
+                <span class="c1"># Parse comprehensive station data from description</span>
+                <span class="n">station_data</span> <span class="o">=</span> <span class="n">parse_station_from_description</span><span class="p">(</span><span class="n">desc</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="n">point_coords</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">station_data</span><span class="p">:</span>
+                    <span class="c1"># Add station name and source information</span>
+                    <span class="n">station_data</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span><span class="o">.</span><span class="n">text</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;Unknown&quot;</span>
+                    <span class="n">station_data</span><span class="p">[</span><span class="s1">&#39;kml_source&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kml_url</span>
+                    <span class="n">stations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">station_data</span><span class="p">)</span>
+            
+            <span class="k">return</span> <span class="n">stations</span>
+            
+        <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error accessing KML file </span><span class="si">{</span><span class="n">kml_url</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error processing KML file </span><span class="si">{</span><span class="n">kml_url</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+    
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Create output directory if it doesn&#39;t exist</span>
+        <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        
+        <span class="c1"># Determine which regions to scan based on user input or auto-detection</span>
+        <span class="n">regions_to_scan</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">region</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Auto-detect regions based on coordinates</span>
+            <span class="n">detected_regions</span> <span class="o">=</span> <span class="n">detect_regions</span><span class="p">(</span><span class="n">longitude</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
+            
+            <span class="k">if</span> <span class="n">detected_regions</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Auto-detected regions: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">detected_regions</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">detected_regions</span><span class="p">:</span>
+                    <span class="n">regions_to_scan</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="n">KML_SOURCES</span><span class="p">[</span><span class="n">r</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Fallback to all regions if detection fails</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Could not determine region from coordinates. Scanning all regions.&quot;</span><span class="p">)</span>
+                <span class="n">regions_to_scan</span> <span class="o">=</span> <span class="n">KML_SOURCES</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">region</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="c1"># Handle string input for region selection</span>
+            <span class="k">if</span> <span class="n">region</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;all&quot;</span><span class="p">:</span>
+                <span class="n">regions_to_scan</span> <span class="o">=</span> <span class="n">KML_SOURCES</span>
+            <span class="k">elif</span> <span class="n">region</span> <span class="ow">in</span> <span class="n">KML_SOURCES</span><span class="p">:</span>
+                <span class="n">regions_to_scan</span><span class="p">[</span><span class="n">region</span><span class="p">]</span> <span class="o">=</span> <span class="n">KML_SOURCES</span><span class="p">[</span><span class="n">region</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">valid_regions</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">KML_SOURCES</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid region: &#39;</span><span class="si">{</span><span class="n">region</span><span class="si">}</span><span class="s2">&#39;. Valid regions are: </span><span class="si">{</span><span class="n">valid_regions</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Handle list input for multiple regions</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">region</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">r</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">KML_SOURCES</span><span class="p">:</span>
+                    <span class="n">valid_regions</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">KML_SOURCES</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid region: &#39;</span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">&#39;. Valid regions are: </span><span class="si">{</span><span class="n">valid_regions</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">regions_to_scan</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="o">=</span> <span class="n">KML_SOURCES</span><span class="p">[</span><span class="n">r</span><span class="p">]</span>
+        
+        <span class="c1"># Get stations from selected KML sources</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Fetching weather station data from Climate.OneBuilding.Org...&quot;</span><span class="p">)</span>
+        <span class="n">all_stations</span> <span class="o">=</span> <span class="p">[]</span>
+        
+        <span class="c1"># Process each selected region</span>
+        <span class="k">for</span> <span class="n">region_name</span><span class="p">,</span> <span class="n">url</span> <span class="ow">in</span> <span class="n">regions_to_scan</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Scanning </span><span class="si">{</span><span class="n">region_name</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+            <span class="n">stations</span> <span class="o">=</span> <span class="n">get_stations_from_kml</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+            <span class="n">all_stations</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">stations</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">stations</span><span class="p">)</span><span class="si">}</span><span class="s2"> stations in </span><span class="si">{</span><span class="n">region_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Total stations found: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">all_stations</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">all_stations</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No weather stations found&quot;</span><span class="p">)</span>
+            
+        <span class="c1"># Calculate distances from target coordinates to all stations</span>
+        <span class="n">stations_with_distances</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">station</span><span class="p">,</span> <span class="n">haversine_distance</span><span class="p">(</span><span class="n">longitude</span><span class="p">,</span> <span class="n">latitude</span><span class="p">,</span> <span class="n">station</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">],</span> <span class="n">station</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">]))</span>
+            <span class="k">for</span> <span class="n">station</span> <span class="ow">in</span> <span class="n">all_stations</span>
+        <span class="p">]</span>
+        
+        <span class="c1"># Filter by maximum distance if specified</span>
+        <span class="k">if</span> <span class="n">max_distance</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">close_stations</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="p">(</span><span class="n">station</span><span class="p">,</span> <span class="n">distance</span><span class="p">)</span> 
+                <span class="k">for</span> <span class="n">station</span><span class="p">,</span> <span class="n">distance</span> <span class="ow">in</span> <span class="n">stations_with_distances</span> 
+                <span class="k">if</span> <span class="n">distance</span> <span class="o">&lt;=</span> <span class="n">max_distance</span>
+            <span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">close_stations</span><span class="p">:</span>
+                <span class="c1"># If no stations within max_distance, find the closest one anyway</span>
+                <span class="n">closest_station</span><span class="p">,</span> <span class="n">min_distance</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stations_with_distances</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">No stations found within </span><span class="si">{</span><span class="n">max_distance</span><span class="si">}</span><span class="s2"> km. Closest station is </span><span class="si">{</span><span class="n">min_distance</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> km away.&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Using closest available station.&quot;</span><span class="p">)</span>
+                <span class="n">stations_with_distances</span> <span class="o">=</span> <span class="p">[(</span><span class="n">closest_station</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">)]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">stations_with_distances</span> <span class="o">=</span> <span class="n">close_stations</span>
+        
+        <span class="c1"># Find the nearest weather station</span>
+        <span class="n">nearest_station</span><span class="p">,</span> <span class="n">distance</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">stations_with_distances</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        
+        <span class="c1"># Download the EPW file from the nearest station</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Downloading EPW file for </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="n">epw_response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;url&#39;</span><span class="p">])</span>
+        <span class="n">epw_response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+        
+        <span class="c1"># Create a temporary directory for zip extraction</span>
+        <span class="n">temp_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;temp&quot;</span>
+        <span class="n">temp_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        
+        <span class="c1"># Save the downloaded zip file temporarily</span>
+        <span class="n">zip_file</span> <span class="o">=</span> <span class="n">temp_dir</span> <span class="o">/</span> <span class="s2">&quot;weather_data.zip&quot;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">zip_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">epw_response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        
+        <span class="n">final_epw</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Extract the EPW file from the zip archive</span>
+            <span class="k">if</span> <span class="n">extract_zip</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="n">zip_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">zip_ref</span><span class="p">:</span>
+                    <span class="c1"># Find the EPW file in the archive (should be exactly one)</span>
+                    <span class="n">epw_files</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">zip_ref</span><span class="o">.</span><span class="n">namelist</span><span class="p">()</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;.epw&#39;</span><span class="p">)]</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">epw_files</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No EPW file found in the downloaded archive&quot;</span><span class="p">)</span>
+                    
+                    <span class="c1"># Extract the EPW file</span>
+                    <span class="n">epw_filename</span> <span class="o">=</span> <span class="n">epw_files</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">extracted_epw</span> <span class="o">=</span> <span class="n">safe_extract</span><span class="p">(</span><span class="n">zip_ref</span><span class="p">,</span> <span class="n">epw_filename</span><span class="p">,</span> <span class="n">temp_dir</span><span class="p">)</span>
+                    
+                    <span class="c1"># Move the EPW file to the final location with cleaned filename</span>
+                    <span class="n">final_epw</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;_&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s2">.epw&quot;</span>
+                    <span class="n">final_epw</span> <span class="o">=</span> <span class="n">safe_rename</span><span class="p">(</span><span class="n">extracted_epw</span><span class="p">,</span> <span class="n">final_epw</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="c1"># Clean up temporary files regardless of success or failure</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">zip_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+                    <span class="n">zip_file</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">temp_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">temp_dir</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()):</span>
+                    <span class="n">temp_dir</span><span class="o">.</span><span class="n">rmdir</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Could not clean up temporary files: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">final_epw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Failed to extract EPW file&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Save station metadata alongside the EPW file</span>
+        <span class="n">metadata_file</span> <span class="o">=</span> <span class="n">final_epw</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s1">&#39;.json&#39;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">metadata_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">nearest_station</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        
+        <span class="c1"># Print comprehensive station information</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Downloaded EPW file for </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Distance: </span><span class="si">{</span><span class="n">distance</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> km&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Station coordinates: </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;wmo&#39;</span><span class="p">]:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;WMO: </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;wmo&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;climate_zone&#39;</span><span class="p">]:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Climate zone: </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;climate_zone&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;period&#39;</span><span class="p">]:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Data period: </span><span class="si">{</span><span class="n">nearest_station</span><span class="p">[</span><span class="s1">&#39;period&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Files saved:&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- EPW: </span><span class="si">{</span><span class="n">final_epw</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- Metadata: </span><span class="si">{</span><span class="n">metadata_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="c1"># Load the EPW data into DataFrame if requested</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">headers</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">load_data</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Loading EPW data...&quot;</span><span class="p">)</span>
+            <span class="n">df</span><span class="p">,</span> <span class="n">headers</span> <span class="o">=</span> <span class="n">process_epw</span><span class="p">(</span><span class="n">final_epw</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Loaded </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="si">}</span><span class="s2"> hourly records&quot;</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">final_epw</span><span class="p">),</span> <span class="n">df</span><span class="p">,</span> <span class="n">headers</span>
+        
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error processing data: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+
+
+<span class="c1"># =============================================================================</span>
+<span class="c1"># SOLAR SIMULATION UTILITIES</span>
+<span class="c1"># =============================================================================</span>
+
+<div class="viewcode-block" id="read_epw_for_solar_simulation">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.simulator.read_epw_for_solar_simulation">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_epw_for_solar_simulation</span><span class="p">(</span><span class="n">epw_file_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read EPW file specifically for solar simulation purposes.</span>
+<span class="sd">    </span>
+<span class="sd">    This function extracts essential solar radiation data and location metadata</span>
+<span class="sd">    from an EPW file for use in solar energy calculations. It focuses on the</span>
+<span class="sd">    Direct Normal Irradiance (DNI) and Diffuse Horizontal Irradiance (DHI)</span>
+<span class="sd">    which are the primary inputs for solar simulation models.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        epw_file_path: Path to the EPW weather file</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple containing:</span>
+<span class="sd">        - DataFrame with time-indexed DNI and DHI data</span>
+<span class="sd">        - Longitude (degrees)</span>
+<span class="sd">        - Latitude (degrees) </span>
+<span class="sd">        - Time zone offset (hours from UTC)</span>
+<span class="sd">        - Elevation (meters above sea level)</span>
+<span class="sd">        </span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If LOCATION line not found or data parsing fails</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Read the entire EPW file</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">epw_file_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+
+    <span class="c1"># Find the LOCATION line (first line in EPW format)</span>
+    <span class="n">location_line</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;LOCATION&quot;</span><span class="p">):</span>
+            <span class="n">location_line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+            <span class="k">break</span>
+
+    <span class="k">if</span> <span class="n">location_line</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Could not find LOCATION line in EPW file.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Parse LOCATION line format:</span>
+    <span class="c1"># LOCATION,City,State/Country,Country,DataSource,WMO,Latitude,Longitude,Time Zone,Elevation</span>
+    <span class="c1"># Example: LOCATION,Marina.Muni.AP,CA,USA,SRC-TMYx,690070,36.68300,-121.7670,-8.0,43.0</span>
+    <span class="n">lat</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">location_line</span><span class="p">[</span><span class="mi">6</span><span class="p">])</span>
+    <span class="n">lon</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">location_line</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span>
+    <span class="n">tz</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">location_line</span><span class="p">[</span><span class="mi">8</span><span class="p">])</span>  <span class="c1"># local standard time offset from UTC</span>
+    <span class="n">elevation_m</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">location_line</span><span class="p">[</span><span class="mi">9</span><span class="p">])</span>
+
+    <span class="c1"># Find start of weather data (after 8 header lines)</span>
+    <span class="n">data_start_index</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+        <span class="c1"># Weather data lines have more than 30 columns and start after line 8</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">8</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="p">:</span>
+            <span class="n">data_start_index</span> <span class="o">=</span> <span class="n">i</span>
+            <span class="k">break</span>
+
+    <span class="k">if</span> <span class="n">data_start_index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Could not find start of weather data lines in EPW file.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Parse weather data focusing on solar radiation components</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[</span><span class="n">data_start_index</span><span class="p">:]:</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">l</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">15</span><span class="p">:</span>  <span class="c1"># Skip malformed lines</span>
+            <span class="k">continue</span>
+        <span class="c1"># Extract time components and solar radiation data</span>
+        <span class="n">year</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">month</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">day</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">hour</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># Convert EPW 1-24 hours to 0-23</span>
+        <span class="n">dni</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">14</span><span class="p">])</span>    <span class="c1"># Direct Normal Irradiance (Wh/m²)</span>
+        <span class="n">dhi</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">vals</span><span class="p">[</span><span class="mi">15</span><span class="p">])</span>    <span class="c1"># Diffuse Horizontal Irradiance (Wh/m²)</span>
+        
+        <span class="c1"># Create pandas timestamp for time series indexing</span>
+        <span class="n">timestamp</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">(</span><span class="n">year</span><span class="p">,</span> <span class="n">month</span><span class="p">,</span> <span class="n">day</span><span class="p">,</span> <span class="n">hour</span><span class="p">)</span>
+        <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">timestamp</span><span class="p">,</span> <span class="n">dni</span><span class="p">,</span> <span class="n">dhi</span><span class="p">])</span>
+
+    <span class="c1"># Create DataFrame with time index for efficient time series operations</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;time&#39;</span><span class="p">,</span> <span class="s1">&#39;DNI&#39;</span><span class="p">,</span> <span class="s1">&#39;DHI&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_index</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">df</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">tz</span><span class="p">,</span> <span class="n">elevation_m</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

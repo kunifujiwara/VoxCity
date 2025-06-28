@@ -1,0 +1,1200 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.geoprocessor.utils - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.geoprocessor.utils</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Utility functions for geographic operations and coordinate transformations.</span>
+
+<span class="sd">This module provides various utility functions for working with geographic data,</span>
+<span class="sd">including coordinate transformations, distance calculations, geocoding, and building</span>
+<span class="sd">polygon processing. It supports operations such as:</span>
+
+<span class="sd">- Tile coordinate calculations and quadkey conversions</span>
+<span class="sd">- Geographic distance calculations (Haversine and geodetic)</span>
+<span class="sd">- Coordinate system transformations</span>
+<span class="sd">- Polygon and GeoDataFrame operations</span>
+<span class="sd">- Raster file processing and merging</span>
+<span class="sd">- Geocoding and reverse geocoding</span>
+<span class="sd">- Timezone and location information retrieval</span>
+<span class="sd">- Building polygon validation and processing</span>
+
+<span class="sd">The module uses several external libraries for geographic operations:</span>
+<span class="sd">- pyproj: For coordinate transformations and geodetic calculations</span>
+<span class="sd">- geopandas: For handling geographic data frames</span>
+<span class="sd">- rasterio: For raster file operations</span>
+<span class="sd">- shapely: For geometric operations</span>
+<span class="sd">- geopy: For geocoding services</span>
+<span class="sd">- timezonefinder: For timezone lookups</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># Standard library imports</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">radians</span><span class="p">,</span> <span class="n">sin</span><span class="p">,</span> <span class="n">cos</span><span class="p">,</span> <span class="n">sqrt</span><span class="p">,</span> <span class="n">atan2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span>
+
+<span class="c1"># Third-party geographic processing libraries</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyproj</span><span class="w"> </span><span class="kn">import</span> <span class="n">Geod</span><span class="p">,</span> <span class="n">Transformer</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rasterio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.merge</span><span class="w"> </span><span class="kn">import</span> <span class="n">merge</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.warp</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform_bounds</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.mask</span><span class="w"> </span><span class="kn">import</span> <span class="n">mask</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">box</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fiona.crs</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_epsg</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rtree</span><span class="w"> </span><span class="kn">import</span> <span class="n">index</span>
+
+<span class="c1"># Geocoding and location services</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">geopy.geocoders</span><span class="w"> </span><span class="kn">import</span> <span class="n">Nominatim</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">geopy.exc</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeocoderTimedOut</span><span class="p">,</span> <span class="n">GeocoderServiceError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">geopy.extra.rate_limiter</span><span class="w"> </span><span class="kn">import</span> <span class="n">RateLimiter</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">reverse_geocoder</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">rg</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pycountry</span>
+
+<span class="c1"># Timezone handling</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">timezonefinder</span><span class="w"> </span><span class="kn">import</span> <span class="n">TimezoneFinder</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytz</span>
+
+<span class="c1"># Suppress rasterio warnings for non-georeferenced files</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="n">rasterio</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">NotGeoreferencedWarning</span><span class="p">)</span>
+
+<span class="c1"># Global constants</span>
+<span class="n">floor_height</span> <span class="o">=</span> <span class="mf">2.5</span>  <span class="c1"># Standard floor height in meters used for building height calculations</span>
+
+<div class="viewcode-block" id="tile_from_lat_lon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.tile_from_lat_lon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">tile_from_lat_lon</span><span class="p">(</span><span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">level_of_detail</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert latitude/longitude coordinates to tile coordinates at a given zoom level.</span>
+<span class="sd">    Uses the Web Mercator projection (EPSG:3857) commonly used in web mapping.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        lat (float): Latitude in degrees (-90 to 90)</span>
+<span class="sd">        lon (float): Longitude in degrees (-180 to 180)</span>
+<span class="sd">        level_of_detail (int): Zoom level (0-23, where 0 is the entire world)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (tile_x, tile_y) tile coordinates in the global tile grid</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; tile_x, tile_y = tile_from_lat_lon(35.6762, 139.6503, 12)  # Tokyo at zoom 12</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert latitude to radians and calculate sine</span>
+    <span class="n">sin_lat</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">lat</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mi">180</span><span class="p">)</span>
+    
+    <span class="c1"># Convert longitude to normalized x coordinate (0-1)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">lon</span> <span class="o">+</span> <span class="mi">180</span><span class="p">)</span> <span class="o">/</span> <span class="mi">360</span>
+    
+    <span class="c1"># Convert latitude to y coordinate using Mercator projection formula</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">-</span> <span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">sin_lat</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">sin_lat</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+    
+    <span class="c1"># Calculate map size in pixels at this zoom level (256 * 2^zoom)</span>
+    <span class="n">map_size</span> <span class="o">=</span> <span class="mi">256</span> <span class="o">&lt;&lt;</span> <span class="n">level_of_detail</span>
+    
+    <span class="c1"># Convert x,y to tile coordinates</span>
+    <span class="n">tile_x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">map_size</span> <span class="o">/</span> <span class="mi">256</span><span class="p">)</span>
+    <span class="n">tile_y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span> <span class="o">*</span> <span class="n">map_size</span> <span class="o">/</span> <span class="mi">256</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tile_x</span><span class="p">,</span> <span class="n">tile_y</span></div>
+
+
+<div class="viewcode-block" id="quadkey_to_tile">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.quadkey_to_tile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">quadkey_to_tile</span><span class="p">(</span><span class="n">quadkey</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a quadkey string to tile coordinates.</span>
+<span class="sd">    A quadkey is a string of digits (0-3) that identifies a tile at a certain zoom level.</span>
+<span class="sd">    Each digit in the quadkey represents a tile at a zoom level, with each subsequent digit</span>
+<span class="sd">    representing a more detailed zoom level.</span>
+<span class="sd">    </span>
+<span class="sd">    The quadkey numbering scheme:</span>
+<span class="sd">        - 0: Top-left quadrant</span>
+<span class="sd">        - 1: Top-right quadrant</span>
+<span class="sd">        - 2: Bottom-left quadrant</span>
+<span class="sd">        - 3: Bottom-right quadrant</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        quadkey (str): Quadkey string (e.g., &quot;120&quot; for zoom level 3)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (tile_x, tile_y, level_of_detail) tile coordinates and zoom level</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; x, y, zoom = quadkey_to_tile(&quot;120&quot;)  # Returns coordinates at zoom level 3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tile_x</span> <span class="o">=</span> <span class="n">tile_y</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">level_of_detail</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">quadkey</span><span class="p">)</span>
+    
+    <span class="c1"># Process each character in quadkey</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">level_of_detail</span><span class="p">):</span>
+        <span class="n">bit</span> <span class="o">=</span> <span class="n">level_of_detail</span> <span class="o">-</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">bit</span>
+        
+        <span class="c1"># Quadkey digit to binary: </span>
+        <span class="c1"># 0 = neither x nor y bit set</span>
+        <span class="c1"># 1 = x bit set</span>
+        <span class="c1"># 2 = y bit set </span>
+        <span class="c1"># 3 = both x and y bits set</span>
+        <span class="k">if</span> <span class="n">quadkey</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;1&#39;</span><span class="p">:</span>
+            <span class="n">tile_x</span> <span class="o">|=</span> <span class="n">mask</span>
+        <span class="k">elif</span> <span class="n">quadkey</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;2&#39;</span><span class="p">:</span>
+            <span class="n">tile_y</span> <span class="o">|=</span> <span class="n">mask</span>
+        <span class="k">elif</span> <span class="n">quadkey</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;3&#39;</span><span class="p">:</span>
+            <span class="n">tile_x</span> <span class="o">|=</span> <span class="n">mask</span>
+            <span class="n">tile_y</span> <span class="o">|=</span> <span class="n">mask</span>
+    <span class="k">return</span> <span class="n">tile_x</span><span class="p">,</span> <span class="n">tile_y</span><span class="p">,</span> <span class="n">level_of_detail</span></div>
+
+
+<div class="viewcode-block" id="initialize_geod">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.initialize_geod">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_geod</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Initialize a Geod object for geodetic calculations using WGS84 ellipsoid.</span>
+<span class="sd">    The WGS84 ellipsoid (EPSG:4326) is the standard reference system used by GPS</span>
+<span class="sd">    and most modern mapping applications.</span>
+<span class="sd">    </span>
+<span class="sd">    The Geod object provides methods for:</span>
+<span class="sd">    - Forward geodetic calculations (direct)</span>
+<span class="sd">    - Inverse geodetic calculations (inverse)</span>
+<span class="sd">    - Area calculations</span>
+<span class="sd">    - Line length calculations</span>
+<span class="sd">    </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Geod: Initialized Geod object for WGS84 calculations</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; geod = initialize_geod()</span>
+<span class="sd">        &gt;&gt;&gt; fwd_az, back_az, dist = geod.inv(lon1, lat1, lon2, lat2)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Geod</span><span class="p">(</span><span class="n">ellps</span><span class="o">=</span><span class="s1">&#39;WGS84&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="calculate_distance">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.calculate_distance">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_distance</span><span class="p">(</span><span class="n">geod</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat1</span><span class="p">,</span> <span class="n">lon2</span><span class="p">,</span> <span class="n">lat2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate geodetic distance between two points on the Earth&#39;s surface.</span>
+<span class="sd">    Uses inverse geodetic computation to find the shortest distance along the ellipsoid,</span>
+<span class="sd">    which is more accurate than great circle (spherical) calculations.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geod (Geod): Geod object for calculations, initialized with WGS84</span>
+<span class="sd">        lon1, lat1 (float): Coordinates of first point in decimal degrees</span>
+<span class="sd">        lon2, lat2 (float): Coordinates of second point in decimal degrees</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        float: Distance in meters between the two points along the ellipsoid</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; geod = initialize_geod()</span>
+<span class="sd">        &gt;&gt;&gt; distance = calculate_distance(geod, 139.6503, 35.6762, </span>
+<span class="sd">        ...                             -74.0060, 40.7128)  # Tokyo to NYC</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># inv() returns forward azimuth, back azimuth, and distance</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">dist</span> <span class="o">=</span> <span class="n">geod</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">lon1</span><span class="p">,</span> <span class="n">lat1</span><span class="p">,</span> <span class="n">lon2</span><span class="p">,</span> <span class="n">lat2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">dist</span></div>
+
+
+<div class="viewcode-block" id="normalize_to_one_meter">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.normalize_to_one_meter">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">normalize_to_one_meter</span><span class="p">(</span><span class="n">vector</span><span class="p">,</span> <span class="n">distance_in_meters</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Normalize a vector to represent one meter in geographic space.</span>
+<span class="sd">    Useful for creating unit vectors in geographic calculations, particularly</span>
+<span class="sd">    when working with distance-based operations or scaling geographic features.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        vector (numpy.ndarray): Vector to normalize, typically a direction vector</span>
+<span class="sd">        distance_in_meters (float): Current distance in meters that the vector represents</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        numpy.ndarray: Normalized vector where magnitude represents 1 meter</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; direction = np.array([3.0, 4.0])  # Vector of length 5</span>
+<span class="sd">        &gt;&gt;&gt; unit_meter = normalize_to_one_meter(direction, 5.0)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">vector</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">distance_in_meters</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="setup_transformer">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.setup_transformer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">setup_transformer</span><span class="p">(</span><span class="n">from_crs</span><span class="p">,</span> <span class="n">to_crs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Set up a coordinate transformer between two Coordinate Reference Systems (CRS).</span>
+<span class="sd">    The always_xy=True parameter ensures consistent handling of coordinate order</span>
+<span class="sd">    by always using (x,y) or (longitude,latitude) order regardless of CRS definition.</span>
+<span class="sd">    </span>
+<span class="sd">    Common CRS codes:</span>
+<span class="sd">    - EPSG:4326 - WGS84 (latitude/longitude)</span>
+<span class="sd">    - EPSG:3857 - Web Mercator</span>
+<span class="sd">    - EPSG:2263 - NY State Plane</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        from_crs: Source coordinate reference system (EPSG code, proj4 string, or CRS dict)</span>
+<span class="sd">        to_crs: Target coordinate reference system (EPSG code, proj4 string, or CRS dict)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Transformer: Initialized transformer object for coordinate conversion</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; transformer = setup_transformer(&quot;EPSG:4326&quot;, &quot;EPSG:3857&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; x, y = transformer.transform(longitude, latitude)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="n">from_crs</span><span class="p">,</span> <span class="n">to_crs</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="transform_coords">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.transform_coords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">transform_coords</span><span class="p">(</span><span class="n">transformer</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Transform coordinates using provided transformer with error handling.</span>
+<span class="sd">    Includes validation for infinite values that may result from invalid transformations</span>
+<span class="sd">    or coordinates outside the valid range for the target CRS.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        transformer (Transformer): Coordinate transformer from setup_transformer()</span>
+<span class="sd">        lon, lat (float): Input coordinates in the source CRS</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (x, y) transformed coordinates in the target CRS, or (None, None) if transformation fails</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; transformer = setup_transformer(&quot;EPSG:4326&quot;, &quot;EPSG:3857&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; x, y = transform_coords(transformer, -74.0060, 40.7128)  # NYC coordinates</span>
+<span class="sd">        &gt;&gt;&gt; if x is not None:</span>
+<span class="sd">        ...     print(f&quot;Transformed coordinates: ({x}, {y})&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">transformer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isinf</span><span class="p">(</span><span class="n">y</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Transformation resulted in inf values for coordinates: </span><span class="si">{</span><span class="n">lon</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">lat</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error transforming coordinates </span><span class="si">{</span><span class="n">lon</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">lat</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="create_polygon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.create_polygon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_polygon</span><span class="p">(</span><span class="n">vertices</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a Shapely polygon from a list of vertices.</span>
+<span class="sd">    Input vertices must be in (longitude, latitude) format as required by Shapely.</span>
+<span class="sd">    The polygon will be automatically closed if the first and last vertices don&#39;t match.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        vertices (list): List of (longitude, latitude) coordinate pairs forming the polygon.</span>
+<span class="sd">                        The coordinates should be in counter-clockwise order for exterior rings</span>
+<span class="sd">                        and clockwise order for interior rings (holes).</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Polygon: Shapely polygon object that can be used for spatial operations</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; vertices = [(0, 0), (1, 0), (1, 1), (0, 1)]  # Square</span>
+<span class="sd">        &gt;&gt;&gt; polygon = create_polygon(vertices)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Polygon area: {polygon.area}&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">vertices</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="create_geodataframe">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.create_geodataframe">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_geodataframe</span><span class="p">(</span><span class="n">polygon</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="mi">4326</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a GeoDataFrame from a Shapely polygon.</span>
+<span class="sd">    Default CRS is WGS84 (EPSG:4326) for geographic coordinates.</span>
+<span class="sd">    The GeoDataFrame provides additional functionality for spatial operations,</span>
+<span class="sd">    data analysis, and export to various geographic formats.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        polygon (Polygon): Shapely polygon object to convert</span>
+<span class="sd">        crs (int): Coordinate reference system EPSG code (default: 4326 for WGS84)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        GeoDataFrame: GeoDataFrame containing the polygon with specified CRS</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; vertices = [(0, 0), (1, 0), (1, 1), (0, 1)]</span>
+<span class="sd">        &gt;&gt;&gt; polygon = create_polygon(vertices)</span>
+<span class="sd">        &gt;&gt;&gt; gdf = create_geodataframe(polygon)</span>
+<span class="sd">        &gt;&gt;&gt; gdf.to_file(&quot;polygon.geojson&quot;, driver=&quot;GeoJSON&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">({</span><span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">polygon</span><span class="p">]},</span> <span class="n">crs</span><span class="o">=</span><span class="n">from_epsg</span><span class="p">(</span><span class="n">crs</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="haversine_distance">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.haversine_distance">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">haversine_distance</span><span class="p">(</span><span class="n">lon1</span><span class="p">,</span> <span class="n">lat1</span><span class="p">,</span> <span class="n">lon2</span><span class="p">,</span> <span class="n">lat2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate great-circle distance between two points using Haversine formula.</span>
+<span class="sd">    This is an approximation that treats the Earth as a perfect sphere.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        lon1, lat1 (float): Coordinates of first point</span>
+<span class="sd">        lon2, lat2 (float): Coordinates of second point</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        float: Distance in kilometers</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="mi">6371</span>  <span class="c1"># Earth&#39;s radius in kilometers</span>
+    
+    <span class="c1"># Convert all coordinates to radians</span>
+    <span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">radians</span><span class="p">,</span> <span class="p">[</span><span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span><span class="p">])</span>
+    
+    <span class="c1"># Calculate differences</span>
+    <span class="n">dlat</span> <span class="o">=</span> <span class="n">lat2</span> <span class="o">-</span> <span class="n">lat1</span>
+    <span class="n">dlon</span> <span class="o">=</span> <span class="n">lon2</span> <span class="o">-</span> <span class="n">lon1</span>
+    
+    <span class="c1"># Haversine formula</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlat</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat1</span><span class="p">)</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat2</span><span class="p">)</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlon</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">atan2</span><span class="p">(</span><span class="n">sqrt</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">a</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">R</span> <span class="o">*</span> <span class="n">c</span></div>
+
+
+<div class="viewcode-block" id="get_raster_bbox">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.get_raster_bbox">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_raster_bbox</span><span class="p">(</span><span class="n">raster_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the bounding box of a raster file in its native coordinate system.</span>
+<span class="sd">    Returns a rectangular polygon representing the spatial extent of the raster,</span>
+<span class="sd">    which can be used for spatial queries and intersection tests.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        raster_path (str): Path to the raster file (GeoTIFF, IMG, etc.)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        box: Shapely box representing the raster bounds in the raster&#39;s CRS</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; bbox = get_raster_bbox(&quot;elevation.tif&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Raster extent: {bbox.bounds}&quot;)  # (minx, miny, maxx, maxy)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">raster_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">src</span><span class="p">:</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">bounds</span>
+    <span class="k">return</span> <span class="n">box</span><span class="p">(</span><span class="n">bounds</span><span class="o">.</span><span class="n">left</span><span class="p">,</span> <span class="n">bounds</span><span class="o">.</span><span class="n">bottom</span><span class="p">,</span> <span class="n">bounds</span><span class="o">.</span><span class="n">right</span><span class="p">,</span> <span class="n">bounds</span><span class="o">.</span><span class="n">top</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="raster_intersects_polygon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.raster_intersects_polygon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">raster_intersects_polygon</span><span class="p">(</span><span class="n">raster_path</span><span class="p">,</span> <span class="n">polygon</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if a raster file&#39;s extent intersects with a given polygon.</span>
+<span class="sd">    Automatically handles coordinate system transformations by converting</span>
+<span class="sd">    the raster bounds to WGS84 (EPSG:4326) if needed before the intersection test.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        raster_path (str): Path to the raster file to check</span>
+<span class="sd">        polygon (Polygon): Shapely polygon to test intersection with (in WGS84)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if raster intersects or contains the polygon, False otherwise</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; aoi = create_polygon([(lon1, lat1), (lon2, lat2), ...])  # Area of interest</span>
+<span class="sd">        &gt;&gt;&gt; if raster_intersects_polygon(&quot;dem.tif&quot;, aoi):</span>
+<span class="sd">        ...     print(&quot;Raster covers the area of interest&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">raster_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">src</span><span class="p">:</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">bounds</span>
+        <span class="c1"># Transform bounds to WGS84 if raster is in different CRS</span>
+        <span class="k">if</span> <span class="n">src</span><span class="o">.</span><span class="n">crs</span><span class="o">.</span><span class="n">to_epsg</span><span class="p">()</span> <span class="o">!=</span> <span class="mi">4326</span><span class="p">:</span>
+            <span class="n">bounds</span> <span class="o">=</span> <span class="n">transform_bounds</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span> <span class="s1">&#39;EPSG:4326&#39;</span><span class="p">,</span> <span class="o">*</span><span class="n">bounds</span><span class="p">)</span>
+        <span class="n">raster_bbox</span> <span class="o">=</span> <span class="n">box</span><span class="p">(</span><span class="o">*</span><span class="n">bounds</span><span class="p">)</span>
+        <span class="n">intersects</span> <span class="o">=</span> <span class="n">raster_bbox</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">polygon</span><span class="p">)</span> <span class="ow">or</span> <span class="n">polygon</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">raster_bbox</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">intersects</span></div>
+
+
+<div class="viewcode-block" id="save_raster">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.save_raster">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_raster</span><span class="p">(</span><span class="n">input_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a copy of a raster file at a new location.</span>
+<span class="sd">    Performs a direct file copy without any transformation or modification,</span>
+<span class="sd">    preserving all metadata, georeferencing, and pixel values.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        input_path (str): Source raster file path</span>
+<span class="sd">        output_path (str): Destination path for the copied raster</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; save_raster(&quot;original.tif&quot;, &quot;backup/copy.tif&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(&quot;Copied original file to: backup/copy.tif&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+    <span class="n">shutil</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">input_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Copied original file to: </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="merge_geotiffs">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.merge_geotiffs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">merge_geotiffs</span><span class="p">(</span><span class="n">geotiff_files</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Merge multiple GeoTIFF files into a single mosaic.</span>
+<span class="sd">    Handles edge matching and overlapping areas between adjacent rasters.</span>
+<span class="sd">    The output will have the same coordinate system and data type as the input files.</span>
+<span class="sd">    </span>
+<span class="sd">    Important considerations:</span>
+<span class="sd">    - All input files should have the same coordinate system</span>
+<span class="sd">    - All input files should have the same data type</span>
+<span class="sd">    - Overlapping areas are handled by taking the first value encountered</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geotiff_files (list): List of paths to GeoTIFF files to merge</span>
+<span class="sd">        output_dir (str): Directory where the merged output will be saved</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; files = [&quot;tile1.tif&quot;, &quot;tile2.tif&quot;, &quot;tile3.tif&quot;]</span>
+<span class="sd">        &gt;&gt;&gt; merge_geotiffs(files, &quot;output_directory&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; print(&quot;Merged output saved to: output_directory/lulc.tif&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">geotiff_files</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Open all valid GeoTIFF files</span>
+    <span class="n">src_files_to_mosaic</span> <span class="o">=</span> <span class="p">[</span><span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">file</span><span class="p">)</span> <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">geotiff_files</span> <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">file</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="n">src_files_to_mosaic</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Merge rasters into a single mosaic and get output transform</span>
+            <span class="n">mosaic</span><span class="p">,</span> <span class="n">out_trans</span> <span class="o">=</span> <span class="n">merge</span><span class="p">(</span><span class="n">src_files_to_mosaic</span><span class="p">)</span>
+
+            <span class="c1"># Copy metadata from first raster and update for merged output</span>
+            <span class="n">out_meta</span> <span class="o">=</span> <span class="n">src_files_to_mosaic</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">out_meta</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                <span class="s2">&quot;driver&quot;</span><span class="p">:</span> <span class="s2">&quot;GTiff&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;height&quot;</span><span class="p">:</span> <span class="n">mosaic</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+                <span class="s2">&quot;width&quot;</span><span class="p">:</span> <span class="n">mosaic</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+                <span class="s2">&quot;transform&quot;</span><span class="p">:</span> <span class="n">out_trans</span>
+            <span class="p">})</span>
+
+            <span class="c1"># Save merged raster to output file</span>
+            <span class="n">merged_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="s2">&quot;lulc.tif&quot;</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">merged_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">out_meta</span><span class="p">)</span> <span class="k">as</span> <span class="n">dest</span><span class="p">:</span>
+                <span class="n">dest</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">mosaic</span><span class="p">)</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Merged output saved to: </span><span class="si">{</span><span class="n">merged_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error merging files: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No valid files to merge.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Clean up by closing all opened files</span>
+    <span class="k">for</span> <span class="n">src</span> <span class="ow">in</span> <span class="n">src_files_to_mosaic</span><span class="p">:</span>
+        <span class="n">src</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="convert_format_lat_lon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.convert_format_lat_lon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">convert_format_lat_lon</span><span class="p">(</span><span class="n">input_coords</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert coordinate format and close polygon.</span>
+<span class="sd">    Input coordinates are already in [lon, lat] format.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        input_coords (list): List of [lon, lat] coordinates</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of [lon, lat] coordinates with first point repeated at end</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create list with coordinates in same order</span>
+    <span class="n">output_coords</span> <span class="o">=</span> <span class="n">input_coords</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="c1"># Close polygon by repeating first point at end</span>
+    <span class="n">output_coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">output_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">output_coords</span></div>
+
+
+<div class="viewcode-block" id="get_coordinates_from_cityname">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.get_coordinates_from_cityname">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_coordinates_from_cityname</span><span class="p">(</span><span class="n">place_name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Geocode a city name to get its coordinates using OpenStreetMap&#39;s Nominatim service.</span>
+<span class="sd">    Includes rate limiting and error handling to comply with Nominatim&#39;s usage policy.</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">    - Results may vary based on the specificity of the place name</span>
+<span class="sd">    - For better results, include country or state information</span>
+<span class="sd">    - Service has usage limits and may timeout</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        place_name (str): Name of the city to geocode (e.g., &quot;Tokyo, Japan&quot;)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (latitude, longitude) coordinates or None if geocoding fails</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; coords = get_coordinates_from_cityname(&quot;Paris, France&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; if coords:</span>
+<span class="sd">        ...     lat, lon = coords</span>
+<span class="sd">        ...     print(f&quot;Paris coordinates: {lat}, {lon}&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize geocoder with user agent</span>
+    <span class="n">geolocator</span> <span class="o">=</span> <span class="n">Nominatim</span><span class="p">(</span><span class="n">user_agent</span><span class="o">=</span><span class="s2">&quot;my_geocoding_script&quot;</span><span class="p">)</span>
+    
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Attempt to geocode the place name</span>
+        <span class="n">location</span> <span class="o">=</span> <span class="n">geolocator</span><span class="o">.</span><span class="n">geocode</span><span class="p">(</span><span class="n">place_name</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">location</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">location</span><span class="o">.</span><span class="n">latitude</span><span class="p">,</span> <span class="n">location</span><span class="o">.</span><span class="n">longitude</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">GeocoderTimedOut</span><span class="p">,</span> <span class="n">GeocoderServiceError</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: Geocoding service timed out or encountered an error for </span><span class="si">{</span><span class="n">place_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="get_city_country_name_from_rectangle">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.get_city_country_name_from_rectangle">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_city_country_name_from_rectangle</span><span class="p">(</span><span class="n">coordinates</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the city and country name for a location defined by a rectangle.</span>
+<span class="sd">    Uses reverse geocoding to find the nearest named place to the rectangle&#39;s center.</span>
+<span class="sd">    </span>
+<span class="sd">    The function:</span>
+<span class="sd">    1. Calculates the center point of the rectangle</span>
+<span class="sd">    2. Performs reverse geocoding with rate limiting</span>
+<span class="sd">    3. Extracts city and country information from the result</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        coordinates (list): List of (longitude, latitude) coordinates defining the rectangle</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: String in format &quot;city/ country&quot; or fallback value if lookup fails</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; coords = [(139.65, 35.67), (139.66, 35.67),</span>
+<span class="sd">        ...           (139.66, 35.68), (139.65, 35.68)]</span>
+<span class="sd">        &gt;&gt;&gt; location = get_city_country_name_from_rectangle(coords)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Location: {location}&quot;)  # e.g., &quot;Shibuya/ Japan&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Calculate center point of rectangle</span>
+    <span class="n">longitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">coordinates</span><span class="p">]</span>
+    <span class="n">latitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">coordinates</span><span class="p">]</span>
+    <span class="n">center_lon</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">longitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">longitudes</span><span class="p">)</span>
+    <span class="n">center_lat</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">latitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">latitudes</span><span class="p">)</span>
+    <span class="n">center_coord</span> <span class="o">=</span> <span class="p">(</span><span class="n">center_lat</span><span class="p">,</span> <span class="n">center_lon</span><span class="p">)</span>
+
+    <span class="c1"># Initialize geocoder with rate limiting to avoid hitting API limits</span>
+    <span class="n">geolocator</span> <span class="o">=</span> <span class="n">Nominatim</span><span class="p">(</span><span class="n">user_agent</span><span class="o">=</span><span class="s2">&quot;your_app_name (your_email@example.com)&quot;</span><span class="p">)</span>
+    <span class="n">reverse</span> <span class="o">=</span> <span class="n">RateLimiter</span><span class="p">(</span><span class="n">geolocator</span><span class="o">.</span><span class="n">reverse</span><span class="p">,</span> <span class="n">min_delay_seconds</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">error_wait_seconds</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Attempt reverse geocoding of center coordinates</span>
+        <span class="n">location</span> <span class="o">=</span> <span class="n">reverse</span><span class="p">(</span><span class="n">center_coord</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">location</span><span class="p">:</span>
+            <span class="n">address</span> <span class="o">=</span> <span class="n">location</span><span class="o">.</span><span class="n">raw</span><span class="p">[</span><span class="s1">&#39;address&#39;</span><span class="p">]</span>
+            <span class="c1"># Try multiple address fields to find city name, falling back to county if needed</span>
+            <span class="n">city</span> <span class="o">=</span> <span class="n">address</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;city&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">address</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;town&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">address</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;village&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">address</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;county&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="n">country</span> <span class="o">=</span> <span class="n">address</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;country&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">city</span><span class="si">}</span><span class="s2">/ </span><span class="si">{</span><span class="n">country</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Location not found&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="s2">&quot;Unknown Location/ Unknown Country&quot;</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error retrieving location for </span><span class="si">{</span><span class="n">center_coord</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;Unknown Location/ Unknown Country&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_timezone_info">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.get_timezone_info">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_timezone_info</span><span class="p">(</span><span class="n">rectangle_coords</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get timezone and central meridian information for a location.</span>
+<span class="sd">    Uses the rectangle&#39;s center point to determine the local timezone and</span>
+<span class="sd">    calculates the central meridian based on the UTC offset.</span>
+<span class="sd">    </span>
+<span class="sd">    The function provides:</span>
+<span class="sd">    1. Local timezone identifier (e.g., &quot;America/New_York&quot;)</span>
+<span class="sd">    2. UTC offset (e.g., &quot;UTC-04:00&quot;)</span>
+<span class="sd">    3. Central meridian longitude for the timezone</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        rectangle_coords (list): List of (longitude, latitude) coordinates defining the area</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (timezone string with UTC offset, central meridian longitude string)</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; coords = [(139.65, 35.67), (139.66, 35.67),</span>
+<span class="sd">        ...           (139.66, 35.68), (139.65, 35.68)]</span>
+<span class="sd">        &gt;&gt;&gt; tz, meridian = get_timezone_info(coords)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Timezone: {tz}, Meridian: {meridian}&quot;)  # e.g., &quot;UTC+09:00, 135.00000&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Calculate center point of rectangle</span>
+    <span class="n">longitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">rectangle_coords</span><span class="p">]</span>
+    <span class="n">latitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">rectangle_coords</span><span class="p">]</span>
+    <span class="n">center_lon</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">longitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">longitudes</span><span class="p">)</span>
+    <span class="n">center_lat</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">latitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">latitudes</span><span class="p">)</span>
+    
+    <span class="c1"># Find timezone at center coordinates</span>
+    <span class="n">tf</span> <span class="o">=</span> <span class="n">TimezoneFinder</span><span class="p">()</span>
+    <span class="n">timezone_str</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">timezone_at</span><span class="p">(</span><span class="n">lng</span><span class="o">=</span><span class="n">center_lon</span><span class="p">,</span> <span class="n">lat</span><span class="o">=</span><span class="n">center_lat</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="n">timezone_str</span><span class="p">:</span>
+        <span class="c1"># Get current time in local timezone to calculate offset</span>
+        <span class="n">timezone</span> <span class="o">=</span> <span class="n">pytz</span><span class="o">.</span><span class="n">timezone</span><span class="p">(</span><span class="n">timezone_str</span><span class="p">)</span>
+        <span class="n">now</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="p">)</span>
+        <span class="n">offset_seconds</span> <span class="o">=</span> <span class="n">now</span><span class="o">.</span><span class="n">utcoffset</span><span class="p">()</span><span class="o">.</span><span class="n">total_seconds</span><span class="p">()</span>
+        <span class="n">offset_hours</span> <span class="o">=</span> <span class="n">offset_seconds</span> <span class="o">/</span> <span class="mi">3600</span>
+
+        <span class="c1"># Format timezone offset and calculate central meridian</span>
+        <span class="n">utc_offset</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;UTC</span><span class="si">{</span><span class="n">offset_hours</span><span class="si">:</span><span class="s2">+.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">timezone_longitude</span> <span class="o">=</span> <span class="n">offset_hours</span> <span class="o">*</span> <span class="mi">15</span>  <span class="c1"># Each hour offset = 15 degrees longitude</span>
+        <span class="n">timezone_longitude_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">timezone_longitude</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="k">return</span> <span class="n">utc_offset</span><span class="p">,</span> <span class="n">timezone_longitude_str</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Return fallback values if timezone cannot be determined</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Warning: Timezone not found for the given location, using UTC+00:00&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;UTC+00:00&quot;</span><span class="p">,</span> <span class="s2">&quot;0.00000&quot;</span></div>
+
+
+<div class="viewcode-block" id="validate_polygon_coordinates">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.validate_polygon_coordinates">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_polygon_coordinates</span><span class="p">(</span><span class="n">geometry</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate and ensure proper closure of polygon coordinate rings.</span>
+<span class="sd">    Performs validation and correction of GeoJSON polygon geometries according to</span>
+<span class="sd">    the GeoJSON specification requirements.</span>
+<span class="sd">    </span>
+<span class="sd">    Validation checks:</span>
+<span class="sd">    1. Geometry type (Polygon or MultiPolygon)</span>
+<span class="sd">    2. Ring closure (first point equals last point)</span>
+<span class="sd">    3. Minimum number of points (4, including closure)</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geometry (dict): GeoJSON geometry object with &#39;type&#39; and &#39;coordinates&#39; properties</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if polygon coordinates are valid or were successfully corrected,</span>
+<span class="sd">              False if validation failed</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; geom = {</span>
+<span class="sd">        ...     &quot;type&quot;: &quot;Polygon&quot;,</span>
+<span class="sd">        ...     &quot;coordinates&quot;: [[[0,0], [1,0], [1,1], [0,1]]]  # Not closed</span>
+<span class="sd">        ... }</span>
+<span class="sd">        &gt;&gt;&gt; if validate_polygon_coordinates(geom):</span>
+<span class="sd">        ...     print(&quot;Polygon is valid&quot;)  # Will close the ring automatically</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ring</span> <span class="ow">in</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]:</span>
+            <span class="c1"># Ensure polygon is closed by checking/adding first point at end</span>
+            <span class="k">if</span> <span class="n">ring</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">ring</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                <span class="n">ring</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ring</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>  <span class="c1"># Close the ring</span>
+            <span class="c1"># Check minimum points needed for valid polygon (3 points + closing point)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">polygon</span> <span class="ow">in</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">ring</span> <span class="ow">in</span> <span class="n">polygon</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">ring</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">ring</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="n">ring</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ring</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>  <span class="c1"># Close the ring</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="create_building_polygons">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.create_building_polygons">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_building_polygons</span><span class="p">(</span><span class="n">filtered_buildings</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create building polygons with properties from filtered GeoJSON features.</span>
+<span class="sd">    Processes a list of GeoJSON building features to create Shapely polygons</span>
+<span class="sd">    with associated height and other properties, while also building a spatial index.</span>
+<span class="sd">    </span>
+<span class="sd">    Processing steps:</span>
+<span class="sd">    1. Extract and validate coordinates</span>
+<span class="sd">    2. Create Shapely polygons</span>
+<span class="sd">    3. Process building properties (height, levels, etc.)</span>
+<span class="sd">    4. Build spatial index for efficient querying</span>
+<span class="sd">    </span>
+<span class="sd">    Height calculation rules:</span>
+<span class="sd">    - Use explicit height if available</span>
+<span class="sd">    - Calculate from levels * floor_height if height not available</span>
+<span class="sd">    - Calculate from floors * floor_height if levels not available</span>
+<span class="sd">    - Use NaN if no height information available</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        filtered_buildings (list): List of GeoJSON building features with properties</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (</span>
+<span class="sd">            list of tuples (polygon, height, min_height, is_inner, feature_id),</span>
+<span class="sd">            rtree spatial index for the polygons</span>
+<span class="sd">        )</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; buildings = [</span>
+<span class="sd">        ...     {</span>
+<span class="sd">        ...         &quot;type&quot;: &quot;Feature&quot;,</span>
+<span class="sd">        ...         &quot;geometry&quot;: {&quot;type&quot;: &quot;Polygon&quot;, &quot;coordinates&quot;: [...]},</span>
+<span class="sd">        ...         &quot;properties&quot;: {&quot;height&quot;: 30, &quot;levels&quot;: 10}</span>
+<span class="sd">        ...     },</span>
+<span class="sd">        ...     # ... more buildings ...</span>
+<span class="sd">        ... ]</span>
+<span class="sd">        &gt;&gt;&gt; polygons, spatial_idx = create_building_polygons(buildings)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">building_polygons</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">Index</span><span class="p">()</span>
+    <span class="n">valid_count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    
+    <span class="c1"># Find highest existing ID to avoid duplicates</span>
+    <span class="n">id_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">building</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">filtered_buildings</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">id_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">])</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">id_list</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">id_count</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">id_list</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">id_count</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="k">for</span> <span class="n">building</span> <span class="ow">in</span> <span class="n">filtered_buildings</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Handle potential nested coordinate tuples</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="c1"># Flatten coordinates if they&#39;re nested tuples</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">]</span>
+                
+            <span class="c1"># Create polygon from coordinates</span>
+            <span class="n">polygon</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+            
+            <span class="c1"># Skip invalid geometries</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">polygon</span><span class="o">.</span><span class="n">is_valid</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Skipping invalid polygon geometry&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+                
+            <span class="n">height</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">)</span>
+            <span class="n">levels</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;levels&#39;</span><span class="p">)</span>
+            <span class="n">floors</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;num_floors&#39;</span><span class="p">)</span>
+            <span class="n">min_height</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_height&#39;</span><span class="p">)</span>
+            <span class="n">min_level</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_level&#39;</span><span class="p">)</span>    
+            <span class="n">min_floor</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_floor&#39;</span><span class="p">)</span>        
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">height</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">height</span><span class="o">&lt;=</span><span class="mi">0</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">levels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">height</span> <span class="o">=</span> <span class="n">floor_height</span> <span class="o">*</span> <span class="n">levels</span>
+                <span class="k">elif</span> <span class="n">floors</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">height</span> <span class="o">=</span> <span class="n">floor_height</span> <span class="o">*</span> <span class="n">floors</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">height</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">min_height</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">min_height</span><span class="o">&lt;=</span><span class="mi">0</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">min_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">min_height</span> <span class="o">=</span> <span class="n">floor_height</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="n">min_level</span><span class="p">)</span> 
+                <span class="k">elif</span> <span class="n">min_floor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">min_height</span> <span class="o">=</span> <span class="n">floor_height</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="n">min_floor</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">min_height</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">if</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">feature_id</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">feature_id</span> <span class="o">=</span> <span class="n">id_count</span>
+                <span class="n">id_count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="k">if</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;is_inner&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">is_inner</span> <span class="o">=</span> <span class="n">building</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;is_inner&#39;</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">is_inner</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="n">building_polygons</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">polygon</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">min_height</span><span class="p">,</span> <span class="n">is_inner</span><span class="p">,</span> <span class="n">feature_id</span><span class="p">))</span>
+            <span class="n">idx</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">valid_count</span><span class="p">,</span> <span class="n">polygon</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span>
+            <span class="n">valid_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Skipping invalid building geometry: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+    <span class="k">return</span> <span class="n">building_polygons</span><span class="p">,</span> <span class="n">idx</span></div>
+
+
+<div class="viewcode-block" id="get_country_name">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.exporter.get_country_name">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_country_name</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get country name from coordinates using reverse geocoding.</span>
+<span class="sd">    Uses a local database for fast reverse geocoding to country level,</span>
+<span class="sd">    then converts the country code to full name using pycountry.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        lon (float): Longitude in decimal degrees</span>
+<span class="sd">        lat (float): Latitude in decimal degrees</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: Full country name or None if lookup fails</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; country = get_country_name(139.6503, 35.6762)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Country: {country}&quot;)  # &quot;Japan&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Use reverse geocoder to get country code</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">rg</span><span class="o">.</span><span class="n">search</span><span class="p">((</span><span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">))</span>
+    <span class="n">country_code</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;cc&#39;</span><span class="p">]</span>
+    
+    <span class="c1"># Convert country code to full name using pycountry</span>
+    <span class="n">country</span> <span class="o">=</span> <span class="n">pycountry</span><span class="o">.</span><span class="n">countries</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">alpha_2</span><span class="o">=</span><span class="n">country_code</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">country</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">country</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

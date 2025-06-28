@@ -1,0 +1,1800 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="#" /><link rel="search" title="Search" href="search.html" />
+
+    <link rel="shortcut icon" href="_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 --><title>Index - VoxCity Documentation</title>
+<link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          
+<section class="genindex-section">
+  <h1 id="index">Index</h1>
+  <div class="genindex-jumpbox"><a href="#_"><strong>_</strong></a> | <a href="#A"><strong>A</strong></a> | <a href="#C"><strong>C</strong></a> | <a href="#D"><strong>D</strong></a> | <a href="#E"><strong>E</strong></a> | <a href="#F"><strong>F</strong></a> | <a href="#G"><strong>G</strong></a> | <a href="#H"><strong>H</strong></a> | <a href="#I"><strong>I</strong></a> | <a href="#J"><strong>J</strong></a> | <a href="#L"><strong>L</strong></a> | <a href="#M"><strong>M</strong></a> | <a href="#N"><strong>N</strong></a> | <a href="#O"><strong>O</strong></a> | <a href="#P"><strong>P</strong></a> | <a href="#Q"><strong>Q</strong></a> | <a href="#R"><strong>R</strong></a> | <a href="#S"><strong>S</strong></a> | <a href="#T"><strong>T</strong></a> | <a href="#V"><strong>V</strong></a></div>
+</section>
+<section id="_" class="genindex-section">
+  <h2>_</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/index.html#voxcity.__author__">__author__ (in module voxcity)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/index.html#voxcity.__email__">__email__ (in module voxcity)</a>
+</li>
+        <li><a href="autoapi/voxcity/index.html#voxcity.__version__">__version__ (in module voxcity)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="A" class="genindex-section">
+  <h2>A</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.analyze_network_slopes">analyze_network_slopes() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.analyze_network_slopes">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.apply_operation">apply_operation() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.apply_operation">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.apply_operation">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.array_to_string">array_to_string() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.array_to_string">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.array_to_string_int">array_to_string_int() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.array_to_string_int">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.array_to_string_with_value">array_to_string_with_value() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.array_to_string_with_value">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="C" class="genindex-section">
+  <h2>C</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id1">calculate_distance() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.calculate_distance">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.calculate_edge_slopes_from_join">calculate_edge_slopes_from_join() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.calculate_edge_slopes_from_join">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.calculate_grid_size">calculate_grid_size() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.calculate_grid_size">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.calculate_transmittance">calculate_transmittance() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.calculate_transmittance">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.center_location_map_cityname">center_location_map_cityname() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#voxcity.geoprocessor.draw.center_location_map_cityname">(in module voxcity.geoprocessor.draw)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.classification_mapping">classification_mapping (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.classification_mapping">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id9">complement_building_heights_from_gdf() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.complement_building_heights_from_gdf">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.complement_building_heights_from_gdf">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.compose_image">compose_image() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.compose_image">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_direct_solar_irradiance_map_binary">compute_direct_solar_irradiance_map_binary() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.compute_direct_solar_irradiance_map_binary">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_landmark_visibility">compute_landmark_visibility() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_landmark_visibility">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.compute_slope_for_group">compute_slope_for_group() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.compute_slope_for_group">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_solar_irradiance_for_all_faces">compute_solar_irradiance_for_all_faces() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.compute_solar_irradiance_for_all_faces">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_vi_generic">compute_vi_generic() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_vi_generic">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#id1">compute_vi_map_generic() (in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_vi_map_generic">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_vi_map_generic">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_view_factor_for_all_faces">compute_view_factor_for_all_faces() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_view_factor_for_all_faces">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_visibility_map">compute_visibility_map() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_visibility_map">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.compute_visibility_to_all_landmarks">compute_visibility_to_all_landmarks() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.compute_visibility_to_all_landmarks">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.convert_colormap_and_array">convert_colormap_and_array() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.convert_colormap_and_array">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.convert_colormap_indices">convert_colormap_indices() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.obj.convert_colormap_indices">(in module voxcity.exporter.obj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.convert_feature">convert_feature() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.convert_feature">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id3">convert_format_lat_lon() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.convert_format_lat_lon">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.convert_gdf_to_geojson">convert_gdf_to_geojson() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.convert_gdf_to_geojson">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.convert_land_cover">convert_land_cover() (in module voxcity.exporter)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.convert_numpy_to_python">convert_numpy_to_python() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.convert_numpy_to_python">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.country_links">country_links (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#voxcity.downloader.eubucco.country_links">(in module voxcity.downloader.eubucco)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.create_3d_voxel">create_3d_voxel() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.create_3d_voxel_individuals">create_3d_voxel_individuals() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_building_height_grid_from_gdf_polygon">create_building_height_grid_from_gdf_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_building_height_grid_from_gdf_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_building_height_grid_from_open_building_temporal_polygon">create_building_height_grid_from_open_building_temporal_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_building_height_grid_from_open_building_temporal_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id5">create_building_polygons() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_building_polygons">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_cell_polygon">create_cell_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_cell_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_city_meshes">create_city_meshes() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.create_city_meshes">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_coordinate_mesh">create_coordinate_mesh() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_coordinate_mesh">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.create_custom_palette">create_custom_palette() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.create_custom_palette">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_dem_grid_from_gdf_polygon">create_dem_grid_from_gdf_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_dem_grid_from_gdf_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_dem_grid_from_geotiff_polygon">create_dem_grid_from_geotiff_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_dem_grid_from_geotiff_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.create_face_vertices">create_face_vertices() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.obj.create_face_vertices">(in module voxcity.exporter.obj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_geodataframe">create_geodataframe() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_height_grid_from_geotiff_polygon">create_height_grid_from_geotiff_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_height_grid_from_geotiff_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_land_cover_grid_from_gdf_polygon">create_land_cover_grid_from_gdf_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_land_cover_grid_from_gdf_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_land_cover_grid_from_geotiff_polygon">create_land_cover_grid_from_geotiff_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_land_cover_grid_from_geotiff_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_land_cover_polygons">create_land_cover_polygons() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.create_mapping">create_mapping() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.create_mapping">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_polygon">create_polygon() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.create_rings_from_ways">create_rings_from_ways() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.create_rings_from_ways">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_sim_surface_mesh">create_sim_surface_mesh() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.create_sim_surface_mesh">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_vegetation_height_grid_from_gdf_polygon">create_vegetation_height_grid_from_gdf_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.create_vegetation_height_grid_from_gdf_polygon">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.create_voxel_mesh">create_voxel_mesh() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.create_voxel_mesh">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.create_voxel_mesh">(in module voxcity.simulator)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.create_xml_content">create_xml_content() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.create_xml_content">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.crop_image">crop_image() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.crop_image">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="D" class="genindex-section">
+  <h2>D</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.decode_2nd_level_mesh">decode_2nd_level_mesh() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.decode_mesh_code">decode_mesh_code() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.deg2num">deg2num() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.deg2num">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.display_buildings_and_draw_polygon">display_buildings_and_draw_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#voxcity.geoprocessor.draw.display_buildings_and_draw_polygon">(in module voxcity.geoprocessor.draw)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.download_and_extract_zip">download_and_extract_zip() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.download_extract_open_gpkg_from_eubucco">download_extract_open_gpkg_from_eubucco() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#voxcity.downloader.eubucco.download_extract_open_gpkg_from_eubucco">(in module voxcity.downloader.eubucco)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#id0">download_file() (in module voxcity.downloader)</a>, <a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.download_file">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.download_file_google_drive">download_file_google_drive() (in module voxcity.downloader)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.download_tiles">download_tiles() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.download_tiles">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.draw_rectangle_map">draw_rectangle_map() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#voxcity.geoprocessor.draw.draw_rectangle_map">(in module voxcity.geoprocessor.draw)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.draw_rectangle_map_cityname">draw_rectangle_map_cityname() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#voxcity.geoprocessor.draw.draw_rectangle_map_cityname">(in module voxcity.geoprocessor.draw)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.dummy_function">dummy_function() (in module voxcity.simulator)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="E" class="genindex-section">
+  <h2>E</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.export_inx">export_inx() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.export_inx">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.export_large_voxel_model">export_large_voxel_model() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.export_large_voxel_model">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.export_magicavoxel_vox">export_magicavoxel_vox() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.export_magicavoxel_vox">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.export_meshes">export_meshes() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.export_meshes">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.export_obj">export_obj() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.obj.export_obj">(in module voxcity.exporter.obj)</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#id5">(in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.export_obj">[1]</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.extract_building_footprint">extract_building_footprint() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id8">extract_building_heights_from_gdf() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.extract_building_heights_from_gdf">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.extract_building_heights_from_gdf">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id11">extract_building_heights_from_geotiff() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.extract_building_heights_from_geotiff">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.extract_building_heights_from_geotiff">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.extract_terrain_info">extract_terrain_info() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.extract_vegetation_info">extract_vegetation_info() (in module voxcity.downloader.citygml)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="F" class="genindex-section">
+  <h2>F</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.fetch_elevations_for_points">fetch_elevations_for_points() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.fetch_elevations_for_points">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.filter_and_convert_gdf_to_geojson">filter_and_convert_gdf_to_geojson() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.filter_and_convert_gdf_to_geojson">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco">filter_and_convert_gdf_to_geojson_eubucco() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#voxcity.downloader.eubucco.filter_and_convert_gdf_to_geojson_eubucco">(in module voxcity.downloader.eubucco)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id10">filter_buildings() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.filter_buildings">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.filter_buildings">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.find_building_containing_point">find_building_containing_point() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.find_building_containing_point">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.find_building_containing_point">(in module voxcity.simulator)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.find_min_n">find_min_n() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.find_min_n">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.find_row_for_location">find_row_for_location() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/mbfp/index.html#voxcity.downloader.mbfp.find_row_for_location">(in module voxcity.downloader.mbfp)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.floor_height">floor_height (in module voxcity.geoprocessor)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="G" class="genindex-section">
+  <h2>G</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.gather_interpolation_points">gather_interpolation_points() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.gather_interpolation_points">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.gdf_to_geojson_dicts">gdf_to_geojson_dicts() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.gdf_to_geojson_dicts">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.generate_edb_file">generate_edb_file() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.generate_edb_file">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.generate_lad_profile">generate_lad_profile() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.generate_lad_profile">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.geojson_to_gdf">geojson_to_gdf() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.geojson_to_gdf">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_building_global_solar_irradiance_using_epw">get_building_global_solar_irradiance_using_epw() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_building_global_solar_irradiance_using_epw">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_building_height_grid">get_building_height_grid() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_building_solar_irradiance">get_building_solar_irradiance() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_building_solar_irradiance">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_buildings_in_drawn_polygon">get_buildings_in_drawn_polygon() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.get_buildings_in_drawn_polygon">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_buildings_in_drawn_polygon">(in module voxcity.simulator)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_canopy_height_grid">get_canopy_height_grid() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_center_point">get_center_point() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_center_point">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.get_city_country_name_from_rectangle">get_city_country_name_from_rectangle() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_city_country_name_from_rectangle">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_class_priority">get_class_priority() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_classification">get_classification() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.get_classification">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id4">get_coordinates_from_cityname() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_coordinates_from_cityname">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_country_name">get_country_name() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_country_name">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_cumulative_building_solar_irradiance">get_cumulative_building_solar_irradiance() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_cumulative_building_solar_irradiance">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_cumulative_global_solar_irradiance">get_cumulative_global_solar_irradiance() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_cumulative_global_solar_irradiance">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_dem_grid">get_dem_grid() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_dem_image">get_dem_image() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_dem_image">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_diffuse_solar_irradiance_map">get_diffuse_solar_irradiance_map() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_diffuse_solar_irradiance_map">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_direct_solar_irradiance_map">get_direct_solar_irradiance_map() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_direct_solar_irradiance_map">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_dominant_class">get_dominant_class() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_ee_image">get_ee_image() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_ee_image">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_ee_image_collection">get_ee_image_collection() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_ee_image_collection">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_gdf_from_eubucco">get_gdf_from_eubucco() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#voxcity.downloader.eubucco.get_gdf_from_eubucco">(in module voxcity.downloader.eubucco)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_gdf_from_gpkg">get_gdf_from_gpkg() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.get_gdf_from_gpkg">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_geojson_from_gpkg">get_geojson_from_gpkg() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.get_geojson_from_gpkg">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_geojson_links">get_geojson_links() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/mbfp/index.html#voxcity.downloader.mbfp.get_geojson_links">(in module voxcity.downloader.mbfp)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_global_solar_irradiance_map">get_global_solar_irradiance_map() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_global_solar_irradiance_map">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_global_solar_irradiance_using_epw">get_global_solar_irradiance_using_epw() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_global_solar_irradiance_using_epw">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_land_cover_grid">get_land_cover_grid() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_landmark_visibility_map">get_landmark_visibility_map() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.get_landmark_visibility_map">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_mbfp_gdf">get_mbfp_gdf() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/mbfp/index.html#voxcity.downloader.mbfp.get_mbfp_gdf">(in module voxcity.downloader.mbfp)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_nearest_epw_from_climate_onebuilding">get_nearest_epw_from_climate_onebuilding() (in module voxcity.simulator)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_network_values">get_network_values() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.get_network_values">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_raster_bbox">get_raster_bbox() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_roi">get_roi() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_roi">(in module voxcity.downloader.gee)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_roi">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#id2">get_sky_view_factor_map() (in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_sky_view_factor_map">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.get_sky_view_factor_map">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_solar_positions_astral">get_solar_positions_astral() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.get_solar_positions_astral">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#id3">get_surface_view_factor() (in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_surface_view_factor">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.get_surface_view_factor">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.get_tile_polygon_from_filename">get_tile_polygon_from_filename() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.get_timezone_info">get_timezone_info() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.get_timezone_info">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.get_view_index">get_view_index() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.get_view_index">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_voxcity">get_voxcity() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.get_voxcity_CityGML">get_voxcity_CityGML() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#id0">get_voxel_color_map() (in module voxcity.exporter)</a>, <a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.get_voxel_color_map">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.get_way_coords">get_way_coords() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.get_way_coords">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id6">grid_to_geodataframe() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.grid_to_geodataframe">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.grid_to_geodataframe">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.grid_to_obj">grid_to_obj() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.obj.grid_to_obj">(in module voxcity.exporter.obj)</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#id4">(in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.grid_to_obj">[1]</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.grid_to_point_geodataframe">grid_to_point_geodataframe() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.grid_to_point_geodataframe">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.group_and_label_cells">group_and_label_cells() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.group_and_label_cells">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.group_and_label_cells">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="H" class="genindex-section">
+  <h2>H</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.haversine_distance">haversine_distance() (in module voxcity.geoprocessor)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="I" class="genindex-section">
+  <h2>I</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.initialize_earth_engine">initialize_earth_engine() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.initialize_earth_engine">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id0">initialize_geod() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.initialize_geod">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.interpolate_points_along_line">interpolate_points_along_line() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.interpolate_points_along_line">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.is_part_of_relation">is_part_of_relation() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.is_part_of_relation">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.is_valid_value">is_valid_value() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.is_valid_value">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.is_way_polygon">is_way_polygon() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.is_way_polygon">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="J" class="genindex-section">
+  <h2>J</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.join_gdfs_vertically">join_gdfs_vertically() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.join_gdfs_vertically">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="L" class="genindex-section">
+  <h2>L</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.load_buid_dem_veg_from_citygml">load_buid_dem_veg_from_citygml() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.load_gdf_from_eubucco">load_gdf_from_eubucco() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#voxcity.downloader.eubucco.load_gdf_from_eubucco">(in module voxcity.downloader.eubucco)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.load_gdf_from_multiple_gz">load_gdf_from_multiple_gz() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.load_gdf_from_multiple_gz">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.load_gdf_from_multiple_gz">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.load_gdf_from_openstreetmap">load_gdf_from_openstreetmap() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.load_gdf_from_openstreetmap">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.load_gdf_from_overture">load_gdf_from_overture() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.load_gdf_from_overture">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.load_irradiance_mesh">load_irradiance_mesh() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.load_irradiance_mesh">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.load_land_cover_gdf_from_osm">load_land_cover_gdf_from_osm() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.load_land_cover_gdf_from_osm">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.load_voxcity_data">load_voxcity_data() (in module voxcity.generator)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="M" class="genindex-section">
+  <h2>M</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.mark_building_by_id">mark_building_by_id() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.mark_building_by_id">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.merge_geotiffs">merge_geotiffs() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.mesh_faces">mesh_faces() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.obj.mesh_faces">(in module voxcity.exporter.obj)</a>
+</li>
+        </ul></li>
+        <li>
+    module
+
+        <ul>
+          <li><a href="autoapi/voxcity/index.html#module-voxcity">voxcity</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/index.html#module-voxcity.downloader">voxcity.downloader</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/citygml/index.html#module-voxcity.downloader.citygml">voxcity.downloader.citygml</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#module-voxcity.downloader.eubucco">voxcity.downloader.eubucco</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#module-voxcity.downloader.gee">voxcity.downloader.gee</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/mbfp/index.html#module-voxcity.downloader.mbfp">voxcity.downloader.mbfp</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#module-voxcity.downloader.oemj">voxcity.downloader.oemj</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#module-voxcity.downloader.osm">voxcity.downloader.osm</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#module-voxcity.downloader.overture">voxcity.downloader.overture</a>
+</li>
+          <li><a href="autoapi/voxcity/exporter/index.html#module-voxcity.exporter">voxcity.exporter</a>
+</li>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#module-voxcity.exporter.envimet">voxcity.exporter.envimet</a>
+</li>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#module-voxcity.exporter.magicavoxel">voxcity.exporter.magicavoxel</a>
+</li>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#module-voxcity.exporter.obj">voxcity.exporter.obj</a>
+</li>
+          <li><a href="autoapi/voxcity/generator/index.html#module-voxcity.generator">voxcity.generator</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#module-voxcity.geoprocessor">voxcity.geoprocessor</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#module-voxcity.geoprocessor.draw">voxcity.geoprocessor.draw</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#module-voxcity.geoprocessor.grid">voxcity.geoprocessor.grid</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#module-voxcity.geoprocessor.mesh">voxcity.geoprocessor.mesh</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#module-voxcity.geoprocessor.network">voxcity.geoprocessor.network</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#module-voxcity.geoprocessor.polygon">voxcity.geoprocessor.polygon</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/index.html#module-voxcity.simulator">voxcity.simulator</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#module-voxcity.simulator.solar">voxcity.simulator.solar</a>
+</li>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#module-voxcity.simulator.view">voxcity.simulator.view</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="N" class="genindex-section">
+  <h2>N</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id2">normalize_to_one_meter() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.normalize_to_one_meter">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.num2deg">num2deg() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.num2deg">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.numpy_to_vox">numpy_to_vox() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.numpy_to_vox">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="O" class="genindex-section">
+  <h2>O</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.osm_json_to_geojson">osm_json_to_geojson() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.osm_json_to_geojson">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="P" class="genindex-section">
+  <h2>P</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.parse_file">parse_file() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.prepare_grids">prepare_grids() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.prepare_grids">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id12">process_building_footprints_by_overlap() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.process_building_footprints_by_overlap">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.process_building_footprints_by_overlap">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.process_citygml_file">process_citygml_file() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.process_grid">process_grid() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.process_grid">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.process_grid">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.process_single_file">process_single_file() (in module voxcity.downloader.citygml)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="Q" class="genindex-section">
+  <h2>Q</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.quadkey_to_tile">quadkey_to_tile() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.quadkey_to_tile">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="R" class="genindex-section">
+  <h2>R</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.raster_intersects_polygon">raster_intersects_polygon() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.read_epw_for_solar_simulation">read_epw_for_solar_simulation() (in module voxcity.simulator)</a>
+</li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.rectangle_to_bbox">rectangle_to_bbox() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#voxcity.downloader.overture.rectangle_to_bbox">(in module voxcity.downloader.overture)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.replace_nan_in_nested">replace_nan_in_nested() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.rotate_rectangle">rotate_rectangle() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#voxcity.geoprocessor.draw.rotate_rectangle">(in module voxcity.geoprocessor.draw)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.rotate_vector_axis_angle">rotate_vector_axis_angle() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.rotate_vector_axis_angle">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="S" class="genindex-section">
+  <h2>S</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_as_geotiff">save_as_geotiff() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.save_as_geotiff">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.save_file">save_file() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#voxcity.exporter.envimet.save_file">(in module voxcity.exporter.envimet)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.save_geojson">save_geojson() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.save_geojson">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff">save_geotiff() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff_dsm_minus_dtm">save_geotiff_dsm_minus_dtm() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_dsm_minus_dtm">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff_dynamic_world_v1">save_geotiff_dynamic_world_v1() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_dynamic_world_v1">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff_esa_land_cover">save_geotiff_esa_land_cover() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_esa_land_cover">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff_esri_landcover">save_geotiff_esri_landcover() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_esri_landcover">(in module voxcity.downloader.gee)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_geotiff_open_buildings_temporal">save_geotiff_open_buildings_temporal() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_open_buildings_temporal">(in module voxcity.downloader.gee)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.save_geotiff_open_buildings_temporal">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.save_irradiance_mesh">save_irradiance_mesh() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#voxcity.simulator.solar.save_irradiance_mesh">(in module voxcity.simulator.solar)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.save_obj_from_colored_mesh">save_obj_from_colored_mesh() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.save_obj_from_colored_mesh">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.save_oemj_as_geotiff">save_oemj_as_geotiff() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#voxcity.downloader.oemj.save_oemj_as_geotiff">(in module voxcity.downloader.oemj)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.save_raster">save_raster() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/generator/index.html#voxcity.generator.save_voxcity_data">save_voxcity_data() (in module voxcity.generator)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.setup_transformer">setup_transformer() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.split_array">split_array() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#voxcity.exporter.magicavoxel.split_array">(in module voxcity.exporter.magicavoxel)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.split_vertices_manual">split_vertices_manual() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#voxcity.geoprocessor.mesh.split_vertices_manual">(in module voxcity.geoprocessor.mesh)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#id1">swap_coordinates() (in module voxcity.downloader)</a>, <a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.swap_coordinates">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.swap_coordinates">(in module voxcity.downloader.citygml)</a>
+</li>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.swap_coordinates">(in module voxcity.downloader.osm)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.swap_coordinates">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#voxcity.geoprocessor.polygon.swap_coordinates">(in module voxcity.geoprocessor.polygon)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.swap_coordinates_if_needed">swap_coordinates_if_needed() (in module voxcity.downloader.citygml)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="T" class="genindex-section">
+  <h2>T</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.tag_osm_key_value_mapping">tag_osm_key_value_mapping (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.tag_osm_key_value_mapping">(in module voxcity.downloader.osm)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/downloader/index.html#voxcity.downloader.tile_from_lat_lon">tile_from_lat_lon() (in module voxcity.downloader)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.tile_from_lat_lon">(in module voxcity.geoprocessor)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#id0">trace_ray_generic() (in module voxcity.simulator)</a>, <a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.trace_ray_generic">[1]</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.trace_ray_generic">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/simulator/index.html#voxcity.simulator.trace_ray_to_target">trace_ray_to_target() (in module voxcity.simulator)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#voxcity.simulator.view.trace_ray_to_target">(in module voxcity.simulator.view)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.transform_coords">transform_coords() (in module voxcity.geoprocessor)</a>
+</li>
+        <li><a href="autoapi/voxcity/exporter/index.html#voxcity.exporter.translate_array">translate_array() (in module voxcity.exporter)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.translate_array">(in module voxcity.geoprocessor)</a>
+</li>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.translate_array">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.tree_height_grid_from_land_cover">tree_height_grid_from_land_cover() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#voxcity.geoprocessor.grid.tree_height_grid_from_land_cover">(in module voxcity.geoprocessor.grid)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="V" class="genindex-section">
+  <h2>V</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/voxcity/downloader/citygml/index.html#voxcity.downloader.citygml.validate_coords">validate_coords() (in module voxcity.downloader.citygml)</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#id7">validate_polygon_coordinates() (in module voxcity.geoprocessor)</a>, <a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.validate_polygon_coordinates">[1]</a>
+</li>
+        <li><a href="autoapi/voxcity/geoprocessor/index.html#voxcity.geoprocessor.vectorized_edge_values">vectorized_edge_values() (in module voxcity.geoprocessor)</a>
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#voxcity.geoprocessor.network.vectorized_edge_values">(in module voxcity.geoprocessor.network)</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity
+
+        <ul>
+          <li><a href="autoapi/voxcity/index.html#module-voxcity">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/index.html#module-voxcity.downloader">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.citygml
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/citygml/index.html#module-voxcity.downloader.citygml">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.eubucco
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/eubucco/index.html#module-voxcity.downloader.eubucco">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.gee
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/gee/index.html#module-voxcity.downloader.gee">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.mbfp
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/mbfp/index.html#module-voxcity.downloader.mbfp">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.oemj
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/oemj/index.html#module-voxcity.downloader.oemj">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.osm
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/osm/index.html#module-voxcity.downloader.osm">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.downloader.overture
+
+        <ul>
+          <li><a href="autoapi/voxcity/downloader/overture/index.html#module-voxcity.downloader.overture">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.exporter
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/index.html#module-voxcity.exporter">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.exporter.envimet
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/envimet/index.html#module-voxcity.exporter.envimet">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li>
+    voxcity.exporter.magicavoxel
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/magicavoxel/index.html#module-voxcity.exporter.magicavoxel">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.exporter.obj
+
+        <ul>
+          <li><a href="autoapi/voxcity/exporter/obj/index.html#module-voxcity.exporter.obj">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.generator
+
+        <ul>
+          <li><a href="autoapi/voxcity/generator/index.html#module-voxcity.generator">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/index.html#module-voxcity.geoprocessor">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor.draw
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/draw/index.html#module-voxcity.geoprocessor.draw">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor.grid
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/grid/index.html#module-voxcity.geoprocessor.grid">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor.mesh
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/mesh/index.html#module-voxcity.geoprocessor.mesh">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor.network
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/network/index.html#module-voxcity.geoprocessor.network">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.geoprocessor.polygon
+
+        <ul>
+          <li><a href="autoapi/voxcity/geoprocessor/polygon/index.html#module-voxcity.geoprocessor.polygon">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.simulator
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/index.html#module-voxcity.simulator">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.simulator.solar
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/solar/index.html#module-voxcity.simulator.solar">module</a>
+</li>
+        </ul></li>
+        <li>
+    voxcity.simulator.view
+
+        <ul>
+          <li><a href="autoapi/voxcity/simulator/view/index.html#module-voxcity.simulator.view">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=8a448e45"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

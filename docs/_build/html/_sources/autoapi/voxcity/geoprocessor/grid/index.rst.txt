@@ -1,0 +1,530 @@
+voxcity.geoprocessor.grid
+=========================
+
+.. py:module:: voxcity.geoprocessor.grid
+
+.. autoapi-nested-parse::
+
+   This module provides functions for creating and manipulating grids of building heights, land cover, and elevation data.
+   It includes functionality for:
+   - Grid creation and manipulation for various data types (buildings, land cover, elevation)
+   - Coordinate transformations and spatial operations
+   - Data interpolation and aggregation
+   - Vector to raster conversion
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.geoprocessor.grid.apply_operation
+   voxcity.geoprocessor.grid.translate_array
+   voxcity.geoprocessor.grid.group_and_label_cells
+   voxcity.geoprocessor.grid.process_grid
+   voxcity.geoprocessor.grid.calculate_grid_size
+   voxcity.geoprocessor.grid.create_coordinate_mesh
+   voxcity.geoprocessor.grid.create_cell_polygon
+   voxcity.geoprocessor.grid.tree_height_grid_from_land_cover
+   voxcity.geoprocessor.grid.create_land_cover_grid_from_geotiff_polygon
+   voxcity.geoprocessor.grid.create_land_cover_grid_from_gdf_polygon
+   voxcity.geoprocessor.grid.create_height_grid_from_geotiff_polygon
+   voxcity.geoprocessor.grid.create_building_height_grid_from_gdf_polygon
+   voxcity.geoprocessor.grid.create_building_height_grid_from_open_building_temporal_polygon
+   voxcity.geoprocessor.grid.create_dem_grid_from_geotiff_polygon
+   voxcity.geoprocessor.grid.grid_to_geodataframe
+   voxcity.geoprocessor.grid.grid_to_point_geodataframe
+   voxcity.geoprocessor.grid.create_vegetation_height_grid_from_gdf_polygon
+   voxcity.geoprocessor.grid.create_dem_grid_from_gdf_polygon
+
+
+Module Contents
+---------------
+
+.. py:function:: apply_operation(arr, meshsize)
+
+   Applies a sequence of operations to an array based on a mesh size to normalize and discretize values.
+
+   This function performs the following sequence of operations:
+   1. Divides array by mesh size to normalize values
+   2. Adds 0.5 to round values to nearest integer
+   3. Floors the result to get integer values
+   4. Scales back to original units by multiplying by mesh size
+
+   :param arr: Input array to transform
+   :type arr: numpy.ndarray
+   :param meshsize: Size of mesh to use for calculations
+   :type meshsize: float
+
+   :returns: Transformed array after applying operations
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([1.2, 2.7, 3.4])
+   >>> meshsize = 0.5
+   >>> result = apply_operation(arr, meshsize)
+
+
+.. py:function:: translate_array(input_array, translation_dict)
+
+   Translates values in an array according to a dictionary mapping.
+
+   This function creates a new array where each value from the input array
+   is replaced by its corresponding value from the translation dictionary.
+   Values not found in the dictionary are replaced with empty strings.
+
+   :param input_array: Array containing values to translate
+   :type input_array: numpy.ndarray
+   :param translation_dict: Dictionary mapping input values to output values
+   :type translation_dict: dict
+
+   :returns: Array with translated values, with same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1, 2], [3, 4]])
+   >>> trans_dict = {1: 'A', 2: 'B', 3: 'C', 4: 'D'}
+   >>> result = translate_array(arr, trans_dict)
+   >>> # result = array([['A', 'B'], ['C', 'D']], dtype=object)
+
+
+.. py:function:: group_and_label_cells(array)
+
+   Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
+
+   This function creates a new array where all non-zero values are replaced with
+   sequential IDs (1, 2, 3, etc.) while preserving zero values. This is useful
+   for labeling distinct regions or features in a grid.
+
+   :param array: Input 2D array with non-zero values to be labeled
+   :type array: numpy.ndarray
+
+   :returns:
+
+             Array with non-zero values converted to sequential IDs,
+                           maintaining the same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[0, 5, 5], [0, 5, 8], [0, 0, 8]])
+   >>> result = group_and_label_cells(arr)
+   >>> # result = array([[0, 1, 1], [0, 1, 2], [0, 0, 2]])
+
+
+.. py:function:: process_grid(grid_bi, dem_grid)
+
+   Process a binary grid and DEM grid to create averaged elevation values.
+
+   This function takes a binary grid identifying regions and a corresponding DEM
+   grid with elevation values. For each non-zero region in the binary grid, it
+   calculates the mean elevation from the DEM grid and assigns this average to
+   all cells in that region. The result is normalized by subtracting the minimum value.
+
+   :param grid_bi: Binary grid indicating regions (0 for background,
+                   non-zero for different regions)
+   :type grid_bi: numpy.ndarray
+   :param dem_grid: Grid of elevation values corresponding to the
+                    same spatial extent as grid_bi
+   :type dem_grid: numpy.ndarray
+
+   :returns:
+
+             Processed grid with averaged and normalized elevation values.
+                           Same shape as input grids.
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> binary_grid = np.array([[1, 1, 0], [1, 1, 2], [0, 2, 2]])
+   >>> elevation = np.array([[100, 110, 90], [105, 115, 120], [95, 125, 130]])
+   >>> result = process_grid(binary_grid, elevation)
+
+
+.. py:function:: calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+
+   Calculate grid size and adjusted mesh size based on input parameters.
+
+   This function determines the number of grid cells needed in each direction and
+   adjusts the mesh size to exactly fit the desired area. The calculation takes into
+   account the input vectors and desired mesh size to ensure proper coverage.
+
+   :param side_1: First side vector defining the grid extent
+   :type side_1: numpy.ndarray
+   :param side_2: Second side vector defining the grid extent
+   :type side_2: numpy.ndarray
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+   :param meshsize: Desired mesh size in the same units as the vectors
+   :type meshsize: float
+
+   :returns:
+
+             A tuple containing:
+                 - grid_size (tuple of ints): Number of cells in each direction (nx, ny)
+                 - adjusted_mesh_size (tuple of floats): Actual mesh sizes that fit the area exactly
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> side1 = np.array([100, 0])  # 100 units in x direction
+   >>> side2 = np.array([0, 50])   # 50 units in y direction
+   >>> u = np.array([1, 0])        # Unit vector in x
+   >>> v = np.array([0, 1])        # Unit vector in y
+   >>> mesh = 10                    # Desired 10-unit mesh
+   >>> grid_size, adj_mesh = calculate_grid_size(side1, side2, u, v, mesh)
+
+
+.. py:function:: create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
+
+   Create a coordinate mesh based on input parameters.
+
+   This function generates a 3D array representing a coordinate mesh, where each point
+   in the mesh is calculated by adding scaled vectors to the origin point. The mesh
+   is created using the specified grid size and adjusted mesh sizes.
+
+   :param origin: Origin point coordinates (shape: (2,) or (3,))
+   :type origin: numpy.ndarray
+   :param grid_size: Size of grid in each dimension (nx, ny)
+   :type grid_size: tuple
+   :param adjusted_meshsize: Adjusted mesh size in each dimension (dx, dy)
+   :type adjusted_meshsize: tuple
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+
+   :returns:
+
+             3D array of shape (coord_dim, ny, nx) containing the coordinates
+                           of each point in the mesh. coord_dim is the same as the
+                           dimensionality of the input vectors.
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> origin = np.array([0, 0])
+   >>> grid_size = (5, 4)
+   >>> mesh_size = (10, 10)
+   >>> u = np.array([1, 0])
+   >>> v = np.array([0, 1])
+   >>> coords = create_coordinate_mesh(origin, grid_size, mesh_size, u, v)
+
+
+.. py:function:: create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+
+   Create a polygon representing a grid cell.
+
+   This function generates a rectangular polygon for a specific grid cell by calculating
+   its four corners based on the cell indices and grid parameters. The polygon is
+   created in counter-clockwise order starting from the bottom-left corner.
+
+   :param origin: Origin point coordinates (shape: (2,) or (3,))
+   :type origin: numpy.ndarray
+   :param i: Row index of the cell
+   :type i: int
+   :param j: Column index of the cell
+   :type j: int
+   :param adjusted_meshsize: Adjusted mesh size in each dimension (dx, dy)
+   :type adjusted_meshsize: tuple
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+
+   :returns:
+
+             Polygon representing the grid cell, with vertices
+                                     ordered counter-clockwise from bottom-left
+   :rtype: shapely.geometry.Polygon
+
+   .. rubric:: Example
+
+   >>> origin = np.array([0, 0])
+   >>> i, j = 1, 2  # Cell at row 1, column 2
+   >>> mesh_size = (10, 10)
+   >>> u = np.array([1, 0])
+   >>> v = np.array([0, 1])
+   >>> cell_poly = create_cell_polygon(origin, i, j, mesh_size, u, v)
+
+
+.. py:function:: tree_height_grid_from_land_cover(land_cover_grid_ori)
+
+   Convert a land cover grid to a tree height grid.
+
+   This function transforms a land cover classification grid into a grid of tree heights
+   by mapping land cover classes to predefined tree heights. The function first flips
+   the input grid vertically and adjusts class values, then applies a translation
+   dictionary to convert classes to heights.
+
+   Land cover class to tree height mapping:
+   - Class 4 (Forest): 10m height
+   - All other classes: 0m height
+
+   :param land_cover_grid_ori: Original land cover grid with class values
+   :type land_cover_grid_ori: numpy.ndarray
+
+   :returns: Grid of tree heights in meters, with same dimensions as input
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> lc_grid = np.array([[1, 4, 2], [4, 3, 4], [2, 1, 3]])
+   >>> tree_heights = tree_height_grid_from_land_cover(lc_grid)
+   >>> # Result: array([[0, 10, 0], [10, 0, 10], [0, 0, 0]])
+
+
+.. py:function:: create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover_classes, polygon)
+
+   Create a land cover grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param land_cover_classes: Dictionary mapping land cover classes
+   :type land_cover_classes: dict
+   :param polygon: List of polygon vertices
+   :type polygon: list
+
+   :returns: Grid of land cover classes within the polygon
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices)
+
+   Create a grid of land cover classes from GeoDataFrame polygon data.
+
+   :param gdf: GeoDataFrame containing land cover polygons
+   :type gdf: GeoDataFrame
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+   :param source: Source of the land cover data to determine class priorities
+   :type source: str
+   :param rectangle_vertices: List of 4 (lon,lat) coordinate pairs defining the rectangle bounds
+   :type rectangle_vertices: list
+
+   :returns: 2D grid of land cover classes as strings
+   :rtype: numpy.ndarray
+
+   The function creates a regular grid over the given rectangle area and determines the dominant
+   land cover class for each cell based on polygon intersections. Classes are assigned based on
+   priority rules and majority area coverage.
+
+
+.. py:function:: create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon)
+
+   Create a height grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param polygon: List of polygon vertices
+   :type polygon: list
+
+   :returns: Grid of heights within the polygon
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=None, geotiff_path_comp=None, complement_building_footprints=None, complement_height=None)
+
+   Create a building height grid from GeoDataFrame data within a polygon boundary.
+
+   :param gdf: GeoDataFrame containing building information
+   :type gdf: geopandas.GeoDataFrame
+   :param meshsize: Size of mesh cells
+   :type meshsize: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param gdf_comp: Complementary GeoDataFrame
+   :type gdf_comp: geopandas.GeoDataFrame, optional
+   :param geotiff_path_comp: Path to complementary GeoTIFF file
+   :type geotiff_path_comp: str, optional
+   :param complement_building_footprints: Whether to complement footprints
+   :type complement_building_footprints: bool, optional
+   :param complement_height: Height value to use for buildings with height=0
+   :type complement_height: float, optional
+
+   :returns:
+
+             (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
+                 - building_height_grid (numpy.ndarray): Grid of building heights
+                 - building_min_height_grid (numpy.ndarray): Grid of min building heights (list per cell)
+                 - building_id_grid (numpy.ndarray): Grid of building IDs
+                 - filtered_buildings (geopandas.GeoDataFrame): The buildings used (filtered_gdf)
+   :rtype: tuple
+
+
+.. py:function:: create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
+
+   Create a building height grid from OpenBuildings temporal data within a polygon.
+
+   :param meshsize: Size of mesh cells
+   :type meshsize: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param output_dir: Directory to save intermediate GeoTIFF files
+   :type output_dir: str
+
+   :returns: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
+   :rtype: tuple
+
+
+.. py:function:: create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices, dem_interpolation=False)
+
+   Create a Digital Elevation Model (DEM) grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param dem_interpolation: Whether to use cubic interpolation for smoother results
+   :type dem_interpolation: bool
+
+   :returns: Grid of elevation values
+   :rtype: numpy.ndarray
+
+
+.. py:function:: grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize)
+
+   Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+
+   This function transforms a regular grid into a GeoDataFrame where each cell is
+   represented as a polygon. The transformation handles coordinate systems properly,
+   converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for accurate
+   distance calculations.
+
+   :param grid_ori: 2D array containing grid values
+   :type grid_ori: numpy.ndarray
+   :param rectangle_vertices: List of [lon, lat] coordinates defining area corners.
+                              Should be in WGS84 (EPSG:4326) format.
+   :type rectangle_vertices: list
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+
+   :returns:
+
+             A GeoDataFrame with columns:
+                 - geometry: Polygon geometry of each grid cell in WGS84 (EPSG:4326)
+                 - value: Value from the original grid
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> grid = np.array([[1, 2], [3, 4]])
+   >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+   >>> mesh_size = 100  # 100 meters
+   >>> gdf = grid_to_geodataframe(grid, vertices, mesh_size)
+
+   .. rubric:: Notes
+
+   - The input grid is flipped vertically before processing to match geographic
+     orientation (north at top)
+   - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+
+
+.. py:function:: grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize)
+
+   Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
+
+   This function transforms a regular grid into a GeoDataFrame where each cell is
+   represented by a point at its center. The transformation handles coordinate systems
+   properly, converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for
+   accurate distance calculations.
+
+   :param grid_ori: 2D array containing grid values
+   :type grid_ori: numpy.ndarray
+   :param rectangle_vertices: List of [lon, lat] coordinates defining area corners.
+                              Should be in WGS84 (EPSG:4326) format.
+   :type rectangle_vertices: list
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+
+   :returns:
+
+             A GeoDataFrame with columns:
+                 - geometry: Point geometry at center of each grid cell in WGS84 (EPSG:4326)
+                 - value: Value from the original grid
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> grid = np.array([[1, 2], [3, 4]])
+   >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+   >>> mesh_size = 100  # 100 meters
+   >>> gdf = grid_to_point_geodataframe(grid, vertices, mesh_size)
+
+   .. rubric:: Notes
+
+   - The input grid is flipped vertically before processing to match geographic
+     orientation (north at top)
+   - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+   - Points are placed at the center of each grid cell
+
+
+.. py:function:: create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon)
+
+   Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects
+   within the bounding box of a given polygon, at a specified mesh spacing.
+   Cells that intersect one or more vegetation polygons receive the
+   (by default) maximum vegetation height among intersecting polygons.
+   Cells that do not intersect any vegetation are set to 0.
+
+   :param veg_gdf: A GeoDataFrame containing vegetation features
+                   (usually polygons) with a 'height' column
+                   (or a similarly named attribute). Must be in
+                   EPSG:4326 or reprojectable to it.
+   :type veg_gdf: GeoDataFrame
+   :param mesh_size: Desired grid spacing in meters.
+   :type mesh_size: float
+   :param polygon:
+                   - If a list of (lon, lat) coords, will be converted to a shapely Polygon
+                     in EPSG:4326.
+                   - If a shapely Polygon, it must be in or reprojectable to EPSG:4326.
+   :type polygon: list or Polygon
+
+   :returns:
+
+             2D array of vegetation height values covering the bounding box
+                         of the polygon. The array is indexed [row, col] from top row
+                         (north) to bottom row (south). Cells with no intersecting
+                         vegetation are set to 0.
+   :rtype: np.ndarray
+
+
+.. py:function:: create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon)
+
+   Create a height grid from a terrain GeoDataFrame within the bounding box
+   of the given polygon, using nearest-neighbor sampling of elevations.
+   Edges of the bounding box will also receive a nearest elevation,
+   so there should be no NaNs around edges if data coverage is sufficient.
+
+   :param terrain_gdf: A GeoDataFrame containing terrain features
+                       (points or centroids) with an 'elevation' column.
+                       Must be in EPSG:4326 or reprojectable to it.
+   :type terrain_gdf: GeoDataFrame
+   :param mesh_size: Desired grid spacing in meters.
+   :type mesh_size: float
+   :param polygon: Polygon specifying the region of interest.
+                   - If list of (lon, lat), will be made into a Polygon.
+                   - If a shapely Polygon, must be in WGS84 (EPSG:4326)
+                     or reprojected to it.
+   :type polygon: list or Polygon
+
+   :returns:
+
+             2D array of height values covering the bounding box of the polygon,
+                         from top row (north) to bottom row (south). Any location not
+                         matched by terrain_gdf data remains NaN, but edges will not
+                         automatically be NaN if terrain coverage exists.
+   :rtype: np.ndarray
+
+

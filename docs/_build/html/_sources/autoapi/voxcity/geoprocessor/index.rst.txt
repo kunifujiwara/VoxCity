@@ -1,0 +1,2878 @@
+voxcity.geoprocessor
+====================
+
+.. py:module:: voxcity.geoprocessor
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/voxcity/geoprocessor/draw/index
+   /autoapi/voxcity/geoprocessor/grid/index
+   /autoapi/voxcity/geoprocessor/mesh/index
+   /autoapi/voxcity/geoprocessor/network/index
+   /autoapi/voxcity/geoprocessor/polygon/index
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   voxcity.geoprocessor.floor_height
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.geoprocessor.get_coordinates_from_cityname
+   voxcity.geoprocessor.rotate_rectangle
+   voxcity.geoprocessor.draw_rectangle_map
+   voxcity.geoprocessor.draw_rectangle_map_cityname
+   voxcity.geoprocessor.center_location_map_cityname
+   voxcity.geoprocessor.display_buildings_and_draw_polygon
+   voxcity.geoprocessor.initialize_geod
+   voxcity.geoprocessor.calculate_distance
+   voxcity.geoprocessor.normalize_to_one_meter
+   voxcity.geoprocessor.create_building_polygons
+   voxcity.geoprocessor.convert_format_lat_lon
+   voxcity.geoprocessor.filter_buildings
+   voxcity.geoprocessor.extract_building_heights_from_geotiff
+   voxcity.geoprocessor.extract_building_heights_from_gdf
+   voxcity.geoprocessor.complement_building_heights_from_gdf
+   voxcity.geoprocessor.process_building_footprints_by_overlap
+   voxcity.geoprocessor.get_class_priority
+   voxcity.geoprocessor.create_land_cover_polygons
+   voxcity.geoprocessor.get_dominant_class
+   voxcity.geoprocessor.get_roi
+   voxcity.geoprocessor.save_geotiff_open_buildings_temporal
+   voxcity.geoprocessor.apply_operation
+   voxcity.geoprocessor.translate_array
+   voxcity.geoprocessor.group_and_label_cells
+   voxcity.geoprocessor.process_grid
+   voxcity.geoprocessor.calculate_grid_size
+   voxcity.geoprocessor.create_coordinate_mesh
+   voxcity.geoprocessor.create_cell_polygon
+   voxcity.geoprocessor.tree_height_grid_from_land_cover
+   voxcity.geoprocessor.create_land_cover_grid_from_geotiff_polygon
+   voxcity.geoprocessor.create_land_cover_grid_from_gdf_polygon
+   voxcity.geoprocessor.create_height_grid_from_geotiff_polygon
+   voxcity.geoprocessor.create_building_height_grid_from_gdf_polygon
+   voxcity.geoprocessor.create_building_height_grid_from_open_building_temporal_polygon
+   voxcity.geoprocessor.create_dem_grid_from_geotiff_polygon
+   voxcity.geoprocessor.grid_to_geodataframe
+   voxcity.geoprocessor.grid_to_point_geodataframe
+   voxcity.geoprocessor.create_vegetation_height_grid_from_gdf_polygon
+   voxcity.geoprocessor.create_dem_grid_from_gdf_polygon
+   voxcity.geoprocessor.tile_from_lat_lon
+   voxcity.geoprocessor.quadkey_to_tile
+   voxcity.geoprocessor.initialize_geod
+   voxcity.geoprocessor.calculate_distance
+   voxcity.geoprocessor.normalize_to_one_meter
+   voxcity.geoprocessor.setup_transformer
+   voxcity.geoprocessor.transform_coords
+   voxcity.geoprocessor.create_polygon
+   voxcity.geoprocessor.create_geodataframe
+   voxcity.geoprocessor.haversine_distance
+   voxcity.geoprocessor.get_raster_bbox
+   voxcity.geoprocessor.raster_intersects_polygon
+   voxcity.geoprocessor.save_raster
+   voxcity.geoprocessor.merge_geotiffs
+   voxcity.geoprocessor.convert_format_lat_lon
+   voxcity.geoprocessor.get_coordinates_from_cityname
+   voxcity.geoprocessor.get_city_country_name_from_rectangle
+   voxcity.geoprocessor.get_timezone_info
+   voxcity.geoprocessor.validate_polygon_coordinates
+   voxcity.geoprocessor.create_building_polygons
+   voxcity.geoprocessor.get_country_name
+   voxcity.geoprocessor.grid_to_geodataframe
+   voxcity.geoprocessor.vectorized_edge_values
+   voxcity.geoprocessor.get_network_values
+   voxcity.geoprocessor.interpolate_points_along_line
+   voxcity.geoprocessor.gather_interpolation_points
+   voxcity.geoprocessor.fetch_elevations_for_points
+   voxcity.geoprocessor.compute_slope_for_group
+   voxcity.geoprocessor.calculate_edge_slopes_from_join
+   voxcity.geoprocessor.analyze_network_slopes
+   voxcity.geoprocessor.validate_polygon_coordinates
+   voxcity.geoprocessor.filter_and_convert_gdf_to_geojson
+   voxcity.geoprocessor.get_geojson_from_gpkg
+   voxcity.geoprocessor.extract_building_heights_from_gdf
+   voxcity.geoprocessor.geojson_to_gdf
+   voxcity.geoprocessor.complement_building_heights_from_gdf
+   voxcity.geoprocessor.gdf_to_geojson_dicts
+   voxcity.geoprocessor.load_gdf_from_multiple_gz
+   voxcity.geoprocessor.filter_buildings
+   voxcity.geoprocessor.extract_building_heights_from_geotiff
+   voxcity.geoprocessor.get_gdf_from_gpkg
+   voxcity.geoprocessor.swap_coordinates
+   voxcity.geoprocessor.save_geojson
+   voxcity.geoprocessor.find_building_containing_point
+   voxcity.geoprocessor.get_buildings_in_drawn_polygon
+   voxcity.geoprocessor.process_building_footprints_by_overlap
+   voxcity.geoprocessor.create_voxel_mesh
+   voxcity.geoprocessor.create_sim_surface_mesh
+   voxcity.geoprocessor.create_city_meshes
+   voxcity.geoprocessor.export_meshes
+   voxcity.geoprocessor.split_vertices_manual
+   voxcity.geoprocessor.save_obj_from_colored_mesh
+
+
+Package Contents
+----------------
+
+.. py:function:: get_coordinates_from_cityname(place_name)
+
+   Geocode a city name to get its coordinates using OpenStreetMap's Nominatim service.
+   Includes rate limiting and error handling to comply with Nominatim's usage policy.
+
+   Note:
+   - Results may vary based on the specificity of the place name
+   - For better results, include country or state information
+   - Service has usage limits and may timeout
+
+   :param place_name: Name of the city to geocode (e.g., "Tokyo, Japan")
+   :type place_name: str
+
+   :returns: (latitude, longitude) coordinates or None if geocoding fails
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> coords = get_coordinates_from_cityname("Paris, France")
+   >>> if coords:
+   ...     lat, lon = coords
+   ...     print(f"Paris coordinates: {lat}, {lon}")
+
+
+.. py:function:: rotate_rectangle(m, rectangle_vertices, angle)
+
+   Project rectangle to Mercator, rotate, and re-project to lat-lon coordinates.
+
+   This function performs a rotation of a rectangle in geographic space by:
+   1. Converting coordinates from WGS84 (lat/lon) to Web Mercator projection
+   2. Performing the rotation in the projected space for accurate distance preservation
+   3. Converting back to WGS84 coordinates
+   4. Visualizing the result on the provided map
+
+   The rotation is performed around the rectangle's centroid using a standard 2D rotation matrix.
+   The function handles coordinate system transformations to ensure geometrically accurate rotations
+   despite the distortions inherent in geographic projections.
+
+   :param m: Map object to draw the rotated rectangle on.
+             The map must be initialized and have a valid center and zoom level.
+   :type m: ipyleaflet.Map
+   :param rectangle_vertices: List of (lon, lat) tuples defining the rectangle vertices.
+                              The vertices should be ordered in a counter-clockwise direction.
+                              Example: [(lon1,lat1), (lon2,lat2), (lon3,lat3), (lon4,lat4)]
+   :type rectangle_vertices: list
+   :param angle: Rotation angle in degrees.
+                 Positive angles rotate counter-clockwise.
+                 Negative angles rotate clockwise.
+   :type angle: float
+
+   :returns:
+
+             List of rotated (lon, lat) tuples defining the new rectangle vertices.
+                 The vertices maintain their original ordering.
+                 Returns None if no rectangle vertices are provided.
+   :rtype: list
+
+   .. note::
+
+      The function uses EPSG:4326 (WGS84) for geographic coordinates and
+      EPSG:3857 (Web Mercator) for the rotation calculations.
+
+
+.. py:function:: draw_rectangle_map(center=(40, -100), zoom=4)
+
+   Create an interactive map for drawing rectangles with ipyleaflet.
+
+   This function initializes an interactive map that allows users to draw rectangles
+   by clicking and dragging on the map surface. The drawn rectangles are captured
+   and their vertices are stored in geographic coordinates.
+
+   The map interface provides:
+   - A rectangle drawing tool activated by default
+   - Real-time coordinate capture of drawn shapes
+   - Automatic vertex ordering in counter-clockwise direction
+   - Console output of vertex coordinates for verification
+
+   Drawing Controls:
+   - Click and drag to draw a rectangle
+   - Release to complete the rectangle
+   - Only one rectangle can be active at a time
+   - Drawing a new rectangle clears the previous one
+
+   :param center: Center coordinates (lat, lon) for the map view.
+                  Defaults to (40, -100) which centers on the continental United States.
+                  Format: (latitude, longitude) in decimal degrees.
+   :type center: tuple
+   :param zoom: Initial zoom level for the map. Defaults to 4.
+                Range: 0 (most zoomed out) to 18 (most zoomed in).
+                Recommended: 3-6 for countries, 10-15 for cities.
+   :type zoom: int
+
+   :returns:
+
+             (Map object, list of rectangle vertices)
+                 - Map object: ipyleaflet.Map instance for displaying and interacting with the map
+                 - rectangle_vertices: Empty list that will be populated with (lon,lat) tuples
+                   when a rectangle is drawn. Coordinates are stored in GeoJSON order (lon,lat).
+   :rtype: tuple
+
+   .. note::
+
+      The function disables all drawing tools except rectangles to ensure
+      consistent shape creation. The rectangle vertices are automatically
+      converted to (lon,lat) format when stored, regardless of the input
+      center coordinate order.
+
+
+.. py:function:: draw_rectangle_map_cityname(cityname, zoom=15)
+
+   Create an interactive map centered on a specified city for drawing rectangles.
+
+   This function extends draw_rectangle_map() by automatically centering the map
+   on a specified city using geocoding. It provides a convenient way to focus
+   the drawing interface on a particular urban area without needing to know
+   its exact coordinates.
+
+   The function uses the utils.get_coordinates_from_cityname() function to
+   geocode the city name and obtain its coordinates. The resulting map is
+   zoomed to an appropriate level for urban-scale analysis.
+
+   :param cityname: Name of the city to center the map on.
+                    Can include country or state for better accuracy.
+                    Examples: "Tokyo, Japan", "New York, NY", "Paris, France"
+   :type cityname: str
+   :param zoom: Initial zoom level for the map. Defaults to 15.
+                Range: 0 (most zoomed out) to 18 (most zoomed in).
+                Default of 15 is optimized for city-level visualization.
+   :type zoom: int
+
+   :returns:
+
+             (Map object, list of rectangle vertices)
+                 - Map object: ipyleaflet.Map instance centered on the specified city
+                 - rectangle_vertices: Empty list that will be populated with (lon,lat)
+                   tuples when a rectangle is drawn
+   :rtype: tuple
+
+   .. note::
+
+      If the city name cannot be geocoded, the function will raise an error.
+      For better results, provide specific city names with country/state context.
+      The function inherits all drawing controls and behavior from draw_rectangle_map().
+
+
+.. py:function:: center_location_map_cityname(cityname, east_west_length, north_south_length, zoom=15)
+
+   Create an interactive map centered on a city where clicking creates a rectangle of specified dimensions.
+
+   This function provides a specialized interface for creating fixed-size rectangles
+   centered on user-selected points. Instead of drawing rectangles by dragging,
+   users click a point on the map and a rectangle of the specified dimensions
+   is automatically created centered on that point.
+
+   The function handles:
+   - Automatic city geocoding and map centering
+   - Distance calculations in meters using geopy
+   - Conversion between geographic and metric distances
+   - Rectangle creation with specified dimensions
+   - Visualization of created rectangles
+
+   Workflow:
+   1. Map is centered on the specified city
+   2. User clicks a point on the map
+   3. A rectangle is created centered on that point
+   4. Rectangle dimensions are maintained in meters regardless of latitude
+   5. Previous rectangles are automatically cleared
+
+   :param cityname: Name of the city to center the map on.
+                    Can include country or state for better accuracy.
+                    Examples: "Tokyo, Japan", "New York, NY"
+   :type cityname: str
+   :param east_west_length: Width of the rectangle in meters.
+                            This is the dimension along the east-west direction.
+                            The actual ground distance is maintained regardless of projection distortion.
+   :type east_west_length: float
+   :param north_south_length: Height of the rectangle in meters.
+                              This is the dimension along the north-south direction.
+                              The actual ground distance is maintained regardless of projection distortion.
+   :type north_south_length: float
+   :param zoom: Initial zoom level for the map. Defaults to 15.
+                Range: 0 (most zoomed out) to 18 (most zoomed in).
+                Default of 15 is optimized for city-level visualization.
+   :type zoom: int
+
+   :returns:
+
+             (Map object, list of rectangle vertices)
+                 - Map object: ipyleaflet.Map instance centered on the specified city
+                 - rectangle_vertices: Empty list that will be populated with (lon,lat)
+                   tuples when a point is clicked and the rectangle is created
+   :rtype: tuple
+
+   .. note::
+
+      - Rectangle dimensions are specified in meters but stored as geographic coordinates
+      - The function uses geopy's distance calculations for accurate metric distances
+      - Only one rectangle can exist at a time; clicking a new point removes the previous rectangle
+      - Rectangle vertices are returned in GeoJSON (lon,lat) order
+
+
+.. py:function:: display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=None, zoom=17)
+
+   Displays building footprints and enables polygon drawing on an interactive map.
+
+   This function creates an interactive map that visualizes building footprints and
+   allows users to draw arbitrary polygons. It's particularly useful for selecting
+   specific buildings or areas within an urban context.
+
+   The function provides three key features:
+   1. Building Footprint Visualization:
+      - Displays building polygons from a GeoDataFrame
+      - Uses consistent styling for all buildings
+      - Handles simple polygon geometries only
+
+   2. Interactive Polygon Drawing:
+      - Enables free-form polygon drawing
+      - Captures vertices in consistent (lon,lat) format
+      - Maintains GeoJSON compatibility
+
+   3. Map Initialization:
+      - Automatic centering based on input data
+      - Fallback to default location if no data provided
+      - Support for both building data and rectangle bounds
+
+   :param building_gdf: A GeoDataFrame containing building footprints.
+                        Must have geometry column with Polygon type features.
+                        Geometries should be in [lon, lat] coordinate order.
+                        If None, only the base map is displayed.
+   :type building_gdf: GeoDataFrame, optional
+   :param rectangle_vertices: List of [lon, lat] coordinates defining rectangle corners.
+                              Used to set the initial map view extent.
+                              Takes precedence over building_gdf for determining map center.
+   :type rectangle_vertices: list, optional
+   :param zoom: Initial zoom level for the map. Default=17.
+                Range: 0 (most zoomed out) to 18 (most zoomed in).
+                Default of 17 is optimized for building-level detail.
+   :type zoom: int
+
+   :returns:
+
+             (map_object, drawn_polygon_vertices)
+                 - map_object: ipyleaflet Map instance with building footprints and drawing controls
+                 - drawn_polygon_vertices: List that gets updated with (lon,lat) coordinates
+                   whenever a new polygon is drawn. Coordinates are in GeoJSON order.
+   :rtype: tuple
+
+   .. note::
+
+      - Building footprints are displayed in blue with 20% opacity
+      - Only simple Polygon geometries are supported (no MultiPolygons)
+      - Drawing tools are restricted to polygon creation only
+      - All coordinates are handled in (lon,lat) order internally
+      - The function automatically determines appropriate map bounds
+
+
+.. py:function:: initialize_geod()
+
+   Initialize a Geod object for geodetic calculations using WGS84 ellipsoid.
+   The WGS84 ellipsoid (EPSG:4326) is the standard reference system used by GPS
+   and most modern mapping applications.
+
+   The Geod object provides methods for:
+   - Forward geodetic calculations (direct)
+   - Inverse geodetic calculations (inverse)
+   - Area calculations
+   - Line length calculations
+
+   :returns: Initialized Geod object for WGS84 calculations
+   :rtype: Geod
+
+   .. rubric:: Example
+
+   >>> geod = initialize_geod()
+   >>> fwd_az, back_az, dist = geod.inv(lon1, lat1, lon2, lat2)
+
+
+.. py:function:: calculate_distance(geod, lon1, lat1, lon2, lat2)
+
+   Calculate geodetic distance between two points on the Earth's surface.
+   Uses inverse geodetic computation to find the shortest distance along the ellipsoid,
+   which is more accurate than great circle (spherical) calculations.
+
+   :param geod: Geod object for calculations, initialized with WGS84
+   :type geod: Geod
+   :param lon1: Coordinates of first point in decimal degrees
+   :type lon1: float
+   :param lat1: Coordinates of first point in decimal degrees
+   :type lat1: float
+   :param lon2: Coordinates of second point in decimal degrees
+   :type lon2: float
+   :param lat2: Coordinates of second point in decimal degrees
+   :type lat2: float
+
+   :returns: Distance in meters between the two points along the ellipsoid
+   :rtype: float
+
+   .. rubric:: Example
+
+   >>> geod = initialize_geod()
+   >>> distance = calculate_distance(geod, 139.6503, 35.6762,
+   ...                             -74.0060, 40.7128)  # Tokyo to NYC
+
+
+.. py:function:: normalize_to_one_meter(vector, distance_in_meters)
+
+   Normalize a vector to represent one meter in geographic space.
+   Useful for creating unit vectors in geographic calculations, particularly
+   when working with distance-based operations or scaling geographic features.
+
+   :param vector: Vector to normalize, typically a direction vector
+   :type vector: numpy.ndarray
+   :param distance_in_meters: Current distance in meters that the vector represents
+   :type distance_in_meters: float
+
+   :returns: Normalized vector where magnitude represents 1 meter
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> direction = np.array([3.0, 4.0])  # Vector of length 5
+   >>> unit_meter = normalize_to_one_meter(direction, 5.0)
+
+
+.. py:function:: create_building_polygons(filtered_buildings)
+
+   Create building polygons with properties from filtered GeoJSON features.
+   Processes a list of GeoJSON building features to create Shapely polygons
+   with associated height and other properties, while also building a spatial index.
+
+   Processing steps:
+   1. Extract and validate coordinates
+   2. Create Shapely polygons
+   3. Process building properties (height, levels, etc.)
+   4. Build spatial index for efficient querying
+
+   Height calculation rules:
+   - Use explicit height if available
+   - Calculate from levels * floor_height if height not available
+   - Calculate from floors * floor_height if levels not available
+   - Use NaN if no height information available
+
+   :param filtered_buildings: List of GeoJSON building features with properties
+   :type filtered_buildings: list
+
+   :returns:
+
+             (
+                 list of tuples (polygon, height, min_height, is_inner, feature_id),
+                 rtree spatial index for the polygons
+             )
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> buildings = [
+   ...     {
+   ...         "type": "Feature",
+   ...         "geometry": {"type": "Polygon", "coordinates": [...]},
+   ...         "properties": {"height": 30, "levels": 10}
+   ...     },
+   ...     # ... more buildings ...
+   ... ]
+   >>> polygons, spatial_idx = create_building_polygons(buildings)
+
+
+.. py:function:: convert_format_lat_lon(input_coords)
+
+   Convert coordinate format and close polygon.
+   Input coordinates are already in [lon, lat] format.
+
+   :param input_coords: List of [lon, lat] coordinates
+   :type input_coords: list
+
+   :returns: List of [lon, lat] coordinates with first point repeated at end
+   :rtype: list
+
+
+.. py:function:: filter_buildings(geojson_data, plotting_box)
+
+   Filter building features that intersect with a given bounding box.
+
+   This function filters a list of GeoJSON building features to keep only those
+   that intersect with a specified bounding box. It performs geometry validation
+   and handles invalid geometries gracefully.
+
+   :param geojson_data: List of GeoJSON features representing buildings
+                        Each feature must have valid 'geometry' property
+                        Coordinates must be in same CRS as plotting_box
+                        Invalid geometries will be skipped with warning
+   :type geojson_data: list
+   :param plotting_box: Shapely polygon defining the bounding box
+                        Must be a valid Shapely Polygon object
+                        Must be in same coordinate system as geojson_data
+                        Used for spatial intersection testing
+   :type plotting_box: Polygon
+
+   :returns:
+
+             Filtered list of GeoJSON features that intersect with the bounding box
+                 Features maintain their original structure
+                 Invalid features are excluded
+                 Order of features is preserved
+   :rtype: list
+
+   .. note::
+
+      - Validates polygon coordinates before processing
+      - Skips features with invalid geometries
+      - Reports validation and geometry errors
+      - No coordinate system transformation is performed
+      - Memory efficient as it creates new list only for valid features
+
+
+.. py:function:: extract_building_heights_from_geotiff(geotiff_path, gdf)
+
+   Extract building heights from a GeoTIFF raster for building footprints in a GeoDataFrame.
+
+   This function processes building footprints to extract height information from a GeoTIFF
+   raster file. It handles coordinate transformation between WGS84 (EPSG:4326) and the raster's
+   CRS, and calculates average heights for each building footprint.
+
+   :param geotiff_path: Path to the GeoTIFF height raster file containing elevation data
+   :type geotiff_path: str
+   :param gdf: GeoDataFrame containing building footprints with geometry column
+               The GeoDataFrame should be in WGS84 (EPSG:4326) coordinate system
+   :type gdf: gpd.GeoDataFrame
+
+   :returns:
+
+             Updated GeoDataFrame with extracted heights in the 'height' column
+                 - Buildings with valid height data will have their height values updated
+                 - Buildings with no valid height data will have NaN values
+                 - Original buildings with existing valid heights are preserved
+   :rtype: gpd.GeoDataFrame
+
+   Statistics Reported:
+       - Total number of buildings without height data
+       - Number of buildings successfully updated with height data
+       - Number of buildings where no height data could be found
+
+   .. note::
+
+      - The function only processes Polygon geometries (not MultiPolygons or other types)
+      - Buildings are considered to need height processing if they have no height or height <= 0
+      - Heights are calculated as the mean of all valid raster values within the building footprint
+
+
+.. py:function:: extract_building_heights_from_gdf(gdf_0: geopandas.GeoDataFrame, gdf_1: geopandas.GeoDataFrame) -> geopandas.GeoDataFrame
+
+   Extract building heights from one GeoDataFrame and apply them to another based on spatial overlap.
+
+   This function transfers height information from a reference GeoDataFrame to a primary GeoDataFrame
+   based on the spatial overlap between building footprints. For each building in the primary dataset
+   that needs height data, it calculates a weighted average height from overlapping buildings in the
+   reference dataset.
+
+   :param gdf_0: Primary GeoDataFrame to update with heights
+                 Must have 'geometry' column with building footprints
+                 Will be updated with height values where missing or zero
+   :type gdf_0: gpd.GeoDataFrame
+   :param gdf_1: Reference GeoDataFrame containing height data
+                 Must have 'geometry' column with building footprints
+                 Must have 'height' column with valid height values
+   :type gdf_1: gpd.GeoDataFrame
+
+   :returns:
+
+             Updated primary GeoDataFrame with extracted heights
+                 Buildings with overlapping reference data get weighted average heights
+                 Buildings without overlapping data retain original height or get NaN
+   :rtype: gpd.GeoDataFrame
+
+   Statistics Tracked:
+       - count_0: Number of buildings without height in primary dataset
+       - count_1: Number of buildings successfully updated with height
+       - count_2: Number of buildings where no reference height data found
+
+   .. note::
+
+      - Uses R-tree spatial indexing for efficient overlap detection
+      - Handles invalid geometries by attempting to fix them with buffer(0)
+      - Weighted average is based on the area of overlap between buildings
+
+
+.. py:function:: complement_building_heights_from_gdf(gdf_0, gdf_1, primary_id='id', ref_id='id')
+
+   Use a vectorized approach with GeoPandas to:
+     1) Find intersections and compute weighted average heights
+     2) Update heights in the primary dataset
+     3) Add non-intersecting buildings from the reference dataset
+
+   :param gdf_0: Primary GeoDataFrame
+   :type gdf_0: gpd.GeoDataFrame
+   :param gdf_1: Reference GeoDataFrame
+   :type gdf_1: gpd.GeoDataFrame
+   :param primary_id: Name of the unique identifier in primary dataset's properties
+   :type primary_id: str
+   :param ref_id: Name of the unique identifier in reference dataset's properties
+   :type ref_id: str
+
+   :returns: Updated GeoDataFrame (including new buildings).
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
+
+   Process building footprints to merge overlapping buildings based on area overlap ratio.
+
+   This function identifies and merges building footprints that significantly overlap with each other.
+   Buildings are processed in order of decreasing area, and smaller buildings that overlap significantly
+   with larger ones are assigned the ID of the larger building, effectively merging them.
+
+   :param filtered_gdf: GeoDataFrame containing building footprints
+                        Must have 'geometry' column with building polygons
+                        If CRS is set, areas will be calculated in Web Mercator projection
+   :type filtered_gdf: geopandas.GeoDataFrame
+   :param overlap_threshold: Threshold for overlap ratio (0.0-1.0) to merge buildings
+                             Default is 0.5 (50% overlap)
+                             Higher values require more overlap for merging
+                             Lower values will result in more aggressive merging
+   :type overlap_threshold: float, optional
+
+   :returns:
+
+             Processed GeoDataFrame with updated IDs
+                 Overlapping buildings will share the same ID
+                 Original geometries are preserved, only IDs are updated
+                 All other columns remain unchanged
+   :rtype: geopandas.GeoDataFrame
+
+   .. note::
+
+      - Uses R-tree spatial indexing for efficient overlap detection
+      - Projects to Web Mercator (EPSG:3857) for accurate area calculation if CRS is set
+      - Handles invalid geometries by attempting to fix them with buffer(0)
+      - Processes buildings in order of decreasing area (largest first)
+
+
+.. py:function:: get_class_priority(source)
+
+   Get priority rankings for land cover classes to resolve conflicts during classification.
+
+   When multiple land cover classes are present in the same area, this priority system
+   determines which class should take precedence. Higher priority values indicate
+   classes that should override lower priority classes.
+
+   :param source: Name of the land cover data source
+   :type source: str
+
+   :returns: Dictionary mapping class names to priority values (higher = more priority)
+   :rtype: dict
+
+   Priority Logic for OpenStreetMap:
+       - Built Environment: Highest priority (most definitive structures)
+       - Water Bodies: High priority (clearly defined features)
+       - Vegetation: Medium priority (managed vs natural)
+       - Natural Non-Vegetation: Lower priority (often default classifications)
+       - Uncertain/No Data: Lowest priority
+
+
+.. py:function:: create_land_cover_polygons(land_cover_geojson)
+
+   Create polygon geometries and spatial index from land cover GeoJSON data.
+
+   This function processes GeoJSON land cover data to create Shapely polygon
+   geometries and builds an R-tree spatial index for efficient spatial queries.
+
+   :param land_cover_geojson: List of GeoJSON feature dictionaries containing
+                              land cover polygons with geometry and properties
+   :type land_cover_geojson: list
+
+   :returns:
+
+             A tuple containing:
+                 - land_cover_polygons (list): List of tuples (polygon, class_name)
+                 - idx (rtree.index.Index): Spatial index for efficient polygon lookup
+   :rtype: tuple
+
+   .. note::
+
+      Each GeoJSON feature should have:
+      - geometry.coordinates[0]: List of coordinate pairs defining the polygon
+      - properties.class: String indicating the land cover class
+
+
+.. py:function:: get_dominant_class(cell_data, land_cover_classes)
+
+   Determine the dominant land cover class in a cell based on pixel majority.
+
+   This function analyzes all pixels within a cell, classifies each pixel to its
+   nearest land cover class, and returns the most frequently occurring class.
+
+   :param cell_data: 3D array of RGB pixel data for the cell
+   :type cell_data: numpy.ndarray
+   :param land_cover_classes: Dictionary mapping RGB tuples to class names
+   :type land_cover_classes: dict
+
+   :returns: Name of the dominant land cover class in the cell
+   :rtype: str
+
+   .. note:: If the cell contains no data, returns 'No Data'
+
+
+.. py:function:: get_roi(input_coords)
+
+   Create an Earth Engine region of interest polygon from coordinates.
+
+   :param input_coords: List of coordinate pairs defining the polygon vertices in (lon, lat) format.
+                        The coordinates should form a valid polygon (non-self-intersecting).
+
+   :returns: Earth Engine polygon geometry representing the ROI
+   :rtype: ee.Geometry.Polygon
+
+   .. note::
+
+      The function automatically closes the polygon by connecting the last vertex
+      to the first vertex if they are not the same.
+
+
+.. py:function:: save_geotiff_open_buildings_temporal(aoi, geotiff_path)
+
+   Save Open Buildings temporal data as a GeoTIFF.
+
+   Downloads and exports building height data from Google's Open Buildings dataset.
+   This dataset provides building footprints and heights derived from satellite imagery.
+
+   :param aoi: Earth Engine geometry defining area of interest
+   :param geotiff_path: Output path for GeoTIFF file
+
+   .. note::
+
+      - The output GeoTIFF contains building heights in meters
+      - The dataset is updated periodically and may not cover all regions
+      - Resolution is fixed at 4 meters per pixel
+      - Areas without buildings will have no-data values
+
+
+.. py:function:: apply_operation(arr, meshsize)
+
+   Applies a sequence of operations to an array based on a mesh size to normalize and discretize values.
+
+   This function performs the following sequence of operations:
+   1. Divides array by mesh size to normalize values
+   2. Adds 0.5 to round values to nearest integer
+   3. Floors the result to get integer values
+   4. Scales back to original units by multiplying by mesh size
+
+   :param arr: Input array to transform
+   :type arr: numpy.ndarray
+   :param meshsize: Size of mesh to use for calculations
+   :type meshsize: float
+
+   :returns: Transformed array after applying operations
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([1.2, 2.7, 3.4])
+   >>> meshsize = 0.5
+   >>> result = apply_operation(arr, meshsize)
+
+
+.. py:function:: translate_array(input_array, translation_dict)
+
+   Translates values in an array according to a dictionary mapping.
+
+   This function creates a new array where each value from the input array
+   is replaced by its corresponding value from the translation dictionary.
+   Values not found in the dictionary are replaced with empty strings.
+
+   :param input_array: Array containing values to translate
+   :type input_array: numpy.ndarray
+   :param translation_dict: Dictionary mapping input values to output values
+   :type translation_dict: dict
+
+   :returns: Array with translated values, with same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1, 2], [3, 4]])
+   >>> trans_dict = {1: 'A', 2: 'B', 3: 'C', 4: 'D'}
+   >>> result = translate_array(arr, trans_dict)
+   >>> # result = array([['A', 'B'], ['C', 'D']], dtype=object)
+
+
+.. py:function:: group_and_label_cells(array)
+
+   Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
+
+   This function creates a new array where all non-zero values are replaced with
+   sequential IDs (1, 2, 3, etc.) while preserving zero values. This is useful
+   for labeling distinct regions or features in a grid.
+
+   :param array: Input 2D array with non-zero values to be labeled
+   :type array: numpy.ndarray
+
+   :returns:
+
+             Array with non-zero values converted to sequential IDs,
+                           maintaining the same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[0, 5, 5], [0, 5, 8], [0, 0, 8]])
+   >>> result = group_and_label_cells(arr)
+   >>> # result = array([[0, 1, 1], [0, 1, 2], [0, 0, 2]])
+
+
+.. py:function:: process_grid(grid_bi, dem_grid)
+
+   Process a binary grid and DEM grid to create averaged elevation values.
+
+   This function takes a binary grid identifying regions and a corresponding DEM
+   grid with elevation values. For each non-zero region in the binary grid, it
+   calculates the mean elevation from the DEM grid and assigns this average to
+   all cells in that region. The result is normalized by subtracting the minimum value.
+
+   :param grid_bi: Binary grid indicating regions (0 for background,
+                   non-zero for different regions)
+   :type grid_bi: numpy.ndarray
+   :param dem_grid: Grid of elevation values corresponding to the
+                    same spatial extent as grid_bi
+   :type dem_grid: numpy.ndarray
+
+   :returns:
+
+             Processed grid with averaged and normalized elevation values.
+                           Same shape as input grids.
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> binary_grid = np.array([[1, 1, 0], [1, 1, 2], [0, 2, 2]])
+   >>> elevation = np.array([[100, 110, 90], [105, 115, 120], [95, 125, 130]])
+   >>> result = process_grid(binary_grid, elevation)
+
+
+.. py:function:: calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+
+   Calculate grid size and adjusted mesh size based on input parameters.
+
+   This function determines the number of grid cells needed in each direction and
+   adjusts the mesh size to exactly fit the desired area. The calculation takes into
+   account the input vectors and desired mesh size to ensure proper coverage.
+
+   :param side_1: First side vector defining the grid extent
+   :type side_1: numpy.ndarray
+   :param side_2: Second side vector defining the grid extent
+   :type side_2: numpy.ndarray
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+   :param meshsize: Desired mesh size in the same units as the vectors
+   :type meshsize: float
+
+   :returns:
+
+             A tuple containing:
+                 - grid_size (tuple of ints): Number of cells in each direction (nx, ny)
+                 - adjusted_mesh_size (tuple of floats): Actual mesh sizes that fit the area exactly
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> side1 = np.array([100, 0])  # 100 units in x direction
+   >>> side2 = np.array([0, 50])   # 50 units in y direction
+   >>> u = np.array([1, 0])        # Unit vector in x
+   >>> v = np.array([0, 1])        # Unit vector in y
+   >>> mesh = 10                    # Desired 10-unit mesh
+   >>> grid_size, adj_mesh = calculate_grid_size(side1, side2, u, v, mesh)
+
+
+.. py:function:: create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec)
+
+   Create a coordinate mesh based on input parameters.
+
+   This function generates a 3D array representing a coordinate mesh, where each point
+   in the mesh is calculated by adding scaled vectors to the origin point. The mesh
+   is created using the specified grid size and adjusted mesh sizes.
+
+   :param origin: Origin point coordinates (shape: (2,) or (3,))
+   :type origin: numpy.ndarray
+   :param grid_size: Size of grid in each dimension (nx, ny)
+   :type grid_size: tuple
+   :param adjusted_meshsize: Adjusted mesh size in each dimension (dx, dy)
+   :type adjusted_meshsize: tuple
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+
+   :returns:
+
+             3D array of shape (coord_dim, ny, nx) containing the coordinates
+                           of each point in the mesh. coord_dim is the same as the
+                           dimensionality of the input vectors.
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> origin = np.array([0, 0])
+   >>> grid_size = (5, 4)
+   >>> mesh_size = (10, 10)
+   >>> u = np.array([1, 0])
+   >>> v = np.array([0, 1])
+   >>> coords = create_coordinate_mesh(origin, grid_size, mesh_size, u, v)
+
+
+.. py:function:: create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
+
+   Create a polygon representing a grid cell.
+
+   This function generates a rectangular polygon for a specific grid cell by calculating
+   its four corners based on the cell indices and grid parameters. The polygon is
+   created in counter-clockwise order starting from the bottom-left corner.
+
+   :param origin: Origin point coordinates (shape: (2,) or (3,))
+   :type origin: numpy.ndarray
+   :param i: Row index of the cell
+   :type i: int
+   :param j: Column index of the cell
+   :type j: int
+   :param adjusted_meshsize: Adjusted mesh size in each dimension (dx, dy)
+   :type adjusted_meshsize: tuple
+   :param u_vec: Unit vector in first direction
+   :type u_vec: numpy.ndarray
+   :param v_vec: Unit vector in second direction
+   :type v_vec: numpy.ndarray
+
+   :returns:
+
+             Polygon representing the grid cell, with vertices
+                                     ordered counter-clockwise from bottom-left
+   :rtype: shapely.geometry.Polygon
+
+   .. rubric:: Example
+
+   >>> origin = np.array([0, 0])
+   >>> i, j = 1, 2  # Cell at row 1, column 2
+   >>> mesh_size = (10, 10)
+   >>> u = np.array([1, 0])
+   >>> v = np.array([0, 1])
+   >>> cell_poly = create_cell_polygon(origin, i, j, mesh_size, u, v)
+
+
+.. py:function:: tree_height_grid_from_land_cover(land_cover_grid_ori)
+
+   Convert a land cover grid to a tree height grid.
+
+   This function transforms a land cover classification grid into a grid of tree heights
+   by mapping land cover classes to predefined tree heights. The function first flips
+   the input grid vertically and adjusts class values, then applies a translation
+   dictionary to convert classes to heights.
+
+   Land cover class to tree height mapping:
+   - Class 4 (Forest): 10m height
+   - All other classes: 0m height
+
+   :param land_cover_grid_ori: Original land cover grid with class values
+   :type land_cover_grid_ori: numpy.ndarray
+
+   :returns: Grid of tree heights in meters, with same dimensions as input
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> lc_grid = np.array([[1, 4, 2], [4, 3, 4], [2, 1, 3]])
+   >>> tree_heights = tree_height_grid_from_land_cover(lc_grid)
+   >>> # Result: array([[0, 10, 0], [10, 0, 10], [0, 0, 0]])
+
+
+.. py:function:: create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover_classes, polygon)
+
+   Create a land cover grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param land_cover_classes: Dictionary mapping land cover classes
+   :type land_cover_classes: dict
+   :param polygon: List of polygon vertices
+   :type polygon: list
+
+   :returns: Grid of land cover classes within the polygon
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices)
+
+   Create a grid of land cover classes from GeoDataFrame polygon data.
+
+   :param gdf: GeoDataFrame containing land cover polygons
+   :type gdf: GeoDataFrame
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+   :param source: Source of the land cover data to determine class priorities
+   :type source: str
+   :param rectangle_vertices: List of 4 (lon,lat) coordinate pairs defining the rectangle bounds
+   :type rectangle_vertices: list
+
+   :returns: 2D grid of land cover classes as strings
+   :rtype: numpy.ndarray
+
+   The function creates a regular grid over the given rectangle area and determines the dominant
+   land cover class for each cell based on polygon intersections. Classes are assigned based on
+   priority rules and majority area coverage.
+
+
+.. py:function:: create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon)
+
+   Create a height grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param polygon: List of polygon vertices
+   :type polygon: list
+
+   :returns: Grid of heights within the polygon
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=None, geotiff_path_comp=None, complement_building_footprints=None, complement_height=None)
+
+   Create a building height grid from GeoDataFrame data within a polygon boundary.
+
+   :param gdf: GeoDataFrame containing building information
+   :type gdf: geopandas.GeoDataFrame
+   :param meshsize: Size of mesh cells
+   :type meshsize: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param gdf_comp: Complementary GeoDataFrame
+   :type gdf_comp: geopandas.GeoDataFrame, optional
+   :param geotiff_path_comp: Path to complementary GeoTIFF file
+   :type geotiff_path_comp: str, optional
+   :param complement_building_footprints: Whether to complement footprints
+   :type complement_building_footprints: bool, optional
+   :param complement_height: Height value to use for buildings with height=0
+   :type complement_height: float, optional
+
+   :returns:
+
+             (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
+                 - building_height_grid (numpy.ndarray): Grid of building heights
+                 - building_min_height_grid (numpy.ndarray): Grid of min building heights (list per cell)
+                 - building_id_grid (numpy.ndarray): Grid of building IDs
+                 - filtered_buildings (geopandas.GeoDataFrame): The buildings used (filtered_gdf)
+   :rtype: tuple
+
+
+.. py:function:: create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
+
+   Create a building height grid from OpenBuildings temporal data within a polygon.
+
+   :param meshsize: Size of mesh cells
+   :type meshsize: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param output_dir: Directory to save intermediate GeoTIFF files
+   :type output_dir: str
+
+   :returns: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
+   :rtype: tuple
+
+
+.. py:function:: create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices, dem_interpolation=False)
+
+   Create a Digital Elevation Model (DEM) grid from a GeoTIFF file within a polygon boundary.
+
+   :param tiff_path: Path to GeoTIFF file
+   :type tiff_path: str
+   :param mesh_size: Size of mesh cells
+   :type mesh_size: float
+   :param rectangle_vertices: List of rectangle vertices defining the boundary
+   :type rectangle_vertices: list
+   :param dem_interpolation: Whether to use cubic interpolation for smoother results
+   :type dem_interpolation: bool
+
+   :returns: Grid of elevation values
+   :rtype: numpy.ndarray
+
+
+.. py:function:: grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize)
+
+   Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+
+   This function transforms a regular grid into a GeoDataFrame where each cell is
+   represented as a polygon. The transformation handles coordinate systems properly,
+   converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for accurate
+   distance calculations.
+
+   :param grid_ori: 2D array containing grid values
+   :type grid_ori: numpy.ndarray
+   :param rectangle_vertices: List of [lon, lat] coordinates defining area corners.
+                              Should be in WGS84 (EPSG:4326) format.
+   :type rectangle_vertices: list
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+
+   :returns:
+
+             A GeoDataFrame with columns:
+                 - geometry: Polygon geometry of each grid cell in WGS84 (EPSG:4326)
+                 - value: Value from the original grid
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> grid = np.array([[1, 2], [3, 4]])
+   >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+   >>> mesh_size = 100  # 100 meters
+   >>> gdf = grid_to_geodataframe(grid, vertices, mesh_size)
+
+   .. rubric:: Notes
+
+   - The input grid is flipped vertically before processing to match geographic
+     orientation (north at top)
+   - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+
+
+.. py:function:: grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize)
+
+   Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
+
+   This function transforms a regular grid into a GeoDataFrame where each cell is
+   represented by a point at its center. The transformation handles coordinate systems
+   properly, converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for
+   accurate distance calculations.
+
+   :param grid_ori: 2D array containing grid values
+   :type grid_ori: numpy.ndarray
+   :param rectangle_vertices: List of [lon, lat] coordinates defining area corners.
+                              Should be in WGS84 (EPSG:4326) format.
+   :type rectangle_vertices: list
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+
+   :returns:
+
+             A GeoDataFrame with columns:
+                 - geometry: Point geometry at center of each grid cell in WGS84 (EPSG:4326)
+                 - value: Value from the original grid
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> grid = np.array([[1, 2], [3, 4]])
+   >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+   >>> mesh_size = 100  # 100 meters
+   >>> gdf = grid_to_point_geodataframe(grid, vertices, mesh_size)
+
+   .. rubric:: Notes
+
+   - The input grid is flipped vertically before processing to match geographic
+     orientation (north at top)
+   - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+   - Points are placed at the center of each grid cell
+
+
+.. py:function:: create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon)
+
+   Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects
+   within the bounding box of a given polygon, at a specified mesh spacing.
+   Cells that intersect one or more vegetation polygons receive the
+   (by default) maximum vegetation height among intersecting polygons.
+   Cells that do not intersect any vegetation are set to 0.
+
+   :param veg_gdf: A GeoDataFrame containing vegetation features
+                   (usually polygons) with a 'height' column
+                   (or a similarly named attribute). Must be in
+                   EPSG:4326 or reprojectable to it.
+   :type veg_gdf: GeoDataFrame
+   :param mesh_size: Desired grid spacing in meters.
+   :type mesh_size: float
+   :param polygon:
+                   - If a list of (lon, lat) coords, will be converted to a shapely Polygon
+                     in EPSG:4326.
+                   - If a shapely Polygon, it must be in or reprojectable to EPSG:4326.
+   :type polygon: list or Polygon
+
+   :returns:
+
+             2D array of vegetation height values covering the bounding box
+                         of the polygon. The array is indexed [row, col] from top row
+                         (north) to bottom row (south). Cells with no intersecting
+                         vegetation are set to 0.
+   :rtype: np.ndarray
+
+
+.. py:function:: create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon)
+
+   Create a height grid from a terrain GeoDataFrame within the bounding box
+   of the given polygon, using nearest-neighbor sampling of elevations.
+   Edges of the bounding box will also receive a nearest elevation,
+   so there should be no NaNs around edges if data coverage is sufficient.
+
+   :param terrain_gdf: A GeoDataFrame containing terrain features
+                       (points or centroids) with an 'elevation' column.
+                       Must be in EPSG:4326 or reprojectable to it.
+   :type terrain_gdf: GeoDataFrame
+   :param mesh_size: Desired grid spacing in meters.
+   :type mesh_size: float
+   :param polygon: Polygon specifying the region of interest.
+                   - If list of (lon, lat), will be made into a Polygon.
+                   - If a shapely Polygon, must be in WGS84 (EPSG:4326)
+                     or reprojected to it.
+   :type polygon: list or Polygon
+
+   :returns:
+
+             2D array of height values covering the bounding box of the polygon,
+                         from top row (north) to bottom row (south). Any location not
+                         matched by terrain_gdf data remains NaN, but edges will not
+                         automatically be NaN if terrain coverage exists.
+   :rtype: np.ndarray
+
+
+.. py:data:: floor_height
+   :value: 2.5
+
+
+.. py:function:: tile_from_lat_lon(lat, lon, level_of_detail)
+
+   Convert latitude/longitude coordinates to tile coordinates at a given zoom level.
+   Uses the Web Mercator projection (EPSG:3857) commonly used in web mapping.
+
+   :param lat: Latitude in degrees (-90 to 90)
+   :type lat: float
+   :param lon: Longitude in degrees (-180 to 180)
+   :type lon: float
+   :param level_of_detail: Zoom level (0-23, where 0 is the entire world)
+   :type level_of_detail: int
+
+   :returns: (tile_x, tile_y) tile coordinates in the global tile grid
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> tile_x, tile_y = tile_from_lat_lon(35.6762, 139.6503, 12)  # Tokyo at zoom 12
+
+
+.. py:function:: quadkey_to_tile(quadkey)
+
+   Convert a quadkey string to tile coordinates.
+   A quadkey is a string of digits (0-3) that identifies a tile at a certain zoom level.
+   Each digit in the quadkey represents a tile at a zoom level, with each subsequent digit
+   representing a more detailed zoom level.
+
+   The quadkey numbering scheme:
+       - 0: Top-left quadrant
+       - 1: Top-right quadrant
+       - 2: Bottom-left quadrant
+       - 3: Bottom-right quadrant
+
+   :param quadkey: Quadkey string (e.g., "120" for zoom level 3)
+   :type quadkey: str
+
+   :returns: (tile_x, tile_y, level_of_detail) tile coordinates and zoom level
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> x, y, zoom = quadkey_to_tile("120")  # Returns coordinates at zoom level 3
+
+
+.. py:function:: initialize_geod()
+
+   Initialize a Geod object for geodetic calculations using WGS84 ellipsoid.
+   The WGS84 ellipsoid (EPSG:4326) is the standard reference system used by GPS
+   and most modern mapping applications.
+
+   The Geod object provides methods for:
+   - Forward geodetic calculations (direct)
+   - Inverse geodetic calculations (inverse)
+   - Area calculations
+   - Line length calculations
+
+   :returns: Initialized Geod object for WGS84 calculations
+   :rtype: Geod
+
+   .. rubric:: Example
+
+   >>> geod = initialize_geod()
+   >>> fwd_az, back_az, dist = geod.inv(lon1, lat1, lon2, lat2)
+
+
+.. py:function:: calculate_distance(geod, lon1, lat1, lon2, lat2)
+
+   Calculate geodetic distance between two points on the Earth's surface.
+   Uses inverse geodetic computation to find the shortest distance along the ellipsoid,
+   which is more accurate than great circle (spherical) calculations.
+
+   :param geod: Geod object for calculations, initialized with WGS84
+   :type geod: Geod
+   :param lon1: Coordinates of first point in decimal degrees
+   :type lon1: float
+   :param lat1: Coordinates of first point in decimal degrees
+   :type lat1: float
+   :param lon2: Coordinates of second point in decimal degrees
+   :type lon2: float
+   :param lat2: Coordinates of second point in decimal degrees
+   :type lat2: float
+
+   :returns: Distance in meters between the two points along the ellipsoid
+   :rtype: float
+
+   .. rubric:: Example
+
+   >>> geod = initialize_geod()
+   >>> distance = calculate_distance(geod, 139.6503, 35.6762,
+   ...                             -74.0060, 40.7128)  # Tokyo to NYC
+
+
+.. py:function:: normalize_to_one_meter(vector, distance_in_meters)
+
+   Normalize a vector to represent one meter in geographic space.
+   Useful for creating unit vectors in geographic calculations, particularly
+   when working with distance-based operations or scaling geographic features.
+
+   :param vector: Vector to normalize, typically a direction vector
+   :type vector: numpy.ndarray
+   :param distance_in_meters: Current distance in meters that the vector represents
+   :type distance_in_meters: float
+
+   :returns: Normalized vector where magnitude represents 1 meter
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> direction = np.array([3.0, 4.0])  # Vector of length 5
+   >>> unit_meter = normalize_to_one_meter(direction, 5.0)
+
+
+.. py:function:: setup_transformer(from_crs, to_crs)
+
+   Set up a coordinate transformer between two Coordinate Reference Systems (CRS).
+   The always_xy=True parameter ensures consistent handling of coordinate order
+   by always using (x,y) or (longitude,latitude) order regardless of CRS definition.
+
+   Common CRS codes:
+   - EPSG:4326 - WGS84 (latitude/longitude)
+   - EPSG:3857 - Web Mercator
+   - EPSG:2263 - NY State Plane
+
+   :param from_crs: Source coordinate reference system (EPSG code, proj4 string, or CRS dict)
+   :param to_crs: Target coordinate reference system (EPSG code, proj4 string, or CRS dict)
+
+   :returns: Initialized transformer object for coordinate conversion
+   :rtype: Transformer
+
+   .. rubric:: Example
+
+   >>> transformer = setup_transformer("EPSG:4326", "EPSG:3857")
+   >>> x, y = transformer.transform(longitude, latitude)
+
+
+.. py:function:: transform_coords(transformer, lon, lat)
+
+   Transform coordinates using provided transformer with error handling.
+   Includes validation for infinite values that may result from invalid transformations
+   or coordinates outside the valid range for the target CRS.
+
+   :param transformer: Coordinate transformer from setup_transformer()
+   :type transformer: Transformer
+   :param lon: Input coordinates in the source CRS
+   :type lon: float
+   :param lat: Input coordinates in the source CRS
+   :type lat: float
+
+   :returns: (x, y) transformed coordinates in the target CRS, or (None, None) if transformation fails
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> transformer = setup_transformer("EPSG:4326", "EPSG:3857")
+   >>> x, y = transform_coords(transformer, -74.0060, 40.7128)  # NYC coordinates
+   >>> if x is not None:
+   ...     print(f"Transformed coordinates: ({x}, {y})")
+
+
+.. py:function:: create_polygon(vertices)
+
+   Create a Shapely polygon from a list of vertices.
+   Input vertices must be in (longitude, latitude) format as required by Shapely.
+   The polygon will be automatically closed if the first and last vertices don't match.
+
+   :param vertices: List of (longitude, latitude) coordinate pairs forming the polygon.
+                    The coordinates should be in counter-clockwise order for exterior rings
+                    and clockwise order for interior rings (holes).
+   :type vertices: list
+
+   :returns: Shapely polygon object that can be used for spatial operations
+   :rtype: Polygon
+
+   .. rubric:: Example
+
+   >>> vertices = [(0, 0), (1, 0), (1, 1), (0, 1)]  # Square
+   >>> polygon = create_polygon(vertices)
+   >>> print(f"Polygon area: {polygon.area}")
+
+
+.. py:function:: create_geodataframe(polygon, crs=4326)
+
+   Create a GeoDataFrame from a Shapely polygon.
+   Default CRS is WGS84 (EPSG:4326) for geographic coordinates.
+   The GeoDataFrame provides additional functionality for spatial operations,
+   data analysis, and export to various geographic formats.
+
+   :param polygon: Shapely polygon object to convert
+   :type polygon: Polygon
+   :param crs: Coordinate reference system EPSG code (default: 4326 for WGS84)
+   :type crs: int
+
+   :returns: GeoDataFrame containing the polygon with specified CRS
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> vertices = [(0, 0), (1, 0), (1, 1), (0, 1)]
+   >>> polygon = create_polygon(vertices)
+   >>> gdf = create_geodataframe(polygon)
+   >>> gdf.to_file("polygon.geojson", driver="GeoJSON")
+
+
+.. py:function:: haversine_distance(lon1, lat1, lon2, lat2)
+
+   Calculate great-circle distance between two points using Haversine formula.
+   This is an approximation that treats the Earth as a perfect sphere.
+
+   :param lon1: Coordinates of first point
+   :type lon1: float
+   :param lat1: Coordinates of first point
+   :type lat1: float
+   :param lon2: Coordinates of second point
+   :type lon2: float
+   :param lat2: Coordinates of second point
+   :type lat2: float
+
+   :returns: Distance in kilometers
+   :rtype: float
+
+
+.. py:function:: get_raster_bbox(raster_path)
+
+   Get the bounding box of a raster file in its native coordinate system.
+   Returns a rectangular polygon representing the spatial extent of the raster,
+   which can be used for spatial queries and intersection tests.
+
+   :param raster_path: Path to the raster file (GeoTIFF, IMG, etc.)
+   :type raster_path: str
+
+   :returns: Shapely box representing the raster bounds in the raster's CRS
+   :rtype: box
+
+   .. rubric:: Example
+
+   >>> bbox = get_raster_bbox("elevation.tif")
+   >>> print(f"Raster extent: {bbox.bounds}")  # (minx, miny, maxx, maxy)
+
+
+.. py:function:: raster_intersects_polygon(raster_path, polygon)
+
+   Check if a raster file's extent intersects with a given polygon.
+   Automatically handles coordinate system transformations by converting
+   the raster bounds to WGS84 (EPSG:4326) if needed before the intersection test.
+
+   :param raster_path: Path to the raster file to check
+   :type raster_path: str
+   :param polygon: Shapely polygon to test intersection with (in WGS84)
+   :type polygon: Polygon
+
+   :returns: True if raster intersects or contains the polygon, False otherwise
+   :rtype: bool
+
+   .. rubric:: Example
+
+   >>> aoi = create_polygon([(lon1, lat1), (lon2, lat2), ...])  # Area of interest
+   >>> if raster_intersects_polygon("dem.tif", aoi):
+   ...     print("Raster covers the area of interest")
+
+
+.. py:function:: save_raster(input_path, output_path)
+
+   Create a copy of a raster file at a new location.
+   Performs a direct file copy without any transformation or modification,
+   preserving all metadata, georeferencing, and pixel values.
+
+   :param input_path: Source raster file path
+   :type input_path: str
+   :param output_path: Destination path for the copied raster
+   :type output_path: str
+
+   .. rubric:: Example
+
+   >>> save_raster("original.tif", "backup/copy.tif")
+   >>> print("Copied original file to: backup/copy.tif")
+
+
+.. py:function:: merge_geotiffs(geotiff_files, output_dir)
+
+   Merge multiple GeoTIFF files into a single mosaic.
+   Handles edge matching and overlapping areas between adjacent rasters.
+   The output will have the same coordinate system and data type as the input files.
+
+   Important considerations:
+   - All input files should have the same coordinate system
+   - All input files should have the same data type
+   - Overlapping areas are handled by taking the first value encountered
+
+   :param geotiff_files: List of paths to GeoTIFF files to merge
+   :type geotiff_files: list
+   :param output_dir: Directory where the merged output will be saved
+   :type output_dir: str
+
+   .. rubric:: Example
+
+   >>> files = ["tile1.tif", "tile2.tif", "tile3.tif"]
+   >>> merge_geotiffs(files, "output_directory")
+   >>> print("Merged output saved to: output_directory/lulc.tif")
+
+
+.. py:function:: convert_format_lat_lon(input_coords)
+
+   Convert coordinate format and close polygon.
+   Input coordinates are already in [lon, lat] format.
+
+   :param input_coords: List of [lon, lat] coordinates
+   :type input_coords: list
+
+   :returns: List of [lon, lat] coordinates with first point repeated at end
+   :rtype: list
+
+
+.. py:function:: get_coordinates_from_cityname(place_name)
+
+   Geocode a city name to get its coordinates using OpenStreetMap's Nominatim service.
+   Includes rate limiting and error handling to comply with Nominatim's usage policy.
+
+   Note:
+   - Results may vary based on the specificity of the place name
+   - For better results, include country or state information
+   - Service has usage limits and may timeout
+
+   :param place_name: Name of the city to geocode (e.g., "Tokyo, Japan")
+   :type place_name: str
+
+   :returns: (latitude, longitude) coordinates or None if geocoding fails
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> coords = get_coordinates_from_cityname("Paris, France")
+   >>> if coords:
+   ...     lat, lon = coords
+   ...     print(f"Paris coordinates: {lat}, {lon}")
+
+
+.. py:function:: get_city_country_name_from_rectangle(coordinates)
+
+   Get the city and country name for a location defined by a rectangle.
+   Uses reverse geocoding to find the nearest named place to the rectangle's center.
+
+   The function:
+   1. Calculates the center point of the rectangle
+   2. Performs reverse geocoding with rate limiting
+   3. Extracts city and country information from the result
+
+   :param coordinates: List of (longitude, latitude) coordinates defining the rectangle
+   :type coordinates: list
+
+   :returns: String in format "city/ country" or fallback value if lookup fails
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> coords = [(139.65, 35.67), (139.66, 35.67),
+   ...           (139.66, 35.68), (139.65, 35.68)]
+   >>> location = get_city_country_name_from_rectangle(coords)
+   >>> print(f"Location: {location}")  # e.g., "Shibuya/ Japan"
+
+
+.. py:function:: get_timezone_info(rectangle_coords)
+
+   Get timezone and central meridian information for a location.
+   Uses the rectangle's center point to determine the local timezone and
+   calculates the central meridian based on the UTC offset.
+
+   The function provides:
+   1. Local timezone identifier (e.g., "America/New_York")
+   2. UTC offset (e.g., "UTC-04:00")
+   3. Central meridian longitude for the timezone
+
+   :param rectangle_coords: List of (longitude, latitude) coordinates defining the area
+   :type rectangle_coords: list
+
+   :returns: (timezone string with UTC offset, central meridian longitude string)
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> coords = [(139.65, 35.67), (139.66, 35.67),
+   ...           (139.66, 35.68), (139.65, 35.68)]
+   >>> tz, meridian = get_timezone_info(coords)
+   >>> print(f"Timezone: {tz}, Meridian: {meridian}")  # e.g., "UTC+09:00, 135.00000"
+
+
+.. py:function:: validate_polygon_coordinates(geometry)
+
+   Validate and ensure proper closure of polygon coordinate rings.
+   Performs validation and correction of GeoJSON polygon geometries according to
+   the GeoJSON specification requirements.
+
+   Validation checks:
+   1. Geometry type (Polygon or MultiPolygon)
+   2. Ring closure (first point equals last point)
+   3. Minimum number of points (4, including closure)
+
+   :param geometry: GeoJSON geometry object with 'type' and 'coordinates' properties
+   :type geometry: dict
+
+   :returns:
+
+             True if polygon coordinates are valid or were successfully corrected,
+                   False if validation failed
+   :rtype: bool
+
+   .. rubric:: Example
+
+   >>> geom = {
+   ...     "type": "Polygon",
+   ...     "coordinates": [[[0,0], [1,0], [1,1], [0,1]]]  # Not closed
+   ... }
+   >>> if validate_polygon_coordinates(geom):
+   ...     print("Polygon is valid")  # Will close the ring automatically
+
+
+.. py:function:: create_building_polygons(filtered_buildings)
+
+   Create building polygons with properties from filtered GeoJSON features.
+   Processes a list of GeoJSON building features to create Shapely polygons
+   with associated height and other properties, while also building a spatial index.
+
+   Processing steps:
+   1. Extract and validate coordinates
+   2. Create Shapely polygons
+   3. Process building properties (height, levels, etc.)
+   4. Build spatial index for efficient querying
+
+   Height calculation rules:
+   - Use explicit height if available
+   - Calculate from levels * floor_height if height not available
+   - Calculate from floors * floor_height if levels not available
+   - Use NaN if no height information available
+
+   :param filtered_buildings: List of GeoJSON building features with properties
+   :type filtered_buildings: list
+
+   :returns:
+
+             (
+                 list of tuples (polygon, height, min_height, is_inner, feature_id),
+                 rtree spatial index for the polygons
+             )
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> buildings = [
+   ...     {
+   ...         "type": "Feature",
+   ...         "geometry": {"type": "Polygon", "coordinates": [...]},
+   ...         "properties": {"height": 30, "levels": 10}
+   ...     },
+   ...     # ... more buildings ...
+   ... ]
+   >>> polygons, spatial_idx = create_building_polygons(buildings)
+
+
+.. py:function:: get_country_name(lon, lat)
+
+   Get country name from coordinates using reverse geocoding.
+   Uses a local database for fast reverse geocoding to country level,
+   then converts the country code to full name using pycountry.
+
+   :param lon: Longitude in decimal degrees
+   :type lon: float
+   :param lat: Latitude in decimal degrees
+   :type lat: float
+
+   :returns: Full country name or None if lookup fails
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> country = get_country_name(139.6503, 35.6762)
+   >>> print(f"Country: {country}")  # "Japan"
+
+
+.. py:function:: grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize)
+
+   Converts a 2D grid to a GeoDataFrame with cell polygons and values.
+
+   This function transforms a regular grid into a GeoDataFrame where each cell is
+   represented as a polygon. The transformation handles coordinate systems properly,
+   converting between WGS84 (EPSG:4326) and Web Mercator (EPSG:3857) for accurate
+   distance calculations.
+
+   :param grid_ori: 2D array containing grid values
+   :type grid_ori: numpy.ndarray
+   :param rectangle_vertices: List of [lon, lat] coordinates defining area corners.
+                              Should be in WGS84 (EPSG:4326) format.
+   :type rectangle_vertices: list
+   :param meshsize: Size of each grid cell in meters
+   :type meshsize: float
+
+   :returns:
+
+             A GeoDataFrame with columns:
+                 - geometry: Polygon geometry of each grid cell in WGS84 (EPSG:4326)
+                 - value: Value from the original grid
+   :rtype: GeoDataFrame
+
+   .. rubric:: Example
+
+   >>> grid = np.array([[1, 2], [3, 4]])
+   >>> vertices = [[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon4, lat4]]
+   >>> mesh_size = 100  # 100 meters
+   >>> gdf = grid_to_geodataframe(grid, vertices, mesh_size)
+
+   .. rubric:: Notes
+
+   - The input grid is flipped vertically before processing to match geographic
+     orientation (north at top)
+   - The output GeoDataFrame uses WGS84 (EPSG:4326) coordinate system
+
+
+.. py:function:: vectorized_edge_values(G, polygons_gdf, value_col='value')
+
+   Compute average polygon values along each edge in a network graph using vectorized operations.
+
+   This function performs efficient computation of average values from polygons that intersect
+   with network edges. It uses GeoDataFrames for vectorized spatial operations instead of
+   iterating over individual edges.
+
+   :param G: OSMnx graph with edges containing either geometry attributes or node coordinates.
+   :type G: networkx.MultiDiGraph
+   :param polygons_gdf: GeoDataFrame containing polygons with values to be averaged along edges.
+   :type polygons_gdf: geopandas.GeoDataFrame
+   :param value_col: Name of the column in polygons_gdf containing the values to average.
+   :type value_col: str, default='value'
+
+   :returns: Dictionary mapping edge tuples (u, v, k) to their computed average values.
+             Values are length-weighted averages of intersecting polygon values.
+   :rtype: dict
+
+   .. rubric:: Notes
+
+   The process involves:
+   1. Converting edges to a GeoDataFrame with LineString geometries
+   2. Projecting geometries to a metric CRS (EPSG:3857) for accurate length calculations
+   3. Computing intersections between edges and polygons
+   4. Calculating length-weighted averages of polygon values for each edge
+
+
+.. py:function:: get_network_values(grid, rectangle_vertices, meshsize, value_name='value', **kwargs)
+
+   Extract and visualize values from a grid along a street network.
+
+   This function downloads a street network from OpenStreetMap for a given area,
+   computes average grid values along network edges, and optionally visualizes
+   the results on an interactive map.
+
+   :param grid: Either a grid array of values or a pre-built GeoDataFrame with polygons and values.
+   :type grid: array-like or geopandas.GeoDataFrame
+   :param rectangle_vertices: List of (lon, lat) coordinates defining the bounding rectangle in EPSG:4326.
+   :type rectangle_vertices: list of tuples
+   :param meshsize: Size of each grid cell (used only if grid is array-like).
+   :type meshsize: float
+   :param value_name: Name to use for the edge attribute storing computed values.
+   :type value_name: str, default='value'
+   :param \*\*kwargs: Additional visualization and processing parameters:
+                      - network_type : str, default='walk'
+                          Type of street network to download ('walk', 'drive', etc.)
+                      - vis_graph : bool, default=True
+                          Whether to display the visualization
+                      - colormap : str, default='viridis'
+                          Matplotlib colormap for edge colors
+                      - vmin, vmax : float, optional
+                          Value range for color mapping
+                      - edge_width : float, default=1
+                          Width of edge lines in visualization
+                      - fig_size : tuple, default=(15,15)
+                          Figure size in inches
+                      - zoom : int, default=16
+                          Zoom level for basemap
+                      - basemap_style : ctx.providers, default=CartoDB.Positron
+                          Contextily basemap provider
+                      - save_path : str, optional
+                          Path to save the edge GeoDataFrame as a GeoPackage
+   :type \*\*kwargs: dict
+
+   :returns: (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+             The network graph with computed edge values and edge geometries as a GeoDataFrame.
+   :rtype: tuple
+
+
+.. py:function:: interpolate_points_along_line(line, interval)
+
+   Interpolate points along a single LineString at a given interval (in meters).
+   If the line is shorter than `interval`, only start/end points are returned.
+
+   This function handles coordinate system transformations to ensure accurate
+   distance measurements, working in Web Mercator (EPSG:3857) for distance
+   calculations while maintaining WGS84 (EPSG:4326) for input/output.
+
+   :param line: Edge geometry in EPSG:4326 (lon/lat).
+   :type line: shapely.geometry.LineString
+   :param interval: Distance in meters between interpolated points.
+   :type interval: float
+
+   :returns: Points in EPSG:4326 along the line, spaced approximately `interval` meters apart.
+             For lines shorter than interval, only start and end points are returned.
+             For empty lines, an empty list is returned.
+   :rtype: list of shapely.geometry.Point
+
+
+.. py:function:: gather_interpolation_points(G, interval=10.0, n_jobs=1)
+
+   Gather all interpolation points for each edge in the graph into a single GeoDataFrame.
+   Supports parallel processing for improved performance on large networks.
+
+   This function processes each edge in the graph, either using its geometry attribute
+   or creating a LineString from node coordinates, then interpolates points along it
+   at the specified interval.
+
+   :param G: OSMnx graph with 'geometry' attributes or x,y coordinates in the nodes.
+   :type G: networkx.MultiDiGraph
+   :param interval: Interpolation distance interval in meters.
+   :type interval: float, default=10.0
+   :param n_jobs: Number of parallel jobs for processing edges. Set to 1 for sequential processing,
+                  or -1 to use all available CPU cores.
+   :type n_jobs: int, default=1
+
+   :returns: GeoDataFrame in EPSG:4326 with columns:
+             - edge_id: Index of the edge in the graph
+             - index_in_edge: Position of the point along its edge
+             - geometry: Point geometry
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: fetch_elevations_for_points(points_gdf_3857, dem_gdf_3857, elevation_col='value')
+
+   Perform a spatial join to fetch DEM elevations for interpolated points.
+
+   Uses nearest neighbor matching in projected coordinates (EPSG:3857) to ensure
+   accurate distance calculations when finding the closest DEM cell for each point.
+
+   :param points_gdf_3857: Interpolation points in EPSG:3857 projection.
+   :type points_gdf_3857: gpd.GeoDataFrame
+   :param dem_gdf_3857: DEM polygons in EPSG:3857 projection, containing elevation values.
+   :type dem_gdf_3857: gpd.GeoDataFrame
+   :param elevation_col: Name of the column containing elevation values in dem_gdf_3857.
+   :type elevation_col: str, default='value'
+
+   :returns: Copy of points_gdf_3857 with additional columns:
+             - elevation: Elevation value from nearest DEM cell
+             - dist_to_poly: Distance to nearest DEM cell
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: compute_slope_for_group(df)
+
+   Compute average slope between consecutive points along a single edge.
+
+   Slopes are calculated as absolute percentage grade (rise/run * 100) between
+   consecutive points, then averaged for the entire edge. Points must be in
+   EPSG:3857 projection for accurate horizontal distance calculations.
+
+   :param df: DataFrame containing points for a single edge with columns:
+              - geometry: Point geometries in EPSG:3857
+              - elevation: Elevation values in meters
+              - index_in_edge: Position along the edge for sorting
+   :type df: pd.DataFrame
+
+   :returns: Average slope as a percentage, or np.nan if no valid slopes can be computed
+             (e.g., when points are coincident or no elevation change).
+   :rtype: float
+
+
+.. py:function:: calculate_edge_slopes_from_join(joined_points_gdf, n_edges)
+
+   Calculate average slopes for all edges in the network from interpolated points.
+
+   This function groups points by edge_id and computes the average slope for each edge
+   using the compute_slope_for_group function. It ensures all edges in the original
+   graph have a slope value, even if no valid slope could be computed.
+
+   :param joined_points_gdf: Points with elevations in EPSG:3857, must have columns:
+                             - edge_id: Index of the edge in the graph
+                             - index_in_edge: Position along the edge
+                             - elevation: Elevation value
+                             - geometry: Point geometry
+   :type joined_points_gdf: gpd.GeoDataFrame
+   :param n_edges: Total number of edges in the original graph.
+   :type n_edges: int
+
+   :returns: Dictionary mapping edge_id to average slope (in %). Edges with no valid
+             slope calculation are assigned np.nan.
+   :rtype: dict
+
+
+.. py:function:: analyze_network_slopes(dem_grid, meshsize, value_name='slope', interval=10.0, n_jobs=1, **kwargs)
+
+   Analyze and visualize street network slopes using Digital Elevation Model (DEM) data.
+
+   This function performs a comprehensive analysis of street network slopes by:
+   1. Converting DEM data to a GeoDataFrame of elevation polygons
+   2. Downloading the street network from OpenStreetMap
+   3. Interpolating points along network edges
+   4. Matching points to DEM elevations
+   5. Computing slopes between consecutive points
+   6. Aggregating slopes per edge
+   7. Optionally visualizing results on an interactive map
+
+   The analysis uses appropriate coordinate transformations between WGS84 (EPSG:4326)
+   for geographic operations and Web Mercator (EPSG:3857) for distance calculations.
+
+   :param dem_grid: Digital Elevation Model grid data containing elevation values.
+   :type dem_grid: array-like
+   :param meshsize: Size of each DEM grid cell.
+   :type meshsize: float
+   :param value_name: Name to use for the slope attribute in output data.
+   :type value_name: str, default='slope'
+   :param interval: Distance in meters between interpolated points along edges.
+   :type interval: float, default=10.0
+   :param n_jobs: Number of parallel jobs for edge processing.
+   :type n_jobs: int, default=1
+   :param \*\*kwargs: Additional configuration parameters:
+                      - rectangle_vertices : list of (lon, lat), required
+                          Coordinates defining the analysis area in EPSG:4326
+                      - network_type : str, default='walk'
+                          Type of street network to download
+                      - vis_graph : bool, default=True
+                          Whether to create visualization
+                      - colormap : str, default='viridis'
+                          Matplotlib colormap for slope visualization
+                      - vmin, vmax : float, optional
+                          Value range for slope coloring
+                      - edge_width : float, default=1
+                          Width of edge lines in plot
+                      - fig_size : tuple, default=(15,15)
+                          Figure size in inches
+                      - zoom : int, default=16
+                          Zoom level for basemap
+                      - basemap_style : ctx.providers, default=CartoDB.Positron
+                          Contextily basemap provider
+                      - output_directory : str, optional
+                          Directory to save results
+                      - output_file_name : str, default='network_slopes'
+                          Base name for output files
+                      - alpha : float, default=1.0
+                          Transparency of edge lines in visualization
+   :type \*\*kwargs: dict
+
+   :returns: (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+             - Graph with slope values as edge attributes
+             - GeoDataFrame of edges with geometries and slope values
+   :rtype: tuple
+
+   .. rubric:: Notes
+
+   - Slopes are calculated as absolute percentage grades (rise/run * 100)
+   - Edge slopes are length-weighted averages of point-to-point slopes
+   - The visualization includes a basemap and legend showing slope percentages
+   - If output_directory is specified, results are saved as a GeoPackage
+
+
+.. py:function:: validate_polygon_coordinates(geometry)
+
+   Validate and ensure proper closure of polygon coordinate rings.
+   Performs validation and correction of GeoJSON polygon geometries according to
+   the GeoJSON specification requirements.
+
+   Validation checks:
+   1. Geometry type (Polygon or MultiPolygon)
+   2. Ring closure (first point equals last point)
+   3. Minimum number of points (4, including closure)
+
+   :param geometry: GeoJSON geometry object with 'type' and 'coordinates' properties
+   :type geometry: dict
+
+   :returns:
+
+             True if polygon coordinates are valid or were successfully corrected,
+                   False if validation failed
+   :rtype: bool
+
+   .. rubric:: Example
+
+   >>> geom = {
+   ...     "type": "Polygon",
+   ...     "coordinates": [[[0,0], [1,0], [1,1], [0,1]]]  # Not closed
+   ... }
+   >>> if validate_polygon_coordinates(geom):
+   ...     print("Polygon is valid")  # Will close the ring automatically
+
+
+.. py:function:: filter_and_convert_gdf_to_geojson(gdf, rectangle_vertices)
+
+   Filter a GeoDataFrame by a bounding rectangle and convert to GeoJSON format.
+
+   This function performs spatial filtering on a GeoDataFrame using a bounding rectangle,
+   and converts the filtered data to GeoJSON format. It handles both Polygon and MultiPolygon
+   geometries, splitting MultiPolygons into separate Polygon features.
+
+   :param gdf: Input GeoDataFrame containing building data
+               Must have 'geometry' and 'height' columns
+               Any CRS is accepted, will be converted to WGS84 if needed
+   :type gdf: GeoDataFrame
+   :param rectangle_vertices: List of (lon, lat) tuples defining the bounding rectangle
+                              Must be in WGS84 (EPSG:4326) coordinate system
+                              Must form a valid rectangle (4 vertices, clockwise or counterclockwise)
+   :type rectangle_vertices: list
+
+   :returns:
+
+             List of GeoJSON features within the bounding rectangle
+                 Each feature contains:
+                 - geometry: Polygon coordinates in WGS84
+                 - properties: Dictionary with 'height', 'confidence', and 'id'
+                 - type: Always "Feature"
+   :rtype: list
+
+   Memory Optimization:
+       - Uses spatial indexing for efficient filtering
+       - Downcasts numeric columns to save memory
+       - Cleans up intermediate data structures
+       - Splits MultiPolygons into separate features
+
+
+.. py:function:: get_geojson_from_gpkg(gpkg_path, rectangle_vertices)
+
+   Read a GeoPackage file and convert it to GeoJSON format within a bounding rectangle.
+
+   :param gpkg_path: Path to the GeoPackage file
+   :type gpkg_path: str
+   :param rectangle_vertices: List of (lon, lat) tuples defining the bounding rectangle
+   :type rectangle_vertices: list
+
+   :returns: List of GeoJSON features within the bounding rectangle
+   :rtype: list
+
+
+.. py:function:: extract_building_heights_from_gdf(gdf_0: geopandas.GeoDataFrame, gdf_1: geopandas.GeoDataFrame) -> geopandas.GeoDataFrame
+
+   Extract building heights from one GeoDataFrame and apply them to another based on spatial overlap.
+
+   This function transfers height information from a reference GeoDataFrame to a primary GeoDataFrame
+   based on the spatial overlap between building footprints. For each building in the primary dataset
+   that needs height data, it calculates a weighted average height from overlapping buildings in the
+   reference dataset.
+
+   :param gdf_0: Primary GeoDataFrame to update with heights
+                 Must have 'geometry' column with building footprints
+                 Will be updated with height values where missing or zero
+   :type gdf_0: gpd.GeoDataFrame
+   :param gdf_1: Reference GeoDataFrame containing height data
+                 Must have 'geometry' column with building footprints
+                 Must have 'height' column with valid height values
+   :type gdf_1: gpd.GeoDataFrame
+
+   :returns:
+
+             Updated primary GeoDataFrame with extracted heights
+                 Buildings with overlapping reference data get weighted average heights
+                 Buildings without overlapping data retain original height or get NaN
+   :rtype: gpd.GeoDataFrame
+
+   Statistics Tracked:
+       - count_0: Number of buildings without height in primary dataset
+       - count_1: Number of buildings successfully updated with height
+       - count_2: Number of buildings where no reference height data found
+
+   .. note::
+
+      - Uses R-tree spatial indexing for efficient overlap detection
+      - Handles invalid geometries by attempting to fix them with buffer(0)
+      - Weighted average is based on the area of overlap between buildings
+
+
+.. py:function:: geojson_to_gdf(geojson_data, id_col='id')
+
+   Convert a list of GeoJSON-like dict features into a GeoDataFrame.
+
+   This function takes a list of GeoJSON feature dictionaries (Fiona-like format)
+   and converts them into a GeoDataFrame, handling geometry conversion and property
+   extraction. It ensures each feature has a unique identifier.
+
+   :param geojson_data: A list of feature dicts (Fiona-like)
+                        Each dict must have 'geometry' and 'properties' keys
+                        'geometry' must be a valid GeoJSON geometry
+                        'properties' can be empty but must be a dict if present
+   :type geojson_data: List[Dict]
+   :param id_col: Name of property to use as an identifier
+                  Default is 'id'
+                  If not found in properties, a sequential ID will be created
+                  Must be a string that can be used as a column name
+   :type id_col: str, optional
+
+   :returns:
+
+             GeoDataFrame with geometry and property columns
+                 Will have 'geometry' column with Shapely geometries
+                 Will have columns for all properties found in features
+                 Will have id_col with unique identifiers
+                 Will be set to WGS84 (EPSG:4326) coordinate system
+   :rtype: gpd.GeoDataFrame
+
+   .. note::
+
+      - Handles missing properties gracefully
+      - Creates sequential IDs if id_col not found
+      - Converts GeoJSON geometries to Shapely objects
+      - Sets WGS84 as coordinate system
+      - Preserves all properties as columns
+
+
+.. py:function:: complement_building_heights_from_gdf(gdf_0, gdf_1, primary_id='id', ref_id='id')
+
+   Use a vectorized approach with GeoPandas to:
+     1) Find intersections and compute weighted average heights
+     2) Update heights in the primary dataset
+     3) Add non-intersecting buildings from the reference dataset
+
+   :param gdf_0: Primary GeoDataFrame
+   :type gdf_0: gpd.GeoDataFrame
+   :param gdf_1: Reference GeoDataFrame
+   :type gdf_1: gpd.GeoDataFrame
+   :param primary_id: Name of the unique identifier in primary dataset's properties
+   :type primary_id: str
+   :param ref_id: Name of the unique identifier in reference dataset's properties
+   :type ref_id: str
+
+   :returns: Updated GeoDataFrame (including new buildings).
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: gdf_to_geojson_dicts(gdf, id_col='id')
+
+   Convert a GeoDataFrame to a list of dicts similar to GeoJSON features.
+
+   This function converts a GeoDataFrame into a list of dictionary objects that
+   follow the GeoJSON Feature format. Each feature will have geometry and properties,
+   with an optional ID field handled separately from other properties.
+
+   :param gdf: GeoDataFrame to convert
+               Must have 'geometry' column with Shapely geometries
+               All non-geometry columns will become properties
+               Can optionally have id_col for unique identifiers
+   :type gdf: gpd.GeoDataFrame
+   :param id_col: Name of column to use as feature ID
+                  Default is 'id'
+                  If present, will be excluded from properties
+                  If not present, features will not have explicit IDs
+   :type id_col: str, optional
+
+   :returns:
+
+             List of GeoJSON-like feature dictionaries
+                 Each dict will have:
+                 - type: Always "Feature"
+                 - geometry: GeoJSON geometry from Shapely object
+                 - properties: All columns except geometry and ID
+   :rtype: list
+
+   .. note::
+
+      - Converts Shapely geometries to GeoJSON format
+      - Preserves all non-geometry columns as properties
+      - Handles missing ID column gracefully
+      - Maintains original property types
+      - Excludes ID from properties if specified
+
+
+.. py:function:: load_gdf_from_multiple_gz(file_paths)
+
+   Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.
+
+   This function reads multiple gzipped GeoJSON files, where each line in each file
+   represents a single GeoJSON feature. It combines all features into a single
+   GeoDataFrame, ensuring height properties are properly handled and coordinates
+   are in WGS84.
+
+   :param file_paths: List of paths to gzipped GeoJSON files
+                      Each file should contain one GeoJSON feature per line
+                      Files should be readable as UTF-8 text
+                      Features should be in WGS84 coordinate system
+   :type file_paths: list
+
+   :returns:
+
+             Combined GeoDataFrame containing all features
+                 Will have 'geometry' column with building footprints
+                 Will have 'height' column (0 for missing values)
+                 Will be set to WGS84 (EPSG:4326) coordinate system
+   :rtype: gpd.GeoDataFrame
+
+   .. note::
+
+      - Skips lines that cannot be parsed as valid JSON
+      - Sets missing height values to 0
+      - Assumes input coordinates are in WGS84
+      - Memory usage scales with total number of features
+      - Reports JSON parsing errors but continues processing
+
+
+.. py:function:: filter_buildings(geojson_data, plotting_box)
+
+   Filter building features that intersect with a given bounding box.
+
+   This function filters a list of GeoJSON building features to keep only those
+   that intersect with a specified bounding box. It performs geometry validation
+   and handles invalid geometries gracefully.
+
+   :param geojson_data: List of GeoJSON features representing buildings
+                        Each feature must have valid 'geometry' property
+                        Coordinates must be in same CRS as plotting_box
+                        Invalid geometries will be skipped with warning
+   :type geojson_data: list
+   :param plotting_box: Shapely polygon defining the bounding box
+                        Must be a valid Shapely Polygon object
+                        Must be in same coordinate system as geojson_data
+                        Used for spatial intersection testing
+   :type plotting_box: Polygon
+
+   :returns:
+
+             Filtered list of GeoJSON features that intersect with the bounding box
+                 Features maintain their original structure
+                 Invalid features are excluded
+                 Order of features is preserved
+   :rtype: list
+
+   .. note::
+
+      - Validates polygon coordinates before processing
+      - Skips features with invalid geometries
+      - Reports validation and geometry errors
+      - No coordinate system transformation is performed
+      - Memory efficient as it creates new list only for valid features
+
+
+.. py:function:: extract_building_heights_from_geotiff(geotiff_path, gdf)
+
+   Extract building heights from a GeoTIFF raster for building footprints in a GeoDataFrame.
+
+   This function processes building footprints to extract height information from a GeoTIFF
+   raster file. It handles coordinate transformation between WGS84 (EPSG:4326) and the raster's
+   CRS, and calculates average heights for each building footprint.
+
+   :param geotiff_path: Path to the GeoTIFF height raster file containing elevation data
+   :type geotiff_path: str
+   :param gdf: GeoDataFrame containing building footprints with geometry column
+               The GeoDataFrame should be in WGS84 (EPSG:4326) coordinate system
+   :type gdf: gpd.GeoDataFrame
+
+   :returns:
+
+             Updated GeoDataFrame with extracted heights in the 'height' column
+                 - Buildings with valid height data will have their height values updated
+                 - Buildings with no valid height data will have NaN values
+                 - Original buildings with existing valid heights are preserved
+   :rtype: gpd.GeoDataFrame
+
+   Statistics Reported:
+       - Total number of buildings without height data
+       - Number of buildings successfully updated with height data
+       - Number of buildings where no height data could be found
+
+   .. note::
+
+      - The function only processes Polygon geometries (not MultiPolygons or other types)
+      - Buildings are considered to need height processing if they have no height or height <= 0
+      - Heights are calculated as the mean of all valid raster values within the building footprint
+
+
+.. py:function:: get_gdf_from_gpkg(gpkg_path, rectangle_vertices)
+
+   Read a GeoPackage file and convert it to a GeoDataFrame with consistent CRS.
+
+   This function reads a GeoPackage file containing building footprints and ensures
+   the data is properly formatted with WGS84 coordinate system and unique identifiers.
+   It handles CRS conversion if needed and adds sequential IDs.
+
+   :param gpkg_path: Path to the GeoPackage file
+                     File must exist and be readable
+                     Must contain valid building footprint geometries
+                     Any coordinate system is accepted
+   :type gpkg_path: str
+   :param rectangle_vertices: List of (lon, lat) tuples defining the bounding rectangle
+                              Must be in WGS84 (EPSG:4326) coordinate system
+                              Used for spatial filtering (not implemented in this function)
+   :type rectangle_vertices: list
+
+   :returns:
+
+             GeoDataFrame containing building footprints
+                 Will have 'geometry' column with building geometries
+                 Will have 'id' column with sequential integers
+                 Will be in WGS84 (EPSG:4326) coordinate system
+   :rtype: gpd.GeoDataFrame
+
+   .. note::
+
+      - Prints informative message when opening file
+      - Sets CRS to WGS84 if not specified
+      - Transforms to WGS84 if different CRS
+      - Adds sequential IDs starting from 0
+      - rectangle_vertices parameter is currently unused
+
+
+.. py:function:: swap_coordinates(features)
+
+   Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).
+
+   This function modifies GeoJSON features in-place to swap the order of coordinates
+   from (latitude, longitude) to (longitude, latitude). It handles both Polygon and
+   MultiPolygon geometries, maintaining their structure while swapping coordinates.
+
+   :param features: List of GeoJSON features to process
+                    Features must have 'geometry' property
+                    Supported geometry types: 'Polygon', 'MultiPolygon'
+                    Coordinates must be in (lat, lon) order initially
+   :type features: list
+
+   :returns: Features are modified in-place
+   :rtype: None
+
+   .. note::
+
+      - Modifies features directly (no copy created)
+      - Handles both Polygon and MultiPolygon geometries
+      - For Polygons: processes single coordinate ring
+      - For MultiPolygons: processes multiple coordinate rings
+      - Assumes input coordinates are in (lat, lon) order
+      - Resulting coordinates will be in (lon, lat) order
+
+
+.. py:function:: save_geojson(features, save_path)
+
+   Save GeoJSON features to a file with coordinate swapping and pretty printing.
+
+   This function takes a list of GeoJSON features, swaps their coordinate ordering
+   if needed, wraps them in a FeatureCollection, and saves to a file with proper
+   JSON formatting. It creates a deep copy to avoid modifying the original data.
+
+   :param features: List of GeoJSON features to save
+                    Each feature should have valid GeoJSON structure
+                    Features can be Polygon or MultiPolygon type
+                    Coordinates will be swapped if in (lat, lon) order
+   :type features: list
+   :param save_path: Path where the GeoJSON file should be saved
+                     Will overwrite existing file if present
+                     Directory must exist and be writable
+                     File will be created with UTF-8 encoding
+   :type save_path: str
+
+   :returns: None
+
+   .. note::
+
+      - Creates deep copy to preserve original feature data
+      - Swaps coordinates from (lat, lon) to (lon, lat) order
+      - Wraps features in a FeatureCollection object
+      - Uses pretty printing with 2-space indentation
+      - Handles both Polygon and MultiPolygon geometries
+
+
+.. py:function:: find_building_containing_point(building_gdf, target_point)
+
+   Find building IDs that contain a given point in their footprint.
+
+   This function identifies all buildings in a GeoDataFrame whose footprint contains
+   a specified geographic point. Only Polygon geometries are considered, and the point
+   must be fully contained within the building footprint (not just touching).
+
+   :param building_gdf: GeoDataFrame containing building geometries and IDs
+                        Must have 'geometry' column with Polygon geometries
+                        Must have 'id' column or index will be used as fallback
+                        Geometries must be in same CRS as target_point coordinates
+   :type building_gdf: GeoDataFrame
+   :param target_point: Tuple of (lon, lat) coordinates to check
+                        Must be in same coordinate system as building_gdf geometries
+                        Order must be (longitude, latitude) if using WGS84
+   :type target_point: tuple
+
+   :returns:
+
+             List of building IDs containing the target point
+                 Empty list if no buildings contain the point
+                 Multiple IDs possible if buildings overlap
+                 IDs are in arbitrary order
+   :rtype: list
+
+   .. note::
+
+      - Only processes Polygon geometries (skips MultiPolygons and others)
+      - Uses Shapely's contains() method which requires point to be fully inside polygon
+      - No spatial indexing is used, performs linear search through all buildings
+
+
+.. py:function:: get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices, operation='within')
+
+   Find buildings that intersect with or are contained within a user-drawn polygon.
+
+   This function identifies buildings from a GeoDataFrame that have a specified spatial
+   relationship with a polygon defined by user-drawn vertices. The relationship can be
+   either intersection (building overlaps polygon) or containment (building fully within
+   polygon).
+
+   :param building_gdf: GeoDataFrame containing building footprints
+                        Must have 'geometry' column with Polygon geometries
+                        Must have 'id' column or index will be used as fallback
+                        Geometries must be in same CRS as drawn_polygon_vertices
+   :type building_gdf: GeoDataFrame
+   :param drawn_polygon_vertices: List of (lon, lat) tuples defining polygon vertices
+                                  Must be in same coordinate system as building_gdf geometries
+                                  Must form a valid polygon (3+ vertices, first != last)
+                                  Order must be (longitude, latitude) if using WGS84
+   :type drawn_polygon_vertices: list
+   :param operation: Type of spatial relationship to check
+                     'within': buildings must be fully contained in drawn polygon (default)
+                     'intersect': buildings must overlap with drawn polygon
+   :type operation: str, optional
+
+   :returns:
+
+             List of building IDs that satisfy the spatial relationship
+                 Empty list if no buildings meet the criteria
+                 IDs are returned in order of processing
+                 May contain None values if buildings lack IDs
+   :rtype: list
+
+   .. note::
+
+      - Only processes Polygon geometries (skips MultiPolygons and others)
+      - No spatial indexing is used, performs linear search through all buildings
+      - Invalid operation parameter will raise ValueError
+      - Does not validate polygon closure (first vertex = last vertex)
+
+
+.. py:function:: process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
+
+   Process building footprints to merge overlapping buildings based on area overlap ratio.
+
+   This function identifies and merges building footprints that significantly overlap with each other.
+   Buildings are processed in order of decreasing area, and smaller buildings that overlap significantly
+   with larger ones are assigned the ID of the larger building, effectively merging them.
+
+   :param filtered_gdf: GeoDataFrame containing building footprints
+                        Must have 'geometry' column with building polygons
+                        If CRS is set, areas will be calculated in Web Mercator projection
+   :type filtered_gdf: geopandas.GeoDataFrame
+   :param overlap_threshold: Threshold for overlap ratio (0.0-1.0) to merge buildings
+                             Default is 0.5 (50% overlap)
+                             Higher values require more overlap for merging
+                             Lower values will result in more aggressive merging
+   :type overlap_threshold: float, optional
+
+   :returns:
+
+             Processed GeoDataFrame with updated IDs
+                 Overlapping buildings will share the same ID
+                 Original geometries are preserved, only IDs are updated
+                 All other columns remain unchanged
+   :rtype: geopandas.GeoDataFrame
+
+   .. note::
+
+      - Uses R-tree spatial indexing for efficient overlap detection
+      - Projects to Web Mercator (EPSG:3857) for accurate area calculation if CRS is set
+      - Handles invalid geometries by attempting to fix them with buffer(0)
+      - Processes buildings in order of decreasing area (largest first)
+
+
+.. py:function:: create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None)
+
+   Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.
+
+   This function converts a 3D voxel array into a triangulated mesh, where each voxel
+   face is converted into two triangles. The function preserves sharp edges between
+   different classes and handles special cases for buildings.
+
+   :param voxel_array: The voxel array of shape (X, Y, Z) where each cell contains a class ID.
+                       - 0: typically represents void/air
+                       - -2: typically represents trees
+                       - -3: typically represents buildings
+                       Other values can represent different classes as defined by the application.
+   :type voxel_array: np.ndarray (3D)
+   :param class_id: The ID of the class to extract. Only voxels with this ID will be included
+                    in the output mesh.
+   :type class_id: int
+   :param meshsize: The real-world size of each voxel in meters, applied uniformly to x, y, and z
+                    dimensions. Used to scale the output mesh to real-world coordinates.
+   :type meshsize: float, default=1.0
+   :param building_id_grid: 2D grid of building IDs with shape (X, Y). Only used when class_id=-3 (buildings).
+                            Each cell contains a unique identifier for the building at that location.
+                            This allows tracking which faces belong to which building.
+   :type building_id_grid: np.ndarray (2D), optional
+   :param mesh_type: Type of mesh to create, controlling which faces are included:
+                     - None (default): create faces at boundaries between different classes
+                     - 'building_solar': only create faces at boundaries between buildings (-3)
+                                       and either void (0) or trees (-2). Useful for solar analysis
+                                       where only exposed surfaces matter.
+   :type mesh_type: str, optional
+
+   :returns: **mesh** -- The resulting triangulated mesh for the given class_id. Returns None if no
+             voxels of the specified class are found.
+
+             The mesh includes:
+             - vertices: 3D coordinates of each vertex
+             - faces: triangles defined by vertex indices
+             - face_normals: normal vectors for each face
+             - metadata: If class_id=-3, includes 'building_id' mapping faces to buildings
+   :rtype: trimesh.Trimesh or None
+
+   .. rubric:: Examples
+
+   Basic usage for a simple voxel array:
+   >>> voxels = np.zeros((10, 10, 10))
+   >>> voxels[4:7, 4:7, 0:5] = 1  # Create a simple column
+   >>> mesh = create_voxel_mesh(voxels, class_id=1, meshsize=0.5)
+
+   Creating a building mesh with IDs:
+   >>> building_ids = np.zeros((10, 10))
+   >>> building_ids[4:7, 4:7] = 1  # Mark building #1
+   >>> mesh = create_voxel_mesh(voxels, class_id=-3,
+   ...                         building_id_grid=building_ids,
+   ...                         meshsize=1.0)
+
+   .. rubric:: Notes
+
+   - The function creates faces only at boundaries between different classes or at
+     the edges of the voxel array.
+   - Each face is split into two triangles for compatibility with graphics engines.
+   - Face normals are computed to ensure correct lighting and rendering.
+   - For buildings (class_id=-3), building IDs are tracked to maintain building identity.
+   - The mesh preserves sharp edges, which is important for architectural visualization.
+
+
+.. py:function:: create_sim_surface_mesh(sim_grid, dem_grid, meshsize=1.0, z_offset=1.5, cmap_name='viridis', vmin=None, vmax=None)
+
+   Create a colored planar surface mesh from simulation data, positioned above a DEM.
+
+   This function generates a 3D visualization mesh for 2D simulation results (like
+   Green View Index, solar radiation, etc.). The mesh is positioned above the Digital
+   Elevation Model (DEM) by a specified offset, and colored according to the simulation
+   values using a matplotlib colormap.
+
+   :param sim_grid: 2D array of simulation values (e.g., Green View Index, solar radiation).
+                    NaN values in this grid will be skipped in the output mesh.
+                    The grid should be oriented with north at the top.
+   :type sim_grid: 2D np.ndarray
+   :param dem_grid: 2D array of ground elevations in meters. Must have the same shape as sim_grid.
+                    Used to position the visualization mesh at the correct height above terrain.
+   :type dem_grid: 2D np.ndarray
+   :param meshsize: Size of each cell in meters. Applied uniformly to x and y dimensions.
+                    Determines the resolution of the output mesh.
+   :type meshsize: float, default=1.0
+   :param z_offset: Additional height offset in meters added to dem_grid elevations.
+                    Used to position the visualization above ground level for better visibility.
+   :type z_offset: float, default=1.5
+   :param cmap_name: Matplotlib colormap name used for coloring the mesh based on sim_grid values.
+                     Common options:
+                     - 'viridis': Default, perceptually uniform, colorblind-friendly
+                     - 'RdYlBu': Red-Yellow-Blue, good for diverging data
+                     - 'jet': Rainbow colormap (not recommended for scientific visualization)
+   :type cmap_name: str, default='viridis'
+   :param vmin: Minimum value for color mapping. If None, uses min of sim_grid (excluding NaN).
+                Used to control the range of the colormap.
+   :type vmin: float, optional
+   :param vmax: Maximum value for color mapping. If None, uses max of sim_grid (excluding NaN).
+                Used to control the range of the colormap.
+   :type vmax: float, optional
+
+   :returns: **mesh** -- A single mesh containing one colored square face (two triangles) per non-NaN cell.
+             Returns None if there are no valid (non-NaN) cells in sim_grid.
+
+             The mesh includes:
+             - vertices: 3D coordinates of each vertex
+             - faces: triangles defined by vertex indices
+             - face_colors: RGBA colors for each face based on sim_grid values
+             - visual: trimesh.visual.ColorVisuals object storing the face colors
+   :rtype: trimesh.Trimesh or None
+
+   .. rubric:: Examples
+
+   Basic usage with Green View Index data:
+   >>> gvi = np.array([[0.5, 0.6], [0.4, 0.8]])  # GVI values
+   >>> dem = np.array([[10.0, 10.2], [9.8, 10.1]])  # Ground heights
+   >>> mesh = create_sim_surface_mesh(gvi, dem, meshsize=1.0, z_offset=1.5)
+
+   Custom color range and colormap:
+   >>> mesh = create_sim_surface_mesh(gvi, dem,
+   ...                               cmap_name='RdYlBu',
+   ...                               vmin=0.0, vmax=1.0)
+
+   .. rubric:: Notes
+
+   - The function automatically creates a matplotlib colorbar figure for visualization
+   - Both input grids are flipped vertically to match the voxel_array orientation
+   - Each grid cell is converted to two triangles for compatibility with 3D engines
+   - The mesh is positioned at dem_grid + z_offset to float above the terrain
+   - Face colors are interpolated from the colormap based on sim_grid values
+
+
+.. py:function:: create_city_meshes(voxel_array, vox_dict, meshsize=1.0)
+
+   Create a collection of colored 3D meshes representing different city elements.
+
+   This function processes a voxelized city model and creates separate meshes for
+   different urban elements (buildings, trees, etc.), each with its own color.
+   The function preserves sharp edges and applies appropriate colors based on the
+   provided color dictionary.
+
+   :param voxel_array: 3D array representing the voxelized city model. Each voxel contains a class ID
+                       that maps to an urban element type:
+                       - 0: Void/air (automatically skipped)
+                       - -2: Trees
+                       - -3: Buildings
+                       Other values can represent different urban elements as defined in vox_dict.
+   :type voxel_array: np.ndarray (3D)
+   :param vox_dict: Dictionary mapping class IDs to RGB colors. Each entry should be:
+                    {class_id: [R, G, B]} where R, G, B are 0-255 integer values.
+                    Example: {-3: [200, 200, 200], -2: [0, 255, 0]} for grey buildings and
+                    green trees. The key 0 (air) is automatically excluded.
+   :type vox_dict: dict
+   :param meshsize: Size of each voxel in meters, applied uniformly to x, y, and z dimensions.
+                    Used to scale the output meshes to real-world coordinates.
+   :type meshsize: float, default=1.0
+
+   :returns: **meshes** -- Dictionary mapping class IDs to their corresponding trimesh.Trimesh objects.
+             Each mesh includes:
+             - vertices: 3D coordinates scaled by meshsize
+             - faces: triangulated faces preserving sharp edges
+             - face_colors: RGBA colors from vox_dict
+             - visual: trimesh.visual.ColorVisuals object storing the face colors
+
+             Classes with no voxels are automatically excluded from the output.
+   :rtype: dict
+
+   .. rubric:: Examples
+
+   Basic usage with buildings and trees:
+   >>> voxels = np.zeros((10, 10, 10))
+   >>> voxels[4:7, 4:7, 0:5] = -3  # Add a building
+   >>> voxels[2:4, 2:4, 0:3] = -2  # Add some trees
+   >>> colors = {
+   ...     -3: [200, 200, 200],  # Grey buildings
+   ...     -2: [0, 255, 0]       # Green trees
+   ... }
+   >>> meshes = create_city_meshes(voxels, colors, meshsize=1.0)
+
+   .. rubric:: Notes
+
+   - The function automatically skips class_id=0 (typically air/void)
+   - Each urban element type gets its own separate mesh for efficient rendering
+   - Colors are converted from RGB [0-255] to RGBA [0-1] format
+   - Sharp edges are preserved to maintain architectural features
+   - Empty classes (no voxels) are automatically excluded from the output
+   - Errors during mesh creation for a class are caught and reported
+
+
+.. py:function:: export_meshes(meshes, output_directory, base_filename)
+
+   Export a collection of meshes to both OBJ (with MTL) and STL formats.
+
+   This function exports meshes in two ways:
+   1. A single combined OBJ file with materials (and associated MTL file)
+   2. Separate STL files for each mesh, named with their class IDs
+
+   :param meshes: Dictionary mapping class IDs to trimesh.Trimesh objects.
+                  Each mesh should have:
+                  - vertices: 3D coordinates
+                  - faces: triangulated faces
+                  - face_colors: RGBA colors (if using materials)
+   :type meshes: dict
+   :param output_directory: Directory path where the output files will be saved.
+                            Will be created if it doesn't exist.
+   :type output_directory: str
+   :param base_filename: Base name for the output files (without extension).
+                         Will be used to create:
+                         - {base_filename}.obj : Combined mesh with materials
+                         - {base_filename}.mtl : Material definitions for OBJ
+                         - {base_filename}_{class_id}.stl : Individual STL files
+   :type base_filename: str
+
+   :returns: Files are written directly to the specified output directory.
+   :rtype: None
+
+   .. rubric:: Examples
+
+   >>> meshes = {
+   ...     -3: building_mesh,  # Building mesh with grey color
+   ...     -2: tree_mesh      # Tree mesh with green color
+   ... }
+   >>> export_meshes(meshes, 'output/models', 'city_model')
+
+   This will create:
+   - output/models/city_model.obj
+   - output/models/city_model.mtl
+   - output/models/city_model_-3.stl
+   - output/models/city_model_-2.stl
+
+   .. rubric:: Notes
+
+   - OBJ/MTL format preserves colors and materials but is more complex
+   - STL format is simpler but doesn't support colors
+   - STL files are exported separately for each class for easier processing
+   - The OBJ file combines all meshes while preserving their materials
+   - File extensions are automatically added to the base filename
+
+
+.. py:function:: split_vertices_manual(mesh)
+
+   Split a mesh into independent faces by duplicating shared vertices.
+
+   This function imitates trimesh's split_vertices() functionality but ensures
+   complete face independence by giving each face its own copy of vertices.
+   This is particularly useful for rendering applications where smooth shading
+   between faces is undesirable, such as architectural visualization in Rhino.
+
+   :param mesh: Input mesh to split. Should have:
+                - vertices: array of vertex coordinates
+                - faces: array of vertex indices forming triangles
+                - visual: Optional ColorVisuals object with face colors
+   :type mesh: trimesh.Trimesh
+
+   :returns: **out_mesh** -- New mesh where each face is completely independent, with:
+             - Duplicated vertices for each face
+             - No vertex sharing between faces
+             - Preserved face colors if present in input
+             - Each face as a separate component
+   :rtype: trimesh.Trimesh
+
+   .. rubric:: Examples
+
+   Basic usage:
+   >>> vertices = np.array([[0,0,0], [1,0,0], [1,1,0], [0,1,0]])
+   >>> faces = np.array([[0,1,2], [0,2,3]])  # Two triangles sharing vertices
+   >>> mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+   >>> split_mesh = split_vertices_manual(mesh)
+   >>> print(f"Original vertices: {len(mesh.vertices)}")  # 4 vertices
+   >>> print(f"Split vertices: {len(split_mesh.vertices)}")  # 6 vertices
+
+   With face colors:
+   >>> colors = np.array([[255,0,0,255], [0,255,0,255]])  # Red and green faces
+   >>> mesh.visual = trimesh.visual.ColorVisuals(mesh, face_colors=colors)
+   >>> split_mesh = split_vertices_manual(mesh)  # Colors are preserved
+
+   .. rubric:: Notes
+
+   - Each output face has exactly 3 unique vertices
+   - Face colors are preserved in the output mesh
+   - Useful for:
+       - Preventing smooth shading artifacts
+       - Ensuring face color independence
+       - Preparing meshes for CAD software
+       - Creating sharp edges in architectural models
+   - Memory usage increases as vertices are duplicated
+
+
+.. py:function:: save_obj_from_colored_mesh(meshes, output_path, base_filename)
+
+   Save a collection of colored meshes as OBJ and MTL files with material support.
+
+   This function exports colored meshes to the Wavefront OBJ format with an
+   accompanying MTL file for material definitions. It handles the conversion of
+   face colors to materials and ensures proper material assignment in the OBJ file.
+   The function is particularly useful for preserving color information in
+   architectural and urban visualization models.
+
+   :param meshes: Dictionary mapping class IDs to trimesh.Trimesh objects.
+                  Each mesh should have:
+                  - vertices: array of 3D coordinates
+                  - faces: array of vertex indices forming triangles
+                  - visual.face_colors: RGBA colors for each face
+   :type meshes: dict
+   :param output_path: Directory path where to save the files.
+                       Will be created if it doesn't exist.
+                       Should be writable by the current user.
+   :type output_path: str
+   :param base_filename: Base name for the output files (without extension).
+                         Will be used to create:
+                         - {base_filename}.obj : The main geometry file
+                         - {base_filename}.mtl : The material definitions file
+   :type base_filename: str
+
+   :returns: (obj_path, mtl_path) : Paths to the saved OBJ and MTL files.
+             Both paths are absolute or relative depending on the input output_path.
+   :rtype: tuple
+
+   .. rubric:: Examples
+
+   Basic usage with multiple colored meshes:
+   >>> building_mesh = trimesh.Trimesh(
+   ...     vertices=[[0,0,0], [1,0,0], [1,1,0]],
+   ...     faces=[[0,1,2]],
+   ...     face_colors=[[200,200,200,255]]  # Grey color
+   ... )
+   >>> tree_mesh = trimesh.Trimesh(
+   ...     vertices=[[2,0,0], [3,0,0], [2.5,1,0]],
+   ...     faces=[[0,1,2]],
+   ...     face_colors=[[0,255,0,255]]  # Green color
+   ... )
+   >>> meshes = {-3: building_mesh, -2: tree_mesh}
+   >>> obj_path, mtl_path = save_obj_from_colored_mesh(
+   ...     meshes, 'output/models', 'city'
+   ... )
+
+   .. rubric:: Notes
+
+   - Creates unique materials for each distinct face color
+   - Material names are auto-generated as 'material_0', 'material_1', etc.
+   - Handles both RGB and RGBA colors (alpha channel supported)
+   - Colors are normalized from [0-255] to [0-1] range for MTL format
+   - Vertices are written in OBJ's 1-based indexing format
+   - Faces are grouped by material for efficient rendering
+   - The MTL file is automatically referenced in the OBJ file
+
+   File Format Details
+   -----------------
+   OBJ file structure:
+   - mtllib reference to MTL file
+   - All vertex coordinates (v)
+   - Face definitions (f) grouped by material (usemtl)
+
+   MTL file structure:
+   - newmtl: Material name
+   - Kd: Diffuse color (RGB)
+   - d: Alpha/transparency
+
+

@@ -1,0 +1,1907 @@
+voxcity.simulator
+=================
+
+.. py:module:: voxcity.simulator
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/voxcity/simulator/solar/index
+   /autoapi/voxcity/simulator/view/index
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.simulator.find_building_containing_point
+   voxcity.simulator.get_buildings_in_drawn_polygon
+   voxcity.simulator.create_voxel_mesh
+   voxcity.simulator.grid_to_obj
+   voxcity.simulator.export_obj
+   voxcity.simulator.calculate_transmittance
+   voxcity.simulator.trace_ray_generic
+   voxcity.simulator.compute_vi_generic
+   voxcity.simulator.compute_vi_map_generic
+   voxcity.simulator.get_view_index
+   voxcity.simulator.mark_building_by_id
+   voxcity.simulator.trace_ray_to_target
+   voxcity.simulator.compute_visibility_to_all_landmarks
+   voxcity.simulator.compute_visibility_map
+   voxcity.simulator.compute_landmark_visibility
+   voxcity.simulator.get_landmark_visibility_map
+   voxcity.simulator.get_sky_view_factor_map
+   voxcity.simulator.rotate_vector_axis_angle
+   voxcity.simulator.compute_view_factor_for_all_faces
+   voxcity.simulator.get_surface_view_factor
+   voxcity.simulator.trace_ray_generic
+   voxcity.simulator.compute_vi_map_generic
+   voxcity.simulator.get_sky_view_factor_map
+   voxcity.simulator.get_surface_view_factor
+   voxcity.simulator.get_nearest_epw_from_climate_onebuilding
+   voxcity.simulator.read_epw_for_solar_simulation
+   voxcity.simulator.grid_to_obj
+   voxcity.simulator.export_obj
+   voxcity.simulator.compute_direct_solar_irradiance_map_binary
+   voxcity.simulator.get_direct_solar_irradiance_map
+   voxcity.simulator.get_diffuse_solar_irradiance_map
+   voxcity.simulator.get_global_solar_irradiance_map
+   voxcity.simulator.get_solar_positions_astral
+   voxcity.simulator.get_cumulative_global_solar_irradiance
+   voxcity.simulator.get_global_solar_irradiance_using_epw
+   voxcity.simulator.compute_solar_irradiance_for_all_faces
+   voxcity.simulator.get_building_solar_irradiance
+   voxcity.simulator.get_cumulative_building_solar_irradiance
+   voxcity.simulator.get_building_global_solar_irradiance_using_epw
+   voxcity.simulator.save_irradiance_mesh
+   voxcity.simulator.load_irradiance_mesh
+   voxcity.simulator.dummy_function
+
+
+Package Contents
+----------------
+
+.. py:function:: find_building_containing_point(building_gdf, target_point)
+
+   Find building IDs that contain a given point in their footprint.
+
+   This function identifies all buildings in a GeoDataFrame whose footprint contains
+   a specified geographic point. Only Polygon geometries are considered, and the point
+   must be fully contained within the building footprint (not just touching).
+
+   :param building_gdf: GeoDataFrame containing building geometries and IDs
+                        Must have 'geometry' column with Polygon geometries
+                        Must have 'id' column or index will be used as fallback
+                        Geometries must be in same CRS as target_point coordinates
+   :type building_gdf: GeoDataFrame
+   :param target_point: Tuple of (lon, lat) coordinates to check
+                        Must be in same coordinate system as building_gdf geometries
+                        Order must be (longitude, latitude) if using WGS84
+   :type target_point: tuple
+
+   :returns:
+
+             List of building IDs containing the target point
+                 Empty list if no buildings contain the point
+                 Multiple IDs possible if buildings overlap
+                 IDs are in arbitrary order
+   :rtype: list
+
+   .. note::
+
+      - Only processes Polygon geometries (skips MultiPolygons and others)
+      - Uses Shapely's contains() method which requires point to be fully inside polygon
+      - No spatial indexing is used, performs linear search through all buildings
+
+
+.. py:function:: get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices, operation='within')
+
+   Find buildings that intersect with or are contained within a user-drawn polygon.
+
+   This function identifies buildings from a GeoDataFrame that have a specified spatial
+   relationship with a polygon defined by user-drawn vertices. The relationship can be
+   either intersection (building overlaps polygon) or containment (building fully within
+   polygon).
+
+   :param building_gdf: GeoDataFrame containing building footprints
+                        Must have 'geometry' column with Polygon geometries
+                        Must have 'id' column or index will be used as fallback
+                        Geometries must be in same CRS as drawn_polygon_vertices
+   :type building_gdf: GeoDataFrame
+   :param drawn_polygon_vertices: List of (lon, lat) tuples defining polygon vertices
+                                  Must be in same coordinate system as building_gdf geometries
+                                  Must form a valid polygon (3+ vertices, first != last)
+                                  Order must be (longitude, latitude) if using WGS84
+   :type drawn_polygon_vertices: list
+   :param operation: Type of spatial relationship to check
+                     'within': buildings must be fully contained in drawn polygon (default)
+                     'intersect': buildings must overlap with drawn polygon
+   :type operation: str, optional
+
+   :returns:
+
+             List of building IDs that satisfy the spatial relationship
+                 Empty list if no buildings meet the criteria
+                 IDs are returned in order of processing
+                 May contain None values if buildings lack IDs
+   :rtype: list
+
+   .. note::
+
+      - Only processes Polygon geometries (skips MultiPolygons and others)
+      - No spatial indexing is used, performs linear search through all buildings
+      - Invalid operation parameter will raise ValueError
+      - Does not validate polygon closure (first vertex = last vertex)
+
+
+.. py:function:: create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None)
+
+   Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.
+
+   This function converts a 3D voxel array into a triangulated mesh, where each voxel
+   face is converted into two triangles. The function preserves sharp edges between
+   different classes and handles special cases for buildings.
+
+   :param voxel_array: The voxel array of shape (X, Y, Z) where each cell contains a class ID.
+                       - 0: typically represents void/air
+                       - -2: typically represents trees
+                       - -3: typically represents buildings
+                       Other values can represent different classes as defined by the application.
+   :type voxel_array: np.ndarray (3D)
+   :param class_id: The ID of the class to extract. Only voxels with this ID will be included
+                    in the output mesh.
+   :type class_id: int
+   :param meshsize: The real-world size of each voxel in meters, applied uniformly to x, y, and z
+                    dimensions. Used to scale the output mesh to real-world coordinates.
+   :type meshsize: float, default=1.0
+   :param building_id_grid: 2D grid of building IDs with shape (X, Y). Only used when class_id=-3 (buildings).
+                            Each cell contains a unique identifier for the building at that location.
+                            This allows tracking which faces belong to which building.
+   :type building_id_grid: np.ndarray (2D), optional
+   :param mesh_type: Type of mesh to create, controlling which faces are included:
+                     - None (default): create faces at boundaries between different classes
+                     - 'building_solar': only create faces at boundaries between buildings (-3)
+                                       and either void (0) or trees (-2). Useful for solar analysis
+                                       where only exposed surfaces matter.
+   :type mesh_type: str, optional
+
+   :returns: **mesh** -- The resulting triangulated mesh for the given class_id. Returns None if no
+             voxels of the specified class are found.
+
+             The mesh includes:
+             - vertices: 3D coordinates of each vertex
+             - faces: triangles defined by vertex indices
+             - face_normals: normal vectors for each face
+             - metadata: If class_id=-3, includes 'building_id' mapping faces to buildings
+   :rtype: trimesh.Trimesh or None
+
+   .. rubric:: Examples
+
+   Basic usage for a simple voxel array:
+   >>> voxels = np.zeros((10, 10, 10))
+   >>> voxels[4:7, 4:7, 0:5] = 1  # Create a simple column
+   >>> mesh = create_voxel_mesh(voxels, class_id=1, meshsize=0.5)
+
+   Creating a building mesh with IDs:
+   >>> building_ids = np.zeros((10, 10))
+   >>> building_ids[4:7, 4:7] = 1  # Mark building #1
+   >>> mesh = create_voxel_mesh(voxels, class_id=-3,
+   ...                         building_id_grid=building_ids,
+   ...                         meshsize=1.0)
+
+   .. rubric:: Notes
+
+   - The function creates faces only at boundaries between different classes or at
+     the edges of the voxel array.
+   - Each face is split into two triangles for compatibility with graphics engines.
+   - Face normals are computed to ensure correct lighting and rendering.
+   - For buildings (class_id=-3), building IDs are tracked to maintain building identity.
+   - The mesh preserves sharp edges, which is important for architectural visualization.
+
+
+.. py:function:: grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size, offset, colormap_name='viridis', num_colors=256, alpha=1.0, vmin=None, vmax=None)
+
+   Converts a 2D array of values and a corresponding DEM array to an OBJ file
+   with specified colormap, transparency, and value range.
+
+   This function creates a 3D visualization of 2D grid data by using elevation
+   data and color mapping. It's particularly useful for visualizing terrain data,
+   analysis results, or any 2D data that should be displayed with elevation.
+
+   :param value_array_ori: 2D array of values to visualize.
+                           These values will be mapped to colors using the specified colormap.
+   :type value_array_ori: ndarray
+   :param dem_array_ori: 2D array of DEM values corresponding to value_array.
+                         Provides elevation data for the 3D visualization.
+   :type dem_array_ori: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Used for both .obj and .mtl files.
+   :type file_name: str
+   :param cell_size: Size of each cell in the grid (e.g., in meters).
+                     Used to scale the model to real-world units.
+   :type cell_size: float
+   :param offset: Elevation offset added after quantization.
+                  Useful for adjusting the base height of the model.
+   :type offset: float
+   :param colormap_name: Name of the Matplotlib colormap to use.
+                         Defaults to 'viridis'. Must be a valid Matplotlib colormap name.
+   :type colormap_name: str, optional
+   :param num_colors: Number of discrete colors to use from the colormap.
+                      Defaults to 256. Higher values give smoother color transitions.
+   :type num_colors: int, optional
+   :param alpha: Transparency value between 0.0 (transparent) and 1.0 (opaque).
+                 Defaults to 1.0 (fully opaque).
+   :type alpha: float, optional
+   :param vmin: Minimum value for colormap normalization.
+                If None, uses data minimum. Used to control color mapping range.
+   :type vmin: float, optional
+   :param vmax: Maximum value for colormap normalization.
+                If None, uses data maximum. Used to control color mapping range.
+   :type vmax: float, optional
+
+   .. rubric:: Notes
+
+   - Automatically handles NaN values in input arrays
+   - Creates triangulated mesh for proper rendering
+   - Supports transparency and color mapping
+   - Generates complete OBJ and MTL files
+   - Maintains consistent coordinate system
+   - Optimizes mesh generation for large grids
+
+   :raises ValueError: If vmin equals vmax or if colormap_name is invalid
+
+
+.. py:function:: export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None)
+
+   Export a voxel array to OBJ format with materials and proper face orientations.
+
+   This function converts a 3D voxel array into a complete OBJ file with materials,
+   performing mesh optimization and ensuring proper face orientations. It generates
+   both OBJ and MTL files with all necessary components for rendering.
+
+   :param array: 3D numpy array containing voxel values.
+                 Non-zero values indicate voxel presence and material type.
+   :type array: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Will be used for both .obj and .mtl files.
+   :type file_name: str
+   :param voxel_size: Size of each voxel in meters.
+                      Used to scale the model to real-world units.
+   :type voxel_size: float
+   :param voxel_color_map: Dictionary mapping voxel values to RGB colors.
+                           If None, uses default color map. Colors should be RGB lists (0-255).
+   :type voxel_color_map: dict, optional
+
+   .. rubric:: Notes
+
+   - Generates optimized mesh using greedy meshing
+   - Creates complete OBJ file with vertices, normals, and faces
+   - Generates MTL file with material definitions
+   - Handles proper face orientation and winding order
+   - Supports color mapping for visualization
+   - Uses consistent coordinate system throughout
+
+   File Format Details:
+       OBJ file contains:
+       - Vertex coordinates (v)
+       - Normal vectors (vn)
+       - Material references (usemtl)
+       - Face definitions (f)
+
+       MTL file contains:
+       - Material names and colors
+       - Ambient, diffuse, and specular properties
+       - Transparency settings
+       - Illumination model definitions
+
+
+.. py:function:: calculate_transmittance(length, tree_k=0.6, tree_lad=1.0)
+
+   Calculate tree transmittance using the Beer-Lambert law.
+
+   Uses the Beer-Lambert law to model light attenuation through tree canopy:
+   transmittance = exp(-k * LAD * L)
+   where:
+   - k is the extinction coefficient
+   - LAD is the leaf area density
+   - L is the path length through the canopy
+
+   :param length: Path length through tree voxel in meters
+   :type length: float
+   :param tree_k: Static extinction coefficient (default: 0.6)
+                  Controls overall light attenuation strength
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1 (default: 1.0)
+                    Higher values = denser foliage = more attenuation
+   :type tree_lad: float
+
+   :returns:
+
+             Transmittance value between 0 and 1
+                 1.0 = fully transparent
+                 0.0 = fully opaque
+   :rtype: float
+
+
+.. py:function:: trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Trace a ray through a voxel grid and check for hits with specified values.
+
+   Uses DDA algorithm to efficiently traverse voxels along ray path.
+   Handles tree transmittance using Beer-Lambert law.
+
+   The DDA algorithm:
+   1. Initializes ray at origin voxel
+   2. Calculates distances to next voxel boundaries in each direction
+   3. Steps to next voxel by choosing smallest distance
+   4. Repeats until hit or out of bounds
+
+   Tree transmittance:
+   - When ray passes through tree voxels (-2), transmittance is accumulated
+   - Uses Beer-Lambert law with configurable extinction coefficient and leaf area density
+   - Ray is considered blocked if cumulative transmittance falls below 0.01
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param origin: Starting point (x,y,z) of ray in voxel coordinates
+   :type origin: ndarray
+   :param direction: Direction vector of ray (will be normalized)
+   :type direction: ndarray
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             (hit_detected, transmittance_value)
+                 hit_detected (bool): Whether ray hit a target voxel
+                 transmittance_value (float): Cumulative transmittance through trees
+   :rtype: tuple
+
+
+.. py:function:: compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Compute view index accounting for tree transmittance.
+
+   Casts rays in specified directions and computes visibility index based on hits and transmittance.
+   The view index is the ratio of visible rays to total rays cast, where:
+   - For inclusion mode: Counts hits with target values
+   - For exclusion mode: Counts rays that don't hit obstacles
+   Tree transmittance is handled specially:
+   - In inclusion mode with trees as targets: Uses (1 - transmittance) as contribution
+   - In exclusion mode: Uses transmittance value directly
+
+   :param observer_location: Observer position (x,y,z) in voxel coordinates
+   :type observer_location: ndarray
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param ray_directions: Array of direction vectors for rays
+   :type ray_directions: ndarray
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             View index value between 0 and 1
+                 0.0 = no visibility in any direction
+                 1.0 = full visibility in all directions
+   :rtype: float
+
+
+.. py:function:: compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Compute view index map incorporating tree transmittance.
+
+   Places observers at valid locations and computes view index for each position.
+   Valid observer locations are:
+   - Empty voxels (0) or tree voxels (-2)
+   - Above non-empty, non-tree voxels
+   - Not above water (7,8,9) or negative values
+
+   The function processes each x,y position in parallel for efficiency.
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param ray_directions: Array of direction vectors for rays
+   :type ray_directions: ndarray
+   :param view_height_voxel: Observer height in voxel units
+   :type view_height_voxel: int
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             2D array of view index values
+                 NaN = invalid observer location
+                 0.0-1.0 = view index value
+   :rtype: ndarray
+
+
+.. py:function:: get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs)
+
+   Calculate and visualize a generic view index for a voxel city model.
+
+   This is a high-level function that provides a flexible interface for computing
+   various view indices. It handles:
+   - Mode presets for common indices (green, sky)
+   - Ray direction generation
+   - Tree transmittance parameters
+   - Visualization
+   - Optional OBJ export
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param mode: Predefined mode. Options: 'green', 'sky', or None.
+                If 'green': GVI mode - measures visibility of vegetation
+                If 'sky': SVI mode - measures visibility of open sky
+                If None: Custom mode requiring hit_values parameter
+   :type mode: str
+   :param hit_values: Voxel values considered as hits (if inclusion_mode=True)
+                      or allowed values (if inclusion_mode=False), if mode is None.
+   :type hit_values: tuple
+   :param inclusion_mode: True = voxel_value in hit_values is success.
+                          False = voxel_value not in hit_values is success.
+   :type inclusion_mode: bool
+   :param \*\*kwargs: Additional arguments:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                      - colormap (str): Matplotlib colormap name (default: 'viridis')
+                      - obj_export (bool): Export as OBJ (default: False)
+                      - output_directory (str): Directory for OBJ output
+                      - output_file_name (str): Base filename for OBJ output
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for OBJ export
+                      - vmin (float): Minimum value for color mapping
+                      - vmax (float): Maximum value for color mapping
+                      - N_azimuth (int): Number of azimuth angles for ray directions
+                      - N_elevation (int): Number of elevation angles for ray directions
+                      - elevation_min_degrees (float): Minimum elevation angle in degrees
+                      - elevation_max_degrees (float): Maximum elevation angle in degrees
+                      - tree_k (float): Tree extinction coefficient (default: 0.5)
+                      - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+
+   :returns: 2D array of computed view index values.
+   :rtype: ndarray
+
+
+.. py:function:: mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark)
+
+   Mark specific buildings in the voxel grid with a given value.
+
+   This function is used to identify landmark buildings for visibility analysis
+   by replacing their voxel values with a special marker value. It handles
+   coordinate system alignment between the building ID grid and voxel grid.
+
+   :param voxcity_grid_ori: 3D array of voxel values (original, will be copied)
+   :type voxcity_grid_ori: ndarray
+   :param building_id_grid_ori: 2D array of building IDs (original, will be copied)
+   :type building_id_grid_ori: ndarray
+   :param ids: List of building IDs to mark as landmarks
+   :type ids: list
+   :param mark: Value to mark the landmark buildings with (typically negative)
+   :type mark: int
+
+   :returns: Modified 3D voxel grid with landmark buildings marked
+   :rtype: ndarray
+
+
+.. py:function:: trace_ray_to_target(voxel_data, origin, target, opaque_values)
+
+   Trace a ray from origin to target through voxel data.
+
+   Uses DDA algorithm to efficiently traverse voxels along ray path.
+   Checks for any opaque voxels blocking the line of sight.
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param origin: Starting point (x,y,z) in voxel coordinates
+   :type origin: tuple
+   :param target: End point (x,y,z) in voxel coordinates
+   :type target: tuple
+   :param opaque_values: Array of voxel values that block the ray
+   :type opaque_values: ndarray
+
+   :returns: True if target is visible from origin, False otherwise
+   :rtype: bool
+
+
+.. py:function:: compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
+
+   Check if any landmark is visible from the observer location.
+
+   Traces rays to each landmark position until finding one that's visible.
+   Uses optimized ray tracing with early exit on first visible landmark.
+
+   :param observer_location: Observer position (x,y,z) in voxel coordinates
+   :type observer_location: ndarray
+   :param landmark_positions: Array of landmark positions (n_landmarks, 3)
+   :type landmark_positions: ndarray
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param opaque_values: Array of voxel values that block visibility
+   :type opaque_values: ndarray
+
+   :returns: 1 if any landmark is visible, 0 if none are visible
+   :rtype: int
+
+
+.. py:function:: compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel)
+
+   Compute visibility map for landmarks in the voxel grid.
+
+   Places observers at valid locations (empty voxels above ground, excluding building
+   roofs and vegetation) and checks visibility to any landmark.
+
+   The function processes each x,y position in parallel for efficiency.
+   Valid observer locations are:
+   - Empty voxels (0) or tree voxels (-2)
+   - Above non-empty, non-tree voxels
+   - Not above water (7,8,9) or negative values
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param landmark_positions: Array of landmark positions (n_landmarks, 3)
+   :type landmark_positions: ndarray
+   :param opaque_values: Array of voxel values that block visibility
+   :type opaque_values: ndarray
+   :param view_height_voxel: Height offset for observer in voxels
+   :type view_height_voxel: int
+
+   :returns:
+
+             2D array of visibility values
+                 NaN = invalid observer location
+                 0 = no landmarks visible
+                 1 = at least one landmark visible
+   :rtype: ndarray
+
+
+.. py:function:: compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis')
+
+   Compute and visualize landmark visibility in a voxel grid.
+
+   Places observers at valid locations and checks visibility to any landmark voxel.
+   Generates a binary visibility map and visualization.
+
+   The function:
+   1. Identifies all landmark voxels (target_value)
+   2. Determines which voxel values block visibility
+   3. Computes visibility from each valid observer location
+   4. Generates visualization with legend
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param target_value: Value used to identify landmark voxels. Defaults to -30.
+   :type target_value: int, optional
+   :param view_height_voxel: Height offset for observer in voxels. Defaults to 0.
+   :type view_height_voxel: int, optional
+   :param colormap: Matplotlib colormap name. Defaults to 'viridis'.
+   :type colormap: str, optional
+
+   :returns:
+
+             2D array of visibility values (0 or 1) with y-axis flipped
+                 NaN = invalid observer location
+                 0 = no landmarks visible
+                 1 = at least one landmark visible
+   :rtype: ndarray
+
+   :raises ValueError: If no landmark voxels are found with the specified target_value
+
+
+.. py:function:: get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf, meshsize, **kwargs)
+
+   Generate a visibility map for landmark buildings in a voxel city.
+
+   Places observers at valid locations and checks visibility to any part of the
+   specified landmark buildings. Can identify landmarks either by ID or by finding
+   buildings within a specified rectangle.
+
+   :param voxcity_grid: 3D array representing the voxel city
+   :type voxcity_grid: ndarray
+   :param building_id_grid: 3D array mapping voxels to building IDs
+   :type building_id_grid: ndarray
+   :param building_gdf: GeoDataFrame containing building features
+   :type building_gdf: GeoDataFrame
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param \*\*kwargs: Additional keyword arguments
+                      view_point_height (float): Height of observer viewpoint in meters
+                      colormap (str): Matplotlib colormap name
+                      landmark_building_ids (list): List of building IDs to mark as landmarks
+                      rectangle_vertices (list): List of (lat,lon) coordinates defining rectangle
+                      obj_export (bool): Whether to export visibility map as OBJ file
+                      dem_grid (ndarray): Digital elevation model grid for OBJ export
+                      output_directory (str): Directory for OBJ file output
+                      output_file_name (str): Base filename for OBJ output
+                      alpha (float): Alpha transparency value for OBJ export
+                      vmin (float): Minimum value for color mapping
+                      vmax (float): Maximum value for color mapping
+
+   :returns: 2D array of visibility values for landmark buildings
+   :rtype: ndarray
+
+
+.. py:function:: get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs)
+
+   Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
+
+   Sky View Factor measures the proportion of the sky hemisphere that is visible from a given point.
+   It ranges from 0 (completely obstructed) to 1 (completely open sky). This implementation:
+   - Uses hemisphere ray casting to sample sky visibility
+   - Accounts for tree transmittance using Beer-Lambert law
+   - Places observers at valid street-level locations
+   - Provides optional visualization and OBJ export
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param show_plot: Whether to display the SVF visualization plot.
+   :type show_plot: bool
+   :param \*\*kwargs: Additional parameters including:
+                      view_point_height (float): Observer height in meters (default: 1.5)
+                      colormap (str): Matplotlib colormap name (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      N_azimuth (int): Number of azimuth angles for ray sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for ray sampling (default: 10)
+                      elevation_min_degrees (float): Minimum elevation angle (default: 0)
+                      elevation_max_degrees (float): Maximum elevation angle (default: 90)
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                      obj_export (bool): Whether to export as OBJ file (default: False)
+
+   :returns:
+
+             2D array of SVF values at each valid observer location (x, y).
+                      NaN values indicate invalid observer positions.
+   :rtype: ndarray
+
+
+.. py:function:: rotate_vector_axis_angle(vec, axis, angle)
+
+   Rotate a 3D vector around an arbitrary axis using Rodrigues' rotation formula.
+
+   This function implements the Rodrigues rotation formula:
+   v_rot = v*cos(θ) + (k × v)*sin(θ) + k*(k·v)*(1-cos(θ))
+   where k is the unit rotation axis, θ is the rotation angle, and v is the input vector.
+
+   :param vec: 3D vector to rotate [x, y, z]
+   :type vec: ndarray
+   :param axis: 3D rotation axis vector [x, y, z] (will be normalized)
+   :type axis: ndarray
+   :param angle: Rotation angle in radians
+   :type angle: float
+
+   :returns: Rotated 3D vector [x, y, z]
+   :rtype: ndarray
+
+
+.. py:function:: compute_view_factor_for_all_faces(face_centers, face_normals, hemisphere_dirs, voxel_data, meshsize, tree_k, tree_lad, target_values, inclusion_mode, grid_bounds_real, boundary_epsilon, ignore_downward=True)
+
+   Compute a per-face "view factor" for a specified set of target voxel classes.
+
+   This function computes view factors from building surface faces to target voxel types
+   (e.g., sky, trees, other buildings). It uses hemisphere ray casting with rotation
+   to align rays with each face's normal direction.
+
+   Typical usage examples:
+   - Sky View Factor: target_values=(0,), inclusion_mode=False (sky voxels)
+   - Tree View Factor: target_values=(-2,), inclusion_mode=True (tree voxels)
+   - Building View Factor: target_values=(-3,), inclusion_mode=True (building voxels)
+
+   :param face_centers: (n_faces, 3) face centroid positions in real coordinates.
+   :type face_centers: np.ndarray
+   :param face_normals: (n_faces, 3) face normal vectors (outward pointing).
+   :type face_normals: np.ndarray
+   :param hemisphere_dirs: (N, 3) set of direction vectors in the upper hemisphere.
+   :type hemisphere_dirs: np.ndarray
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: np.ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient for Beer-Lambert law.
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1 for tree transmittance.
+   :type tree_lad: float
+   :param target_values: Voxel classes that define a 'hit' or target.
+   :type target_values: tuple[int]
+   :param inclusion_mode: If True, hitting target_values counts as visibility.
+                          If False, hitting anything NOT in target_values blocks the ray.
+   :type inclusion_mode: bool
+   :param grid_bounds_real: [[x_min,y_min,z_min],[x_max,y_max,z_max]] in real coords.
+   :type grid_bounds_real: np.ndarray
+   :param boundary_epsilon: Tolerance for identifying boundary vertical faces.
+   :type boundary_epsilon: float
+   :param ignore_downward: If True, only consider upward rays. If False, consider all outward rays.
+   :type ignore_downward: bool
+
+   :returns:
+
+             Computed view factor for each face.
+                 NaN values indicate boundary vertical faces that should be excluded.
+   :rtype: np.ndarray of shape (n_faces,)
+
+
+.. py:function:: get_surface_view_factor(voxel_data, meshsize, **kwargs)
+
+   Compute and optionally visualize view factors for surface meshes with respect to target voxel classes.
+
+   This function provides a flexible framework for computing various surface-based view factors:
+   - Sky View Factor: Fraction of sky hemisphere visible from building surfaces
+   - Tree View Factor: Fraction of directions that intersect vegetation
+   - Building View Factor: Fraction of directions that intersect other buildings
+   - Custom View Factors: User-defined target voxel classes
+
+   The function extracts surface meshes from the voxel data, then computes view factors
+   for each face using hemisphere ray casting with proper geometric transformations.
+
+   :param voxel_data: 3D array of voxel values representing the urban environment.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters for coordinate scaling.
+   :type meshsize: float
+   :param \*\*kwargs: Extensive configuration options including:
+                      # Target specification:
+                      target_values (tuple[int]): Voxel classes to measure visibility to (default: (0,) for sky)
+                      inclusion_mode (bool): Interpretation of target_values (default: False for sky)
+
+                      # Surface extraction:
+                      building_class_id (int): Voxel class to extract surfaces from (default: -3 for buildings)
+                      building_id_grid (ndarray): Optional grid mapping voxels to building IDs
+
+                      # Ray sampling:
+                      N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for hemisphere sampling (default: 10)
+
+                      # Tree transmittance (Beer-Lambert law):
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+
+                      # Visualization and export:
+                      colormap (str): Matplotlib colormap for visualization (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      obj_export (bool): Whether to export mesh as OBJ file (default: False)
+                      output_directory (str): Directory for OBJ export (default: "output")
+                      output_file_name (str): Base filename for OBJ export (default: "surface_view_factor")
+
+                      # Other options:
+                      progress_report (bool): Whether to print computation progress (default: False)
+                      debug (bool): Enable debug output (default: False)
+
+   :returns:
+
+             Surface mesh with per-face view factor values stored in metadata.
+                             The view factor values can be accessed via mesh.metadata[value_name].
+                             Returns None if no surfaces are found or extraction fails.
+   :rtype: trimesh.Trimesh
+
+   Example Usage:
+       # Sky View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(0,), inclusion_mode=False)
+
+       # Tree View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-2,), inclusion_mode=True)
+
+       # Custom view factor with OBJ export
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-3,), inclusion_mode=True,
+                                    obj_export=True, output_file_name="building_view_factor")
+
+
+.. py:function:: trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Trace a ray through a voxel grid and check for hits with specified values.
+
+   Uses DDA algorithm to efficiently traverse voxels along ray path.
+   Handles tree transmittance using Beer-Lambert law.
+
+   The DDA algorithm:
+   1. Initializes ray at origin voxel
+   2. Calculates distances to next voxel boundaries in each direction
+   3. Steps to next voxel by choosing smallest distance
+   4. Repeats until hit or out of bounds
+
+   Tree transmittance:
+   - When ray passes through tree voxels (-2), transmittance is accumulated
+   - Uses Beer-Lambert law with configurable extinction coefficient and leaf area density
+   - Ray is considered blocked if cumulative transmittance falls below 0.01
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param origin: Starting point (x,y,z) of ray in voxel coordinates
+   :type origin: ndarray
+   :param direction: Direction vector of ray (will be normalized)
+   :type direction: ndarray
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             (hit_detected, transmittance_value)
+                 hit_detected (bool): Whether ray hit a target voxel
+                 transmittance_value (float): Cumulative transmittance through trees
+   :rtype: tuple
+
+
+.. py:function:: compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True)
+
+   Compute view index map incorporating tree transmittance.
+
+   Places observers at valid locations and computes view index for each position.
+   Valid observer locations are:
+   - Empty voxels (0) or tree voxels (-2)
+   - Above non-empty, non-tree voxels
+   - Not above water (7,8,9) or negative values
+
+   The function processes each x,y position in parallel for efficiency.
+
+   :param voxel_data: 3D array of voxel values
+   :type voxel_data: ndarray
+   :param ray_directions: Array of direction vectors for rays
+   :type ray_directions: ndarray
+   :param view_height_voxel: Observer height in voxel units
+   :type view_height_voxel: int
+   :param hit_values: Values to check for hits
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param inclusion_mode: If True, hit_values are hits. If False, hit_values are allowed values.
+   :type inclusion_mode: bool
+
+   :returns:
+
+             2D array of view index values
+                 NaN = invalid observer location
+                 0.0-1.0 = view index value
+   :rtype: ndarray
+
+
+.. py:function:: get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs)
+
+   Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
+
+   Sky View Factor measures the proportion of the sky hemisphere that is visible from a given point.
+   It ranges from 0 (completely obstructed) to 1 (completely open sky). This implementation:
+   - Uses hemisphere ray casting to sample sky visibility
+   - Accounts for tree transmittance using Beer-Lambert law
+   - Places observers at valid street-level locations
+   - Provides optional visualization and OBJ export
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param show_plot: Whether to display the SVF visualization plot.
+   :type show_plot: bool
+   :param \*\*kwargs: Additional parameters including:
+                      view_point_height (float): Observer height in meters (default: 1.5)
+                      colormap (str): Matplotlib colormap name (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      N_azimuth (int): Number of azimuth angles for ray sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for ray sampling (default: 10)
+                      elevation_min_degrees (float): Minimum elevation angle (default: 0)
+                      elevation_max_degrees (float): Maximum elevation angle (default: 90)
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                      obj_export (bool): Whether to export as OBJ file (default: False)
+
+   :returns:
+
+             2D array of SVF values at each valid observer location (x, y).
+                      NaN values indicate invalid observer positions.
+   :rtype: ndarray
+
+
+.. py:function:: get_surface_view_factor(voxel_data, meshsize, **kwargs)
+
+   Compute and optionally visualize view factors for surface meshes with respect to target voxel classes.
+
+   This function provides a flexible framework for computing various surface-based view factors:
+   - Sky View Factor: Fraction of sky hemisphere visible from building surfaces
+   - Tree View Factor: Fraction of directions that intersect vegetation
+   - Building View Factor: Fraction of directions that intersect other buildings
+   - Custom View Factors: User-defined target voxel classes
+
+   The function extracts surface meshes from the voxel data, then computes view factors
+   for each face using hemisphere ray casting with proper geometric transformations.
+
+   :param voxel_data: 3D array of voxel values representing the urban environment.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters for coordinate scaling.
+   :type meshsize: float
+   :param \*\*kwargs: Extensive configuration options including:
+                      # Target specification:
+                      target_values (tuple[int]): Voxel classes to measure visibility to (default: (0,) for sky)
+                      inclusion_mode (bool): Interpretation of target_values (default: False for sky)
+
+                      # Surface extraction:
+                      building_class_id (int): Voxel class to extract surfaces from (default: -3 for buildings)
+                      building_id_grid (ndarray): Optional grid mapping voxels to building IDs
+
+                      # Ray sampling:
+                      N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 60)
+                      N_elevation (int): Number of elevation angles for hemisphere sampling (default: 10)
+
+                      # Tree transmittance (Beer-Lambert law):
+                      tree_k (float): Tree extinction coefficient (default: 0.6)
+                      tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+
+                      # Visualization and export:
+                      colormap (str): Matplotlib colormap for visualization (default: 'BuPu_r')
+                      vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
+                      obj_export (bool): Whether to export mesh as OBJ file (default: False)
+                      output_directory (str): Directory for OBJ export (default: "output")
+                      output_file_name (str): Base filename for OBJ export (default: "surface_view_factor")
+
+                      # Other options:
+                      progress_report (bool): Whether to print computation progress (default: False)
+                      debug (bool): Enable debug output (default: False)
+
+   :returns:
+
+             Surface mesh with per-face view factor values stored in metadata.
+                             The view factor values can be accessed via mesh.metadata[value_name].
+                             Returns None if no surfaces are found or extraction fails.
+   :rtype: trimesh.Trimesh
+
+   Example Usage:
+       # Sky View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(0,), inclusion_mode=False)
+
+       # Tree View Factor for building surfaces
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-2,), inclusion_mode=True)
+
+       # Custom view factor with OBJ export
+       mesh = get_surface_view_factor(voxel_data, meshsize,
+                                    target_values=(-3,), inclusion_mode=True,
+                                    obj_export=True, output_file_name="building_view_factor")
+
+
+.. py:function:: get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, output_dir: str = './', max_distance: Optional[float] = None, extract_zip: bool = True, load_data: bool = True, region: Optional[Union[str, List[str]]] = None) -> Tuple[Optional[str], Optional[pandas.DataFrame], Optional[Dict]]
+
+   Download and process EPW weather file from Climate.OneBuilding.Org based on coordinates.
+
+   This function automatically finds and downloads the nearest available weather station
+   data from Climate.OneBuilding.Org's global database. It supports region-based searching
+   for improved performance and can automatically detect the appropriate region based on
+   coordinates.
+
+   The function performs the following steps:
+   1. Determines which regional KML files to scan based on coordinates or user input
+   2. Downloads and parses KML files to extract weather station metadata
+   3. Calculates distances to find the nearest station
+   4. Downloads the EPW file from the nearest station
+   5. Optionally processes the EPW data into a pandas DataFrame
+
+   :param longitude: Longitude of the location (-180 to 180)
+   :type longitude: float
+   :param latitude: Latitude of the location (-90 to 90)
+   :type latitude: float
+   :param output_dir: Directory to save the EPW file (defaults to current directory)
+   :type output_dir: str
+   :param max_distance: Maximum distance in kilometers to search for stations.
+                        If no stations within this distance, uses closest available.
+   :type max_distance: float, optional
+   :param extract_zip: Whether to extract the ZIP file (default True)
+   :type extract_zip: bool
+   :param load_data: Whether to load the EPW data into a DataFrame (default True)
+   :type load_data: bool
+   :param region: Specific region(s) to scan for stations.
+                  Options: "Africa", "Asia", "Japan", "India", "Argentina",
+                  "Canada", "USA", "Caribbean", "Southwest_Pacific",
+                  "Europe", "Antarctica", or "all".
+                  If None, will auto-detect region based on coordinates.
+   :type region: str or List[str], optional
+
+   :returns:
+
+             - Path to the EPW file (or None if download fails)
+             - DataFrame with hourly weather data (if load_data=True, else None)
+             - Dictionary with EPW header metadata (if load_data=True, else None)
+   :rtype: Tuple containing
+
+   :raises ValueError: If invalid region specified or no weather stations found
+   :raises requests.exceptions.RequestException: If network requests fail
+
+
+.. py:function:: read_epw_for_solar_simulation(epw_file_path)
+
+   Read EPW file specifically for solar simulation purposes.
+
+   This function extracts essential solar radiation data and location metadata
+   from an EPW file for use in solar energy calculations. It focuses on the
+   Direct Normal Irradiance (DNI) and Diffuse Horizontal Irradiance (DHI)
+   which are the primary inputs for solar simulation models.
+
+   :param epw_file_path: Path to the EPW weather file
+
+   :returns:
+
+             - DataFrame with time-indexed DNI and DHI data
+             - Longitude (degrees)
+             - Latitude (degrees)
+             - Time zone offset (hours from UTC)
+             - Elevation (meters above sea level)
+   :rtype: Tuple containing
+
+   :raises ValueError: If LOCATION line not found or data parsing fails
+
+
+.. py:function:: grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size, offset, colormap_name='viridis', num_colors=256, alpha=1.0, vmin=None, vmax=None)
+
+   Converts a 2D array of values and a corresponding DEM array to an OBJ file
+   with specified colormap, transparency, and value range.
+
+   This function creates a 3D visualization of 2D grid data by using elevation
+   data and color mapping. It's particularly useful for visualizing terrain data,
+   analysis results, or any 2D data that should be displayed with elevation.
+
+   :param value_array_ori: 2D array of values to visualize.
+                           These values will be mapped to colors using the specified colormap.
+   :type value_array_ori: ndarray
+   :param dem_array_ori: 2D array of DEM values corresponding to value_array.
+                         Provides elevation data for the 3D visualization.
+   :type dem_array_ori: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Used for both .obj and .mtl files.
+   :type file_name: str
+   :param cell_size: Size of each cell in the grid (e.g., in meters).
+                     Used to scale the model to real-world units.
+   :type cell_size: float
+   :param offset: Elevation offset added after quantization.
+                  Useful for adjusting the base height of the model.
+   :type offset: float
+   :param colormap_name: Name of the Matplotlib colormap to use.
+                         Defaults to 'viridis'. Must be a valid Matplotlib colormap name.
+   :type colormap_name: str, optional
+   :param num_colors: Number of discrete colors to use from the colormap.
+                      Defaults to 256. Higher values give smoother color transitions.
+   :type num_colors: int, optional
+   :param alpha: Transparency value between 0.0 (transparent) and 1.0 (opaque).
+                 Defaults to 1.0 (fully opaque).
+   :type alpha: float, optional
+   :param vmin: Minimum value for colormap normalization.
+                If None, uses data minimum. Used to control color mapping range.
+   :type vmin: float, optional
+   :param vmax: Maximum value for colormap normalization.
+                If None, uses data maximum. Used to control color mapping range.
+   :type vmax: float, optional
+
+   .. rubric:: Notes
+
+   - Automatically handles NaN values in input arrays
+   - Creates triangulated mesh for proper rendering
+   - Supports transparency and color mapping
+   - Generates complete OBJ and MTL files
+   - Maintains consistent coordinate system
+   - Optimizes mesh generation for large grids
+
+   :raises ValueError: If vmin equals vmax or if colormap_name is invalid
+
+
+.. py:function:: export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None)
+
+   Export a voxel array to OBJ format with materials and proper face orientations.
+
+   This function converts a 3D voxel array into a complete OBJ file with materials,
+   performing mesh optimization and ensuring proper face orientations. It generates
+   both OBJ and MTL files with all necessary components for rendering.
+
+   :param array: 3D numpy array containing voxel values.
+                 Non-zero values indicate voxel presence and material type.
+   :type array: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Will be used for both .obj and .mtl files.
+   :type file_name: str
+   :param voxel_size: Size of each voxel in meters.
+                      Used to scale the model to real-world units.
+   :type voxel_size: float
+   :param voxel_color_map: Dictionary mapping voxel values to RGB colors.
+                           If None, uses default color map. Colors should be RGB lists (0-255).
+   :type voxel_color_map: dict, optional
+
+   .. rubric:: Notes
+
+   - Generates optimized mesh using greedy meshing
+   - Creates complete OBJ file with vertices, normals, and faces
+   - Generates MTL file with material definitions
+   - Handles proper face orientation and winding order
+   - Supports color mapping for visualization
+   - Uses consistent coordinate system throughout
+
+   File Format Details:
+       OBJ file contains:
+       - Vertex coordinates (v)
+       - Normal vectors (vn)
+       - Material references (usemtl)
+       - Face definitions (f)
+
+       MTL file contains:
+       - Material names and colors
+       - Ambient, diffuse, and specular properties
+       - Transparency settings
+       - Illumination model definitions
+
+
+.. py:function:: compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_point_height, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+
+   Compute a map of direct solar irradiation accounting for tree transmittance.
+
+   This function performs ray tracing from observer positions on the ground surface
+   towards the sun to determine direct solar irradiance at each location. It accounts
+   for shadows cast by buildings and vegetation, with special consideration for
+   tree transmittance using the Beer-Lambert law.
+
+   The function:
+   1. Places observers at valid locations (empty voxels above ground)
+   2. Casts rays from each observer in the sun direction
+   3. Computes transmittance through trees using Beer-Lambert law
+   4. Returns a 2D map of transmittance values
+
+   Observer Placement Rules:
+   - Observers are placed in empty voxels (value 0 or -2 for trees) above solid ground
+   - Observers are NOT placed on buildings, vegetation, or water surfaces
+   - Observer height is added above the detected ground surface
+
+   Ray Tracing Process:
+   - Rays are cast from each valid observer position toward the sun
+   - Intersections with obstacles (non-sky voxels) are detected
+   - Tree voxels provide partial transmittance rather than complete blocking
+   - Final transmittance value represents solar energy reaching the surface
+
+   :param voxel_data: 3D array of voxel values representing the urban environment.
+                      Common values: 0=sky, 1-6=buildings, 7-9=special surfaces, -2=trees
+   :type voxel_data: ndarray
+   :param sun_direction: Direction vector of the sun (dx, dy, dz), should be normalized
+   :type sun_direction: tuple
+   :param view_point_height: Observer height above ground surface in meters
+   :type view_point_height: float
+   :param hit_values: Values considered non-obstacles if inclusion_mode=False
+                      Typically (0,) meaning only sky voxels are transparent
+   :type hit_values: tuple
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient for Beer-Lambert law (higher = more opaque)
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1 (affects light attenuation through trees)
+   :type tree_lad: float
+   :param inclusion_mode: False here, meaning any voxel not in hit_values is an obstacle
+   :type inclusion_mode: bool
+
+   :returns:
+
+             2D array of transmittance values (0.0-1.0)
+                     - 1.0 = full sun exposure
+                     - 0.0 = complete shadow
+                     - 0.0-1.0 = partial transmittance through trees
+                     - NaN = invalid observer position (cannot place observer)
+   :rtype: ndarray
+
+   .. note::
+
+      The returned map is vertically flipped to match standard visualization conventions
+      where the origin is at the bottom-left corner.
+
+
+.. py:function:: get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, elevation_degrees, direct_normal_irradiance, show_plot=False, **kwargs)
+
+   Compute direct solar irradiance map with tree transmittance.
+
+   This function converts solar angles to a 3D direction vector, computes the binary
+   transmittance map using ray tracing, and scales the results by actual solar irradiance
+   values to produce physically meaningful irradiance measurements.
+
+   Solar Geometry:
+   - Azimuth: Horizontal angle measured from North (0°) clockwise to East (90°)
+   - Elevation: Vertical angle above the horizon (0° = horizon, 90° = zenith)
+   - The coordinate system is adjusted by 180° to match the voxel grid orientation
+
+   Physics Background:
+   - Direct Normal Irradiance (DNI): Solar energy on a surface perpendicular to sun rays
+   - Horizontal irradiance: DNI scaled by sine of elevation angle
+   - Tree transmittance: Applied using Beer-Lambert law for realistic light attenuation
+
+   The function:
+   1. Converts sun angles to direction vector using spherical coordinates
+   2. Computes binary transmittance map accounting for shadows and tree effects
+   3. Scales by direct normal irradiance and sun elevation for horizontal surfaces
+   4. Optionally visualizes and exports results in various formats
+
+   :param voxel_data: 3D array of voxel values representing the urban environment
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param azimuth_degrees_ori: Sun azimuth angle in degrees (0° = North, 90° = East)
+   :type azimuth_degrees_ori: float
+   :param elevation_degrees: Sun elevation angle in degrees above horizon (0-90°)
+   :type elevation_degrees: float
+   :param direct_normal_irradiance: Direct normal irradiance in W/m² (from weather data)
+   :type direct_normal_irradiance: float
+   :param show_plot: Whether to display visualization of results
+   :type show_plot: bool
+   :param \*\*kwargs: Additional arguments including:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                          Height above ground where irradiance is measured
+                      - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+                      - vmin (float): Minimum value for colormap scaling
+                      - vmax (float): Maximum value for colormap scaling
+                      - tree_k (float): Tree extinction coefficient (default: 0.6)
+                          Higher values mean trees block more light
+                      - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                          Affects light attenuation through tree canopies
+                      - obj_export (bool): Whether to export results as 3D OBJ file
+                      - output_directory (str): Directory for file exports
+                      - output_file_name (str): Base filename for exports
+                      - dem_grid (ndarray): Digital elevation model for 3D export
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for 3D visualization
+
+   :returns:
+
+             2D array of direct solar irradiance values in W/m²
+                     - Values represent energy flux on horizontal surfaces
+                     - NaN indicates invalid measurement locations
+                     - Range typically 0 to direct_normal_irradiance * sin(elevation)
+   :rtype: ndarray
+
+   .. note::
+
+      The azimuth is internally adjusted by 180° to match the coordinate system
+      where the voxel grid's y-axis points in the opposite direction from geographic north.
+
+
+.. py:function:: get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.0, show_plot=False, **kwargs)
+
+   Compute diffuse solar irradiance map using the Sky View Factor (SVF) with tree transmittance.
+
+   This function calculates the diffuse component of solar radiation, which consists of
+   sunlight scattered by the atmosphere and reaches surfaces from all directions across
+   the sky hemisphere. The calculation is based on the Sky View Factor (SVF), which
+   quantifies how much of the sky dome is visible from each location.
+
+   Physics Background:
+   - Diffuse radiation: Solar energy scattered by atmospheric particles and clouds
+   - Sky View Factor (SVF): Fraction of sky hemisphere visible from a point (0.0 to 1.0)
+   - Isotropic sky model: Assumes uniform diffuse radiation distribution across the sky
+   - Tree effects: Partial transmittance through canopies reduces effective sky visibility
+
+   SVF Characteristics:
+   - SVF = 1.0: Completely open sky (maximum diffuse radiation)
+   - SVF = 0.0: Completely blocked sky (no diffuse radiation)
+   - SVF = 0.5: Half of sky visible (typical for urban canyons)
+   - Trees reduce SVF through partial light attenuation rather than complete blocking
+
+   The function:
+   1. Computes SVF map accounting for building shadows and tree transmittance
+   2. Scales SVF by diffuse horizontal irradiance from weather data
+   3. Optionally visualizes and exports results for analysis
+
+   :param voxel_data: 3D array of voxel values representing the urban environment
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param diffuse_irradiance: Diffuse horizontal irradiance in W/m² (from weather data)
+                              Default 1.0 for normalized calculations
+   :type diffuse_irradiance: float
+   :param show_plot: Whether to display visualization of results
+   :type show_plot: bool
+   :param \*\*kwargs: Additional arguments including:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                          Height above ground where measurements are taken
+                      - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+                      - vmin (float): Minimum value for colormap scaling
+                      - vmax (float): Maximum value for colormap scaling
+                      - tree_k (float): Tree extinction coefficient for transmittance calculations
+                          Higher values mean trees block more diffuse light
+                      - tree_lad (float): Leaf area density in m^-1
+                          Affects light attenuation through tree canopies
+                      - obj_export (bool): Whether to export results as 3D OBJ file
+                      - output_directory (str): Directory for file exports
+                      - output_file_name (str): Base filename for exports
+                      - dem_grid (ndarray): Digital elevation model for 3D export
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for 3D visualization
+
+   :returns:
+
+             2D array of diffuse solar irradiance values in W/m²
+                     - Values represent diffuse energy flux on horizontal surfaces
+                     - Range: 0.0 to diffuse_irradiance (input parameter)
+                     - NaN indicates invalid measurement locations
+   :rtype: ndarray
+
+   .. note::
+
+      The SVF calculation internally handles tree transmittance effects, so trees
+      contribute partial sky visibility rather than complete obstruction.
+
+
+.. py:function:: get_global_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees, elevation_degrees, direct_normal_irradiance, diffuse_irradiance, show_plot=False, **kwargs)
+
+   Compute global solar irradiance (direct + diffuse) on a horizontal plane at each valid observer location.
+
+   This function combines both direct and diffuse components of solar radiation to calculate
+   the total solar irradiance at each location. Global horizontal irradiance (GHI) is the
+   most commonly used metric for solar energy assessment and represents the total solar
+   energy available on a horizontal surface.
+
+   Global Irradiance Components:
+   - Direct component: Solar radiation from the sun's disk, affected by shadows and obstacles
+   - Diffuse component: Solar radiation scattered by the atmosphere, affected by sky view
+   - Total irradiance: Sum of direct and diffuse components at each location
+
+   Physical Considerations:
+   - Direct radiation varies with sun position and local obstructions
+   - Diffuse radiation varies with sky visibility (Sky View Factor)
+   - Both components are affected by tree transmittance using Beer-Lambert law
+   - Invalid locations (e.g., on water, buildings) are marked as NaN
+
+   The function:
+   1. Computes direct solar irradiance map accounting for sun position and shadows
+   2. Computes diffuse solar irradiance map based on Sky View Factor
+   3. Combines maps and optionally visualizes/exports results for analysis
+
+   :param voxel_data: 3D voxel array representing the urban environment
+   :type voxel_data: ndarray
+   :param meshsize: Voxel size in meters (spatial resolution)
+   :type meshsize: float
+   :param azimuth_degrees: Sun azimuth angle in degrees (0° = North, 90° = East)
+   :type azimuth_degrees: float
+   :param elevation_degrees: Sun elevation angle in degrees above horizon (0-90°)
+   :type elevation_degrees: float
+   :param direct_normal_irradiance: Direct normal irradiance in W/m² (from weather data)
+   :type direct_normal_irradiance: float
+   :param diffuse_irradiance: Diffuse horizontal irradiance in W/m² (from weather data)
+   :type diffuse_irradiance: float
+   :param show_plot: Whether to display visualization of results
+   :type show_plot: bool
+   :param \*\*kwargs: Additional arguments including:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                          Height above ground where measurements are taken
+                      - colormap (str): Matplotlib colormap name for visualization (default: 'magma')
+                      - vmin (float): Minimum value for colormap scaling
+                      - vmax (float): Maximum value for colormap scaling
+                      - tree_k (float): Tree extinction coefficient for transmittance calculations
+                          Higher values mean trees block more light
+                      - tree_lad (float): Leaf area density in m^-1
+                          Affects light attenuation through tree canopies
+                      - obj_export (bool): Whether to export results as 3D OBJ file
+                      - output_directory (str): Directory for file exports
+                      - output_file_name (str): Base filename for exports
+                      - dem_grid (ndarray): Digital elevation model for 3D export
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for 3D visualization
+
+   :returns:
+
+             2D array of global solar irradiance values in W/m²
+                     - Values represent total solar energy flux on horizontal surfaces
+                     - Range: 0.0 to (direct_normal_irradiance * sin(elevation) + diffuse_irradiance)
+                     - NaN indicates invalid measurement locations
+   :rtype: ndarray
+
+   .. note::
+
+      Global irradiance is the standard metric used for solar energy assessment
+      and represents the maximum solar energy available at each location.
+
+
+.. py:function:: get_solar_positions_astral(times, lon, lat)
+
+   Compute solar azimuth and elevation using Astral for given times and location.
+
+   This function uses the Astral astronomical library to calculate precise solar positions
+   based on location coordinates and timestamps. The calculations account for Earth's
+   orbital mechanics, axial tilt, and atmospheric refraction effects.
+
+   Astronomical Background:
+   - Solar position depends on date, time, and geographic location
+   - Azimuth: Horizontal angle measured clockwise from North (0°-360°)
+   - Elevation: Vertical angle above the horizon (-90° to +90°)
+   - Calculations use standard astronomical algorithms (e.g., NREL SPA)
+
+   Coordinate System:
+   - Azimuth: 0° = North, 90° = East, 180° = South, 270° = West
+   - Elevation: 0° = horizon, 90° = zenith, negative values = below horizon
+   - All angles are in degrees for consistency with weather data formats
+
+   The function:
+   1. Creates an Astral observer at the specified geographic location
+   2. Computes sun position for each timestamp in the input array
+   3. Returns DataFrame with azimuth and elevation angles for further processing
+
+   :param times: Array of timezone-aware datetime objects
+                 Must include timezone information for accurate calculations
+   :type times: DatetimeIndex
+   :param lon: Longitude in degrees (positive = East, negative = West)
+               Range: -180° to +180°
+   :type lon: float
+   :param lat: Latitude in degrees (positive = North, negative = South)
+               Range: -90° to +90°
+   :type lat: float
+
+   :returns:
+
+             DataFrame with columns 'azimuth' and 'elevation' containing solar positions
+                       - Index: Input timestamps (timezone-aware)
+                       - 'azimuth': Solar azimuth angles in degrees (0°-360°)
+                       - 'elevation': Solar elevation angles in degrees (-90° to +90°)
+                       - All values are float type for numerical calculations
+   :rtype: DataFrame
+
+   .. note::
+
+      Input times must be timezone-aware. The function preserves the original
+      timezone information and performs calculations in the specified timezone.
+
+
+.. py:function:: get_cumulative_global_solar_irradiance(voxel_data, meshsize, df, lon, lat, tz, direct_normal_irradiance_scaling=1.0, diffuse_irradiance_scaling=1.0, **kwargs)
+
+   Compute cumulative global solar irradiance over a specified period using data from an EPW file.
+
+   This function performs time-series analysis of solar irradiance by processing weather data
+   over a user-defined period and accumulating irradiance values at each location. The result
+   represents the total solar energy received during the specified time period, which is
+   essential for seasonal analysis, solar panel positioning, and energy yield predictions.
+
+   Cumulative Analysis Concept:
+   - Instantaneous irradiance (W/m²): Power at a specific moment
+   - Cumulative irradiance (Wh/m²): Energy accumulated over time
+   - Integration: Sum of (irradiance × time_step) for all timesteps
+   - Applications: Annual energy yield, seasonal variations, optimal siting
+
+   Time Period Processing:
+   - Supports flexible time ranges (daily, seasonal, annual analysis)
+   - Handles timezone conversions between local and UTC time
+   - Filters weather data based on user-specified start/end times
+   - Accounts for leap years and varying daylight hours
+
+   Performance Optimization:
+   - Pre-calculates diffuse map once (scales linearly with DHI)
+   - Processes direct component for each timestep (varies with sun position)
+   - Uses efficient memory management for large time series
+   - Provides optional progress monitoring for long calculations
+
+   The function:
+   1. Filters EPW data for specified time period with timezone handling
+   2. Computes sun positions for each timestep using astronomical calculations
+   3. Calculates and accumulates global irradiance maps over the entire period
+   4. Handles tree transmittance and provides visualization/export options
+
+   :param voxel_data: 3D array of voxel values representing the urban environment
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param df: EPW weather data with columns 'DNI', 'DHI' and datetime index
+              Must include complete meteorological dataset
+   :type df: DataFrame
+   :param lon: Longitude in degrees for solar position calculations
+   :type lon: float
+   :param lat: Latitude in degrees for solar position calculations
+   :type lat: float
+   :param tz: Timezone offset in hours from UTC (positive = East of UTC)
+   :type tz: float
+   :param direct_normal_irradiance_scaling: Scaling factor for direct normal irradiance
+                                            Allows sensitivity analysis or unit conversions
+   :type direct_normal_irradiance_scaling: float
+   :param diffuse_irradiance_scaling: Scaling factor for diffuse horizontal irradiance
+                                      Allows sensitivity analysis or unit conversions
+   :type diffuse_irradiance_scaling: float
+   :param \*\*kwargs: Additional arguments including:
+                      - view_point_height (float): Observer height in meters (default: 1.5)
+                          Height above ground where measurements are taken
+                      - start_time (str): Start time in format 'MM-DD HH:MM:SS'
+                          Defines beginning of analysis period (default: "01-01 05:00:00")
+                      - end_time (str): End time in format 'MM-DD HH:MM:SS'
+                          Defines end of analysis period (default: "01-01 20:00:00")
+                      - tree_k (float): Tree extinction coefficient for transmittance calculations
+                          Higher values mean trees block more light
+                      - tree_lad (float): Leaf area density in m^-1
+                          Affects light attenuation through tree canopies
+                      - show_plot (bool): Whether to show final accumulated results
+                      - show_each_timestep (bool): Whether to show plots for each timestep
+                          Useful for debugging but significantly increases computation time
+                      - colormap (str): Matplotlib colormap name for visualization
+                      - vmin (float): Minimum value for colormap scaling
+                      - vmax (float): Maximum value for colormap scaling
+                      - obj_export (bool): Whether to export results as 3D OBJ file
+                      - output_directory (str): Directory for file exports
+                      - output_file_name (str): Base filename for exports
+                      - dem_grid (ndarray): Digital elevation model for 3D export
+                      - num_colors (int): Number of discrete colors for OBJ export
+                      - alpha (float): Transparency value for 3D visualization
+
+   :returns:
+
+             2D array of cumulative global solar irradiance values in W/m²·hour
+                     - Values represent total solar energy received during the analysis period
+                     - Range depends on period length and local climate conditions
+                     - NaN indicates invalid measurement locations (e.g., on buildings, water)
+   :rtype: ndarray
+
+   .. note::
+
+      The function efficiently handles large time series by pre-computing the diffuse
+      component once and scaling it for each timestep, significantly reducing
+      computation time for long-term analysis.
+
+
+.. py:function:: get_global_solar_irradiance_using_epw(voxel_data, meshsize, calc_type='instantaneous', direct_normal_irradiance_scaling=1.0, diffuse_irradiance_scaling=1.0, **kwargs)
+
+   Compute global solar irradiance using EPW weather data, either for a single time or cumulatively over a period.
+
+   The function:
+   1. Optionally downloads and reads EPW weather data
+   2. Handles timezone conversions and solar position calculations
+   3. Computes either instantaneous or cumulative irradiance maps
+   4. Supports visualization and export options
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param calc_type: 'instantaneous' or 'cumulative'.
+   :type calc_type: str
+   :param direct_normal_irradiance_scaling: Scaling factor for direct normal irradiance.
+   :type direct_normal_irradiance_scaling: float
+   :param diffuse_irradiance_scaling: Scaling factor for diffuse horizontal irradiance.
+   :type diffuse_irradiance_scaling: float
+   :param \*\*kwargs: Additional arguments including:
+                      - download_nearest_epw (bool): Whether to download nearest EPW file
+                      - epw_file_path (str): Path to EPW file
+                      - rectangle_vertices (list): List of (lat,lon) coordinates for EPW download
+                      - output_dir (str): Directory for EPW download
+                      - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
+                      - start_time (str): Start time for cumulative calculation
+                      - end_time (str): End time for cumulative calculation
+                      - start_hour (int): Starting hour for daily time window (0-23)
+                      - end_hour (int): Ending hour for daily time window (0-23)
+                      - view_point_height (float): Observer height in meters
+                      - tree_k (float): Tree extinction coefficient
+                      - tree_lad (float): Leaf area density in m^-1
+                      - show_plot (bool): Whether to show visualization
+                      - show_each_timestep (bool): Whether to show timestep plots
+                      - colormap (str): Matplotlib colormap name
+                      - obj_export (bool): Whether to export as OBJ file
+
+   :returns: 2D array of solar irradiance values (W/m²).
+   :rtype: ndarray
+
+
+.. py:function:: compute_solar_irradiance_for_all_faces(face_centers, face_normals, face_svf, sun_direction, direct_normal_irradiance, diffuse_irradiance, voxel_data, meshsize, tree_k, tree_lad, hit_values, inclusion_mode, grid_bounds_real, boundary_epsilon)
+
+   Numba-compiled function to compute direct, diffuse, and global solar irradiance
+   for each face in a 3D building mesh.
+
+   This optimized function processes all mesh faces in parallel to calculate solar
+   irradiance components. It handles both direct radiation (dependent on sun position
+   and surface orientation) and diffuse radiation (dependent on sky visibility).
+   The function is compiled with Numba for high-performance computation on large meshes.
+
+   Surface Irradiance Physics:
+   - Direct component: DNI × cos(incidence_angle) × transmittance
+   - Diffuse component: DHI × sky_view_factor
+   - Incidence angle: Angle between sun direction and surface normal
+   - Transmittance: Attenuation factor from obstacles and vegetation
+
+   Boundary Condition Handling:
+   - Vertical boundary faces are excluded (mesh edges touching domain boundaries)
+   - Invalid faces (NaN SVF) are skipped to maintain data consistency
+   - Surface orientation affects direct radiation calculation
+
+   Performance Optimizations:
+   - Numba JIT compilation for near C-speed execution
+   - Parallel processing of face calculations
+   - Efficient geometric computations using vectorized operations
+   - Memory-optimized array operations
+
+   :param face_centers (float64[: , :]): (N x 3) array of face center coordinates in real-world units
+   :param face_normals (float64[: , :]): (N x 3) array of outward-pointing unit normal vectors
+   :param face_svf (float64[: ]): (N,) array of Sky View Factor values for each face (0.0-1.0)
+   :param sun_direction (float64[: ]): (3,) array for normalized sun direction vector (dx, dy, dz)
+   :param direct_normal_irradiance: Direct normal irradiance (DNI) in W/m²
+   :type direct_normal_irradiance: float
+   :param diffuse_irradiance: Diffuse horizontal irradiance (DHI) in W/m²
+   :type diffuse_irradiance: float
+   :param voxel_data: 3D array of voxel values for obstacle detection
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param tree_k: Tree extinction coefficient for Beer-Lambert law
+   :type tree_k: float
+   :param tree_lad: Leaf area density in m^-1
+   :type tree_lad: float
+   :param hit_values: Values considered 'sky' for ray tracing (e.g. (0,))
+   :type hit_values: tuple
+   :param inclusion_mode: Whether hit_values are included (True) or excluded (False)
+   :type inclusion_mode: bool
+   :param grid_bounds_real: Domain boundaries [[x_min,y_min,z_min],[x_max,y_max,z_max]]
+   :type grid_bounds_real: float64[2,3]
+   :param boundary_epsilon: Distance threshold for boundary face detection
+   :type boundary_epsilon: float
+
+   :returns:
+
+             Three float64[N] arrays containing:
+                 - direct_irr: Direct solar irradiance for each face (W/m²)
+                 - diffuse_irr: Diffuse solar irradiance for each face (W/m²)
+                 - global_irr: Global solar irradiance for each face (W/m²)
+   :rtype: tuple
+
+   .. note::
+
+      This function is optimized with Numba and should not be called directly.
+      Use the higher-level wrapper functions for normal operation.
+
+
+.. py:function:: get_building_solar_irradiance(voxel_data, meshsize, building_svf_mesh, azimuth_degrees, elevation_degrees, direct_normal_irradiance, diffuse_irradiance, **kwargs)
+
+   Calculate solar irradiance on building surfaces using Sky View Factor (SVF) analysis,
+   with high-performance computation accelerated by Numba JIT compilation.
+
+   This function performs detailed solar irradiance analysis on 3D building surfaces
+   represented as triangulated meshes. It calculates both direct and diffuse components
+   of solar radiation for each mesh face, accounting for surface orientation, shadows,
+   and sky visibility. The computation is optimized for large urban models using
+   efficient algorithms and parallel processing.
+
+   Mesh-Based Analysis Advantages:
+   - Surface-specific calculations for facades, roofs, and complex geometries
+   - Accurate accounting of surface orientation and local shading effects
+   - Integration with 3D visualization and CAD workflows
+   - Detailed irradiance data for building energy modeling
+
+   Performance Features:
+   - Numba JIT compilation for near C-speed execution
+   - Parallel processing of mesh faces
+   - Efficient ray tracing with tree transmittance
+   - Memory-optimized operations for large datasets
+
+   Physical Modeling:
+   - Direct irradiance: Based on sun position and surface orientation
+   - Diffuse irradiance: Based on Sky View Factor from each surface
+   - Tree effects: Partial transmittance using Beer-Lambert law
+   - Boundary handling: Automatic exclusion of domain boundary artifacts
+
+   :param voxel_data: 3D array of voxel values representing the urban environment
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters (spatial resolution)
+   :type meshsize: float
+   :param building_svf_mesh: Building mesh with pre-calculated SVF values in metadata
+                             Must have 'svf' array in mesh.metadata
+   :type building_svf_mesh: trimesh.Trimesh
+   :param azimuth_degrees: Sun azimuth angle in degrees (0=North, 90=East)
+   :type azimuth_degrees: float
+   :param elevation_degrees: Sun elevation angle in degrees above horizon (0-90°)
+   :type elevation_degrees: float
+   :param direct_normal_irradiance: Direct normal irradiance (DNI) in W/m² from weather data
+   :type direct_normal_irradiance: float
+   :param diffuse_irradiance: Diffuse horizontal irradiance (DHI) in W/m² from weather data
+   :type diffuse_irradiance: float
+   :param \*\*kwargs: Additional parameters including:
+                      - tree_k (float): Tree extinction coefficient (default: 0.6)
+                          Higher values mean trees block more light
+                      - tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+                          Affects light attenuation through tree canopies
+                      - progress_report (bool): Whether to print timing information (default: False)
+                      - obj_export (bool): Whether to export results as OBJ file
+                      - output_directory (str): Directory for file exports
+                      - output_file_name (str): Base filename for exports
+
+   :returns:
+
+             A copy of the input mesh with irradiance data stored in metadata:
+                             - 'svf': Sky View Factor for each face (preserved from input)
+                             - 'direct': Direct solar irradiance for each face (W/m²)
+                             - 'diffuse': Diffuse solar irradiance for each face (W/m²)
+                             - 'global': Global solar irradiance for each face (W/m²)
+   :rtype: trimesh.Trimesh
+
+   .. note::
+
+      The input mesh must have SVF values pre-calculated and stored in metadata.
+      Use get_surface_view_factor() to compute SVF before calling this function.
+
+
+.. py:function:: get_cumulative_building_solar_irradiance(voxel_data, meshsize, building_svf_mesh, weather_df, lon, lat, tz, **kwargs)
+
+   Calculate cumulative solar irradiance on building surfaces over a time period.
+   Uses the Numba-accelerated get_building_solar_irradiance for each time step.
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param building_svf_mesh: Mesh with pre-calculated SVF in metadata.
+   :type building_svf_mesh: trimesh.Trimesh
+   :param weather_df: Weather data with DNI (W/m²) and DHI (W/m²).
+   :type weather_df: DataFrame
+   :param lon: Longitude in degrees.
+   :type lon: float
+   :param lat: Latitude in degrees.
+   :type lat: float
+   :param tz: Timezone offset in hours.
+   :type tz: float
+   :param \*\*kwargs: Additional parameters for time range, scaling, OBJ export, etc.
+
+   :returns: A mesh with cumulative (Wh/m²) irradiance in metadata.
+   :rtype: trimesh.Trimesh
+
+
+.. py:function:: get_building_global_solar_irradiance_using_epw(voxel_data, meshsize, calc_type='instantaneous', direct_normal_irradiance_scaling=1.0, diffuse_irradiance_scaling=1.0, **kwargs)
+
+   Compute global solar irradiance on building surfaces using EPW weather data, either for a single time or cumulatively.
+
+   The function:
+   1. Optionally downloads and reads EPW weather data
+   2. Handles timezone conversions and solar position calculations
+   3. Computes either instantaneous or cumulative irradiance on building surfaces
+   4. Supports visualization and export options
+
+   :param voxel_data: 3D array of voxel values.
+   :type voxel_data: ndarray
+   :param meshsize: Size of each voxel in meters.
+   :type meshsize: float
+   :param building_svf_mesh: Building mesh with pre-calculated SVF values in metadata.
+   :type building_svf_mesh: trimesh.Trimesh
+   :param calc_type: 'instantaneous' or 'cumulative'.
+   :type calc_type: str
+   :param direct_normal_irradiance_scaling: Scaling factor for direct normal irradiance.
+   :type direct_normal_irradiance_scaling: float
+   :param diffuse_irradiance_scaling: Scaling factor for diffuse horizontal irradiance.
+   :type diffuse_irradiance_scaling: float
+   :param \*\*kwargs: Additional arguments including:
+                      - download_nearest_epw (bool): Whether to download nearest EPW file
+                      - epw_file_path (str): Path to EPW file
+                      - rectangle_vertices (list): List of (lon,lat) coordinates for EPW download
+                      - output_dir (str): Directory for EPW download
+                      - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
+                      - period_start (str): Start time for cumulative calculation ('MM-DD HH:MM:SS')
+                      - period_end (str): End time for cumulative calculation ('MM-DD HH:MM:SS')
+                      - time_step_hours (float): Time step for cumulative calculation
+                      - tree_k (float): Tree extinction coefficient
+                      - tree_lad (float): Leaf area density in m^-1
+                      - show_each_timestep (bool): Whether to show plots for each timestep
+                      - nan_color (str): Color for NaN values in visualization
+                      - colormap (str): Matplotlib colormap name
+                      - vmin (float): Minimum value for colormap
+                      - vmax (float): Maximum value for colormap
+                      - obj_export (bool): Whether to export as OBJ file
+                      - output_directory (str): Directory for OBJ export
+                      - output_file_name (str): Filename for OBJ export
+                      - save_mesh (bool): Whether to save the mesh data using pickle
+                      - mesh_output_path (str): Path to save the mesh data (if save_mesh is True)
+
+   :returns: Building mesh with irradiance values stored in metadata.
+   :rtype: trimesh.Trimesh
+
+
+.. py:function:: save_irradiance_mesh(irradiance_mesh, output_file_path)
+
+   Save the irradiance mesh data to a file using pickle serialization.
+
+   This function provides persistent storage for computed irradiance results,
+   enabling reuse of expensive calculations and sharing of results between
+   analysis sessions. The mesh data includes all geometry, irradiance values,
+   and metadata required for visualization and further analysis.
+
+   Serialization Benefits:
+   - Preserves complete mesh structure with all computed data
+   - Enables offline analysis and visualization workflows
+   - Supports sharing results between different tools and users
+   - Avoids recomputation of expensive irradiance calculations
+
+   Data Preservation:
+   - All mesh geometry (vertices, faces, normals)
+   - Computed irradiance values (direct, diffuse, global)
+   - Sky View Factor data and other metadata
+   - Material properties and visualization settings
+
+   :param irradiance_mesh: Mesh with irradiance data in metadata
+                           Should contain computed irradiance results
+   :type irradiance_mesh: trimesh.Trimesh
+   :param output_file_path: Path to save the mesh data file
+                            Recommended extension: .pkl for clarity
+   :type output_file_path: str
+
+   .. note::
+
+      The function automatically creates the output directory if it doesn't exist.
+      Use pickle format for maximum compatibility with Python data structures.
+
+
+.. py:function:: load_irradiance_mesh(input_file_path)
+
+   Load previously saved irradiance mesh data from a file.
+
+   This function restores complete mesh data including geometry, computed
+   irradiance values, and all associated metadata. It enables continuation
+   of analysis workflows and reuse of expensive computation results.
+
+   Restoration Capabilities:
+   - Complete mesh geometry with all topological information
+   - All computed irradiance data (direct, diffuse, global components)
+   - Sky View Factor values and analysis metadata
+   - Visualization settings and material properties
+
+   Workflow Integration:
+   - Load results from previous analysis sessions
+   - Share computed data between team members
+   - Perform post-processing and visualization
+   - Compare results from different scenarios
+
+   :param input_file_path: Path to the saved mesh data file
+                           Should be a file created by save_irradiance_mesh()
+   :type input_file_path: str
+
+   :returns:
+
+             Complete mesh with all irradiance data in metadata
+                             Ready for visualization, analysis, or further processing
+   :rtype: trimesh.Trimesh
+
+   .. note::
+
+      The loaded mesh maintains all original data structure and can be used
+      immediately for visualization or additional analysis operations.
+
+
+.. py:function:: dummy_function(test_string)
+

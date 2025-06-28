@@ -1,0 +1,2176 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" /><link rel="next" title="voxcity.downloader.citygml" href="citygml/index.html" /><link rel="prev" title="voxcity" href="../index.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.downloader - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../../index.html">API Reference</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">voxcity</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 current has-children current-page"><a class="current reference internal" href="#">voxcity.downloader</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../_sources/autoapi/voxcity/downloader/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-voxcity.downloader">
+<span id="voxcity-downloader"></span><h1>voxcity.downloader<a class="headerlink" href="#module-voxcity.downloader" title="Link to this heading">¶</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l1"><a class="reference internal" href="eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l1"><a class="reference internal" href="oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l1"><a class="reference internal" href="osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l1"><a class="reference internal" href="overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</div>
+</section>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.classification_mapping" title="voxcity.downloader.classification_mapping"><code class="xref py py-obj docutils literal notranslate"><span class="pre">classification_mapping</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.tag_osm_key_value_mapping" title="voxcity.downloader.tag_osm_key_value_mapping"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tag_osm_key_value_mapping</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.country_links" title="voxcity.downloader.country_links"><code class="xref py py-obj docutils literal notranslate"><span class="pre">country_links</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#id0" title="voxcity.downloader.download_file"><code class="xref py py-obj docutils literal notranslate"><span class="pre">download_file</span></code></a>(url, filename)</p></td>
+<td><p>Download a file from a URL and save it locally.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.tile_from_lat_lon" title="voxcity.downloader.tile_from_lat_lon"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tile_from_lat_lon</span></code></a>(lat, lon, level_of_detail)</p></td>
+<td><p>Convert latitude/longitude coordinates to tile coordinates at a given zoom level.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.quadkey_to_tile" title="voxcity.downloader.quadkey_to_tile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quadkey_to_tile</span></code></a>(quadkey)</p></td>
+<td><p>Convert a quadkey string to tile coordinates.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.load_gdf_from_multiple_gz" title="voxcity.downloader.load_gdf_from_multiple_gz"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_gdf_from_multiple_gz</span></code></a>(file_paths)</p></td>
+<td><p>Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#id1" title="voxcity.downloader.swap_coordinates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">swap_coordinates</span></code></a>(geom_mapping)</p></td>
+<td><p>Swap coordinate order in a GeoJSON geometry object.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_geojson_links" title="voxcity.downloader.get_geojson_links"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_geojson_links</span></code></a>(output_dir)</p></td>
+<td><p>Download and load the dataset links CSV file containing building footprint URLs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.find_row_for_location" title="voxcity.downloader.find_row_for_location"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_row_for_location</span></code></a>(df, lon, lat)</p></td>
+<td><p>Find the dataset row containing building data for a given lon/lat coordinate.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_mbfp_gdf" title="voxcity.downloader.get_mbfp_gdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_mbfp_gdf</span></code></a>(output_dir, rectangle_vertices)</p></td>
+<td><p>Download and process building footprint data for a rectangular region.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#id0" title="voxcity.downloader.download_file"><code class="xref py py-obj docutils literal notranslate"><span class="pre">download_file</span></code></a>(url, filename)</p></td>
+<td><p>Download a file from a URL and save it locally.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.download_file_google_drive" title="voxcity.downloader.download_file_google_drive"><code class="xref py py-obj docutils literal notranslate"><span class="pre">download_file_google_drive</span></code></a>(file_id, output_path)</p></td>
+<td><p>Download a file from Google Drive using its file ID.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.initialize_earth_engine" title="voxcity.downloader.initialize_earth_engine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">initialize_earth_engine</span></code></a>()</p></td>
+<td><p>Initialize the Earth Engine API.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_roi" title="voxcity.downloader.get_roi"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_roi</span></code></a>(input_coords)</p></td>
+<td><p>Create an Earth Engine region of interest polygon from coordinates.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.get_center_point" title="voxcity.downloader.get_center_point"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_center_point</span></code></a>(roi)</p></td>
+<td><p>Get the centroid coordinates of a region of interest.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_ee_image_collection" title="voxcity.downloader.get_ee_image_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_ee_image_collection</span></code></a>(collection_name, roi)</p></td>
+<td><p>Get the first image from an Earth Engine ImageCollection filtered by region.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.get_ee_image" title="voxcity.downloader.get_ee_image"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_ee_image</span></code></a>(collection_name, roi)</p></td>
+<td><p>Get an Earth Engine Image clipped to a region.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff" title="voxcity.downloader.save_geotiff"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff</span></code></a>(image, filename[, resolution, scale, ...])</p></td>
+<td><p>Save an Earth Engine image as a GeoTIFF file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.get_dem_image" title="voxcity.downloader.get_dem_image"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_dem_image</span></code></a>(roi_buffered, source)</p></td>
+<td><p>Get a digital elevation model (DEM) image for a region.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff_esa_land_cover" title="voxcity.downloader.save_geotiff_esa_land_cover"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff_esa_land_cover</span></code></a>(roi, geotiff_path)</p></td>
+<td><p>Save ESA WorldCover land cover data as a colored GeoTIFF.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff_dynamic_world_v1" title="voxcity.downloader.save_geotiff_dynamic_world_v1"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff_dynamic_world_v1</span></code></a>(roi, geotiff_path[, date])</p></td>
+<td><p>Save Dynamic World land cover data as a colored GeoTIFF.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff_esri_landcover" title="voxcity.downloader.save_geotiff_esri_landcover"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff_esri_landcover</span></code></a>(roi, geotiff_path[, year])</p></td>
+<td><p>Save ESRI Land Cover data as a colored GeoTIFF.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff_open_buildings_temporal" title="voxcity.downloader.save_geotiff_open_buildings_temporal"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff_open_buildings_temporal</span></code></a>(aoi, geotiff_path)</p></td>
+<td><p>Save Open Buildings temporal data as a GeoTIFF.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.save_geotiff_dsm_minus_dtm" title="voxcity.downloader.save_geotiff_dsm_minus_dtm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_geotiff_dsm_minus_dtm</span></code></a>(roi, geotiff_path, ...)</p></td>
+<td><p>Get the height difference between DSM and DTM from terrain data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.osm_json_to_geojson" title="voxcity.downloader.osm_json_to_geojson"><code class="xref py py-obj docutils literal notranslate"><span class="pre">osm_json_to_geojson</span></code></a>(osm_data)</p></td>
+<td><p>Convert OSM JSON data to GeoJSON format with proper handling of complex relations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.is_part_of_relation" title="voxcity.downloader.is_part_of_relation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_part_of_relation</span></code></a>(way_id, osm_data)</p></td>
+<td><p>Check if a way is part of any relation in the OSM data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.is_way_polygon" title="voxcity.downloader.is_way_polygon"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_way_polygon</span></code></a>(way)</p></td>
+<td><p>Determine if a way should be treated as a polygon based on OSM tags and geometry.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_way_coords" title="voxcity.downloader.get_way_coords"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_way_coords</span></code></a>(way, nodes)</p></td>
+<td><p>Extract coordinates for a way from its node references.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.create_rings_from_ways" title="voxcity.downloader.create_rings_from_ways"><code class="xref py py-obj docutils literal notranslate"><span class="pre">create_rings_from_ways</span></code></a>(way_ids, ways, nodes)</p></td>
+<td><p>Create continuous rings by connecting ways that share nodes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.load_gdf_from_openstreetmap" title="voxcity.downloader.load_gdf_from_openstreetmap"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_gdf_from_openstreetmap</span></code></a>(rectangle_vertices)</p></td>
+<td><p>Download and process building footprint data from OpenStreetMap.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.convert_feature" title="voxcity.downloader.convert_feature"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_feature</span></code></a>(feature)</p></td>
+<td><p>Convert a GeoJSON feature to a standardized format with height information.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_classification" title="voxcity.downloader.get_classification"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_classification</span></code></a>(tags)</p></td>
+<td><p>Determine the land cover/use classification based on OSM tags.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#id1" title="voxcity.downloader.swap_coordinates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">swap_coordinates</span></code></a>(geom_mapping)</p></td>
+<td><p>Swap coordinate order in a GeoJSON geometry object.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.load_land_cover_gdf_from_osm" title="voxcity.downloader.load_land_cover_gdf_from_osm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_land_cover_gdf_from_osm</span></code></a>(rectangle_vertices_ori)</p></td>
+<td><p>Load and classify land cover data from OpenStreetMap.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.deg2num" title="voxcity.downloader.deg2num"><code class="xref py py-obj docutils literal notranslate"><span class="pre">deg2num</span></code></a>(lon_deg, lat_deg, zoom)</p></td>
+<td><p>Convert longitude/latitude coordinates to tile coordinates using Web Mercator projection.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.num2deg" title="voxcity.downloader.num2deg"><code class="xref py py-obj docutils literal notranslate"><span class="pre">num2deg</span></code></a>(xtile, ytile, zoom)</p></td>
+<td><p>Convert tile coordinates back to longitude/latitude coordinates.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.download_tiles" title="voxcity.downloader.download_tiles"><code class="xref py py-obj docutils literal notranslate"><span class="pre">download_tiles</span></code></a>(polygon, zoom)</p></td>
+<td><p>Download satellite imagery tiles covering a polygon region.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.compose_image" title="voxcity.downloader.compose_image"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compose_image</span></code></a>(tiles, bounds)</p></td>
+<td><p>Compose downloaded tiles into a single continuous image.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.crop_image" title="voxcity.downloader.crop_image"><code class="xref py py-obj docutils literal notranslate"><span class="pre">crop_image</span></code></a>(image, polygon, bounds, zoom)</p></td>
+<td><p>Crop composed image to the exact polygon boundary.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.save_as_geotiff" title="voxcity.downloader.save_as_geotiff"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_as_geotiff</span></code></a>(image, polygon, zoom, bbox, bounds, ...)</p></td>
+<td><p>Save cropped image as a georeferenced GeoTIFF file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.save_oemj_as_geotiff" title="voxcity.downloader.save_oemj_as_geotiff"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_oemj_as_geotiff</span></code></a>(polygon, filepath[, zoom])</p></td>
+<td><p>Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.get_country_name" title="voxcity.downloader.get_country_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_country_name</span></code></a>(lon, lat)</p></td>
+<td><p>Get country name from coordinates using reverse geocoding.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco" title="voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco"><code class="xref py py-obj docutils literal notranslate"><span class="pre">filter_and_convert_gdf_to_geojson_eubucco</span></code></a>(gpkg_file, ...)</p></td>
+<td><p>Filters features in a GeoPackage that intersect with a given rectangle and writes them to a GeoJSON file.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.download_extract_open_gpkg_from_eubucco" title="voxcity.downloader.download_extract_open_gpkg_from_eubucco"><code class="xref py py-obj docutils literal notranslate"><span class="pre">download_extract_open_gpkg_from_eubucco</span></code></a>(url, output_dir)</p></td>
+<td><p>Downloads a ZIP file from a URL, extracts the GeoPackage (.gpkg) file, and returns its path.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.get_gdf_from_eubucco" title="voxcity.downloader.get_gdf_from_eubucco"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_gdf_from_eubucco</span></code></a>(rectangle_vertices, ...)</p></td>
+<td><p>Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.load_gdf_from_eubucco" title="voxcity.downloader.load_gdf_from_eubucco"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_gdf_from_eubucco</span></code></a>(rectangle_vertices, output_dir)</p></td>
+<td><p>Downloads EUBUCCO data and loads it as GeoJSON.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.convert_numpy_to_python" title="voxcity.downloader.convert_numpy_to_python"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_numpy_to_python</span></code></a>(obj)</p></td>
+<td><p>Recursively convert numpy types to native Python types.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.is_valid_value" title="voxcity.downloader.is_valid_value"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_valid_value</span></code></a>(value)</p></td>
+<td><p>Check if a value is valid (not NA/null) and handle array-like objects.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.convert_gdf_to_geojson" title="voxcity.downloader.convert_gdf_to_geojson"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_gdf_to_geojson</span></code></a>(gdf)</p></td>
+<td><p>Convert GeoDataFrame to GeoJSON format with coordinates in (lon, lat) order.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.rectangle_to_bbox" title="voxcity.downloader.rectangle_to_bbox"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rectangle_to_bbox</span></code></a>(vertices)</p></td>
+<td><p>Convert rectangle vertices in (lon, lat) format to a bounding box.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#voxcity.downloader.join_gdfs_vertically" title="voxcity.downloader.join_gdfs_vertically"><code class="xref py py-obj docutils literal notranslate"><span class="pre">join_gdfs_vertically</span></code></a>(gdf1, gdf2)</p></td>
+<td><p>Join two GeoDataFrames vertically, handling different column structures.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#voxcity.downloader.load_gdf_from_overture" title="voxcity.downloader.load_gdf_from_overture"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_gdf_from_overture</span></code></a>(rectangle_vertices)</p></td>
+<td><p>Download and process building footprint data from Overture Maps.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="package-contents">
+<h2>Package Contents<a class="headerlink" href="#package-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.download_file">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.download_file" title="Link to this definition">¶</a></dt>
+<dd><p>Download a file from a URL and save it locally.</p>
+<p>This function uses the requests library to download a file from any publicly
+accessible URL and save it to the local filesystem. It handles the download
+process and provides feedback on the operation’s success or failure.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<em>str</em>) – URL of the file to download. Must be a valid, accessible URL.</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – Local path where the downloaded file will be saved.
+Include the full path and filename with extension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Prints:</dt><dd><ul class="simple">
+<li><p>Success message with filename if download is successful (status code 200)</p></li>
+<li><p>Error message with status code if download fails</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">download_file</span><span class="p">(</span><span class="s1">&#39;https://example.com/file.pdf&#39;</span><span class="p">,</span> <span class="s1">&#39;local_file.pdf&#39;</span><span class="p">)</span>
+<span class="go">File downloaded successfully and saved as local_file.pdf</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.tile_from_lat_lon">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">tile_from_lat_lon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level_of_detail</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.tile_from_lat_lon" title="Link to this definition">¶</a></dt>
+<dd><p>Convert latitude/longitude coordinates to tile coordinates at a given zoom level.
+Uses the Web Mercator projection (EPSG:3857) commonly used in web mapping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lat</strong> (<em>float</em>) – Latitude in degrees (-90 to 90)</p></li>
+<li><p><strong>lon</strong> (<em>float</em>) – Longitude in degrees (-180 to 180)</p></li>
+<li><p><strong>level_of_detail</strong> (<em>int</em>) – Zoom level (0-23, where 0 is the entire world)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>(tile_x, tile_y) tile coordinates in the global tile grid</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tile_x</span><span class="p">,</span> <span class="n">tile_y</span> <span class="o">=</span> <span class="n">tile_from_lat_lon</span><span class="p">(</span><span class="mf">35.6762</span><span class="p">,</span> <span class="mf">139.6503</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>  <span class="c1"># Tokyo at zoom 12</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.quadkey_to_tile">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">quadkey_to_tile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quadkey</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.quadkey_to_tile" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a quadkey string to tile coordinates.
+A quadkey is a string of digits (0-3) that identifies a tile at a certain zoom level.
+Each digit in the quadkey represents a tile at a zoom level, with each subsequent digit
+representing a more detailed zoom level.</p>
+<dl class="simple">
+<dt>The quadkey numbering scheme:</dt><dd><ul class="simple">
+<li><p>0: Top-left quadrant</p></li>
+<li><p>1: Top-right quadrant</p></li>
+<li><p>2: Bottom-left quadrant</p></li>
+<li><p>3: Bottom-right quadrant</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>quadkey</strong> (<em>str</em>) – Quadkey string (e.g., “120” for zoom level 3)</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>(tile_x, tile_y, level_of_detail) tile coordinates and zoom level</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">zoom</span> <span class="o">=</span> <span class="n">quadkey_to_tile</span><span class="p">(</span><span class="s2">&quot;120&quot;</span><span class="p">)</span>  <span class="c1"># Returns coordinates at zoom level 3</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.load_gdf_from_multiple_gz">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">load_gdf_from_multiple_gz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_paths</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.load_gdf_from_multiple_gz" title="Link to this definition">¶</a></dt>
+<dd><p>Load GeoJSON features from multiple gzipped files into a single GeoDataFrame.</p>
+<p>This function reads multiple gzipped GeoJSON files, where each line in each file
+represents a single GeoJSON feature. It combines all features into a single
+GeoDataFrame, ensuring height properties are properly handled and coordinates
+are in WGS84.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_paths</strong> (<em>list</em>) – List of paths to gzipped GeoJSON files
+Each file should contain one GeoJSON feature per line
+Files should be readable as UTF-8 text
+Features should be in WGS84 coordinate system</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Combined GeoDataFrame containing all features</dt><dd><p>Will have ‘geometry’ column with building footprints
+Will have ‘height’ column (0 for missing values)
+Will be set to WGS84 (EPSG:4326) coordinate system</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gpd.GeoDataFrame</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Skips lines that cannot be parsed as valid JSON</p></li>
+<li><p>Sets missing height values to 0</p></li>
+<li><p>Assumes input coordinates are in WGS84</p></li>
+<li><p>Memory usage scales with total number of features</p></li>
+<li><p>Reports JSON parsing errors but continues processing</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.swap_coordinates">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">swap_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">features</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.swap_coordinates" title="Link to this definition">¶</a></dt>
+<dd><p>Swap coordinate ordering in GeoJSON features from (lat, lon) to (lon, lat).</p>
+<p>This function modifies GeoJSON features in-place to swap the order of coordinates
+from (latitude, longitude) to (longitude, latitude). It handles both Polygon and
+MultiPolygon geometries, maintaining their structure while swapping coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>features</strong> (<em>list</em>) – List of GeoJSON features to process
+Features must have ‘geometry’ property
+Supported geometry types: ‘Polygon’, ‘MultiPolygon’
+Coordinates must be in (lat, lon) order initially</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Features are modified in-place</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Modifies features directly (no copy created)</p></li>
+<li><p>Handles both Polygon and MultiPolygon geometries</p></li>
+<li><p>For Polygons: processes single coordinate ring</p></li>
+<li><p>For MultiPolygons: processes multiple coordinate rings</p></li>
+<li><p>Assumes input coordinates are in (lat, lon) order</p></li>
+<li><p>Resulting coordinates will be in (lon, lat) order</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_geojson_links">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_geojson_links</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_geojson_links" title="Link to this definition">¶</a></dt>
+<dd><p>Download and load the dataset links CSV file containing building footprint URLs.</p>
+<p>This function downloads a master CSV file from Microsoft’s server that contains
+links to all available building footprint datasets. The CSV includes metadata
+such as location names, quadkeys, URLs, and file sizes for each dataset tile.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>output_dir</strong> (<em>str</em>) – Directory path where the CSV file will be saved</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>DataFrame containing dataset links with columns:</dt><dd><ul class="simple">
+<li><p>Location: String identifier for the geographic region</p></li>
+<li><p>QuadKey: String representing the tile’s quadkey</p></li>
+<li><p>Url: Direct download link for the GeoJSON data</p></li>
+<li><p>Size: File size information</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The CSV file is cached locally in the output directory for future use.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.find_row_for_location">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">find_row_for_location</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.find_row_for_location" title="Link to this definition">¶</a></dt>
+<dd><p>Find the dataset row containing building data for a given lon/lat coordinate.</p>
+<p>This function searches through the dataset links DataFrame to find the appropriate
+tile containing the specified geographic coordinates. It converts the input
+coordinates to tile coordinates at the same zoom level as each quadkey and
+checks for a match.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – DataFrame containing dataset links from get_geojson_links()</p></li>
+<li><p><strong>lon</strong> (<em>float</em>) – Longitude coordinate to search for (-180 to 180)</p></li>
+<li><p><strong>lat</strong> (<em>float</em>) – Latitude coordinate to search for (-90 to 90)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Matching row from DataFrame containing the quadkey and download URL,</dt><dd><p>or None if no matching tile is found</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.Series</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function handles invalid quadkeys gracefully by skipping them and
+continues searching through all available tiles.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_mbfp_gdf">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_mbfp_gdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_mbfp_gdf" title="Link to this definition">¶</a></dt>
+<dd><p>Download and process building footprint data for a rectangular region.</p>
+<p>This function takes a list of coordinates defining a rectangular region and:
+1. Downloads the necessary building footprint data files covering the region
+2. Loads and combines the GeoJSON data from all relevant files
+3. Processes the data to ensure consistent coordinate ordering
+4. Assigns unique sequential IDs to each building</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_dir</strong> (<em>str</em>) – Directory path where downloaded files will be saved</p></li>
+<li><p><strong>rectangle_vertices</strong> (<em>list</em>) – List of (lon, lat) tuples defining the rectangle corners.
+The coordinates should define a bounding box of the
+area of interest.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>GeoDataFrame containing building footprints with columns:</dt><dd><ul class="simple">
+<li><p>geometry: Building polygon geometries</p></li>
+<li><p>id: Sequential unique identifier for each building</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Files are downloaded only if not already present in the output directory</p></li>
+<li><p>Coordinates in the input vertices should be in (longitude, latitude) order</p></li>
+<li><p>The function handles cases where some vertices might not have available data</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">download_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#id0" title="Link to this definition">¶</a></dt>
+<dd><p>Download a file from a URL and save it locally.</p>
+<p>This function uses the requests library to download a file from any publicly
+accessible URL and save it to the local filesystem. It handles the download
+process and provides feedback on the operation’s success or failure.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<em>str</em>) – URL of the file to download. Must be a valid, accessible URL.</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – Local path where the downloaded file will be saved.
+Include the full path and filename with extension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Prints:</dt><dd><ul class="simple">
+<li><p>Success message with filename if download is successful (status code 200)</p></li>
+<li><p>Error message with status code if download fails</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">download_file</span><span class="p">(</span><span class="s1">&#39;https://example.com/file.pdf&#39;</span><span class="p">,</span> <span class="s1">&#39;local_file.pdf&#39;</span><span class="p">)</span>
+<span class="go">File downloaded successfully and saved as local_file.pdf</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.download_file_google_drive">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">download_file_google_drive</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.download_file_google_drive" title="Link to this definition">¶</a></dt>
+<dd><p>Download a file from Google Drive using its file ID.</p>
+<p>This function specifically handles downloads from Google Drive using the gdown
+library, which is designed to bypass Google Drive’s download restrictions.
+It’s useful for downloading large files or files that require authentication.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file_id</strong> (<em>str</em>) – Google Drive file ID. This is the unique identifier in the
+sharing URL after ‘/d/’ or ‘id=’.</p></li>
+<li><p><strong>output_path</strong> (<em>str</em>) – Local path where the downloaded file will be saved.
+Include the full path and filename with extension.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if download was successful, False if any error occurred</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Prints:</dt><dd><p>Error message with exception details if download fails</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">success</span> <span class="o">=</span> <span class="n">download_file_google_drive</span><span class="p">(</span><span class="s1">&#39;1234abcd...&#39;</span><span class="p">,</span> <span class="s1">&#39;downloaded_file.zip&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">if</span> <span class="n">success</span><span class="p">:</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Download completed successfully&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.initialize_earth_engine">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">initialize_earth_engine</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.initialize_earth_engine" title="Link to this definition">¶</a></dt>
+<dd><p>Initialize the Earth Engine API.</p>
+<p>This function must be called before using any other Earth Engine functionality.
+It assumes that Earth Engine authentication has been set up properly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ee.EEException</strong> – If authentication fails or Earth Engine is unavailable</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_roi">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_roi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_coords</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_roi" title="Link to this definition">¶</a></dt>
+<dd><p>Create an Earth Engine region of interest polygon from coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>input_coords</strong> – List of coordinate pairs defining the polygon vertices in (lon, lat) format.
+The coordinates should form a valid polygon (non-self-intersecting).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Earth Engine polygon geometry representing the ROI</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ee.Geometry.Polygon</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function automatically closes the polygon by connecting the last vertex
+to the first vertex if they are not the same.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_center_point">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_center_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_center_point" title="Link to this definition">¶</a></dt>
+<dd><p>Get the centroid coordinates of a region of interest.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>roi</strong> – Earth Engine geometry object representing the region of interest</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>(longitude, latitude) coordinates of the centroid</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The centroid is calculated using Earth Engine’s geometric centroid algorithm,
+which may not always fall within the geometry for complex shapes.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_ee_image_collection">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_ee_image_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roi</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_ee_image_collection" title="Link to this definition">¶</a></dt>
+<dd><p>Get the first image from an Earth Engine ImageCollection filtered by region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection_name</strong> – Name of the Earth Engine ImageCollection (e.g., ‘LANDSAT/LC08/C02/T1_TOA’)</p></li>
+<li><p><strong>roi</strong> – Earth Engine geometry to filter by</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>First image from collection clipped to ROI, with any masked pixels unmasked</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ee.Image</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function sorts images by time (earliest first) and unmasks any masked pixels
+in the final image. This is useful for ensuring complete coverage of the ROI.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_ee_image">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_ee_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roi</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_ee_image" title="Link to this definition">¶</a></dt>
+<dd><p>Get an Earth Engine Image clipped to a region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection_name</strong> – Name of the Earth Engine Image asset</p></li>
+<li><p><strong>roi</strong> – Earth Engine geometry to clip to</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Image clipped to ROI</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ee.Image</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Unlike get_ee_image_collection(), this function works with single image assets
+rather than image collections. It’s useful for static datasets like DEMs.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">region</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff" title="Link to this definition">¶</a></dt>
+<dd><p>Save an Earth Engine image as a GeoTIFF file.</p>
+<p>This function provides flexible options for exporting Earth Engine images to GeoTIFF format.
+It handles different export scenarios based on the provided parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image</strong> – Earth Engine image to save</p></li>
+<li><p><strong>filename</strong> – Output filename for the GeoTIFF</p></li>
+<li><p><strong>resolution</strong> – Output resolution in degrees (default: 1), used when scale is not provided</p></li>
+<li><p><strong>scale</strong> – Output scale in meters (overrides resolution if provided)</p></li>
+<li><p><strong>region</strong> – Region to export (required if scale is provided)</p></li>
+<li><p><strong>crs</strong> – Coordinate reference system (e.g., ‘EPSG:4326’)</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>If scale and region are provided, uses ee_export_image()</p></li>
+<li><p>Otherwise, uses ee_to_geotiff() with resolution parameter</p></li>
+<li><p>The function automatically converts output to Cloud Optimized GeoTIFF (COG)
+format when using ee_to_geotiff()</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_dem_image">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_dem_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi_buffered</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_dem_image" title="Link to this definition">¶</a></dt>
+<dd><p>Get a digital elevation model (DEM) image for a region.</p>
+<p>This function provides access to various global and regional Digital Elevation Model (DEM)
+datasets through Earth Engine. Each source has different coverage areas and resolutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roi_buffered</strong> – Earth Engine geometry with buffer - should be larger than the actual
+area of interest to ensure smooth interpolation at edges</p></li>
+<li><p><strong>source</strong> – DEM source, one of:
+- ‘NASA’: SRTM 30m global DEM
+- ‘COPERNICUS’: Copernicus 30m global DEM
+- ‘DeltaDTM’: Deltares global DTM
+- ‘FABDEM’: Forest And Buildings removed MERIT DEM
+- ‘England 1m DTM’: UK Environment Agency 1m terrain model
+- ‘DEM France 5m’: IGN RGE ALTI 5m France coverage
+- ‘DEM France 1m’: IGN RGE ALTI 1m France coverage
+- ‘AUSTRALIA 5M DEM’: Geoscience Australia 5m DEM
+- ‘USGS 3DEP 1m’: USGS 3D Elevation Program 1m DEM</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DEM image clipped to region</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ee.Image</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Some sources may have limited coverage or require special access permissions.
+The function will raise an error if the selected source is not available for
+the specified region.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff_esa_land_cover">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff_esa_land_cover</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geotiff_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff_esa_land_cover" title="Link to this definition">¶</a></dt>
+<dd><p>Save ESA WorldCover land cover data as a colored GeoTIFF.</p>
+<p>Downloads and exports the ESA WorldCover 10m resolution global land cover map.
+The output is a colored GeoTIFF where each land cover class is represented by
+a unique color as defined in the color_map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roi</strong> – Earth Engine geometry defining region of interest</p></li>
+<li><p><strong>geotiff_path</strong> – Output path for GeoTIFF file</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Land cover classes and their corresponding colors:</dt><dd><ul class="simple">
+<li><p>Trees (10): Dark green</p></li>
+<li><p>Shrubland (20): Orange</p></li>
+<li><p>Grassland (30): Yellow</p></li>
+<li><p>Cropland (40): Purple</p></li>
+<li><p>Built-up (50): Red</p></li>
+<li><p>Barren/sparse vegetation (60): Gray</p></li>
+<li><p>Snow and ice (70): White</p></li>
+<li><p>Open water (80): Blue</p></li>
+<li><p>Herbaceous wetland (90): Teal</p></li>
+<li><p>Mangroves (95): Light green</p></li>
+<li><p>Moss and lichen (100): Beige</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The output GeoTIFF is exported at 10m resolution, which is the native
+resolution of the ESA WorldCover dataset.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff_dynamic_world_v1">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff_dynamic_world_v1</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geotiff_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">date</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff_dynamic_world_v1" title="Link to this definition">¶</a></dt>
+<dd><p>Save Dynamic World land cover data as a colored GeoTIFF.</p>
+<p>Downloads and exports Google’s Dynamic World near real-time land cover classification.
+The data is available globally at 10m resolution from 2015 onwards, updated every 2-5 days.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roi</strong> – Earth Engine geometry defining region of interest</p></li>
+<li><p><strong>geotiff_path</strong> – Output path for GeoTIFF file</p></li>
+<li><p><strong>date</strong> – Optional date string (YYYY-MM-DD) to get data for specific time.
+If None, uses the most recent available image.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Land cover classes and their colors:</dt><dd><ul class="simple">
+<li><p>water: Blue (#419bdf)</p></li>
+<li><p>trees: Dark green (#397d49)</p></li>
+<li><p>grass: Light green (#88b053)</p></li>
+<li><p>flooded_vegetation: Purple (#7a87c6)</p></li>
+<li><p>crops: Orange (#e49635)</p></li>
+<li><p>shrub_and_scrub: Tan (#dfc35a)</p></li>
+<li><p>built: Red (#c4281b)</p></li>
+<li><p>bare: Gray (#a59b8f)</p></li>
+<li><p>snow_and_ice: Light purple (#b39fe1)</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If a specific date is provided but no image is available, the function
+will use the closest available date and print a message indicating the
+actual date used.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff_esri_landcover">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff_esri_landcover</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geotiff_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">year</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff_esri_landcover" title="Link to this definition">¶</a></dt>
+<dd><p>Save ESRI Land Cover data as a colored GeoTIFF.</p>
+<p>Downloads and exports ESRI’s 10m resolution global land cover classification.
+This dataset is updated annually and provides consistent global coverage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roi</strong> – Earth Engine geometry defining region of interest</p></li>
+<li><p><strong>geotiff_path</strong> – Output path for GeoTIFF file</p></li>
+<li><p><strong>year</strong> – Optional year (YYYY) to get data for specific time.
+If None, uses the most recent available year.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Land cover classes and colors:</dt><dd><ul class="simple">
+<li><p>Water (#1A5BAB): Water bodies</p></li>
+<li><p>Trees (#358221): Tree cover</p></li>
+<li><p>Flooded Vegetation (#87D19E): Vegetation in water-logged areas</p></li>
+<li><p>Crops (#FFDB5C): Agricultural areas</p></li>
+<li><p>Built Area (#ED022A): Urban and built-up areas</p></li>
+<li><p>Bare Ground (#EDE9E4): Exposed soil and rock</p></li>
+<li><p>Snow/Ice (#F2FAFF): Permanent snow and ice</p></li>
+<li><p>Clouds (#C8C8C8): Cloud cover</p></li>
+<li><p>Rangeland (#C6AD8D): Natural vegetation</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function will print the year of the data actually used, which may
+differ from the requested year if data is not available for that time.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff_open_buildings_temporal">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff_open_buildings_temporal</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aoi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geotiff_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff_open_buildings_temporal" title="Link to this definition">¶</a></dt>
+<dd><p>Save Open Buildings temporal data as a GeoTIFF.</p>
+<p>Downloads and exports building height data from Google’s Open Buildings dataset.
+This dataset provides building footprints and heights derived from satellite imagery.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aoi</strong> – Earth Engine geometry defining area of interest</p></li>
+<li><p><strong>geotiff_path</strong> – Output path for GeoTIFF file</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>The output GeoTIFF contains building heights in meters</p></li>
+<li><p>The dataset is updated periodically and may not cover all regions</p></li>
+<li><p>Resolution is fixed at 4 meters per pixel</p></li>
+<li><p>Areas without buildings will have no-data values</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_geotiff_dsm_minus_dtm">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_geotiff_dsm_minus_dtm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geotiff_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meshsize</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_geotiff_dsm_minus_dtm" title="Link to this definition">¶</a></dt>
+<dd><p>Get the height difference between DSM and DTM from terrain data.</p>
+<p>Calculates the difference between Digital Surface Model (DSM) and Digital Terrain
+Model (DTM) to estimate heights of buildings, vegetation, and other above-ground
+features.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roi</strong> – Earth Engine geometry defining area of interest</p></li>
+<li><p><strong>geotiff_path</strong> – Output path for GeoTIFF file</p></li>
+<li><p><strong>meshsize</strong> – Size of each grid cell in meters - determines output resolution</p></li>
+<li><p><strong>source</strong> – Source of terrain data, one of:
+- ‘England 1m DSM - DTM’: UK Environment Agency 1m resolution
+- ‘Netherlands 0.5m DSM - DTM’: AHN4 0.5m resolution</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>A 100m buffer is automatically added around the ROI to ensure smooth
+interpolation at edges</p></li>
+<li><p>The output represents height above ground level in meters</p></li>
+<li><p>Negative values may indicate data artifacts or actual below-ground features</p></li>
+<li><p>The function requires both DSM and DTM data to be available for the region</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.osm_json_to_geojson">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">osm_json_to_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">osm_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.osm_json_to_geojson" title="Link to this definition">¶</a></dt>
+<dd><p>Convert OSM JSON data to GeoJSON format with proper handling of complex relations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>osm_data</strong> (<em>dict</em>) – OSM JSON data from Overpass API</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>GeoJSON FeatureCollection</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.is_part_of_relation">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">is_part_of_relation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">way_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">osm_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.is_part_of_relation" title="Link to this definition">¶</a></dt>
+<dd><p>Check if a way is part of any relation in the OSM data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>way_id</strong> (<em>int</em>) – The ID of the way to check</p></li>
+<li><p><strong>osm_data</strong> (<em>dict</em>) – OSM JSON data containing elements</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the way is part of a relation, False otherwise</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.is_way_polygon">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">is_way_polygon</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">way</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.is_way_polygon" title="Link to this definition">¶</a></dt>
+<dd><p>Determine if a way should be treated as a polygon based on OSM tags and geometry.</p>
+<p>A way is considered a polygon if:
+1. It forms a closed loop (first and last nodes are the same)
+2. It has tags indicating it represents an area (building, landuse, etc.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>way</strong> (<em>dict</em>) – OSM way element with nodes and tags</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the way should be treated as a polygon, False otherwise</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_way_coords">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_way_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">way</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_way_coords" title="Link to this definition">¶</a></dt>
+<dd><p>Extract coordinates for a way from its node references.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>way</strong> (<em>dict</em>) – OSM way element containing node references</p></li>
+<li><p><strong>nodes</strong> (<em>dict</em>) – Dictionary mapping node IDs to their coordinates</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>List of coordinate pairs [(lon, lat), …] for the way,</dt><dd><p>or empty list if any nodes are missing</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.create_rings_from_ways">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">create_rings_from_ways</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">way_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ways</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.create_rings_from_ways" title="Link to this definition">¶</a></dt>
+<dd><p>Create continuous rings by connecting ways that share nodes.</p>
+<p>This function handles complex relations by:
+1. Connecting ways that share end nodes
+2. Handling reversed way directions
+3. Closing rings when possible
+4. Converting node references to coordinates</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>way_ids</strong> (<em>list</em>) – List of way IDs that make up the ring(s)</p></li>
+<li><p><strong>ways</strong> (<em>dict</em>) – Dictionary mapping way IDs to way elements</p></li>
+<li><p><strong>nodes</strong> (<em>dict</em>) – Dictionary mapping node IDs to coordinates</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>List of rings, where each ring is a list of coordinate pairs [(lon, lat), …]</dt><dd><p>forming a closed polygon with at least 4 points</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.load_gdf_from_openstreetmap">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">load_gdf_from_openstreetmap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.load_gdf_from_openstreetmap" title="Link to this definition">¶</a></dt>
+<dd><p>Download and process building footprint data from OpenStreetMap.</p>
+<p>This function:
+1. Downloads building data using the Overpass API
+2. Processes complex relations and their members
+3. Extracts height information and other properties
+4. Converts features to a GeoDataFrame with standardized properties</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rectangle_vertices</strong> (<em>list</em>) – List of (lon, lat) coordinates defining the bounding box</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>GeoDataFrame containing building footprints with properties:</dt><dd><ul class="simple">
+<li><p>geometry: Polygon or MultiPolygon</p></li>
+<li><p>height: Building height in meters</p></li>
+<li><p>levels: Number of building levels</p></li>
+<li><p>min_height: Minimum height (for elevated structures)</p></li>
+<li><p>building_type: Type of building</p></li>
+<li><p>And other OSM tags as properties</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.convert_feature">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">convert_feature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">feature</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.convert_feature" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a GeoJSON feature to a standardized format with height information.</p>
+<p>This function:
+1. Handles both Polygon and MultiPolygon geometries
+2. Extracts and validates height information
+3. Ensures coordinate order consistency (lon, lat)
+4. Adds confidence scores for height estimates</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>feature</strong> (<em>dict</em>) – Input GeoJSON feature with geometry and properties</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl>
+<dt>Converted feature with:</dt><dd><ul class="simple">
+<li><p>Standardized geometry (always Polygon)</p></li>
+<li><p>Height information in properties</p></li>
+<li><p>Confidence score for height values</p></li>
+</ul>
+<p>Or None if the feature is invalid or not a polygon</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="voxcity.downloader.classification_mapping">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">classification_mapping</span></span><a class="headerlink" href="#voxcity.downloader.classification_mapping" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="voxcity.downloader.tag_osm_key_value_mapping">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">tag_osm_key_value_mapping</span></span><a class="headerlink" href="#voxcity.downloader.tag_osm_key_value_mapping" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_classification">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_classification</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tags</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_classification" title="Link to this definition">¶</a></dt>
+<dd><p>Determine the land cover/use classification based on OSM tags.</p>
+<p>This function maps OSM tags to standardized land cover classes using:
+1. A hierarchical classification system (codes 0-13)
+2. Tag matching patterns for different feature types
+3. Special cases for roads, water bodies, etc.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tags</strong> (<em>dict</em>) – Dictionary of OSM tags (key-value pairs)</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl>
+<dt>(classification_code, classification_name) where:</dt><dd><ul class="simple">
+<li><p>classification_code (int): Numeric code (0-13) for the land cover class</p></li>
+<li><p>classification_name (str): Human-readable name of the class</p></li>
+</ul>
+<p>Or (None, None) if no matching classification is found</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">swap_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geom_mapping</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#id1" title="Link to this definition">¶</a></dt>
+<dd><p>Swap coordinate order in a GeoJSON geometry object.</p>
+<p>This function:
+1. Handles nested coordinate structures (Polygons, MultiPolygons)
+2. Preserves the original coordinate order if already correct
+3. Works recursively for complex geometries</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>geom_mapping</strong> (<em>dict</em>) – GeoJSON geometry object with coordinates</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Geometry with coordinates in the correct order (lon, lat)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.load_land_cover_gdf_from_osm">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">load_land_cover_gdf_from_osm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rectangle_vertices_ori</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.load_land_cover_gdf_from_osm" title="Link to this definition">¶</a></dt>
+<dd><p>Load and classify land cover data from OpenStreetMap.</p>
+<p>This function:
+1. Downloads land cover features using the Overpass API
+2. Classifies features based on OSM tags
+3. Handles special cases like roads with width information
+4. Projects geometries for accurate buffering
+5. Creates a standardized GeoDataFrame with classifications</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rectangle_vertices_ori</strong> (<em>list</em>) – List of (lon, lat) coordinates defining the area</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>GeoDataFrame with:</dt><dd><ul class="simple">
+<li><p>geometry: Polygon or MultiPolygon features</p></li>
+<li><p>class: Land cover classification name</p></li>
+<li><p>Additional properties from OSM tags</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>geopandas.GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.deg2num">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">deg2num</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lon_deg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat_deg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.deg2num" title="Link to this definition">¶</a></dt>
+<dd><p>Convert longitude/latitude coordinates to tile coordinates using Web Mercator projection.</p>
+<p>The function converts geographic coordinates to tile coordinates using the standard
+Web Mercator tiling scheme (XYZ). The resulting coordinates can be used to identify
+and download specific map tiles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lon_deg</strong> (<em>float</em>) – Longitude in degrees (-180 to 180)</p></li>
+<li><p><strong>lat_deg</strong> (<em>float</em>) – Latitude in degrees (-90 to 90)</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Zoom level (0-20, where 0 is most zoomed out)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>(x, y) tile coordinates as floats</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">deg2num</span><span class="p">(</span><span class="mf">139.7</span><span class="p">,</span> <span class="mf">35.6</span><span class="p">,</span> <span class="mi">16</span><span class="p">)</span>  <span class="c1"># Tokyo coordinates</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.num2deg">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">num2deg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xtile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ytile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.num2deg" title="Link to this definition">¶</a></dt>
+<dd><p>Convert tile coordinates back to longitude/latitude coordinates.</p>
+<p>This is the inverse operation of deg2num(). It converts tile coordinates
+back to geographic coordinates using the Web Mercator projection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xtile</strong> (<em>float</em>) – X tile coordinate</p></li>
+<li><p><strong>ytile</strong> (<em>float</em>) – Y tile coordinate</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Zoom level (0-20)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>(longitude, latitude) in degrees</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="o">=</span> <span class="n">num2deg</span><span class="p">(</span><span class="mi">29326</span><span class="p">,</span> <span class="mi">13249</span><span class="p">,</span> <span class="mi">15</span><span class="p">)</span>  <span class="c1"># Sample tile coordinates</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.download_tiles">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">download_tiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">polygon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.download_tiles" title="Link to this definition">¶</a></dt>
+<dd><p>Download satellite imagery tiles covering a polygon region.</p>
+<p>Downloads all tiles that intersect with the given polygon at the specified zoom level
+from the OpenEarthMap Japan server. The function calculates the minimum bounding box
+that contains the polygon and downloads all tiles within that box.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>polygon</strong> (<em>list</em>) – List of (lon, lat) tuples defining the region vertices in clockwise
+or counterclockwise order</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Zoom level for tile detail (recommended range: 14-18)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(</dt><dd><p>tiles: dict mapping (x,y) tile coordinates to PIL Image objects,
+bounds: tuple of (min_x, min_y, max_x, max_y) tile coordinates</p>
+</dd>
+</dl>
+<p>)</p>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Higher zoom levels provide more detail but require downloading more tiles.
+The function will print progress messages during download.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.compose_image">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">compose_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounds</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.compose_image" title="Link to this definition">¶</a></dt>
+<dd><p>Compose downloaded tiles into a single continuous image.</p>
+<p>Takes individual map tiles and combines them into a single large image based on
+their relative positions. The tiles are placed according to their x,y coordinates
+within the bounds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tiles</strong> (<em>dict</em>) – Mapping of (x,y) coordinates to tile Image objects</p></li>
+<li><p><strong>bounds</strong> (<em>tuple</em>) – (min_x, min_y, max_x, max_y) tile coordinate bounds</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Composed PIL Image with dimensions (width x height) where:</dt><dd><p>width = (max_x - min_x + 1) * 256
+height = (max_y - min_y + 1) * 256</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Image</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Each tile is assumed to be 256x256 pixels, which is standard for web maps.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.crop_image">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">crop_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">polygon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.crop_image" title="Link to this definition">¶</a></dt>
+<dd><p>Crop composed image to the exact polygon boundary.</p>
+<p>Creates a mask from the polygon coordinates and uses it to crop the image,
+removing areas outside the polygon of interest. The polygon coordinates are
+converted from geographic coordinates to pixel coordinates in the image space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image</strong> (<em>Image</em>) – PIL Image to crop</p></li>
+<li><p><strong>polygon</strong> (<em>list</em>) – List of (lon, lat) coordinates defining the boundary</p></li>
+<li><p><strong>bounds</strong> (<em>tuple</em>) – (min_x, min_y, max_x, max_y) tile bounds</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Zoom level used for coordinate conversion</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>(</dt><dd><p>cropped Image: PIL Image cropped to polygon boundary,
+bbox: tuple of (left, upper, right, lower) pixel coordinates of bounding box</p>
+</dd>
+</dl>
+<p>)</p>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the polygon does not intersect with the downloaded tiles</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_as_geotiff">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_as_geotiff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">polygon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_as_geotiff" title="Link to this definition">¶</a></dt>
+<dd><p>Save cropped image as a georeferenced GeoTIFF file.</p>
+<p>Converts the image to a GeoTIFF format with proper spatial reference information
+using the Web Mercator projection (EPSG:3857). The function handles coordinate
+transformation and sets up the necessary geospatial metadata.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image</strong> (<em>Image</em>) – PIL Image to save</p></li>
+<li><p><strong>polygon</strong> (<em>list</em>) – List of (lon, lat) coordinates</p></li>
+<li><p><strong>zoom</strong> (<em>int</em>) – Zoom level used for coordinate calculations</p></li>
+<li><p><strong>bbox</strong> (<em>tuple</em>) – Bounding box of cropped image in pixels (left, upper, right, lower)</p></li>
+<li><p><strong>bounds</strong> (<em>tuple</em>) – (min_x, min_y, max_x, max_y) tile bounds</p></li>
+<li><p><strong>output_path</strong> (<em>str</em>) – Path where the GeoTIFF will be saved</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The output GeoTIFF will have 3 bands (RGB) and use the Web Mercator
+projection (EPSG:3857) for compatibility with most GIS software.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.save_oemj_as_geotiff">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">save_oemj_as_geotiff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">polygon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zoom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">16</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.save_oemj_as_geotiff" title="Link to this definition">¶</a></dt>
+<dd><p>Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.</p>
+<p>This is the main function that orchestrates the entire process of downloading,
+processing, and saving satellite imagery for a specified region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>polygon</strong> (<em>list</em>) – List of (lon, lat) coordinates defining the region to download.
+Must be in clockwise or counterclockwise order.</p></li>
+<li><p><strong>filepath</strong> (<em>str</em>) – Output path for the GeoTIFF file</p></li>
+<li><p><strong>zoom</strong> (<em>int</em><em>, </em><em>optional</em>) – Zoom level for detail. Defaults to 16.
+- 14: ~9.5m/pixel
+- 15: ~4.8m/pixel
+- 16: ~2.4m/pixel
+- 17: ~1.2m/pixel
+- 18: ~0.6m/pixel</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">polygon</span> <span class="o">=</span> <span class="p">[</span>
+<span class="go">        (139.7, 35.6),  # Bottom-left</span>
+<span class="go">        (139.8, 35.6),  # Bottom-right</span>
+<span class="go">        (139.8, 35.7),  # Top-right</span>
+<span class="go">        (139.7, 35.7)   # Top-left</span>
+<span class="go">    ]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">save_oemj_as_geotiff</span><span class="p">(</span><span class="n">polygon</span><span class="p">,</span> <span class="s2">&quot;tokyo_area.tiff&quot;</span><span class="p">,</span> <span class="n">zoom</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Higher zoom levels provide better resolution but require more storage</p></li>
+<li><p>The polygon should be relatively small to avoid memory issues</p></li>
+<li><p>The output GeoTIFF will be in Web Mercator projection (EPSG:3857)</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_country_name">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_country_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lon</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_country_name" title="Link to this definition">¶</a></dt>
+<dd><p>Get country name from coordinates using reverse geocoding.
+Uses a local database for fast reverse geocoding to country level,
+then converts the country code to full name using pycountry.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lon</strong> (<em>float</em>) – Longitude in decimal degrees</p></li>
+<li><p><strong>lat</strong> (<em>float</em>) – Latitude in decimal degrees</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Full country name or None if lookup fails</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">country</span> <span class="o">=</span> <span class="n">get_country_name</span><span class="p">(</span><span class="mf">139.6503</span><span class="p">,</span> <span class="mf">35.6762</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Country: </span><span class="si">{</span><span class="n">country</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>  <span class="c1"># &quot;Japan&quot;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="voxcity.downloader.country_links">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">country_links</span></span><a class="headerlink" href="#voxcity.downloader.country_links" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">filter_and_convert_gdf_to_geojson_eubucco</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gpkg_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_geojson</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco" title="Link to this definition">¶</a></dt>
+<dd><p>Filters features in a GeoPackage that intersect with a given rectangle and writes them to a GeoJSON file.</p>
+<p>This function:
+1. Creates a polygon from the input rectangle vertices
+2. Handles coordinate system transformations if needed
+3. Filters buildings that intersect with the target area
+4. Processes building geometries and properties
+5. Writes filtered data to GeoJSON format</p>
+<p>Parameters:
+- gpkg_file (str): Path to the GeoPackage file containing building data
+- layer_name (str): Name of the layer within the GeoPackage to process
+- rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the rectangle vertices
+- output_geojson (str): Path where the output GeoJSON file will be written</p>
+<p>Returns:
+None</p>
+<p>Notes:
+- The function assumes input coordinates are in WGS84 (EPSG:4326)
+- Building heights are stored in meters
+- Missing or invalid heights are assigned a default value of -1.0
+- A confidence value of -1.0 indicates no confidence data available</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.download_extract_open_gpkg_from_eubucco">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">download_extract_open_gpkg_from_eubucco</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.download_extract_open_gpkg_from_eubucco" title="Link to this definition">¶</a></dt>
+<dd><p>Downloads a ZIP file from a URL, extracts the GeoPackage (.gpkg) file, and returns its path.</p>
+<p>This function:
+1. Downloads a ZIP file from the EUBUCCO API
+2. Extracts the contents to a specified directory
+3. Locates and returns the path to the GeoPackage file</p>
+<p>Parameters:
+- url (str): URL to download the ZIP file containing the GeoPackage
+- output_dir (str): Directory where extracted files will be stored</p>
+<p>Returns:
+- str: Absolute path to the extracted GeoPackage file</p>
+<p>Raises:
+- Exception: If download fails or no GeoPackage file is found
+- requests.exceptions.RequestException: For network-related errors</p>
+<p>Notes:
+- Creates a subdirectory ‘EUBUCCO_raw’ in the output directory
+- Logs progress and errors using the logging module</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.get_gdf_from_eubucco">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">get_gdf_from_eubucco</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">country_links</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.get_gdf_from_eubucco" title="Link to this definition">¶</a></dt>
+<dd><p>Downloads, extracts, filters, and converts GeoPackage data to GeoJSON based on the rectangle vertices.</p>
+<p>This function:
+1. Determines the target country based on input coordinates
+2. Downloads and extracts EUBUCCO data for that country
+3. Reads the GeoPackage into a GeoDataFrame
+4. Ensures correct coordinate reference system
+5. Assigns unique IDs to buildings</p>
+<p>Parameters:
+- rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area of interest
+- country_links (dict): Dictionary mapping country names to their respective GeoPackage URLs
+- output_dir (str): Directory to save downloaded and processed files
+- file_name (str): Name for the output GeoJSON file</p>
+<p>Returns:
+- geopandas.GeoDataFrame: DataFrame containing building geometries and properties</p>
+<blockquote>
+<div><p>or None if the target area has no EUBUCCO data</p>
+</div></blockquote>
+<p>Notes:
+- Automatically transforms coordinates to WGS84 (EPSG:4326) if needed
+- Assigns sequential IDs to buildings starting from 0
+- Logs errors if target area is not covered by EUBUCCO</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.load_gdf_from_eubucco">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">load_gdf_from_eubucco</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.load_gdf_from_eubucco" title="Link to this definition">¶</a></dt>
+<dd><p>Downloads EUBUCCO data and loads it as GeoJSON.</p>
+<p>This function serves as the main interface for loading EUBUCCO building data.
+It handles the complete workflow from downloading to processing the data.</p>
+<p>Parameters:
+- rectangle_vertices (list of tuples): List of (longitude, latitude) tuples defining the area</p>
+<blockquote>
+<div><p>The first vertex is used to determine which country’s data to download</p>
+</div></blockquote>
+<ul class="simple">
+<li><dl class="simple">
+<dt>output_dir (str): Directory to save intermediate and output files</dt><dd><p>Creates a subdirectory ‘EUBUCCO_raw’ for raw downloaded data</p>
+</dd>
+</dl>
+</li>
+</ul>
+<p>Returns:
+- geopandas.GeoDataFrame: DataFrame containing:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>geometry: Building footprint polygons</p></li>
+<li><p>height: Building heights in meters</p></li>
+<li><p>id: Unique identifier for each building</p></li>
+</ul>
+<p>or None if the target area has no EUBUCCO data</p>
+</div></blockquote>
+<p>Notes:
+- Output is always in WGS84 (EPSG:4326) coordinate system
+- Building heights are in meters
+- Buildings without height data are assigned a height of -1.0
+- The function automatically determines the appropriate country dataset</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.convert_numpy_to_python">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">convert_numpy_to_python</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.convert_numpy_to_python" title="Link to this definition">¶</a></dt>
+<dd><p>Recursively convert numpy types to native Python types.</p>
+<p>This function handles various numpy data types and complex nested structures,
+ensuring all data is converted to Python native types for JSON serialization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>obj</strong> – Object to convert, can be:
+- dict: Dictionary with potentially nested numpy types
+- list/tuple: Sequence with potentially nested numpy types
+- numpy.ndarray: Numpy array to be converted to list
+- numpy.integer/numpy.floating: Numpy numeric types
+- native Python types (bool, str, int, float)
+- None values</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Converted object with all numpy types replaced by native Python types</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>object</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">convert_numpy_to_python</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">42</span><span class="p">))</span>
+<span class="go">42</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">convert_numpy_to_python</span><span class="p">({</span><span class="s1">&#39;a&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])})</span>
+<span class="go">{&#39;a&#39;: [1, 2, 3]}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.is_valid_value">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">is_valid_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.is_valid_value" title="Link to this definition">¶</a></dt>
+<dd><p>Check if a value is valid (not NA/null) and handle array-like objects.</p>
+<p>This function is used to validate data before processing, ensuring that
+null/NA values are handled appropriately while preserving array-like structures.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>value</strong> – Value to check, can be:
+- numpy.ndarray: Always considered valid
+- list: Always considered valid
+- scalar values: Checked for NA/null status</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if value is valid (not NA/null or is array-like), False otherwise</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Arrays and lists are always considered valid since they may contain
+valid data that needs to be processed individually.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.convert_gdf_to_geojson">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">convert_gdf_to_geojson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.convert_gdf_to_geojson" title="Link to this definition">¶</a></dt>
+<dd><p>Convert GeoDataFrame to GeoJSON format with coordinates in (lon, lat) order.</p>
+<p>This function processes a GeoDataFrame containing building data and converts it
+to a standardized GeoJSON format. It handles special cases for height values
+and ensures all properties are properly converted to JSON-serializable types.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>gdf</strong> (<em>GeoDataFrame</em>) – Input GeoDataFrame containing building data with columns:
+- geometry: Shapely geometry objects
+- height: Building height (optional)
+- min_height: Minimum building height (optional)
+- Additional property columns</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>List of GeoJSON feature dictionaries, each containing:</dt><dd><ul class="simple">
+<li><p>type: Always “Feature”</p></li>
+<li><dl class="simple">
+<dt>properties: Dictionary of building properties including:</dt><dd><ul>
+<li><p>height: Building height (defaults to 0.0)</p></li>
+<li><p>min_height: Minimum height (defaults to 0.0)</p></li>
+<li><p>id: Sequential unique identifier</p></li>
+<li><p>All other columns from input GeoDataFrame</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p>geometry: GeoJSON geometry object</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Height values default to 0.0 if missing or invalid</p></li>
+<li><p>All numpy types are converted to native Python types</p></li>
+<li><p>Sequential IDs are assigned starting from 1</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.rectangle_to_bbox">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">rectangle_to_bbox</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vertices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.rectangle_to_bbox" title="Link to this definition">¶</a></dt>
+<dd><p>Convert rectangle vertices in (lon, lat) format to a bounding box.</p>
+<p>This function takes a list of coordinate pairs defining a rectangle and
+converts them to a bounding box format required by the Overture Maps API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vertices</strong> (<em>list</em>) – List of tuples containing (lon, lat) coordinates
+defining the corners of a rectangle</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Bounding box coordinates in format (min_lon, min_lat, max_lon, max_lat)</dt><dd><p>suitable for use with Overture Maps API</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The function calculates the minimum and maximum coordinates to ensure
+the bounding box encompasses all provided vertices.</p>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.join_gdfs_vertically">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">join_gdfs_vertically</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gdf2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.join_gdfs_vertically" title="Link to this definition">¶</a></dt>
+<dd><p>Join two GeoDataFrames vertically, handling different column structures.</p>
+<p>This function combines two GeoDataFrames that may have different columns,
+ensuring all columns from both datasets are preserved in the output.
+It provides diagnostic information about the combining process.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf1</strong> (<em>GeoDataFrame</em>) – First GeoDataFrame (e.g., buildings)</p></li>
+<li><p><strong>gdf2</strong> (<em>GeoDataFrame</em>) – Second GeoDataFrame (e.g., building parts)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Combined GeoDataFrame containing:</dt><dd><ul class="simple">
+<li><p>All rows from both input GeoDataFrames</p></li>
+<li><p>All columns from both inputs (filled with None where missing)</p></li>
+<li><p>Preserved geometry column</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GeoDataFrame</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Prints diagnostic information about column differences</p></li>
+<li><p>Handles missing columns by filling with None values</p></li>
+<li><p>Preserves the geometry column for spatial operations</p></li>
+</ul>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="voxcity.downloader.load_gdf_from_overture">
+<span class="sig-prename descclassname"><span class="pre">voxcity.downloader.</span></span><span class="sig-name descname"><span class="pre">load_gdf_from_overture</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rectangle_vertices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#voxcity.downloader.load_gdf_from_overture" title="Link to this definition">¶</a></dt>
+<dd><p>Download and process building footprint data from Overture Maps.</p>
+<p>This function serves as the main entry point for downloading building data.
+It handles the complete workflow of downloading both building and building
+part data, combining them, and preparing them for further processing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rectangle_vertices</strong> (<em>list</em>) – List of (lon, lat) coordinates defining
+the bounding box for data download</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Combined dataset containing:</dt><dd><ul class="simple">
+<li><p>Building and building part geometries</p></li>
+<li><p>Standardized properties</p></li>
+<li><p>Sequential numeric IDs</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GeoDataFrame</p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>Downloads both building and building_part data from Overture Maps</p></li>
+<li><p>Combines the datasets while preserving all properties</p></li>
+<li><p>Assigns sequential IDs based on the final dataset index</p></li>
+</ul>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="citygml/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">voxcity.downloader.citygml</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">voxcity</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">voxcity.downloader</a><ul>
+<li><a class="reference internal" href="#submodules">Submodules</a></li>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#package-contents">Package Contents</a><ul>
+<li><a class="reference internal" href="#voxcity.downloader.download_file"><code class="docutils literal notranslate"><span class="pre">download_file()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.tile_from_lat_lon"><code class="docutils literal notranslate"><span class="pre">tile_from_lat_lon()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.quadkey_to_tile"><code class="docutils literal notranslate"><span class="pre">quadkey_to_tile()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.load_gdf_from_multiple_gz"><code class="docutils literal notranslate"><span class="pre">load_gdf_from_multiple_gz()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.swap_coordinates"><code class="docutils literal notranslate"><span class="pre">swap_coordinates()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_geojson_links"><code class="docutils literal notranslate"><span class="pre">get_geojson_links()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.find_row_for_location"><code class="docutils literal notranslate"><span class="pre">find_row_for_location()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_mbfp_gdf"><code class="docutils literal notranslate"><span class="pre">get_mbfp_gdf()</span></code></a></li>
+<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">download_file()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.download_file_google_drive"><code class="docutils literal notranslate"><span class="pre">download_file_google_drive()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.initialize_earth_engine"><code class="docutils literal notranslate"><span class="pre">initialize_earth_engine()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_roi"><code class="docutils literal notranslate"><span class="pre">get_roi()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_center_point"><code class="docutils literal notranslate"><span class="pre">get_center_point()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_ee_image_collection"><code class="docutils literal notranslate"><span class="pre">get_ee_image_collection()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_ee_image"><code class="docutils literal notranslate"><span class="pre">get_ee_image()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff"><code class="docutils literal notranslate"><span class="pre">save_geotiff()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_dem_image"><code class="docutils literal notranslate"><span class="pre">get_dem_image()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff_esa_land_cover"><code class="docutils literal notranslate"><span class="pre">save_geotiff_esa_land_cover()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff_dynamic_world_v1"><code class="docutils literal notranslate"><span class="pre">save_geotiff_dynamic_world_v1()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff_esri_landcover"><code class="docutils literal notranslate"><span class="pre">save_geotiff_esri_landcover()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff_open_buildings_temporal"><code class="docutils literal notranslate"><span class="pre">save_geotiff_open_buildings_temporal()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_geotiff_dsm_minus_dtm"><code class="docutils literal notranslate"><span class="pre">save_geotiff_dsm_minus_dtm()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.osm_json_to_geojson"><code class="docutils literal notranslate"><span class="pre">osm_json_to_geojson()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.is_part_of_relation"><code class="docutils literal notranslate"><span class="pre">is_part_of_relation()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.is_way_polygon"><code class="docutils literal notranslate"><span class="pre">is_way_polygon()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_way_coords"><code class="docutils literal notranslate"><span class="pre">get_way_coords()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.create_rings_from_ways"><code class="docutils literal notranslate"><span class="pre">create_rings_from_ways()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.load_gdf_from_openstreetmap"><code class="docutils literal notranslate"><span class="pre">load_gdf_from_openstreetmap()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.convert_feature"><code class="docutils literal notranslate"><span class="pre">convert_feature()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.classification_mapping"><code class="docutils literal notranslate"><span class="pre">classification_mapping</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.tag_osm_key_value_mapping"><code class="docutils literal notranslate"><span class="pre">tag_osm_key_value_mapping</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_classification"><code class="docutils literal notranslate"><span class="pre">get_classification()</span></code></a></li>
+<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">swap_coordinates()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.load_land_cover_gdf_from_osm"><code class="docutils literal notranslate"><span class="pre">load_land_cover_gdf_from_osm()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.deg2num"><code class="docutils literal notranslate"><span class="pre">deg2num()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.num2deg"><code class="docutils literal notranslate"><span class="pre">num2deg()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.download_tiles"><code class="docutils literal notranslate"><span class="pre">download_tiles()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.compose_image"><code class="docutils literal notranslate"><span class="pre">compose_image()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.crop_image"><code class="docutils literal notranslate"><span class="pre">crop_image()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_as_geotiff"><code class="docutils literal notranslate"><span class="pre">save_as_geotiff()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.save_oemj_as_geotiff"><code class="docutils literal notranslate"><span class="pre">save_oemj_as_geotiff()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_country_name"><code class="docutils literal notranslate"><span class="pre">get_country_name()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.country_links"><code class="docutils literal notranslate"><span class="pre">country_links</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.filter_and_convert_gdf_to_geojson_eubucco"><code class="docutils literal notranslate"><span class="pre">filter_and_convert_gdf_to_geojson_eubucco()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.download_extract_open_gpkg_from_eubucco"><code class="docutils literal notranslate"><span class="pre">download_extract_open_gpkg_from_eubucco()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.get_gdf_from_eubucco"><code class="docutils literal notranslate"><span class="pre">get_gdf_from_eubucco()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.load_gdf_from_eubucco"><code class="docutils literal notranslate"><span class="pre">load_gdf_from_eubucco()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.convert_numpy_to_python"><code class="docutils literal notranslate"><span class="pre">convert_numpy_to_python()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.is_valid_value"><code class="docutils literal notranslate"><span class="pre">is_valid_value()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.convert_gdf_to_geojson"><code class="docutils literal notranslate"><span class="pre">convert_gdf_to_geojson()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.rectangle_to_bbox"><code class="docutils literal notranslate"><span class="pre">rectangle_to_bbox()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.join_gdfs_vertically"><code class="docutils literal notranslate"><span class="pre">join_gdfs_vertically()</span></code></a></li>
+<li><a class="reference internal" href="#voxcity.downloader.load_gdf_from_overture"><code class="docutils literal notranslate"><span class="pre">load_gdf_from_overture()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

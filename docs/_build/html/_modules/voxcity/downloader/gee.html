@@ -1,0 +1,968 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.downloader.gee - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.downloader.gee</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Module for interacting with Google Earth Engine API and downloading geospatial data.</span>
+
+<span class="sd">This module provides functionality to initialize Earth Engine, create regions of interest,</span>
+<span class="sd">download various types of satellite imagery and terrain data, and save them as GeoTIFF files.</span>
+<span class="sd">It supports multiple data sources including DEMs, land cover maps, and building footprints.</span>
+
+<span class="sd">The module offers the following main functionalities:</span>
+<span class="sd">1. Earth Engine initialization and region of interest (ROI) management</span>
+<span class="sd">2. Digital Elevation Model (DEM) data access from multiple sources</span>
+<span class="sd">3. Land cover data retrieval from ESA WorldCover, Dynamic World, and ESRI</span>
+<span class="sd">4. Building footprint and height data extraction</span>
+<span class="sd">5. GeoTIFF export with customizable parameters</span>
+
+<span class="sd">Dependencies:</span>
+<span class="sd">    - ee: Google Earth Engine Python API</span>
+<span class="sd">    - geemap: Python package for interactive mapping with Earth Engine</span>
+
+<span class="sd">Note: Most functions require Earth Engine authentication to be set up beforehand.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># Earth Engine and geospatial imports</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ee</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geemap</span>
+
+<span class="c1"># Local imports</span>
+<span class="c1"># from ..geo.utils import convert_format_lat_lon</span>
+
+<div class="viewcode-block" id="initialize_earth_engine">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.initialize_earth_engine">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_earth_engine</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize the Earth Engine API.</span>
+<span class="sd">    </span>
+<span class="sd">    This function must be called before using any other Earth Engine functionality.</span>
+<span class="sd">    It assumes that Earth Engine authentication has been set up properly.</span>
+<span class="sd">    </span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ee.EEException: If authentication fails or Earth Engine is unavailable</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="get_roi">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.downloader.gee.get_roi">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_roi</span><span class="p">(</span><span class="n">input_coords</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create an Earth Engine region of interest polygon from coordinates.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        input_coords: List of coordinate pairs defining the polygon vertices in (lon, lat) format.</span>
+<span class="sd">                     The coordinates should form a valid polygon (non-self-intersecting).</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        ee.Geometry.Polygon: Earth Engine polygon geometry representing the ROI</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The function automatically closes the polygon by connecting the last vertex</span>
+<span class="sd">        to the first vertex if they are not the same.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">input_coords</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">input_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">ee</span><span class="o">.</span><span class="n">Geometry</span><span class="o">.</span><span class="n">Polygon</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_center_point">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_center_point">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_center_point</span><span class="p">(</span><span class="n">roi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the centroid coordinates of a region of interest.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi: Earth Engine geometry object representing the region of interest</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (longitude, latitude) coordinates of the centroid</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The centroid is calculated using Earth Engine&#39;s geometric centroid algorithm,</span>
+<span class="sd">        which may not always fall within the geometry for complex shapes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">center_point</span> <span class="o">=</span> <span class="n">roi</span><span class="o">.</span><span class="n">centroid</span><span class="p">()</span>
+    <span class="n">center_coords</span> <span class="o">=</span> <span class="n">center_point</span><span class="o">.</span><span class="n">coordinates</span><span class="p">()</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">center_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">center_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="get_ee_image_collection">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_ee_image_collection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_ee_image_collection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">,</span> <span class="n">roi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the first image from an Earth Engine ImageCollection filtered by region.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        collection_name: Name of the Earth Engine ImageCollection (e.g., &#39;LANDSAT/LC08/C02/T1_TOA&#39;)</span>
+<span class="sd">        roi: Earth Engine geometry to filter by</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        ee.Image: First image from collection clipped to ROI, with any masked pixels unmasked</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The function sorts images by time (earliest first) and unmasks any masked pixels</span>
+<span class="sd">        in the final image. This is useful for ensuring complete coverage of the ROI.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Filter collection by bounds and get first image</span>
+    <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">filterBounds</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">collection</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span><span class="o">.</span><span class="n">unmask</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="get_ee_image">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_ee_image">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_ee_image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">,</span> <span class="n">roi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get an Earth Engine Image clipped to a region.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        collection_name: Name of the Earth Engine Image asset</span>
+<span class="sd">        roi: Earth Engine geometry to clip to</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        ee.Image: Image clipped to ROI</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        Unlike get_ee_image_collection(), this function works with single image assets</span>
+<span class="sd">        rather than image collections. It&#39;s useful for static datasets like DEMs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">collection</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save an Earth Engine image as a GeoTIFF file.</span>
+<span class="sd">    </span>
+<span class="sd">    This function provides flexible options for exporting Earth Engine images to GeoTIFF format.</span>
+<span class="sd">    It handles different export scenarios based on the provided parameters.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        image: Earth Engine image to save</span>
+<span class="sd">        filename: Output filename for the GeoTIFF</span>
+<span class="sd">        resolution: Output resolution in degrees (default: 1), used when scale is not provided</span>
+<span class="sd">        scale: Output scale in meters (overrides resolution if provided)</span>
+<span class="sd">        region: Region to export (required if scale is provided)</span>
+<span class="sd">        crs: Coordinate reference system (e.g., &#39;EPSG:4326&#39;)</span>
+<span class="sd">    </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - If scale and region are provided, uses ee_export_image()</span>
+<span class="sd">        - Otherwise, uses ee_to_geotiff() with resolution parameter</span>
+<span class="sd">        - The function automatically converts output to Cloud Optimized GeoTIFF (COG)</span>
+<span class="sd">          format when using ee_to_geotiff()</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Handle different export scenarios based on provided parameters</span>
+    <span class="k">if</span> <span class="n">scale</span> <span class="ow">and</span> <span class="n">region</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">crs</span><span class="p">:</span>
+            <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">region</span><span class="p">,</span> <span class="n">file_per_band</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">region</span><span class="p">,</span> <span class="n">file_per_band</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">crs</span><span class="p">:</span>
+            <span class="n">geemap</span><span class="o">.</span><span class="n">ee_to_geotiff</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="n">resolution</span><span class="p">,</span> <span class="n">to_cog</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">geemap</span><span class="o">.</span><span class="n">ee_to_geotiff</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="n">resolution</span><span class="p">,</span> <span class="n">to_cog</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_dem_image">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.get_dem_image">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_dem_image</span><span class="p">(</span><span class="n">roi_buffered</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get a digital elevation model (DEM) image for a region.</span>
+<span class="sd">    </span>
+<span class="sd">    This function provides access to various global and regional Digital Elevation Model (DEM)</span>
+<span class="sd">    datasets through Earth Engine. Each source has different coverage areas and resolutions.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi_buffered: Earth Engine geometry with buffer - should be larger than the actual</span>
+<span class="sd">                     area of interest to ensure smooth interpolation at edges</span>
+<span class="sd">        source: DEM source, one of:</span>
+<span class="sd">               - &#39;NASA&#39;: SRTM 30m global DEM</span>
+<span class="sd">               - &#39;COPERNICUS&#39;: Copernicus 30m global DEM</span>
+<span class="sd">               - &#39;DeltaDTM&#39;: Deltares global DTM</span>
+<span class="sd">               - &#39;FABDEM&#39;: Forest And Buildings removed MERIT DEM</span>
+<span class="sd">               - &#39;England 1m DTM&#39;: UK Environment Agency 1m terrain model</span>
+<span class="sd">               - &#39;DEM France 5m&#39;: IGN RGE ALTI 5m France coverage</span>
+<span class="sd">               - &#39;DEM France 1m&#39;: IGN RGE ALTI 1m France coverage</span>
+<span class="sd">               - &#39;AUSTRALIA 5M DEM&#39;: Geoscience Australia 5m DEM</span>
+<span class="sd">               - &#39;USGS 3DEP 1m&#39;: USGS 3D Elevation Program 1m DEM</span>
+<span class="sd">               </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        ee.Image: DEM image clipped to region</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        Some sources may have limited coverage or require special access permissions.</span>
+<span class="sd">        The function will raise an error if the selected source is not available for</span>
+<span class="sd">        the specified region.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Handle different DEM sources</span>
+    <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;NASA&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;USGS/SRTMGL1_003&#39;</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;COPERNICUS&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;COPERNICUS/DEM/GLO30&#39;</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+        <span class="c1"># Get the most recent image and select the DEM band</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;DEM&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;DeltaDTM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;projects/sat-io/open-datasets/DELTARES/deltadtm_v1&#39;</span>
+        <span class="n">elevation</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;b1&#39;</span><span class="p">)</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">elevation</span><span class="o">.</span><span class="n">updateMask</span><span class="p">(</span><span class="n">elevation</span><span class="o">.</span><span class="n">neq</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;FABDEM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s2">&quot;projects/sat-io/open-datasets/FABDEM&quot;</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+        <span class="c1"># Get the most recent image and select the DEM band</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;b1&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;England 1m DTM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;UK/EA/ENGLAND_1M_TERRAIN/2022&#39;</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dtm&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;DEM France 5m&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s2">&quot;projects/sat-io/open-datasets/IGN_RGE_Alti_5m&quot;</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;DEM France 1m&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;IGN/RGE_ALTI/1M/2_0/FXX&#39;</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;MNT&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;AUSTRALIA 5M DEM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;AU/GA/AUSTRALIA_5M_DEM&#39;</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;elevation&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;Netherlands 0.5m DTM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;AHN/AHN4&#39;</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dtm&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;USGS 3DEP 1m&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;USGS/3DEP/1m&#39;</span>
+        <span class="n">dem</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="c1"># Commented out sources that are not yet implemented</span>
+    <span class="c1"># elif source == &#39;Canada High Resolution DTM&#39;:</span>
+    <span class="c1">#     collection_name = &quot;projects/sat-io/open-datasets/OPEN-CANADA/CAN_ELV/HRDEM_1M_DTM&quot;</span>
+    <span class="c1">#     collection = ee.ImageCollection(collection_name)</span>
+    <span class="c1">#     dem = collection.mosaic() </span>
+
+    <span class="c1"># elif source == &#39;FABDEM&#39;:</span>
+    <span class="k">return</span> <span class="n">dem</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi_buffered</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff_esa_land_cover">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_esa_land_cover">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff_esa_land_cover</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save ESA WorldCover land cover data as a colored GeoTIFF.</span>
+<span class="sd">    </span>
+<span class="sd">    Downloads and exports the ESA WorldCover 10m resolution global land cover map.</span>
+<span class="sd">    The output is a colored GeoTIFF where each land cover class is represented by</span>
+<span class="sd">    a unique color as defined in the color_map.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi: Earth Engine geometry defining region of interest</span>
+<span class="sd">        geotiff_path: Output path for GeoTIFF file</span>
+<span class="sd">        </span>
+<span class="sd">    Land cover classes and their corresponding colors:</span>
+<span class="sd">        - Trees (10): Dark green</span>
+<span class="sd">        - Shrubland (20): Orange</span>
+<span class="sd">        - Grassland (30): Yellow</span>
+<span class="sd">        - Cropland (40): Purple</span>
+<span class="sd">        - Built-up (50): Red</span>
+<span class="sd">        - Barren/sparse vegetation (60): Gray</span>
+<span class="sd">        - Snow and ice (70): White</span>
+<span class="sd">        - Open water (80): Blue</span>
+<span class="sd">        - Herbaceous wetland (90): Teal</span>
+<span class="sd">        - Mangroves (95): Light green</span>
+<span class="sd">        - Moss and lichen (100): Beige</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The output GeoTIFF is exported at 10m resolution, which is the native</span>
+<span class="sd">        resolution of the ESA WorldCover dataset.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Earth Engine</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="c1"># Load and clip the ESA WorldCover dataset</span>
+    <span class="n">esa</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="s2">&quot;ESA/WorldCover/v200&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+    <span class="n">esa_clipped</span> <span class="o">=</span> <span class="n">esa</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="c1"># Define color mapping for different land cover classes</span>
+    <span class="n">color_map</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="mi">10</span><span class="p">:</span> <span class="s1">&#39;006400&#39;</span><span class="p">,</span>  <span class="c1"># Trees</span>
+        <span class="mi">20</span><span class="p">:</span> <span class="s1">&#39;ffbb22&#39;</span><span class="p">,</span>  <span class="c1"># Shrubland</span>
+        <span class="mi">30</span><span class="p">:</span> <span class="s1">&#39;ffff4c&#39;</span><span class="p">,</span>  <span class="c1"># Grassland</span>
+        <span class="mi">40</span><span class="p">:</span> <span class="s1">&#39;f096ff&#39;</span><span class="p">,</span>  <span class="c1"># Cropland</span>
+        <span class="mi">50</span><span class="p">:</span> <span class="s1">&#39;fa0000&#39;</span><span class="p">,</span>  <span class="c1"># Built-up</span>
+        <span class="mi">60</span><span class="p">:</span> <span class="s1">&#39;b4b4b4&#39;</span><span class="p">,</span>  <span class="c1"># Barren / sparse vegetation</span>
+        <span class="mi">70</span><span class="p">:</span> <span class="s1">&#39;f0f0f0&#39;</span><span class="p">,</span>  <span class="c1"># Snow and ice</span>
+        <span class="mi">80</span><span class="p">:</span> <span class="s1">&#39;0064c8&#39;</span><span class="p">,</span>  <span class="c1"># Open water</span>
+        <span class="mi">90</span><span class="p">:</span> <span class="s1">&#39;0096a0&#39;</span><span class="p">,</span>  <span class="c1"># Herbaceous wetland</span>
+        <span class="mi">95</span><span class="p">:</span> <span class="s1">&#39;00cf75&#39;</span><span class="p">,</span>  <span class="c1"># Mangroves</span>
+        <span class="mi">100</span><span class="p">:</span> <span class="s1">&#39;fae6a0&#39;</span>  <span class="c1"># Moss and lichen</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Create ordered color palette</span>
+    <span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">color_map</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">color_map</span><span class="o">.</span><span class="n">keys</span><span class="p">())]</span>
+
+    <span class="c1"># Remap classes and apply color visualization</span>
+    <span class="n">esa_colored</span> <span class="o">=</span> <span class="n">esa_clipped</span><span class="o">.</span><span class="n">remap</span><span class="p">(</span>
+        <span class="nb">list</span><span class="p">(</span><span class="n">color_map</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span>
+        <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">color_map</span><span class="p">)))</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">visualize</span><span class="p">(</span><span class="n">palette</span><span class="o">=</span><span class="n">colors</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">color_map</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Export colored image</span>
+    <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span><span class="n">esa_colored</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Colored GeoTIFF saved to: </span><span class="si">{</span><span class="n">geotiff_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff_dynamic_world_v1">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_dynamic_world_v1">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff_dynamic_world_v1</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">date</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save Dynamic World land cover data as a colored GeoTIFF.</span>
+<span class="sd">    </span>
+<span class="sd">    Downloads and exports Google&#39;s Dynamic World near real-time land cover classification.</span>
+<span class="sd">    The data is available globally at 10m resolution from 2015 onwards, updated every 2-5 days.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi: Earth Engine geometry defining region of interest</span>
+<span class="sd">        geotiff_path: Output path for GeoTIFF file</span>
+<span class="sd">        date: Optional date string (YYYY-MM-DD) to get data for specific time.</span>
+<span class="sd">              If None, uses the most recent available image.</span>
+<span class="sd">    </span>
+<span class="sd">    Land cover classes and their colors:</span>
+<span class="sd">        - water: Blue (#419bdf)</span>
+<span class="sd">        - trees: Dark green (#397d49)</span>
+<span class="sd">        - grass: Light green (#88b053)</span>
+<span class="sd">        - flooded_vegetation: Purple (#7a87c6)</span>
+<span class="sd">        - crops: Orange (#e49635)</span>
+<span class="sd">        - shrub_and_scrub: Tan (#dfc35a)</span>
+<span class="sd">        - built: Red (#c4281b)</span>
+<span class="sd">        - bare: Gray (#a59b8f)</span>
+<span class="sd">        - snow_and_ice: Light purple (#b39fe1)</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        If a specific date is provided but no image is available, the function</span>
+<span class="sd">        will use the closest available date and print a message indicating the</span>
+<span class="sd">        actual date used.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Earth Engine</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="c1"># Load and filter Dynamic World dataset</span>
+    <span class="c1"># Load the Dynamic World dataset and filter by ROI</span>
+    <span class="n">dw</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="s1">&#39;GOOGLE/DYNAMICWORLD/V1&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">filterBounds</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="c1"># Check if there are any images in the filtered collection</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="n">dw</span><span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No Dynamic World images found for the specified ROI.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">date</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Get the latest available image</span>
+        <span class="n">dw_image</span> <span class="o">=</span> <span class="n">dw</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+        <span class="n">image_date</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Date</span><span class="p">(</span><span class="n">dw_image</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;YYYY-MM-dd&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No date specified. Using the latest available image from </span><span class="si">{</span><span class="n">image_date</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Convert the date string to an ee.Date object</span>
+        <span class="n">target_date</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Date</span><span class="p">(</span><span class="n">date</span><span class="p">)</span>
+        <span class="n">target_date_millis</span> <span class="o">=</span> <span class="n">target_date</span><span class="o">.</span><span class="n">millis</span><span class="p">()</span>
+
+        <span class="c1"># Function to compute date difference and set as property</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">add_date_difference</span><span class="p">(</span><span class="n">image</span><span class="p">):</span>
+            <span class="n">image_date_millis</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">date</span><span class="p">()</span><span class="o">.</span><span class="n">millis</span><span class="p">()</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">image_date_millis</span><span class="o">.</span><span class="n">subtract</span><span class="p">(</span><span class="n">target_date_millis</span><span class="p">)</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">image</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s1">&#39;date_difference&#39;</span><span class="p">,</span> <span class="n">diff</span><span class="p">)</span>
+
+        <span class="c1"># Map over the collection to compute date differences</span>
+        <span class="n">dw_with_diff</span> <span class="o">=</span> <span class="n">dw</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">add_date_difference</span><span class="p">)</span>
+
+        <span class="c1"># Sort the collection by date difference</span>
+        <span class="n">dw_sorted</span> <span class="o">=</span> <span class="n">dw_with_diff</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="s1">&#39;date_difference&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Get the first image (closest in time)</span>
+        <span class="n">dw_image</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">dw_sorted</span><span class="o">.</span><span class="n">first</span><span class="p">())</span>
+        <span class="n">image_date</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Date</span><span class="p">(</span><span class="n">dw_image</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s1">&#39;YYYY-MM-dd&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using image closest to the specified date. Image date: </span><span class="si">{</span><span class="n">image_date</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Clip the image to the ROI</span>
+    <span class="n">dw_clipped</span> <span class="o">=</span> <span class="n">dw_image</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="c1"># Define class names and palette</span>
+    <span class="n">class_names</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;water&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;trees&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;grass&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;flooded_vegetation&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;crops&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;shrub_and_scrub&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;built&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;bare&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;snow_and_ice&#39;</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="n">color_palette</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;419bdf&#39;</span><span class="p">,</span>  <span class="c1"># water</span>
+        <span class="s1">&#39;397d49&#39;</span><span class="p">,</span>  <span class="c1"># trees</span>
+        <span class="s1">&#39;88b053&#39;</span><span class="p">,</span>  <span class="c1"># grass</span>
+        <span class="s1">&#39;7a87c6&#39;</span><span class="p">,</span>  <span class="c1"># flooded_vegetation</span>
+        <span class="s1">&#39;e49635&#39;</span><span class="p">,</span>  <span class="c1"># crops</span>
+        <span class="s1">&#39;dfc35a&#39;</span><span class="p">,</span>  <span class="c1"># shrub_and_scrub</span>
+        <span class="s1">&#39;c4281b&#39;</span><span class="p">,</span>  <span class="c1"># built</span>
+        <span class="s1">&#39;a59b8f&#39;</span><span class="p">,</span>  <span class="c1"># bare</span>
+        <span class="s1">&#39;b39fe1&#39;</span><span class="p">,</span>  <span class="c1"># snow_and_ice</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Get the &#39;label&#39; band</span>
+    <span class="n">label</span> <span class="o">=</span> <span class="n">dw_clipped</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;label&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Visualize the label band using the palette</span>
+    <span class="n">label_visualized</span> <span class="o">=</span> <span class="n">label</span><span class="o">.</span><span class="n">visualize</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">palette</span><span class="o">=</span><span class="n">color_palette</span><span class="p">)</span>
+
+    <span class="c1"># Export the image</span>
+    <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span>
+        <span class="n">label_visualized</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">roi</span><span class="p">,</span> <span class="n">file_per_band</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s1">&#39;EPSG:4326&#39;</span>
+    <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Colored GeoTIFF saved to: </span><span class="si">{</span><span class="n">geotiff_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Image date: </span><span class="si">{</span><span class="n">image_date</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff_esri_landcover">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_esri_landcover">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff_esri_landcover</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">year</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save ESRI Land Cover data as a colored GeoTIFF.</span>
+<span class="sd">    </span>
+<span class="sd">    Downloads and exports ESRI&#39;s 10m resolution global land cover classification.</span>
+<span class="sd">    This dataset is updated annually and provides consistent global coverage.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi: Earth Engine geometry defining region of interest</span>
+<span class="sd">        geotiff_path: Output path for GeoTIFF file</span>
+<span class="sd">        year: Optional year (YYYY) to get data for specific time.</span>
+<span class="sd">              If None, uses the most recent available year.</span>
+<span class="sd">    </span>
+<span class="sd">    Land cover classes and colors:</span>
+<span class="sd">        - Water (#1A5BAB): Water bodies</span>
+<span class="sd">        - Trees (#358221): Tree cover</span>
+<span class="sd">        - Flooded Vegetation (#87D19E): Vegetation in water-logged areas</span>
+<span class="sd">        - Crops (#FFDB5C): Agricultural areas</span>
+<span class="sd">        - Built Area (#ED022A): Urban and built-up areas</span>
+<span class="sd">        - Bare Ground (#EDE9E4): Exposed soil and rock</span>
+<span class="sd">        - Snow/Ice (#F2FAFF): Permanent snow and ice</span>
+<span class="sd">        - Clouds (#C8C8C8): Cloud cover</span>
+<span class="sd">        - Rangeland (#C6AD8D): Natural vegetation</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        The function will print the year of the data actually used, which may</span>
+<span class="sd">        differ from the requested year if data is not available for that time.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Earth Engine</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="c1"># Load the ESRI Land Cover dataset and filter by ROI</span>
+    <span class="n">esri_lulc</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="s2">&quot;projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m_TS&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">filterBounds</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="c1"># Check if there are any images in the filtered collection</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="n">esri_lulc</span><span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No ESRI Land Cover images found for the specified ROI.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">year</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Get the latest available image</span>
+        <span class="n">esri_image</span> <span class="o">=</span> <span class="n">esri_lulc</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+        <span class="n">year</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Date</span><span class="p">(</span><span class="n">esri_image</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;year&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No date specified. Using the latest available image from </span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Extract the year from the date string</span>
+        <span class="c1"># target_date = ee.Date(date)</span>
+        <span class="c1"># target_year = target_date.get(&#39;year&#39;).getInfo()</span>
+        <span class="c1"># Create date range for that year</span>
+        <span class="n">start_date</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s1">-01-01&#39;</span>
+        <span class="n">end_date</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s1">-12-31&#39;</span>
+        <span class="c1"># Filter the collection to that year</span>
+        <span class="n">images_for_year</span> <span class="o">=</span> <span class="n">esri_lulc</span><span class="o">.</span><span class="n">filterDate</span><span class="p">(</span><span class="n">start_date</span><span class="p">,</span> <span class="n">end_date</span><span class="p">)</span>
+        <span class="n">count</span> <span class="o">=</span> <span class="n">images_for_year</span><span class="o">.</span><span class="n">size</span><span class="p">()</span><span class="o">.</span><span class="n">getInfo</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No ESRI Land Cover images found for the year </span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">esri_image</span> <span class="o">=</span> <span class="n">images_for_year</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using image for the specified year: </span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Clip the image to the ROI</span>
+    <span class="n">esri_clipped</span> <span class="o">=</span> <span class="n">esri_image</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi</span><span class="p">)</span>
+
+    <span class="c1"># Remap the image</span>
+    <span class="n">label</span> <span class="o">=</span> <span class="n">esri_clipped</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;b1&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">remap</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">7</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span><span class="mi">10</span><span class="p">,</span><span class="mi">11</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">7</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">9</span><span class="p">])</span>
+
+    <span class="c1"># Define class names and palette</span>
+    <span class="n">class_names</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;Water&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Trees&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Flooded Vegetation&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Crops&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Built Area&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Bare Ground&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Snow/Ice&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Clouds&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Rangeland&quot;</span>
+    <span class="p">]</span>
+
+    <span class="n">color_palette</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;#1A5BAB&quot;</span><span class="p">,</span>  <span class="c1"># Water</span>
+        <span class="s2">&quot;#358221&quot;</span><span class="p">,</span>  <span class="c1"># Trees</span>
+        <span class="s2">&quot;#87D19E&quot;</span><span class="p">,</span>  <span class="c1"># Flooded Vegetation</span>
+        <span class="s2">&quot;#FFDB5C&quot;</span><span class="p">,</span>  <span class="c1"># Crops</span>
+        <span class="s2">&quot;#ED022A&quot;</span><span class="p">,</span>  <span class="c1"># Built Area</span>
+        <span class="s2">&quot;#EDE9E4&quot;</span><span class="p">,</span>  <span class="c1"># Bare Ground</span>
+        <span class="s2">&quot;#F2FAFF&quot;</span><span class="p">,</span>  <span class="c1"># Snow/Ice</span>
+        <span class="s2">&quot;#C8C8C8&quot;</span><span class="p">,</span>  <span class="c1"># Clouds</span>
+        <span class="s2">&quot;#C6AD8D&quot;</span><span class="p">,</span>  <span class="c1"># Rangeland</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Visualize the label band using the palette</span>
+    <span class="n">label_visualized</span> <span class="o">=</span> <span class="n">label</span><span class="o">.</span><span class="n">visualize</span><span class="p">(</span><span class="nb">min</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span> <span class="n">palette</span><span class="o">=</span><span class="n">color_palette</span><span class="p">)</span>
+
+    <span class="c1"># Export the image</span>
+    <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span>
+        <span class="n">label_visualized</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">roi</span><span class="p">,</span> <span class="n">file_per_band</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s1">&#39;EPSG:4326&#39;</span>
+    <span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Colored GeoTIFF saved to: </span><span class="si">{</span><span class="n">geotiff_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Image date: </span><span class="si">{</span><span class="n">year</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff_open_buildings_temporal">
+<a class="viewcode-back" href="../../../autoapi/voxcity/geoprocessor/index.html#voxcity.downloader.gee.save_geotiff_open_buildings_temporal">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff_open_buildings_temporal</span><span class="p">(</span><span class="n">aoi</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save Open Buildings temporal data as a GeoTIFF.</span>
+<span class="sd">    </span>
+<span class="sd">    Downloads and exports building height data from Google&#39;s Open Buildings dataset.</span>
+<span class="sd">    This dataset provides building footprints and heights derived from satellite imagery.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        aoi: Earth Engine geometry defining area of interest</span>
+<span class="sd">        geotiff_path: Output path for GeoTIFF file</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - The output GeoTIFF contains building heights in meters</span>
+<span class="sd">        - The dataset is updated periodically and may not cover all regions</span>
+<span class="sd">        - Resolution is fixed at 4 meters per pixel</span>
+<span class="sd">        - Areas without buildings will have no-data values</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Earth Engine</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="c1"># Load the dataset</span>
+    <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="s1">&#39;GOOGLE/Research/open-buildings-temporal/v1&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Get the latest image in the collection for the AOI</span>
+    <span class="n">latest_image</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">filterBounds</span><span class="p">(</span><span class="n">aoi</span><span class="p">)</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="s1">&#39;system:time_start&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+
+    <span class="c1"># Select the building height band</span>
+    <span class="n">building_height</span> <span class="o">=</span> <span class="n">latest_image</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;building_height&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Clip the image to the AOI</span>
+    <span class="n">clipped_image</span> <span class="o">=</span> <span class="n">building_height</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">aoi</span><span class="p">)</span>
+
+    <span class="c1"># Export the GeoTIFF</span>
+    <span class="n">geemap</span><span class="o">.</span><span class="n">ee_export_image</span><span class="p">(</span>
+        <span class="n">clipped_image</span><span class="p">,</span>
+        <span class="n">filename</span><span class="o">=</span><span class="n">geotiff_path</span><span class="p">,</span>
+        <span class="n">scale</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">region</span><span class="o">=</span><span class="n">aoi</span><span class="p">,</span>
+        <span class="n">file_per_band</span><span class="o">=</span><span class="kc">False</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="save_geotiff_dsm_minus_dtm">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/gee/index.html#voxcity.downloader.gee.save_geotiff_dsm_minus_dtm">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geotiff_dsm_minus_dtm</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get the height difference between DSM and DTM from terrain data.</span>
+<span class="sd">    </span>
+<span class="sd">    Calculates the difference between Digital Surface Model (DSM) and Digital Terrain</span>
+<span class="sd">    Model (DTM) to estimate heights of buildings, vegetation, and other above-ground</span>
+<span class="sd">    features.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        roi: Earth Engine geometry defining area of interest</span>
+<span class="sd">        geotiff_path: Output path for GeoTIFF file</span>
+<span class="sd">        meshsize: Size of each grid cell in meters - determines output resolution</span>
+<span class="sd">        source: Source of terrain data, one of:</span>
+<span class="sd">               - &#39;England 1m DSM - DTM&#39;: UK Environment Agency 1m resolution</span>
+<span class="sd">               - &#39;Netherlands 0.5m DSM - DTM&#39;: AHN4 0.5m resolution</span>
+<span class="sd">        </span>
+<span class="sd">    Note:</span>
+<span class="sd">        - A 100m buffer is automatically added around the ROI to ensure smooth</span>
+<span class="sd">          interpolation at edges</span>
+<span class="sd">        - The output represents height above ground level in meters</span>
+<span class="sd">        - Negative values may indicate data artifacts or actual below-ground features</span>
+<span class="sd">        - The function requires both DSM and DTM data to be available for the region</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Earth Engine</span>
+    <span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">()</span>
+
+    <span class="c1"># Add buffer around ROI to ensure smooth interpolation at edges</span>
+    <span class="n">buffer_distance</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">roi_buffered</span> <span class="o">=</span> <span class="n">roi</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer_distance</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;England 1m DSM - DTM&#39;</span><span class="p">:</span>
+        <span class="n">collection_name</span> <span class="o">=</span> <span class="s1">&#39;UK/EA/ENGLAND_1M_TERRAIN/2022&#39;</span>
+        <span class="n">dtm</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dtm&#39;</span><span class="p">)</span>
+        <span class="n">dsm</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">Image</span><span class="p">(</span><span class="n">collection_name</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dsm_first&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">source</span> <span class="o">==</span> <span class="s1">&#39;Netherlands 0.5m DSM - DTM&#39;</span><span class="p">:</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">ee</span><span class="o">.</span><span class="n">ImageCollection</span><span class="p">(</span><span class="s1">&#39;AHN/AHN4&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">filterBounds</span><span class="p">(</span><span class="n">roi_buffered</span><span class="p">)</span>
+        <span class="n">dtm</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dtm&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+        <span class="n">dsm</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s1">&#39;dsm&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mosaic</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Source must be either &#39;England&#39; or &#39;Netherlands&#39;&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Subtract DTM from DSM to get height difference</span>
+    <span class="n">height_diff</span> <span class="o">=</span> <span class="n">dsm</span><span class="o">.</span><span class="n">subtract</span><span class="p">(</span><span class="n">dtm</span><span class="p">)</span>
+
+    <span class="c1"># Clip to buffered ROI</span>
+    <span class="n">image</span> <span class="o">=</span> <span class="n">height_diff</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">roi_buffered</span><span class="p">)</span>
+
+    <span class="c1"># Export as GeoTIFF using meshsize as scale</span>
+    <span class="n">save_geotiff</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">geotiff_path</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">meshsize</span><span class="p">,</span> <span class="n">region</span><span class="o">=</span><span class="n">roi_buffered</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s1">&#39;EPSG:4326&#39;</span><span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

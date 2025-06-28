@@ -1,0 +1,1023 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="VoxCity Demo" href="example.html" />
+
+    <link rel="shortcut icon" href="_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="#"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="#">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/index.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <style>
+@import url("_static/custom.css");
+</style><p><a class="reference external" href="https://pypi.python.org/pypi/voxcity"><img alt="PyPi version" src="https://img.shields.io/pypi/v/voxcity.svg" /></a>
+<a class="reference external" href="https://pypi.org/project/voxcity/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/voxcity.svg" /></a>
+<a class="reference external" href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing"><img alt="Open In Colab" src="https://colab.research.google.com/assets/colab-badge.svg" /></a>
+<a class="reference external" href="https://pypi.org/project/voxcity/"><img alt="License" src="https://img.shields.io/pypi/l/voxcity.svg" /></a>
+<a class="reference external" href="https://pepy.tech/project/voxcity"><img alt="Downloads" src="https://pepy.tech/badge/voxcity" /></a></p>
+<!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
+<p align="center">
+  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a>
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="Voxcity logo" width="550">
+</p>
+<section id="voxcity">
+<h1>VoxCity<a class="headerlink" href="#voxcity" title="Link to this heading">¶</a></h1>
+<p><strong>voxcity</strong> is a Python package that provides a seamless solution for grid-based 3D city model generation and urban simulation for cities worldwide. VoxCity’s generator module automatically downloads building heights, tree canopy heights, land cover, and terrain elevation within a specified target area, and voxelizes buildings, trees, land cover, and terrain to generate an integrated voxel city model. The simulator module enables users to conduct environmental simulations, including solar radiation and view index analyses. Users can export the generated models using several file formats compatible with external software, such as ENVI-met (INX), Blender, and Rhino (OBJ). Try it out using the <a class="reference external" href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Google Colab Demo</a> or your local environment.</p>
+<!-- <p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png">
+    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
+  </picture>
+</p> -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
+</p>
+<section id="key-features">
+<h2>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">¶</a></h2>
+<ul>
+<li><p><strong>Integration of Multiple Data Sources:</strong><br />
+Combines building footprints, land cover data, canopy height maps, and DEMs to generate a consistent 3D voxel representation of an urban scene.</p></li>
+<li><p><strong>Flexible Input Sources:</strong><br />
+Supports various building and terrain data sources including:</p>
+<ul class="simple">
+<li><p>Building Footprints: OpenStreetMap, Overture, EUBUCCO, Microsoft Building Footprints, Open Building 2.5D</p></li>
+<li><p>Land Cover: UrbanWatch, OpenEarthMap Japan, ESA WorldCover, ESRI Land Cover, Dynamic World, OpenStreetMap</p></li>
+<li><p>Canopy Height: High Resolution 1m Global Canopy Height Maps, ETH Global Sentinel-2 10m</p></li>
+<li><p>DEM: DeltaDTM, FABDEM, NASA, COPERNICUS, and more</p></li>
+</ul>
+<p><em>Detailed information about each data source can be found in the <a class="reference internal" href="#references-of-data-sources"><span class="xref myst">References of Data Sources</span></a> section.</em></p>
+</li>
+<li><p><strong>Customizable Domain and Resolution:</strong><br />
+Easily define a target area by drawing a rectangle on a map or specifying center coordinates and dimensions. Adjust the mesh size to meet resolution needs.</p></li>
+<li><p><strong>Integration with Earth Engine:</strong><br />
+Leverages Google Earth Engine for large-scale geospatial data processing (authentication and project setup required).</p></li>
+<li><p><strong>Output Formats:</strong></p>
+<ul class="simple">
+<li><p><strong>ENVI-MET</strong>: Export INX and EDB files suitable for ENVI-MET microclimate simulations.</p></li>
+<li><p><strong>MagicaVoxel</strong>: Export vox files for 3D editing and visualization in MagicaVoxel.</p></li>
+<li><p><strong>OBJ</strong>: Export wavefront OBJ for rendering and integration into other workflows.</p></li>
+</ul>
+</li>
+<li><p><strong>Analytical Tools:</strong></p>
+<ul class="simple">
+<li><p><strong>View Index Simulations</strong>: Compute sky view index (SVI) and green view index (GVI) from a specified viewpoint.</p></li>
+<li><p><strong>Landmark Visibility Maps</strong>: Assess the visibility of selected landmarks within the voxelized environment.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<p>Make sure you have Python 3.12 installed. Install voxcity with:</p>
+<section id="for-local-environment">
+<h3>For Local Environment<a class="headerlink" href="#for-local-environment" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>voxcity<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.12
+conda<span class="w"> </span>activate<span class="w"> </span>voxcity
+conda<span class="w"> </span>install<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>gdal
+pip<span class="w"> </span>install<span class="w"> </span>voxcity
+</pre></div>
+</div>
+</section>
+<section id="for-google-colab">
+<h3>For Google Colab<a class="headerlink" href="#for-google-colab" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="err">!</span><span class="n">pip</span> <span class="n">install</span> <span class="n">voxcity</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="setup-for-earth-engine">
+<h2>Setup for Earth Engine<a class="headerlink" href="#setup-for-earth-engine" title="Link to this heading">¶</a></h2>
+<p>To use Earth Engine data, set up your Earth Engine enabled Cloud Project by following the instructions here:
+https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup</p>
+<p>After setting up, authenticate and initialize Earth Engine:</p>
+<section id="id1">
+<h3>For Local Environment<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>earthengine<span class="w"> </span>authenticate
+</pre></div>
+</div>
+</section>
+<section id="id2">
+<h3>For Google Colab<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Click displayed link, generate token, copy and paste the token</span>
+<span class="err">!</span><span class="n">earthengine</span> <span class="n">authenticate</span> <span class="o">--</span><span class="n">auth_mode</span><span class="o">=</span><span class="n">notebook</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="usage-overview">
+<h2>Usage Overview<a class="headerlink" href="#usage-overview" title="Link to this heading">¶</a></h2>
+<section id="authenticate-earth-engine">
+<h3>1. Authenticate Earth Engine<a class="headerlink" href="#authenticate-earth-engine" title="Link to this heading">¶</a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">ee</span>
+<span class="n">ee</span><span class="o">.</span><span class="n">Authenticate</span><span class="p">()</span>
+<span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s1">&#39;your-project-id&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="define-target-area">
+<h3>2. Define Target Area<a class="headerlink" href="#define-target-area" title="Link to this heading">¶</a></h3>
+<p>You can define your target area in three ways:</p>
+<section id="option-1-direct-coordinate-input">
+<h4>Option 1: Direct Coordinate Input<a class="headerlink" href="#option-1-direct-coordinate-input" title="Link to this heading">¶</a></h4>
+<p>Define the target area by directly specifying the coordinates of the rectangle vertices.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">122.33587348582083</span><span class="p">,</span> <span class="mf">47.59830044521263</span><span class="p">),</span>  <span class="c1"># Southwest corner (longitude, latitude)</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">122.33587348582083</span><span class="p">,</span> <span class="mf">47.60279755390168</span><span class="p">),</span>  <span class="c1"># Northwest corner (longitude, latitude) </span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">122.32922451417917</span><span class="p">,</span> <span class="mf">47.60279755390168</span><span class="p">),</span>  <span class="c1"># Northeast corner (longitude, latitude)</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">122.32922451417917</span><span class="p">,</span> <span class="mf">47.59830044521263</span><span class="p">)</span>   <span class="c1"># Southeast corner (longitude, latitude)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="option-2-draw-a-rectangle-for-jupyter-notebook">
+<h4>Option 2: Draw a Rectangle (for Jupyter Notebook)<a class="headerlink" href="#option-2-draw-a-rectangle-for-jupyter-notebook" title="Link to this heading">¶</a></h4>
+<p>Use the GUI map interface to draw a rectangular domain of interest.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.draw</span><span class="w"> </span><span class="kn">import</span> <span class="n">draw_rectangle_map_cityname</span>
+
+<span class="n">cityname</span> <span class="o">=</span> <span class="s2">&quot;tokyo&quot;</span>
+<span class="n">m</span><span class="p">,</span> <span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="n">draw_rectangle_map_cityname</span><span class="p">(</span><span class="n">cityname</span><span class="p">,</span> <span class="n">zoom</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">m</span>
+</pre></div>
+</div>
+</section>
+<section id="option-3-specify-center-and-dimensions-for-jupyter-notebook">
+<h4>Option 3: Specify Center and Dimensions (for Jupyter Notebook)<a class="headerlink" href="#option-3-specify-center-and-dimensions-for-jupyter-notebook" title="Link to this heading">¶</a></h4>
+<p>Choose the width and height in meters and select the center point on the map.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.draw</span><span class="w"> </span><span class="kn">import</span> <span class="n">center_location_map_cityname</span>
+
+<span class="n">width</span> <span class="o">=</span> <span class="mi">500</span>
+<span class="n">height</span> <span class="o">=</span> <span class="mi">500</span>
+<span class="n">m</span><span class="p">,</span> <span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="n">center_location_map_cityname</span><span class="p">(</span><span class="n">cityname</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">zoom</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">m</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
+</p>
+</section>
+</section>
+<section id="set-parameters">
+<h3>3. Set Parameters<a class="headerlink" href="#set-parameters" title="Link to this heading">¶</a></h3>
+<p>Define data sources and mesh size (m):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">building_source</span> <span class="o">=</span> <span class="s1">&#39;OpenStreetMap&#39;</span>                                     <span class="c1"># Building footprint and height data source</span>
+<span class="n">land_cover_source</span> <span class="o">=</span> <span class="s1">&#39;OpenStreetMap&#39;</span>                                   <span class="c1"># Land cover classification data source</span>
+<span class="n">canopy_height_source</span> <span class="o">=</span> <span class="s1">&#39;High Resolution 1m Global Canopy Height Maps&#39;</span> <span class="c1"># Tree canopy height data source</span>
+<span class="n">dem_source</span> <span class="o">=</span> <span class="s1">&#39;DeltaDTM&#39;</span>                                               <span class="c1"># Digital elevation model data source</span>
+<span class="n">meshsize</span> <span class="o">=</span> <span class="mi">5</span>                                                          <span class="c1"># Grid cell size in meters</span>
+
+<span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;output_dir&quot;</span><span class="p">:</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span>   <span class="c1"># Directory to save output files</span>
+    <span class="s2">&quot;dem_interpolation&quot;</span><span class="p">:</span> <span class="kc">True</span> <span class="c1"># Enable DEM interpolation</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="get-voxcity-output">
+<h3>4. Get voxcity Output<a class="headerlink" href="#get-voxcity-output" title="Link to this heading">¶</a></h3>
+<p>Generate voxel data grids and corresponding building geoJSON:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.generator</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_voxcity</span>
+
+<span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">building_height_grid</span><span class="p">,</span> <span class="n">building_min_height_grid</span><span class="p">,</span> \
+<span class="n">building_id_grid</span><span class="p">,</span> <span class="n">canopy_height_grid</span><span class="p">,</span> <span class="n">land_cover_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">,</span> \
+<span class="n">building_gdf</span> <span class="o">=</span> <span class="n">get_voxcity</span><span class="p">(</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="n">building_source</span><span class="p">,</span>
+    <span class="n">land_cover_source</span><span class="p">,</span>
+    <span class="n">canopy_height_source</span><span class="p">,</span>
+    <span class="n">dem_source</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="exporting-files">
+<h3>5. Exporting Files<a class="headerlink" href="#exporting-files" title="Link to this heading">¶</a></h3>
+<section id="envi-met-inx-edb-files">
+<h4>ENVI-MET INX/EDB Files:<a class="headerlink" href="#envi-met-inx-edb-files" title="Link to this heading">¶</a></h4>
+<p><a class="reference external" href="https://www.envi-met.com/">ENVI-MET</a> is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.envimet</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_inx</span><span class="p">,</span> <span class="n">generate_edb_file</span>
+
+<span class="n">envimet_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span>                     <span class="c1"># Directory where output files will be saved</span>
+    <span class="s2">&quot;author_name&quot;</span><span class="p">:</span> <span class="s2">&quot;your name&quot;</span><span class="p">,</span>                       <span class="c1"># Name of the model author</span>
+    <span class="s2">&quot;model_description&quot;</span><span class="p">:</span> <span class="s2">&quot;generated with voxcity&quot;</span><span class="p">,</span>  <span class="c1"># Description text for the model</span>
+    <span class="s2">&quot;domain_building_max_height_ratio&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>            <span class="c1"># Maximum ratio between domain height and tallest building height</span>
+    <span class="s2">&quot;useTelescoping_grid&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>                      <span class="c1"># Enable telescoping grid for better computational efficiency</span>
+    <span class="s2">&quot;verticalStretch&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>                            <span class="c1"># Vertical grid stretching factor (%)</span>
+    <span class="s2">&quot;min_grids_Z&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>                                <span class="c1"># Minimum number of vertical grid cells</span>
+    <span class="s2">&quot;lad&quot;</span><span class="p">:</span> <span class="mf">1.0</span>                                        <span class="c1"># Leaf Area Density (m2/m3) for vegetation modeling </span>
+<span class="p">}</span>
+
+<span class="n">export_inx</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">canopy_height_grid</span><span class="p">,</span> <span class="n">land_cover_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">land_cover_source</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="o">**</span><span class="n">envimet_kwargs</span><span class="p">)</span>
+<span class="n">generate_edb_file</span><span class="p">(</span><span class="o">**</span><span class="n">envimet_kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
+</p>
+<p align="center">
+  <em>Example Output Exported in INX and Inported in ENVI-met</em>
+</p>
+</section>
+<section id="obj-files">
+<h4>OBJ Files:<a class="headerlink" href="#obj-files" title="Link to this heading">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.obj</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_obj</span>
+
+<span class="n">output_directory</span> <span class="o">=</span> <span class="s2">&quot;output&quot;</span>  <span class="c1"># Directory where output files will be saved</span>
+<span class="n">output_file_name</span> <span class="o">=</span> <span class="s2">&quot;voxcity&quot;</span> <span class="c1"># Base name for the output OBJ file</span>
+<span class="n">export_obj</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">output_directory</span><span class="p">,</span> <span class="n">output_file_name</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The generated OBJ files can be opened and rendered in the following 3D visualization software:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://www.twinmotion.com/">Twinmotion</a>: Real-time visualization tool (Free for personal use)</p></li>
+<li><p><a class="reference external" href="https://www.blender.org/">Blender</a>: Professional-grade 3D creation suite (Free)</p></li>
+<li><p><a class="reference external" href="https://www.rhino3d.com/">Rhino</a>: Professional 3D modeling software (Commercial, offers educational licenses)</p></li>
+</ul>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/obj.png" alt="OBJ 3D City Model Rendered in Rhino" width="600">
+</p>
+<p align="center">
+  <em>Example Output Exported in OBJ and Rendered in Rhino</em>
+</p>
+</section>
+<section id="magicavoxel-vox-files">
+<h4>MagicaVoxel VOX Files:<a class="headerlink" href="#magicavoxel-vox-files" title="Link to this heading">¶</a></h4>
+<p><a class="reference external" href="https://ephtracy.github.io/">MagicaVoxel</a> is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.magicavoxel</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_magicavoxel_vox</span>
+
+<span class="n">output_path</span> <span class="o">=</span> <span class="s2">&quot;output&quot;</span>
+<span class="n">base_filename</span> <span class="o">=</span> <span class="s2">&quot;voxcity&quot;</span>
+<span class="n">export_magicavoxel_vox</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">output_path</span><span class="p">,</span> <span class="n">base_filename</span><span class="o">=</span><span class="n">base_filename</span><span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
+</p>
+<p align="center">
+  <em>Example Output Exported in VOX and Rendered in MagicaVoxel</em>
+</p>
+</section>
+</section>
+<section id="additional-use-cases">
+<h3>6. Additional Use Cases<a class="headerlink" href="#additional-use-cases" title="Link to this heading">¶</a></h3>
+<section id="compute-solar-irradiance">
+<h4>Compute Solar Irradiance:<a class="headerlink" href="#compute-solar-irradiance" title="Link to this heading">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.solar</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_global_solar_irradiance_using_epw</span>
+
+<span class="n">solar_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;download_nearest_epw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>  <span class="c1"># Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span>  <span class="c1"># Coordinates defining the area of interest for calculation</span>
+    <span class="c1"># &quot;epw_file_path&quot;: &quot;./output/new.york-downtown.manhattan.heli_ny_usa_1.epw&quot;,  # Path to EnergyPlus Weather (EPW) file containing climate data. Set if you already have an EPW file.</span>
+    <span class="s2">&quot;calc_time&quot;</span><span class="p">:</span> <span class="s2">&quot;01-01 12:00:00&quot;</span><span class="p">,</span>  <span class="c1"># Time for instantaneous calculation in format &quot;MM-DD HH:MM:SS&quot;</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>  <span class="c1"># Height of view point in meters for calculating solar access. Default: 1.5 m</span>
+    <span class="s2">&quot;tree_k&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span>    <span class="c1"># Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)</span>
+    <span class="s2">&quot;tree_lad&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>    <span class="c1"># Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>      <span class="c1"># Digital elevation model grid for terrain heights</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;magma&#39;</span><span class="p">,</span>       <span class="c1"># Matplotlib colormap for visualization. Default: &#39;viridis&#39;</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>        <span class="c1"># Whether to export results as 3D OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/test&#39;</span><span class="p">,</span>  <span class="c1"># Directory for saving output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;instantaneous_solar_irradiance&#39;</span><span class="p">,</span>  <span class="c1"># Base filename for outputs (without extension)</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>             <span class="c1"># Transparency of visualization (0.0-1.0)</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>               <span class="c1"># Minimum value for colormap scaling in visualization</span>
+    <span class="c1"># &quot;vmax&quot;: 900,             # Maximum value for colormap scaling in visualization</span>
+<span class="p">}</span>
+
+<span class="c1"># Compute global solar irradiance map (direct + diffuse radiation)</span>
+<span class="n">solar_grid</span> <span class="o">=</span> <span class="n">get_global_solar_irradiance_using_epw</span><span class="p">(</span>    
+    <span class="n">voxcity_grid</span><span class="p">,</span>                        <span class="c1"># 3D voxel grid representing the urban environment</span>
+    <span class="n">meshsize</span><span class="p">,</span>                            <span class="c1"># Size of each voxel in meters</span>
+    <span class="n">calc_type</span><span class="o">=</span><span class="s1">&#39;instantaneous&#39;</span><span class="p">,</span>           <span class="c1"># Calculate instantaneous irradiance at specified time</span>
+    <span class="n">direct_normal_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Scaling factor for direct solar radiation (1.0 = no scaling)</span>
+    <span class="n">diffuse_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># Scaling factor for diffuse solar radiation (1.0 = no scaling)</span>
+    <span class="o">**</span><span class="n">solar_kwargs</span>                       <span class="c1"># Pass all the parameters defined above</span>
+<span class="p">)</span>
+
+<span class="c1"># Adjust parameters for cumulative calculation</span>
+<span class="n">solar_kwargs</span><span class="p">[</span><span class="s2">&quot;start_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;01-01 01:00:00&quot;</span> <span class="c1"># Start time for cumulative calculation</span>
+<span class="n">solar_kwargs</span><span class="p">[</span><span class="s2">&quot;end_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;01-31 23:00:00&quot;</span> <span class="c1"># End time for cumulative calculation</span>
+<span class="n">solar_kwargs</span><span class="p">[</span><span class="s2">&quot;output_file_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;cummulative_solar_irradiance&#39;</span><span class="p">,</span>  <span class="c1"># Base filename for outputs (without extension)</span>
+
+<span class="c1"># Calculate cumulative solar irradiance over the specified time period</span>
+<span class="n">cum_solar_grid</span> <span class="o">=</span> <span class="n">get_global_solar_irradiance_using_epw</span><span class="p">(</span>    
+    <span class="n">voxcity_grid</span><span class="p">,</span>                        <span class="c1"># 3D voxel grid representing the urban environment</span>
+    <span class="n">meshsize</span><span class="p">,</span>                            <span class="c1"># Size of each voxel in meters</span>
+    <span class="n">calc_type</span><span class="o">=</span><span class="s1">&#39;cumulative&#39;</span><span class="p">,</span>              <span class="c1"># Calculate cumulative irradiance over time period instead of instantaneous</span>
+    <span class="n">direct_normal_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Scaling factor for direct solar radiation (1.0 = no scaling)</span>
+    <span class="n">diffuse_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># Scaling factor for diffuse solar radiation (1.0 = no scaling)</span>
+    <span class="o">**</span><span class="n">solar_kwargs</span>                       <span class="c1"># Pass all the parameters defined above</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/solar.png" alt="Solar Irradiance Maps Rendered in Rhino" width="800">
+</p>
+<p align="center">
+  <em>Example Results Saved as OBJ and Rendered in Rhino</em>
+</p>
+</section>
+<section id="compute-green-view-index-gvi-and-sky-view-index-svi">
+<h4>Compute Green View Index (GVI) and Sky View Index (SVI):<a class="headerlink" href="#compute-green-view-index-gvi-and-sky-view-index-svi" title="Link to this heading">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.view</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_view_index</span>
+
+<span class="n">view_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>      <span class="c1"># Height of observer viewpoint in meters</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>          <span class="c1"># Digital elevation model grid</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;viridis&quot;</span><span class="p">,</span>         <span class="c1"># Colormap for visualization</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>            <span class="c1"># Whether to export as OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span>  <span class="c1"># Directory to save output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s2">&quot;gvi&quot;</span>      <span class="c1"># Base filename for outputs</span>
+<span class="p">}</span>
+
+<span class="c1"># Compute Green View Index using mode=&#39;green&#39;</span>
+<span class="n">gvi_grid</span> <span class="o">=</span> <span class="n">get_view_index</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;green&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">view_kwargs</span><span class="p">)</span>
+
+<span class="c1"># Adjust parameters for Sky View Index</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;colormap&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;BuPu_r&quot;</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;output_file_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;svi&quot;</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;elevation_min_degrees&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># Start ray-tracing from the horizon</span>
+
+<span class="c1"># Compute Sky View Index using mode=&#39;sky&#39;</span>
+<span class="n">svi_grid</span> <span class="o">=</span> <span class="n">get_view_index</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;sky&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">view_kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
+</p>
+<p align="center">
+  <em>Example Results Saved as OBJ and Rendered in Rhino</em>
+</p>
+</section>
+<section id="landmark-visibility-map">
+<h4>Landmark Visibility Map:<a class="headerlink" href="#landmark-visibility-map" title="Link to this heading">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.view</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_landmark_visibility_map</span>
+
+<span class="c1"># Dictionary of parameters for landmark visibility analysis</span>
+<span class="n">landmark_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>                 <span class="c1"># Height of observer viewpoint in meters</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="c1"># Vertices defining simulation domain boundary</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>                     <span class="c1"># Digital elevation model grid</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;cool&quot;</span><span class="p">,</span>                       <span class="c1"># Colormap for visualization</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>                       <span class="c1"># Whether to export as OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span>             <span class="c1"># Directory to save output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s2">&quot;landmark_visibility&quot;</span> <span class="c1"># Base filename for outputs</span>
+<span class="p">}</span>
+<span class="n">landmark_vis_map</span> <span class="o">=</span> <span class="n">get_landmark_visibility_map</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">building_gdf</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="o">**</span><span class="n">landmark_kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">
+</p>
+<p align="center">
+  <em>Example Result Saved as OBJ and Rendered in Rhino</em>
+</p>
+</section>
+<section id="network-analysis">
+<h4>Network Analysis:<a class="headerlink" href="#network-analysis" title="Link to this heading">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.network</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_network_values</span>
+
+<span class="n">network_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;network_type&quot;</span><span class="p">:</span> <span class="s2">&quot;walk&quot;</span><span class="p">,</span>        <span class="c1"># Type of network to download from OSM (walk, drive, all, etc.)</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;magma&quot;</span><span class="p">,</span>          <span class="c1"># Matplotlib colormap for visualization</span>
+    <span class="s2">&quot;vis_graph&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>            <span class="c1"># Whether to display the network visualization</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>                  <span class="c1"># Minimum value for color scaling</span>
+    <span class="s2">&quot;vmax&quot;</span><span class="p">:</span> <span class="mi">600000</span><span class="p">,</span>               <span class="c1"># Maximum value for color scaling</span>
+    <span class="s2">&quot;edge_width&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>              <span class="c1"># Width of network edges in visualization</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>                 <span class="c1"># Transparency of network edges</span>
+    <span class="s2">&quot;zoom&quot;</span><span class="p">:</span> <span class="mi">16</span>                    <span class="c1"># Zoom level for basemap</span>
+<span class="p">}</span>
+
+<span class="n">G</span><span class="p">,</span> <span class="n">edge_gdf</span> <span class="o">=</span> <span class="n">get_network_values</span><span class="p">(</span>
+    <span class="n">cum_solar_grid</span><span class="p">,</span>               <span class="c1"># Grid of cumulative solar irradiance values</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>           <span class="c1"># Coordinates defining simulation domain boundary</span>
+    <span class="n">meshsize</span><span class="p">,</span>                     <span class="c1"># Size of each grid cell in meters</span>
+    <span class="n">value_name</span><span class="o">=</span><span class="s1">&#39;Cumulative Global Solar Irradiance (W/m²·hour)&#39;</span><span class="p">,</span>  <span class="c1"># Label for values in visualization</span>
+    <span class="o">**</span><span class="n">network_kwargs</span>              <span class="c1"># Additional visualization and network parameters</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/network.png" alt="Example of Graph Output" width="500">
+</p>
+<p align="center">
+  <em>Cumulative Global Solar Irradiance (kW/m²·hour) on Road Network</em>
+</p>
+</section>
+</section>
+</section>
+<section id="references-of-data-sources">
+<h2>References of Data Sources<a class="headerlink" href="#references-of-data-sources" title="Link to this heading">¶</a></h2>
+<section id="building">
+<h3>Building<a class="headerlink" href="#building" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Dataset</p></th>
+<th class="head"><p>Spatial Coverage</p></th>
+<th class="head"><p>Source/Data Acquisition</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference external" href="https://www.openstreetmap.org">OpenStreetMap</a></p></td>
+<td><p>Worldwide (24% completeness in city centers)</p></td>
+<td><p>Volunteered / updated continuously</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://github.com/microsoft/GlobalMLBuildingFootprints">Microsoft Building Footprints</a></p></td>
+<td><p>North America, Europe, Australia</p></td>
+<td><p>Prediction from satellite or aerial imagery / 2018-2019 for majority of the input imagery</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://sites.research.google/gr/open-buildings/temporal/">Open Buildings 2.5D Temporal Dataset</a></p></td>
+<td><p>Africa, Latin America, and South and Southeast Asia</p></td>
+<td><p>Prediction from satellite imagery / 2016-2023</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://eubucco.com/">EUBUCCO v0.1</a></p></td>
+<td><p>27 EU countries and Switzerland (378 regions and 40,829 cities)</p></td>
+<td><p>OpenStreetMap, government datasets / 2003-2021 (majority is after 2019)</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://zenodo.org/records/11156602">UT-GLOBUS</a></p></td>
+<td><p>Worldwide (more than 1200 cities or locales)</p></td>
+<td><p>Prediction from building footprints, population, spaceborne nDSM / not provided</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://overturemaps.org/">Overture Maps</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>OpenStreetMap, Esri Community Maps Program, Google Open Buildings, etc. / updated continuously</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="tree-canopy-height">
+<h3>Tree Canopy Height<a class="headerlink" href="#tree-canopy-height" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Dataset</p></th>
+<th class="head"><p>Coverage</p></th>
+<th class="head"><p>Resolution</p></th>
+<th class="head"><p>Source/Data Acquisition</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference external" href="https://sustainability.atmeta.com/blog/2024/04/22/using-artificial-intelligence-to-map-the-earths-forests/">High Resolution 1m Global Canopy Height Maps</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>1 m</p></td>
+<td><p>Prediction from satellite imagery / 2009 and 2020 (80% are 2018-2020)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://langnico.github.io/globalcanopyheight/">ETH Global Sentinel-2 10m Canopy Height (2020)</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>10 m</p></td>
+<td><p>Prediction from satellite imagery / 2020</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="land-cover">
+<h3>Land Cover<a class="headerlink" href="#land-cover" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Dataset</p></th>
+<th class="head"><p>Spatial Coverage</p></th>
+<th class="head"><p>Resolution</p></th>
+<th class="head"><p>Source/Data Acquisition</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference external" href="https://zenodo.org/records/7254221">ESA World Cover 10m 2021 V200</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>10 m</p></td>
+<td><p>Prediction from satellite imagery / 2021</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://www.arcgis.com/home/item.html?id=cfcb7609de5f478eb7666240902d4d3d">ESRI 10m Annual Land Cover (2017-2023)</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>10 m</p></td>
+<td><p>Prediction from satellite imagery / 2017-2023</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://dynamicworld.app">Dynamic World V1</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>10 m</p></td>
+<td><p>Prediction from satellite imagery / updated continuously</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://www.openstreetmap.org">OpenStreetMap</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>- (Vector)</p></td>
+<td><p>Volunteered / updated continuously</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://www.open-earth-map.org/demo/Japan/leaflet.html">OpenEarthMap Japan</a></p></td>
+<td><p>Japan</p></td>
+<td><p>~1 m</p></td>
+<td><p>Prediction from aerial imagery / 1974-2022 (mostly after 2018 in major cities)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://urbanwatch.charlotte.edu/">UrbanWatch</a></p></td>
+<td><p>22 major cities in the US</p></td>
+<td><p>1 m</p></td>
+<td><p>Prediction from aerial imagery / 2014–2017</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="terrain-elevation">
+<h3>Terrain Elevation<a class="headerlink" href="#terrain-elevation" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Dataset</p></th>
+<th class="head"><p>Coverage</p></th>
+<th class="head"><p>Resolution</p></th>
+<th class="head"><p>Source/Data Acquisition</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference external" href="https://doi.org/10.5523/bris.25wfy0f9ukoge2gs7a5mqpq2j7">FABDEM</a></p></td>
+<td><p>Worldwide</p></td>
+<td><p>30 m</p></td>
+<td><p>Correction of Copernicus DEM using canopy height and building footprints data / 2011-2015 (Copernicus DEM)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://gee-community-catalog.org/projects/delta_dtm/">DeltaDTM</a></p></td>
+<td><p>Worldwide (Only for coastal areas below 10m + mean sea level)</p></td>
+<td><p>30 m</p></td>
+<td><p>Copernicus DEM, spaceborne LiDAR / 2011-2015 (Copernicus DEM)</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://www.usgs.gov/3d-elevation-program">USGS 3DEP 1m DEM</a></p></td>
+<td><p>United States</p></td>
+<td><p>1 m</p></td>
+<td><p>Aerial LiDAR / 2004-2024 (mostly after 2015)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://environment.data.gov.uk/dataset/13787b9a-26a4-4775-8523-806d13af58fc">England 1m Composite DTM</a></p></td>
+<td><p>England</p></td>
+<td><p>1 m</p></td>
+<td><p>Aerial LiDAR / 2000-2022</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference external" href="https://ecat.ga.gov.au/geonetwork/srv/eng/catalog.search#/metadata/89644">Australian 5M DEM</a></p></td>
+<td><p>Australia</p></td>
+<td><p>5 m</p></td>
+<td><p>Aerial LiDAR / 2001-2015</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://geoservices.ign.fr/rgealti">RGE Alti</a></p></td>
+<td><p>France</p></td>
+<td><p>1 m</p></td>
+<td><p>Aerial LiDAR</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+<section id="citation">
+<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading">¶</a></h2>
+<p>Please cite the <a class="reference external" href="https://doi.org/10.48550/arXiv.2504.13934">paper</a> if you use <code class="docutils literal notranslate"><span class="pre">voxcity</span></code> in a scientific publication:</p>
+<p>Fujiwara K, Tsurumi R, Kiyono T, Fan Z, Liang X, Lei B, Yap W, Ito K, Biljecki F. VoxCity: A Seamless Framework for Open Geospatial Data Integration, Grid-Based Semantic 3D City Model Generation, and Urban Environment Simulation. arXiv preprint arXiv:2504.13934. 2025.</p>
+<div class="highlight-bibtex notranslate"><div class="highlight"><pre><span></span><span class="nc">@article</span><span class="p">{</span><span class="nl">fujiwara2025voxcity</span><span class="p">,</span>
+<span class="w">  </span><span class="na">title</span><span class="p">=</span><span class="s">{VoxCity: A Seamless Framework for Open Geospatial Data Integration, Grid-Based Semantic 3D City Model Generation, and Urban Environment Simulation}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">author</span><span class="p">=</span><span class="s">{Fujiwara, Kunihiko and Tsurumi, Ryuta and Kiyono, Tomoki and Fan, Zicheng and Liang, Xiucheng and Lei, Binyu and Yap, Winston and Ito, Koichi and Biljecki, Filip}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">journal</span><span class="p">=</span><span class="s">{arXiv preprint arXiv:2504.13934}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">year</span><span class="p">=</span><span class="s">{2025}</span><span class="p">,</span>
+<span class="w">  </span><span class="na">doi</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">{10.48550/arXiv.2504.13934}</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="credit">
+<h2>Credit<a class="headerlink" href="#credit" title="Link to this heading">¶</a></h2>
+<p>This package was created with <a class="reference external" href="https://github.com/audreyr/cookiecutter">Cookiecutter</a> and the <a class="reference external" href="https://github.com/audreyr/cookiecutter-pypackage"><code class="docutils literal notranslate"><span class="pre">audreyr/cookiecutter-pypackage</span></code></a> project template.</p>
+<hr class="docutils" />
+<br>
+<br>
+<p align="center">
+  <a href="https://ual.sg/">
+    <img src="https://raw.githubusercontent.com/winstonyym/urbanity/main/images/ualsg.jpeg" width = 55% alt="Logo">
+  </a>
+</p>
+<div class="toctree-wrapper compound">
+</div>
+<div class="toctree-wrapper compound">
+</div>
+<div class="toctree-wrapper compound">
+</div>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="example.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title"><strong>VoxCity Demo</strong></div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">VoxCity</a><ul>
+<li><a class="reference internal" href="#key-features">Key Features</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#for-local-environment">For Local Environment</a></li>
+<li><a class="reference internal" href="#for-google-colab">For Google Colab</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#setup-for-earth-engine">Setup for Earth Engine</a><ul>
+<li><a class="reference internal" href="#id1">For Local Environment</a></li>
+<li><a class="reference internal" href="#id2">For Google Colab</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#usage-overview">Usage Overview</a><ul>
+<li><a class="reference internal" href="#authenticate-earth-engine">1. Authenticate Earth Engine</a></li>
+<li><a class="reference internal" href="#define-target-area">2. Define Target Area</a><ul>
+<li><a class="reference internal" href="#option-1-direct-coordinate-input">Option 1: Direct Coordinate Input</a></li>
+<li><a class="reference internal" href="#option-2-draw-a-rectangle-for-jupyter-notebook">Option 2: Draw a Rectangle (for Jupyter Notebook)</a></li>
+<li><a class="reference internal" href="#option-3-specify-center-and-dimensions-for-jupyter-notebook">Option 3: Specify Center and Dimensions (for Jupyter Notebook)</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#set-parameters">3. Set Parameters</a></li>
+<li><a class="reference internal" href="#get-voxcity-output">4. Get voxcity Output</a></li>
+<li><a class="reference internal" href="#exporting-files">5. Exporting Files</a><ul>
+<li><a class="reference internal" href="#envi-met-inx-edb-files">ENVI-MET INX/EDB Files:</a></li>
+<li><a class="reference internal" href="#obj-files">OBJ Files:</a></li>
+<li><a class="reference internal" href="#magicavoxel-vox-files">MagicaVoxel VOX Files:</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#additional-use-cases">6. Additional Use Cases</a><ul>
+<li><a class="reference internal" href="#compute-solar-irradiance">Compute Solar Irradiance:</a></li>
+<li><a class="reference internal" href="#compute-green-view-index-gvi-and-sky-view-index-svi">Compute Green View Index (GVI) and Sky View Index (SVI):</a></li>
+<li><a class="reference internal" href="#landmark-visibility-map">Landmark Visibility Map:</a></li>
+<li><a class="reference internal" href="#network-analysis">Network Analysis:</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#references-of-data-sources">References of Data Sources</a><ul>
+<li><a class="reference internal" href="#building">Building</a></li>
+<li><a class="reference internal" href="#tree-canopy-height">Tree Canopy Height</a></li>
+<li><a class="reference internal" href="#land-cover">Land Cover</a></li>
+<li><a class="reference internal" href="#terrain-elevation">Terrain Elevation</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#citation">Citation</a></li>
+<li><a class="reference internal" href="#credit">Credit</a><ul>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=8a448e45"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

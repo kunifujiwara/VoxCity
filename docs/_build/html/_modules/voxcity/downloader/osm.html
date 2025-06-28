@@ -1,0 +1,1422 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.downloader.osm - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.downloader.osm</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Module for downloading and processing OpenStreetMap data.</span>
+
+<span class="sd">This module provides functionality to download and process building footprints, land cover,</span>
+<span class="sd">and other geographic features from OpenStreetMap. It handles downloading data via the Overpass API,</span>
+<span class="sd">processing the responses, and converting them to standardized GeoJSON format with proper properties.</span>
+
+<span class="sd">The module includes functions for:</span>
+<span class="sd">- Converting OSM JSON to GeoJSON format</span>
+<span class="sd">- Processing building footprints with height information</span>
+<span class="sd">- Handling land cover classifications</span>
+<span class="sd">- Managing coordinate systems and projections</span>
+<span class="sd">- Processing roads and other geographic features</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyproj</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">shape</span><span class="p">,</span> <span class="n">mapping</span><span class="p">,</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">LineString</span><span class="p">,</span> <span class="n">Point</span><span class="p">,</span> <span class="n">MultiPolygon</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">transform</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyproj</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+
+<div class="viewcode-block" id="osm_json_to_geojson">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.osm_json_to_geojson">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">osm_json_to_geojson</span><span class="p">(</span><span class="n">osm_data</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert OSM JSON data to GeoJSON format with proper handling of complex relations.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        osm_data (dict): OSM JSON data from Overpass API</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: GeoJSON FeatureCollection</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="c1"># Create a mapping of node IDs to their coordinates</span>
+    <span class="n">nodes</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">ways</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="c1"># First pass: index all nodes and ways</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">osm_data</span><span class="p">[</span><span class="s1">&#39;elements&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;node&#39;</span><span class="p">:</span>
+            <span class="n">nodes</span><span class="p">[</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">],</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span><span class="p">:</span>
+            <span class="n">ways</span><span class="p">[</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">element</span>
+    
+    <span class="c1"># Second pass: generate features</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">osm_data</span><span class="p">[</span><span class="s1">&#39;elements&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;node&#39;</span> <span class="ow">and</span> <span class="s1">&#39;tags&#39;</span> <span class="ow">in</span> <span class="n">element</span> <span class="ow">and</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;tags&#39;</span><span class="p">]:</span>
+            <span class="c1"># Convert POI nodes to Point features</span>
+            <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;node&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tags&#39;</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="p">},</span>
+                <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Point&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;coordinates&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">],</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">]]</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+            <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+            
+        <span class="k">elif</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span> <span class="ow">and</span> <span class="s1">&#39;nodes&#39;</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="c1"># Skip ways that are part of relations - we&#39;ll handle those in relation processing</span>
+            <span class="k">if</span> <span class="n">is_part_of_relation</span><span class="p">(</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span> <span class="n">osm_data</span><span class="p">):</span>
+                <span class="k">continue</span>
+                
+            <span class="c1"># Process standalone way</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="n">get_way_coords</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">nodes</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">coords</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">continue</span>
+                
+            <span class="c1"># Determine if it&#39;s a polygon or a line</span>
+            <span class="n">is_polygon</span> <span class="o">=</span> <span class="n">is_way_polygon</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+            
+            <span class="c1"># Make sure polygons have valid geometry (closed loop with at least 4 points)</span>
+            <span class="k">if</span> <span class="n">is_polygon</span><span class="p">:</span>
+                <span class="c1"># For closed ways, make sure first and last coordinates are the same</span>
+                <span class="k">if</span> <span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">coords</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                    <span class="n">coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                
+                <span class="c1"># Check if we have enough coordinates for a valid polygon (at least 4)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="c1"># Not enough coordinates for a polygon, convert to LineString</span>
+                    <span class="n">is_polygon</span> <span class="o">=</span> <span class="kc">False</span>
+            
+            <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;way&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tags&#39;</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="p">},</span>
+                <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Polygon&#39;</span> <span class="k">if</span> <span class="n">is_polygon</span> <span class="k">else</span> <span class="s1">&#39;LineString&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;coordinates&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">coords</span><span class="p">]</span> <span class="k">if</span> <span class="n">is_polygon</span> <span class="k">else</span> <span class="n">coords</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+            <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+            
+        <span class="k">elif</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;relation&#39;</span> <span class="ow">and</span> <span class="s1">&#39;members&#39;</span> <span class="ow">in</span> <span class="n">element</span> <span class="ow">and</span> <span class="s1">&#39;tags&#39;</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="n">tags</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tags&#39;</span><span class="p">,</span> <span class="p">{})</span>
+            
+            <span class="c1"># Process multipolygon relations</span>
+            <span class="k">if</span> <span class="n">tags</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;type&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;multipolygon&#39;</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span><span class="n">key</span> <span class="ow">in</span> <span class="n">tags</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;natural&#39;</span><span class="p">,</span> <span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;waterway&#39;</span><span class="p">]):</span>
+                <span class="c1"># Group member ways by role</span>
+                <span class="n">members_by_role</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;outer&#39;</span><span class="p">:</span> <span class="p">[],</span> <span class="s1">&#39;inner&#39;</span><span class="p">:</span> <span class="p">[]}</span>
+                
+                <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;members&#39;</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span> <span class="ow">and</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;ref&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="n">ways</span><span class="p">:</span>
+                        <span class="n">role</span> <span class="o">=</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">role</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;outer&#39;</span><span class="p">,</span> <span class="s1">&#39;inner&#39;</span><span class="p">]:</span>
+                            <span class="n">role</span> <span class="o">=</span> <span class="s1">&#39;outer&#39;</span>  <span class="c1"># Default to outer if role not specified</span>
+                        <span class="n">members_by_role</span><span class="p">[</span><span class="n">role</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">member</span><span class="p">[</span><span class="s1">&#39;ref&#39;</span><span class="p">])</span>
+                
+                <span class="c1"># Skip if no outer members</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">members_by_role</span><span class="p">[</span><span class="s1">&#39;outer&#39;</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+                
+                <span class="c1"># Create rings from member ways</span>
+                <span class="n">outer_rings</span> <span class="o">=</span> <span class="n">create_rings_from_ways</span><span class="p">(</span><span class="n">members_by_role</span><span class="p">[</span><span class="s1">&#39;outer&#39;</span><span class="p">],</span> <span class="n">ways</span><span class="p">,</span> <span class="n">nodes</span><span class="p">)</span>
+                <span class="n">inner_rings</span> <span class="o">=</span> <span class="n">create_rings_from_ways</span><span class="p">(</span><span class="n">members_by_role</span><span class="p">[</span><span class="s1">&#39;inner&#39;</span><span class="p">],</span> <span class="n">ways</span><span class="p">,</span> <span class="n">nodes</span><span class="p">)</span>
+                
+                <span class="c1"># Skip if no valid outer rings</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">outer_rings</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                
+                <span class="c1"># Create feature based on number of outer rings</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">outer_rings</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="c1"># Single polygon with possible inner rings</span>
+                    <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span>
+                            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;relation&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="n">tags</span>
+                        <span class="p">},</span>
+                        <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;coordinates&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">outer_rings</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+</span> <span class="n">inner_rings</span>
+                        <span class="p">}</span>
+                    <span class="p">}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># MultiPolygon</span>
+                    <span class="c1"># Each outer ring forms a polygon, and we assign inner rings to each polygon</span>
+                    <span class="c1"># This is a simplification - proper assignment would check for containment</span>
+                    <span class="n">multipolygon_coords</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="k">for</span> <span class="n">outer_ring</span> <span class="ow">in</span> <span class="n">outer_rings</span><span class="p">:</span>
+                        <span class="n">polygon_coords</span> <span class="o">=</span> <span class="p">[</span><span class="n">outer_ring</span><span class="p">]</span>
+                        <span class="c1"># For simplicity, assign all inner rings to the first polygon</span>
+                        <span class="c1"># A more accurate implementation would check which outer ring contains each inner ring</span>
+                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">multipolygon_coords</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">polygon_coords</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">inner_rings</span><span class="p">)</span>
+                        <span class="n">multipolygon_coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">polygon_coords</span><span class="p">)</span>
+                    
+                    <span class="n">feature</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;Feature&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;properties&#39;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span>
+                            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;relation&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="n">tags</span>
+                        <span class="p">},</span>
+                        <span class="s1">&#39;geometry&#39;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">,</span>
+                            <span class="s1">&#39;coordinates&#39;</span><span class="p">:</span> <span class="n">multipolygon_coords</span>
+                        <span class="p">}</span>
+                    <span class="p">}</span>
+                
+                <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;FeatureCollection&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;features&#39;</span><span class="p">:</span> <span class="n">features</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="is_part_of_relation">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.is_part_of_relation">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_part_of_relation</span><span class="p">(</span><span class="n">way_id</span><span class="p">,</span> <span class="n">osm_data</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if a way is part of any relation in the OSM data.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        way_id (int): The ID of the way to check</span>
+<span class="sd">        osm_data (dict): OSM JSON data containing elements</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the way is part of a relation, False otherwise</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">osm_data</span><span class="p">[</span><span class="s1">&#39;elements&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;relation&#39;</span> <span class="ow">and</span> <span class="s1">&#39;members&#39;</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;members&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span> <span class="ow">and</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;ref&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">way_id</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="is_way_polygon">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.is_way_polygon">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_way_polygon</span><span class="p">(</span><span class="n">way</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine if a way should be treated as a polygon based on OSM tags and geometry.</span>
+<span class="sd">    </span>
+<span class="sd">    A way is considered a polygon if:</span>
+<span class="sd">    1. It forms a closed loop (first and last nodes are the same)</span>
+<span class="sd">    2. It has tags indicating it represents an area (building, landuse, etc.)</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        way (dict): OSM way element with nodes and tags</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the way should be treated as a polygon, False otherwise</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Check if the way is closed (first and last nodes are the same)</span>
+    <span class="k">if</span> <span class="s1">&#39;nodes&#39;</span> <span class="ow">in</span> <span class="n">way</span> <span class="ow">and</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;nodes&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;nodes&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="c1"># Check for tags that indicate this is an area</span>
+        <span class="k">if</span> <span class="s1">&#39;tags&#39;</span> <span class="ow">in</span> <span class="n">way</span><span class="p">:</span>
+            <span class="n">tags</span> <span class="o">=</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;tags&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="s1">&#39;building&#39;</span> <span class="ow">in</span> <span class="n">tags</span> <span class="ow">or</span> <span class="p">(</span><span class="s1">&#39;area&#39;</span> <span class="ow">in</span> <span class="n">tags</span> <span class="ow">and</span> <span class="n">tags</span><span class="p">[</span><span class="s1">&#39;area&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;yes&#39;</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">k</span> <span class="ow">in</span> <span class="n">tags</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;landuse&#39;</span><span class="p">,</span> <span class="s1">&#39;natural&#39;</span><span class="p">,</span> <span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;leisure&#39;</span><span class="p">,</span> <span class="s1">&#39;amenity&#39;</span><span class="p">]):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="get_way_coords">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.get_way_coords">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_way_coords</span><span class="p">(</span><span class="n">way</span><span class="p">,</span> <span class="n">nodes</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract coordinates for a way from its node references.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        way (dict): OSM way element containing node references</span>
+<span class="sd">        nodes (dict): Dictionary mapping node IDs to their coordinates</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of coordinate pairs [(lon, lat), ...] for the way,</span>
+<span class="sd">             or empty list if any nodes are missing</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="s1">&#39;nodes&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">way</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">coords</span>
+        
+    <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;nodes&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+            <span class="n">coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">node_id</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Missing node - skip this way</span>
+            <span class="k">return</span> <span class="p">[]</span>
+    
+    <span class="k">return</span> <span class="n">coords</span></div>
+
+
+<div class="viewcode-block" id="create_rings_from_ways">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.create_rings_from_ways">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_rings_from_ways</span><span class="p">(</span><span class="n">way_ids</span><span class="p">,</span> <span class="n">ways</span><span class="p">,</span> <span class="n">nodes</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create continuous rings by connecting ways that share nodes.</span>
+<span class="sd">    </span>
+<span class="sd">    This function handles complex relations by:</span>
+<span class="sd">    1. Connecting ways that share end nodes</span>
+<span class="sd">    2. Handling reversed way directions</span>
+<span class="sd">    3. Closing rings when possible</span>
+<span class="sd">    4. Converting node references to coordinates</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        way_ids (list): List of way IDs that make up the ring(s)</span>
+<span class="sd">        ways (dict): Dictionary mapping way IDs to way elements</span>
+<span class="sd">        nodes (dict): Dictionary mapping node IDs to coordinates</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of rings, where each ring is a list of coordinate pairs [(lon, lat), ...]</span>
+<span class="sd">              forming a closed polygon with at least 4 points</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">way_ids</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    
+    <span class="c1"># Extract node IDs for each way</span>
+    <span class="n">way_nodes</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">way_id</span> <span class="ow">in</span> <span class="n">way_ids</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">way_id</span> <span class="ow">in</span> <span class="n">ways</span> <span class="ow">and</span> <span class="s1">&#39;nodes&#39;</span> <span class="ow">in</span> <span class="n">ways</span><span class="p">[</span><span class="n">way_id</span><span class="p">]:</span>
+            <span class="n">way_nodes</span><span class="p">[</span><span class="n">way_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">ways</span><span class="p">[</span><span class="n">way_id</span><span class="p">][</span><span class="s1">&#39;nodes&#39;</span><span class="p">]</span>
+    
+    <span class="c1"># If we have no valid ways, return empty list</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">way_nodes</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    
+    <span class="c1"># Connect the ways to form rings</span>
+    <span class="n">rings</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">unused_ways</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">way_nodes</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    
+    <span class="k">while</span> <span class="n">unused_ways</span><span class="p">:</span>
+        <span class="c1"># Start a new ring with the first unused way</span>
+        <span class="n">current_way_id</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">unused_ways</span><span class="p">))</span>
+        <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">current_way_id</span><span class="p">)</span>
+        
+        <span class="c1"># Get the first and last node IDs of the current way</span>
+        <span class="n">current_nodes</span> <span class="o">=</span> <span class="n">way_nodes</span><span class="p">[</span><span class="n">current_way_id</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">current_nodes</span><span class="p">:</span>
+            <span class="k">continue</span>
+            
+        <span class="c1"># Start building a ring with the nodes of the first way</span>
+        <span class="n">ring_nodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">current_nodes</span><span class="p">)</span>
+        
+        <span class="c1"># Try to connect more ways to complete the ring</span>
+        <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">while</span> <span class="n">connected</span> <span class="ow">and</span> <span class="n">unused_ways</span><span class="p">:</span>
+            <span class="n">connected</span> <span class="o">=</span> <span class="kc">False</span>
+            
+            <span class="c1"># Get the first and last nodes of the current ring</span>
+            <span class="n">first_node</span> <span class="o">=</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">last_node</span> <span class="o">=</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            
+            <span class="c1"># Try to find a way that connects to either end of our ring</span>
+            <span class="k">for</span> <span class="n">way_id</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">unused_ways</span><span class="p">):</span>
+                <span class="n">nodes_in_way</span> <span class="o">=</span> <span class="n">way_nodes</span><span class="p">[</span><span class="n">way_id</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">nodes_in_way</span><span class="p">:</span>
+                    <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">way_id</span><span class="p">)</span>
+                    <span class="k">continue</span>
+                
+                <span class="c1"># Check if this way connects at the start of our ring</span>
+                <span class="k">if</span> <span class="n">nodes_in_way</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">first_node</span><span class="p">:</span>
+                    <span class="c1"># This way connects to the start of our ring (reversed)</span>
+                    <span class="n">ring_nodes</span> <span class="o">=</span> <span class="n">nodes_in_way</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">ring_nodes</span>
+                    <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">way_id</span><span class="p">)</span>
+                    <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+                <span class="k">elif</span> <span class="n">nodes_in_way</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">first_node</span><span class="p">:</span>
+                    <span class="c1"># This way connects to the start of our ring</span>
+                    <span class="n">ring_nodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">reversed</span><span class="p">(</span><span class="n">nodes_in_way</span><span class="p">))[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">ring_nodes</span>
+                    <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">way_id</span><span class="p">)</span>
+                    <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+                <span class="c1"># Check if this way connects at the end of our ring</span>
+                <span class="k">elif</span> <span class="n">nodes_in_way</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">last_node</span><span class="p">:</span>
+                    <span class="c1"># This way connects to the end of our ring</span>
+                    <span class="n">ring_nodes</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">nodes_in_way</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+                    <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">way_id</span><span class="p">)</span>
+                    <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+                <span class="k">elif</span> <span class="n">nodes_in_way</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">last_node</span><span class="p">:</span>
+                    <span class="c1"># This way connects to the end of our ring (reversed)</span>
+                    <span class="n">ring_nodes</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">reversed</span><span class="p">(</span><span class="n">nodes_in_way</span><span class="p">))[</span><span class="mi">1</span><span class="p">:])</span>
+                    <span class="n">unused_ways</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">way_id</span><span class="p">)</span>
+                    <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+        
+        <span class="c1"># Check if the ring is closed (first node equals last node)</span>
+        <span class="k">if</span> <span class="n">ring_nodes</span> <span class="ow">and</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring_nodes</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="c1"># Convert node IDs to coordinates</span>
+            <span class="n">ring_coords</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">ring_nodes</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+                    <span class="n">ring_coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">node_id</span><span class="p">])</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Missing node - skip this ring</span>
+                    <span class="n">ring_coords</span> <span class="o">=</span> <span class="p">[]</span>
+                    <span class="k">break</span>
+            
+            <span class="k">if</span> <span class="n">ring_coords</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring_coords</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="n">rings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ring_coords</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Try to close the ring if it&#39;s almost complete</span>
+            <span class="k">if</span> <span class="n">ring_nodes</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring_nodes</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">ring_nodes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+                <span class="n">ring_nodes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ring_nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                
+                <span class="c1"># Convert node IDs to coordinates</span>
+                <span class="n">ring_coords</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">ring_nodes</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+                        <span class="n">ring_coords</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">node_id</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Missing node - skip this ring</span>
+                        <span class="n">ring_coords</span> <span class="o">=</span> <span class="p">[]</span>
+                        <span class="k">break</span>
+                
+                <span class="k">if</span> <span class="n">ring_coords</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring_coords</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span><span class="p">:</span>
+                    <span class="n">rings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ring_coords</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">rings</span></div>
+
+
+<div class="viewcode-block" id="load_gdf_from_openstreetmap">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.load_gdf_from_openstreetmap">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_gdf_from_openstreetmap</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Download and process building footprint data from OpenStreetMap.</span>
+<span class="sd">    </span>
+<span class="sd">    This function:</span>
+<span class="sd">    1. Downloads building data using the Overpass API</span>
+<span class="sd">    2. Processes complex relations and their members</span>
+<span class="sd">    3. Extracts height information and other properties</span>
+<span class="sd">    4. Converts features to a GeoDataFrame with standardized properties</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        rectangle_vertices (list): List of (lon, lat) coordinates defining the bounding box</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        geopandas.GeoDataFrame: GeoDataFrame containing building footprints with properties:</span>
+<span class="sd">            - geometry: Polygon or MultiPolygon</span>
+<span class="sd">            - height: Building height in meters</span>
+<span class="sd">            - levels: Number of building levels</span>
+<span class="sd">            - min_height: Minimum height (for elevated structures)</span>
+<span class="sd">            - building_type: Type of building</span>
+<span class="sd">            - And other OSM tags as properties</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create a bounding box from the rectangle vertices</span>
+    <span class="n">min_lon</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">max_lon</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">min_lat</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">max_lat</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    
+    <span class="c1"># Enhanced Overpass API query with recursive member extraction</span>
+    <span class="n">overpass_url</span> <span class="o">=</span> <span class="s2">&quot;http://overpass-api.de/api/interpreter&quot;</span>
+    <span class="n">overpass_query</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    [out:json];</span>
+<span class="s2">    (</span>
+<span class="s2">      way[&quot;building&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s2">);</span>
+<span class="s2">      way[&quot;building:part&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s2">);</span>
+<span class="s2">      relation[&quot;building&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s2">);</span>
+<span class="s2">      way[&quot;tourism&quot;=&quot;artwork&quot;][&quot;area&quot;=&quot;yes&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s2">);</span>
+<span class="s2">      relation[&quot;tourism&quot;=&quot;artwork&quot;][&quot;area&quot;=&quot;yes&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s2">);</span>
+<span class="s2">    );</span>
+<span class="s2">    (._; &gt;;);  // Recursively get all nodes, ways, and relations within relations</span>
+<span class="s2">    out geom;</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+    
+    <span class="c1"># Send the request to the Overpass API</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">overpass_url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;data&#39;</span><span class="p">:</span> <span class="n">overpass_query</span><span class="p">})</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+    
+    <span class="c1"># Build a mapping from (type, id) to element</span>
+    <span class="n">id_map</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;elements&#39;</span><span class="p">]:</span>
+        <span class="n">id_map</span><span class="p">[(</span><span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">],</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">])]</span> <span class="o">=</span> <span class="n">element</span>
+    
+    <span class="c1"># Process the response and create features list</span>
+    <span class="n">features</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_coordinates</span><span class="p">(</span><span class="n">geometry</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper function to process and reverse coordinate pairs.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            geometry: List of coordinate pairs to process</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            list: Processed coordinate pairs with reversed order</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">coord</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">geometry</span><span class="p">]</span>  <span class="c1"># Keep original order since already (lon, lat)</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_height_from_properties</span><span class="p">(</span><span class="n">properties</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper function to extract height from properties.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            properties: Dictionary of feature properties</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            float: Extracted or calculated height value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:height&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">height</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">height</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="k">pass</span>
+        
+        <span class="k">return</span> <span class="mi">0</span>  <span class="c1"># Default height if no valid height found</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract_properties</span><span class="p">(</span><span class="n">element</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper function to extract and process properties from an element.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            element: OSM element containing tags and properties</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Processed properties dictionary</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">properties</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tags&#39;</span><span class="p">,</span> <span class="p">{})</span>
+        
+        <span class="c1"># Get height (now using the helper function)</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="n">get_height_from_properties</span><span class="p">(</span><span class="n">properties</span><span class="p">)</span>
+            
+        <span class="c1"># Get min_height and min_level</span>
+        <span class="n">min_height</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_height&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+        <span class="n">min_level</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:min_level&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_level&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">min_height</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">min_height</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="n">min_height</span> <span class="o">=</span> <span class="mi">0</span>
+        
+        <span class="n">levels</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:levels&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;levels&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">levels</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span> <span class="k">if</span> <span class="n">levels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="n">levels</span> <span class="o">=</span> <span class="kc">None</span>
+                
+        <span class="c1"># Extract additional properties, including those relevant to artworks</span>
+        <span class="n">extracted_props</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">],</span>
+            <span class="s2">&quot;height&quot;</span><span class="p">:</span> <span class="n">height</span><span class="p">,</span>
+            <span class="s2">&quot;min_height&quot;</span><span class="p">:</span> <span class="n">min_height</span><span class="p">,</span>
+            <span class="s2">&quot;confidence&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="s2">&quot;is_inner&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;levels&quot;</span><span class="p">:</span> <span class="n">levels</span><span class="p">,</span>
+            <span class="s2">&quot;height_source&quot;</span><span class="p">:</span> <span class="s2">&quot;explicit&quot;</span> <span class="k">if</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:height&#39;</span><span class="p">)</span> 
+                               <span class="k">else</span> <span class="s2">&quot;levels&quot;</span> <span class="k">if</span> <span class="n">levels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> 
+                               <span class="k">else</span> <span class="s2">&quot;default&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;min_level&quot;</span><span class="p">:</span> <span class="n">min_level</span> <span class="k">if</span> <span class="n">min_level</span> <span class="o">!=</span> <span class="s1">&#39;0&#39;</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;building&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building&#39;</span><span class="p">,</span> <span class="s1">&#39;no&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;building_part&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:part&#39;</span><span class="p">,</span> <span class="s1">&#39;no&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;building_material&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:material&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;building_colour&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:colour&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;roof_shape&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;roof:shape&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;roof_material&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;roof:material&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;roof_angle&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;roof:angle&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;roof_colour&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;roof:colour&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;roof_direction&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;roof:direction&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;architect&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;architect&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;start_date&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;start_date&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;name:en&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name:en&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;name:es&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name:es&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;email&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;email&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;phone&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;phone&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;wheelchair&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;wheelchair&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;tourism&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tourism&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;artwork_type&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;artwork_type&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;area&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;area&#39;</span><span class="p">),</span>
+            <span class="s2">&quot;layer&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;layer&#39;</span><span class="p">)</span>
+        <span class="p">}</span>
+        
+        <span class="c1"># Remove None values to keep the properties clean</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">extracted_props</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">}</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_polygon_feature</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">is_inner</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Helper function to create a polygon feature.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            coords: List of coordinate pairs defining the polygon</span>
+<span class="sd">            properties: Dictionary of feature properties</span>
+<span class="sd">            is_inner: Boolean indicating if this is an inner ring</span>
+<span class="sd">            </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: GeoJSON Feature object or None if invalid</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="n">properties</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">properties</span><span class="p">[</span><span class="s2">&quot;is_inner&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_inner</span>
+            <span class="k">return</span> <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;Feature&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="p">,</span>
+                <span class="s2">&quot;geometry&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;Polygon&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;coordinates&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">process_coordinates</span><span class="p">(</span><span class="n">coords</span><span class="p">)]</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    
+    <span class="c1"># Process each element, handling relations and their way members</span>
+    <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;elements&#39;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">element</span><span class="p">:</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[(</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]]</span>
+                <span class="n">properties</span> <span class="o">=</span> <span class="n">extract_properties</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+                <span class="n">feature</span> <span class="o">=</span> <span class="n">create_polygon_feature</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">properties</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">feature</span><span class="p">:</span>
+                    <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+                    
+        <span class="k">elif</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;relation&#39;</span><span class="p">:</span>
+            <span class="n">properties</span> <span class="o">=</span> <span class="n">extract_properties</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+            
+            <span class="c1"># Process each member of the relation</span>
+            <span class="k">for</span> <span class="n">member</span> <span class="ow">in</span> <span class="n">element</span><span class="p">[</span><span class="s1">&#39;members&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;way&#39;</span><span class="p">:</span>
+                    <span class="c1"># Look up the way in id_map</span>
+                    <span class="n">way</span> <span class="o">=</span> <span class="n">id_map</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="s1">&#39;way&#39;</span><span class="p">,</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;ref&#39;</span><span class="p">]))</span>
+                    <span class="k">if</span> <span class="n">way</span> <span class="ow">and</span> <span class="s1">&#39;geometry&#39;</span> <span class="ow">in</span> <span class="n">way</span><span class="p">:</span>
+                        <span class="n">coords</span> <span class="o">=</span> <span class="p">[(</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;lon&#39;</span><span class="p">],</span> <span class="n">node</span><span class="p">[</span><span class="s1">&#39;lat&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]]</span>
+                        <span class="n">is_inner</span> <span class="o">=</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;inner&#39;</span>
+                        <span class="n">member_properties</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                        <span class="n">member_properties</span><span class="p">[</span><span class="s1">&#39;member_id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">way</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>  <span class="c1"># Include id of the way</span>
+                        <span class="n">feature</span> <span class="o">=</span> <span class="n">create_polygon_feature</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">member_properties</span><span class="p">,</span> <span class="n">is_inner</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">feature</span><span class="p">:</span>
+                            <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;role&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">member</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span>
+                            <span class="n">features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">)</span>
+    
+    <span class="c1"># Convert features list to GeoDataFrame</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">features</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">()</span>
+        
+    <span class="n">geometries</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">properties_list</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">features</span><span class="p">:</span>
+        <span class="n">geometries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">shape</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]))</span>
+        <span class="n">properties_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">])</span>
+        
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">properties_list</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">geometries</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+<div class="viewcode-block" id="convert_feature">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.convert_feature">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">convert_feature</span><span class="p">(</span><span class="n">feature</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a GeoJSON feature to a standardized format with height information.</span>
+<span class="sd">    </span>
+<span class="sd">    This function:</span>
+<span class="sd">    1. Handles both Polygon and MultiPolygon geometries</span>
+<span class="sd">    2. Extracts and validates height information</span>
+<span class="sd">    3. Ensures coordinate order consistency (lon, lat)</span>
+<span class="sd">    4. Adds confidence scores for height estimates</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        feature (dict): Input GeoJSON feature with geometry and properties</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: Converted feature with:</span>
+<span class="sd">            - Standardized geometry (always Polygon)</span>
+<span class="sd">            - Height information in properties</span>
+<span class="sd">            - Confidence score for height values</span>
+<span class="sd">            Or None if the feature is invalid or not a polygon</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">new_feature</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Feature&#39;</span>
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Convert geometry</span>
+    <span class="n">geometry</span> <span class="o">=</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span>
+    <span class="n">geom_type</span> <span class="o">=</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Convert MultiPolygon to Polygon if necessary</span>
+    <span class="k">if</span> <span class="n">geom_type</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+        <span class="c1"># Flatten MultiPolygon to Polygon by taking the first polygon</span>
+        <span class="c1"># Alternatively, you can merge all polygons into one if needed</span>
+        <span class="n">coordinates</span> <span class="o">=</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># Take the first polygon</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coordinates</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">elif</span> <span class="n">geom_type</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+        <span class="n">coordinates</span> <span class="o">=</span> <span class="n">geometry</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">coordinates</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Skip features that are not polygons</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># Reformat coordinates: convert lists to tuples</span>
+    <span class="n">new_coordinates</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">ring</span> <span class="ow">in</span> <span class="n">coordinates</span><span class="p">:</span>
+        <span class="n">new_ring</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">ring</span><span class="p">:</span>
+            <span class="c1"># Swap the order if needed (assuming original is [lat, lon])</span>
+            <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span> <span class="o">=</span> <span class="n">coord</span>
+            <span class="n">new_ring</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">))</span>  <span class="c1"># Changed to (lon, lat)</span>
+        <span class="n">new_coordinates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_ring</span><span class="p">)</span>
+
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Polygon&#39;</span>
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">][</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_coordinates</span>
+
+    <span class="c1"># Process properties</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="n">feature</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;properties&#39;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;height&#39;</span><span class="p">)</span>
+
+    <span class="c1"># If height is not available, estimate it based on building levels</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">height</span><span class="p">:</span>
+        <span class="n">levels</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;building:levels&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">levels</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span><span class="o">==</span><span class="nb">str</span><span class="p">:</span>
+                <span class="c1"># If levels is a string (invalid format), use default height</span>
+                <span class="n">height</span> <span class="o">=</span> <span class="mf">10.0</span>  <span class="c1"># Default height in meters</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Calculate height based on number of levels</span>
+                <span class="n">height</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span> <span class="o">*</span> <span class="mf">3.0</span>  <span class="c1"># Assume 3m per level</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No level information available, use default height</span>
+            <span class="n">height</span> <span class="o">=</span> <span class="mf">10.0</span>  <span class="c1"># Default height in meters</span>
+
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;height&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">height</span><span class="p">)</span>
+    <span class="n">new_feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">][</span><span class="s1">&#39;confidence&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>  <span class="c1"># Confidence score for height estimate</span>
+
+    <span class="k">return</span> <span class="n">new_feature</span></div>
+
+
+
+<span class="c1"># Classification mapping defines the land cover/use classes and their associated tags</span>
+<span class="c1"># The numbers (0-13) represent class codes used in the system</span>
+<span class="n">classification_mapping</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="mi">11</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Road&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;highway&#39;</span><span class="p">,</span> <span class="s1">&#39;road&#39;</span><span class="p">,</span> <span class="s1">&#39;path&#39;</span><span class="p">,</span> <span class="s1">&#39;track&#39;</span><span class="p">,</span> <span class="s1">&#39;street&#39;</span><span class="p">]},</span>
+    <span class="mi">12</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Building&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;building&#39;</span><span class="p">,</span> <span class="s1">&#39;house&#39;</span><span class="p">,</span> <span class="s1">&#39;apartment&#39;</span><span class="p">,</span> <span class="s1">&#39;commercial_building&#39;</span><span class="p">,</span> <span class="s1">&#39;industrial_building&#39;</span><span class="p">]},</span>
+    <span class="mi">10</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Developed space&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;industrial&#39;</span><span class="p">,</span> <span class="s1">&#39;retail&#39;</span><span class="p">,</span> <span class="s1">&#39;commercial&#39;</span><span class="p">,</span> <span class="s1">&#39;residential&#39;</span><span class="p">,</span> <span class="s1">&#39;construction&#39;</span><span class="p">,</span> <span class="s1">&#39;railway&#39;</span><span class="p">,</span> <span class="s1">&#39;parking&#39;</span><span class="p">,</span> <span class="s1">&#39;islet&#39;</span><span class="p">,</span> <span class="s1">&#39;island&#39;</span><span class="p">]},</span>
+    <span class="mi">0</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Bareland&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;quarry&#39;</span><span class="p">,</span> <span class="s1">&#39;brownfield&#39;</span><span class="p">,</span> <span class="s1">&#39;bare_rock&#39;</span><span class="p">,</span> <span class="s1">&#39;scree&#39;</span><span class="p">,</span> <span class="s1">&#39;shingle&#39;</span><span class="p">,</span> <span class="s1">&#39;rock&#39;</span><span class="p">,</span> <span class="s1">&#39;sand&#39;</span><span class="p">,</span> <span class="s1">&#39;desert&#39;</span><span class="p">,</span> <span class="s1">&#39;landfill&#39;</span><span class="p">,</span> <span class="s1">&#39;beach&#39;</span><span class="p">]},</span>
+    <span class="mi">1</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Rangeland&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;grass&#39;</span><span class="p">,</span> <span class="s1">&#39;meadow&#39;</span><span class="p">,</span> <span class="s1">&#39;grassland&#39;</span><span class="p">,</span> <span class="s1">&#39;heath&#39;</span><span class="p">,</span> <span class="s1">&#39;garden&#39;</span><span class="p">,</span> <span class="s1">&#39;park&#39;</span><span class="p">]},</span>
+    <span class="mi">2</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Shrub&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;scrub&#39;</span><span class="p">,</span> <span class="s1">&#39;shrubland&#39;</span><span class="p">,</span> <span class="s1">&#39;bush&#39;</span><span class="p">,</span> <span class="s1">&#39;thicket&#39;</span><span class="p">]},</span>
+    <span class="mi">3</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Agriculture land&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;farmland&#39;</span><span class="p">,</span> <span class="s1">&#39;orchard&#39;</span><span class="p">,</span> <span class="s1">&#39;vineyard&#39;</span><span class="p">,</span> <span class="s1">&#39;plant_nursery&#39;</span><span class="p">,</span> <span class="s1">&#39;greenhouse_horticulture&#39;</span><span class="p">,</span> <span class="s1">&#39;flowerbed&#39;</span><span class="p">,</span> <span class="s1">&#39;allotments&#39;</span><span class="p">,</span> <span class="s1">&#39;cropland&#39;</span><span class="p">]},</span>
+    <span class="mi">4</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Tree&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;wood&#39;</span><span class="p">,</span> <span class="s1">&#39;forest&#39;</span><span class="p">,</span> <span class="s1">&#39;tree&#39;</span><span class="p">,</span> <span class="s1">&#39;tree_row&#39;</span><span class="p">,</span> <span class="s1">&#39;tree_canopy&#39;</span><span class="p">]},</span>
+    <span class="mi">5</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Moss and lichen&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;moss&#39;</span><span class="p">,</span> <span class="s1">&#39;lichen&#39;</span><span class="p">,</span> <span class="s1">&#39;tundra_vegetation&#39;</span><span class="p">]},</span>
+    <span class="mi">6</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Wet land&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;wetland&#39;</span><span class="p">,</span> <span class="s1">&#39;marsh&#39;</span><span class="p">,</span> <span class="s1">&#39;swamp&#39;</span><span class="p">,</span> <span class="s1">&#39;bog&#39;</span><span class="p">,</span> <span class="s1">&#39;fen&#39;</span><span class="p">,</span> <span class="s1">&#39;flooded_vegetation&#39;</span><span class="p">]},</span>
+    <span class="mi">7</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Mangrove&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;mangrove&#39;</span><span class="p">,</span> <span class="s1">&#39;mangrove_forest&#39;</span><span class="p">,</span> <span class="s1">&#39;mangrove_swamp&#39;</span><span class="p">]},</span>
+    <span class="mi">8</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Water&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;waterway&#39;</span><span class="p">,</span> <span class="s1">&#39;reservoir&#39;</span><span class="p">,</span> <span class="s1">&#39;basin&#39;</span><span class="p">,</span> <span class="s1">&#39;bay&#39;</span><span class="p">,</span> <span class="s1">&#39;ocean&#39;</span><span class="p">,</span> <span class="s1">&#39;sea&#39;</span><span class="p">,</span> <span class="s1">&#39;river&#39;</span><span class="p">,</span> <span class="s1">&#39;lake&#39;</span><span class="p">]},</span>
+    <span class="mi">9</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Snow and ice&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;glacier&#39;</span><span class="p">,</span> <span class="s1">&#39;snow&#39;</span><span class="p">,</span> <span class="s1">&#39;ice&#39;</span><span class="p">,</span> <span class="s1">&#39;snowfield&#39;</span><span class="p">,</span> <span class="s1">&#39;ice_shelf&#39;</span><span class="p">]},</span>
+    <span class="mi">13</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;No Data&#39;</span><span class="p">,</span> <span class="s1">&#39;tags&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;unknown&#39;</span><span class="p">,</span> <span class="s1">&#39;no_data&#39;</span><span class="p">,</span> <span class="s1">&#39;clouds&#39;</span><span class="p">,</span> <span class="s1">&#39;undefined&#39;</span><span class="p">]}</span>
+<span class="p">}</span>
+
+<span class="c1"># Maps classification tags to specific OSM key-value pairs</span>
+<span class="c1"># &#39;*&#39; means match any value for that key</span>
+<span class="n">tag_osm_key_value_mapping</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># Road</span>
+    <span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;road&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;path&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="s1">&#39;path&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;track&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="s1">&#39;track&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;street&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;highway&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Building</span>
+    <span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;house&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="s1">&#39;house&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;apartment&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="s1">&#39;apartments&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;commercial_building&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="s1">&#39;commercial&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;industrial_building&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;building&#39;</span><span class="p">:</span> <span class="s1">&#39;industrial&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Developed space</span>
+    <span class="s1">&#39;industrial&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;industrial&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;retail&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;retail&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;commercial&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;commercial&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;residential&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;residential&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;construction&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;construction&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;railway&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;railway&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;parking&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;amenity&#39;</span><span class="p">:</span> <span class="s1">&#39;parking&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;islet&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;place&#39;</span><span class="p">:</span> <span class="s1">&#39;islet&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;island&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;place&#39;</span><span class="p">:</span> <span class="s1">&#39;island&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Bareland</span>
+    <span class="s1">&#39;quarry&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;quarry&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;brownfield&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;brownfield&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;bare_rock&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;bare_rock&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;scree&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;scree&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;shingle&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;shingle&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;rock&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;rock&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;sand&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;sand&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;desert&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;desert&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;landfill&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;landfill&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;beach&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;beach&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Rangeland</span>
+    <span class="s1">&#39;grass&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;grass&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;meadow&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;meadow&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;grassland&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;grassland&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;heath&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;heath&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;garden&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;leisure&#39;</span><span class="p">:</span> <span class="s1">&#39;garden&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;park&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;leisure&#39;</span><span class="p">:</span> <span class="s1">&#39;park&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Shrub</span>
+    <span class="s1">&#39;scrub&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;scrub&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;shrubland&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;scrub&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;bush&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;scrub&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;thicket&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;scrub&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Agriculture land</span>
+    <span class="s1">&#39;farmland&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;farmland&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;orchard&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;orchard&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;vineyard&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;vineyard&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;plant_nursery&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;plant_nursery&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;greenhouse_horticulture&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;greenhouse_horticulture&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;flowerbed&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;flowerbed&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;allotments&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;allotments&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;cropland&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;farmland&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Tree</span>
+    <span class="s1">&#39;wood&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wood&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;forest&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;forest&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;tree&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;tree&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;tree_row&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;tree_row&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;tree_canopy&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;tree_canopy&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Moss and lichen</span>
+    <span class="s1">&#39;moss&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;fell&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;lichen&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;fell&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;tundra_vegetation&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;fell&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Wet land</span>
+    <span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wetland&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;marsh&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;marsh&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;swamp&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;swamp&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;bog&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;bog&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;fen&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;fen&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;flooded_vegetation&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wetland&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Mangrove</span>
+    <span class="s1">&#39;mangrove&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wetland&#39;</span><span class="p">,</span> <span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;mangrove&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;mangrove_forest&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wetland&#39;</span><span class="p">,</span> <span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;mangrove&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;mangrove_swamp&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;wetland&#39;</span><span class="p">,</span> <span class="s1">&#39;wetland&#39;</span><span class="p">:</span> <span class="s1">&#39;mangrove&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Water</span>
+    <span class="s1">&#39;water&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;water&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;waterway&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;waterway&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;reservoir&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;reservoir&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;basin&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;landuse&#39;</span><span class="p">:</span> <span class="s1">&#39;basin&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;bay&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;bay&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;ocean&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;water&#39;</span><span class="p">:</span> <span class="s1">&#39;ocean&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;sea&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;water&#39;</span><span class="p">:</span> <span class="s1">&#39;sea&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;river&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;waterway&#39;</span><span class="p">:</span> <span class="s1">&#39;river&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;lake&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;water&#39;</span><span class="p">,</span> <span class="s1">&#39;water&#39;</span><span class="p">:</span> <span class="s1">&#39;lake&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># Snow and ice</span>
+    <span class="s1">&#39;glacier&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;glacier&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;snow&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;glacier&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;ice&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;glacier&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;snowfield&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;glacier&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;ice_shelf&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;glacier&#39;</span><span class="p">},</span>
+    
+    <span class="c1"># No Data</span>
+    <span class="s1">&#39;unknown&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;FIXME&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;no_data&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;FIXME&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;clouds&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;natural&#39;</span><span class="p">:</span> <span class="s1">&#39;cloud&#39;</span><span class="p">},</span>
+    <span class="s1">&#39;undefined&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;FIXME&#39;</span><span class="p">:</span> <span class="s1">&#39;*&#39;</span><span class="p">}</span>
+<span class="p">}</span>
+
+<div class="viewcode-block" id="get_classification">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.get_classification">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_classification</span><span class="p">(</span><span class="n">tags</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine the land cover/use classification based on OSM tags.</span>
+<span class="sd">    </span>
+<span class="sd">    This function maps OSM tags to standardized land cover classes using:</span>
+<span class="sd">    1. A hierarchical classification system (codes 0-13)</span>
+<span class="sd">    2. Tag matching patterns for different feature types</span>
+<span class="sd">    3. Special cases for roads, water bodies, etc.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        tags (dict): Dictionary of OSM tags (key-value pairs)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: (classification_code, classification_name) where:</span>
+<span class="sd">            - classification_code (int): Numeric code (0-13) for the land cover class</span>
+<span class="sd">            - classification_name (str): Human-readable name of the class</span>
+<span class="sd">            Or (None, None) if no matching classification is found</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Iterate through each classification code and its associated info</span>
+    <span class="k">for</span> <span class="n">code</span><span class="p">,</span> <span class="n">info</span> <span class="ow">in</span> <span class="n">classification_mapping</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="c1"># Check each tag associated with this classification</span>
+        <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;tags&#39;</span><span class="p">]:</span>
+            <span class="n">osm_mappings</span> <span class="o">=</span> <span class="n">tag_osm_key_value_mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">osm_mappings</span><span class="p">:</span>
+                <span class="c1"># Check if the feature&#39;s tags match any of the OSM key-value pairs</span>
+                <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">osm_mappings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">tags</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">value</span> <span class="o">==</span> <span class="s1">&#39;*&#39;</span> <span class="ow">or</span> <span class="n">tags</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">==</span> <span class="n">value</span><span class="p">:</span>
+                            <span class="k">return</span> <span class="n">code</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
+            <span class="c1"># Special case for islets and islands</span>
+            <span class="k">if</span> <span class="n">tag</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;islet&#39;</span><span class="p">,</span> <span class="s1">&#39;island&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">tags</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;place&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="n">tag</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">code</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
+    <span class="c1"># Special case for roads mapped as areas</span>
+    <span class="k">if</span> <span class="s1">&#39;area:highway&#39;</span> <span class="ow">in</span> <span class="n">tags</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">11</span><span class="p">,</span> <span class="s1">&#39;Road&#39;</span>
+    <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="swap_coordinates">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.swap_coordinates">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">swap_coordinates</span><span class="p">(</span><span class="n">geom_mapping</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Swap coordinate order in a GeoJSON geometry object.</span>
+<span class="sd">    </span>
+<span class="sd">    This function:</span>
+<span class="sd">    1. Handles nested coordinate structures (Polygons, MultiPolygons)</span>
+<span class="sd">    2. Preserves the original coordinate order if already correct</span>
+<span class="sd">    3. Works recursively for complex geometries</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        geom_mapping (dict): GeoJSON geometry object with coordinates</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: Geometry with coordinates in the correct order (lon, lat)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">geom_mapping</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">swap_coords</span><span class="p">(</span><span class="n">coord_list</span><span class="p">):</span>
+        <span class="c1"># Recursively swap coordinates for nested lists</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coord_list</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">swap_coords</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">coord_list</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Keep original order since already (lon, lat)</span>
+            <span class="k">return</span> <span class="n">coord_list</span>
+
+    <span class="n">geom_mapping</span><span class="p">[</span><span class="s1">&#39;coordinates&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">swap_coords</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">geom_mapping</span></div>
+
+
+<div class="viewcode-block" id="load_land_cover_gdf_from_osm">
+<a class="viewcode-back" href="../../../autoapi/voxcity/downloader/osm/index.html#voxcity.downloader.osm.load_land_cover_gdf_from_osm">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_land_cover_gdf_from_osm</span><span class="p">(</span><span class="n">rectangle_vertices_ori</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and classify land cover data from OpenStreetMap.</span>
+<span class="sd">    </span>
+<span class="sd">    This function:</span>
+<span class="sd">    1. Downloads land cover features using the Overpass API</span>
+<span class="sd">    2. Classifies features based on OSM tags</span>
+<span class="sd">    3. Handles special cases like roads with width information</span>
+<span class="sd">    4. Projects geometries for accurate buffering</span>
+<span class="sd">    5. Creates a standardized GeoDataFrame with classifications</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        rectangle_vertices_ori (list): List of (lon, lat) coordinates defining the area</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        geopandas.GeoDataFrame: GeoDataFrame with:</span>
+<span class="sd">            - geometry: Polygon or MultiPolygon features</span>
+<span class="sd">            - class: Land cover classification name</span>
+<span class="sd">            - Additional properties from OSM tags</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Close the rectangle polygon by adding first vertex at the end</span>
+    <span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="n">rectangle_vertices_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">rectangle_vertices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rectangle_vertices_ori</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="c1"># Instead of using poly:&quot;lat lon lat lon...&quot;, use area coordinates</span>
+    <span class="n">min_lat</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">lat</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">max_lat</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">lat</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">min_lon</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">lon</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">max_lon</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">lon</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Initialize dictionary to store OSM keys and their allowed values</span>
+    <span class="n">osm_keys_values</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+    <span class="c1"># Build mapping of OSM keys to their possible values from classification mapping</span>
+    <span class="k">for</span> <span class="n">info</span> <span class="ow">in</span> <span class="n">classification_mapping</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;tags&#39;</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">tags</span><span class="p">:</span>
+            <span class="n">osm_mappings</span> <span class="o">=</span> <span class="n">tag_osm_key_value_mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">osm_mappings</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">osm_mappings</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">value</span> <span class="o">==</span> <span class="s1">&#39;*&#39;</span><span class="p">:</span>
+                        <span class="n">osm_keys_values</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;*&#39;</span><span class="p">]</span>  <span class="c1"># Match all values</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">osm_keys_values</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">!=</span> <span class="p">[</span><span class="s1">&#39;*&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">value</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">osm_keys_values</span><span class="p">[</span><span class="n">key</span><span class="p">]:</span>
+                            <span class="n">osm_keys_values</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+    <span class="c1"># Build Overpass API query parts for each key-value pair</span>
+    <span class="n">query_parts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">values</span> <span class="ow">in</span> <span class="n">osm_keys_values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">values</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">values</span> <span class="o">==</span> <span class="p">[</span><span class="s1">&#39;*&#39;</span><span class="p">]:</span>
+                <span class="c1"># Query for any value of this key using bounding box</span>
+                <span class="n">query_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;way[&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s1">);&#39;</span><span class="p">)</span>
+                <span class="n">query_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;relation[&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s1">);&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Remove duplicate values</span>
+                <span class="n">values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">values</span><span class="p">))</span>
+                <span class="c1"># Build regex pattern for specific values</span>
+                <span class="n">values_regex</span> <span class="o">=</span> <span class="s1">&#39;|&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+                <span class="n">query_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;way[&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&quot;~&quot;^</span><span class="si">{</span><span class="n">values_regex</span><span class="si">}</span><span class="s1">$&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s1">);&#39;</span><span class="p">)</span>
+                <span class="n">query_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;relation[&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1">&quot;~&quot;^</span><span class="si">{</span><span class="n">values_regex</span><span class="si">}</span><span class="s1">$&quot;](</span><span class="si">{</span><span class="n">min_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">min_lon</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lat</span><span class="si">}</span><span class="s1">,</span><span class="si">{</span><span class="n">max_lon</span><span class="si">}</span><span class="s1">);&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Combine query parts into complete Overpass query</span>
+    <span class="n">query_body</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">  &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">query_parts</span><span class="p">)</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;[out:json];</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;(</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">query_body</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;);</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;out body;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;&gt;;</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;out skel qt;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Overpass API endpoint</span>
+    <span class="n">overpass_url</span> <span class="o">=</span> <span class="s2">&quot;http://overpass-api.de/api/interpreter&quot;</span>
+
+    <span class="c1"># Fetch data from Overpass API</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Fetching data from Overpass API...&quot;</span><span class="p">)</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">overpass_url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;data&#39;</span><span class="p">:</span> <span class="n">query</span><span class="p">})</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+
+    <span class="c1"># Convert OSM data to GeoJSON format using our custom converter instead of json2geojson</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Converting data to GeoJSON format...&quot;</span><span class="p">)</span>
+    <span class="n">geojson_data</span> <span class="o">=</span> <span class="n">osm_json_to_geojson</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+    <span class="c1"># Create shapely polygon from rectangle vertices (in lon,lat order)</span>
+    <span class="n">rectangle_polygon</span> <span class="o">=</span> <span class="n">Polygon</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Calculate center point for projection</span>
+    <span class="n">center_lat</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">lat</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+    <span class="n">center_lon</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">lon</span> <span class="k">for</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Set up coordinate reference systems for projection</span>
+    <span class="n">wgs84</span> <span class="o">=</span> <span class="n">pyproj</span><span class="o">.</span><span class="n">CRS</span><span class="p">(</span><span class="s1">&#39;EPSG:4326&#39;</span><span class="p">)</span>  <span class="c1"># Standard lat/lon</span>
+    <span class="c1"># Albers Equal Area projection centered on area of interest</span>
+    <span class="n">aea</span> <span class="o">=</span> <span class="n">pyproj</span><span class="o">.</span><span class="n">CRS</span><span class="p">(</span><span class="n">proj</span><span class="o">=</span><span class="s1">&#39;aea&#39;</span><span class="p">,</span> <span class="n">lat_1</span><span class="o">=</span><span class="n">rectangle_polygon</span><span class="o">.</span><span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">lat_2</span><span class="o">=</span><span class="n">rectangle_polygon</span><span class="o">.</span><span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">lat_0</span><span class="o">=</span><span class="n">center_lat</span><span class="p">,</span> <span class="n">lon_0</span><span class="o">=</span><span class="n">center_lon</span><span class="p">)</span>
+
+    <span class="c1"># Create transformers for projecting coordinates</span>
+    <span class="n">project</span> <span class="o">=</span> <span class="n">pyproj</span><span class="o">.</span><span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="n">wgs84</span><span class="p">,</span> <span class="n">aea</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">transform</span>
+    <span class="n">project_back</span> <span class="o">=</span> <span class="n">pyproj</span><span class="o">.</span><span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="n">aea</span><span class="p">,</span> <span class="n">wgs84</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">transform</span>
+
+    <span class="c1"># Lists to store geometries and properties for GeoDataFrame</span>
+    <span class="n">geometries</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">geojson_data</span><span class="p">[</span><span class="s1">&#39;features&#39;</span><span class="p">]:</span>
+        <span class="c1"># Convert feature geometry to shapely object</span>
+        <span class="n">geom</span> <span class="o">=</span> <span class="n">shape</span><span class="p">(</span><span class="n">feature</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">geom</span><span class="o">.</span><span class="n">is_valid</span> <span class="ow">and</span> <span class="n">geom</span><span class="o">.</span><span class="n">intersects</span><span class="p">(</span><span class="n">rectangle_polygon</span><span class="p">)):</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Get classification for feature</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="n">feature</span><span class="p">[</span><span class="s1">&#39;properties&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tags&#39;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">classification_code</span><span class="p">,</span> <span class="n">classification_name</span> <span class="o">=</span> <span class="n">get_classification</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">classification_code</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Special handling for roads</span>
+        <span class="k">if</span> <span class="n">classification_code</span> <span class="o">==</span> <span class="mi">11</span><span class="p">:</span>
+            <span class="n">highway_value</span> <span class="o">=</span> <span class="n">tags</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;highway&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="c1"># Skip minor paths and walkways</span>
+            <span class="k">if</span> <span class="n">highway_value</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;footway&#39;</span><span class="p">,</span> <span class="s1">&#39;path&#39;</span><span class="p">,</span> <span class="s1">&#39;pedestrian&#39;</span><span class="p">,</span> <span class="s1">&#39;steps&#39;</span><span class="p">,</span> <span class="s1">&#39;cycleway&#39;</span><span class="p">,</span> <span class="s1">&#39;bridleway&#39;</span><span class="p">]:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Determine road width for buffering</span>
+            <span class="n">width_value</span> <span class="o">=</span> <span class="n">tags</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;width&#39;</span><span class="p">)</span>
+            <span class="n">lanes_value</span> <span class="o">=</span> <span class="n">tags</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;lanes&#39;</span><span class="p">)</span>
+            <span class="n">buffer_distance</span> <span class="o">=</span> <span class="kc">None</span>
+
+            <span class="c1"># Calculate buffer distance based on width or number of lanes</span>
+            <span class="k">if</span> <span class="n">width_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">width_meters</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">width_value</span><span class="p">)</span>
+                    <span class="n">buffer_distance</span> <span class="o">=</span> <span class="n">width_meters</span> <span class="o">/</span> <span class="mi">2</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+            <span class="k">elif</span> <span class="n">lanes_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">num_lanes</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lanes_value</span><span class="p">)</span>
+                    <span class="n">width_meters</span> <span class="o">=</span> <span class="n">num_lanes</span> <span class="o">*</span> <span class="mf">3.0</span>  <span class="c1"># 3m per lane</span>
+                    <span class="n">buffer_distance</span> <span class="o">=</span> <span class="n">width_meters</span> <span class="o">/</span> <span class="mi">2</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Default road width</span>
+                <span class="n">buffer_distance</span> <span class="o">=</span> <span class="mf">2.5</span>  <span class="c1"># 5m total width</span>
+
+            <span class="k">if</span> <span class="n">buffer_distance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Buffer line features to create polygons</span>
+            <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">geom_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;LineString&#39;</span><span class="p">,</span> <span class="s1">&#39;MultiLineString&#39;</span><span class="p">]:</span>
+                <span class="c1"># Project to planar CRS, buffer, and project back</span>
+                <span class="n">geom_proj</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">project</span><span class="p">,</span> <span class="n">geom</span><span class="p">)</span>
+                <span class="n">buffered_geom_proj</span> <span class="o">=</span> <span class="n">geom_proj</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">buffer_distance</span><span class="p">)</span>
+                <span class="n">buffered_geom</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">project_back</span><span class="p">,</span> <span class="n">buffered_geom_proj</span><span class="p">)</span>
+                <span class="c1"># Clip to rectangle</span>
+                <span class="n">geom</span> <span class="o">=</span> <span class="n">buffered_geom</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">rectangle_polygon</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+        <span class="c1"># Skip empty geometries</span>
+        <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">is_empty</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Add geometries and properties</span>
+        <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+            <span class="n">geometries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
+            <span class="n">properties</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">&#39;class&#39;</span><span class="p">:</span> <span class="n">classification_name</span><span class="p">})</span>
+        <span class="k">elif</span> <span class="n">geom</span><span class="o">.</span><span class="n">geom_type</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">poly</span> <span class="ow">in</span> <span class="n">geom</span><span class="o">.</span><span class="n">geoms</span><span class="p">:</span>
+                <span class="n">geometries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">poly</span><span class="p">)</span>
+                <span class="n">properties</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">&#39;class&#39;</span><span class="p">:</span> <span class="n">classification_name</span><span class="p">})</span>
+
+    <span class="c1"># Create GeoDataFrame</span>
+    <span class="n">gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">properties</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="n">geometries</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:4326&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gdf</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

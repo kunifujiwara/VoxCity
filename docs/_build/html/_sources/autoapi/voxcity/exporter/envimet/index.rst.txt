@@ -1,0 +1,333 @@
+voxcity.exporter.envimet
+========================
+
+.. py:module:: voxcity.exporter.envimet
+
+.. autoapi-nested-parse::
+
+   ENVI-met model file exporter module.
+
+   This module provides functionality to export voxel city data to ENVI-met INX format.
+   ENVI-met is a three-dimensional microclimate model designed to simulate surface-plant-air
+   interactions in urban environments.
+
+   Key Features:
+       - Converts voxel grids to ENVI-met compatible format
+       - Handles building heights, vegetation, materials, and terrain
+       - Supports telescoping grid for vertical mesh refinement
+       - Generates complete INX files with all required parameters
+       - Creates plant database (EDB) files for 3D vegetation
+
+   Main Functions:
+       - prepare_grids: Processes input grids for ENVI-met format
+       - create_xml_content: Generates INX file XML content
+       - export_inx: Main function to export model to INX format
+       - generate_edb_file: Creates plant database file
+       - array_to_string: Helper functions for grid formatting
+
+   Dependencies:
+       - numpy: For array operations
+       - datetime: For timestamp generation
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.exporter.envimet.array_to_string
+   voxcity.exporter.envimet.array_to_string_with_value
+   voxcity.exporter.envimet.array_to_string_int
+   voxcity.exporter.envimet.prepare_grids
+   voxcity.exporter.envimet.create_xml_content
+   voxcity.exporter.envimet.save_file
+   voxcity.exporter.envimet.export_inx
+   voxcity.exporter.envimet.generate_edb_file
+   voxcity.exporter.envimet.generate_lad_profile
+   voxcity.exporter.envimet.find_min_n
+
+
+Module Contents
+---------------
+
+.. py:function:: array_to_string(arr)
+
+   Convert a 2D numpy array to a string representation with comma-separated values.
+
+   This function formats array values for ENVI-met INX files, where each row must be:
+   1. Indented by 5 spaces
+   2. Values separated by commas
+   3. No trailing comma
+
+   :param arr: 2D numpy array to convert
+   :type arr: numpy.ndarray
+
+   :returns: String representation with each row indented by 5 spaces and values comma-separated
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1, 2], [3, 4]])
+   >>> print(array_to_string(arr))
+        1,2
+        3,4
+
+
+.. py:function:: array_to_string_with_value(arr, value)
+
+   Convert a 2D numpy array to a string representation, replacing all values with a constant.
+
+   This function is useful for creating uniform value grids in ENVI-met INX files,
+   such as for soil profiles or fixed height indicators.
+
+   :param arr: 2D numpy array to convert (only shape is used)
+   :type arr: numpy.ndarray
+   :param value: Value to use for all cells
+   :type value: str or numeric
+
+   :returns: String representation with each row indented by 5 spaces and constant value repeated
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.zeros((2, 2))
+   >>> print(array_to_string_with_value(arr, '0'))
+        0,0
+        0,0
+
+
+.. py:function:: array_to_string_int(arr)
+
+   Convert a 2D numpy array to a string representation of rounded integers.
+
+   This function is used for grids that must be represented as integers in ENVI-met,
+   such as building numbers or terrain heights. Values are rounded to nearest integer.
+
+   :param arr: 2D numpy array to convert
+   :type arr: numpy.ndarray
+
+   :returns: String representation with each row indented by 5 spaces and values rounded to integers
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1.6, 2.3], [3.7, 4.1]])
+   >>> print(array_to_string_int(arr))
+        2,2
+        4,4
+
+
+.. py:function:: prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source)
+
+   Prepare and process input grids for ENVI-met model.
+
+   This function performs several key transformations on input grids:
+   1. Flips grids vertically to match ENVI-met coordinate system
+   2. Handles missing values and border conditions
+   3. Converts land cover classes to ENVI-met vegetation and material codes
+   4. Processes building IDs and heights
+   5. Adjusts DEM relative to minimum elevation
+
+   :param building_height_grid_ori: Original building height grid (meters)
+   :type building_height_grid_ori: numpy.ndarray
+   :param building_id_grid_ori: Original building ID grid
+   :type building_id_grid_ori: numpy.ndarray
+   :param canopy_height_grid_ori: Original canopy height grid (meters)
+   :type canopy_height_grid_ori: numpy.ndarray
+   :param land_cover_grid_ori: Original land cover grid (class codes)
+   :type land_cover_grid_ori: numpy.ndarray
+   :param dem_grid_ori: Original DEM grid (meters)
+   :type dem_grid_ori: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param land_cover_source: Source of land cover data for class conversion
+   :type land_cover_source: str
+
+   :returns:
+
+             Processed grids:
+                 - building_height_grid (numpy.ndarray): Building heights
+                 - building_id_grid (numpy.ndarray): Building IDs
+                 - land_cover_veg_grid (numpy.ndarray): Vegetation codes
+                 - land_cover_mat_grid (numpy.ndarray): Material codes
+                 - canopy_height_grid (numpy.ndarray): Canopy heights
+                 - dem_grid (numpy.ndarray): Processed DEM
+   :rtype: tuple
+
+   .. rubric:: Notes
+
+   - Building heights at grid borders are set to 0
+   - DEM is normalized to minimum elevation
+   - Land cover is converted based on source-specific mapping
+
+
+.. py:function:: create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize, rectangle_vertices, **kwargs)
+
+   Create XML content for ENVI-met INX file.
+
+   This function generates the complete XML structure for an ENVI-met INX file,
+   including model metadata, geometry settings, and all required grid data.
+
+   :param building_height_grid: Processed building heights
+   :type building_height_grid: numpy.ndarray
+   :param building_id_grid: Processed building IDs
+   :type building_id_grid: numpy.ndarray
+   :param land_cover_veg_grid: Vegetation codes grid
+   :type land_cover_veg_grid: numpy.ndarray
+   :param land_cover_mat_grid: Material codes grid
+   :type land_cover_mat_grid: numpy.ndarray
+   :param canopy_height_grid: Processed canopy heights
+   :type canopy_height_grid: numpy.ndarray
+   :param dem_grid: Processed DEM
+   :type dem_grid: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param rectangle_vertices: Vertices defining model area as [(lon, lat), ...]
+   :type rectangle_vertices: list
+   :param \*\*kwargs: Additional keyword arguments:
+                      - author_name (str): Name of model author
+                      - model_description (str): Description of model
+                      - domain_building_max_height_ratio (float): Ratio of domain height to max building height
+                      - useTelescoping_grid (bool): Whether to use telescoping grid
+                      - verticalStretch (float): Vertical stretch factor
+                      - startStretch (float): Height to start stretching
+                      - min_grids_Z (int): Minimum vertical grid cells
+
+   :returns: Complete XML content for INX file
+   :rtype: str
+
+   .. rubric:: Notes
+
+   - Automatically determines location information from coordinates
+   - Handles both telescoping and uniform vertical grids
+   - Sets appropriate defaults for optional parameters
+   - Includes all required ENVI-met model settings
+
+
+.. py:function:: save_file(content, output_file_path)
+
+   Save content to a file with UTF-8 encoding.
+
+   This function ensures consistent file encoding and error handling when
+   saving ENVI-met files.
+
+   :param content: String content to save
+   :type content: str
+   :param output_file_path: Path to save file to
+   :type output_file_path: str
+
+   .. rubric:: Notes
+
+   - Creates parent directories if they don't exist
+   - Uses UTF-8 encoding for compatibility
+   - Overwrites existing file if present
+
+
+.. py:function:: export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, **kwargs)
+
+   Export model data to ENVI-met INX file format.
+
+   This is the main function for exporting voxel city data to ENVI-met format.
+   It coordinates the entire export process from grid preparation to file saving.
+
+   :param building_height_grid_ori: Original building height grid
+   :type building_height_grid_ori: numpy.ndarray
+   :param building_id_grid_ori: Original building ID grid
+   :type building_id_grid_ori: numpy.ndarray
+   :param canopy_height_grid_ori: Original canopy height grid
+   :type canopy_height_grid_ori: numpy.ndarray
+   :param land_cover_grid_ori: Original land cover grid
+   :type land_cover_grid_ori: numpy.ndarray
+   :param dem_grid_ori: Original DEM grid
+   :type dem_grid_ori: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param land_cover_source: Source of land cover data
+   :type land_cover_source: str
+   :param rectangle_vertices: Vertices defining model area
+   :type rectangle_vertices: list
+   :param \*\*kwargs: Additional keyword arguments:
+                      - output_directory (str): Directory to save output
+                      - file_basename (str): Base filename for output
+                      - Other args passed to create_xml_content()
+
+   .. rubric:: Notes
+
+   - Creates output directory if it doesn't exist
+   - Handles grid preparation and transformation
+   - Generates complete INX file with all required data
+   - Uses standardized file naming convention
+
+
+.. py:function:: generate_edb_file(**kwargs)
+
+   Generate ENVI-met database file for 3D plants.
+
+   Creates a plant database file (EDB) containing definitions for trees of
+   different heights with customizable leaf area density profiles.
+
+   :param \*\*kwargs: Keyword arguments:
+                      - lad (float): Leaf area density in m²/m³ (default 1.0)
+                      - trunk_height_ratio (float): Ratio of trunk height to total height
+                        (default 11.76/19.98)
+
+   .. rubric:: Notes
+
+   - Generates plants for heights from 1-50m
+   - Uses standardized plant IDs in format 'HxxW01'
+   - Includes physical properties like wood density
+   - Sets seasonal variation profiles
+   - Creates complete ENVI-met plant database format
+
+
+.. py:function:: generate_lad_profile(height, trunk_height_ratio, lad='1.00000')
+
+   Generate leaf area density profile for a plant.
+
+   Creates a vertical profile of leaf area density (LAD) values for ENVI-met
+   plant definitions, accounting for trunk space and crown distribution.
+
+   :param height: Total height of plant in meters
+   :type height: int
+   :param trunk_height_ratio: Ratio of trunk height to total height
+   :type trunk_height_ratio: float
+   :param lad: Leaf area density value as string (default '1.00000')
+   :type lad: str
+
+   :returns: LAD profile data formatted for ENVI-met EDB file
+   :rtype: str
+
+   .. rubric:: Notes
+
+   - LAD values start above trunk height
+   - Uses 5-space indentation for ENVI-met format
+   - Profile follows format: "z-level,x,y,LAD"
+
+
+.. py:function:: find_min_n(a, r, S_target, max_n=1000000)
+
+   Find minimum number of terms needed in geometric series to exceed target sum.
+
+   Used for calculating telescoping grid parameters to achieve desired domain height.
+   Solves for n in the equation: a(1-r^n)/(1-r) > S_target
+
+   :param a: First term of series (base cell size)
+   :type a: float
+   :param r: Common ratio (stretch factor)
+   :type r: float
+   :param S_target: Target sum to exceed (desired height)
+   :type S_target: float
+   :param max_n: Maximum number of terms to try (default 1000000)
+   :type max_n: int
+
+   :returns: Minimum number of terms needed, or None if not possible within max_n
+   :rtype: int or None
+
+   .. rubric:: Notes
+
+   - Handles special case of r=1 (arithmetic series)
+   - Protects against overflow with large exponents
+   - Returns None if solution not found within max_n terms
+
+

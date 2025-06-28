@@ -1,0 +1,2059 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="======= History" href="../changelog.html" /><link rel="prev" title="Use cases of VoxCity" href="index.html" />
+
+    <link rel="shortcut icon" href="../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>VoxCity Demo - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Use cases of VoxCity</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/examples/demo_basic.ipynb.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="voxcity-demo">
+<h1><strong>VoxCity Demo</strong><a class="headerlink" href="#voxcity-demo" title="Link to this heading">¶</a></h1>
+<p>You can easily learn how the Python package “VoxCity” works by following this demo.</p>
+<p>Please execute cells from Step 1 to Step 5 by clicking the ▶️ icons.</p>
+<p>It is important to note that you need to choose either Option 1 or Option 2 in Step 2 and execute only one.</p>
+</section>
+<section id="step1-prepare-environment">
+<h1>Step1. Prepare environment<a class="headerlink" href="#step1-prepare-environment" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 1.1. Install voxcity</span>
+<span class="o">!</span>pip<span class="w"> </span>install<span class="w"> </span>voxcity
+<span class="o">!</span>apt-get<span class="w"> </span>update
+<span class="o">!</span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>xvfb<span class="w"> </span>libgl1-mesa-glx
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Collecting voxcity
+  Downloading voxcity-0.4.5-py3-none-any.whl.metadata (25 kB)
+Requirement already satisfied: typer in /usr/local/lib/python3.11/dist-packages (from voxcity) (0.15.2)
+Requirement already satisfied: pandas in /usr/local/lib/python3.11/dist-packages (from voxcity) (2.2.2)
+Requirement already satisfied: requests in /usr/local/lib/python3.11/dist-packages (from voxcity) (2.32.3)
+Requirement already satisfied: pyproj in /usr/local/lib/python3.11/dist-packages (from voxcity) (3.7.1)
+Requirement already satisfied: ipyleaflet in /usr/local/lib/python3.11/dist-packages (from voxcity) (0.19.2)
+Requirement already satisfied: geopandas in /usr/local/lib/python3.11/dist-packages (from voxcity) (1.0.1)
+Collecting rasterio==1.3.11 (from voxcity)
+  Downloading rasterio-1.3.11-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (14 kB)
+Requirement already satisfied: shapely in /usr/local/lib/python3.11/dist-packages (from voxcity) (2.0.7)
+Requirement already satisfied: gdown in /usr/local/lib/python3.11/dist-packages (from voxcity) (5.2.0)
+Requirement already satisfied: numpy in /usr/local/lib/python3.11/dist-packages (from voxcity) (1.26.4)
+Requirement already satisfied: matplotlib in /usr/local/lib/python3.11/dist-packages (from voxcity) (3.10.0)
+Collecting contextily (from voxcity)
+  Downloading contextily-1.6.2-py3-none-any.whl.metadata (2.9 kB)
+Collecting fiona (from voxcity)
+  Downloading fiona-1.10.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (56 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">56.6/56.6 kB</span> <span class=" -Color -Color-Red">332.1 kB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hCollecting rtree (from voxcity)
+  Downloading rtree-1.4.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.1 kB)
+Requirement already satisfied: plotly in /usr/local/lib/python3.11/dist-packages (from voxcity) (5.24.1)
+Requirement already satisfied: tqdm in /usr/local/lib/python3.11/dist-packages (from voxcity) (4.67.1)
+Requirement already satisfied: scipy in /usr/local/lib/python3.11/dist-packages (from voxcity) (1.13.1)
+Collecting affine (from voxcity)
+  Downloading affine-2.4.0-py3-none-any.whl.metadata (4.0 kB)
+Requirement already satisfied: earthengine-api in /usr/local/lib/python3.11/dist-packages (from voxcity) (1.5.5)
+Requirement already satisfied: geemap in /usr/local/lib/python3.11/dist-packages (from voxcity) (0.35.3)
+Collecting rio-cogeo (from voxcity)
+  Downloading rio_cogeo-5.4.1-py3-none-any.whl.metadata (4.7 kB)
+Requirement already satisfied: geopy in /usr/local/lib/python3.11/dist-packages (from voxcity) (2.4.1)
+Collecting py-vox-io (from voxcity)
+  Downloading py-vox-io-0.1.tar.gz (4.8 kB)
+  Preparing metadata (setup.py) ... ?25l?25hdone
+Collecting mapbox_vector_tile (from voxcity)
+  Downloading mapbox_vector_tile-2.1.0-py3-none-any.whl.metadata (16 kB)
+Requirement already satisfied: numba in /usr/local/lib/python3.11/dist-packages (from voxcity) (0.60.0)
+Collecting reverse_geocoder (from voxcity)
+  Downloading reverse_geocoder-1.5.1.tar.gz (2.2 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">2.2/2.2 MB</span> <span class=" -Color -Color-Red">2.4 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25h  Preparing metadata (setup.py) ... ?25l?25hdone
+Collecting pycountry (from voxcity)
+  Downloading pycountry-24.6.1-py3-none-any.whl.metadata (12 kB)
+Collecting osm2geojson (from voxcity)
+  Downloading osm2geojson-0.2.5.tar.gz (14 kB)
+  Preparing metadata (setup.py) ... ?25l?25hdone
+Requirement already satisfied: seaborn in /usr/local/lib/python3.11/dist-packages (from voxcity) (0.13.2)
+Collecting overturemaps (from voxcity)
+  Downloading overturemaps-0.12.0-py3-none-any.whl.metadata (3.9 kB)
+Collecting protobuf&lt;=3.20.3 (from voxcity)
+  Downloading protobuf-3.20.3-py2.py3-none-any.whl.metadata (720 bytes)
+Collecting timezonefinder (from voxcity)
+  Downloading timezonefinder-6.5.8-cp311-cp311-manylinux_2_17_x86_64.manylinux_2_5_x86_64.manylinux1_x86_64.manylinux2014_x86_64.whl.metadata (4.1 kB)
+Collecting astral (from voxcity)
+  Downloading astral-3.2-py3-none-any.whl.metadata (1.7 kB)
+Collecting osmnx (from voxcity)
+  Downloading osmnx-2.0.1-py3-none-any.whl.metadata (4.9 kB)
+Requirement already satisfied: joblib in /usr/local/lib/python3.11/dist-packages (from voxcity) (1.4.2)
+Collecting trimesh (from voxcity)
+  Downloading trimesh-4.6.4-py3-none-any.whl.metadata (18 kB)
+Collecting pyvista (from voxcity)
+  Downloading pyvista-0.44.2-py3-none-any.whl.metadata (15 kB)
+Requirement already satisfied: IPython in /usr/local/lib/python3.11/dist-packages (from voxcity) (7.34.0)
+Requirement already satisfied: attrs in /usr/local/lib/python3.11/dist-packages (from rasterio==1.3.11-&gt;voxcity) (25.1.0)
+Requirement already satisfied: certifi in /usr/local/lib/python3.11/dist-packages (from rasterio==1.3.11-&gt;voxcity) (2025.1.31)
+Requirement already satisfied: click&gt;=4.0 in /usr/local/lib/python3.11/dist-packages (from rasterio==1.3.11-&gt;voxcity) (8.1.8)
+Collecting cligj&gt;=0.5 (from rasterio==1.3.11-&gt;voxcity)
+  Downloading cligj-0.7.2-py3-none-any.whl.metadata (5.0 kB)
+Collecting snuggs&gt;=1.4.1 (from rasterio==1.3.11-&gt;voxcity)
+  Downloading snuggs-1.4.7-py3-none-any.whl.metadata (3.4 kB)
+Collecting click-plugins (from rasterio==1.3.11-&gt;voxcity)
+  Downloading click_plugins-1.1.1-py2.py3-none-any.whl.metadata (6.4 kB)
+Requirement already satisfied: setuptools in /usr/local/lib/python3.11/dist-packages (from rasterio==1.3.11-&gt;voxcity) (75.1.0)
+Collecting mercantile (from contextily-&gt;voxcity)
+  Downloading mercantile-1.2.1-py3-none-any.whl.metadata (4.8 kB)
+Requirement already satisfied: pillow in /usr/local/lib/python3.11/dist-packages (from contextily-&gt;voxcity) (11.1.0)
+Requirement already satisfied: xyzservices in /usr/local/lib/python3.11/dist-packages (from contextily-&gt;voxcity) (2025.1.0)
+Requirement already satisfied: google-cloud-storage in /usr/local/lib/python3.11/dist-packages (from earthengine-api-&gt;voxcity) (2.19.0)
+Requirement already satisfied: google-api-python-client&gt;=1.12.1 in /usr/local/lib/python3.11/dist-packages (from earthengine-api-&gt;voxcity) (2.160.0)
+Requirement already satisfied: google-auth&gt;=1.4.1 in /usr/local/lib/python3.11/dist-packages (from earthengine-api-&gt;voxcity) (2.38.0)
+Requirement already satisfied: google-auth-httplib2&gt;=0.0.3 in /usr/local/lib/python3.11/dist-packages (from earthengine-api-&gt;voxcity) (0.2.0)
+Requirement already satisfied: httplib2&lt;1dev,&gt;=0.9.2 in /usr/local/lib/python3.11/dist-packages (from earthengine-api-&gt;voxcity) (0.22.0)
+Requirement already satisfied: beautifulsoup4 in /usr/local/lib/python3.11/dist-packages (from gdown-&gt;voxcity) (4.13.3)
+Requirement already satisfied: filelock in /usr/local/lib/python3.11/dist-packages (from gdown-&gt;voxcity) (3.17.0)
+Requirement already satisfied: bqplot in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.12.44)
+Requirement already satisfied: colour in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.1.5)
+Requirement already satisfied: eerepr&gt;=0.1.0 in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.1.1)
+Requirement already satisfied: folium&gt;=0.17.0 in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.19.5)
+Requirement already satisfied: geocoder in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (1.38.1)
+Requirement already satisfied: ipyevents in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (2.0.2)
+Requirement already satisfied: ipyfilechooser&gt;=0.6.0 in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.6.0)
+Requirement already satisfied: ipytree in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.2.2)
+Requirement already satisfied: pyperclip in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (1.9.0)
+Requirement already satisfied: pyshp&gt;=2.3.1 in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (2.3.1)
+Requirement already satisfied: python-box in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (7.3.2)
+Requirement already satisfied: scooby in /usr/local/lib/python3.11/dist-packages (from geemap-&gt;voxcity) (0.10.0)
+Requirement already satisfied: branca&gt;=0.5.0 in /usr/local/lib/python3.11/dist-packages (from ipyleaflet-&gt;voxcity) (0.8.1)
+Requirement already satisfied: ipywidgets&lt;9,&gt;=7.6.0 in /usr/local/lib/python3.11/dist-packages (from ipyleaflet-&gt;voxcity) (7.7.1)
+Requirement already satisfied: jupyter-leaflet&lt;0.20,&gt;=0.19 in /usr/local/lib/python3.11/dist-packages (from ipyleaflet-&gt;voxcity) (0.19.2)
+Requirement already satisfied: traittypes&lt;3,&gt;=0.2.1 in /usr/local/lib/python3.11/dist-packages (from ipyleaflet-&gt;voxcity) (0.2.1)
+Requirement already satisfied: pyogrio&gt;=0.7.2 in /usr/local/lib/python3.11/dist-packages (from geopandas-&gt;voxcity) (0.10.0)
+Requirement already satisfied: packaging in /usr/local/lib/python3.11/dist-packages (from geopandas-&gt;voxcity) (24.2)
+Requirement already satisfied: python-dateutil&gt;=2.8.2 in /usr/local/lib/python3.11/dist-packages (from pandas-&gt;voxcity) (2.8.2)
+Requirement already satisfied: pytz&gt;=2020.1 in /usr/local/lib/python3.11/dist-packages (from pandas-&gt;voxcity) (2025.1)
+Requirement already satisfied: tzdata&gt;=2022.7 in /usr/local/lib/python3.11/dist-packages (from pandas-&gt;voxcity) (2025.1)
+Requirement already satisfied: geographiclib&lt;3,&gt;=1.52 in /usr/local/lib/python3.11/dist-packages (from geopy-&gt;voxcity) (2.0)
+Collecting jedi&gt;=0.16 (from IPython-&gt;voxcity)
+  Downloading jedi-0.19.2-py2.py3-none-any.whl.metadata (22 kB)
+Requirement already satisfied: decorator in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (4.4.2)
+Requirement already satisfied: pickleshare in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (0.7.5)
+Requirement already satisfied: traitlets&gt;=4.2 in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (5.7.1)
+Requirement already satisfied: prompt-toolkit!=3.0.0,!=3.0.1,&lt;3.1.0,&gt;=2.0.0 in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (3.0.50)
+Requirement already satisfied: pygments in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (2.18.0)
+Requirement already satisfied: backcall in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (0.2.0)
+Requirement already satisfied: matplotlib-inline in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (0.1.7)
+Requirement already satisfied: pexpect&gt;4.3 in /usr/local/lib/python3.11/dist-packages (from IPython-&gt;voxcity) (4.9.0)
+INFO: pip is looking at multiple versions of mapbox-vector-tile to determine which version is compatible with other requirements. This could take a while.
+Collecting mapbox_vector_tile (from voxcity)
+  Downloading mapbox_vector_tile-2.0.1-py3-none-any.whl.metadata (16 kB)
+  Downloading mapbox_vector_tile-2.0.0-py3-none-any.whl.metadata (16 kB)
+  Downloading mapbox-vector-tile-1.2.1.tar.gz (33 kB)
+  Preparing metadata (setup.py) ... ?25l?25hdone
+Requirement already satisfied: future in /usr/local/lib/python3.11/dist-packages (from mapbox_vector_tile-&gt;voxcity) (1.0.0)
+Collecting pyclipper (from mapbox_vector_tile-&gt;voxcity)
+  Downloading pyclipper-1.3.0.post6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (9.0 kB)
+Requirement already satisfied: contourpy&gt;=1.0.1 in /usr/local/lib/python3.11/dist-packages (from matplotlib-&gt;voxcity) (1.3.1)
+Requirement already satisfied: cycler&gt;=0.10 in /usr/local/lib/python3.11/dist-packages (from matplotlib-&gt;voxcity) (0.12.1)
+Requirement already satisfied: fonttools&gt;=4.22.0 in /usr/local/lib/python3.11/dist-packages (from matplotlib-&gt;voxcity) (4.56.0)
+Requirement already satisfied: kiwisolver&gt;=1.3.1 in /usr/local/lib/python3.11/dist-packages (from matplotlib-&gt;voxcity) (1.4.8)
+Requirement already satisfied: pyparsing&gt;=2.3.1 in /usr/local/lib/python3.11/dist-packages (from matplotlib-&gt;voxcity) (3.2.1)
+Requirement already satisfied: llvmlite&lt;0.44,&gt;=0.43.0dev0 in /usr/local/lib/python3.11/dist-packages (from numba-&gt;voxcity) (0.43.0)
+Requirement already satisfied: networkx&gt;=2.5 in /usr/local/lib/python3.11/dist-packages (from osmnx-&gt;voxcity) (3.4.2)
+Requirement already satisfied: charset-normalizer&lt;4,&gt;=2 in /usr/local/lib/python3.11/dist-packages (from requests-&gt;voxcity) (3.4.1)
+Requirement already satisfied: idna&lt;4,&gt;=2.5 in /usr/local/lib/python3.11/dist-packages (from requests-&gt;voxcity) (3.10)
+Requirement already satisfied: urllib3&lt;3,&gt;=1.21.1 in /usr/local/lib/python3.11/dist-packages (from requests-&gt;voxcity) (2.3.0)
+Requirement already satisfied: pyarrow&gt;=15.0.2 in /usr/local/lib/python3.11/dist-packages (from overturemaps-&gt;voxcity) (18.1.0)
+Requirement already satisfied: tenacity&gt;=6.2.0 in /usr/local/lib/python3.11/dist-packages (from plotly-&gt;voxcity) (9.0.0)
+Requirement already satisfied: pooch in /usr/local/lib/python3.11/dist-packages (from pyvista-&gt;voxcity) (1.8.2)
+Collecting vtk&lt;9.4.0 (from pyvista-&gt;voxcity)
+  Downloading vtk-9.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (5.2 kB)
+Requirement already satisfied: typing-extensions in /usr/local/lib/python3.11/dist-packages (from pyvista-&gt;voxcity) (4.12.2)
+Collecting morecantile&lt;7.0,&gt;=5.0 (from rio-cogeo-&gt;voxcity)
+  Downloading morecantile-6.2.0-py3-none-any.whl.metadata (7.3 kB)
+Requirement already satisfied: pydantic~=2.0 in /usr/local/lib/python3.11/dist-packages (from rio-cogeo-&gt;voxcity) (2.10.6)
+Requirement already satisfied: cffi&lt;2,&gt;=1.15.1 in /usr/local/lib/python3.11/dist-packages (from timezonefinder-&gt;voxcity) (1.17.1)
+Collecting h3&gt;4 (from timezonefinder-&gt;voxcity)
+  Downloading h3-4.2.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (18 kB)
+Requirement already satisfied: shellingham&gt;=1.3.0 in /usr/local/lib/python3.11/dist-packages (from typer-&gt;voxcity) (1.5.4)
+Requirement already satisfied: rich&gt;=10.11.0 in /usr/local/lib/python3.11/dist-packages (from typer-&gt;voxcity) (13.9.4)
+Requirement already satisfied: jinja2&gt;=3 in /usr/local/lib/python3.11/dist-packages (from branca&gt;=0.5.0-&gt;ipyleaflet-&gt;voxcity) (3.1.6)
+Requirement already satisfied: pycparser in /usr/local/lib/python3.11/dist-packages (from cffi&lt;2,&gt;=1.15.1-&gt;timezonefinder-&gt;voxcity) (2.22)
+Requirement already satisfied: google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,&lt;3.0.0.dev0,&gt;=1.31.5 in /usr/local/lib/python3.11/dist-packages (from google-api-python-client&gt;=1.12.1-&gt;earthengine-api-&gt;voxcity) (2.24.1)
+Requirement already satisfied: uritemplate&lt;5,&gt;=3.0.1 in /usr/local/lib/python3.11/dist-packages (from google-api-python-client&gt;=1.12.1-&gt;earthengine-api-&gt;voxcity) (4.1.1)
+Requirement already satisfied: cachetools&lt;6.0,&gt;=2.0.0 in /usr/local/lib/python3.11/dist-packages (from google-auth&gt;=1.4.1-&gt;earthengine-api-&gt;voxcity) (5.5.2)
+Requirement already satisfied: pyasn1-modules&gt;=0.2.1 in /usr/local/lib/python3.11/dist-packages (from google-auth&gt;=1.4.1-&gt;earthengine-api-&gt;voxcity) (0.4.1)
+Requirement already satisfied: rsa&lt;5,&gt;=3.1.4 in /usr/local/lib/python3.11/dist-packages (from google-auth&gt;=1.4.1-&gt;earthengine-api-&gt;voxcity) (4.9)
+Requirement already satisfied: ipykernel&gt;=4.5.1 in /usr/local/lib/python3.11/dist-packages (from ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (6.17.1)
+Requirement already satisfied: ipython-genutils~=0.2.0 in /usr/local/lib/python3.11/dist-packages (from ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.2.0)
+Requirement already satisfied: widgetsnbextension~=3.6.0 in /usr/local/lib/python3.11/dist-packages (from ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (3.6.10)
+Requirement already satisfied: jupyterlab-widgets&gt;=1.0.0 in /usr/local/lib/python3.11/dist-packages (from ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (3.0.13)
+Requirement already satisfied: parso&lt;0.9.0,&gt;=0.8.4 in /usr/local/lib/python3.11/dist-packages (from jedi&gt;=0.16-&gt;IPython-&gt;voxcity) (0.8.4)
+Requirement already satisfied: ptyprocess&gt;=0.5 in /usr/local/lib/python3.11/dist-packages (from pexpect&gt;4.3-&gt;IPython-&gt;voxcity) (0.7.0)
+Requirement already satisfied: wcwidth in /usr/local/lib/python3.11/dist-packages (from prompt-toolkit!=3.0.0,!=3.0.1,&lt;3.1.0,&gt;=2.0.0-&gt;IPython-&gt;voxcity) (0.2.13)
+Requirement already satisfied: annotated-types&gt;=0.6.0 in /usr/local/lib/python3.11/dist-packages (from pydantic~=2.0-&gt;rio-cogeo-&gt;voxcity) (0.7.0)
+Requirement already satisfied: pydantic-core==2.27.2 in /usr/local/lib/python3.11/dist-packages (from pydantic~=2.0-&gt;rio-cogeo-&gt;voxcity) (2.27.2)
+Requirement already satisfied: six&gt;=1.5 in /usr/local/lib/python3.11/dist-packages (from python-dateutil&gt;=2.8.2-&gt;pandas-&gt;voxcity) (1.17.0)
+Requirement already satisfied: markdown-it-py&gt;=2.2.0 in /usr/local/lib/python3.11/dist-packages (from rich&gt;=10.11.0-&gt;typer-&gt;voxcity) (3.0.0)
+Requirement already satisfied: soupsieve&gt;1.2 in /usr/local/lib/python3.11/dist-packages (from beautifulsoup4-&gt;gdown-&gt;voxcity) (2.6)
+Requirement already satisfied: ratelim in /usr/local/lib/python3.11/dist-packages (from geocoder-&gt;geemap-&gt;voxcity) (0.1.6)
+Requirement already satisfied: google-cloud-core&lt;3.0dev,&gt;=2.3.0 in /usr/local/lib/python3.11/dist-packages (from google-cloud-storage-&gt;earthengine-api-&gt;voxcity) (2.4.2)
+Requirement already satisfied: google-resumable-media&gt;=2.7.2 in /usr/local/lib/python3.11/dist-packages (from google-cloud-storage-&gt;earthengine-api-&gt;voxcity) (2.7.2)
+Requirement already satisfied: google-crc32c&lt;2.0dev,&gt;=1.0 in /usr/local/lib/python3.11/dist-packages (from google-cloud-storage-&gt;earthengine-api-&gt;voxcity) (1.6.0)
+Requirement already satisfied: platformdirs&gt;=2.5.0 in /usr/local/lib/python3.11/dist-packages (from pooch-&gt;pyvista-&gt;voxcity) (4.3.6)
+Requirement already satisfied: PySocks!=1.5.7,&gt;=1.5.6 in /usr/local/lib/python3.11/dist-packages (from requests[socks]-&gt;gdown-&gt;voxcity) (1.7.1)
+Requirement already satisfied: googleapis-common-protos&lt;2.0.dev0,&gt;=1.56.2 in /usr/local/lib/python3.11/dist-packages (from google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,&lt;3.0.0.dev0,&gt;=1.31.5-&gt;google-api-python-client&gt;=1.12.1-&gt;earthengine-api-&gt;voxcity) (1.69.0)
+Requirement already satisfied: proto-plus&lt;2.0.0dev,&gt;=1.22.3 in /usr/local/lib/python3.11/dist-packages (from google-api-core!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.0,&lt;3.0.0.dev0,&gt;=1.31.5-&gt;google-api-python-client&gt;=1.12.1-&gt;earthengine-api-&gt;voxcity) (1.26.0)
+Requirement already satisfied: debugpy&gt;=1.0 in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.8.0)
+Requirement already satisfied: jupyter-client&gt;=6.1.12 in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (6.1.12)
+Requirement already satisfied: nest-asyncio in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.6.0)
+Requirement already satisfied: psutil in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (5.9.5)
+Requirement already satisfied: pyzmq&gt;=17 in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (24.0.1)
+Requirement already satisfied: tornado&gt;=6.1 in /usr/local/lib/python3.11/dist-packages (from ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (6.4.2)
+Requirement already satisfied: MarkupSafe&gt;=2.0 in /usr/local/lib/python3.11/dist-packages (from jinja2&gt;=3-&gt;branca&gt;=0.5.0-&gt;ipyleaflet-&gt;voxcity) (3.0.2)
+Requirement already satisfied: mdurl~=0.1 in /usr/local/lib/python3.11/dist-packages (from markdown-it-py&gt;=2.2.0-&gt;rich&gt;=10.11.0-&gt;typer-&gt;voxcity) (0.1.2)
+Requirement already satisfied: pyasn1&lt;0.7.0,&gt;=0.4.6 in /usr/local/lib/python3.11/dist-packages (from pyasn1-modules&gt;=0.2.1-&gt;google-auth&gt;=1.4.1-&gt;earthengine-api-&gt;voxcity) (0.6.1)
+Requirement already satisfied: notebook&gt;=4.4.1 in /usr/local/lib/python3.11/dist-packages (from widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (6.5.5)
+Requirement already satisfied: jupyter-core&gt;=4.6.0 in /usr/local/lib/python3.11/dist-packages (from jupyter-client&gt;=6.1.12-&gt;ipykernel&gt;=4.5.1-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (5.7.2)
+Requirement already satisfied: argon2-cffi in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (23.1.0)
+Requirement already satisfied: nbformat in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (5.10.4)
+Requirement already satisfied: nbconvert&gt;=5 in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (7.16.6)
+Requirement already satisfied: Send2Trash&gt;=1.8.0 in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.8.3)
+Requirement already satisfied: terminado&gt;=0.8.3 in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.18.1)
+Requirement already satisfied: prometheus-client in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.21.1)
+Requirement already satisfied: nbclassic&gt;=0.4.7 in /usr/local/lib/python3.11/dist-packages (from notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.2.0)
+Requirement already satisfied: notebook-shim&gt;=0.2.3 in /usr/local/lib/python3.11/dist-packages (from nbclassic&gt;=0.4.7-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.2.4)
+Requirement already satisfied: bleach!=5.0.0 in /usr/local/lib/python3.11/dist-packages (from bleach[css]!=5.0.0-&gt;nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (6.2.0)
+Requirement already satisfied: defusedxml in /usr/local/lib/python3.11/dist-packages (from nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.7.1)
+Requirement already satisfied: jupyterlab-pygments in /usr/local/lib/python3.11/dist-packages (from nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.3.0)
+Requirement already satisfied: mistune&lt;4,&gt;=2.0.3 in /usr/local/lib/python3.11/dist-packages (from nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (3.1.2)
+Requirement already satisfied: nbclient&gt;=0.5.0 in /usr/local/lib/python3.11/dist-packages (from nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.10.2)
+Requirement already satisfied: pandocfilters&gt;=1.4.1 in /usr/local/lib/python3.11/dist-packages (from nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.5.1)
+Requirement already satisfied: fastjsonschema&gt;=2.15 in /usr/local/lib/python3.11/dist-packages (from nbformat-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (2.21.1)
+Requirement already satisfied: jsonschema&gt;=2.6 in /usr/local/lib/python3.11/dist-packages (from nbformat-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (4.23.0)
+Requirement already satisfied: argon2-cffi-bindings in /usr/local/lib/python3.11/dist-packages (from argon2-cffi-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (21.2.0)
+Requirement already satisfied: webencodings in /usr/local/lib/python3.11/dist-packages (from bleach!=5.0.0-&gt;bleach[css]!=5.0.0-&gt;nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.5.1)
+Requirement already satisfied: tinycss2&lt;1.5,&gt;=1.1.0 in /usr/local/lib/python3.11/dist-packages (from bleach[css]!=5.0.0-&gt;nbconvert&gt;=5-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.4.0)
+Requirement already satisfied: jsonschema-specifications&gt;=2023.03.6 in /usr/local/lib/python3.11/dist-packages (from jsonschema&gt;=2.6-&gt;nbformat-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (2024.10.1)
+Requirement already satisfied: referencing&gt;=0.28.4 in /usr/local/lib/python3.11/dist-packages (from jsonschema&gt;=2.6-&gt;nbformat-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.36.2)
+Requirement already satisfied: rpds-py&gt;=0.7.1 in /usr/local/lib/python3.11/dist-packages (from jsonschema&gt;=2.6-&gt;nbformat-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (0.23.1)
+Requirement already satisfied: jupyter-server&lt;3,&gt;=1.8 in /usr/local/lib/python3.11/dist-packages (from notebook-shim&gt;=0.2.3-&gt;nbclassic&gt;=0.4.7-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.24.0)
+Requirement already satisfied: anyio&lt;4,&gt;=3.1.0 in /usr/local/lib/python3.11/dist-packages (from jupyter-server&lt;3,&gt;=1.8-&gt;notebook-shim&gt;=0.2.3-&gt;nbclassic&gt;=0.4.7-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (3.7.1)
+Requirement already satisfied: websocket-client in /usr/local/lib/python3.11/dist-packages (from jupyter-server&lt;3,&gt;=1.8-&gt;notebook-shim&gt;=0.2.3-&gt;nbclassic&gt;=0.4.7-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.8.0)
+Requirement already satisfied: sniffio&gt;=1.1 in /usr/local/lib/python3.11/dist-packages (from anyio&lt;4,&gt;=3.1.0-&gt;jupyter-server&lt;3,&gt;=1.8-&gt;notebook-shim&gt;=0.2.3-&gt;nbclassic&gt;=0.4.7-&gt;notebook&gt;=4.4.1-&gt;widgetsnbextension~=3.6.0-&gt;ipywidgets&lt;9,&gt;=7.6.0-&gt;ipyleaflet-&gt;voxcity) (1.3.1)
+Downloading voxcity-0.4.5-py3-none-any.whl (152 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">152.5/152.5 kB</span> <span class=" -Color -Color-Red">4.8 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading rasterio-1.3.11-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (21.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">21.7/21.7 MB</span> <span class=" -Color -Color-Red">31.6 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading protobuf-3.20.3-py2.py3-none-any.whl (162 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">162.1/162.1 kB</span> <span class=" -Color -Color-Red">12.6 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading affine-2.4.0-py3-none-any.whl (15 kB)
+Downloading astral-3.2-py3-none-any.whl (38 kB)
+Downloading contextily-1.6.2-py3-none-any.whl (17 kB)
+Downloading fiona-1.10.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (17.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">17.3/17.3 MB</span> <span class=" -Color -Color-Red">53.9 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading osmnx-2.0.1-py3-none-any.whl (99 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">99.6/99.6 kB</span> <span class=" -Color -Color-Red">8.1 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading overturemaps-0.12.0-py3-none-any.whl (9.9 kB)
+Downloading pycountry-24.6.1-py3-none-any.whl (6.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">6.3/6.3 MB</span> <span class=" -Color -Color-Red">65.1 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading pyvista-0.44.2-py3-none-any.whl (2.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">2.2/2.2 MB</span> <span class=" -Color -Color-Red">61.3 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading rio_cogeo-5.4.1-py3-none-any.whl (20 kB)
+Downloading rtree-1.4.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (541 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">541.1/541.1 kB</span> <span class=" -Color -Color-Red">31.3 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading timezonefinder-6.5.8-cp311-cp311-manylinux_2_17_x86_64.manylinux_2_5_x86_64.manylinux1_x86_64.manylinux2014_x86_64.whl (51.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">51.3/51.3 MB</span> <span class=" -Color -Color-Red">9.8 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading trimesh-4.6.4-py3-none-any.whl (708 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">708.6/708.6 kB</span> <span class=" -Color -Color-Red">32.4 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading click_plugins-1.1.1-py2.py3-none-any.whl (7.5 kB)
+Downloading cligj-0.7.2-py3-none-any.whl (7.1 kB)
+Downloading h3-4.2.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (1.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">1.0/1.0 MB</span> <span class=" -Color -Color-Red">41.3 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading jedi-0.19.2-py2.py3-none-any.whl (1.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">1.6/1.6 MB</span> <span class=" -Color -Color-Red">41.8 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading morecantile-6.2.0-py3-none-any.whl (49 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">49.5/49.5 kB</span> <span class=" -Color -Color-Red">3.4 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading snuggs-1.4.7-py3-none-any.whl (5.4 kB)
+Downloading vtk-9.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (92.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">92.1/92.1 MB</span> <span class=" -Color -Color-Red">8.2 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hDownloading mercantile-1.2.1-py3-none-any.whl (14 kB)
+Downloading pyclipper-1.3.0.post6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (969 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ <span class=" -Color -Color-Green">969.6/969.6 kB</span> <span class=" -Color -Color-Red">46.3 MB/s</span> eta <span class=" -Color -Color-Cyan">0:00:00</span>
+?25hBuilding wheels for collected packages: mapbox_vector_tile, osm2geojson, py-vox-io, reverse_geocoder
+  Building wheel for mapbox_vector_tile (setup.py) ... ?25l?25hdone
+  Created wheel for mapbox_vector_tile: filename=mapbox_vector_tile-1.2.1-py2.py3-none-any.whl size=32859 sha256=3a00457e80bdd191483061cf3c22ad8bd28ae0d97d0ca69b173bfde15342094d
+  Stored in directory: /root/.cache/pip/wheels/61/08/78/37864488a295d991c4388b668bbc7833b78526106f088bb102
+  Building wheel for osm2geojson (setup.py) ... ?25l?25hdone
+  Created wheel for osm2geojson: filename=osm2geojson-0.2.5-py3-none-any.whl size=13950 sha256=5149888845efc9c0c466e955514fec04bdace2117b1fcdae0a4cb54eb94af208
+  Stored in directory: /root/.cache/pip/wheels/e8/4e/f3/3183652838130e7ba8ede546f048bb546f1d6ec371da6f0cbe
+  Building wheel for py-vox-io (setup.py) ... ?25l?25hdone
+  Created wheel for py-vox-io: filename=py_vox_io-0.1-py3-none-any.whl size=5701 sha256=84b3773b35eca6607ac8aaa5f80091554b375c5907f3b274d440e85a0705c2a1
+  Stored in directory: /root/.cache/pip/wheels/22/43/56/de54895cf3b4ed1a47d99db8e0ec98a6521fa9ee923e9ed92f
+  Building wheel for reverse_geocoder (setup.py) ... ?25l?25hdone
+  Created wheel for reverse_geocoder: filename=reverse_geocoder-1.5.1-py3-none-any.whl size=2268068 sha256=7e1dab5842b93f5db90cffc4a2966e93aa9384bcbfdfbd1b2178a432ba1df762
+  Stored in directory: /root/.cache/pip/wheels/17/3c/41/2bc89719586c2a5c53e9a527daa76a968a1288315c1ae2d904
+Successfully built mapbox_vector_tile osm2geojson py-vox-io reverse_geocoder
+Installing collected packages: pyclipper, py-vox-io, trimesh, snuggs, rtree, pycountry, protobuf, mercantile, jedi, h3, cligj, click-plugins, astral, affine, timezonefinder, reverse_geocoder, rasterio, overturemaps, osm2geojson, mapbox_vector_tile, fiona, vtk, morecantile, contextily, rio-cogeo, pyvista, osmnx, voxcity
+  Attempting uninstall: protobuf
+    Found existing installation: protobuf 4.25.6
+    Uninstalling protobuf-4.25.6:
+      Successfully uninstalled protobuf-4.25.6
+<span class=" -Color -Color-Red">ERROR: pip&#39;s dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.</span>
+<span class=" -Color -Color-Red">grpcio-status 1.62.3 requires protobuf&gt;=4.21.6, but you have protobuf 3.20.3 which is incompatible.</span>
+<span class=" -Color -Color-Red">tensorflow-metadata 1.16.1 requires protobuf&lt;6.0.0dev,&gt;=4.25.2; python_version &gt;= &quot;3.11&quot;, but you have protobuf 3.20.3 which is incompatible.</span>
+Successfully installed affine-2.4.0 astral-3.2 click-plugins-1.1.1 cligj-0.7.2 contextily-1.6.2 fiona-1.10.1 h3-4.2.2 jedi-0.19.2 mapbox_vector_tile-1.2.1 mercantile-1.2.1 morecantile-6.2.0 osm2geojson-0.2.5 osmnx-2.0.1 overturemaps-0.12.0 protobuf-3.20.3 py-vox-io-0.1 pyclipper-1.3.0.post6 pycountry-24.6.1 pyvista-0.44.2 rasterio-1.3.11 reverse_geocoder-1.5.1 rio-cogeo-5.4.1 rtree-1.4.0 snuggs-1.4.7 timezonefinder-6.5.8 trimesh-4.6.4 voxcity-0.4.5 vtk-9.3.1
+</pre></div>
+</div>
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:3 https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/ InRelease [3,632 B]
+Get:4 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64  InRelease [1,581 B]
+Get:5 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:6 https://r2u.stat.illinois.edu/ubuntu jammy InRelease [6,555 B]
+Get:7 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:8 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64  Packages [1,370 kB]
+Hit:9 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy InRelease
+Hit:10 https://ppa.launchpadcontent.net/graphics-drivers/ppa/ubuntu jammy InRelease
+Hit:11 https://ppa.launchpadcontent.net/ubuntugis/ppa/ubuntu jammy InRelease
+Get:12 https://r2u.stat.illinois.edu/ubuntu jammy/main amd64 Packages [2,668 kB]
+Get:13 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [2,682 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1,533 kB]
+Get:15 https://r2u.stat.illinois.edu/ubuntu jammy/main all Packages [8,731 kB]
+Get:16 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1,235 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [2,995 kB]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [3,947 kB]
+Fetched 25.6 MB in 3s (7,744 kB/s)
+Reading package lists... Done
+W: Skipping acquire of configured file &#39;main/source/Sources&#39; as repository &#39;https://r2u.stat.illinois.edu/ubuntu jammy InRelease&#39; does not seem to provide it (sources.list entry misspelt?)
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libfontenc1 libxfont2 libxkbfile1 x11-xkb-utils xfonts-base xfonts-encodings xfonts-utils
+  xserver-common
+The following NEW packages will be installed:
+  libfontenc1 libgl1-mesa-glx libxfont2 libxkbfile1 x11-xkb-utils xfonts-base xfonts-encodings
+  xfonts-utils xserver-common xvfb
+0 upgraded, 10 newly installed, 0 to remove and 31 not upgraded.
+Need to get 7,820 kB of archives.
+After this operation, 12.0 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 libfontenc1 amd64 1:1.1.4-1build3 [14.7 kB]
+Get:2 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libgl1-mesa-glx amd64 23.0.4-0ubuntu1~22.04.1 [5,584 B]
+Get:3 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxfont2 amd64 1:2.0.5-1build1 [94.5 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxkbfile1 amd64 1:1.1.0-1build3 [71.8 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy/main amd64 x11-xkb-utils amd64 7.7+5build4 [172 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-utils amd64 1:7.7+6build2 [94.6 kB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy/main amd64 xfonts-base all 1:1.0.5 [5,896 kB]
+Get:9 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 xserver-common all 2:21.1.4-2ubuntu1.7~22.04.13 [29.1 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 xvfb amd64 2:21.1.4-2ubuntu1.7~22.04.13 [863 kB]
+Fetched 7,820 kB in 1s (6,478 kB/s)
+Selecting previously unselected package libfontenc1:amd64.
+(Reading database ... 124947 files and directories currently installed.)
+Preparing to unpack .../0-libfontenc1_1%3a1.1.4-1build3_amd64.deb ...
+Unpacking libfontenc1:amd64 (1:1.1.4-1build3) ...
+Selecting previously unselected package libgl1-mesa-glx:amd64.
+Preparing to unpack .../1-libgl1-mesa-glx_23.0.4-0ubuntu1~22.04.1_amd64.deb ...
+Unpacking libgl1-mesa-glx:amd64 (23.0.4-0ubuntu1~22.04.1) ...
+Selecting previously unselected package libxfont2:amd64.
+Preparing to unpack .../2-libxfont2_1%3a2.0.5-1build1_amd64.deb ...
+Unpacking libxfont2:amd64 (1:2.0.5-1build1) ...
+Selecting previously unselected package libxkbfile1:amd64.
+Preparing to unpack .../3-libxkbfile1_1%3a1.1.0-1build3_amd64.deb ...
+Unpacking libxkbfile1:amd64 (1:1.1.0-1build3) ...
+Selecting previously unselected package x11-xkb-utils.
+Preparing to unpack .../4-x11-xkb-utils_7.7+5build4_amd64.deb ...
+Unpacking x11-xkb-utils (7.7+5build4) ...
+Selecting previously unselected package xfonts-encodings.
+Preparing to unpack .../5-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
+Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
+Selecting previously unselected package xfonts-utils.
+Preparing to unpack .../6-xfonts-utils_1%3a7.7+6build2_amd64.deb ...
+Unpacking xfonts-utils (1:7.7+6build2) ...
+Selecting previously unselected package xfonts-base.
+Preparing to unpack .../7-xfonts-base_1%3a1.0.5_all.deb ...
+Unpacking xfonts-base (1:1.0.5) ...
+Selecting previously unselected package xserver-common.
+Preparing to unpack .../8-xserver-common_2%3a21.1.4-2ubuntu1.7~22.04.13_all.deb ...
+Unpacking xserver-common (2:21.1.4-2ubuntu1.7~22.04.13) ...
+Selecting previously unselected package xvfb.
+Preparing to unpack .../9-xvfb_2%3a21.1.4-2ubuntu1.7~22.04.13_amd64.deb ...
+Unpacking xvfb (2:21.1.4-2ubuntu1.7~22.04.13) ...
+Setting up libfontenc1:amd64 (1:1.1.4-1build3) ...
+Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
+Setting up libgl1-mesa-glx:amd64 (23.0.4-0ubuntu1~22.04.1) ...
+Setting up libxkbfile1:amd64 (1:1.1.0-1build3) ...
+Setting up libxfont2:amd64 (1:2.0.5-1build1) ...
+Setting up x11-xkb-utils (7.7+5build4) ...
+Setting up xfonts-utils (1:7.7+6build2) ...
+Setting up xfonts-base (1:1.0.5) ...
+Setting up xserver-common (2:21.1.4-2ubuntu1.7~22.04.13) ...
+Setting up xvfb (2:21.1.4-2ubuntu1.7~22.04.13) ...
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for fontconfig (2.13.1-4.2ubuntu5) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.8) ...
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_level_zero.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libhwloc.so.15 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm.so.1 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbb.so.12 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_5.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_adapter_opencl.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbmalloc_proxy.so.2 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libur_loader.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libumf.so.0 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind_2_0.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtbbbind.so.3 is not a symbolic link
+
+/sbin/ldconfig.real: /usr/local/lib/libtcm_debug.so.1 is not a symbolic link
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 1.2. Authenticate Google Earth Engine (Click link, generate token, copy and paste the token)</span>
+<span class="o">!</span>earthengine<span class="w"> </span>authenticate<span class="w"> </span>--auth_mode<span class="o">=</span>notebook
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1741705917.359087    1412 cuda_dnn.cc:8310] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+E0000 00:00:1741705917.365653    1412 cuda_blas.cc:1418] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+Authenticate: Limited support in Colab. Use ee.Authenticate() or --auth_mode=notebook instead.
+W0311 15:12:07.465276 136654470848512 _default.py:711] No project ID could be determined. Consider running `gcloud config set project` or setting the GOOGLE_CLOUD_PROJECT environment variable
+To authorize access needed by Earth Engine, open the following URL in a web browser and follow the instructions. If the web browser does not start automatically, please manually browse the URL below.
+
+    https://code.earthengine.google.com/client-auth?scopes=https%3A//www.googleapis.com/auth/earthengine%20https%3A//www.googleapis.com/auth/cloud-platform%20https%3A//www.googleapis.com/auth/devstorage.full_control&amp;request_id=nww8MqAgZ0A8lD-NPegOTjjvrqs9bKces31wSS4n994&amp;tc=YQhLFbFlyZCEeBIa6L5qhTR6CoIu-dzRMjEzVOjbKww&amp;cc=TP9wkGIncfLCjK_jAOgfiQEjMHqSel5BoS3lYTlw9u8
+
+The authorization workflow will generate a code, which you should paste in the box below.
+Enter verification code: 4/1AQSTgQGwhIwjpIqZO5Ejr3JdeicnSzWEibEteUlVDywyDnuRRgIkfvjKO1E
+
+Successfully saved authorization token.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 1.3. Authenticate Google Earth Engine on local environment</span>
+<span class="o">!</span>earthengine<span class="w"> </span>authenticate
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ee</span>
+<span class="n">ee</span><span class="o">.</span><span class="n">Authenticate</span><span class="p">()</span>
+<span class="n">ee</span><span class="o">.</span><span class="n">Initialize</span><span class="p">(</span><span class="n">project</span><span class="o">=</span><span class="s1">&#39;your_project&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Authenticate: Credentials already exist.  Use --force to refresh.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step2-set-target-area-by-a-rectangle">
+<h1>Step2. Set target area by a rectangle<a class="headerlink" href="#step2-set-target-area-by-a-rectangle" title="Link to this heading">¶</a></h1>
+<section id="option1-set-coordinates-of-vertices">
+<h2>2.1. Option1 Set coordinates of vertices<a class="headerlink" href="#option1-set-coordinates-of-vertices" title="Link to this heading">¶</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">74.02034270713835</span><span class="p">,</span> <span class="mf">40.69992881162822</span><span class="p">),</span>  <span class="c1"># Southwest corner (longitude, latitude)</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">74.02034270713835</span><span class="p">,</span> <span class="mf">40.7111851828668</span><span class="p">),</span>   <span class="c1"># Northwest corner (longitude, latitude)</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">74.00555129286164</span><span class="p">,</span> <span class="mf">40.7111851828668</span><span class="p">),</span>   <span class="c1"># Northeast corner (longitude, latitude)</span>
+    <span class="p">(</span><span class="o">-</span><span class="mf">74.00555129286164</span><span class="p">,</span> <span class="mf">40.69992881162822</span><span class="p">)</span>   <span class="c1"># Southeast corner (longitude, latitude)</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+</div>
+</div>
+<section id="option2-draw-a-rectangle-directly">
+<h3>2.2. Option2 Draw a rectangle directly<a class="headerlink" href="#option2-draw-a-rectangle-directly" title="Link to this heading">¶</a></h3>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 2.2.1. Set target city (you need to fill in required values before executing!)</span>
+<span class="n">cityname</span> <span class="o">=</span> <span class="s2">&quot;new york&quot;</span> <span class="c1">#@param {type:&quot;string&quot;}</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 2.2.2. Draw a rectangle on a map (Click ■ on the left side, then click the north west corner and the south east corner of the rectangle.)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.draw</span><span class="w"> </span><span class="kn">import</span> <span class="n">draw_rectangle_map_cityname</span>
+
+<span class="n">m</span><span class="p">,</span> <span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="n">draw_rectangle_map_cityname</span><span class="p">(</span><span class="n">cityname</span><span class="p">,</span> <span class="n">zoom</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">m</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><script type="application/vnd.jupyter.widget-view+json">{"model_id": "8e7768bd0bfe4f6c9c88940f1b17d62f", "version_major": 2, "version_minor": 0}</script></div>
+</div>
+</section>
+</section>
+<section id="option3-set-the-center-location-and-the-width-m-east-west-and-height-m-nort-south">
+<h2>2.3. Option3 Set the center location and the width [m] (east-west) and height [m] (nort-south)<a class="headerlink" href="#option3-set-the-center-location-and-the-width-m-east-west-and-height-m-nort-south" title="Link to this heading">¶</a></h2>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 2.3.1. Set width (m) and height (m) (you need to fill in required values before executing!)</span>
+<span class="n">width</span> <span class="o">=</span> <span class="mi">1250</span> <span class="c1">#@param {type:&quot;number&quot;}</span>
+<span class="n">height</span> <span class="o">=</span> <span class="mi">1250</span> <span class="c1">#@param {type:&quot;number&quot;}</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 2.3.2. Draw a center point (circlemarker) on a map (Click ○ on the left side and then click the center location on the map.)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.draw</span><span class="w"> </span><span class="kn">import</span> <span class="n">center_location_map_cityname</span>
+
+<span class="n">m</span><span class="p">,</span> <span class="n">rectangle_vertices</span> <span class="o">=</span> <span class="n">center_location_map_cityname</span><span class="p">(</span><span class="n">cityname</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">zoom</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="n">m</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<script type="application/vnd.jupyter.widget-view+json">{"model_id": "8af7a94c144f44bd9f476513d443288b", "version_major": 2, "version_minor": 0}</script></div>
+</div>
+</section>
+</section>
+<section id="step3-set-variables">
+<h1>Step3 Set variables<a class="headerlink" href="#step3-set-variables" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 3.1. Set data sources and meshsize (m)</span>
+<span class="n">building_source</span> <span class="o">=</span> <span class="s1">&#39;OpenStreetMap&#39;</span> <span class="c1">#@param [&#39;OpenStreetMap&#39;, &#39;Overture&#39;, &#39;EUBUCCO v0.1&#39;, &#39;Open Building 2.5D Temporal&#39;, &#39;Microsoft Building Footprints&#39;, &#39;Local file&#39;]</span>
+<span class="n">building_complementary_source</span> <span class="o">=</span> <span class="s2">&quot;None&quot;</span> <span class="c1">#@param [&#39;None&#39;, &#39;Open Building 2.5D Temporal&#39;, &#39;Microsoft Building Footprints&#39;, &#39;England 1m DSM - DTM&#39;, &#39;Netherlands 0.5m DSM - DTM&#39;, &#39;OpenMapTiles&#39;, &#39;Local file&#39;, &#39;OpenStreetMap&#39;, &#39;Overture&#39;, &#39;EUBUCCO v0.1&#39;]</span>
+<span class="n">land_cover_source</span> <span class="o">=</span> <span class="s1">&#39;OpenStreetMap&#39;</span> <span class="c1">#@param [&#39;OpenStreetMap&#39;, &#39;Urbanwatch&#39;, &#39;OpenEarthMapJapan&#39;, &#39;ESA WorldCover&#39;, &#39;ESRI 10m Annual Land Cover&#39;, &#39;Dynamic World V1&#39;]</span>
+<span class="n">canopy_height_source</span> <span class="o">=</span> <span class="s1">&#39;High Resolution 1m Global Canopy Height Maps&#39;</span> <span class="c1">#@param [&#39;High Resolution 1m Global Canopy Height Maps&#39;, &#39;ETH Global Sentinel-2 10m Canopy Height (2020)&#39;, &#39;Static&#39;]</span>
+<span class="n">dem_source</span> <span class="o">=</span> <span class="s1">&#39;USGS 3DEP 1m&#39;</span> <span class="c1">#@param [&#39;DeltaDTM&#39;, &#39;FABDEM&#39;, &#39;England 1m DTM&#39;, &#39;DEM France 1m&#39;, &#39;Netherlands 0.5m DTM&#39;, &#39;AUSTRALIA 5M DEM&#39;, &#39;USGS 3DEP 1m&#39;, &#39;NASA&#39;, &#39;COPERNICUS&#39;, &#39;Flat&#39;]</span>
+<span class="n">meshsize</span> <span class="o">=</span> <span class="mi">5</span> <span class="c1">#@param {type:&quot;number&quot;}</span>
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 3.2. Set optional parameters, data sources and meshsize (m)</span>
+<span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># &quot;building_path&quot;: &#39;path_to_building_source_file&#39;, #To set path to building base data source when you select &#39;Local file&#39; as building_source.</span>
+    <span class="c1"># &quot;building_complementary_path&quot;: &#39;path_to_building_complemntary_source_file&#39;, #To set path to building complementary data source  when you select &#39;Local file&#39; as building_complementary_source.</span>
+    <span class="s2">&quot;building_complementary_source&quot;</span><span class="p">:</span> <span class="n">building_complementary_source</span><span class="p">,</span> <span class="c1"># # Specify the complementary building data source (e.g. &#39;Open Building 2.5D Temporal&#39;, &#39;None&#39;, etc.)</span>
+    <span class="s2">&quot;building_complement_height&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="c1"># Default height in meters to use for buildings when height data is missing</span>
+    <span class="c1"># &quot;complement_polygon&quot;: True, #Set &#39;True&#39; if you want to incorporate building footprints from building complementary source. Only building footprints that do not have any intersections with footprints from building source are included.</span>
+    <span class="s2">&quot;output_dir&quot;</span><span class="p">:</span> <span class="s1">&#39;output/test&#39;</span><span class="p">,</span> <span class="c1">#To set directory path for output files</span>
+    <span class="c1"># &quot;remove_perimeter_object&quot;: 0.1, #Set value more than 0 if you want to remove objects including buildings and trees near to domain boundarys (perimeter). Used mainly for CFD simulation. For instance, when you set 0.1, objects with distances from domain boundaries less than 0.1 * domain width (height) are removed.</span>
+    <span class="c1"># &quot;gridvis&quot;: True, #Set &#39;True&#39; if you want to visualize extracted 2D grid data.</span>
+    <span class="c1"># &quot;mapvis&quot;: False, #Set &#39;True&#39; if you want to visualize extracted 2D grid data on a basemap. Note that it take longer time than &quot;gridvis&quot;.</span>
+    <span class="c1"># &quot;voxelvis&quot;: False, #Set &#39;True&#39; if you want to visualize generated voxel 3d city model. Note that this visualiztion takes long time if the number of voxels is huge, e.g., more than one million.</span>
+    <span class="c1"># &quot;voxelvis_img_save_path&quot;: None, #Set path to save image file of generated voxel 3d city model.</span>
+    <span class="c1"># &quot;trunk_height_ratio&quot;: None, #To set ratio of tree trunk height against tree canopy height. Default: 0.59 (11.76 / 19.98).</span>
+    <span class="c1"># &quot;min_canopy_height&quot;: None, #To set minimum canopy height in meters if you want to exclude trees lower than that height.</span>
+    <span class="s2">&quot;dem_interpolation&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="c1">#Set &#39;True&#39; when mesh size if finer than resolution of dem data source and if you want to use interporation.</span>
+    <span class="c1"># &quot;dynamic_world_date&quot;: &#39;2021-04-02&#39;, #To set date of Dynamic World.</span>
+    <span class="c1"># &quot;esri_landcover_year&quot;: &#39;2023&#39; #To set year of Esri Land Cover.</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step4-get-voxcity-output">
+<h1>Step4 Get voxcity output<a class="headerlink" href="#step4-get-voxcity-output" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 4.1. Obtain grid data integrate it to create voxel data</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.generator</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_voxcity</span>
+
+<span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">building_height_grid</span><span class="p">,</span> <span class="n">building_min_height_grid</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">canopy_height_grid</span><span class="p">,</span> <span class="n">land_cover_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">,</span> <span class="n">building_gdf</span> <span class="o">=</span> <span class="n">get_voxcity</span><span class="p">(</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="n">building_source</span><span class="p">,</span>
+    <span class="n">land_cover_source</span><span class="p">,</span>
+    <span class="n">canopy_height_source</span><span class="p">,</span>
+    <span class="n">dem_source</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating Land Use Land Cover grid
+ 
+Data source: OpenStreetMap
+Fetching data from Overpass API...
+Converting data to GeoJSON format...
+Adjusted mesh size: (4.999999999997608, 4.999579167231289)
+</pre></div>
+</div>
+<img alt="../_images/3c43ef4a707ae514837ea0202d122e3ac810695086726dad33589c15234aed70.png" src="../_images/3c43ef4a707ae514837ea0202d122e3ac810695086726dad33589c15234aed70.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating Building Height grid
+ 
+Data source: OpenStreetMap
+223 of the total 1930 building footprint from the base data source did not have height data.
+</pre></div>
+</div>
+<img alt="../_images/487775ecc0a7ae2a17c33776a916217da35ed4d073cd9492a04c7b9abec7d883.png" src="../_images/487775ecc0a7ae2a17c33776a916217da35ed4d073cd9492a04c7b9abec7d883.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating Canopy Height grid
+ 
+Data source: High Resolution Canopy Height Maps by WRI and Meta
+Downloaded image 1/1
+Saving GeoTIFF. Please wait...
+Image saved to output/test/canopy_height.tif
+</pre></div>
+</div>
+<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Reading input: /content/output/test/canopy_height.tif
+
+Updating dataset tags...
+Writing output to: /content/output/test/canopy_height.tif
+</pre></div>
+</div>
+<img alt="../_images/4baaf8fe982e28474a1bc4ee0528709e8390f7a8f9dcdcbc7111411c27c40255.png" src="../_images/4baaf8fe982e28474a1bc4ee0528709e8390f7a8f9dcdcbc7111411c27c40255.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating Digital Elevation Model (DEM) grid
+ 
+Data source: USGS 3DEP 1m
+Generating URL ...
+Downloading data from https://earthengine.googleapis.com/v1/projects/809326785290/thumbnails/981369beadb0965c5e75351e8df220f7-66c80c60e83e663e7d5651da1bc19f45:getPixels
+Please wait ...
+Data downloaded to /content/output/test/dem.tif
+</pre></div>
+</div>
+<img alt="../_images/4e6bcc86438ecca1bb265614a2a20d6d96a3b69c4ec3125c75ee6269025cfd15.png" src="../_images/4e6bcc86438ecca1bb265614a2a20d6d96a3b69c4ec3125c75ee6269025cfd15.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Generating 3D voxel data
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 4.2. Visualize the generated 3D city model (This process may take a long time, so skip this step if you set a large target area)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_voxcity_multi_view</span>
+
+<span class="n">visualize_voxcity_multi_view</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating voxel meshes...
+Creating multiple views...
+</pre></div>
+</div>
+<img alt="../_images/2381f64d3b526db11e898baa6f8312fd0fffdc6d3dbd476f10eb8155fe528ec7.png" src="../_images/2381f64d3b526db11e898baa6f8312fd0fffdc6d3dbd476f10eb8155fe528ec7.png" />
+<img alt="../_images/b3062085f3602a261ceae8d98e804ef5cf616a2c340a47fd0417e8c9b305c4bb.png" src="../_images/b3062085f3602a261ceae8d98e804ef5cf616a2c340a47fd0417e8c9b305c4bb.png" />
+<img alt="../_images/16438e8e907bb04c1921588ef02b8ef9894fda4777c4215be17cb09de624b448.png" src="../_images/16438e8e907bb04c1921588ef02b8ef9894fda4777c4215be17cb09de624b448.png" />
+<img alt="../_images/793252d2628d9cae6b81fc90ab84ff1c474aeb7b8e15e74e06fbc1ceb6975ffd.png" src="../_images/793252d2628d9cae6b81fc90ab84ff1c474aeb7b8e15e74e06fbc1ceb6975ffd.png" />
+<img alt="../_images/b10ed6221adb54338ed45d8d2c0433b92d2780e78e91da57ca28b1caf2289fd2.png" src="../_images/b10ed6221adb54338ed45d8d2c0433b92d2780e78e91da57ca28b1caf2289fd2.png" />
+<img alt="../_images/1d1d3a7e409cc572734a90449deb12629bc37de864fb9fcea1a2765e2d47ca55.png" src="../_images/1d1d3a7e409cc572734a90449deb12629bc37de864fb9fcea1a2765e2d47ca55.png" />
+<img alt="../_images/8cf83779f2069bd257b6db30ee99395605380de174a3ce6eddc74b35752d7c53.png" src="../_images/8cf83779f2069bd257b6db30ee99395605380de174a3ce6eddc74b35752d7c53.png" />
+<img alt="../_images/f95baafd592f4cbc2240e7d3d2bd21c86be804fc8f20c589d8676e6502be8e49.png" src="../_images/f95baafd592f4cbc2240e7d3d2bd21c86be804fc8f20c589d8676e6502be8e49.png" />
+<img alt="../_images/55b2a97dd7e62dbfbff4a10f97c3b2c461763152e800b753b1f5ccd699fdf02f.png" src="../_images/55b2a97dd7e62dbfbff4a10f97c3b2c461763152e800b753b1f5ccd699fdf02f.png" />
+</div>
+</div>
+</section>
+<section id="step5-export-files">
+<h1>Step5 Export files<a class="headerlink" href="#step5-export-files" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 5.1. Export INX file for ENVI-MET</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.envimet</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_inx</span><span class="p">,</span> <span class="n">generate_edb_file</span>
+
+<span class="n">envimet_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/envimet&#39;</span><span class="p">,</span> <span class="c1"># To set directory path for output files</span>
+    <span class="s2">&quot;file_basename&quot;</span><span class="p">:</span> <span class="s1">&#39;voxcity&#39;</span><span class="p">,</span> <span class="c1"># To set directory path for output files</span>
+    <span class="s2">&quot;author_name&quot;</span><span class="p">:</span> <span class="s2">&quot;enter your name&quot;</span><span class="p">,</span> <span class="c1"># Optional. To set author name in INX.</span>
+    <span class="s2">&quot;model_description&quot;</span><span class="p">:</span> <span class="s2">&quot;generated and exported using VoxCity&quot;</span><span class="p">,</span> <span class="c1"># Optional. To desctibe model in INX.</span>
+    <span class="s2">&quot;domain_building_max_height_ratio&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="c1"># Optional. To set ratio between domain height (Z) and maximum height (building + terrain). Default: 2.0.</span>
+    <span class="s2">&quot;useTelescoping_grid&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="c1"># Optional. To activate telescoping grid. Default: False.</span>
+    <span class="s2">&quot;verticalStretch&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span> <span class="c1"># Optional. To set vertical stretch (%). Default: 0%.</span>
+    <span class="s2">&quot;min_grids_Z&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span> <span class="c1"># Optional. To set minimum number of vertical grid cells (Z-axis). Default: 20.</span>
+    <span class="s2">&quot;lad&quot;</span><span class="p">:</span> <span class="mf">1.0</span> <span class="c1"># Optional. To set Leaf Area Density (LAD) of trees in m^-1. Default: 1.0 m^-1.</span>
+<span class="p">}</span>
+
+<span class="n">export_inx</span><span class="p">(</span>
+    <span class="n">building_height_grid</span><span class="p">,</span>
+    <span class="n">building_id_grid</span><span class="p">,</span>
+    <span class="n">canopy_height_grid</span><span class="p">,</span>
+    <span class="n">land_cover_grid</span><span class="p">,</span>
+    <span class="n">dem_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">land_cover_source</span><span class="p">,</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">envimet_kwargs</span>
+<span class="p">)</span>
+<span class="n">generate_edb_file</span><span class="p">(</span><span class="o">**</span><span class="n">envimet_kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 5.2. VOX file for MagicaVoxel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.magicavoxel</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_magicavoxel_vox</span>
+
+<span class="n">output_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;output/magicavoxel&quot;</span>
+<span class="n">export_magicavoxel_vox</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Chunk 0_0_0 saved as output/magicavoxel/chunk_0_0_0.vox
+Shape: (250, 75, 250)
+	vox files was successfully exported in output/magicavoxel
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 5.3. OBJ file</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.exporter.obj</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_obj</span>
+
+<span class="n">output_directory</span> <span class="o">=</span> <span class="s1">&#39;./output/obj&#39;</span>
+<span class="n">output_file_name</span> <span class="o">=</span> <span class="s1">&#39;voxcity&#39;</span>
+
+<span class="n">export_obj</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">output_directory</span><span class="p">,</span> <span class="n">output_file_name</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in ./output/obj with the base name &quot;voxcity&quot;.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="step6-urban-simulations">
+<h1>Step6 Urban simulations<a class="headerlink" href="#step6-urban-simulations" title="Link to this heading">¶</a></h1>
+</section>
+<section id="solar-radiation">
+<h1>6.1. Solar radiation<a class="headerlink" href="#solar-radiation" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.1.1. Solar irradiance on building surfaces (instantaneous)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.solar</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_building_global_solar_irradiance_using_epw</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_building_sim_results</span>
+
+<span class="c1"># Define kwargs dictionary for solar irradiance calculation</span>
+<span class="n">irradiance_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;calc_type&quot;</span><span class="p">:</span> <span class="s2">&quot;instantaneous&quot;</span><span class="p">,</span>  <span class="c1"># For single time point calculation</span>
+    <span class="s2">&quot;download_nearest_epw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="c1"># &quot;epw_file_path&quot;: epw_file_path,</span>
+    <span class="s2">&quot;calc_time&quot;</span><span class="p">:</span> <span class="s2">&quot;01-01 12:00:00&quot;</span><span class="p">,</span>  <span class="c1"># Solar noon on June 21 (summer solstice)</span>
+    <span class="s2">&quot;building_id_grid&quot;</span><span class="p">:</span> <span class="n">building_id_grid</span>
+<span class="p">}</span>
+
+<span class="c1"># Example 1: Instantaneous calculation</span>
+<span class="n">instantaneous_irradiance</span> <span class="o">=</span> <span class="n">get_building_global_solar_irradiance_using_epw</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">irradiance_kwargs</span>
+<span class="p">)</span>
+
+<span class="c1"># Define kwargs dictionary for visualization</span>
+<span class="n">visualization_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;value_name&quot;</span><span class="p">:</span> <span class="s2">&quot;global&quot;</span><span class="p">,</span>  <span class="c1"># Use global irradiance values</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;magma&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="c1"># &quot;vmax&quot;: 1000,  # Adjust based on expected maximum irradiance</span>
+    <span class="s2">&quot;colorbar_title&quot;</span><span class="p">:</span> <span class="s2">&quot;Solar Irradiance (W/m²)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;voxel_color_map&quot;</span><span class="p">:</span> <span class="s2">&quot;grayscale&quot;</span>  <span class="c1"># Use grayscale for voxel visualization</span>
+<span class="p">}</span>
+
+<span class="c1"># Visualize instantaneous results</span>
+<span class="n">visualize_building_sim_results</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">instantaneous_irradiance</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">visualization_kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Auto-detected regions: USA
+Fetching weather station data from Climate.OneBuilding.Org...
+Scanning USA...
+Found 10696 stations in USA
+
+Total stations found: 10696
+
+Downloading EPW file for New.York-Downtown.Manhattan.Heli NY USA...
+
+Downloaded EPW file for New.York-Downtown.Manhattan.Heli NY USA
+Distance: 0.61 km
+Station coordinates: -74.009, 40.701
+WMO: 720553
+Climate zone: 4A - Mixed - Humid
+Data period: 2011-2018
+Files saved:
+- EPW: output/new.york-downtown.manhattan.heli_ny_usa.epw
+- Metadata: output/new.york-downtown.manhattan.heli_ny_usa.json
+
+Loading EPW data...
+Loaded 8760 hourly records
+Processing Sky View Factor for building surfaces...
+Processing Solar Irradiance for building surfaces...
+Time: 2016-01-01 12:00:00
+Sun position: Azimuth 180.1°, Elevation 26.3°
+DNI: 230.0 W/m², DHI: 176.0 W/m²
+Creating voxel meshes...
+</pre></div>
+</div>
+<img alt="../_images/ee526e0d726f8fe6a7e2ad3fd875a8d64de41d1bb3f8edcfffb7d9bdc83c51f4.png" src="../_images/ee526e0d726f8fe6a7e2ad3fd875a8d64de41d1bb3f8edcfffb7d9bdc83c51f4.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Replacing voxel class -3 with colored custom simulation mesh
+Creating multiple views...
+</pre></div>
+</div>
+<img alt="../_images/08b3db000d7ff09f51e879d8e8a4bcba4b5e5ed59a9349b647881854bed4a7b1.png" src="../_images/08b3db000d7ff09f51e879d8e8a4bcba4b5e5ed59a9349b647881854bed4a7b1.png" />
+<img alt="../_images/c02b560b528c62b15debdcecbdb9e0ced88ee1e367b743de57fca9f7f0142a3b.png" src="../_images/c02b560b528c62b15debdcecbdb9e0ced88ee1e367b743de57fca9f7f0142a3b.png" />
+<img alt="../_images/ab3ea52ae29974a354a21dccdc3de1dec76565a3fa196fbf3f9d21da62503cb4.png" src="../_images/ab3ea52ae29974a354a21dccdc3de1dec76565a3fa196fbf3f9d21da62503cb4.png" />
+<img alt="../_images/4d355ca695d3b477b0dc95f43a481b253c5e42dc774f8ce255e23d34862be447.png" src="../_images/4d355ca695d3b477b0dc95f43a481b253c5e42dc774f8ce255e23d34862be447.png" />
+<img alt="../_images/8754f22f2f7153cf294fe603e8c60a3d93fc77cbabe9aae071fbcc2e4c7c9d9b.png" src="../_images/8754f22f2f7153cf294fe603e8c60a3d93fc77cbabe9aae071fbcc2e4c7c9d9b.png" />
+<img alt="../_images/18bd5a56d075e7d84d503f169a971a9e366c04da141b7348822d463ebad5cf11.png" src="../_images/18bd5a56d075e7d84d503f169a971a9e366c04da141b7348822d463ebad5cf11.png" />
+<img alt="../_images/c5ef47b292fdb2cf51f9b059eaff2c95e0df0f2a39f6c0f054fba95cd4a3d2fc.png" src="../_images/c5ef47b292fdb2cf51f9b059eaff2c95e0df0f2a39f6c0f054fba95cd4a3d2fc.png" />
+<img alt="../_images/e6e15d13dceb60233ecc9bc2aedd9e8df0b792a300896686a989a96dad59097a.png" src="../_images/e6e15d13dceb60233ecc9bc2aedd9e8df0b792a300896686a989a96dad59097a.png" />
+<img alt="../_images/ff225adaa3a89376e18d036337502ea61e01a52e11a2c335260c8506295936cd.png" src="../_images/ff225adaa3a89376e18d036337502ea61e01a52e11a2c335260c8506295936cd.png" />
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>[(&#39;iso_front_right&#39;, &#39;output/city_view_iso_front_right.png&#39;),
+ (&#39;iso_front_left&#39;, &#39;output/city_view_iso_front_left.png&#39;),
+ (&#39;iso_back_right&#39;, &#39;output/city_view_iso_back_right.png&#39;),
+ (&#39;iso_back_left&#39;, &#39;output/city_view_iso_back_left.png&#39;),
+ (&#39;xy_top&#39;, &#39;output/city_view_xy_top.png&#39;),
+ (&#39;yz_right&#39;, &#39;output/city_view_yz_right.png&#39;),
+ (&#39;xz_front&#39;, &#39;output/city_view_xz_front.png&#39;),
+ (&#39;yz_left&#39;, &#39;output/city_view_yz_left.png&#39;),
+ (&#39;xz_back&#39;, &#39;output/city_view_xz_back.png&#39;)]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.1.2. Solar irradiance on building surfaces (cumulative)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.solar</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_building_global_solar_irradiance_using_epw</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_building_sim_results</span>
+
+<span class="c1"># Define kwargs dictionary for cumulative calculation</span>
+<span class="n">cumulative_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;calc_type&quot;</span><span class="p">:</span> <span class="s2">&quot;cumulative&quot;</span><span class="p">,</span>  <span class="c1"># For cumulative calculations over a period</span>
+    <span class="s2">&quot;download_nearest_epw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="c1"># &quot;epw_file_path&quot;: epw_file_path,</span>
+    <span class="s2">&quot;period_start&quot;</span><span class="p">:</span> <span class="s2">&quot;01-01 07:00:00&quot;</span><span class="p">,</span>  <span class="c1"># June 1st at 7 AM</span>
+    <span class="s2">&quot;period_end&quot;</span><span class="p">:</span> <span class="s2">&quot;01-31 19:00:00&quot;</span><span class="p">,</span>    <span class="c1"># June 30th at 7 PM</span>
+    <span class="s2">&quot;building_id_grid&quot;</span><span class="p">:</span> <span class="n">building_id_grid</span>
+<span class="p">}</span>
+
+<span class="c1"># Example 2: Cumulative calculation for a month</span>
+<span class="n">cumulative_irradiance</span> <span class="o">=</span> <span class="n">get_building_global_solar_irradiance_using_epw</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">cumulative_kwargs</span>
+<span class="p">)</span>
+
+<span class="c1"># Define kwargs dictionary for visualization</span>
+<span class="n">cumulative_vis_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;value_name&quot;</span><span class="p">:</span> <span class="s2">&quot;global&quot;</span><span class="p">,</span>    <span class="c1"># Use global irradiance values</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;magma&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="c1"># &quot;vmax&quot;: 1000,  # Adjust based on expected maximum irradiance</span>
+    <span class="s2">&quot;colorbar_title&quot;</span><span class="p">:</span> <span class="s2">&quot;Cumulative Solar Irradiance (Wh/m²)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;voxel_color_map&quot;</span><span class="p">:</span> <span class="s2">&quot;grayscale&quot;</span><span class="p">,</span>  <span class="c1"># Use grayscale for voxel visualization</span>
+    <span class="s2">&quot;projection_type&quot;</span><span class="p">:</span> <span class="s2">&quot;perspective&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;distance_factor&quot;</span><span class="p">:</span> <span class="mf">0.7</span>
+<span class="p">}</span>
+
+<span class="c1"># Visualize cumulative results</span>
+<span class="n">visualize_building_sim_results</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>  <span class="c1"># Can use grid without trees for clearer visualization</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">cumulative_irradiance</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">cumulative_vis_kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Output hidden; open in https://colab.research.google.com to view.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.1.3. An example post analysis for solar irradiance on building surfaces (cumulative)</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">box</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_numerical_gdf_on_basemap</span>
+
+<span class="c1"># Create dataframe with the three columns</span>
+<span class="n">cumulative_solar_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">&#39;area&#39;</span><span class="p">:</span> <span class="n">cumulative_irradiance</span><span class="o">.</span><span class="n">area_faces</span><span class="p">,</span>
+    <span class="s1">&#39;cumulative_solar_irradiance&#39;</span><span class="p">:</span> <span class="n">cumulative_irradiance</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s1">&#39;global&#39;</span><span class="p">],</span>
+    <span class="s1">&#39;building_id&#39;</span><span class="p">:</span> <span class="n">cumulative_irradiance</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s1">&#39;building_id&#39;</span><span class="p">]</span>
+<span class="p">})</span>
+
+<span class="c1"># Filter out rows where cumulative_solar_irradiance is NaN</span>
+<span class="n">cumulative_solar_df</span> <span class="o">=</span> <span class="n">cumulative_solar_df</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;cumulative_solar_irradiance&#39;</span><span class="p">])</span>
+
+<span class="c1"># Calculate mean solar irradiance per building</span>
+<span class="n">building_solar</span> <span class="o">=</span> <span class="n">cumulative_solar_df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;building_id&#39;</span><span class="p">)[</span><span class="s1">&#39;cumulative_solar_irradiance&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+
+<span class="c1"># Merge building_gdf with solar data</span>
+<span class="c1"># First merge solar data</span>
+<span class="n">building_gdf_with_solar</span> <span class="o">=</span> <span class="n">building_gdf</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span>
+    <span class="n">building_solar</span><span class="p">,</span>
+    <span class="n">left_on</span><span class="o">=</span><span class="s1">&#39;id&#39;</span><span class="p">,</span>
+    <span class="n">right_on</span><span class="o">=</span><span class="s1">&#39;building_id&#39;</span><span class="p">,</span>
+    <span class="n">how</span><span class="o">=</span><span class="s1">&#39;left&#39;</span>
+<span class="p">)</span>
+
+<span class="c1"># Create a bounding box from rectangle vertices and filter buildings within it</span>
+
+<span class="n">bbox</span> <span class="o">=</span> <span class="n">box</span><span class="p">(</span>
+    <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span>  <span class="c1"># minx</span>
+    <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span>  <span class="c1"># miny</span>
+    <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span>  <span class="c1"># maxx</span>
+    <span class="n">rectangle_vertices</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>   <span class="c1"># maxy</span>
+<span class="p">)</span>
+<span class="n">building_gdf_with_solar</span> <span class="o">=</span> <span class="n">building_gdf_with_solar</span><span class="p">[</span><span class="n">building_gdf_with_solar</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">within</span><span class="p">(</span><span class="n">bbox</span><span class="p">)]</span>
+
+<span class="c1"># Visualize using the utility function</span>
+<span class="n">visualize_numerical_gdf_on_basemap</span><span class="p">(</span>
+    <span class="n">building_gdf_with_solar</span><span class="p">,</span>
+    <span class="n">value_name</span><span class="o">=</span><span class="s1">&#39;cumulative_solar_irradiance&#39;</span><span class="p">,</span>
+    <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;magma&#39;</span><span class="p">,</span>
+    <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span><span class="mi">8</span><span class="p">),</span>
+    <span class="n">basemap</span><span class="o">=</span><span class="s1">&#39;CartoDB light&#39;</span><span class="p">,</span>
+    <span class="n">show_edge</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">edge_color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">,</span>
+    <span class="n">edge_width</span><span class="o">=</span><span class="mf">0.5</span>
+<span class="p">)</span>
+
+<span class="c1"># Print summary statistics</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Summary Statistics for Building Solar Irradiance:&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;------------------------------------------------&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">building_gdf_with_solar</span><span class="p">[</span><span class="s1">&#39;cumulative_solar_irradiance&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">describe</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><img alt="../_images/9f6eb35344a4492765ff2a655c9d1a7f5d26f947574a1ff8c62e5ec2e34c9d7d.png" src="../_images/9f6eb35344a4492765ff2a655c9d1a7f5d26f947574a1ff8c62e5ec2e34c9d7d.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Summary Statistics for Building Solar Irradiance:
+------------------------------------------------
+count     1793.000000
+mean     14417.462698
+std      11126.560316
+min        953.470069
+25%       6118.405266
+50%      11585.376756
+75%      19036.755378
+max      71431.194802
+Name: cumulative_solar_irradiance, dtype: float64
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.1.4. Ground-level solar irradiance (instantaneous)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.solar</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_global_solar_irradiance_using_epw</span>
+
+<span class="n">solar_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;download_nearest_epw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>  <span class="c1"># Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span>  <span class="c1"># Coordinates defining the area of interest for calculation</span>
+    <span class="c1"># &quot;epw_file_path&quot;: &quot;./output/new.york-downtown.manhattan.heli_ny_usa_1.epw&quot;,  # Path to EnergyPlus Weather (EPW) file containing climate data. Set if you already have an EPW file.</span>
+    <span class="s2">&quot;calc_time&quot;</span><span class="p">:</span> <span class="s2">&quot;01-01 12:00:00&quot;</span><span class="p">,</span>  <span class="c1"># Time for instantaneous calculation in format &quot;MM-DD HH:MM:SS&quot;</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>  <span class="c1"># Height of view point in meters for calculating solar access. Default: 1.5 m</span>
+    <span class="s2">&quot;tree_k&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span>    <span class="c1"># Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)</span>
+    <span class="s2">&quot;tree_lad&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>    <span class="c1"># Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>      <span class="c1"># Digital elevation model grid for terrain heights</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;magma&#39;</span><span class="p">,</span>       <span class="c1"># Matplotlib colormap for visualization. Default: &#39;viridis&#39;</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>        <span class="c1"># Whether to export results as 3D OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/test&#39;</span><span class="p">,</span>  <span class="c1"># Directory for saving output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;instantaneous_solar_irradiance&#39;</span><span class="p">,</span>  <span class="c1"># Base filename for outputs (without extension)</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>             <span class="c1"># Transparency of visualization (0.0-1.0)</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>               <span class="c1"># Minimum value for colormap scaling in visualization</span>
+    <span class="c1"># &quot;vmax&quot;: 900,             # Maximum value for colormap scaling in visualization</span>
+<span class="p">}</span>
+
+<span class="c1"># Compute global solar irradiance map (direct + diffuse radiation)</span>
+<span class="n">solar_grid</span> <span class="o">=</span> <span class="n">get_global_solar_irradiance_using_epw</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>                        <span class="c1"># 3D voxel grid representing the urban environment</span>
+    <span class="n">meshsize</span><span class="p">,</span>                            <span class="c1"># Size of each voxel in meters</span>
+    <span class="n">calc_type</span><span class="o">=</span><span class="s1">&#39;instantaneous&#39;</span><span class="p">,</span>           <span class="c1"># Calculate instantaneous irradiance at specified time</span>
+    <span class="n">direct_normal_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Scaling factor for direct solar radiation (1.0 = no scaling)</span>
+    <span class="n">diffuse_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># Scaling factor for diffuse solar radiation (1.0 = no scaling)</span>
+    <span class="o">**</span><span class="n">solar_kwargs</span>                       <span class="c1"># Pass all the parameters defined above</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Fetching weather station data from Climate.OneBuilding.Org...
+Scanning Africa...
+Found 3253 stations in Africa
+Scanning Asia...
+Found 7471 stations in Asia
+Scanning Japan...
+Found 157 stations in Japan
+Scanning India...
+Found 6 stations in India
+Scanning Argentina...
+Found 16 stations in Argentina
+Scanning Canada...
+Found 3437 stations in Canada
+Scanning USA...
+Found 10696 stations in USA
+Scanning Caribbean...
+Found 1534 stations in Caribbean
+Scanning Southwest_Pacific...
+Found 4712 stations in Southwest_Pacific
+Scanning Europe...
+Found 12570 stations in Europe
+Scanning Antarctica...
+Found 342 stations in Antarctica
+
+Total stations found: 44194
+
+Downloading EPW file for New.York-Downtown.Manhattan.Heli NY USA...
+
+Downloaded EPW file for New.York-Downtown.Manhattan.Heli NY USA
+Distance: 0.61 km
+Station coordinates: -74.009, 40.701
+WMO: 720553
+Climate zone: 4A - Mixed - Humid
+Data period: 2011-2018
+Files saved:
+- EPW: output/new.york-downtown.manhattan.heli_ny_usa.epw
+- Metadata: output/new.york-downtown.manhattan.heli_ny_usa.json
+
+Loading EPW data...
+Loaded 8760 hourly records
+</pre></div>
+</div>
+<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/usr/local/lib/python3.11/dist-packages/numba/np/ufunc/parallel.py:371: NumbaWarning: The TBB threading layer requires TBB version 2021 update 6 or later i.e., TBB_INTERFACE_VERSION &gt;= 12060. Found TBB_INTERFACE_VERSION = 12050. The TBB threading layer is disabled.
+  warnings.warn(problem)
+</pre></div>
+</div>
+<img alt="../_images/b5aa8550d8f9a02146a09d679ed098ed0d685f524418fd6fd86faf54d3332bb3.png" src="../_images/b5aa8550d8f9a02146a09d679ed098ed0d685f524418fd6fd86faf54d3332bb3.png" />
+<img alt="../_images/f12f9703ddcc9120a5e13ad8a3524191355c9212ea8464846fd89ce0bd24c0ce.png" src="../_images/f12f9703ddcc9120a5e13ad8a3524191355c9212ea8464846fd89ce0bd24c0ce.png" />
+<img alt="../_images/93b19b81494eaf4ff4b17fad222b805977747025e9a5b5a008cf68777dbe9510.png" src="../_images/93b19b81494eaf4ff4b17fad222b805977747025e9a5b5a008cf68777dbe9510.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in output/test with the base name &quot;instantaneous_solar_irradiance&quot;.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.1.5. Ground-level solar irradiance (cumulative)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.solar</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_global_solar_irradiance_using_epw</span>
+
+<span class="c1"># Dictionary containing parameters for solar irradiance calculation</span>
+<span class="n">solar_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;download_nearest_epw&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>  <span class="c1"># Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org</span>
+    <span class="s2">&quot;rectangle_vertices&quot;</span><span class="p">:</span> <span class="n">rectangle_vertices</span><span class="p">,</span>  <span class="c1"># Coordinates defining the area of interest for calculation</span>
+    <span class="c1"># &quot;epw_file_path&quot;: &quot;./output/USA_CA_Marina.Muni.AP.690070_TMYx.epw&quot;,  # Path to EnergyPlus Weather (EPW) file containing climate data. Set if you already have an EPW file.</span>
+    <span class="s2">&quot;start_time&quot;</span><span class="p">:</span> <span class="s2">&quot;01-01 01:00:00&quot;</span><span class="p">,</span>  <span class="c1"># Start time for cumulative calculation</span>
+    <span class="s2">&quot;end_time&quot;</span><span class="p">:</span> <span class="s2">&quot;01-31 23:00:00&quot;</span><span class="p">,</span>    <span class="c1"># End time for cumulative calculation</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>  <span class="c1"># Height of view point in meters for calculating solar access. Default: 1.5 m</span>
+    <span class="s2">&quot;tree_k&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span>    <span class="c1"># Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)</span>
+    <span class="s2">&quot;tree_lad&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>    <span class="c1"># Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>      <span class="c1"># Digital elevation model grid for terrain heights</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;magma&#39;</span><span class="p">,</span>       <span class="c1"># Matplotlib colormap for visualization. Default: &#39;viridis&#39;</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>        <span class="c1"># Whether to export results as 3D OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/test&#39;</span><span class="p">,</span>  <span class="c1"># Directory for saving output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;solar_irradiance&#39;</span><span class="p">,</span>  <span class="c1"># Base filename for outputs (without extension)</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>             <span class="c1"># Transparency of visualization (0.0-1.0)</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>               <span class="c1"># Minimum value for colormap scaling in visualization (commented out to auto-scale)</span>
+    <span class="c1"># &quot;vmax&quot;: 900,           # Maximum value for colormap scaling in visualization (commented out to auto-scale)</span>
+<span class="p">}</span>
+
+<span class="c1"># Calculate cumulative solar irradiance over the specified time period</span>
+<span class="n">cum_solar_grid</span> <span class="o">=</span> <span class="n">get_global_solar_irradiance_using_epw</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>                        <span class="c1"># 3D voxel grid representing the urban environment</span>
+    <span class="n">meshsize</span><span class="p">,</span>                            <span class="c1"># Size of each voxel in meters</span>
+    <span class="n">calc_type</span><span class="o">=</span><span class="s1">&#39;cumulative&#39;</span><span class="p">,</span>              <span class="c1"># Calculate cumulative irradiance over time period instead of instantaneous</span>
+    <span class="n">direct_normal_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Scaling factor for direct solar radiation (1.0 = no scaling)</span>
+    <span class="n">diffuse_irradiance_scaling</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># Scaling factor for diffuse solar radiation (1.0 = no scaling)</span>
+    <span class="o">**</span><span class="n">solar_kwargs</span>                       <span class="c1"># Pass all the parameters defined above</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Fetching weather station data from Climate.OneBuilding.Org...
+Scanning Africa...
+Found 3253 stations in Africa
+Scanning Asia...
+Found 7471 stations in Asia
+Scanning Japan...
+Found 157 stations in Japan
+Scanning India...
+Found 6 stations in India
+Scanning Argentina...
+Found 16 stations in Argentina
+Scanning Canada...
+Found 3437 stations in Canada
+Scanning USA...
+Found 10696 stations in USA
+Scanning Caribbean...
+Found 1534 stations in Caribbean
+Scanning Southwest_Pacific...
+Found 4712 stations in Southwest_Pacific
+Scanning Europe...
+Found 12570 stations in Europe
+Scanning Antarctica...
+Found 342 stations in Antarctica
+
+Total stations found: 44194
+
+Downloading EPW file for New.York-Downtown.Manhattan.Heli NY USA...
+
+Downloaded EPW file for New.York-Downtown.Manhattan.Heli NY USA
+Distance: 0.61 km
+Station coordinates: -74.009, 40.701
+WMO: 720553
+Climate zone: 4A - Mixed - Humid
+Data period: 2011-2018
+Files saved:
+- EPW: output/new.york-downtown.manhattan.heli_ny_usa.epw
+- Metadata: output/new.york-downtown.manhattan.heli_ny_usa.json
+
+Loading EPW data...
+Loaded 8760 hourly records
+</pre></div>
+</div>
+<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/usr/local/lib/python3.11/dist-packages/numba/np/ufunc/parallel.py:371: NumbaWarning: The TBB threading layer requires TBB version 2021 update 6 or later i.e., TBB_INTERFACE_VERSION &gt;= 12060. Found TBB_INTERFACE_VERSION = 12050. The TBB threading layer is disabled.
+  warnings.warn(problem)
+</pre></div>
+</div>
+<img alt="../_images/deb9b1005e47ff20de7df521c496b60387b0a7481fbce3b95c29cf0ed9326e62.png" src="../_images/deb9b1005e47ff20de7df521c496b60387b0a7481fbce3b95c29cf0ed9326e62.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in output/test with the base name &quot;solar_irradiance&quot;.
+</pre></div>
+</div>
+</div>
+</div>
+<p>#6.2. View index</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.2.1. Green view index, Sky view index</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.view</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_view_index</span>
+
+<span class="n">view_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>      <span class="c1"># Height of observer viewpoint in meters</span>
+    <span class="s2">&quot;tree_k&quot;</span><span class="p">:</span> <span class="mf">0.6</span><span class="p">,</span>                 <span class="c1"># Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)</span>
+    <span class="s2">&quot;tree_lad&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>               <span class="c1"># Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>          <span class="c1"># Digital elevation model grid</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;viridis&quot;</span><span class="p">,</span>         <span class="c1"># Colormap for visualization</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>            <span class="c1"># Whether to export as OBJ file</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span>  <span class="c1"># Directory to save output files</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s2">&quot;gvi&quot;</span>      <span class="c1"># Base filename for outputs</span>
+<span class="p">}</span>
+
+<span class="c1"># Compute Green View Index using mode=&#39;green&#39;</span>
+<span class="n">gvi_grid</span> <span class="o">=</span> <span class="n">get_view_index</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;green&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">view_kwargs</span><span class="p">)</span>
+
+<span class="c1"># Adjust parameters for Sky View Index</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;colormap&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;BuPu_r&quot;</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;output_file_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;svi&quot;</span>
+<span class="n">view_kwargs</span><span class="p">[</span><span class="s2">&quot;elevation_min_degrees&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="c1"># Compute Sky View Index using mode=&#39;sky&#39;</span>
+<span class="n">svi_grid</span> <span class="o">=</span> <span class="n">get_view_index</span><span class="p">(</span><span class="n">voxcity_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;sky&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">view_kwargs</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><img alt="../_images/5df41ef08d7317fa90a38b0ea19bcb2cf5c2f10ed05909f1ad158e25af1ef24d.png" src="../_images/5df41ef08d7317fa90a38b0ea19bcb2cf5c2f10ed05909f1ad158e25af1ef24d.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in output with the base name &quot;gvi&quot;.
+</pre></div>
+</div>
+<img alt="../_images/8b2deb89a4009b385747bdb66bdb49b92e5f1465cbf145b71150e81addb8a302.png" src="../_images/8b2deb89a4009b385747bdb66bdb49b92e5f1465cbf145b71150e81addb8a302.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in output with the base name &quot;svi&quot;.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="landmark-visibility">
+<h1>6.3. Landmark visibility<a class="headerlink" href="#landmark-visibility" title="Link to this heading">¶</a></h1>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.3.1. Map for drawing a polygon to specify landmark buildings - draw a polygon that includes all desired landmark building footprints</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.draw</span><span class="w"> </span><span class="kn">import</span> <span class="n">display_buildings_and_draw_polygon</span>
+
+<span class="c1"># Create interactive map with buildings and get drawn polygon</span>
+<span class="n">m_landmark</span><span class="p">,</span> <span class="n">landmark_polygon</span> <span class="o">=</span> <span class="n">display_buildings_and_draw_polygon</span><span class="p">(</span><span class="n">building_gdf</span><span class="p">)</span>
+<span class="n">m_landmark</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><script type="application/vnd.jupyter.widget-view+json">{"model_id": "f59f2334b5a0449fb2e8b4c982474f1c", "version_major": 2, "version_minor": 0}</script><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Vertices of the drawn polygon (Lon-Lat):
+ - (lon, lat) = (-74.01331, 40.705664)
+ - (lon, lat) = (-74.013513, 40.705372)
+ - (lon, lat) = (-74.013406, 40.704998)
+ - (lon, lat) = (-74.01258, 40.705046)
+ - (lon, lat) = (-74.01244, 40.705416)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title 6.3.2. Simulate landmark visibility</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.simulator.view</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_landmark_visibility_map</span>  <span class="c1"># Import function to analyze landmark visibility from different viewpoints</span>
+
+<span class="n">landmark_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="c1"># To set height of view point in meters. Default: 1.5 m.</span>
+    <span class="s2">&quot;landmark_polygon&quot;</span><span class="p">:</span> <span class="n">landmark_polygon</span><span class="p">,</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;cool&#39;</span><span class="p">,</span> <span class="c1"># Choose a colormap.  Default: &#39;viridis&#39;.</span>
+    <span class="s2">&quot;obj_export&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="c1"># Set &quot;True&quot; if you export the result in an OBJ file.</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/obj&#39;</span><span class="p">,</span> <span class="c1"># To set directory path for output files. Default: False.</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;landmark_visibility&#39;</span><span class="p">,</span> <span class="c1"># To set file name excluding extension. Default: &#39;view_index.</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Set transparency (0.0 to 1.0)</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="c1"># Minimum value for colormap normalization</span>
+    <span class="s2">&quot;vmax&quot;</span><span class="p">:</span> <span class="mf">1.0</span> <span class="c1"># Maximum value for colormap normalization</span>
+<span class="p">}</span>
+
+<span class="n">landmark_vis_map</span><span class="p">,</span> <span class="n">voxcity_grid_landmark</span> <span class="o">=</span> <span class="n">get_landmark_visibility_map</span><span class="p">(</span>  <span class="c1"># Calculate visibility map for landmarks</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>                               <span class="c1"># Input voxel grid representing the 3D urban environment</span>
+    <span class="n">building_id_grid</span><span class="p">,</span>                           <span class="c1"># Grid containing building IDs for each cell</span>
+    <span class="n">building_gdf</span><span class="p">,</span>                           <span class="c1"># GeoJSON containing building footprint data</span>
+    <span class="n">meshsize</span><span class="p">,</span>                                   <span class="c1"># Size of each grid cell in meters</span>
+    <span class="o">**</span><span class="n">landmark_kwargs</span>                           <span class="c1"># Pass all configuration parameters defined above</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><img alt="../_images/37ae1e201e9f8f1450d195ae004af51596fdbbffe1c127f8495ec87d3579770c.png" src="../_images/37ae1e201e9f8f1450d195ae004af51596fdbbffe1c127f8495ec87d3579770c.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>OBJ and MTL files have been generated in output/obj with the base name &quot;landmark_visibility&quot;.
+OBJ and MTL files have been generated in output/obj with the base name &quot;voxcity_landmark_visibility&quot;.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title Data aggregation by road networks</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.geoprocessor.network</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_network_values</span>
+
+<span class="n">network_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;network_type&quot;</span><span class="p">:</span> <span class="s2">&quot;walk&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s2">&quot;magma&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;vis_graph&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="c1"># &quot;vmax&quot;: 65000,</span>
+    <span class="s2">&quot;edge_width&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s2">&quot;alpha&quot;</span><span class="p">:</span> <span class="mf">0.8</span><span class="p">,</span>
+    <span class="s2">&quot;zoom&quot;</span><span class="p">:</span> <span class="mi">16</span>
+<span class="p">}</span>
+
+<span class="n">G</span><span class="p">,</span> <span class="n">solar_edge_gdf</span> <span class="o">=</span> <span class="n">get_network_values</span><span class="p">(</span>
+    <span class="n">cum_solar_grid</span><span class="p">,</span>
+    <span class="n">rectangle_vertices</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="n">value_name</span><span class="o">=</span><span class="s1">&#39;Cumulative Global Solar Irradiance (W/m²·hour), yearly, 7:00-9:00&#39;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">network_kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><img alt="../_images/92d339bb67c3bd08896101d783f1e9db93e4e75b964c49279748305d8aa5b121.png" src="../_images/92d339bb67c3bd08896101d783f1e9db93e4e75b964c49279748305d8aa5b121.png" />
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1">#@title Visualize a simulation result on a 3D city model</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_voxcity_multi_view</span>
+
+<span class="n">vis_3d_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="c1"># To set height of view point in meters. Default: 1.5 m.</span>
+    <span class="s2">&quot;sim_grid&quot;</span><span class="p">:</span> <span class="n">cum_solar_grid</span><span class="p">,</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;magma&#39;</span><span class="p">,</span> <span class="c1"># Choose a colormap. Default: &#39;viridis&#39;.</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s1">&#39;output/3d_vis&#39;</span><span class="p">,</span> <span class="c1"># To set directory path for output files. Default: False.</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;cum_solar_grid&#39;</span><span class="p">,</span> <span class="c1"># To set file name excluding extension. Default: &#39;view_index&#39;.</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="c1"># Minimum value for colormap normalization</span>
+    <span class="c1"># &quot;vmax&quot;: 1500000 # Maximum value for colormap normalization,</span>
+    <span class="s2">&quot;projection_type&quot;</span><span class="p">:</span> <span class="s2">&quot;orthographic&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;distance_factor&quot;</span><span class="p">:</span> <span class="mf">1.5</span>
+<span class="p">}</span>
+
+
+<span class="n">visualize_voxcity_multi_view</span><span class="p">(</span>
+    <span class="n">voxcity_grid</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">vis_3d_kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html">
+            <style>
+                .geemap-dark {
+                    --jp-widgets-color: white;
+                    --jp-widgets-label-color: white;
+                    --jp-ui-font-color1: white;
+                    --jp-layout-color2: #454545;
+                    background-color: #383838;
+                }
+
+                .geemap-dark .jupyter-button {
+                    --jp-layout-color3: #383838;
+                }
+
+                .geemap-colab {
+                    background-color: var(--colab-primary-surface-color, white);
+                }
+
+                .geemap-colab .jupyter-button {
+                    --jp-layout-color3: var(--colab-primary-surface-color, white);
+                }
+            </style>
+            </div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Creating voxel meshes...
+Creating sim_grid surface mesh...
+</pre></div>
+</div>
+<img alt="../_images/9fe3565b796bbcfa9b8a6c68f2acc5215f85fb44e897309c70d872af642c4e2d.png" src="../_images/9fe3565b796bbcfa9b8a6c68f2acc5215f85fb44e897309c70d872af642c4e2d.png" />
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Exporting files to &#39;cum_solar_grid.*&#39; ...
+Creating multiple views...
+</pre></div>
+</div>
+<img alt="../_images/d78a3eb336be5ce5f77c495769998eebfff641eeabdb07cf096ba335ba384956.png" src="../_images/d78a3eb336be5ce5f77c495769998eebfff641eeabdb07cf096ba335ba384956.png" />
+<img alt="../_images/f90fcf8677590540881786f73264d464ddd26208acba82e72719ff14bbc3f766.png" src="../_images/f90fcf8677590540881786f73264d464ddd26208acba82e72719ff14bbc3f766.png" />
+<img alt="../_images/a16a92d7ff125fe3cc073defe75e38d086080239f3b021f0698cc4dedcc883e0.png" src="../_images/a16a92d7ff125fe3cc073defe75e38d086080239f3b021f0698cc4dedcc883e0.png" />
+<img alt="../_images/47ccb675b60d54c2200555b98251427524fc0480ff8ae1239dc69dad7ff582b8.png" src="../_images/47ccb675b60d54c2200555b98251427524fc0480ff8ae1239dc69dad7ff582b8.png" />
+<img alt="../_images/4594a8ba7ca6906387b12cbc69ea87637648141d667e5f4ebb16c911cdc446bc.png" src="../_images/4594a8ba7ca6906387b12cbc69ea87637648141d667e5f4ebb16c911cdc446bc.png" />
+<img alt="../_images/b5af316dd59d7d3fa732e8f9672dab880a81d86f5d41e4a95d7ee767030d767e.png" src="../_images/b5af316dd59d7d3fa732e8f9672dab880a81d86f5d41e4a95d7ee767030d767e.png" />
+<img alt="../_images/93648751c2dd2ea57a6ba8944d2f87cc6c8e9e81a1f4774f7da2f92b93a47423.png" src="../_images/93648751c2dd2ea57a6ba8944d2f87cc6c8e9e81a1f4774f7da2f92b93a47423.png" />
+<img alt="../_images/b82ad5912e73c863733e461aa5d7be370c8328fc1168985011a510f3ebf347e1.png" src="../_images/b82ad5912e73c863733e461aa5d7be370c8328fc1168985011a510f3ebf347e1.png" />
+<img alt="../_images/4261120bd44487e132f79bddd3fbee9038582dbbd97bd707732d67839655cf14.png" src="../_images/4261120bd44487e132f79bddd3fbee9038582dbbd97bd707732d67839655cf14.png" />
+</div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">voxcity.utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">visualize_voxcity_multi_view</span>
+
+<span class="n">vis_3d_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;view_point_height&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span> <span class="c1"># To set height of view point in meters. Default: 1.5 m.</span>
+    <span class="s2">&quot;sim_grid&quot;</span><span class="p">:</span> <span class="n">landmark_vis_map</span><span class="p">,</span>
+    <span class="s2">&quot;dem_grid&quot;</span><span class="p">:</span> <span class="n">dem_grid</span><span class="p">,</span>
+    <span class="s2">&quot;colormap&quot;</span><span class="p">:</span> <span class="s1">&#39;cool&#39;</span><span class="p">,</span> <span class="c1"># Choose a colormap.  Default: &#39;viridis&#39;.</span>
+    <span class="s2">&quot;output_directory&quot;</span><span class="p">:</span> <span class="s1">&#39;output/3d_vis&#39;</span><span class="p">,</span> <span class="c1"># To set directory path for output files. Default: False.</span>
+    <span class="s2">&quot;output_file_name&quot;</span><span class="p">:</span> <span class="s1">&#39;landmark_visibility&#39;</span><span class="p">,</span> <span class="c1"># To set file name excluding extension. Default: &#39;view_index.</span>
+    <span class="s2">&quot;vmin&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="c1"># Minimum value for colormap normalization</span>
+    <span class="s2">&quot;vmax&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="c1"># Maximum value for colormap normalization</span>
+    <span class="s2">&quot;projection_type&quot;</span><span class="p">:</span> <span class="s2">&quot;perspective&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;distance_factor&quot;</span><span class="p">:</span> <span class="mf">0.5</span>
+<span class="p">}</span>
+
+<span class="n">visualize_voxcity_multi_view</span><span class="p">(</span>
+    <span class="n">voxcity_grid_landmark</span><span class="p">,</span>
+    <span class="n">meshsize</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">vis_3d_kwargs</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Output hidden; open in https://colab.research.google.com to view.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../changelog.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">=======
+History</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Use cases of VoxCity</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

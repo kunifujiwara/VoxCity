@@ -1,0 +1,44 @@
+voxcity
+=======
+
+.. py:module:: voxcity
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/voxcity/downloader/index
+   /autoapi/voxcity/exporter/index
+   /autoapi/voxcity/generator/index
+   /autoapi/voxcity/geoprocessor/index
+   /autoapi/voxcity/simulator/index
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   voxcity.__author__
+   voxcity.__email__
+   voxcity.__version__
+
+
+Package Contents
+----------------
+
+.. py:data:: __author__
+   :value: 'Kunihiko Fujiwara'
+
+
+.. py:data:: __email__
+   :value: 'kunihiko@nus.edu.sg'
+
+
+.. py:data:: __version__
+   :value: '0.1.0'
+
+

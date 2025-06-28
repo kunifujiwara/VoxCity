@@ -1,0 +1,1090 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.exporter.envimet - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.exporter.envimet</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;ENVI-met model file exporter module.</span>
+
+<span class="sd">This module provides functionality to export voxel city data to ENVI-met INX format.</span>
+<span class="sd">ENVI-met is a three-dimensional microclimate model designed to simulate surface-plant-air</span>
+<span class="sd">interactions in urban environments.</span>
+
+<span class="sd">Key Features:</span>
+<span class="sd">    - Converts voxel grids to ENVI-met compatible format</span>
+<span class="sd">    - Handles building heights, vegetation, materials, and terrain</span>
+<span class="sd">    - Supports telescoping grid for vertical mesh refinement</span>
+<span class="sd">    - Generates complete INX files with all required parameters</span>
+<span class="sd">    - Creates plant database (EDB) files for 3D vegetation</span>
+
+<span class="sd">Main Functions:</span>
+<span class="sd">    - prepare_grids: Processes input grids for ENVI-met format</span>
+<span class="sd">    - create_xml_content: Generates INX file XML content</span>
+<span class="sd">    - export_inx: Main function to export model to INX format</span>
+<span class="sd">    - generate_edb_file: Creates plant database file</span>
+<span class="sd">    - array_to_string: Helper functions for grid formatting</span>
+
+<span class="sd">Dependencies:</span>
+<span class="sd">    - numpy: For array operations</span>
+<span class="sd">    - datetime: For timestamp generation</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">..geoprocessor.grid</span><span class="w"> </span><span class="kn">import</span> <span class="n">apply_operation</span><span class="p">,</span> <span class="n">translate_array</span><span class="p">,</span> <span class="n">group_and_label_cells</span><span class="p">,</span> <span class="n">process_grid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..geoprocessor.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_city_country_name_from_rectangle</span><span class="p">,</span> <span class="n">get_timezone_info</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..utils.lc</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert_land_cover</span>
+
+<div class="viewcode-block" id="array_to_string">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.array_to_string">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">array_to_string</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a 2D numpy array to a string representation with comma-separated values.</span>
+<span class="sd">    </span>
+<span class="sd">    This function formats array values for ENVI-met INX files, where each row must be:</span>
+<span class="sd">    1. Indented by 5 spaces</span>
+<span class="sd">    2. Values separated by commas</span>
+<span class="sd">    3. No trailing comma</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        arr (numpy.ndarray): 2D numpy array to convert</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: String representation with each row indented by 5 spaces and values comma-separated</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; arr = np.array([[1, 2], [3, 4]])</span>
+<span class="sd">        &gt;&gt;&gt; print(array_to_string(arr))</span>
+<span class="sd">             1,2</span>
+<span class="sd">             3,4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;     &#39;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cell</span><span class="p">)</span> <span class="k">for</span> <span class="n">cell</span> <span class="ow">in</span> <span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">arr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="array_to_string_with_value">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.array_to_string_with_value">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">array_to_string_with_value</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a 2D numpy array to a string representation, replacing all values with a constant.</span>
+<span class="sd">    </span>
+<span class="sd">    This function is useful for creating uniform value grids in ENVI-met INX files,</span>
+<span class="sd">    such as for soil profiles or fixed height indicators.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        arr (numpy.ndarray): 2D numpy array to convert (only shape is used)</span>
+<span class="sd">        value (str or numeric): Value to use for all cells</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: String representation with each row indented by 5 spaces and constant value repeated</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; arr = np.zeros((2, 2))</span>
+<span class="sd">        &gt;&gt;&gt; print(array_to_string_with_value(arr, &#39;0&#39;))</span>
+<span class="sd">             0,0</span>
+<span class="sd">             0,0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;     &#39;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">cell</span> <span class="ow">in</span> <span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">arr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="array_to_string_int">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.array_to_string_int">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">array_to_string_int</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a 2D numpy array to a string representation of rounded integers.</span>
+<span class="sd">    </span>
+<span class="sd">    This function is used for grids that must be represented as integers in ENVI-met,</span>
+<span class="sd">    such as building numbers or terrain heights. Values are rounded to nearest integer.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        arr (numpy.ndarray): 2D numpy array to convert</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: String representation with each row indented by 5 spaces and values rounded to integers</span>
+<span class="sd">        </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; arr = np.array([[1.6, 2.3], [3.7, 4.1]])</span>
+<span class="sd">        &gt;&gt;&gt; print(array_to_string_int(arr))</span>
+<span class="sd">             2,2</span>
+<span class="sd">             4,4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;     &#39;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">cell</span><span class="o">+</span><span class="mf">0.5</span><span class="p">))</span> <span class="k">for</span> <span class="n">cell</span> <span class="ow">in</span> <span class="n">row</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">arr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="prepare_grids">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.prepare_grids">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">prepare_grids</span><span class="p">(</span><span class="n">building_height_grid_ori</span><span class="p">,</span> <span class="n">building_id_grid_ori</span><span class="p">,</span> <span class="n">canopy_height_grid_ori</span><span class="p">,</span> <span class="n">land_cover_grid_ori</span><span class="p">,</span> <span class="n">dem_grid_ori</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">land_cover_source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Prepare and process input grids for ENVI-met model.</span>
+<span class="sd">    </span>
+<span class="sd">    This function performs several key transformations on input grids:</span>
+<span class="sd">    1. Flips grids vertically to match ENVI-met coordinate system</span>
+<span class="sd">    2. Handles missing values and border conditions</span>
+<span class="sd">    3. Converts land cover classes to ENVI-met vegetation and material codes</span>
+<span class="sd">    4. Processes building IDs and heights</span>
+<span class="sd">    5. Adjusts DEM relative to minimum elevation</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        building_height_grid_ori (numpy.ndarray): Original building height grid (meters)</span>
+<span class="sd">        building_id_grid_ori (numpy.ndarray): Original building ID grid</span>
+<span class="sd">        canopy_height_grid_ori (numpy.ndarray): Original canopy height grid (meters)</span>
+<span class="sd">        land_cover_grid_ori (numpy.ndarray): Original land cover grid (class codes)</span>
+<span class="sd">        dem_grid_ori (numpy.ndarray): Original DEM grid (meters)</span>
+<span class="sd">        meshsize (float): Size of mesh cells in meters</span>
+<span class="sd">        land_cover_source (str): Source of land cover data for class conversion</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: Processed grids:</span>
+<span class="sd">            - building_height_grid (numpy.ndarray): Building heights</span>
+<span class="sd">            - building_id_grid (numpy.ndarray): Building IDs</span>
+<span class="sd">            - land_cover_veg_grid (numpy.ndarray): Vegetation codes</span>
+<span class="sd">            - land_cover_mat_grid (numpy.ndarray): Material codes</span>
+<span class="sd">            - canopy_height_grid (numpy.ndarray): Canopy heights</span>
+<span class="sd">            - dem_grid (numpy.ndarray): Processed DEM</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Building heights at grid borders are set to 0</span>
+<span class="sd">        - DEM is normalized to minimum elevation</span>
+<span class="sd">        - Land cover is converted based on source-specific mapping</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Flip building height grid vertically and replace NaN with 10m height</span>
+    <span class="n">building_height_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">building_height_grid_ori</span><span class="p">,</span> <span class="n">nan</span><span class="o">=</span><span class="mf">10.0</span><span class="p">))</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">building_id_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">building_id_grid_ori</span><span class="p">)</span>
+    
+    <span class="c1"># Set border cells to 0 height</span>
+    <span class="n">building_height_grid</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">building_height_grid</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">building_height_grid</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">building_height_grid</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">building_height_grid</span> <span class="o">=</span> <span class="n">apply_operation</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">)</span>
+
+    <span class="c1"># Convert land cover if needed based on source</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">land_cover_source</span> <span class="o">==</span> <span class="s1">&#39;OpenEarthMapJapan&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">land_cover_source</span> <span class="o">==</span> <span class="s1">&#39;OpenStreetMap&#39;</span><span class="p">):</span>
+        <span class="n">land_cover_grid_converted</span> <span class="o">=</span> <span class="n">land_cover_grid_ori</span>   
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">land_cover_grid_converted</span> <span class="o">=</span> <span class="n">convert_land_cover</span><span class="p">(</span><span class="n">land_cover_grid_ori</span><span class="p">,</span> <span class="n">land_cover_source</span><span class="o">=</span><span class="n">land_cover_source</span><span class="p">)</span>        
+
+    <span class="n">land_cover_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">land_cover_grid_converted</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="c1"># Dictionary mapping land cover types to vegetation codes</span>
+    <span class="n">veg_translation_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="mi">1</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>  <span class="c1"># Bareland</span>
+        <span class="mi">2</span><span class="p">:</span> <span class="s1">&#39;0200XX&#39;</span><span class="p">,</span>  <span class="c1"># Rangeland</span>
+        <span class="mi">3</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>  <span class="c1"># Shrub</span>
+        <span class="mi">4</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>  <span class="c1"># Moss and lichen</span>
+        <span class="mi">5</span><span class="p">:</span> <span class="s1">&#39;0200XX&#39;</span><span class="p">,</span>  <span class="c1"># Agriculture land</span>
+        <span class="mi">6</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>  <span class="c1"># Tree</span>
+        <span class="mi">7</span><span class="p">:</span> <span class="s1">&#39;0200XX&#39;</span><span class="p">,</span>  <span class="c1"># Wet land</span>
+        <span class="mi">8</span><span class="p">:</span> <span class="s1">&#39;&#39;</span>  <span class="c1"># Mangroves</span>
+    <span class="p">}</span>
+    <span class="n">land_cover_veg_grid</span> <span class="o">=</span> <span class="n">translate_array</span><span class="p">(</span><span class="n">land_cover_grid</span><span class="p">,</span> <span class="n">veg_translation_dict</span><span class="p">)</span>
+
+    <span class="c1"># Dictionary mapping land cover types to material codes</span>
+    <span class="n">mat_translation_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="mi">1</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Bareland</span>
+        <span class="mi">2</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Rangeland</span>
+        <span class="mi">3</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Shrub</span>
+        <span class="mi">4</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Moss and lichen</span>
+        <span class="mi">5</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Agriculture land</span>
+        <span class="mi">6</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span>  <span class="c1"># Tree</span>
+        <span class="mi">7</span><span class="p">:</span> <span class="s1">&#39;0200WW&#39;</span><span class="p">,</span>  <span class="c1"># Wet land</span>
+        <span class="mi">8</span><span class="p">:</span> <span class="s1">&#39;0200WW&#39;</span><span class="p">,</span>  <span class="c1"># Mangroves</span>
+        <span class="mi">9</span><span class="p">:</span> <span class="s1">&#39;0200WW&#39;</span><span class="p">,</span>  <span class="c1"># Water</span>
+        <span class="mi">10</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span> <span class="c1"># Snow and ice</span>
+        <span class="mi">11</span><span class="p">:</span> <span class="s1">&#39;0200PG&#39;</span><span class="p">,</span> <span class="c1"># Developed space</span>
+        <span class="mi">12</span><span class="p">:</span> <span class="s1">&#39;0200ST&#39;</span><span class="p">,</span> <span class="c1"># Road</span>
+        <span class="mi">13</span><span class="p">:</span> <span class="s1">&#39;000000&#39;</span><span class="p">,</span> <span class="c1"># Building</span>
+        <span class="mi">14</span><span class="p">:</span> <span class="s1">&#39;0200SD&#39;</span><span class="p">,</span> <span class="c1"># No Data</span>
+    <span class="p">}</span>
+    <span class="n">land_cover_mat_grid</span> <span class="o">=</span> <span class="n">translate_array</span><span class="p">(</span><span class="n">land_cover_grid</span><span class="p">,</span> <span class="n">mat_translation_dict</span><span class="p">)</span>
+
+    <span class="c1"># Process canopy and DEM grids</span>
+    <span class="n">canopy_height_grid</span> <span class="o">=</span> <span class="n">canopy_height_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">dem_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">dem_grid_ori</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dem_grid_ori</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">building_height_grid</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">land_cover_veg_grid</span><span class="p">,</span> <span class="n">land_cover_mat_grid</span><span class="p">,</span> <span class="n">canopy_height_grid</span><span class="p">,</span> <span class="n">dem_grid</span></div>
+
+
+<div class="viewcode-block" id="create_xml_content">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.create_xml_content">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_xml_content</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">land_cover_veg_grid</span><span class="p">,</span> <span class="n">land_cover_mat_grid</span><span class="p">,</span> <span class="n">canopy_height_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create XML content for ENVI-met INX file.</span>
+<span class="sd">    </span>
+<span class="sd">    This function generates the complete XML structure for an ENVI-met INX file,</span>
+<span class="sd">    including model metadata, geometry settings, and all required grid data.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        building_height_grid (numpy.ndarray): Processed building heights</span>
+<span class="sd">        building_id_grid (numpy.ndarray): Processed building IDs</span>
+<span class="sd">        land_cover_veg_grid (numpy.ndarray): Vegetation codes grid</span>
+<span class="sd">        land_cover_mat_grid (numpy.ndarray): Material codes grid</span>
+<span class="sd">        canopy_height_grid (numpy.ndarray): Processed canopy heights</span>
+<span class="sd">        dem_grid (numpy.ndarray): Processed DEM</span>
+<span class="sd">        meshsize (float): Size of mesh cells in meters</span>
+<span class="sd">        rectangle_vertices (list): Vertices defining model area as [(lon, lat), ...]</span>
+<span class="sd">        **kwargs: Additional keyword arguments:</span>
+<span class="sd">            - author_name (str): Name of model author</span>
+<span class="sd">            - model_description (str): Description of model</span>
+<span class="sd">            - domain_building_max_height_ratio (float): Ratio of domain height to max building height</span>
+<span class="sd">            - useTelescoping_grid (bool): Whether to use telescoping grid</span>
+<span class="sd">            - verticalStretch (float): Vertical stretch factor</span>
+<span class="sd">            - startStretch (float): Height to start stretching</span>
+<span class="sd">            - min_grids_Z (int): Minimum vertical grid cells</span>
+<span class="sd">            </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: Complete XML content for INX file</span>
+<span class="sd">        </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Automatically determines location information from coordinates</span>
+<span class="sd">        - Handles both telescoping and uniform vertical grids</span>
+<span class="sd">        - Sets appropriate defaults for optional parameters</span>
+<span class="sd">        - Includes all required ENVI-met model settings</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># XML template defining the structure of an ENVI-met INX file</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;&lt;ENVI-MET_Datafile&gt;</span>
+<span class="s2">    &lt;Header&gt;</span>
+<span class="s2">    &lt;filetype&gt;INPX ENVI-met Area Input File&lt;/filetype&gt;</span>
+<span class="s2">    &lt;version&gt;440&lt;/version&gt;</span>
+<span class="s2">    &lt;revisiondate&gt;7/5/2024 5:44:52 PM&lt;/revisiondate&gt;</span>
+<span class="s2">    &lt;remark&gt;Created with SPACES 5.6.1&lt;/remark&gt;</span>
+<span class="s2">    &lt;checksum&gt;0&lt;/checksum&gt;</span>
+<span class="s2">    &lt;encryptionlevel&gt;0&lt;/encryptionlevel&gt;</span>
+<span class="s2">    &lt;/Header&gt;</span>
+<span class="s2">      &lt;baseData&gt;</span>
+<span class="s2">         &lt;modelDescription&gt; $modelDescription$ &lt;/modelDescription&gt;</span>
+<span class="s2">         &lt;modelAuthor&gt; $modelAuthor$ &lt;/modelAuthor&gt;</span>
+<span class="s2">         &lt;modelcopyright&gt; The creator or distributor is responsible for following Copyright Laws &lt;/modelcopyright&gt;</span>
+<span class="s2">      &lt;/baseData&gt;</span>
+<span class="s2">      &lt;modelGeometry&gt;</span>
+<span class="s2">         &lt;grids-I&gt; $grids-I$ &lt;/grids-I&gt;</span>
+<span class="s2">         &lt;grids-J&gt; $grids-J$ &lt;/grids-J&gt;</span>
+<span class="s2">         &lt;grids-Z&gt; $grids-Z$ &lt;/grids-Z&gt;</span>
+<span class="s2">         &lt;dx&gt; $dx$ &lt;/dx&gt;</span>
+<span class="s2">         &lt;dy&gt; $dy$ &lt;/dy&gt;</span>
+<span class="s2">         &lt;dz-base&gt; $dz-base$ &lt;/dz-base&gt;</span>
+<span class="s2">         &lt;useTelescoping_grid&gt; $useTelescoping_grid$ &lt;/useTelescoping_grid&gt;</span>
+<span class="s2">         &lt;useSplitting&gt; 1 &lt;/useSplitting&gt;</span>
+<span class="s2">         &lt;verticalStretch&gt; $verticalStretch$ &lt;/verticalStretch&gt;</span>
+<span class="s2">         &lt;startStretch&gt; $startStretch$ &lt;/startStretch&gt;</span>
+<span class="s2">         &lt;has3DModel&gt; 0 &lt;/has3DModel&gt;</span>
+<span class="s2">         &lt;isFull3DDesign&gt; 0 &lt;/isFull3DDesign&gt;</span>
+<span class="s2">      &lt;/modelGeometry&gt;</span>
+<span class="s2">      &lt;nestingArea&gt;</span>
+<span class="s2">         &lt;numberNestinggrids&gt; 0 &lt;/numberNestinggrids&gt;</span>
+<span class="s2">         &lt;soilProfileA&gt; 000000 &lt;/soilProfileA&gt;</span>
+<span class="s2">         &lt;soilProfileB&gt; 000000 &lt;/soilProfileB&gt;</span>
+<span class="s2">      &lt;/nestingArea&gt;</span>
+<span class="s2">      &lt;locationData&gt;</span>
+<span class="s2">         &lt;modelRotation&gt; $modelRotation$ &lt;/modelRotation&gt;</span>
+<span class="s2">         &lt;projectionSystem&gt; $projectionSystem$ &lt;/projectionSystem&gt;</span>
+<span class="s2">         &lt;UTMZone&gt; 0 &lt;/UTMZone&gt;</span>
+<span class="s2">         &lt;realworldLowerLeft_X&gt; 0.00000 &lt;/realworldLowerLeft_X&gt;</span>
+<span class="s2">         &lt;realworldLowerLeft_Y&gt; 0.00000 &lt;/realworldLowerLeft_Y&gt;</span>
+<span class="s2">         &lt;locationName&gt; $locationName$ &lt;/locationName&gt;</span>
+<span class="s2">         &lt;location_Longitude&gt; $location_Longitude$ &lt;/location_Longitude&gt;</span>
+<span class="s2">         &lt;location_Latitude&gt; $location_Latitude$ &lt;/location_Latitude&gt;</span>
+<span class="s2">         &lt;locationTimeZone_Name&gt; $locationTimeZone_Name$ &lt;/locationTimeZone_Name&gt;</span>
+<span class="s2">         &lt;locationTimeZone_Longitude&gt; $locationTimeZone_Longitude$ &lt;/locationTimeZone_Longitude&gt;</span>
+<span class="s2">      &lt;/locationData&gt;</span>
+<span class="s2">      &lt;defaultSettings&gt;</span>
+<span class="s2">         &lt;commonWallMaterial&gt; 000000 &lt;/commonWallMaterial&gt;</span>
+<span class="s2">         &lt;commonRoofMaterial&gt; 000000 &lt;/commonRoofMaterial&gt;</span>
+<span class="s2">      &lt;/defaultSettings&gt;</span>
+<span class="s2">      &lt;buildings2D&gt;</span>
+<span class="s2">         &lt;zTop type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $zTop$</span>
+<span class="s2">         &lt;/zTop&gt;</span>
+<span class="s2">         &lt;zBottom type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $zBottom$</span>
+<span class="s2">         &lt;/zBottom&gt;</span>
+<span class="s2">         &lt;buildingNr type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $buildingNr$</span>
+<span class="s2">         &lt;/buildingNr&gt;</span>
+<span class="s2">         &lt;fixedheight type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $fixedheight$</span>
+<span class="s2">         &lt;/fixedheight&gt;</span>
+<span class="s2">      &lt;/buildings2D&gt;</span>
+<span class="s2">      &lt;simpleplants2D&gt;</span>
+<span class="s2">         &lt;ID_plants1D type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $ID_plants1D$</span>
+<span class="s2">         &lt;/ID_plants1D&gt;</span>
+<span class="s2">      &lt;/simpleplants2D&gt;</span>
+<span class="s2">    $3Dplants$</span>
+<span class="s2">      &lt;soils2D&gt;</span>
+<span class="s2">         &lt;ID_soilprofile type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $ID_soilprofile$</span>
+<span class="s2">         &lt;/ID_soilprofile&gt;</span>
+<span class="s2">      &lt;/soils2D&gt;</span>
+<span class="s2">      &lt;dem&gt;</span>
+<span class="s2">         &lt;DEMReference&gt; $DEMReference$ &lt;/DEMReference&gt;</span>
+<span class="s2">         &lt;terrainheight type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $terrainheight$</span>
+<span class="s2">         &lt;/terrainheight&gt;</span>
+<span class="s2">      &lt;/dem&gt;</span>
+<span class="s2">      &lt;sources2D&gt;</span>
+<span class="s2">         &lt;ID_sources type=&quot;matrix-data&quot; dataI=&quot;$grids-I$&quot; dataJ=&quot;$grids-J$&quot;&gt;</span>
+<span class="s2">    $ID_sources$</span>
+<span class="s2">         &lt;/ID_sources&gt;</span>
+<span class="s2">      &lt;/sources2D&gt;</span>
+<span class="s2">    &lt;/ENVI-MET_Datafile&gt;&quot;&quot;&quot;</span>
+
+    <span class="c1"># Get location information based on rectangle vertices</span>
+    <span class="n">city_country_name</span> <span class="o">=</span> <span class="n">get_city_country_name_from_rectangle</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Calculate center coordinates of the model area</span>
+    <span class="n">longitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">]</span>  <span class="c1"># Changed order from lat to lon</span>
+    <span class="n">latitudes</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">rectangle_vertices</span><span class="p">]</span>  <span class="c1"># Changed order from lat to lon</span>
+    <span class="n">center_lon</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">longitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">longitudes</span><span class="p">))</span>  <span class="c1"># Changed order</span>
+    <span class="n">center_lat</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">latitudes</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">latitudes</span><span class="p">))</span>  <span class="c1"># Changed order</span>
+    
+    <span class="n">timezone_info</span> <span class="o">=</span> <span class="n">get_timezone_info</span><span class="p">(</span><span class="n">rectangle_vertices</span><span class="p">)</span>
+
+    <span class="c1"># Set default values for optional parameters</span>
+    <span class="n">author_name</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;author_name&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">author_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">author_name</span> <span class="o">=</span> <span class="s2">&quot;[Enter model author name]&quot;</span>
+    <span class="n">model_desctiption</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;model_desctiption&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">model_desctiption</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">model_desctiption</span> <span class="o">=</span> <span class="s2">&quot;[Enter model desctription]&quot;</span>
+
+    <span class="c1"># Replace location-related placeholders in template</span>
+    <span class="n">placeholders</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;$modelDescription$&quot;</span><span class="p">:</span> <span class="n">model_desctiption</span><span class="p">,</span>
+        <span class="s2">&quot;$modelAuthor$&quot;</span><span class="p">:</span> <span class="n">author_name</span><span class="p">,</span>
+        <span class="s2">&quot;$modelRotation$&quot;</span><span class="p">:</span> <span class="s2">&quot;0&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;$projectionSystem$&quot;</span><span class="p">:</span> <span class="s2">&quot;GCS_WGS_1984&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;$locationName$&quot;</span><span class="p">:</span> <span class="n">city_country_name</span><span class="p">,</span>
+        <span class="s2">&quot;$location_Longitude$&quot;</span><span class="p">:</span> <span class="n">center_lon</span><span class="p">,</span>
+        <span class="s2">&quot;$location_Latitude$&quot;</span><span class="p">:</span> <span class="n">center_lat</span><span class="p">,</span>
+        <span class="s2">&quot;$locationTimeZone_Name$&quot;</span><span class="p">:</span> <span class="n">timezone_info</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="s2">&quot;$locationTimeZone_Longitude$&quot;</span><span class="p">:</span> <span class="n">timezone_info</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Ensure no None values are passed to replace()</span>
+    <span class="k">for</span> <span class="n">placeholder</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">placeholders</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: </span><span class="si">{</span><span class="n">placeholder</span><span class="si">}</span><span class="s2"> is None, using fallback value&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;$locationName$&quot;</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;Unknown Location/ Unknown Country&quot;</span>
+            <span class="k">elif</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;$locationTimeZone_Name$&quot;</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;UTC+00:00&quot;</span>
+            <span class="k">elif</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;$locationTimeZone_Longitude$&quot;</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;0.00000&quot;</span>
+            <span class="k">elif</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;$modelDescription$&quot;</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;[Enter model description]&quot;</span>
+            <span class="k">elif</span> <span class="n">placeholder</span> <span class="o">==</span> <span class="s2">&quot;$modelAuthor$&quot;</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;[Enter model author name]&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;Unknown&quot;</span>
+        <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">placeholder</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+    
+    <span class="c1"># Calculate building heights including terrain elevation</span>
+    <span class="n">building_on_dem_grid</span> <span class="o">=</span> <span class="n">building_height_grid</span> <span class="o">+</span> <span class="n">dem_grid</span>    
+    
+    <span class="c1"># Configure vertical grid settings</span>
+    <span class="n">domain_building_max_height_ratio</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;domain_building_max_height_ratio&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">domain_building_max_height_ratio</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">domain_building_max_height_ratio</span> <span class="o">=</span> <span class="mi">2</span>
+    
+    <span class="c1"># Configure telescoping grid settings if enabled</span>
+    <span class="n">useTelescoping_grid</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;useTelescoping_grid&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">useTelescoping_grid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">useTelescoping_grid</span> <span class="o">==</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="n">useTelescoping_grid</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">verticalStretch</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">startStretch</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">useTelescoping_grid</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">verticalStretch</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;verticalStretch&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">verticalStretch</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">verticalStretch</span> <span class="o">=</span> <span class="mi">20</span>
+        <span class="n">startStretch</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;startStretch&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">startStretch</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">startStretch</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">building_on_dem_grid</span><span class="p">)</span><span class="o">/</span><span class="n">meshsize</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span>
+    
+    <span class="c1"># Set horizontal grid dimensions</span>
+    <span class="n">grids_I</span><span class="p">,</span> <span class="n">grids_J</span> <span class="o">=</span> <span class="n">building_height_grid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">building_height_grid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Calculate vertical grid dimension based on building heights and telescoping settings</span>
+    <span class="n">min_grids_Z</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;min_grids_Z&#39;</span><span class="p">,</span> <span class="mi">20</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">verticalStretch</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># Calculate minimum number of cells needed to reach target height with telescoping</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">meshsize</span>  <span class="c1"># First cell size</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="mi">100</span> <span class="o">+</span> <span class="n">verticalStretch</span><span class="p">)</span> <span class="o">/</span> <span class="mi">100</span>  <span class="c1"># Growth ratio</span>
+        <span class="n">S_target</span> <span class="o">=</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">building_on_dem_grid</span><span class="p">)</span><span class="o">/</span><span class="n">meshsize</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">meshsize</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">domain_building_max_height_ratio</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">min_n</span> <span class="o">=</span> <span class="n">find_min_n</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">S_target</span><span class="p">,</span> <span class="n">max_n</span><span class="o">=</span><span class="mi">1000000</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">min_n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Fallback to non-telescoping grid if calculation fails</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Warning: Telescoping grid calculation failed, using uniform grid&quot;</span><span class="p">)</span>
+            <span class="n">grids_Z</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">building_on_dem_grid</span><span class="p">)</span><span class="o">/</span><span class="n">meshsize</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">domain_building_max_height_ratio</span><span class="p">,</span> <span class="n">min_grids_Z</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">grids_Z_tent</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">building_on_dem_grid</span><span class="p">)</span><span class="o">/</span><span class="n">meshsize</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">+</span> <span class="n">min_n</span>
+            <span class="k">if</span> <span class="n">grids_Z_tent</span> <span class="o">&lt;</span> <span class="n">min_grids_Z</span><span class="p">:</span>
+                <span class="n">grids_Z</span> <span class="o">=</span> <span class="n">min_grids_Z</span>
+                <span class="n">startStretch</span> <span class="o">+=</span> <span class="p">(</span><span class="n">min_grids_Z</span> <span class="o">-</span> <span class="n">grids_Z</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">grids_Z</span> <span class="o">=</span> <span class="n">grids_Z_tent</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Calculate vertical grid cells without telescoping</span>
+        <span class="n">grids_Z</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">building_on_dem_grid</span><span class="p">)</span><span class="o">/</span><span class="n">meshsize</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">domain_building_max_height_ratio</span><span class="p">,</span> <span class="n">min_grids_Z</span><span class="p">)</span>
+
+    <span class="c1"># Set grid cell sizes</span>
+    <span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">,</span> <span class="n">dz_base</span> <span class="o">=</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">meshsize</span>
+
+    <span class="c1"># Replace grid-related placeholders</span>
+    <span class="n">grid_placeholders</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;$grids-I$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">grids_I</span><span class="p">),</span>
+        <span class="s2">&quot;$grids-J$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">grids_J</span><span class="p">),</span>
+        <span class="s2">&quot;$grids-Z$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">grids_Z</span><span class="p">),</span>
+        <span class="s2">&quot;$dx$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">dx</span><span class="p">),</span>
+        <span class="s2">&quot;$dy$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">dy</span><span class="p">),</span>
+        <span class="s2">&quot;$dz-base$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">dz_base</span><span class="p">),</span>
+        <span class="s2">&quot;$useTelescoping_grid$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">useTelescoping_grid</span><span class="p">),</span>
+        <span class="s2">&quot;$verticalStretch$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">verticalStretch</span><span class="p">),</span>
+        <span class="s2">&quot;$startStretch$&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">startStretch</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">placeholder</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">grid_placeholders</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">placeholder</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="c1"># Replace matrix data placeholders with actual grid data</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$zTop$&quot;</span><span class="p">,</span> <span class="n">array_to_string</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">))</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$zBottom$&quot;</span><span class="p">,</span> <span class="n">array_to_string_with_value</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">))</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$fixedheight$&quot;</span><span class="p">,</span> <span class="n">array_to_string_with_value</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">))</span>
+
+    <span class="c1"># Process and add building numbers</span>
+    <span class="n">building_nr_grid</span> <span class="o">=</span> <span class="n">group_and_label_cells</span><span class="p">(</span><span class="n">building_id_grid</span><span class="p">)</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$buildingNr$&quot;</span><span class="p">,</span> <span class="n">array_to_string</span><span class="p">(</span><span class="n">building_nr_grid</span><span class="p">))</span>
+
+    <span class="c1"># Add vegetation data</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$ID_plants1D$&quot;</span><span class="p">,</span> <span class="n">array_to_string</span><span class="p">(</span><span class="n">land_cover_veg_grid</span><span class="p">))</span>
+
+    <span class="c1"># Generate and add 3D plant data</span>
+    <span class="n">tree_content</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">grids_I</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">grids_J</span><span class="p">):</span>
+            <span class="n">canopy_height</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">canopy_height_grid</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span>
+            <span class="c1"># Only add trees where there are no buildings</span>
+            <span class="k">if</span> <span class="n">canopy_height_grid</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">building_height_grid</span><span class="p">)[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span><span class="o">==</span><span class="mi">0</span><span class="p">:</span>
+                <span class="n">plantid</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;H</span><span class="si">{</span><span class="n">canopy_height</span><span class="si">:</span><span class="s1">02d</span><span class="si">}</span><span class="s1">W01&#39;</span>
+                <span class="n">tree_ij</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;  &lt;3Dplants&gt;</span>
+<span class="s2">     &lt;rootcell_i&gt; </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> &lt;/rootcell_i&gt;</span>
+<span class="s2">     &lt;rootcell_j&gt; </span><span class="si">{</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> &lt;/rootcell_j&gt;</span>
+<span class="s2">     &lt;rootcell_k&gt; 0 &lt;/rootcell_k&gt;</span>
+<span class="s2">     &lt;plantID&gt; </span><span class="si">{</span><span class="n">plantid</span><span class="si">}</span><span class="s2"> &lt;/plantID&gt;</span>
+<span class="s2">     &lt;name&gt; .</span><span class="si">{</span><span class="n">plantid</span><span class="si">}</span><span class="s2"> &lt;/name&gt;</span>
+<span class="s2">     &lt;observe&gt; 0 &lt;/observe&gt;</span>
+<span class="s2">  &lt;/3Dplants&gt;&quot;&quot;&quot;</span>
+                <span class="n">tree_content</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">tree_ij</span>
+
+    <span class="c1"># Add remaining data</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$3Dplants$&quot;</span><span class="p">,</span> <span class="n">tree_content</span><span class="p">)</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$ID_soilprofile$&quot;</span><span class="p">,</span> <span class="n">array_to_string</span><span class="p">(</span><span class="n">land_cover_mat_grid</span><span class="p">))</span>
+    <span class="n">dem_grid</span> <span class="o">=</span> <span class="n">process_grid</span><span class="p">(</span><span class="n">building_nr_grid</span><span class="p">,</span> <span class="n">dem_grid</span><span class="p">)</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$DEMReference$&quot;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">)</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$terrainheight$&quot;</span><span class="p">,</span> <span class="n">array_to_string_int</span><span class="p">(</span><span class="n">dem_grid</span><span class="p">))</span>
+    <span class="n">xml_template</span> <span class="o">=</span> <span class="n">xml_template</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;$ID_sources$&quot;</span><span class="p">,</span> <span class="n">array_to_string_with_value</span><span class="p">(</span><span class="n">land_cover_mat_grid</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">xml_template</span></div>
+
+
+<div class="viewcode-block" id="save_file">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.save_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_file</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="n">output_file_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Save content to a file with UTF-8 encoding.</span>
+<span class="sd">    </span>
+<span class="sd">    This function ensures consistent file encoding and error handling when</span>
+<span class="sd">    saving ENVI-met files.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        content (str): String content to save</span>
+<span class="sd">        output_file_path (str): Path to save file to</span>
+<span class="sd">        </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Creates parent directories if they don&#39;t exist</span>
+<span class="sd">        - Uses UTF-8 encoding for compatibility</span>
+<span class="sd">        - Overwrites existing file if present</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="export_inx">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.export_inx">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">export_inx</span><span class="p">(</span><span class="n">building_height_grid_ori</span><span class="p">,</span> <span class="n">building_id_grid_ori</span><span class="p">,</span> <span class="n">canopy_height_grid_ori</span><span class="p">,</span> <span class="n">land_cover_grid_ori</span><span class="p">,</span> <span class="n">dem_grid_ori</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">land_cover_source</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Export model data to ENVI-met INX file format.</span>
+<span class="sd">    </span>
+<span class="sd">    This is the main function for exporting voxel city data to ENVI-met format.</span>
+<span class="sd">    It coordinates the entire export process from grid preparation to file saving.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        building_height_grid_ori (numpy.ndarray): Original building height grid</span>
+<span class="sd">        building_id_grid_ori (numpy.ndarray): Original building ID grid</span>
+<span class="sd">        canopy_height_grid_ori (numpy.ndarray): Original canopy height grid</span>
+<span class="sd">        land_cover_grid_ori (numpy.ndarray): Original land cover grid</span>
+<span class="sd">        dem_grid_ori (numpy.ndarray): Original DEM grid</span>
+<span class="sd">        meshsize (float): Size of mesh cells in meters</span>
+<span class="sd">        land_cover_source (str): Source of land cover data</span>
+<span class="sd">        rectangle_vertices (list): Vertices defining model area</span>
+<span class="sd">        **kwargs: Additional keyword arguments:</span>
+<span class="sd">            - output_directory (str): Directory to save output</span>
+<span class="sd">            - file_basename (str): Base filename for output</span>
+<span class="sd">            - Other args passed to create_xml_content()</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Creates output directory if it doesn&#39;t exist</span>
+<span class="sd">        - Handles grid preparation and transformation</span>
+<span class="sd">        - Generates complete INX file with all required data</span>
+<span class="sd">        - Uses standardized file naming convention</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Prepare grids</span>
+    <span class="n">building_height_grid_inx</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">land_cover_veg_grid_inx</span><span class="p">,</span> <span class="n">land_cover_mat_grid_inx</span><span class="p">,</span> <span class="n">canopy_height_grid_inx</span><span class="p">,</span> <span class="n">dem_grid_inx</span> <span class="o">=</span> <span class="n">prepare_grids</span><span class="p">(</span>
+        <span class="n">building_height_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">building_id_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">canopy_height_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">land_cover_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">dem_grid_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">land_cover_source</span><span class="p">)</span>    
+
+    <span class="c1"># Create XML content</span>
+    <span class="n">xml_content</span> <span class="o">=</span> <span class="n">create_xml_content</span><span class="p">(</span><span class="n">building_height_grid_inx</span><span class="p">,</span> <span class="n">building_id_grid</span><span class="p">,</span> <span class="n">land_cover_veg_grid_inx</span><span class="p">,</span> <span class="n">land_cover_mat_grid_inx</span><span class="p">,</span> <span class="n">canopy_height_grid_inx</span><span class="p">,</span> <span class="n">dem_grid_inx</span><span class="p">,</span> <span class="n">meshsize</span><span class="p">,</span> <span class="n">rectangle_vertices</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="c1"># Save the output</span>
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output_directory&quot;</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">file_basename</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;file_basename&quot;</span><span class="p">,</span> <span class="s1">&#39;voxcity&#39;</span><span class="p">)</span>
+    <span class="n">output_file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">file_basename</span><span class="si">}</span><span class="s2">.INX&quot;</span><span class="p">)</span>
+    <span class="n">save_file</span><span class="p">(</span><span class="n">xml_content</span><span class="p">,</span> <span class="n">output_file_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="generate_edb_file">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.generate_edb_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_edb_file</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate ENVI-met database file for 3D plants.</span>
+<span class="sd">    </span>
+<span class="sd">    Creates a plant database file (EDB) containing definitions for trees of</span>
+<span class="sd">    different heights with customizable leaf area density profiles.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        **kwargs: Keyword arguments:</span>
+<span class="sd">            - lad (float): Leaf area density in m²/m³ (default 1.0)</span>
+<span class="sd">            - trunk_height_ratio (float): Ratio of trunk height to total height</span>
+<span class="sd">              (default 11.76/19.98)</span>
+<span class="sd">              </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Generates plants for heights from 1-50m</span>
+<span class="sd">        - Uses standardized plant IDs in format &#39;HxxW01&#39;</span>
+<span class="sd">        - Includes physical properties like wood density</span>
+<span class="sd">        - Sets seasonal variation profiles</span>
+<span class="sd">        - Creates complete ENVI-met plant database format</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="n">lad</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;lad&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lad</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">lad</span><span class="o">=</span><span class="mf">1.0</span>
+    
+    <span class="n">trunk_height_ratio</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;trunk_height_ratio&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">trunk_height_ratio</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">trunk_height_ratio</span> <span class="o">=</span> <span class="mf">11.76</span> <span class="o">/</span> <span class="mf">19.98</span>
+
+    <span class="c1"># Create header with current timestamp</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;&#39;&#39;&lt;ENVI-MET_Datafile&gt;</span>
+<span class="s1">&lt;Header&gt;</span>
+<span class="s1">&lt;filetype&gt;DATA&lt;/filetype&gt;</span>
+<span class="s1">&lt;version&gt;1&lt;/version&gt;</span>
+<span class="s1">&lt;revisiondate&gt;</span><span class="si">{</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">)</span><span class="si">}</span><span class="s1">&lt;/revisiondate&gt;</span>
+<span class="s1">&lt;remark&gt;Envi-Data&lt;/remark&gt;</span>
+<span class="s1">&lt;checksum&gt;0&lt;/checksum&gt;</span>
+<span class="s1">&lt;encryptionlevel&gt;1699612&lt;/encryptionlevel&gt;</span>
+<span class="s1">&lt;/Header&gt;</span>
+<span class="s1">&#39;&#39;&#39;</span>
+
+    <span class="n">footer</span> <span class="o">=</span> <span class="s1">&#39;&lt;/ENVI-MET_Datafile&gt;&#39;</span>
+
+    <span class="c1"># Generate plant definitions for heights 1-50m</span>
+    <span class="n">plant3d_objects</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">height</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">51</span><span class="p">):</span>
+        <span class="n">plant3d</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;&#39;&#39;  &lt;PLANT3D&gt;</span>
+<span class="s1">     &lt;ID&gt; H</span><span class="si">{</span><span class="n">height</span><span class="si">:</span><span class="s1">02d</span><span class="si">}</span><span class="s1">W01 &lt;/ID&gt;</span>
+<span class="s1">     &lt;Description&gt; H</span><span class="si">{</span><span class="n">height</span><span class="si">:</span><span class="s1">02d</span><span class="si">}</span><span class="s1">W01 &lt;/Description&gt;</span>
+<span class="s1">     &lt;AlternativeName&gt; Albero nuovo &lt;/AlternativeName&gt;</span>
+<span class="s1">     &lt;Planttype&gt; 0 &lt;/Planttype&gt;</span>
+<span class="s1">     &lt;Leaftype&gt; 1 &lt;/Leaftype&gt;</span>
+<span class="s1">     &lt;Albedo&gt; 0.18000 &lt;/Albedo&gt;</span>
+<span class="s1">     &lt;Eps&gt; 0.00000 &lt;/Eps&gt;</span>
+<span class="s1">     &lt;Transmittance&gt; 0.30000 &lt;/Transmittance&gt;</span>
+<span class="s1">     &lt;isoprene&gt; 12.00000 &lt;/isoprene&gt;</span>
+<span class="s1">     &lt;leafweigth&gt; 100.00000 &lt;/leafweigth&gt;</span>
+<span class="s1">     &lt;rs_min&gt; 0.00000 &lt;/rs_min&gt;</span>
+<span class="s1">     &lt;Height&gt; </span><span class="si">{</span><span class="n">height</span><span class="si">:</span><span class="s1">.5f</span><span class="si">}</span><span class="s1"> &lt;/Height&gt;</span>
+<span class="s1">     &lt;Width&gt; 1.00000 &lt;/Width&gt;</span>
+<span class="s1">     &lt;Depth&gt; </span><span class="si">{</span><span class="n">height</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">trunk_height_ratio</span><span class="si">:</span><span class="s1">.5f</span><span class="si">}</span><span class="s1"> &lt;/Depth&gt;</span>
+<span class="s1">     &lt;RootDiameter&gt; 1.00000 &lt;/RootDiameter&gt;</span>
+<span class="s1">     &lt;cellsize&gt; 1.00000 &lt;/cellsize&gt;</span>
+<span class="s1">     &lt;xy_cells&gt; 1 &lt;/xy_cells&gt;</span>
+<span class="s1">     &lt;z_cells&gt; </span><span class="si">{</span><span class="n">height</span><span class="si">}</span><span class="s1"> &lt;/z_cells&gt;</span>
+<span class="s1">     &lt;scalefactor&gt; 0.00000 &lt;/scalefactor&gt;</span>
+<span class="s1">     &lt;LAD-Profile type=&quot;sparematrix-3D&quot; dataI=&quot;1&quot; dataJ=&quot;1&quot; zlayers=&quot;</span><span class="si">{</span><span class="n">height</span><span class="si">}</span><span class="s1">&quot; defaultValue=&quot;0.00000&quot;&gt;</span>
+<span class="si">{</span><span class="n">generate_lad_profile</span><span class="p">(</span><span class="n">height</span><span class="p">,</span><span class="w"> </span><span class="n">trunk_height_ratio</span><span class="p">,</span><span class="w"> </span><span class="n">lad</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">lad</span><span class="p">))</span><span class="si">}</span>
+<span class="s1">     &lt;/LAD-Profile&gt;</span>
+<span class="s1">     &lt;RAD-Profile&gt; 0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000,0.10000 &lt;/RAD-Profile&gt;</span>
+<span class="s1">     &lt;Root-Range-Profile&gt; 1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000,1.00000 &lt;/Root-Range-Profile&gt;</span>
+<span class="s1">     &lt;Season-Profile&gt; 0.30000,0.30000,0.30000,0.40000,0.70000,1.00000,1.00000,1.00000,0.80000,0.60000,0.30000,0.30000 &lt;/Season-Profile&gt;</span>
+<span class="s1">     &lt;Blossom-Profile&gt; 0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000,0.00000 &lt;/Blossom-Profile&gt;</span>
+<span class="s1">     &lt;DensityWood&gt; 690.00000 &lt;/DensityWood&gt;</span>
+<span class="s1">     &lt;YoungsModulus&gt; 8770000896.00000 &lt;/YoungsModulus&gt;</span>
+<span class="s1">     &lt;YoungRatioRtoL&gt; 0.12000 &lt;/YoungRatioRtoL&gt;</span>
+<span class="s1">     &lt;MORBranch&gt; 65.00000 &lt;/MORBranch&gt;</span>
+<span class="s1">     &lt;MORConnection&gt; 45.00000 &lt;/MORConnection&gt;</span>
+<span class="s1">     &lt;PlantGroup&gt; 0 &lt;/PlantGroup&gt;</span>
+<span class="s1">     &lt;Color&gt; 0 &lt;/Color&gt;</span>
+<span class="s1">     &lt;Group&gt;  &lt;/Group&gt;</span>
+<span class="s1">     &lt;Author&gt;  &lt;/Author&gt;</span>
+<span class="s1">     &lt;costs&gt; 0.00000 &lt;/costs&gt;</span>
+<span class="s1">     &lt;ColorStem&gt; 0 &lt;/ColorStem&gt;</span>
+<span class="s1">     &lt;ColorBlossom&gt; 0 &lt;/ColorBlossom&gt;</span>
+<span class="s1">     &lt;BlossomRadius&gt; 0.00000 &lt;/BlossomRadius&gt;</span>
+<span class="s1">     &lt;L-SystemBased&gt; 0 &lt;/L-SystemBased&gt;</span>
+<span class="s1">     &lt;Axiom&gt; V &lt;/Axiom&gt;</span>
+<span class="s1">     &lt;IterationDepth&gt; 0 &lt;/IterationDepth&gt;</span>
+<span class="s1">     &lt;hasUserEdits&gt; 0 &lt;/hasUserEdits&gt;</span>
+<span class="s1">     &lt;LADMatrix_generated&gt; 0 &lt;/LADMatrix_generated&gt;</span>
+<span class="s1">     &lt;InitialSegmentLength&gt; 0.00000 &lt;/InitialSegmentLength&gt;</span>
+<span class="s1">     &lt;SmallSegmentLength&gt; 0.00000 &lt;/SmallSegmentLength&gt;</span>
+<span class="s1">     &lt;ChangeSegmentLength&gt; 0.00000 &lt;/ChangeSegmentLength&gt;</span>
+<span class="s1">     &lt;SegmentResolution&gt; 0.00000 &lt;/SegmentResolution&gt;</span>
+<span class="s1">     &lt;TurtleAngle&gt; 0.00000 &lt;/TurtleAngle&gt;</span>
+<span class="s1">     &lt;RadiusOuterBranch&gt; 0.00000 &lt;/RadiusOuterBranch&gt;</span>
+<span class="s1">     &lt;PipeFactor&gt; 0.00000 &lt;/PipeFactor&gt;</span>
+<span class="s1">     &lt;LeafPosition&gt; 0 &lt;/LeafPosition&gt;</span>
+<span class="s1">     &lt;LeafsPerNode&gt; 0 &lt;/LeafsPerNode&gt;</span>
+<span class="s1">     &lt;LeafInternodeLength&gt; 0.00000 &lt;/LeafInternodeLength&gt;</span>
+<span class="s1">     &lt;LeafMinSegmentOrder&gt; 0 &lt;/LeafMinSegmentOrder&gt;</span>
+<span class="s1">     &lt;LeafWidth&gt; 0.00000 &lt;/LeafWidth&gt;</span>
+<span class="s1">     &lt;LeafLength&gt; 0.00000 &lt;/LeafLength&gt;</span>
+<span class="s1">     &lt;LeafSurface&gt; 0.00000 &lt;/LeafSurface&gt;</span>
+<span class="s1">     &lt;PetioleAngle&gt; 0.00000 &lt;/PetioleAngle&gt;</span>
+<span class="s1">     &lt;PetioleLength&gt; 0.00000 &lt;/PetioleLength&gt;</span>
+<span class="s1">     &lt;LeafRotationalAngle&gt; 0.00000 &lt;/LeafRotationalAngle&gt;</span>
+<span class="s1">     &lt;FactorHorizontal&gt; 0.00000 &lt;/FactorHorizontal&gt;</span>
+<span class="s1">     &lt;TropismVector&gt; 0.000000,0.000000,0.000000 &lt;/TropismVector&gt;</span>
+<span class="s1">     &lt;TropismElstaicity&gt; 0.00000 &lt;/TropismElstaicity&gt;</span>
+<span class="s1">     &lt;SegmentRemovallist&gt;  &lt;/SegmentRemovallist&gt;</span>
+<span class="s1">     &lt;NrRules&gt; 0 &lt;/NrRules&gt;</span>
+<span class="s1">     &lt;Rules_Variable&gt;  &lt;/Rules_Variable&gt;</span>
+<span class="s1">     &lt;Rules_Replacement&gt;  &lt;/Rules_Replacement&gt;</span>
+<span class="s1">     &lt;Rules_isConditional&gt;  &lt;/Rules_isConditional&gt;</span>
+<span class="s1">     &lt;Rules_Condition&gt;  &lt;/Rules_Condition&gt;</span>
+<span class="s1">     &lt;Rules_Remark&gt;  &lt;/Rules_Remark&gt;</span>
+<span class="s1">     &lt;TermLString&gt;   &lt;/TermLString&gt;</span>
+<span class="s1">     &lt;ApplyTermLString&gt; 0 &lt;/ApplyTermLString&gt;</span>
+<span class="s1">  &lt;/PLANT3D&gt;</span>
+<span class="s1">&#39;&#39;&#39;</span>
+        <span class="n">plant3d_objects</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">plant3d</span><span class="p">)</span>
+
+    <span class="n">content</span> <span class="o">=</span> <span class="n">header</span> <span class="o">+</span> <span class="s1">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">plant3d_objects</span><span class="p">)</span> <span class="o">+</span> <span class="n">footer</span>
+    
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s1">&#39;projectdatabase.edb&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="generate_lad_profile">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.generate_lad_profile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_lad_profile</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">trunk_height_ratio</span><span class="p">,</span> <span class="n">lad</span> <span class="o">=</span> <span class="s1">&#39;1.00000&#39;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate leaf area density profile for a plant.</span>
+<span class="sd">    </span>
+<span class="sd">    Creates a vertical profile of leaf area density (LAD) values for ENVI-met</span>
+<span class="sd">    plant definitions, accounting for trunk space and crown distribution.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        height (int): Total height of plant in meters</span>
+<span class="sd">        trunk_height_ratio (float): Ratio of trunk height to total height</span>
+<span class="sd">        lad (str): Leaf area density value as string (default &#39;1.00000&#39;)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        str: LAD profile data formatted for ENVI-met EDB file</span>
+<span class="sd">        </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - LAD values start above trunk height</span>
+<span class="sd">        - Uses 5-space indentation for ENVI-met format</span>
+<span class="sd">        - Profile follows format: &quot;z-level,x,y,LAD&quot;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lad_profile</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># Only add LAD values above trunk height</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">height</span> <span class="o">*</span> <span class="n">trunk_height_ratio</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">height</span><span class="p">):</span>
+        <span class="n">lad_profile</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;     0,0,</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">lad</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lad_profile</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="find_min_n">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/index.html#voxcity.exporter.envimet.find_min_n">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_min_n</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">S_target</span><span class="p">,</span> <span class="n">max_n</span><span class="o">=</span><span class="mi">1000000</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find minimum number of terms needed in geometric series to exceed target sum.</span>
+<span class="sd">    </span>
+<span class="sd">    Used for calculating telescoping grid parameters to achieve desired domain height.</span>
+<span class="sd">    Solves for n in the equation: a(1-r^n)/(1-r) &gt; S_target</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        a (float): First term of series (base cell size)</span>
+<span class="sd">        r (float): Common ratio (stretch factor)</span>
+<span class="sd">        S_target (float): Target sum to exceed (desired height)</span>
+<span class="sd">        max_n (int): Maximum number of terms to try (default 1000000)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        int or None: Minimum number of terms needed, or None if not possible within max_n</span>
+<span class="sd">        </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Handles special case of r=1 (arithmetic series)</span>
+<span class="sd">        - Protects against overflow with large exponents</span>
+<span class="sd">        - Returns None if solution not found within max_n terms</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="n">max_n</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">r</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">S_n</span> <span class="o">=</span> <span class="n">a</span> <span class="o">*</span> <span class="n">n</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">S_n</span> <span class="o">=</span> <span class="n">a</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">r</span> <span class="o">**</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">r</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
+                <span class="c1"># Handle large exponents</span>
+                <span class="n">S_n</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">r</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">S_n</span> <span class="o">&gt;</span> <span class="n">S_target</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">a</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">S_n</span> <span class="o">&lt;</span> <span class="n">S_target</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">n</span>
+        <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># Not possible within max_n terms</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>

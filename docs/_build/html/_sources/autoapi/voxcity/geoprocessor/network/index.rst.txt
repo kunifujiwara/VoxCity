@@ -1,0 +1,265 @@
+voxcity.geoprocessor.network
+============================
+
+.. py:module:: voxcity.geoprocessor.network
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.geoprocessor.network.vectorized_edge_values
+   voxcity.geoprocessor.network.get_network_values
+   voxcity.geoprocessor.network.interpolate_points_along_line
+   voxcity.geoprocessor.network.gather_interpolation_points
+   voxcity.geoprocessor.network.fetch_elevations_for_points
+   voxcity.geoprocessor.network.compute_slope_for_group
+   voxcity.geoprocessor.network.calculate_edge_slopes_from_join
+   voxcity.geoprocessor.network.analyze_network_slopes
+
+
+Module Contents
+---------------
+
+.. py:function:: vectorized_edge_values(G, polygons_gdf, value_col='value')
+
+   Compute average polygon values along each edge in a network graph using vectorized operations.
+
+   This function performs efficient computation of average values from polygons that intersect
+   with network edges. It uses GeoDataFrames for vectorized spatial operations instead of
+   iterating over individual edges.
+
+   :param G: OSMnx graph with edges containing either geometry attributes or node coordinates.
+   :type G: networkx.MultiDiGraph
+   :param polygons_gdf: GeoDataFrame containing polygons with values to be averaged along edges.
+   :type polygons_gdf: geopandas.GeoDataFrame
+   :param value_col: Name of the column in polygons_gdf containing the values to average.
+   :type value_col: str, default='value'
+
+   :returns: Dictionary mapping edge tuples (u, v, k) to their computed average values.
+             Values are length-weighted averages of intersecting polygon values.
+   :rtype: dict
+
+   .. rubric:: Notes
+
+   The process involves:
+   1. Converting edges to a GeoDataFrame with LineString geometries
+   2. Projecting geometries to a metric CRS (EPSG:3857) for accurate length calculations
+   3. Computing intersections between edges and polygons
+   4. Calculating length-weighted averages of polygon values for each edge
+
+
+.. py:function:: get_network_values(grid, rectangle_vertices, meshsize, value_name='value', **kwargs)
+
+   Extract and visualize values from a grid along a street network.
+
+   This function downloads a street network from OpenStreetMap for a given area,
+   computes average grid values along network edges, and optionally visualizes
+   the results on an interactive map.
+
+   :param grid: Either a grid array of values or a pre-built GeoDataFrame with polygons and values.
+   :type grid: array-like or geopandas.GeoDataFrame
+   :param rectangle_vertices: List of (lon, lat) coordinates defining the bounding rectangle in EPSG:4326.
+   :type rectangle_vertices: list of tuples
+   :param meshsize: Size of each grid cell (used only if grid is array-like).
+   :type meshsize: float
+   :param value_name: Name to use for the edge attribute storing computed values.
+   :type value_name: str, default='value'
+   :param \*\*kwargs: Additional visualization and processing parameters:
+                      - network_type : str, default='walk'
+                          Type of street network to download ('walk', 'drive', etc.)
+                      - vis_graph : bool, default=True
+                          Whether to display the visualization
+                      - colormap : str, default='viridis'
+                          Matplotlib colormap for edge colors
+                      - vmin, vmax : float, optional
+                          Value range for color mapping
+                      - edge_width : float, default=1
+                          Width of edge lines in visualization
+                      - fig_size : tuple, default=(15,15)
+                          Figure size in inches
+                      - zoom : int, default=16
+                          Zoom level for basemap
+                      - basemap_style : ctx.providers, default=CartoDB.Positron
+                          Contextily basemap provider
+                      - save_path : str, optional
+                          Path to save the edge GeoDataFrame as a GeoPackage
+   :type \*\*kwargs: dict
+
+   :returns: (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+             The network graph with computed edge values and edge geometries as a GeoDataFrame.
+   :rtype: tuple
+
+
+.. py:function:: interpolate_points_along_line(line, interval)
+
+   Interpolate points along a single LineString at a given interval (in meters).
+   If the line is shorter than `interval`, only start/end points are returned.
+
+   This function handles coordinate system transformations to ensure accurate
+   distance measurements, working in Web Mercator (EPSG:3857) for distance
+   calculations while maintaining WGS84 (EPSG:4326) for input/output.
+
+   :param line: Edge geometry in EPSG:4326 (lon/lat).
+   :type line: shapely.geometry.LineString
+   :param interval: Distance in meters between interpolated points.
+   :type interval: float
+
+   :returns: Points in EPSG:4326 along the line, spaced approximately `interval` meters apart.
+             For lines shorter than interval, only start and end points are returned.
+             For empty lines, an empty list is returned.
+   :rtype: list of shapely.geometry.Point
+
+
+.. py:function:: gather_interpolation_points(G, interval=10.0, n_jobs=1)
+
+   Gather all interpolation points for each edge in the graph into a single GeoDataFrame.
+   Supports parallel processing for improved performance on large networks.
+
+   This function processes each edge in the graph, either using its geometry attribute
+   or creating a LineString from node coordinates, then interpolates points along it
+   at the specified interval.
+
+   :param G: OSMnx graph with 'geometry' attributes or x,y coordinates in the nodes.
+   :type G: networkx.MultiDiGraph
+   :param interval: Interpolation distance interval in meters.
+   :type interval: float, default=10.0
+   :param n_jobs: Number of parallel jobs for processing edges. Set to 1 for sequential processing,
+                  or -1 to use all available CPU cores.
+   :type n_jobs: int, default=1
+
+   :returns: GeoDataFrame in EPSG:4326 with columns:
+             - edge_id: Index of the edge in the graph
+             - index_in_edge: Position of the point along its edge
+             - geometry: Point geometry
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: fetch_elevations_for_points(points_gdf_3857, dem_gdf_3857, elevation_col='value')
+
+   Perform a spatial join to fetch DEM elevations for interpolated points.
+
+   Uses nearest neighbor matching in projected coordinates (EPSG:3857) to ensure
+   accurate distance calculations when finding the closest DEM cell for each point.
+
+   :param points_gdf_3857: Interpolation points in EPSG:3857 projection.
+   :type points_gdf_3857: gpd.GeoDataFrame
+   :param dem_gdf_3857: DEM polygons in EPSG:3857 projection, containing elevation values.
+   :type dem_gdf_3857: gpd.GeoDataFrame
+   :param elevation_col: Name of the column containing elevation values in dem_gdf_3857.
+   :type elevation_col: str, default='value'
+
+   :returns: Copy of points_gdf_3857 with additional columns:
+             - elevation: Elevation value from nearest DEM cell
+             - dist_to_poly: Distance to nearest DEM cell
+   :rtype: gpd.GeoDataFrame
+
+
+.. py:function:: compute_slope_for_group(df)
+
+   Compute average slope between consecutive points along a single edge.
+
+   Slopes are calculated as absolute percentage grade (rise/run * 100) between
+   consecutive points, then averaged for the entire edge. Points must be in
+   EPSG:3857 projection for accurate horizontal distance calculations.
+
+   :param df: DataFrame containing points for a single edge with columns:
+              - geometry: Point geometries in EPSG:3857
+              - elevation: Elevation values in meters
+              - index_in_edge: Position along the edge for sorting
+   :type df: pd.DataFrame
+
+   :returns: Average slope as a percentage, or np.nan if no valid slopes can be computed
+             (e.g., when points are coincident or no elevation change).
+   :rtype: float
+
+
+.. py:function:: calculate_edge_slopes_from_join(joined_points_gdf, n_edges)
+
+   Calculate average slopes for all edges in the network from interpolated points.
+
+   This function groups points by edge_id and computes the average slope for each edge
+   using the compute_slope_for_group function. It ensures all edges in the original
+   graph have a slope value, even if no valid slope could be computed.
+
+   :param joined_points_gdf: Points with elevations in EPSG:3857, must have columns:
+                             - edge_id: Index of the edge in the graph
+                             - index_in_edge: Position along the edge
+                             - elevation: Elevation value
+                             - geometry: Point geometry
+   :type joined_points_gdf: gpd.GeoDataFrame
+   :param n_edges: Total number of edges in the original graph.
+   :type n_edges: int
+
+   :returns: Dictionary mapping edge_id to average slope (in %). Edges with no valid
+             slope calculation are assigned np.nan.
+   :rtype: dict
+
+
+.. py:function:: analyze_network_slopes(dem_grid, meshsize, value_name='slope', interval=10.0, n_jobs=1, **kwargs)
+
+   Analyze and visualize street network slopes using Digital Elevation Model (DEM) data.
+
+   This function performs a comprehensive analysis of street network slopes by:
+   1. Converting DEM data to a GeoDataFrame of elevation polygons
+   2. Downloading the street network from OpenStreetMap
+   3. Interpolating points along network edges
+   4. Matching points to DEM elevations
+   5. Computing slopes between consecutive points
+   6. Aggregating slopes per edge
+   7. Optionally visualizing results on an interactive map
+
+   The analysis uses appropriate coordinate transformations between WGS84 (EPSG:4326)
+   for geographic operations and Web Mercator (EPSG:3857) for distance calculations.
+
+   :param dem_grid: Digital Elevation Model grid data containing elevation values.
+   :type dem_grid: array-like
+   :param meshsize: Size of each DEM grid cell.
+   :type meshsize: float
+   :param value_name: Name to use for the slope attribute in output data.
+   :type value_name: str, default='slope'
+   :param interval: Distance in meters between interpolated points along edges.
+   :type interval: float, default=10.0
+   :param n_jobs: Number of parallel jobs for edge processing.
+   :type n_jobs: int, default=1
+   :param \*\*kwargs: Additional configuration parameters:
+                      - rectangle_vertices : list of (lon, lat), required
+                          Coordinates defining the analysis area in EPSG:4326
+                      - network_type : str, default='walk'
+                          Type of street network to download
+                      - vis_graph : bool, default=True
+                          Whether to create visualization
+                      - colormap : str, default='viridis'
+                          Matplotlib colormap for slope visualization
+                      - vmin, vmax : float, optional
+                          Value range for slope coloring
+                      - edge_width : float, default=1
+                          Width of edge lines in plot
+                      - fig_size : tuple, default=(15,15)
+                          Figure size in inches
+                      - zoom : int, default=16
+                          Zoom level for basemap
+                      - basemap_style : ctx.providers, default=CartoDB.Positron
+                          Contextily basemap provider
+                      - output_directory : str, optional
+                          Directory to save results
+                      - output_file_name : str, default='network_slopes'
+                          Base name for output files
+                      - alpha : float, default=1.0
+                          Transparency of edge lines in visualization
+   :type \*\*kwargs: dict
+
+   :returns: (networkx.MultiDiGraph, geopandas.GeoDataFrame)
+             - Graph with slope values as edge attributes
+             - GeoDataFrame of edges with geometries and slope values
+   :rtype: tuple
+
+   .. rubric:: Notes
+
+   - Slopes are calculated as absolute percentage grades (rise/run * 100)
+   - Edge slopes are length-weighted averages of point-to-point slopes
+   - The visualization includes a basemap and legend showing slope percentages
+   - If output_directory is specified, results are saved as a GeoPackage
+
+

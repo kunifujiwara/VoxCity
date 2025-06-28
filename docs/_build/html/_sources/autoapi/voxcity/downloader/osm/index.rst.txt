@@ -1,0 +1,242 @@
+voxcity.downloader.osm
+======================
+
+.. py:module:: voxcity.downloader.osm
+
+.. autoapi-nested-parse::
+
+   Module for downloading and processing OpenStreetMap data.
+
+   This module provides functionality to download and process building footprints, land cover,
+   and other geographic features from OpenStreetMap. It handles downloading data via the Overpass API,
+   processing the responses, and converting them to standardized GeoJSON format with proper properties.
+
+   The module includes functions for:
+   - Converting OSM JSON to GeoJSON format
+   - Processing building footprints with height information
+   - Handling land cover classifications
+   - Managing coordinate systems and projections
+   - Processing roads and other geographic features
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   voxcity.downloader.osm.classification_mapping
+   voxcity.downloader.osm.tag_osm_key_value_mapping
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.downloader.osm.osm_json_to_geojson
+   voxcity.downloader.osm.is_part_of_relation
+   voxcity.downloader.osm.is_way_polygon
+   voxcity.downloader.osm.get_way_coords
+   voxcity.downloader.osm.create_rings_from_ways
+   voxcity.downloader.osm.load_gdf_from_openstreetmap
+   voxcity.downloader.osm.convert_feature
+   voxcity.downloader.osm.get_classification
+   voxcity.downloader.osm.swap_coordinates
+   voxcity.downloader.osm.load_land_cover_gdf_from_osm
+
+
+Module Contents
+---------------
+
+.. py:function:: osm_json_to_geojson(osm_data)
+
+   Convert OSM JSON data to GeoJSON format with proper handling of complex relations.
+
+   :param osm_data: OSM JSON data from Overpass API
+   :type osm_data: dict
+
+   :returns: GeoJSON FeatureCollection
+   :rtype: dict
+
+
+.. py:function:: is_part_of_relation(way_id, osm_data)
+
+   Check if a way is part of any relation in the OSM data.
+
+   :param way_id: The ID of the way to check
+   :type way_id: int
+   :param osm_data: OSM JSON data containing elements
+   :type osm_data: dict
+
+   :returns: True if the way is part of a relation, False otherwise
+   :rtype: bool
+
+
+.. py:function:: is_way_polygon(way)
+
+   Determine if a way should be treated as a polygon based on OSM tags and geometry.
+
+   A way is considered a polygon if:
+   1. It forms a closed loop (first and last nodes are the same)
+   2. It has tags indicating it represents an area (building, landuse, etc.)
+
+   :param way: OSM way element with nodes and tags
+   :type way: dict
+
+   :returns: True if the way should be treated as a polygon, False otherwise
+   :rtype: bool
+
+
+.. py:function:: get_way_coords(way, nodes)
+
+   Extract coordinates for a way from its node references.
+
+   :param way: OSM way element containing node references
+   :type way: dict
+   :param nodes: Dictionary mapping node IDs to their coordinates
+   :type nodes: dict
+
+   :returns:
+
+             List of coordinate pairs [(lon, lat), ...] for the way,
+                  or empty list if any nodes are missing
+   :rtype: list
+
+
+.. py:function:: create_rings_from_ways(way_ids, ways, nodes)
+
+   Create continuous rings by connecting ways that share nodes.
+
+   This function handles complex relations by:
+   1. Connecting ways that share end nodes
+   2. Handling reversed way directions
+   3. Closing rings when possible
+   4. Converting node references to coordinates
+
+   :param way_ids: List of way IDs that make up the ring(s)
+   :type way_ids: list
+   :param ways: Dictionary mapping way IDs to way elements
+   :type ways: dict
+   :param nodes: Dictionary mapping node IDs to coordinates
+   :type nodes: dict
+
+   :returns:
+
+             List of rings, where each ring is a list of coordinate pairs [(lon, lat), ...]
+                   forming a closed polygon with at least 4 points
+   :rtype: list
+
+
+.. py:function:: load_gdf_from_openstreetmap(rectangle_vertices)
+
+   Download and process building footprint data from OpenStreetMap.
+
+   This function:
+   1. Downloads building data using the Overpass API
+   2. Processes complex relations and their members
+   3. Extracts height information and other properties
+   4. Converts features to a GeoDataFrame with standardized properties
+
+   :param rectangle_vertices: List of (lon, lat) coordinates defining the bounding box
+   :type rectangle_vertices: list
+
+   :returns:
+
+             GeoDataFrame containing building footprints with properties:
+                 - geometry: Polygon or MultiPolygon
+                 - height: Building height in meters
+                 - levels: Number of building levels
+                 - min_height: Minimum height (for elevated structures)
+                 - building_type: Type of building
+                 - And other OSM tags as properties
+   :rtype: geopandas.GeoDataFrame
+
+
+.. py:function:: convert_feature(feature)
+
+   Convert a GeoJSON feature to a standardized format with height information.
+
+   This function:
+   1. Handles both Polygon and MultiPolygon geometries
+   2. Extracts and validates height information
+   3. Ensures coordinate order consistency (lon, lat)
+   4. Adds confidence scores for height estimates
+
+   :param feature: Input GeoJSON feature with geometry and properties
+   :type feature: dict
+
+   :returns:
+
+             Converted feature with:
+                 - Standardized geometry (always Polygon)
+                 - Height information in properties
+                 - Confidence score for height values
+                 Or None if the feature is invalid or not a polygon
+   :rtype: dict
+
+
+.. py:data:: classification_mapping
+
+.. py:data:: tag_osm_key_value_mapping
+
+.. py:function:: get_classification(tags)
+
+   Determine the land cover/use classification based on OSM tags.
+
+   This function maps OSM tags to standardized land cover classes using:
+   1. A hierarchical classification system (codes 0-13)
+   2. Tag matching patterns for different feature types
+   3. Special cases for roads, water bodies, etc.
+
+   :param tags: Dictionary of OSM tags (key-value pairs)
+   :type tags: dict
+
+   :returns:
+
+             (classification_code, classification_name) where:
+                 - classification_code (int): Numeric code (0-13) for the land cover class
+                 - classification_name (str): Human-readable name of the class
+                 Or (None, None) if no matching classification is found
+   :rtype: tuple
+
+
+.. py:function:: swap_coordinates(geom_mapping)
+
+   Swap coordinate order in a GeoJSON geometry object.
+
+   This function:
+   1. Handles nested coordinate structures (Polygons, MultiPolygons)
+   2. Preserves the original coordinate order if already correct
+   3. Works recursively for complex geometries
+
+   :param geom_mapping: GeoJSON geometry object with coordinates
+   :type geom_mapping: dict
+
+   :returns: Geometry with coordinates in the correct order (lon, lat)
+   :rtype: dict
+
+
+.. py:function:: load_land_cover_gdf_from_osm(rectangle_vertices_ori)
+
+   Load and classify land cover data from OpenStreetMap.
+
+   This function:
+   1. Downloads land cover features using the Overpass API
+   2. Classifies features based on OSM tags
+   3. Handles special cases like roads with width information
+   4. Projects geometries for accurate buffering
+   5. Creates a standardized GeoDataFrame with classifications
+
+   :param rectangle_vertices_ori: List of (lon, lat) coordinates defining the area
+   :type rectangle_vertices_ori: list
+
+   :returns:
+
+             GeoDataFrame with:
+                 - geometry: Polygon or MultiPolygon features
+                 - class: Land cover classification name
+                 - Additional properties from OSM tags
+   :rtype: geopandas.GeoDataFrame
+
+

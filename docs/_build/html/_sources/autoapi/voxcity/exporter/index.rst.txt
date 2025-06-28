@@ -1,0 +1,1077 @@
+voxcity.exporter
+================
+
+.. py:module:: voxcity.exporter
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/voxcity/exporter/envimet/index
+   /autoapi/voxcity/exporter/magicavoxel/index
+   /autoapi/voxcity/exporter/obj/index
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   voxcity.exporter.apply_operation
+   voxcity.exporter.translate_array
+   voxcity.exporter.group_and_label_cells
+   voxcity.exporter.process_grid
+   voxcity.exporter.get_city_country_name_from_rectangle
+   voxcity.exporter.get_timezone_info
+   voxcity.exporter.convert_land_cover
+   voxcity.exporter.array_to_string
+   voxcity.exporter.array_to_string_with_value
+   voxcity.exporter.array_to_string_int
+   voxcity.exporter.prepare_grids
+   voxcity.exporter.create_xml_content
+   voxcity.exporter.save_file
+   voxcity.exporter.export_inx
+   voxcity.exporter.generate_edb_file
+   voxcity.exporter.generate_lad_profile
+   voxcity.exporter.find_min_n
+   voxcity.exporter.get_voxel_color_map
+   voxcity.exporter.convert_colormap_and_array
+   voxcity.exporter.create_custom_palette
+   voxcity.exporter.create_mapping
+   voxcity.exporter.split_array
+   voxcity.exporter.numpy_to_vox
+   voxcity.exporter.export_large_voxel_model
+   voxcity.exporter.export_magicavoxel_vox
+   voxcity.exporter.get_voxel_color_map
+   voxcity.exporter.convert_colormap_indices
+   voxcity.exporter.create_face_vertices
+   voxcity.exporter.mesh_faces
+   voxcity.exporter.export_obj
+   voxcity.exporter.grid_to_obj
+
+
+Package Contents
+----------------
+
+.. py:function:: apply_operation(arr, meshsize)
+
+   Applies a sequence of operations to an array based on a mesh size to normalize and discretize values.
+
+   This function performs the following sequence of operations:
+   1. Divides array by mesh size to normalize values
+   2. Adds 0.5 to round values to nearest integer
+   3. Floors the result to get integer values
+   4. Scales back to original units by multiplying by mesh size
+
+   :param arr: Input array to transform
+   :type arr: numpy.ndarray
+   :param meshsize: Size of mesh to use for calculations
+   :type meshsize: float
+
+   :returns: Transformed array after applying operations
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([1.2, 2.7, 3.4])
+   >>> meshsize = 0.5
+   >>> result = apply_operation(arr, meshsize)
+
+
+.. py:function:: translate_array(input_array, translation_dict)
+
+   Translates values in an array according to a dictionary mapping.
+
+   This function creates a new array where each value from the input array
+   is replaced by its corresponding value from the translation dictionary.
+   Values not found in the dictionary are replaced with empty strings.
+
+   :param input_array: Array containing values to translate
+   :type input_array: numpy.ndarray
+   :param translation_dict: Dictionary mapping input values to output values
+   :type translation_dict: dict
+
+   :returns: Array with translated values, with same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1, 2], [3, 4]])
+   >>> trans_dict = {1: 'A', 2: 'B', 3: 'C', 4: 'D'}
+   >>> result = translate_array(arr, trans_dict)
+   >>> # result = array([['A', 'B'], ['C', 'D']], dtype=object)
+
+
+.. py:function:: group_and_label_cells(array)
+
+   Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
+
+   This function creates a new array where all non-zero values are replaced with
+   sequential IDs (1, 2, 3, etc.) while preserving zero values. This is useful
+   for labeling distinct regions or features in a grid.
+
+   :param array: Input 2D array with non-zero values to be labeled
+   :type array: numpy.ndarray
+
+   :returns:
+
+             Array with non-zero values converted to sequential IDs,
+                           maintaining the same shape as input array
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[0, 5, 5], [0, 5, 8], [0, 0, 8]])
+   >>> result = group_and_label_cells(arr)
+   >>> # result = array([[0, 1, 1], [0, 1, 2], [0, 0, 2]])
+
+
+.. py:function:: process_grid(grid_bi, dem_grid)
+
+   Process a binary grid and DEM grid to create averaged elevation values.
+
+   This function takes a binary grid identifying regions and a corresponding DEM
+   grid with elevation values. For each non-zero region in the binary grid, it
+   calculates the mean elevation from the DEM grid and assigns this average to
+   all cells in that region. The result is normalized by subtracting the minimum value.
+
+   :param grid_bi: Binary grid indicating regions (0 for background,
+                   non-zero for different regions)
+   :type grid_bi: numpy.ndarray
+   :param dem_grid: Grid of elevation values corresponding to the
+                    same spatial extent as grid_bi
+   :type dem_grid: numpy.ndarray
+
+   :returns:
+
+             Processed grid with averaged and normalized elevation values.
+                           Same shape as input grids.
+   :rtype: numpy.ndarray
+
+   .. rubric:: Example
+
+   >>> binary_grid = np.array([[1, 1, 0], [1, 1, 2], [0, 2, 2]])
+   >>> elevation = np.array([[100, 110, 90], [105, 115, 120], [95, 125, 130]])
+   >>> result = process_grid(binary_grid, elevation)
+
+
+.. py:function:: get_city_country_name_from_rectangle(coordinates)
+
+   Get the city and country name for a location defined by a rectangle.
+   Uses reverse geocoding to find the nearest named place to the rectangle's center.
+
+   The function:
+   1. Calculates the center point of the rectangle
+   2. Performs reverse geocoding with rate limiting
+   3. Extracts city and country information from the result
+
+   :param coordinates: List of (longitude, latitude) coordinates defining the rectangle
+   :type coordinates: list
+
+   :returns: String in format "city/ country" or fallback value if lookup fails
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> coords = [(139.65, 35.67), (139.66, 35.67),
+   ...           (139.66, 35.68), (139.65, 35.68)]
+   >>> location = get_city_country_name_from_rectangle(coords)
+   >>> print(f"Location: {location}")  # e.g., "Shibuya/ Japan"
+
+
+.. py:function:: get_timezone_info(rectangle_coords)
+
+   Get timezone and central meridian information for a location.
+   Uses the rectangle's center point to determine the local timezone and
+   calculates the central meridian based on the UTC offset.
+
+   The function provides:
+   1. Local timezone identifier (e.g., "America/New_York")
+   2. UTC offset (e.g., "UTC-04:00")
+   3. Central meridian longitude for the timezone
+
+   :param rectangle_coords: List of (longitude, latitude) coordinates defining the area
+   :type rectangle_coords: list
+
+   :returns: (timezone string with UTC offset, central meridian longitude string)
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> coords = [(139.65, 35.67), (139.66, 35.67),
+   ...           (139.66, 35.68), (139.65, 35.68)]
+   >>> tz, meridian = get_timezone_info(coords)
+   >>> print(f"Timezone: {tz}, Meridian: {meridian}")  # e.g., "UTC+09:00, 135.00000"
+
+
+.. py:function:: convert_land_cover(input_array, land_cover_source='Urbanwatch')
+
+   Convert land cover classification from source-specific indices to standardized indices.
+
+   This function maps land cover classes from various data sources to a standardized
+   classification system. Each source has different class definitions and indices,
+   so this conversion enables consistent processing across different data sources.
+
+   :param input_array: Input array with source-specific land cover indices
+   :type input_array: numpy.ndarray
+   :param land_cover_source: Name of the source land cover classification system
+                             Default is 'Urbanwatch'
+   :type land_cover_source: str
+
+   :returns: Array with standardized land cover indices
+   :rtype: numpy.ndarray
+
+   Standardized Classification System:
+       0: Bareland
+       1: Rangeland
+       2: Shrub
+       3: Agriculture land
+       4: Tree
+       5: Moss and lichen
+       6: Wet land
+       7: Mangrove
+       8: Water
+       9: Snow and ice
+       10: Developed space
+       11: Road
+       12: Building
+       13: No Data
+
+
+.. py:function:: array_to_string(arr)
+
+   Convert a 2D numpy array to a string representation with comma-separated values.
+
+   This function formats array values for ENVI-met INX files, where each row must be:
+   1. Indented by 5 spaces
+   2. Values separated by commas
+   3. No trailing comma
+
+   :param arr: 2D numpy array to convert
+   :type arr: numpy.ndarray
+
+   :returns: String representation with each row indented by 5 spaces and values comma-separated
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1, 2], [3, 4]])
+   >>> print(array_to_string(arr))
+        1,2
+        3,4
+
+
+.. py:function:: array_to_string_with_value(arr, value)
+
+   Convert a 2D numpy array to a string representation, replacing all values with a constant.
+
+   This function is useful for creating uniform value grids in ENVI-met INX files,
+   such as for soil profiles or fixed height indicators.
+
+   :param arr: 2D numpy array to convert (only shape is used)
+   :type arr: numpy.ndarray
+   :param value: Value to use for all cells
+   :type value: str or numeric
+
+   :returns: String representation with each row indented by 5 spaces and constant value repeated
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.zeros((2, 2))
+   >>> print(array_to_string_with_value(arr, '0'))
+        0,0
+        0,0
+
+
+.. py:function:: array_to_string_int(arr)
+
+   Convert a 2D numpy array to a string representation of rounded integers.
+
+   This function is used for grids that must be represented as integers in ENVI-met,
+   such as building numbers or terrain heights. Values are rounded to nearest integer.
+
+   :param arr: 2D numpy array to convert
+   :type arr: numpy.ndarray
+
+   :returns: String representation with each row indented by 5 spaces and values rounded to integers
+   :rtype: str
+
+   .. rubric:: Example
+
+   >>> arr = np.array([[1.6, 2.3], [3.7, 4.1]])
+   >>> print(array_to_string_int(arr))
+        2,2
+        4,4
+
+
+.. py:function:: prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source)
+
+   Prepare and process input grids for ENVI-met model.
+
+   This function performs several key transformations on input grids:
+   1. Flips grids vertically to match ENVI-met coordinate system
+   2. Handles missing values and border conditions
+   3. Converts land cover classes to ENVI-met vegetation and material codes
+   4. Processes building IDs and heights
+   5. Adjusts DEM relative to minimum elevation
+
+   :param building_height_grid_ori: Original building height grid (meters)
+   :type building_height_grid_ori: numpy.ndarray
+   :param building_id_grid_ori: Original building ID grid
+   :type building_id_grid_ori: numpy.ndarray
+   :param canopy_height_grid_ori: Original canopy height grid (meters)
+   :type canopy_height_grid_ori: numpy.ndarray
+   :param land_cover_grid_ori: Original land cover grid (class codes)
+   :type land_cover_grid_ori: numpy.ndarray
+   :param dem_grid_ori: Original DEM grid (meters)
+   :type dem_grid_ori: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param land_cover_source: Source of land cover data for class conversion
+   :type land_cover_source: str
+
+   :returns:
+
+             Processed grids:
+                 - building_height_grid (numpy.ndarray): Building heights
+                 - building_id_grid (numpy.ndarray): Building IDs
+                 - land_cover_veg_grid (numpy.ndarray): Vegetation codes
+                 - land_cover_mat_grid (numpy.ndarray): Material codes
+                 - canopy_height_grid (numpy.ndarray): Canopy heights
+                 - dem_grid (numpy.ndarray): Processed DEM
+   :rtype: tuple
+
+   .. rubric:: Notes
+
+   - Building heights at grid borders are set to 0
+   - DEM is normalized to minimum elevation
+   - Land cover is converted based on source-specific mapping
+
+
+.. py:function:: create_xml_content(building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid, meshsize, rectangle_vertices, **kwargs)
+
+   Create XML content for ENVI-met INX file.
+
+   This function generates the complete XML structure for an ENVI-met INX file,
+   including model metadata, geometry settings, and all required grid data.
+
+   :param building_height_grid: Processed building heights
+   :type building_height_grid: numpy.ndarray
+   :param building_id_grid: Processed building IDs
+   :type building_id_grid: numpy.ndarray
+   :param land_cover_veg_grid: Vegetation codes grid
+   :type land_cover_veg_grid: numpy.ndarray
+   :param land_cover_mat_grid: Material codes grid
+   :type land_cover_mat_grid: numpy.ndarray
+   :param canopy_height_grid: Processed canopy heights
+   :type canopy_height_grid: numpy.ndarray
+   :param dem_grid: Processed DEM
+   :type dem_grid: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param rectangle_vertices: Vertices defining model area as [(lon, lat), ...]
+   :type rectangle_vertices: list
+   :param \*\*kwargs: Additional keyword arguments:
+                      - author_name (str): Name of model author
+                      - model_description (str): Description of model
+                      - domain_building_max_height_ratio (float): Ratio of domain height to max building height
+                      - useTelescoping_grid (bool): Whether to use telescoping grid
+                      - verticalStretch (float): Vertical stretch factor
+                      - startStretch (float): Height to start stretching
+                      - min_grids_Z (int): Minimum vertical grid cells
+
+   :returns: Complete XML content for INX file
+   :rtype: str
+
+   .. rubric:: Notes
+
+   - Automatically determines location information from coordinates
+   - Handles both telescoping and uniform vertical grids
+   - Sets appropriate defaults for optional parameters
+   - Includes all required ENVI-met model settings
+
+
+.. py:function:: save_file(content, output_file_path)
+
+   Save content to a file with UTF-8 encoding.
+
+   This function ensures consistent file encoding and error handling when
+   saving ENVI-met files.
+
+   :param content: String content to save
+   :type content: str
+   :param output_file_path: Path to save file to
+   :type output_file_path: str
+
+   .. rubric:: Notes
+
+   - Creates parent directories if they don't exist
+   - Uses UTF-8 encoding for compatibility
+   - Overwrites existing file if present
+
+
+.. py:function:: export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, **kwargs)
+
+   Export model data to ENVI-met INX file format.
+
+   This is the main function for exporting voxel city data to ENVI-met format.
+   It coordinates the entire export process from grid preparation to file saving.
+
+   :param building_height_grid_ori: Original building height grid
+   :type building_height_grid_ori: numpy.ndarray
+   :param building_id_grid_ori: Original building ID grid
+   :type building_id_grid_ori: numpy.ndarray
+   :param canopy_height_grid_ori: Original canopy height grid
+   :type canopy_height_grid_ori: numpy.ndarray
+   :param land_cover_grid_ori: Original land cover grid
+   :type land_cover_grid_ori: numpy.ndarray
+   :param dem_grid_ori: Original DEM grid
+   :type dem_grid_ori: numpy.ndarray
+   :param meshsize: Size of mesh cells in meters
+   :type meshsize: float
+   :param land_cover_source: Source of land cover data
+   :type land_cover_source: str
+   :param rectangle_vertices: Vertices defining model area
+   :type rectangle_vertices: list
+   :param \*\*kwargs: Additional keyword arguments:
+                      - output_directory (str): Directory to save output
+                      - file_basename (str): Base filename for output
+                      - Other args passed to create_xml_content()
+
+   .. rubric:: Notes
+
+   - Creates output directory if it doesn't exist
+   - Handles grid preparation and transformation
+   - Generates complete INX file with all required data
+   - Uses standardized file naming convention
+
+
+.. py:function:: generate_edb_file(**kwargs)
+
+   Generate ENVI-met database file for 3D plants.
+
+   Creates a plant database file (EDB) containing definitions for trees of
+   different heights with customizable leaf area density profiles.
+
+   :param \*\*kwargs: Keyword arguments:
+                      - lad (float): Leaf area density in m²/m³ (default 1.0)
+                      - trunk_height_ratio (float): Ratio of trunk height to total height
+                        (default 11.76/19.98)
+
+   .. rubric:: Notes
+
+   - Generates plants for heights from 1-50m
+   - Uses standardized plant IDs in format 'HxxW01'
+   - Includes physical properties like wood density
+   - Sets seasonal variation profiles
+   - Creates complete ENVI-met plant database format
+
+
+.. py:function:: generate_lad_profile(height, trunk_height_ratio, lad='1.00000')
+
+   Generate leaf area density profile for a plant.
+
+   Creates a vertical profile of leaf area density (LAD) values for ENVI-met
+   plant definitions, accounting for trunk space and crown distribution.
+
+   :param height: Total height of plant in meters
+   :type height: int
+   :param trunk_height_ratio: Ratio of trunk height to total height
+   :type trunk_height_ratio: float
+   :param lad: Leaf area density value as string (default '1.00000')
+   :type lad: str
+
+   :returns: LAD profile data formatted for ENVI-met EDB file
+   :rtype: str
+
+   .. rubric:: Notes
+
+   - LAD values start above trunk height
+   - Uses 5-space indentation for ENVI-met format
+   - Profile follows format: "z-level,x,y,LAD"
+
+
+.. py:function:: find_min_n(a, r, S_target, max_n=1000000)
+
+   Find minimum number of terms needed in geometric series to exceed target sum.
+
+   Used for calculating telescoping grid parameters to achieve desired domain height.
+   Solves for n in the equation: a(1-r^n)/(1-r) > S_target
+
+   :param a: First term of series (base cell size)
+   :type a: float
+   :param r: Common ratio (stretch factor)
+   :type r: float
+   :param S_target: Target sum to exceed (desired height)
+   :type S_target: float
+   :param max_n: Maximum number of terms to try (default 1000000)
+   :type max_n: int
+
+   :returns: Minimum number of terms needed, or None if not possible within max_n
+   :rtype: int or None
+
+   .. rubric:: Notes
+
+   - Handles special case of r=1 (arithmetic series)
+   - Protects against overflow with large exponents
+   - Returns None if solution not found within max_n terms
+
+
+.. py:function:: get_voxel_color_map(color_scheme='default')
+
+   Returns a color map for voxel visualization based on the specified color scheme.
+
+   This function provides multiple predefined color schemes for visualizing voxel data.
+   Each scheme maps voxel class IDs to RGB color values [0-255]. The class IDs follow
+   a specific convention where negative values represent built environment elements
+   and positive values represent natural/ground surface elements.
+
+   Voxel Class ID Convention:
+       -99: Void/empty space (black)
+       -30: Landmark buildings (special highlighting)
+       -17 to -11: Building materials (plaster, glass, stone, metal, concrete, wood, brick)
+       -3: Generic building structures
+       -2: Trees/vegetation (above ground)
+       -1: Underground/subsurface
+       1-14: Ground surface land cover types (bareland, vegetation, water, etc.)
+
+   Parameters:
+   -----------
+   color_scheme : str, optional
+       The name of the color scheme to use. Available options:
+
+       Basic Schemes:
+       - 'default': Original balanced color scheme for general use
+       - 'high_contrast': High contrast colors for better visibility
+       - 'monochrome': Shades of blue for academic presentations
+       - 'pastel': Softer, muted colors for aesthetic appeal
+       - 'dark_mode': Darker colors for dark backgrounds
+       - 'grayscale': Black and white gradient with color accents
+
+       Thematic Schemes:
+       - 'autumn': Warm reds, oranges, and browns
+       - 'cool': Cool blues, purples, and cyans
+       - 'earth_tones': Natural earth colors
+       - 'vibrant': Very bright, saturated colors
+
+       Stylistic Schemes:
+       - 'cyberpunk': Neon-like purples, pinks, and blues
+       - 'tropical': Vibrant greens, oranges, pinks (island vibes)
+       - 'vintage': Muted, sepia-like tones
+       - 'neon_dreams': Super-bright, nightclub neon palette
+
+   Returns:
+   --------
+   dict
+       A dictionary mapping voxel class IDs (int) to RGB color values (list of 3 ints [0-255])
+
+   Examples:
+   ---------
+   >>> colors = get_voxel_color_map('default')
+   >>> print(colors[-3])  # Building color
+   [180, 187, 216]
+
+   >>> colors = get_voxel_color_map('cyberpunk')
+   >>> print(colors[9])   # Water color in cyberpunk scheme
+   [51, 0, 102]
+
+   Notes:
+   ------
+   - All color values are in RGB format with range [0, 255]
+   - The 'default' scheme should not be modified to maintain consistency
+   - Unknown color schemes will fall back to 'default' with a warning
+   - Color schemes can be extended by adding new elif blocks
+
+
+.. py:function:: convert_colormap_and_array(original_map, original_array)
+
+   Convert a color map with arbitrary indices to sequential indices starting from 0
+   and update the corresponding 3D numpy array.
+
+   This function optimizes the color mapping by:
+   1. Converting arbitrary color indices to sequential ones
+   2. Creating a new mapping that preserves color relationships
+   3. Updating the voxel array to use the new sequential indices
+
+   :param original_map: Dictionary with integer keys and RGB color value lists.
+                        Each key is a color index, and each value is a list of [R,G,B] values.
+   :type original_map: dict
+   :param original_array: 3D array with integer values corresponding to color map keys.
+                          The array contains indices that match the keys in original_map.
+   :type original_array: numpy.ndarray
+
+   :returns:
+
+             (new_color_map, new_array)
+                 - new_color_map (dict): Color map with sequential indices starting from 0
+                 - new_array (numpy.ndarray): Updated array with new sequential indices
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> color_map = {5: [255,0,0], 10: [0,255,0]}
+   >>> array = np.array([[[5,10],[10,5]]])
+   >>> new_map, new_array = convert_colormap_and_array(color_map, array)
+   >>> print(new_map)
+   {0: [255,0,0], 1: [0,255,0]}
+
+
+.. py:function:: create_custom_palette(color_map)
+
+   Create a palette array from a color map dictionary suitable for MagicaVoxel format.
+
+   This function:
+   1. Creates a 256x4 RGBA palette array
+   2. Sets full opacity (alpha=255) for all colors by default
+   3. Reserves index 0 for transparent black (void)
+   4. Maps colors sequentially starting from index 1
+
+   :param color_map: Dictionary mapping indices to RGB color values.
+                     Each value should be a list of 3 integers [R,G,B] in range 0-255.
+   :type color_map: dict
+
+   :returns:
+
+             256x4 array containing RGBA color values.
+                 - Shape: (256, 4)
+                 - Type: uint8
+                 - Format: [R,G,B,A] for each color
+                 - Index 0: [0,0,0,0] (transparent)
+                 - Indices 1-255: Colors from color_map with alpha=255
+   :rtype: numpy.ndarray
+
+
+.. py:function:: create_mapping(color_map)
+
+   Create a mapping from color map keys to sequential indices for MagicaVoxel compatibility.
+
+   Creates a mapping that:
+   - Reserves index 0 for void space
+   - Reserves index 1 (typically for special use)
+   - Maps colors sequentially starting from index 2
+
+   :param color_map: Dictionary mapping indices to RGB color values.
+                     The keys can be any integers, they will be remapped sequentially.
+   :type color_map: dict
+
+   :returns:
+
+             Mapping from original indices to sequential indices starting at 2.
+                 Example: {original_index1: 2, original_index2: 3, ...}
+   :rtype: dict
+
+
+.. py:function:: split_array(array, max_size=255)
+
+   Split a 3D array into smaller chunks that fit within MagicaVoxel size limits.
+
+   This function handles large voxel models by:
+   1. Calculating required splits in each dimension
+   2. Dividing the model into chunks of max_size or smaller
+   3. Yielding each chunk with its position information
+
+   :param array: 3D array to split.
+                 Can be any size, will be split into chunks of max_size or smaller.
+   :type array: numpy.ndarray
+   :param max_size: Maximum size allowed for each dimension.
+                    Defaults to 255 (MagicaVoxel's limit is 256).
+   :type max_size: int, optional
+
+   :Yields: *tuple* --
+
+            (sub_array, (i,j,k))
+                - sub_array: numpy.ndarray of size <= max_size in each dimension
+                - (i,j,k): tuple of indices indicating chunk position in the original model
+
+   .. rubric:: Example
+
+   >>> array = np.ones((300, 300, 300))
+   >>> for chunk, (i,j,k) in split_array(array):
+   ...     print(f"Chunk at position {i},{j},{k} has shape {chunk.shape}")
+
+
+.. py:function:: numpy_to_vox(array, color_map, output_file)
+
+   Convert a numpy array to a MagicaVoxel .vox file.
+
+   This function handles the complete conversion process:
+   1. Creates a custom color palette from the color map
+   2. Generates value mapping for voxel indices
+   3. Transforms coordinates to match MagicaVoxel's system
+   4. Saves the model in .vox format
+
+   :param array: 3D array containing voxel data.
+                 Values should correspond to keys in color_map.
+   :type array: numpy.ndarray
+   :param color_map: Dictionary mapping indices to RGB color values.
+                     Each value should be a list of [R,G,B] values (0-255).
+   :type color_map: dict
+   :param output_file: Path to save the .vox file.
+                       Will overwrite if file exists.
+   :type output_file: str
+
+   :returns:
+
+             (value_mapping, palette, shape)
+                 - value_mapping: dict mapping original indices to MagicaVoxel indices
+                 - palette: numpy.ndarray of shape (256,4) containing RGBA values
+                 - shape: tuple of (width, height, depth) of the output model
+   :rtype: tuple
+
+   .. note::
+
+      - Coordinates are transformed to match MagicaVoxel's coordinate system
+      - Z-axis is flipped and axes are reordered in the process
+
+
+.. py:function:: export_large_voxel_model(array, color_map, output_prefix, max_size=255, base_filename='chunk')
+
+   Export a large voxel model by splitting it into multiple .vox files.
+
+   This function handles models of any size by:
+   1. Creating the output directory if needed
+   2. Splitting the model into manageable chunks
+   3. Saving each chunk as a separate .vox file
+   4. Maintaining consistent color mapping across all chunks
+
+   :param array: 3D array containing voxel data.
+                 Can be any size, will be split into chunks if needed.
+   :type array: numpy.ndarray
+   :param color_map: Dictionary mapping indices to RGB color values.
+                     Each value should be a list of [R,G,B] values (0-255).
+   :type color_map: dict
+   :param output_prefix: Directory to save the .vox files.
+                         Will be created if it doesn't exist.
+   :type output_prefix: str
+   :param max_size: Maximum size allowed for each dimension.
+                    Defaults to 255 (MagicaVoxel's limit is 256).
+   :type max_size: int, optional
+   :param base_filename: Base name for the output files.
+                         Defaults to 'chunk'. Final filenames will be {base_filename}_{i}_{j}_{k}.vox
+   :type base_filename: str, optional
+
+   :returns:
+
+             (value_mapping, palette)
+                 - value_mapping: dict mapping original indices to MagicaVoxel indices
+                 - palette: numpy.ndarray of shape (256,4) containing RGBA values
+   :rtype: tuple
+
+   .. rubric:: Example
+
+   >>> array = np.ones((500,500,500))
+   >>> color_map = {1: [255,0,0]}
+   >>> export_large_voxel_model(array, color_map, "output/model")
+   # Creates files like: output/model/chunk_0_0_0.vox, chunk_0_0_1.vox, etc.
+
+
+.. py:function:: export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color_map=None)
+
+   Export a voxel model to MagicaVoxel .vox format.
+
+   This is the main entry point for voxel model export. It handles:
+   1. Color map management (using default if none provided)
+   2. Color index optimization
+   3. Large model splitting and export
+   4. Progress reporting
+
+   :param array: 3D array containing voxel data.
+                 Values should correspond to keys in voxel_color_map.
+   :type array: numpy.ndarray
+   :param output_dir: Directory to save the .vox files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param base_filename: Base name for the output files.
+                         Defaults to 'chunk'. Used when model is split into multiple files.
+   :type base_filename: str, optional
+   :param voxel_color_map: Dictionary mapping indices to RGB color values.
+                           If None, uses default color map from utils.visualization.
+                           Each value should be a list of [R,G,B] values (0-255).
+   :type voxel_color_map: dict, optional
+
+   .. note::
+
+      - Large models are automatically split into multiple files
+      - Color mapping is optimized and made sequential
+      - Progress information is printed to stdout
+
+
+.. py:function:: get_voxel_color_map(color_scheme='default')
+
+   Returns a color map for voxel visualization based on the specified color scheme.
+
+   This function provides multiple predefined color schemes for visualizing voxel data.
+   Each scheme maps voxel class IDs to RGB color values [0-255]. The class IDs follow
+   a specific convention where negative values represent built environment elements
+   and positive values represent natural/ground surface elements.
+
+   Voxel Class ID Convention:
+       -99: Void/empty space (black)
+       -30: Landmark buildings (special highlighting)
+       -17 to -11: Building materials (plaster, glass, stone, metal, concrete, wood, brick)
+       -3: Generic building structures
+       -2: Trees/vegetation (above ground)
+       -1: Underground/subsurface
+       1-14: Ground surface land cover types (bareland, vegetation, water, etc.)
+
+   Parameters:
+   -----------
+   color_scheme : str, optional
+       The name of the color scheme to use. Available options:
+
+       Basic Schemes:
+       - 'default': Original balanced color scheme for general use
+       - 'high_contrast': High contrast colors for better visibility
+       - 'monochrome': Shades of blue for academic presentations
+       - 'pastel': Softer, muted colors for aesthetic appeal
+       - 'dark_mode': Darker colors for dark backgrounds
+       - 'grayscale': Black and white gradient with color accents
+
+       Thematic Schemes:
+       - 'autumn': Warm reds, oranges, and browns
+       - 'cool': Cool blues, purples, and cyans
+       - 'earth_tones': Natural earth colors
+       - 'vibrant': Very bright, saturated colors
+
+       Stylistic Schemes:
+       - 'cyberpunk': Neon-like purples, pinks, and blues
+       - 'tropical': Vibrant greens, oranges, pinks (island vibes)
+       - 'vintage': Muted, sepia-like tones
+       - 'neon_dreams': Super-bright, nightclub neon palette
+
+   Returns:
+   --------
+   dict
+       A dictionary mapping voxel class IDs (int) to RGB color values (list of 3 ints [0-255])
+
+   Examples:
+   ---------
+   >>> colors = get_voxel_color_map('default')
+   >>> print(colors[-3])  # Building color
+   [180, 187, 216]
+
+   >>> colors = get_voxel_color_map('cyberpunk')
+   >>> print(colors[9])   # Water color in cyberpunk scheme
+   [51, 0, 102]
+
+   Notes:
+   ------
+   - All color values are in RGB format with range [0, 255]
+   - The 'default' scheme should not be modified to maintain consistency
+   - Unknown color schemes will fall back to 'default' with a warning
+   - Color schemes can be extended by adding new elif blocks
+
+
+.. py:function:: convert_colormap_indices(original_map)
+
+   Convert a color map with arbitrary indices to sequential indices starting from 0.
+
+   This function takes a color map with arbitrary integer keys and creates a new map
+   with sequential indices starting from 0, maintaining the original color values.
+   This is useful for ensuring consistent material indexing in OBJ files.
+
+   :param original_map: Dictionary with integer keys and RGB color value lists.
+                        Each value should be a list of 3 integers (0-255) representing RGB colors.
+   :type original_map: dict
+
+   :returns:
+
+             New color map with sequential indices starting from 0.
+                 The values maintain their original RGB color assignments.
+   :rtype: dict
+
+   .. rubric:: Example
+
+   >>> original = {5: [255, 0, 0], 10: [0, 255, 0], 15: [0, 0, 255]}
+   >>> new_map = convert_colormap_indices(original)
+   >>> print(new_map)
+   {0: [255, 0, 0], 1: [0, 255, 0], 2: [0, 0, 255]}
+
+
+.. py:function:: create_face_vertices(coords, positive_direction, axis)
+
+   Helper function to create properly oriented face vertices for OBJ export.
+
+   This function handles the creation of face vertices with correct winding order
+   based on the face direction and axis. It accounts for OpenGL coordinate system
+   conventions and ensures proper face orientation for rendering.
+
+   :param coords: List of 4 vertex coordinates defining the face corners.
+                  Each coordinate should be a tuple of (x, y, z) values.
+   :type coords: list
+   :param positive_direction: Whether face points in positive axis direction.
+                              True = face normal points in positive direction along the axis
+                              False = face normal points in negative direction along the axis
+   :type positive_direction: bool
+   :param axis: Axis the face is perpendicular to ('x', 'y', or 'z').
+                This determines how vertices are ordered for proper face orientation.
+   :type axis: str
+
+   :returns:
+
+             Ordered vertex coordinates for the face, arranged to create proper
+                 face orientation and winding order for rendering.
+   :rtype: list
+
+   .. rubric:: Notes
+
+   - Y-axis faces need special handling due to OpenGL coordinate system
+   - Winding order determines which side of the face is visible
+   - Consistent winding order is maintained for X and Z faces
+
+
+.. py:function:: mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_size_m, vertex_dict, vertex_list, faces_per_material, voxel_value_to_material)
+
+   Performs greedy meshing on a 2D mask layer and adds optimized faces to the mesh.
+
+   This function implements a greedy meshing algorithm to combine adjacent voxels
+   into larger faces, reducing the total number of faces in the final mesh while
+   maintaining visual accuracy. It processes each layer of voxels and generates
+   optimized faces with proper materials and orientations.
+
+   :param mask: 2D boolean array indicating voxel presence.
+                Non-zero values indicate voxel presence, zero indicates empty space.
+   :type mask: ndarray
+   :param layer_index: Index of current layer being processed.
+                       Used to position faces in 3D space.
+   :type layer_index: int
+   :param axis: Axis perpendicular to faces being generated ('x', 'y', or 'z').
+                Determines how coordinates are generated for the faces.
+   :type axis: str
+   :param positive_direction: Whether faces point in positive axis direction.
+                              Affects face normal orientation.
+   :type positive_direction: bool
+   :param normal_idx: Index of normal vector to use for faces.
+                      References pre-defined normal vectors in the OBJ file.
+   :type normal_idx: int
+   :param voxel_size_m: Size of each voxel in meters.
+                        Used to scale coordinates to real-world units.
+   :type voxel_size_m: float
+   :param vertex_dict: Dictionary mapping vertex coordinates to indices.
+                       Used to avoid duplicate vertices in the mesh.
+   :type vertex_dict: dict
+   :param vertex_list: List of unique vertex coordinates.
+                       Stores all vertices used in the mesh.
+   :type vertex_list: list
+   :param faces_per_material: Dictionary collecting faces by material.
+                              Keys are material names, values are lists of face definitions.
+   :type faces_per_material: dict
+   :param voxel_value_to_material: Mapping from voxel values to material names.
+                                   Used to assign materials to faces based on voxel values.
+   :type voxel_value_to_material: dict
+
+   .. rubric:: Notes
+
+   - Uses greedy meshing to combine adjacent same-value voxels
+   - Handles coordinate system conversion for proper orientation
+   - Maintains consistent face winding order for rendering
+   - Optimizes mesh by reusing vertices and combining faces
+   - Supports different coordinate systems for each axis
+
+
+.. py:function:: export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None)
+
+   Export a voxel array to OBJ format with materials and proper face orientations.
+
+   This function converts a 3D voxel array into a complete OBJ file with materials,
+   performing mesh optimization and ensuring proper face orientations. It generates
+   both OBJ and MTL files with all necessary components for rendering.
+
+   :param array: 3D numpy array containing voxel values.
+                 Non-zero values indicate voxel presence and material type.
+   :type array: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Will be used for both .obj and .mtl files.
+   :type file_name: str
+   :param voxel_size: Size of each voxel in meters.
+                      Used to scale the model to real-world units.
+   :type voxel_size: float
+   :param voxel_color_map: Dictionary mapping voxel values to RGB colors.
+                           If None, uses default color map. Colors should be RGB lists (0-255).
+   :type voxel_color_map: dict, optional
+
+   .. rubric:: Notes
+
+   - Generates optimized mesh using greedy meshing
+   - Creates complete OBJ file with vertices, normals, and faces
+   - Generates MTL file with material definitions
+   - Handles proper face orientation and winding order
+   - Supports color mapping for visualization
+   - Uses consistent coordinate system throughout
+
+   File Format Details:
+       OBJ file contains:
+       - Vertex coordinates (v)
+       - Normal vectors (vn)
+       - Material references (usemtl)
+       - Face definitions (f)
+
+       MTL file contains:
+       - Material names and colors
+       - Ambient, diffuse, and specular properties
+       - Transparency settings
+       - Illumination model definitions
+
+
+.. py:function:: grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size, offset, colormap_name='viridis', num_colors=256, alpha=1.0, vmin=None, vmax=None)
+
+   Converts a 2D array of values and a corresponding DEM array to an OBJ file
+   with specified colormap, transparency, and value range.
+
+   This function creates a 3D visualization of 2D grid data by using elevation
+   data and color mapping. It's particularly useful for visualizing terrain data,
+   analysis results, or any 2D data that should be displayed with elevation.
+
+   :param value_array_ori: 2D array of values to visualize.
+                           These values will be mapped to colors using the specified colormap.
+   :type value_array_ori: ndarray
+   :param dem_array_ori: 2D array of DEM values corresponding to value_array.
+                         Provides elevation data for the 3D visualization.
+   :type dem_array_ori: ndarray
+   :param output_dir: Directory to save the OBJ and MTL files.
+                      Will be created if it doesn't exist.
+   :type output_dir: str
+   :param file_name: Base name for the output files.
+                     Used for both .obj and .mtl files.
+   :type file_name: str
+   :param cell_size: Size of each cell in the grid (e.g., in meters).
+                     Used to scale the model to real-world units.
+   :type cell_size: float
+   :param offset: Elevation offset added after quantization.
+                  Useful for adjusting the base height of the model.
+   :type offset: float
+   :param colormap_name: Name of the Matplotlib colormap to use.
+                         Defaults to 'viridis'. Must be a valid Matplotlib colormap name.
+   :type colormap_name: str, optional
+   :param num_colors: Number of discrete colors to use from the colormap.
+                      Defaults to 256. Higher values give smoother color transitions.
+   :type num_colors: int, optional
+   :param alpha: Transparency value between 0.0 (transparent) and 1.0 (opaque).
+                 Defaults to 1.0 (fully opaque).
+   :type alpha: float, optional
+   :param vmin: Minimum value for colormap normalization.
+                If None, uses data minimum. Used to control color mapping range.
+   :type vmin: float, optional
+   :param vmax: Maximum value for colormap normalization.
+                If None, uses data maximum. Used to control color mapping range.
+   :type vmax: float, optional
+
+   .. rubric:: Notes
+
+   - Automatically handles NaN values in input arrays
+   - Creates triangulated mesh for proper rendering
+   - Supports transparency and color mapping
+   - Generates complete OBJ and MTL files
+   - Maintains consistent coordinate system
+   - Optimizes mesh generation for large grids
+
+   :raises ValueError: If vmin equals vmax or if colormap_name is invalid
+
+

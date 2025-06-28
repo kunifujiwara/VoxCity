@@ -1,0 +1,1021 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html" /><link rel="search" title="Search" href="../../../search.html" />
+
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/><!-- Generated with Sphinx 8.2.3 and Furo 2024.08.06 -->
+        <title>voxcity.exporter.obj - VoxCity Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.4510f1fc1dee50b3e5859aac5469c37c29e427902b24a333a5f9fcb2f0b3ac41.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=7edd21af" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">VoxCity Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../../_static/logo.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../../_static/logo.png" alt="Dark Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">VoxCity Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Getting Started:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../example.html#landmark-visibility">6.3. Landmark visibility</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/index.html">API Reference</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of API Reference</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/voxcity/index.html">voxcity</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of voxcity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/downloader/index.html">voxcity.downloader</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of voxcity.downloader</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/citygml/index.html">voxcity.downloader.citygml</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/eubucco/index.html">voxcity.downloader.eubucco</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/gee/index.html">voxcity.downloader.gee</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/mbfp/index.html">voxcity.downloader.mbfp</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/oemj/index.html">voxcity.downloader.oemj</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/osm/index.html">voxcity.downloader.osm</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/downloader/overture/index.html">voxcity.downloader.overture</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/exporter/index.html">voxcity.exporter</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of voxcity.exporter</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/envimet/index.html">voxcity.exporter.envimet</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/magicavoxel/index.html">voxcity.exporter.magicavoxel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/exporter/obj/index.html">voxcity.exporter.obj</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/voxcity/generator/index.html">voxcity.generator</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/index.html">voxcity.geoprocessor</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle navigation of voxcity.geoprocessor</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/draw/index.html">voxcity.geoprocessor.draw</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/grid/index.html">voxcity.geoprocessor.grid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/mesh/index.html">voxcity.geoprocessor.mesh</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/network/index.html">voxcity.geoprocessor.network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/geoprocessor/polygon/index.html">voxcity.geoprocessor.polygon</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../autoapi/voxcity/simulator/index.html">voxcity.simulator</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle navigation of voxcity.simulator</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/solar/index.html">voxcity.simulator.solar</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../autoapi/voxcity/simulator/view/index.html">voxcity.simulator.view</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorial:</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../examples/index.html">Use cases of VoxCity</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle navigation of Use cases of VoxCity</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html"><strong>VoxCity Demo</strong></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step1-prepare-environment">Step1. Prepare environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step2-set-target-area-by-a-rectangle">Step2. Set target area by a rectangle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step3-set-variables">Step3 Set variables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step4-get-voxcity-output">Step4 Get voxcity output</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step5-export-files">Step5 Export files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#step6-urban-simulations">Step6 Urban simulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#solar-radiation">6.1. Solar radiation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../examples/demo_basic.html#landmark-visibility">6.3. Landmark visibility</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Information:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">=======
+History</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">============
+Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conduct.html">====================================
+Contributor Covenant Code of Conduct</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for voxcity.exporter.obj</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Module for exporting voxel data to OBJ format.</span>
+
+<span class="sd">This module provides functionality for converting voxel arrays and grid data to OBJ files,</span>
+<span class="sd">including color mapping, material generation, and mesh optimization.</span>
+
+<span class="sd">Key Features:</span>
+<span class="sd">- Exports voxel data to industry-standard OBJ format with MTL materials</span>
+<span class="sd">- Supports color mapping for visualization</span>
+<span class="sd">- Performs greedy meshing for optimized face generation</span>
+<span class="sd">- Handles proper face orientation and winding order</span>
+<span class="sd">- Supports both regular voxel grids and terrain/elevation data</span>
+<span class="sd">- Generates complete OBJ files with materials and textures</span>
+
+<span class="sd">Main Functions:</span>
+<span class="sd">- convert_colormap_indices: Converts arbitrary color indices to sequential ones</span>
+<span class="sd">- create_face_vertices: Creates properly oriented face vertices</span>
+<span class="sd">- mesh_faces: Performs greedy meshing on voxel layers</span>
+<span class="sd">- export_obj: Main function to export voxel data to OBJ</span>
+<span class="sd">- grid_to_obj: Converts 2D grid data to OBJ with elevation</span>
+
+<span class="sd">Dependencies:</span>
+<span class="sd">- numpy: For array operations</span>
+<span class="sd">- matplotlib: For colormap handling</span>
+<span class="sd">- trimesh: For mesh operations</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numba</span><span class="w"> </span><span class="kn">import</span> <span class="n">njit</span><span class="p">,</span> <span class="n">prange</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">trimesh</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..utils.visualization</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_voxel_color_map</span>
+
+<div class="viewcode-block" id="convert_colormap_indices">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.convert_colormap_indices">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">convert_colormap_indices</span><span class="p">(</span><span class="n">original_map</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a color map with arbitrary indices to sequential indices starting from 0.</span>
+<span class="sd">    </span>
+<span class="sd">    This function takes a color map with arbitrary integer keys and creates a new map</span>
+<span class="sd">    with sequential indices starting from 0, maintaining the original color values.</span>
+<span class="sd">    This is useful for ensuring consistent material indexing in OBJ files.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        original_map (dict): Dictionary with integer keys and RGB color value lists.</span>
+<span class="sd">            Each value should be a list of 3 integers (0-255) representing RGB colors.</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: New color map with sequential indices starting from 0.</span>
+<span class="sd">            The values maintain their original RGB color assignments.</span>
+<span class="sd">            </span>
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; original = {5: [255, 0, 0], 10: [0, 255, 0], 15: [0, 0, 255]}</span>
+<span class="sd">        &gt;&gt;&gt; new_map = convert_colormap_indices(original)</span>
+<span class="sd">        &gt;&gt;&gt; print(new_map)</span>
+<span class="sd">        {0: [255, 0, 0], 1: [0, 255, 0], 2: [0, 0, 255]}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Sort the original keys to maintain consistent ordering</span>
+    <span class="n">keys</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">original_map</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">new_map</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="c1"># Create new map with sequential indices</span>
+    <span class="k">for</span> <span class="n">new_idx</span><span class="p">,</span> <span class="n">old_idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">keys</span><span class="p">):</span>
+        <span class="n">new_map</span><span class="p">[</span><span class="n">new_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">original_map</span><span class="p">[</span><span class="n">old_idx</span><span class="p">]</span>
+    
+    <span class="c1"># Print the new colormap for debugging/reference</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;new_colormap = {&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">new_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">original_key</span> <span class="o">=</span> <span class="n">keys</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="n">original_line</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">original_map</span><span class="p">[</span><span class="n">original_key</span><span class="p">])</span>
+        <span class="n">comment</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">if</span> <span class="s2">&quot;#&quot;</span> <span class="ow">in</span> <span class="n">original_line</span><span class="p">:</span>
+            <span class="n">comment</span> <span class="o">=</span> <span class="s2">&quot;#&quot;</span> <span class="o">+</span> <span class="n">original_line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;#&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">,  </span><span class="si">{</span><span class="n">comment</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;}&quot;</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">new_map</span></div>
+
+
+<div class="viewcode-block" id="create_face_vertices">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.create_face_vertices">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_face_vertices</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">positive_direction</span><span class="p">,</span> <span class="n">axis</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Helper function to create properly oriented face vertices for OBJ export.</span>
+<span class="sd">    </span>
+<span class="sd">    This function handles the creation of face vertices with correct winding order</span>
+<span class="sd">    based on the face direction and axis. It accounts for OpenGL coordinate system</span>
+<span class="sd">    conventions and ensures proper face orientation for rendering.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        coords (list): List of 4 vertex coordinates defining the face corners.</span>
+<span class="sd">            Each coordinate should be a tuple of (x, y, z) values.</span>
+<span class="sd">        positive_direction (bool): Whether face points in positive axis direction.</span>
+<span class="sd">            True = face normal points in positive direction along the axis</span>
+<span class="sd">            False = face normal points in negative direction along the axis</span>
+<span class="sd">        axis (str): Axis the face is perpendicular to (&#39;x&#39;, &#39;y&#39;, or &#39;z&#39;).</span>
+<span class="sd">            This determines how vertices are ordered for proper face orientation.</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: Ordered vertex coordinates for the face, arranged to create proper</span>
+<span class="sd">            face orientation and winding order for rendering.</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Y-axis faces need special handling due to OpenGL coordinate system</span>
+<span class="sd">        - Winding order determines which side of the face is visible</span>
+<span class="sd">        - Consistent winding order is maintained for X and Z faces</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Y-axis faces need special handling due to OpenGL coordinate system</span>
+    <span class="k">if</span> <span class="n">axis</span> <span class="o">==</span> <span class="s1">&#39;y&#39;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">positive_direction</span><span class="p">:</span>  <span class="c1"># +Y face</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">coords</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>  <span class="c1"># Reverse order for +Y</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># -Y face</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">3</span><span class="p">]]</span>  <span class="c1"># Standard order for -Y</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># For X and Z faces, use consistent winding order</span>
+        <span class="k">if</span> <span class="n">positive_direction</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">3</span><span class="p">]]</span></div>
+
+
+<div class="viewcode-block" id="mesh_faces">
+<a class="viewcode-back" href="../../../autoapi/voxcity/exporter/obj/index.html#voxcity.exporter.mesh_faces">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mesh_faces</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">layer_index</span><span class="p">,</span> <span class="n">axis</span><span class="p">,</span> <span class="n">positive_direction</span><span class="p">,</span> <span class="n">normal_idx</span><span class="p">,</span> <span class="n">voxel_size_m</span><span class="p">,</span> 
+              <span class="n">vertex_dict</span><span class="p">,</span> <span class="n">vertex_list</span><span class="p">,</span> <span class="n">faces_per_material</span><span class="p">,</span> <span class="n">voxel_value_to_material</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Performs greedy meshing on a 2D mask layer and adds optimized faces to the mesh.</span>
+<span class="sd">    </span>
+<span class="sd">    This function implements a greedy meshing algorithm to combine adjacent voxels</span>
+<span class="sd">    into larger faces, reducing the total number of faces in the final mesh while</span>
+<span class="sd">    maintaining visual accuracy. It processes each layer of voxels and generates</span>
+<span class="sd">    optimized faces with proper materials and orientations.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        mask (ndarray): 2D boolean array indicating voxel presence.</span>
+<span class="sd">            Non-zero values indicate voxel presence, zero indicates empty space.</span>
+<span class="sd">        layer_index (int): Index of current layer being processed.</span>
+<span class="sd">            Used to position faces in 3D space.</span>
+<span class="sd">        axis (str): Axis perpendicular to faces being generated (&#39;x&#39;, &#39;y&#39;, or &#39;z&#39;).</span>
+<span class="sd">            Determines how coordinates are generated for the faces.</span>
+<span class="sd">        positive_direction (bool): Whether faces point in positive axis direction.</span>
+<span class="sd">            Affects face normal orientation.</span>
+<span class="sd">        normal_idx (int): Index of normal vector to use for faces.</span>
+<span class="sd">            References pre-defined normal vectors in the OBJ file.</span>
+<span class="sd">        voxel_size_m (float): Size of each voxel in meters.</span>
+<span class="sd">            Used to scale coordinates to real-world units.</span>
+<span class="sd">        vertex_dict (dict): Dictionary mapping vertex coordinates to indices.</span>
+<span class="sd">            Used to avoid duplicate vertices in the mesh.</span>
+<span class="sd">        vertex_list (list): List of unique vertex coordinates.</span>
+<span class="sd">            Stores all vertices used in the mesh.</span>
+<span class="sd">        faces_per_material (dict): Dictionary collecting faces by material.</span>
+<span class="sd">            Keys are material names, values are lists of face definitions.</span>
+<span class="sd">        voxel_value_to_material (dict): Mapping from voxel values to material names.</span>
+<span class="sd">            Used to assign materials to faces based on voxel values.</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Uses greedy meshing to combine adjacent same-value voxels</span>
+<span class="sd">        - Handles coordinate system conversion for proper orientation</span>
+<span class="sd">        - Maintains consistent face winding order for rendering</span>
+<span class="sd">        - Optimizes mesh by reusing vertices and combining faces</span>
+<span class="sd">        - Supports different coordinate systems for each axis</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">voxel_size</span> <span class="o">=</span> <span class="n">voxel_size_m</span>
+
+    <span class="c1"># Create copy to avoid modifying original mask</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">h</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">mask</span><span class="o">.</span><span class="n">shape</span>
+    
+    <span class="c1"># Track which voxels have been processed</span>
+    <span class="n">visited</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+
+    <span class="c1"># Iterate through each position in the mask</span>
+    <span class="k">for</span> <span class="n">u</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">h</span><span class="p">):</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">v</span> <span class="o">&lt;</span> <span class="n">w</span><span class="p">:</span>
+            <span class="c1"># Skip if already visited or empty voxel</span>
+            <span class="k">if</span> <span class="n">visited</span><span class="p">[</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">]</span> <span class="ow">or</span> <span class="n">mask</span><span class="p">[</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">continue</span>
+
+            <span class="n">voxel_value</span> <span class="o">=</span> <span class="n">mask</span><span class="p">[</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span><span class="p">]</span>
+            <span class="n">material_name</span> <span class="o">=</span> <span class="n">voxel_value_to_material</span><span class="p">[</span><span class="n">voxel_value</span><span class="p">]</span>
+
+            <span class="c1"># Greedy meshing: Find maximum width of consecutive same-value voxels</span>
+            <span class="n">width</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">while</span> <span class="n">v</span> <span class="o">+</span> <span class="n">width</span> <span class="o">&lt;</span> <span class="n">w</span> <span class="ow">and</span> <span class="n">mask</span><span class="p">[</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">]</span> <span class="o">==</span> <span class="n">voxel_value</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">visited</span><span class="p">[</span><span class="n">u</span><span class="p">,</span> <span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">]:</span>
+                <span class="n">width</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># Find maximum height of same-value voxels</span>
+            <span class="n">height</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">done</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">while</span> <span class="n">u</span> <span class="o">+</span> <span class="n">height</span> <span class="o">&lt;</span> <span class="n">h</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">width</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">mask</span><span class="p">[</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">,</span> <span class="n">v</span> <span class="o">+</span> <span class="n">k</span><span class="p">]</span> <span class="o">!=</span> <span class="n">voxel_value</span> <span class="ow">or</span> <span class="n">visited</span><span class="p">[</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">,</span> <span class="n">v</span> <span class="o">+</span> <span class="n">k</span><span class="p">]:</span>
+                        <span class="n">done</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="k">break</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">done</span><span class="p">:</span>
+                    <span class="n">height</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># Mark processed voxels as visited</span>
+            <span class="n">visited</span><span class="p">[</span><span class="n">u</span><span class="p">:</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span><span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="c1"># Generate vertex coordinates based on axis orientation</span>
+            <span class="k">if</span> <span class="n">axis</span> <span class="o">==</span> <span class="s1">&#39;x&#39;</span><span class="p">:</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">layer_index</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">y0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">y1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">z0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">z1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">z0</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z0</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z1</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">z1</span><span class="p">),</span>
+                <span class="p">]</span>
+            <span class="k">elif</span> <span class="n">axis</span> <span class="o">==</span> <span class="s1">&#39;y&#39;</span><span class="p">:</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">layer_index</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">x0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">x1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">z0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">z1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">z0</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">z0</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">z1</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">z1</span><span class="p">),</span>
+                <span class="p">]</span>
+            <span class="k">elif</span> <span class="n">axis</span> <span class="o">==</span> <span class="s1">&#39;z&#39;</span><span class="p">:</span>
+                <span class="n">i</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">layer_index</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">x0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">x1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u</span> <span class="o">+</span> <span class="n">height</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">y0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">y1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span> <span class="o">+</span> <span class="n">width</span><span class="p">)</span> <span class="o">*</span> <span class="n">voxel_size</span>
+                <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                    <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Convert to right-handed coordinate system</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="p">[(</span><span class="n">c</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">]</span>
+            <span class="n">face_vertices</span> <span class="o">=</span> <span class="n">create_face_vertices</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">positive_direction</span><span class="p">,</span> <span class="n">axis</span><span class="p">)</span>
+
+            <span class="c1"># Convert vertices to indices, adding new vertices as needed</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">face_vertices</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">coord</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">vertex_dict</span><span class="p">:</span>
+                    <span class="n">vertex_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">coord</span><span class="p">)</span>
+                    <span class="n">vertex_dict</span><span class="p">[</span><span class="n">coord</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vertex_list</span><span class="p">)</span>
+                <span class="n">indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vertex_dict</span><span class="p">[</span><span class="n">coord</span><span class="p">])</span>
+
+            <span class="c1"># Create triangulated faces with proper winding order</span>
+            <span class="k">if</span> <span class="n">axis</span> <span class="o">==</span> <span class="s1">&#39;y&#39;</span><span class="p">:</span>
+                <span class="n">faces</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="s1">&#39;normal_idx&#39;</span><span class="p">:</span> <span class="n">normal_idx</span><span class="p">},</span>
+                    <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="s1">&#39;normal_idx&#39;</span><span class="p">:</span> <span class="n">normal_idx</span><span class="p">}</span>
+                <span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">faces</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span> <span class="s1">&#39;normal_idx&#39;</span><span class="p">:</span> <span class="n">normal_idx</span><span class="p">},</span>
+                    <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">3</span><span class="p">]],</span> <span class="s1">&#39;normal_idx&#39;</span><span class="p">:</span> <span class="n">normal_idx</span><span class="p">}</span>
+                <span class="p">]</span>
+
+            <span class="c1"># Store faces by material</span>
+            <span class="k">if</span> <span class="n">material_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">faces_per_material</span><span class="p">:</span>
+                <span class="n">faces_per_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">faces_per_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">faces</span><span class="p">)</span>
+
+            <span class="n">v</span> <span class="o">+=</span> <span class="n">width</span></div>
+
+
+<div class="viewcode-block" id="export_obj">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.exporter.export_obj">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">export_obj</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">file_name</span><span class="p">,</span> <span class="n">voxel_size</span><span class="p">,</span> <span class="n">voxel_color_map</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Export a voxel array to OBJ format with materials and proper face orientations.</span>
+<span class="sd">    </span>
+<span class="sd">    This function converts a 3D voxel array into a complete OBJ file with materials,</span>
+<span class="sd">    performing mesh optimization and ensuring proper face orientations. It generates</span>
+<span class="sd">    both OBJ and MTL files with all necessary components for rendering.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        array (ndarray): 3D numpy array containing voxel values.</span>
+<span class="sd">            Non-zero values indicate voxel presence and material type.</span>
+<span class="sd">        output_dir (str): Directory to save the OBJ and MTL files.</span>
+<span class="sd">            Will be created if it doesn&#39;t exist.</span>
+<span class="sd">        file_name (str): Base name for the output files.</span>
+<span class="sd">            Will be used for both .obj and .mtl files.</span>
+<span class="sd">        voxel_size (float): Size of each voxel in meters.</span>
+<span class="sd">            Used to scale the model to real-world units.</span>
+<span class="sd">        voxel_color_map (dict, optional): Dictionary mapping voxel values to RGB colors.</span>
+<span class="sd">            If None, uses default color map. Colors should be RGB lists (0-255).</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Generates optimized mesh using greedy meshing</span>
+<span class="sd">        - Creates complete OBJ file with vertices, normals, and faces</span>
+<span class="sd">        - Generates MTL file with material definitions</span>
+<span class="sd">        - Handles proper face orientation and winding order</span>
+<span class="sd">        - Supports color mapping for visualization</span>
+<span class="sd">        - Uses consistent coordinate system throughout</span>
+<span class="sd">        </span>
+<span class="sd">    File Format Details:</span>
+<span class="sd">        OBJ file contains:</span>
+<span class="sd">        - Vertex coordinates (v)</span>
+<span class="sd">        - Normal vectors (vn)</span>
+<span class="sd">        - Material references (usemtl)</span>
+<span class="sd">        - Face definitions (f)</span>
+<span class="sd">        </span>
+<span class="sd">        MTL file contains:</span>
+<span class="sd">        - Material names and colors</span>
+<span class="sd">        - Ambient, diffuse, and specular properties</span>
+<span class="sd">        - Transparency settings</span>
+<span class="sd">        - Illumination model definitions</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">voxel_color_map</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">voxel_color_map</span> <span class="o">=</span> <span class="n">get_voxel_color_map</span><span class="p">()</span>
+
+    <span class="c1"># Extract unique voxel values (excluding zero)</span>
+    <span class="n">unique_voxel_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">array</span><span class="p">)</span>
+    <span class="n">unique_voxel_values</span> <span class="o">=</span> <span class="n">unique_voxel_values</span><span class="p">[</span><span class="n">unique_voxel_values</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Map voxel values to material names</span>
+    <span class="n">voxel_value_to_material</span> <span class="o">=</span> <span class="p">{</span><span class="n">val</span><span class="p">:</span> <span class="sa">f</span><span class="s1">&#39;material_</span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">unique_voxel_values</span><span class="p">}</span>
+
+    <span class="c1"># Define normal vectors for each face direction</span>
+    <span class="n">normals</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>   <span class="c1"># 1: +X Right face</span>
+        <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>  <span class="c1"># 2: -X Left face</span>
+        <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>   <span class="c1"># 3: +Y Top face</span>
+        <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>  <span class="c1"># 4: -Y Bottom face</span>
+        <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>   <span class="c1"># 5: +Z Front face</span>
+        <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">),</span>  <span class="c1"># 6: -Z Back face</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Map direction names to normal indices</span>
+    <span class="n">normal_indices</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;nx&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="s1">&#39;px&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;ny&#39;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
+        <span class="s1">&#39;py&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+        <span class="s1">&#39;nz&#39;</span><span class="p">:</span> <span class="mi">6</span><span class="p">,</span>
+        <span class="s1">&#39;pz&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Initialize data structures</span>
+    <span class="n">vertex_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">vertex_dict</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">faces_per_material</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Transpose array for correct orientation in output</span>
+    <span class="n">array</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># Now array[x, y, z]</span>
+    <span class="n">size_x</span><span class="p">,</span> <span class="n">size_y</span><span class="p">,</span> <span class="n">size_z</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Define processing directions and their normals</span>
+    <span class="n">directions</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s1">&#39;nx&#39;</span><span class="p">,</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;px&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;ny&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;py&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;nz&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;pz&#39;</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Process each face direction</span>
+    <span class="k">for</span> <span class="n">direction</span><span class="p">,</span> <span class="n">normal</span> <span class="ow">in</span> <span class="n">directions</span><span class="p">:</span>
+        <span class="n">normal_idx</span> <span class="o">=</span> <span class="n">normal_indices</span><span class="p">[</span><span class="n">direction</span><span class="p">]</span>
+        
+        <span class="c1"># Process X-axis aligned faces</span>
+        <span class="k">if</span> <span class="n">direction</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;nx&#39;</span><span class="p">,</span> <span class="s1">&#39;px&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">size_x</span><span class="p">):</span>
+                <span class="n">voxel_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span>
+                <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;nx&#39;</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[</span><span class="n">x</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">x</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">size_x</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span>
+
+                <span class="c1"># Create mask for faces that need to be generated</span>
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="n">neighbor_slice</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">),</span> <span class="n">voxel_slice</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">mesh_faces</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;px&#39;</span><span class="p">,</span> <span class="n">normal_idx</span><span class="p">,</span> <span class="n">voxel_size</span><span class="p">,</span>
+                         <span class="n">vertex_dict</span><span class="p">,</span> <span class="n">vertex_list</span><span class="p">,</span> <span class="n">faces_per_material</span><span class="p">,</span> <span class="n">voxel_value_to_material</span><span class="p">)</span>
+
+        <span class="c1"># Process Y-axis aligned faces</span>
+        <span class="k">elif</span> <span class="n">direction</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;ny&#39;</span><span class="p">,</span> <span class="s1">&#39;py&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">size_y</span><span class="p">):</span>
+                <span class="n">voxel_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="n">y</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;ny&#39;</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="n">y</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">y</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">y</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">size_y</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">1</span>
+
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="n">neighbor_slice</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">),</span> <span class="n">voxel_slice</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">mesh_faces</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="s1">&#39;y&#39;</span><span class="p">,</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;py&#39;</span><span class="p">,</span> <span class="n">normal_idx</span><span class="p">,</span> <span class="n">voxel_size</span><span class="p">,</span>
+                         <span class="n">vertex_dict</span><span class="p">,</span> <span class="n">vertex_list</span><span class="p">,</span> <span class="n">faces_per_material</span><span class="p">,</span> <span class="n">voxel_value_to_material</span><span class="p">)</span>
+
+        <span class="c1"># Process Z-axis aligned faces</span>
+        <span class="k">elif</span> <span class="n">direction</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;nz&#39;</span><span class="p">,</span> <span class="s1">&#39;pz&#39;</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">z</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">size_z</span><span class="p">):</span>
+                <span class="n">voxel_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">z</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;nz&#39;</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">z</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">z</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">z</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">neighbor_slice</span> <span class="o">=</span> <span class="n">array</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">z</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">z</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">size_z</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">voxel_slice</span><span class="p">)</span>
+                    <span class="n">layer</span> <span class="o">=</span> <span class="n">z</span> <span class="o">+</span> <span class="mi">1</span>
+
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="n">neighbor_slice</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">voxel_slice</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">),</span> <span class="n">voxel_slice</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">mesh_faces</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="s1">&#39;z&#39;</span><span class="p">,</span> <span class="n">direction</span> <span class="o">==</span> <span class="s1">&#39;pz&#39;</span><span class="p">,</span> <span class="n">normal_idx</span><span class="p">,</span> <span class="n">voxel_size</span><span class="p">,</span>
+                         <span class="n">vertex_dict</span><span class="p">,</span> <span class="n">vertex_list</span><span class="p">,</span> <span class="n">faces_per_material</span><span class="p">,</span> <span class="n">voxel_value_to_material</span><span class="p">)</span>
+
+    <span class="c1"># Create output directory if it doesn&#39;t exist</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Define output file paths</span>
+    <span class="n">obj_file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.obj&#39;</span><span class="p">)</span>
+    <span class="n">mtl_file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.mtl&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Write OBJ file</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">obj_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# Generated OBJ file</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# group</span><span class="se">\n</span><span class="s1">o </span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;# material</span><span class="se">\n</span><span class="s1">mtllib </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.mtl</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Write normal vectors</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# normals</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">nz</span> <span class="ow">in</span> <span class="n">normals</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;vn </span><span class="si">{</span><span class="n">nx</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">ny</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">nz</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Write vertex coordinates</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# verts</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">vx</span><span class="p">,</span> <span class="n">vy</span><span class="p">,</span> <span class="n">vz</span> <span class="ow">in</span> <span class="n">vertex_list</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;v </span><span class="si">{</span><span class="n">vx</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vy</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vz</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Write faces grouped by material</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# faces</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">material_name</span><span class="p">,</span> <span class="n">faces</span> <span class="ow">in</span> <span class="n">faces_per_material</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;usemtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">face</span> <span class="ow">in</span> <span class="n">faces</span><span class="p">:</span>
+                <span class="n">v_indices</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">vi</span><span class="p">)</span> <span class="k">for</span> <span class="n">vi</span> <span class="ow">in</span> <span class="n">face</span><span class="p">[</span><span class="s1">&#39;vertices&#39;</span><span class="p">]]</span>
+                <span class="n">normal_idx</span> <span class="o">=</span> <span class="n">face</span><span class="p">[</span><span class="s1">&#39;normal_idx&#39;</span><span class="p">]</span>
+                <span class="n">face_str</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">vi</span><span class="si">}</span><span class="s1">//</span><span class="si">{</span><span class="n">normal_idx</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">for</span> <span class="n">vi</span> <span class="ow">in</span> <span class="n">face</span><span class="p">[</span><span class="s1">&#39;vertices&#39;</span><span class="p">]])</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;f </span><span class="si">{</span><span class="n">face_str</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Write MTL file with material definitions</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mtl_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# Material file</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">voxel_value</span> <span class="ow">in</span> <span class="n">unique_voxel_values</span><span class="p">:</span>
+            <span class="n">material_name</span> <span class="o">=</span> <span class="n">voxel_value_to_material</span><span class="p">[</span><span class="n">voxel_value</span><span class="p">]</span>
+            <span class="n">color</span> <span class="o">=</span> <span class="n">voxel_color_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">voxel_value</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+            <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="o">/</span> <span class="mf">255.0</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">color</span><span class="p">]</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;newmtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Ka </span><span class="si">{</span><span class="n">r</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">g</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">b</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Ambient color</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Kd </span><span class="si">{</span><span class="n">r</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">g</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">b</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Diffuse color</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Ke </span><span class="si">{</span><span class="n">r</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">g</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">b</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Emissive color</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;Ks 0.500000 0.500000 0.500000</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Specular reflection</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;Ns 50.000000</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>                   <span class="c1"># Specular exponent</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;illum 2</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>                      <span class="c1"># Illumination model</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;OBJ and MTL files have been generated in </span><span class="si">{</span><span class="n">output_dir</span><span class="si">}</span><span class="s1"> with the base name &quot;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">&quot;.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="grid_to_obj">
+<a class="viewcode-back" href="../../../autoapi/voxcity/simulator/index.html#voxcity.exporter.grid_to_obj">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">grid_to_obj</span><span class="p">(</span><span class="n">value_array_ori</span><span class="p">,</span> <span class="n">dem_array_ori</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">file_name</span><span class="p">,</span> <span class="n">cell_size</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span>
+                 <span class="n">colormap_name</span><span class="o">=</span><span class="s1">&#39;viridis&#39;</span><span class="p">,</span> <span class="n">num_colors</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">vmin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vmax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Converts a 2D array of values and a corresponding DEM array to an OBJ file</span>
+<span class="sd">    with specified colormap, transparency, and value range.</span>
+<span class="sd">    </span>
+<span class="sd">    This function creates a 3D visualization of 2D grid data by using elevation</span>
+<span class="sd">    data and color mapping. It&#39;s particularly useful for visualizing terrain data,</span>
+<span class="sd">    analysis results, or any 2D data that should be displayed with elevation.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        value_array_ori (ndarray): 2D array of values to visualize.</span>
+<span class="sd">            These values will be mapped to colors using the specified colormap.</span>
+<span class="sd">        dem_array_ori (ndarray): 2D array of DEM values corresponding to value_array.</span>
+<span class="sd">            Provides elevation data for the 3D visualization.</span>
+<span class="sd">        output_dir (str): Directory to save the OBJ and MTL files.</span>
+<span class="sd">            Will be created if it doesn&#39;t exist.</span>
+<span class="sd">        file_name (str): Base name for the output files.</span>
+<span class="sd">            Used for both .obj and .mtl files.</span>
+<span class="sd">        cell_size (float): Size of each cell in the grid (e.g., in meters).</span>
+<span class="sd">            Used to scale the model to real-world units.</span>
+<span class="sd">        offset (float): Elevation offset added after quantization.</span>
+<span class="sd">            Useful for adjusting the base height of the model.</span>
+<span class="sd">        colormap_name (str, optional): Name of the Matplotlib colormap to use.</span>
+<span class="sd">            Defaults to &#39;viridis&#39;. Must be a valid Matplotlib colormap name.</span>
+<span class="sd">        num_colors (int, optional): Number of discrete colors to use from the colormap.</span>
+<span class="sd">            Defaults to 256. Higher values give smoother color transitions.</span>
+<span class="sd">        alpha (float, optional): Transparency value between 0.0 (transparent) and 1.0 (opaque).</span>
+<span class="sd">            Defaults to 1.0 (fully opaque).</span>
+<span class="sd">        vmin (float, optional): Minimum value for colormap normalization.</span>
+<span class="sd">            If None, uses data minimum. Used to control color mapping range.</span>
+<span class="sd">        vmax (float, optional): Maximum value for colormap normalization.</span>
+<span class="sd">            If None, uses data maximum. Used to control color mapping range.</span>
+<span class="sd">            </span>
+<span class="sd">    Notes:</span>
+<span class="sd">        - Automatically handles NaN values in input arrays</span>
+<span class="sd">        - Creates triangulated mesh for proper rendering</span>
+<span class="sd">        - Supports transparency and color mapping</span>
+<span class="sd">        - Generates complete OBJ and MTL files</span>
+<span class="sd">        - Maintains consistent coordinate system</span>
+<span class="sd">        - Optimizes mesh generation for large grids</span>
+<span class="sd">        </span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If vmin equals vmax or if colormap_name is invalid</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Validate input arrays</span>
+    <span class="k">if</span> <span class="n">value_array_ori</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">dem_array_ori</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;The value array and DEM array must have the same shape.&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Get the dimensions</span>
+    <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">value_array_ori</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Flip arrays vertically and normalize DEM values</span>
+    <span class="n">value_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">value_array_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+    <span class="n">dem_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flipud</span><span class="p">(</span><span class="n">dem_array_ori</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dem_array_ori</span><span class="p">)</span>
+
+    <span class="c1"># Get valid indices (non-NaN)</span>
+    <span class="n">valid_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argwhere</span><span class="p">(</span><span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">value_array</span><span class="p">))</span>
+
+    <span class="c1"># Set vmin and vmax if not provided</span>
+    <span class="k">if</span> <span class="n">vmin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">vmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmin</span><span class="p">(</span><span class="n">value_array</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">vmax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">vmax</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">value_array</span><span class="p">)</span>
+    
+    <span class="c1"># Handle case where vmin equals vmax</span>
+    <span class="k">if</span> <span class="n">vmin</span> <span class="o">==</span> <span class="n">vmax</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;vmin and vmax cannot be the same value.&quot;</span><span class="p">)</span>
+    
+    <span class="c1"># Normalize values to [0, 1] based on vmin and vmax</span>
+    <span class="n">normalized_values</span> <span class="o">=</span> <span class="p">(</span><span class="n">value_array</span> <span class="o">-</span> <span class="n">vmin</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">vmax</span> <span class="o">-</span> <span class="n">vmin</span><span class="p">)</span>
+    <span class="c1"># Clip normalized values to [0, 1]</span>
+    <span class="n">normalized_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">normalized_values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    
+    <span class="c1"># Prepare the colormap</span>
+    <span class="k">if</span> <span class="n">colormap_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">plt</span><span class="o">.</span><span class="n">colormaps</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Colormap &#39;</span><span class="si">{</span><span class="n">colormap_name</span><span class="si">}</span><span class="s2">&#39; is not recognized. Please choose a valid Matplotlib colormap.&quot;</span><span class="p">)</span>
+    <span class="n">colormap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="n">colormap_name</span><span class="p">,</span> <span class="n">num_colors</span><span class="p">)</span>  <span class="c1"># Discrete colors</span>
+
+    <span class="c1"># Create a mapping from quantized colors to material names</span>
+    <span class="n">color_to_material</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">materials</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">material_index</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Start indexing materials from 1</span>
+
+    <span class="c1"># Initialize vertex tracking</span>
+    <span class="n">vertex_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">vertex_dict</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># To avoid duplicate vertices</span>
+    <span class="n">vertex_index</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># OBJ indices start at 1</span>
+
+    <span class="n">faces_per_material</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Process each valid cell in the grid</span>
+    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">valid_indices</span><span class="p">:</span>
+        <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">idx</span>  <span class="c1"># i is the row index, j is the column index</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value_array</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+        <span class="n">normalized_value</span> <span class="o">=</span> <span class="n">normalized_values</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+
+        <span class="c1"># Get the color from the colormap</span>
+        <span class="n">rgba</span> <span class="o">=</span> <span class="n">colormap</span><span class="p">(</span><span class="n">normalized_value</span><span class="p">)</span>
+        <span class="n">rgb</span> <span class="o">=</span> <span class="n">rgba</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>  <span class="c1"># Ignore alpha channel</span>
+        <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">c</span> <span class="o">*</span> <span class="mi">255</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">rgb</span><span class="p">]</span>
+
+        <span class="c1"># Create unique material name for this color</span>
+        <span class="n">color_key</span> <span class="o">=</span> <span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+        <span class="n">material_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;material_</span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s1">_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s1">_</span><span class="si">{</span><span class="n">b</span><span class="si">}</span><span class="s1">&#39;</span>
+
+        <span class="c1"># Add new material if not seen before</span>
+        <span class="k">if</span> <span class="n">material_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">color_to_material</span><span class="p">:</span>
+            <span class="n">color_to_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;r&#39;</span><span class="p">:</span> <span class="n">r</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span>
+                <span class="s1">&#39;g&#39;</span><span class="p">:</span> <span class="n">g</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span>
+                <span class="s1">&#39;b&#39;</span><span class="p">:</span> <span class="n">b</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">,</span>
+                <span class="s1">&#39;alpha&#39;</span><span class="p">:</span> <span class="n">alpha</span>
+            <span class="p">}</span>
+            <span class="n">materials</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">material_name</span><span class="p">)</span>
+
+        <span class="c1"># Calculate cell vertices</span>
+        <span class="n">x0</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">cell_size</span>
+        <span class="n">x1</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">cell_size</span>
+        <span class="n">y0</span> <span class="o">=</span> <span class="n">j</span> <span class="o">*</span> <span class="n">cell_size</span>
+        <span class="n">y1</span> <span class="o">=</span> <span class="p">(</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">cell_size</span>
+
+        <span class="c1"># Calculate elevation with quantization and offset</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">cell_size</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">dem_array</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">/</span> <span class="n">cell_size</span> <span class="o">+</span> <span class="mf">1.5</span><span class="p">)</span> <span class="o">+</span> <span class="n">offset</span>
+
+        <span class="c1"># Define quad vertices</span>
+        <span class="n">vertices</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span>
+            <span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Convert vertices to indices</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">vertices</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">v</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">vertex_dict</span><span class="p">:</span>
+                <span class="n">vertex_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+                <span class="n">vertex_dict</span><span class="p">[</span><span class="n">v</span><span class="p">]</span> <span class="o">=</span> <span class="n">vertex_index</span>
+                <span class="n">vertex_index</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vertex_dict</span><span class="p">[</span><span class="n">v</span><span class="p">])</span>
+
+        <span class="c1"># Create triangulated faces</span>
+        <span class="n">faces</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]]},</span>
+            <span class="p">{</span><span class="s1">&#39;vertices&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">indices</span><span class="p">[</span><span class="mi">3</span><span class="p">]]},</span>
+        <span class="p">]</span>
+
+        <span class="c1"># Store faces by material</span>
+        <span class="k">if</span> <span class="n">material_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">faces_per_material</span><span class="p">:</span>
+            <span class="n">faces_per_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">faces_per_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">faces</span><span class="p">)</span>
+
+    <span class="c1"># Create output directory if needed</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Define output file paths</span>
+    <span class="n">obj_file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.obj&#39;</span><span class="p">)</span>
+    <span class="n">mtl_file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.mtl&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Write OBJ file</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">obj_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;# Generated OBJ file</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;mtllib </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">.mtl</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="c1"># Write vertices</span>
+        <span class="k">for</span> <span class="n">vx</span><span class="p">,</span> <span class="n">vy</span><span class="p">,</span> <span class="n">vz</span> <span class="ow">in</span> <span class="n">vertex_list</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;v </span><span class="si">{</span><span class="n">vx</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vy</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">vz</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="c1"># Write faces grouped by material</span>
+        <span class="k">for</span> <span class="n">material_name</span> <span class="ow">in</span> <span class="n">materials</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;usemtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">faces</span> <span class="o">=</span> <span class="n">faces_per_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">face</span> <span class="ow">in</span> <span class="n">faces</span><span class="p">:</span>
+                <span class="n">v_indices</span> <span class="o">=</span> <span class="n">face</span><span class="p">[</span><span class="s1">&#39;vertices&#39;</span><span class="p">]</span>
+                <span class="n">face_str</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">vi</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">for</span> <span class="n">vi</span> <span class="ow">in</span> <span class="n">v_indices</span><span class="p">])</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;f </span><span class="si">{</span><span class="n">face_str</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Write MTL file with material properties</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mtl_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">material_name</span> <span class="ow">in</span> <span class="n">materials</span><span class="p">:</span>
+            <span class="n">color</span> <span class="o">=</span> <span class="n">color_to_material</span><span class="p">[</span><span class="n">material_name</span><span class="p">]</span>
+            <span class="n">r</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">color</span><span class="p">[</span><span class="s1">&#39;r&#39;</span><span class="p">],</span> <span class="n">color</span><span class="p">[</span><span class="s1">&#39;g&#39;</span><span class="p">],</span> <span class="n">color</span><span class="p">[</span><span class="s1">&#39;b&#39;</span><span class="p">]</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">color</span><span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;newmtl </span><span class="si">{</span><span class="n">material_name</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Ka </span><span class="si">{</span><span class="n">r</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">g</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">b</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Ambient color</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Kd </span><span class="si">{</span><span class="n">r</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">g</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">b</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Diffuse color</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Ks 0.000000 0.000000 0.000000</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>  <span class="c1"># Specular reflection</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;Ns 10.000000</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>                   <span class="c1"># Specular exponent</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;illum 1</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>                        <span class="c1"># Illumination model</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;d </span><span class="si">{</span><span class="n">a</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>                     <span class="c1"># Transparency (alpha)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;OBJ and MTL files have been generated in </span><span class="si">{</span><span class="n">output_dir</span><span class="si">}</span><span class="s1"> with the base name &quot;</span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">&quot;.&#39;</span><span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024, Kunihiko Fujiwara
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/scripts/furo.js?v=5fa4622c"></script>
+    </body>
+</html>
