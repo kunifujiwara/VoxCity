@@ -26,7 +26,6 @@ python:
       path: .
       extra_requirements:
         - dev
-  system_packages: true
 
 # Optionally specify the requirements file
 requirements_file: docs/requirements.txt 
