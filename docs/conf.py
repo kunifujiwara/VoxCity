@@ -27,19 +27,6 @@ extensions = [
 
 # Add these lines to configure myst-nb
 nb_execution_mode = "off"
-# myst_enable_extensions = [
-#     "amsmath",
-#     "colon_fence",
-#     "deflist",
-#     "dollarmath",
-#     "html_admonition",
-#     "html_image",
-#     "linkify",
-#     "replacements",
-#     "smartquotes",
-#     "substitution",
-#     "tasklist",
-# ]
 
 # Bibtex settings
 bibtex_bibfiles = ["references.bib"]
@@ -137,16 +124,3 @@ def skip_util_classes(app, what, name, obj, skip, options):
 
 def setup(app):
     app.connect("autoapi-skip-member", skip_util_classes)
-    app.add_config_value(
-        "recommonmark_config",
-        {
-            "auto_toc_tree_section": "Contents",
-            "enable_eval_rst": True,
-        },
-        True,
-    )
-    app.add_transform(AutoStructify)
-
-
-# Add this new import at the top of the file
-from recommonmark.transform import AutoStructify

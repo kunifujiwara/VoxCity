@@ -3,7 +3,6 @@ sphinx-autoapi
 sphinx-rtd-theme
 furo
 sphinxcontrib-bibtex
-recommonmark
 sphinx
 # Install voxcity in editable mode for documentation generation
 -e .

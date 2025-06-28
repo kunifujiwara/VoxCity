@@ -1,36 +1,76 @@
 # VoxCity Documentation
 
-This directory contains the documentation for the VoxCity project, built using Sphinx.
+This directory contains the documentation for VoxCity, built using Sphinx and deployed on Read the Docs.
 
 ## Local Development
 
-### Prerequisites
-
-- Python 3.12+
-- pip
-
-### Building Locally
-
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Build the documentation:**
-   ```bash
-   make html
-   ```
-
-3. **View the documentation:**
-   Open `_build/html/index.html` in your web browser.
-
-### Using the build script
-
-Alternatively, you can use the provided build script:
+To build the documentation locally:
 
 ```bash
-python build_docs.py
+# Install documentation dependencies
+pip install -r docs/requirements.txt
+
+# Build the documentation
+cd docs
+make html
+
+# View the documentation
+# Open docs/_build/html/index.html in your browser
 ```
+
+## Read the Docs Deployment
+
+The documentation is automatically deployed to Read the Docs when changes are pushed to the main branch.
+
+### Setup Instructions
+
+1. **Connect to Read the Docs**:
+   - Go to [readthedocs.org](https://readthedocs.org)
+   - Sign in with your GitHub account
+   - Click "Import a Project"
+   - Select your VoxCity repository
+
+2. **Configuration**:
+   - The `.readthedocs.yml` file in the root directory configures the build
+   - Documentation will be built from the `docs/` directory
+   - The build uses Python 3.11 and Ubuntu 22.04
+
+3. **Automatic Builds**:
+   - Documentation builds automatically on every push to main
+   - New versions are created for git tags
+   - Build status is shown in the GitHub repository
+
+### Configuration Details
+
+The `.readthedocs.yml` file specifies:
+- **Python version**: 3.11
+- **Build system**: Sphinx
+- **Configuration file**: `docs/conf.py`
+- **Requirements**: `docs/requirements.txt`
+- **Output formats**: HTML, PDF, ePub
+
+### Customization
+
+- **Theme**: Uses Furo theme (modern, responsive)
+- **Logo**: Custom logo in `docs/logo.png`
+- **Styling**: Custom CSS in `docs/_static/custom.css`
+- **API Documentation**: Auto-generated using sphinx-autoapi
+
+### Troubleshooting
+
+If builds fail:
+1. Check the build logs on Read the Docs
+2. Ensure all dependencies are in `docs/requirements.txt`
+3. Verify the Sphinx configuration in `docs/conf.py`
+4. Test locally with `make html` in the docs directory
+
+## Documentation Structure
+
+- `index.md`: Main landing page
+- `example.md`: Quick start guide
+- `examples/`: Tutorial examples
+- `autoapi/`: Auto-generated API documentation
+- `references.bib`: Bibliography for citations
 
 ## Documentation Branch Deployment
 
@@ -56,32 +96,8 @@ If you need to deploy manually:
    git push -f origin HEAD:documentation
    ```
 
-## Documentation Structure
-
-- `index.md` - Main documentation page (includes README.md)
-- `examples/` - Tutorial and example notebooks
-- `autoapi/` - Auto-generated API documentation
-- `_static/` - Static assets (CSS, images, etc.)
-- `_build/` - Built documentation (generated)
-
 ## Configuration
 
 The documentation is configured in `conf.py`. Key settings:
 
 - Project name: `voxcity`
-- Theme: `furo`
-- Extensions: `myst-nb`, `autoapi`, `sphinxcontrib-bibtex`
-- AutoAPI: Generates documentation from source code in `../src/`
-
-## Adding Content
-
-1. **New pages:** Add `.md` or `.rst` files and include them in the appropriate toctree
-2. **Examples:** Add Jupyter notebooks to the `examples/` directory
-3. **API docs:** Auto-generated from docstrings in the source code
-4. **References:** Update `references.bib` and `references.md`
-
-## Troubleshooting
-
-- **Build errors:** Check that all dependencies are installed
-- **Missing modules:** Ensure the voxcity package is installed in editable mode (`pip install -e ..`)
-- **AutoAPI issues:** Check that the source code path in `conf.py` is correct 
