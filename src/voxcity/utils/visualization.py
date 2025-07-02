@@ -2069,11 +2069,18 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
         plt.tight_layout()
         plt.show()
 
-    # Export mesh files if requested
-    if base_filename is not None:
-        print(f"Exporting files to '{base_filename}.*' ...")
-        os.makedirs(output_directory, exist_ok=True)
-        export_meshes(meshes, output_directory, base_filename)
+    # # Export mesh files if requested
+    # if base_filename is not None:
+    #     print(f"Exporting files to '{base_filename}.*' ...")
+    #     os.makedirs(output_directory, exist_ok=True)
+    #     export_meshes(meshes, output_directory, base_filename)
+
+    # Export OBJ mesh files if requested
+    if save_obj:
+        output_directory = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")
 
     # Generate and display multiple camera views
     if show_views:  
@@ -2091,13 +2098,6 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
             plt.show()
             plt.close()
     
-    # Export OBJ mesh files if requested
-    if save_obj:
-        output_directory = kwargs.get('output_directory', 'output')
-        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
-        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
-        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")
-
 def visualize_voxcity_multi_view_with_multiple_sim_grids(voxel_array, meshsize, sim_configs, **kwargs):
     """
     Create multiple views of the voxel city data with multiple simulation grids.
@@ -2490,20 +2490,26 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
         # plt.tight_layout()
         # plt.show()
 
-    # Export if filename provided
-    if base_filename is not None:
-        print(f"Exporting files to '{base_filename}.*' ...")
-        # Create output directory if it doesn't exist
-        os.makedirs(output_directory, exist_ok=True)
-        export_meshes(meshes, output_directory, base_filename)
-
+    # # Export if filename provided
+    # if base_filename is not None:
+    #     print(f"Exporting files to '{base_filename}.*' ...")
+    #     # Create output directory if it doesn't exist
+    #     os.makedirs(output_directory, exist_ok=True)
+    #     export_meshes(meshes, output_directory, base_filename) 
  
-    # Create and save multiple views
-    print("Creating multiple views...")        
     # Create output directory if it doesn't exist
     os.makedirs(output_directory, exist_ok=True)
 
+    # After creating the meshes and before visualization
+    if save_obj:
+        output_directory = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")    
+
     if show_views:
+        # Create and save multiple views
+        print("Creating multiple views...")       
         image_files = create_multi_view_scene(meshes, output_directory=output_directory, 
                                          projection_type=projection_type, 
                                          distance_factor=distance_factor)
@@ -2516,14 +2522,8 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
             plt.title(view_name.replace('_', ' ').title(), pad=20)
             plt.axis('off')
             plt.show()
-            plt.close()
-        
-    # After creating the meshes and before visualization
-    if save_obj:
-        output_directory = kwargs.get('output_directory', 'output')
-        output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
-        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
-        print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")    
+            plt.close()       
+
 
 def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **kwargs):
     """

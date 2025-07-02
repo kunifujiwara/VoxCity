@@ -1341,11 +1341,12 @@ def get_building_solar_irradiance(
     # # Optional OBJ export
     # obj_export = kwargs.get("obj_export", False)
     # if obj_export:
-    #     _export_solar_irradiance_mesh(
-    #         irradiance_mesh,
-    #         face_global,
-    #         **kwargs
-    #     )
+    #     # Get export parameters
+    #     output_dir = kwargs.get("output_directory", "output")
+    #     output_file_name = kwargs.get("output_file_name", "solar_irradiance")
+
+    #     # Export the mesh directly
+    #     irradiance_mesh.export(f"{output_dir}/{output_file_name}.obj")
     
     return irradiance_mesh
 
@@ -1426,6 +1427,8 @@ def get_cumulative_building_solar_irradiance(
     face_cum_global  = np.zeros(n_faces, dtype=np.float64)
     
     boundary_mask = None
+    instant_kwargs = kwargs.copy()
+    instant_kwargs['obj_export'] = False
     
     # Iterate over each timestep
     for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
@@ -1450,7 +1453,7 @@ def get_cumulative_building_solar_irradiance(
             DNI,
             DHI,
             show_plot=False,  # or any other flags
-            **kwargs
+            **instant_kwargs
         )
         
         # Extract arrays
@@ -1488,14 +1491,15 @@ def get_cumulative_building_solar_irradiance(
     
     cumulative_mesh.name = "Cumulative Solar Irradiance (Wh/m²)"
     
-    # Optional export
+    # # Optional OBJ export
     # obj_export = kwargs.get("obj_export", False)
     # if obj_export:
-    #     _export_solar_irradiance_mesh(
-    #         cumulative_mesh,
-    #         face_cum_global,
-    #         **kwargs
-    #     )
+    #     # Get export parameters
+    #     output_dir = kwargs.get("output_directory", "output")
+    #     output_file_name = kwargs.get("output_file_name", "solar_irradiance")
+
+    #     # Export the mesh directly
+    #     irradiance_mesh.export(f"{output_dir}/{output_file_name}.obj")
     
     return cumulative_mesh
 
