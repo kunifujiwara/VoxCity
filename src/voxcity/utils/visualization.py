@@ -2504,7 +2504,8 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     if save_obj:
         output_directory = kwargs.get('output_directory', 'output')
         output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
-        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        max_materials = kwargs.get('max_materials', 20)
+        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name, max_materials=max_materials)
         print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")    
 
     if show_views:

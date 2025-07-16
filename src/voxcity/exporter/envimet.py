@@ -147,8 +147,8 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
     veg_translation_dict = {
         1: '',  # Bareland
         2: '0200XX',  # Rangeland
-        3: '',  # Shrub
-        4: '',  # Moss and lichen
+        3: '0200H1',  # Shrub
+        4: '0200XX',  # Moss and lichen
         5: '0200XX',  # Agriculture land
         6: '',  # Tree
         7: '0200XX',  # Wet land
@@ -171,7 +171,7 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         11: '0200PG', # Developed space
         12: '0200ST', # Road
         13: '000000', # Building
-        14: '0200SD', # No Data
+        14: '000000', # No Data
     }
     land_cover_mat_grid = translate_array(land_cover_grid, mat_translation_dict)
 

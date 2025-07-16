@@ -590,7 +590,7 @@ def split_vertices_manual(mesh):
     out_mesh = trimesh.util.concatenate(new_meshes)
     return out_mesh
 
-def save_obj_from_colored_mesh(meshes, output_path, base_filename):
+def save_obj_from_colored_mesh(meshes, output_path, base_filename, max_materials=None):
     """
     Save a collection of colored meshes as OBJ and MTL files with material support.
     
@@ -620,6 +620,12 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename):
         - {base_filename}.obj : The main geometry file
         - {base_filename}.mtl : The material definitions file
     
+    max_materials : int, optional
+        Maximum number of materials/colors to create. If specified and the number
+        of unique colors exceeds this limit, colors will be quantized using
+        k-means clustering to reduce them to the specified number.
+        If None (default), all unique colors are preserved as separate materials.
+    
     Returns
     -------
     tuple
@@ -644,6 +650,11 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename):
     ...     meshes, 'output/models', 'city'
     ... )
     
+    Limiting materials to 5:
+    >>> obj_path, mtl_path = save_obj_from_colored_mesh(
+    ...     meshes, 'output/models', 'city', max_materials=5
+    ... )
+    
     Notes
     -----
     - Creates unique materials for each distinct face color
@@ -653,6 +664,9 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename):
     - Vertices are written in OBJ's 1-based indexing format
     - Faces are grouped by material for efficient rendering
     - The MTL file is automatically referenced in the OBJ file
+    - If max_materials is specified, k-means clustering is used for color quantization
+    - Color quantization preserves the overall color distribution while reducing material count
+    - Requires scikit-learn package when max_materials is specified (install with: pip install scikit-learn)
     
     File Format Details
     -----------------
@@ -674,8 +688,38 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename):
     combined_mesh = trimesh.util.concatenate(list(meshes.values()))
     combined_mesh = split_vertices_manual(combined_mesh)
     
-    # Create unique materials for each unique face color
+    # Get face colors
     face_colors = combined_mesh.visual.face_colors
+    
+    # Apply color quantization if max_materials is specified
+    if max_materials is not None:
+        try:
+            from sklearn.cluster import KMeans
+        except ImportError:
+            raise ImportError("scikit-learn is required for color quantization. "
+                            "Install it with: pip install scikit-learn")
+        
+        # Prepare colors for clustering (use only RGB, not alpha)
+        colors_rgb = face_colors[:, :3].astype(float)
+        
+        # Perform k-means clustering
+        kmeans = KMeans(n_clusters=max_materials, random_state=42, n_init=10)
+        color_labels = kmeans.fit_predict(colors_rgb)
+        
+        # Get the cluster centers as the new colors
+        quantized_colors_rgb = kmeans.cluster_centers_.astype(np.uint8)
+        
+        # Create new face colors with quantized RGB and original alpha
+        quantized_face_colors = np.zeros_like(face_colors)
+        # Assign each face to its nearest cluster center
+        quantized_face_colors[:, :3] = quantized_colors_rgb[color_labels]
+        quantized_face_colors[:, 3] = face_colors[:, 3]  # Preserve original alpha
+        
+        # Update the mesh with quantized colors
+        combined_mesh.visual.face_colors = quantized_face_colors
+        face_colors = quantized_face_colors
+    
+    # Create unique materials for each unique face color
     unique_colors = np.unique(face_colors, axis=0)
     
     # Write MTL file
