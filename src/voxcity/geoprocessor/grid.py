@@ -412,7 +412,7 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     # Flip grid vertically to match geographic orientation
     return np.flipud(grid)
     
-def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices):
+def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices, default_class='Developed space'):
     """Create a grid of land cover classes from GeoDataFrame polygon data.
 
     Args:
@@ -420,6 +420,8 @@ def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_ver
         meshsize (float): Size of each grid cell in meters
         source (str): Source of the land cover data to determine class priorities
         rectangle_vertices (list): List of 4 (lon,lat) coordinate pairs defining the rectangle bounds
+        default_class (str, optional): Default land cover class for cells with no intersecting polygons.
+                                     Defaults to 'Developed space'.
 
     Returns:
         numpy.ndarray: 2D grid of land cover classes as strings
@@ -466,7 +468,7 @@ def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_ver
     print(f"Adjusted mesh size: {adjusted_meshsize}")
 
     # Initialize grid with default land cover class
-    grid = np.full(grid_size, 'Developed space', dtype=object)
+    grid = np.full(grid_size, default_class, dtype=object)
 
     # Calculate bounding box for spatial indexing
     extent = [min(coord[1] for coord in rectangle_vertices), max(coord[1] for coord in rectangle_vertices),
@@ -485,7 +487,7 @@ def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_ver
     # Iterate through each grid cell
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
-            land_cover_class = 'Developed space'
+            land_cover_class = default_class
             cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             
             # Check intersections with polygons that could overlap this cell

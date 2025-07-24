@@ -679,7 +679,7 @@ classification_mapping = {
     5: {'name': 'Moss and lichen', 'tags': ['moss', 'lichen', 'tundra_vegetation']},
     6: {'name': 'Wet land', 'tags': ['wetland', 'marsh', 'swamp', 'bog', 'fen', 'flooded_vegetation']},
     7: {'name': 'Mangrove', 'tags': ['mangrove', 'mangrove_forest', 'mangrove_swamp']},
-    8: {'name': 'Water', 'tags': ['water', 'waterway', 'reservoir', 'basin', 'bay', 'ocean', 'sea', 'river', 'lake']},
+    8: {'name': 'Water', 'tags': ['water', 'reservoir', 'basin', 'bay', 'ocean', 'sea', 'lake']},
     9: {'name': 'Snow and ice', 'tags': ['glacier', 'snow', 'ice', 'snowfield', 'ice_shelf']},
     13: {'name': 'No Data', 'tags': ['unknown', 'no_data', 'clouds', 'undefined']}
 }
@@ -775,13 +775,11 @@ tag_osm_key_value_mapping = {
     
     # Water
     'water': {'natural': 'water'},
-    'waterway': {'waterway': '*'},
     'reservoir': {'landuse': 'reservoir'},
     'basin': {'landuse': 'basin'},
     'bay': {'natural': 'bay'},
     'ocean': {'natural': 'water', 'water': 'ocean'},
     'sea': {'natural': 'water', 'water': 'sea'},
-    'river': {'waterway': 'river'},
     'lake': {'natural': 'water', 'water': 'lake'},
     
     # Snow and ice

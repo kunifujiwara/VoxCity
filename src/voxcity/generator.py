@@ -87,6 +87,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
             - esri_landcover_year: Year for ESRI land cover data
             - dynamic_world_date: Date for Dynamic World data
             - gridvis: Whether to visualize the grid
+            - default_land_cover_class: Default class for grid cells with no intersecting polygons (default: 'Developed space')
 
     Returns:
         numpy.ndarray: Grid of land cover classifications as integer values
@@ -142,7 +143,8 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     # Different processing for vector vs raster data sources
     if source == 'OpenStreetMap':
         # Process vector data directly from GeoDataFrame
-        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, source, rectangle_vertices)
+        default_class = kwargs.get('default_land_cover_class', 'Developed space')
+        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, source, rectangle_vertices, default_class=default_class)
     else:
         # Process raster data from GeoTIFF file
         land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
@@ -607,6 +609,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             - mapvis: Whether to visualize grids on map
             - voxelvis: Whether to visualize 3D voxel model
             - voxelvis_img_save_path: Path to save 3D visualization
+            - default_land_cover_class: Default class for land cover grid cells with no intersecting polygons (default: 'Developed space')
 
     Returns:
         tuple containing:
