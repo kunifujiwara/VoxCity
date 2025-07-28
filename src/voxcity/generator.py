@@ -6,12 +6,19 @@ It handles land cover, building heights, canopy heights, and digital elevation m
 
 The main functions are:
 - get_land_cover_grid: Creates a grid of land cover classifications
-- get_building_height_grid: Creates a grid of building heights 
+- get_building_height_grid: Creates a grid of building heights (supports GeoDataFrame input)
 - get_canopy_height_grid: Creates a grid of tree canopy heights
 - get_dem_grid: Creates a digital elevation model grid
 - create_3d_voxel: Combines the grids into a 3D voxel representation
 - create_3d_voxel_individuals: Creates separate voxel grids for each component
-- get_voxcity: Main function to generate a complete voxel city model
+- get_voxcity: Main function to generate a complete voxel city model (supports GeoDataFrame input)
+
+Key Features:
+- Support for multiple data sources (OpenStreetMap, ESA WorldCover, Google Earth Engine, etc.)
+- Direct GeoDataFrame input for building data (useful for custom datasets)
+- 3D voxel generation with configurable resolution
+- Visualization capabilities for both 2D grids and 3D models
+- Data export in various formats (GeoTIFF, GeoJSON, pickle)
 """
 
 # Standard library imports
@@ -166,14 +173,15 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     return land_cover_grid_int
 
 # def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir="output", visualization=True, maptiler_API_key=None, file_path=None):
-def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
+def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, building_gdf=None, **kwargs):
     """Creates a grid of building heights.
 
     Args:
         rectangle_vertices: List of coordinates defining the area of interest
         meshsize: Size of each grid cell in meters
-        source: Data source for buildings (e.g. 'OpenStreetMap', 'Microsoft Building Footprints')
+        source: Data source for buildings (e.g. 'OpenStreetMap', 'Microsoft Building Footprints', 'GeoDataFrame')
         output_dir: Directory to save output files
+        building_gdf: Optional GeoDataFrame with building footprint, height and other information
         **kwargs: Additional arguments including:
             - maptiler_API_key: API key for MapTiler
             - building_path: Path to local building data file
@@ -189,7 +197,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
     """
 
     # Initialize Earth Engine for satellite-based building data sources
-    if source not in ["OpenStreetMap", "Overture", "Local file"]:
+    if source not in ["OpenStreetMap", "Overture", "Local file", "GeoDataFrame"]:
         initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
@@ -197,32 +205,40 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, *
 
     os.makedirs(output_dir, exist_ok=True)
     
-    # Fetch building data from primary source
-    # Each source has different data formats and processing requirements
-    if source == 'Microsoft Building Footprints':
-        # Machine learning-derived building footprints from satellite imagery
-        gdf = get_mbfp_gdf(output_dir, rectangle_vertices)
-    elif source == 'OpenStreetMap':
-        # Crowd-sourced building data with varying completeness
-        gdf = load_gdf_from_openstreetmap(rectangle_vertices)
-    elif source == "Open Building 2.5D Temporal":
-        # Special case: this source provides both footprints and heights
-        # Skip GeoDataFrame processing and create grids directly
-        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
-    elif source == 'EUBUCCO v0.1':
-        # European building database with height information
-        gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir)
-    # elif source == "OpenMapTiles":
-    #     # Vector tiles service for building data
-    #     gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
-    elif source == "Overture":
-        # Open building dataset from Overture Maps Foundation
-        gdf = load_gdf_from_overture(rectangle_vertices)
-    elif source == "Local file":
-        # Handle user-provided local building data files
-        _, extension = os.path.splitext(kwargs["building_path"])
-        if extension == ".gpkg":
-            gdf = get_gdf_from_gpkg(kwargs["building_path"], rectangle_vertices)
+    # If building_gdf is provided, use it directly
+    if building_gdf is not None:
+        gdf = building_gdf
+        print("Using provided GeoDataFrame for building data")
+    else:
+        # Fetch building data from primary source
+        # Each source has different data formats and processing requirements
+        if source == 'Microsoft Building Footprints':
+            # Machine learning-derived building footprints from satellite imagery
+            gdf = get_mbfp_gdf(output_dir, rectangle_vertices)
+        elif source == 'OpenStreetMap':
+            # Crowd-sourced building data with varying completeness
+            gdf = load_gdf_from_openstreetmap(rectangle_vertices)
+        elif source == "Open Building 2.5D Temporal":
+            # Special case: this source provides both footprints and heights
+            # Skip GeoDataFrame processing and create grids directly
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
+        elif source == 'EUBUCCO v0.1':
+            # European building database with height information
+            gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir)
+        # elif source == "OpenMapTiles":
+        #     # Vector tiles service for building data
+        #     gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
+        elif source == "Overture":
+            # Open building dataset from Overture Maps Foundation
+            gdf = load_gdf_from_overture(rectangle_vertices)
+        elif source == "Local file":
+            # Handle user-provided local building data files
+            _, extension = os.path.splitext(kwargs["building_path"])
+            if extension == ".gpkg":
+                gdf = get_gdf_from_gpkg(kwargs["building_path"], rectangle_vertices)
+        elif source == "GeoDataFrame":
+            # This case is handled by the building_gdf parameter above
+            raise ValueError("When source is 'GeoDataFrame', building_gdf parameter must be provided")
     
     # Handle complementary data sources to fill gaps or provide additional information
     # This allows combining multiple sources for better coverage or accuracy
@@ -592,16 +608,17 @@ def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, d
 
     return land_cover_voxel_grid, building_voxel_grid, tree_voxel_grid, dem_voxel_grid, layered_voxel_grid
 
-def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, **kwargs):
+def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, **kwargs):
     """Main function to generate a complete voxel city model.
 
     Args:
         rectangle_vertices: List of coordinates defining the area of interest
-        building_source: Source for building height data (e.g. 'OSM', 'EUBUCCO')
+        building_source: Source for building height data (e.g. 'OSM', 'EUBUCCO', 'GeoDataFrame')
         land_cover_source: Source for land cover data (e.g. 'ESA', 'ESRI') 
         canopy_height_source: Source for tree canopy height data
         dem_source: Source for digital elevation model data ('Flat' or other source)
         meshsize: Size of each grid cell in meters
+        building_gdf: Optional GeoDataFrame with building footprint, height and other information
         **kwargs: Additional keyword arguments including:
             - output_dir: Directory to save output files (default: 'output')
             - min_canopy_height: Minimum height threshold for tree canopy
@@ -636,7 +653,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
     
     # Building footprints and height information
-    building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
+    building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, building_gdf=building_gdf, **kwargs)
     
     # Save building data to file for later analysis or visualization
     if not building_gdf.empty:

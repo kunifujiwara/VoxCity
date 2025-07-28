@@ -25,10 +25,19 @@ Dependencies:
 
 import math
 from pyproj import Proj, transform
-from ipyleaflet import Map, DrawControl, Rectangle, Polygon as LeafletPolygon
-import ipyleaflet
+from ipyleaflet import (
+    Map, 
+    DrawControl, 
+    Rectangle, 
+    Polygon as LeafletPolygon,
+    WidgetControl
+)
 from geopy import distance
 import shapely.geometry as geom
+import geopandas as gpd
+from ipywidgets import VBox, HBox, Button, FloatText, Label, Output, HTML
+import pandas as pd
+from IPython.display import display, clear_output
 
 from .utils import get_coordinates_from_cityname
 
@@ -485,3 +494,267 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
     m.add_control(draw_control)
 
     return m, drawn_polygon_vertices
+
+def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
+    """
+    Creates an interactive map for drawing building footprints with height input.
+    
+    This function provides an interface for users to:
+    1. Draw building footprints on an interactive map
+    2. Set building height values through a UI widget
+    3. Add new buildings to the existing building_gdf
+    
+    The workflow is:
+    - User draws a polygon on the map
+    - Height input widget appears
+    - User enters height and clicks "Add Building"
+    - Building is added to GeoDataFrame and displayed on map
+    
+    Args:
+        building_gdf (GeoDataFrame, optional): Existing building footprints to display.
+            If None, creates a new empty GeoDataFrame.
+            Must have 'geometry' column and optionally 'height' column.
+        initial_center (tuple, optional): Initial map center as (lon, lat).
+            If None, centers on existing buildings or defaults to (-100, 40).
+        zoom (int): Initial zoom level (default=17).
+    
+    Returns:
+        tuple: (map_object, updated_building_gdf)
+            - map_object: ipyleaflet Map instance with drawing controls
+            - updated_building_gdf: GeoDataFrame that automatically updates when buildings are added
+    
+    Example:
+        >>> # Start with empty buildings
+        >>> m, buildings = draw_additional_buildings()
+        >>> # Draw buildings on the map...
+        >>> print(buildings)  # Will contain all drawn buildings
+    """
+    
+    # Initialize or copy the building GeoDataFrame
+    if building_gdf is None:
+        # Create empty GeoDataFrame with required columns
+        updated_gdf = gpd.GeoDataFrame(
+            columns=['geometry', 'height', 'building_id'],
+            crs='EPSG:4326'
+        )
+    else:
+        # Make a copy to avoid modifying the original
+        updated_gdf = building_gdf.copy()
+        if 'height' not in updated_gdf.columns:
+            updated_gdf['height'] = 10.0  # Default height
+        if 'building_id' not in updated_gdf.columns:
+            updated_gdf['building_id'] = range(len(updated_gdf))
+    
+    # Determine map center
+    if initial_center is not None:
+        center_lon, center_lat = initial_center
+    elif updated_gdf is not None and len(updated_gdf) > 0:
+        bounds = updated_gdf.total_bounds
+        min_lon, min_lat, max_lon, max_lat = bounds
+        center_lon = (min_lon + max_lon) / 2
+        center_lat = (min_lat + max_lat) / 2
+    else:
+        center_lon, center_lat = -100.0, 40.0
+    
+    # Create the map
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    
+    # Display existing buildings
+    building_layers = {}
+    for idx, row in updated_gdf.iterrows():
+        if isinstance(row.geometry, geom.Polygon):
+            coords = list(row.geometry.exterior.coords)
+            lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
+            
+            height = row.get('height', 10.0)
+            bldg_layer = LeafletPolygon(
+                locations=lat_lon_coords,
+                color="blue",
+                fill_color="blue",
+                fill_opacity=0.3,
+                weight=2,
+                popup=HTML(f"<b>Building ID:</b> {row.get('building_id', idx)}<br>"
+                          f"<b>Height:</b> {height}m")
+            )
+            m.add_layer(bldg_layer)
+            building_layers[idx] = bldg_layer
+    
+    # Create UI widgets
+    height_input = FloatText(
+        value=10.0,
+        description='Height (m):',
+        disabled=False,
+        style={'description_width': 'initial'}
+    )
+    
+    add_button = Button(
+        description='Add Building',
+        button_style='success',
+        disabled=True
+    )
+    
+    clear_button = Button(
+        description='Clear Drawing',
+        button_style='warning',
+        disabled=True
+    )
+    
+    status_output = Output()
+    
+    # Create control panel
+    control_panel = VBox([
+        HTML("<h3>Draw Building Tool</h3>"),
+        HTML("<p>1. Draw a polygon on the map<br>2. Set height<br>3. Click 'Add Building'</p>"),
+        height_input,
+        HBox([add_button, clear_button]),
+        status_output
+    ])
+    
+    # Add control panel to map
+    widget_control = WidgetControl(widget=control_panel, position='topright')
+    m.add_control(widget_control)
+    
+    # Store the current drawn polygon
+    current_polygon = {'vertices': [], 'layer': None}
+    
+    # Drawing control
+    draw_control = DrawControl(
+        polygon={
+            "shapeOptions": {
+                "color": "red",
+                "fillColor": "red",
+                "fillOpacity": 0.3,
+                "weight": 3
+            }
+        },
+        rectangle={},
+        circle={},
+        circlemarker={},
+        polyline={},
+        marker={}
+    )
+    
+    def handle_draw(self, action, geo_json):
+        """Handle polygon drawing events"""
+        with status_output:
+            clear_output()
+            
+        if action == 'created' and geo_json['geometry']['type'] == 'Polygon':
+            # Store vertices
+            coordinates = geo_json['geometry']['coordinates'][0]
+            current_polygon['vertices'] = [(coord[0], coord[1]) for coord in coordinates[:-1]]
+            
+            # Enable buttons
+            add_button.disabled = False
+            clear_button.disabled = False
+            
+            with status_output:
+                print(f"Polygon drawn with {len(current_polygon['vertices'])} vertices")
+                print("Set height and click 'Add Building'")
+    
+    def add_building_click(b):
+        """Handle add building button click"""
+        # Use nonlocal to modify the outer scope variable
+        nonlocal updated_gdf
+        
+        with status_output:
+            clear_output()
+            
+            if current_polygon['vertices']:
+                # Create polygon geometry
+                polygon = geom.Polygon(current_polygon['vertices'])
+                
+                # Get next building ID
+                if len(updated_gdf) > 0:
+                    next_id = int(updated_gdf['building_id'].max() + 1)
+                else:
+                    next_id = 1
+                
+                # Create new row data
+                new_row_data = {
+                    'geometry': polygon,
+                    'height': float(height_input.value),
+                    'building_id': next_id
+                }
+                
+                # Add any additional columns
+                for col in updated_gdf.columns:
+                    if col not in new_row_data:
+                        new_row_data[col] = None
+                
+                # Append the new building in-place
+                new_index = len(updated_gdf)
+                updated_gdf.loc[new_index] = new_row_data
+                
+                # Add to map
+                coords = list(polygon.exterior.coords)
+                lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
+                
+                new_layer = LeafletPolygon(
+                    locations=lat_lon_coords,
+                    color="blue",
+                    fill_color="blue",
+                    fill_opacity=0.3,
+                    weight=2,
+                    popup=HTML(f"<b>Building ID:</b> {next_id}<br>"
+                              f"<b>Height:</b> {height_input.value}m")
+                )
+                m.add_layer(new_layer)
+                
+                # Clear drawing
+                draw_control.clear()
+                current_polygon['vertices'] = []
+                add_button.disabled = True
+                clear_button.disabled = True
+                
+                print(f"Building {next_id} added successfully!")
+                print(f"Height: {height_input.value}m")
+                print(f"Total buildings: {len(updated_gdf)}")
+    
+    def clear_drawing_click(b):
+        """Handle clear drawing button click"""
+        with status_output:
+            clear_output()
+            draw_control.clear()
+            current_polygon['vertices'] = []
+            add_button.disabled = True
+            clear_button.disabled = True
+            print("Drawing cleared")
+    
+    # Connect event handlers
+    draw_control.on_draw(handle_draw)
+    add_button.on_click(add_building_click)
+    clear_button.on_click(clear_drawing_click)
+    
+    # Add draw control to map
+    m.add_control(draw_control)
+    
+    # Display initial status
+    with status_output:
+        print(f"Total buildings loaded: {len(updated_gdf)}")
+        print("Draw a polygon to add a new building")
+    
+    return m, updated_gdf
+
+
+# Simple convenience function
+def create_building_editor(building_gdf=None, initial_center=None, zoom=17):
+    """
+    Creates and displays an interactive building editor.
+    
+    Args:
+        building_gdf: Existing buildings GeoDataFrame (optional)
+        initial_center: Map center as (lon, lat) tuple (optional)
+        zoom: Initial zoom level (default=17)
+    
+    Returns:
+        GeoDataFrame: The building GeoDataFrame that automatically updates
+    
+    Example:
+        >>> buildings = create_building_editor()
+        >>> # Draw buildings on the displayed map
+        >>> print(buildings)  # Automatically contains all drawn buildings
+    """
+    m, gdf = draw_additional_buildings(building_gdf, initial_center, zoom)
+    display(m)
+    return gdf
