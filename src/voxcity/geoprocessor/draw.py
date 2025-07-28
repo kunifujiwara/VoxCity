@@ -495,7 +495,7 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
 
     return m, drawn_polygon_vertices
 
-def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
+def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
     """
     Creates an interactive map for drawing building footprints with height input.
     
@@ -513,7 +513,12 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
     Args:
         building_gdf (GeoDataFrame, optional): Existing building footprints to display.
             If None, creates a new empty GeoDataFrame.
-            Must have 'geometry' column and optionally 'height' column.
+            Expected columns: ['id', 'height', 'min_height', 'geometry', 'building_id']
+            - 'id': Integer ID from data sources (e.g., OSM building id)
+            - 'height': Building height in meters (set by user input)
+            - 'min_height': Minimum height in meters (defaults to 0.0)
+            - 'geometry': Building footprint polygon
+            - 'building_id': Unique building identifier
         initial_center (tuple, optional): Initial map center as (lon, lat).
             If None, centers on existing buildings or defaults to (-100, 40).
         zoom (int): Initial zoom level (default=17).
@@ -534,16 +539,21 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
     if building_gdf is None:
         # Create empty GeoDataFrame with required columns
         updated_gdf = gpd.GeoDataFrame(
-            columns=['geometry', 'height', 'building_id'],
+            columns=['id', 'height', 'min_height', 'geometry', 'building_id'],
             crs='EPSG:4326'
         )
     else:
         # Make a copy to avoid modifying the original
         updated_gdf = building_gdf.copy()
+        # Ensure all required columns exist
         if 'height' not in updated_gdf.columns:
             updated_gdf['height'] = 10.0  # Default height
+        if 'min_height' not in updated_gdf.columns:
+            updated_gdf['min_height'] = 0.0  # Default min_height
         if 'building_id' not in updated_gdf.columns:
             updated_gdf['building_id'] = range(len(updated_gdf))
+        if 'id' not in updated_gdf.columns:
+            updated_gdf['id'] = range(len(updated_gdf))
     
     # Determine map center
     if initial_center is not None:
@@ -553,6 +563,8 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
         min_lon, min_lat, max_lon, max_lat = bounds
         center_lon = (min_lon + max_lon) / 2
         center_lat = (min_lat + max_lat) / 2
+    elif rectangle_vertices is not None:
+        center_lon, center_lat = (rectangle_vertices[0][0] + rectangle_vertices[2][0]) / 2, (rectangle_vertices[0][1] + rectangle_vertices[2][1]) / 2
     else:
         center_lon, center_lat = -100.0, 40.0
     
@@ -567,14 +579,19 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
             lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
             
             height = row.get('height', 10.0)
+            min_height = row.get('min_height', 0.0)
+            building_id = row.get('building_id', idx)
+            bldg_id = row.get('id', idx)
             bldg_layer = LeafletPolygon(
                 locations=lat_lon_coords,
                 color="blue",
                 fill_color="blue",
                 fill_opacity=0.3,
                 weight=2,
-                popup=HTML(f"<b>Building ID:</b> {row.get('building_id', idx)}<br>"
-                          f"<b>Height:</b> {height}m")
+                popup=HTML(f"<b>Building ID:</b> {building_id}<br>"
+                          f"<b>ID:</b> {bldg_id}<br>"
+                          f"<b>Height:</b> {height}m<br>"
+                          f"<b>Min Height:</b> {min_height}m")
             )
             m.add_layer(bldg_layer)
             building_layers[idx] = bldg_layer
@@ -664,17 +681,21 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
                 # Create polygon geometry
                 polygon = geom.Polygon(current_polygon['vertices'])
                 
-                # Get next building ID
+                # Get next building ID and ID values (ensure uniqueness)
                 if len(updated_gdf) > 0:
-                    next_id = int(updated_gdf['building_id'].max() + 1)
+                    next_building_id = int(updated_gdf['building_id'].max() + 1)
+                    next_id = int(updated_gdf['id'].max() + 1)
                 else:
+                    next_building_id = 1
                     next_id = 1
                 
                 # Create new row data
                 new_row_data = {
                     'geometry': polygon,
                     'height': float(height_input.value),
-                    'building_id': next_id
+                    'min_height': 0.0,  # Default value as requested
+                    'building_id': next_building_id,
+                    'id': next_id
                 }
                 
                 # Add any additional columns
@@ -696,8 +717,10 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
                     fill_color="blue",
                     fill_opacity=0.3,
                     weight=2,
-                    popup=HTML(f"<b>Building ID:</b> {next_id}<br>"
-                              f"<b>Height:</b> {height_input.value}m")
+                    popup=HTML(f"<b>Building ID:</b> {next_building_id}<br>"
+                              f"<b>ID:</b> {next_id}<br>"
+                              f"<b>Height:</b> {height_input.value}m<br>"
+                              f"<b>Min Height:</b> 0.0m")
                 )
                 m.add_layer(new_layer)
                 
@@ -707,8 +730,8 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
                 add_button.disabled = True
                 clear_button.disabled = True
                 
-                print(f"Building {next_id} added successfully!")
-                print(f"Height: {height_input.value}m")
+                print(f"Building {next_building_id} added successfully!")
+                print(f"ID: {next_id}, Height: {height_input.value}m, Min Height: 0.0m")
                 print(f"Total buildings: {len(updated_gdf)}")
     
     def clear_drawing_click(b):
@@ -738,7 +761,7 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17):
 
 
 # Simple convenience function
-def create_building_editor(building_gdf=None, initial_center=None, zoom=17):
+def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
     """
     Creates and displays an interactive building editor.
     
@@ -755,6 +778,6 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17):
         >>> # Draw buildings on the displayed map
         >>> print(buildings)  # Automatically contains all drawn buildings
     """
-    m, gdf = draw_additional_buildings(building_gdf, initial_center, zoom)
+    m, gdf = draw_additional_buildings(building_gdf, initial_center, zoom, rectangle_vertices)
     display(m)
     return gdf

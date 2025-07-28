@@ -1176,3 +1176,155 @@ def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
             filtered_gdf.at[i, 'id'] = id_mapping[orig_id]
     
     return filtered_gdf
+
+def merge_gdfs_with_id_conflict_resolution(gdf_1, gdf_2, id_columns=['id', 'building_id']):
+    """
+    Merge two GeoDataFrames while resolving ID conflicts by modifying IDs in the second GeoDataFrame.
+    
+    This function merges two GeoDataFrames containing building footprints, ensuring that
+    when buildings from both datasets have the same ID or building_id, the IDs in the
+    second GeoDataFrame are modified to maintain uniqueness across the merged dataset.
+    
+    Args:
+        gdf_1 (gpd.GeoDataFrame): Primary GeoDataFrame containing building footprints
+            Must have 'geometry' column with building polygons
+            Must have 'id' and 'building_id' columns (or specified id_columns)
+            Will remain unchanged during merging
+        gdf_2 (gpd.GeoDataFrame): Secondary GeoDataFrame containing building footprints
+            Must have 'geometry' column with building polygons
+            Must have 'id' and 'building_id' columns (or specified id_columns)
+            IDs will be modified if conflicts exist with gdf_1
+        id_columns (list, optional): List of column names to check for ID conflicts
+            Default is ['id', 'building_id']
+            All specified columns must exist in both GeoDataFrames
+    
+    Returns:
+        gpd.GeoDataFrame: Merged GeoDataFrame with resolved ID conflicts
+            Contains all buildings from both input GeoDataFrames
+            All ID columns are unique across the entire dataset
+            Original geometries and other properties are preserved
+            Missing columns are filled with None values
+    
+    Note:
+        - Uses the maximum ID values from gdf_1 as the starting point for new IDs in gdf_2
+        - Modifies all specified ID columns in gdf_2 to maintain consistency
+        - Preserves all other columns and data from both GeoDataFrames
+        - Assumes both GeoDataFrames have the same coordinate reference system
+        - Handles missing ID columns gracefully by skipping them
+        - Sets missing columns to None instead of NaN for better compatibility
+    """
+    # Make copies to avoid modifying original GeoDataFrames
+    gdf_primary = gdf_1.copy()
+    gdf_secondary = gdf_2.copy()
+    
+    # Validate that required ID columns exist in both GeoDataFrames
+    missing_columns = []
+    for col in id_columns:
+        if col not in gdf_primary.columns:
+            missing_columns.append(f"'{col}' missing from gdf_1")
+        if col not in gdf_secondary.columns:
+            missing_columns.append(f"'{col}' missing from gdf_2")
+    
+    if missing_columns:
+        print(f"Warning: Missing ID columns: {', '.join(missing_columns)}")
+        # Remove missing columns from the list to process
+        id_columns = [col for col in id_columns 
+                     if col in gdf_primary.columns and col in gdf_secondary.columns]
+    
+    if not id_columns:
+        print("Warning: No valid ID columns found. Merging without ID conflict resolution.")
+        # Handle missing columns before concatenation
+        merged_gdf = _merge_gdfs_with_missing_columns(gdf_primary, gdf_secondary)
+        return merged_gdf
+    
+    # Calculate the maximum ID values from the primary GeoDataFrame for each ID column
+    max_ids = {}
+    for col in id_columns:
+        if gdf_primary[col].dtype in ['int64', 'int32', 'float64', 'float32']:
+            max_ids[col] = gdf_primary[col].max()
+        else:
+            # For non-numeric IDs, we'll use the length of the primary DataFrame
+            max_ids[col] = len(gdf_primary)
+    
+    # Create a mapping for new IDs in the secondary GeoDataFrame
+    id_mapping = {}
+    next_ids = {col: max_ids[col] + 1 for col in id_columns}
+    
+    # Process each row in the secondary GeoDataFrame
+    for idx, row in gdf_secondary.iterrows():
+        needs_new_ids = False
+        
+        # Check if any ID column conflicts with the primary GeoDataFrame
+        for col in id_columns:
+            current_id = row[col]
+            
+            # Check if this ID exists in the primary GeoDataFrame
+            if current_id in gdf_primary[col].values:
+                needs_new_ids = True
+                break
+        
+        # If conflicts found, assign new IDs
+        if needs_new_ids:
+            for col in id_columns:
+                new_id = next_ids[col]
+                gdf_secondary.at[idx, col] = new_id
+                next_ids[col] += 1
+    
+    # Handle missing columns before merging
+    merged_gdf = _merge_gdfs_with_missing_columns(gdf_primary, gdf_secondary)
+    
+    # Print statistics about the merge
+    total_buildings = len(merged_gdf)
+    primary_buildings = len(gdf_primary)
+    secondary_buildings = len(gdf_secondary)
+    modified_buildings = sum(1 for idx, row in gdf_secondary.iterrows() 
+                           if any(row[col] != gdf_2.iloc[idx][col] for col in id_columns))
+    
+    print(f"Merged {primary_buildings} buildings from primary dataset with {secondary_buildings} buildings from secondary dataset.")
+    print(f"Total buildings in merged dataset: {total_buildings}")
+    if modified_buildings > 0:
+        print(f"Modified IDs for {modified_buildings} buildings in secondary dataset to resolve conflicts.")
+    
+    return merged_gdf
+
+
+def _merge_gdfs_with_missing_columns(gdf_1, gdf_2):
+    """
+    Helper function to merge two GeoDataFrames while handling missing columns.
+    
+    This function ensures that when one GeoDataFrame has columns that the other doesn't,
+    those missing values are filled with None instead of NaN.
+    
+    Args:
+        gdf_1 (gpd.GeoDataFrame): First GeoDataFrame
+        gdf_2 (gpd.GeoDataFrame): Second GeoDataFrame
+    
+    Returns:
+        gpd.GeoDataFrame: Merged GeoDataFrame with all columns from both inputs
+    """
+    # Find columns that exist in one GeoDataFrame but not the other
+    columns_1 = set(gdf_1.columns)
+    columns_2 = set(gdf_2.columns)
+    
+    # Columns only in gdf_1
+    only_in_1 = columns_1 - columns_2
+    # Columns only in gdf_2
+    only_in_2 = columns_2 - columns_1
+    
+    # Add missing columns to gdf_1 with None values
+    for col in only_in_2:
+        gdf_1[col] = None
+    
+    # Add missing columns to gdf_2 with None values
+    for col in only_in_1:
+        gdf_2[col] = None
+    
+    # Ensure both GeoDataFrames have the same column order
+    all_columns = sorted(list(columns_1.union(columns_2)))
+    gdf_1 = gdf_1[all_columns]
+    gdf_2 = gdf_2[all_columns]
+    
+    # Merge the GeoDataFrames
+    merged_gdf = pd.concat([gdf_1, gdf_2], ignore_index=True)
+    
+    return merged_gdf
