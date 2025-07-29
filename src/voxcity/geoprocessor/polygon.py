@@ -997,13 +997,13 @@ def find_building_containing_point(building_gdf, target_point):
     
     return id_list
 
-def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices, 
+def get_buildings_in_drawn_polygon(building_gdf, drawn_polygons, 
                                    operation='within'):
     """
-    Find buildings that intersect with or are contained within a user-drawn polygon.
+    Find buildings that intersect with or are contained within user-drawn polygons.
     
     This function identifies buildings from a GeoDataFrame that have a specified spatial
-    relationship with a polygon defined by user-drawn vertices. The relationship can be
+    relationship with one or more polygons defined by user-drawn vertices. The relationship can be
     either intersection (building overlaps polygon) or containment (building fully within
     polygon).
     
@@ -1011,50 +1011,64 @@ def get_buildings_in_drawn_polygon(building_gdf, drawn_polygon_vertices,
         building_gdf (GeoDataFrame): GeoDataFrame containing building footprints
             Must have 'geometry' column with Polygon geometries
             Must have 'id' column or index will be used as fallback
-            Geometries must be in same CRS as drawn_polygon_vertices
-        drawn_polygon_vertices (list): List of (lon, lat) tuples defining polygon vertices
+            Geometries must be in same CRS as drawn_polygons vertices
+        drawn_polygons (list): List of dictionaries containing polygon data
+            Each dictionary must have:
+            - 'id': Unique polygon identifier (int)
+            - 'vertices': List of (lon, lat) tuples defining polygon vertices
+            - 'color': Color string (optional, for reference)
             Must be in same coordinate system as building_gdf geometries
-            Must form a valid polygon (3+ vertices, first != last)
+            Must form valid polygons (3+ vertices, first != last)
             Order must be (longitude, latitude) if using WGS84
         operation (str, optional): Type of spatial relationship to check
             'within': buildings must be fully contained in drawn polygon (default)
             'intersect': buildings must overlap with drawn polygon
             
     Returns:
-        list: List of building IDs that satisfy the spatial relationship
+        list: List of building IDs that satisfy the spatial relationship with any of the drawn polygons
             Empty list if no buildings meet the criteria
             IDs are returned in order of processing
             May contain None values if buildings lack IDs
+            Duplicate building IDs are removed (a building matching multiple polygons appears only once)
     
     Note:
         - Only processes Polygon geometries (skips MultiPolygons and others)
         - No spatial indexing is used, performs linear search through all buildings
         - Invalid operation parameter will raise ValueError
         - Does not validate polygon closure (first vertex = last vertex)
+        - Buildings matching any of the drawn polygons are included in the result
     """
-    # Create Shapely Polygon from drawn vertices
-    drawn_polygon_shapely = Polygon(drawn_polygon_vertices)
-
-    # Initialize list to store matching building IDs
-    included_building_ids = []
-
-    # Check each building in the GeoDataFrame
-    for idx, row in building_gdf.iterrows():
-        # Skip any geometry that is not a simple Polygon
-        if not isinstance(row.geometry, Polygon):
-            continue
-
-        # Check spatial relationship based on specified operation
-        if operation == 'intersect':
-            if row.geometry.intersects(drawn_polygon_shapely):
-                included_building_ids.append(row.get('id', None))
-        elif operation == 'within':
-            if row.geometry.within(drawn_polygon_shapely):
-                included_building_ids.append(row.get('id', None))
-        else:
-            raise ValueError("operation must be 'intersect' or 'within'")
-
-    return included_building_ids
+    if not drawn_polygons:
+        return []
+    
+    # Initialize set to store matching building IDs (using set to avoid duplicates)
+    included_building_ids = set()
+    
+    # Process each polygon
+    for polygon_data in drawn_polygons:
+        vertices = polygon_data['vertices']
+        
+        # Create Shapely Polygon from drawn vertices
+        drawn_polygon_shapely = Polygon(vertices)
+        
+        # Check each building in the GeoDataFrame
+        for idx, row in building_gdf.iterrows():
+            # Skip any geometry that is not a simple Polygon
+            if not isinstance(row.geometry, Polygon):
+                continue
+            
+            # Check spatial relationship based on specified operation
+            if operation == 'intersect':
+                if row.geometry.intersects(drawn_polygon_shapely):
+                    included_building_ids.add(row.get('id', None))
+            elif operation == 'within':
+                if row.geometry.within(drawn_polygon_shapely):
+                    included_building_ids.add(row.get('id', None))
+            else:
+                raise ValueError("operation must be 'intersect' or 'within'")
+    
+    # Convert set back to list and return
+    return list(included_building_ids)
 
 def process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5):
     """

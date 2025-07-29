@@ -372,6 +372,7 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
        - Enables free-form polygon drawing
        - Captures vertices in consistent (lon,lat) format
        - Maintains GeoJSON compatibility
+       - Supports multiple polygons with unique IDs and colors
     
     3. Map Initialization:
        - Automatic centering based on input data
@@ -391,10 +392,10 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
             Default of 17 is optimized for building-level detail.
 
     Returns:
-        tuple: (map_object, drawn_polygon_vertices)
+        tuple: (map_object, drawn_polygons)
             - map_object: ipyleaflet Map instance with building footprints and drawing controls
-            - drawn_polygon_vertices: List that gets updated with (lon,lat) coordinates
-              whenever a new polygon is drawn. Coordinates are in GeoJSON order.
+            - drawn_polygons: List of dictionaries with 'id', 'vertices', and 'color' keys for all drawn polygons.
+              Each polygon has a unique ID and color for easy identification.
 
     Note:
         - Building footprints are displayed in blue with 20% opacity
@@ -402,6 +403,8 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
         - Drawing tools are restricted to polygon creation only
         - All coordinates are handled in (lon,lat) order internally
         - The function automatically determines appropriate map bounds
+        - Each polygon gets a unique ID and different colors for easy identification
+        - Use get_polygon_vertices() helper function to extract specific polygon data
     """
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
@@ -452,7 +455,10 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
     # -----------------------------------------------------------------
     # 3. Enable drawing of polygons, capturing the vertices in Lon-Lat
     # -----------------------------------------------------------------
-    drawn_polygon_vertices = []  # We'll store the newly drawn polygon's vertices here (lon, lat).
+    # Store multiple polygons with IDs and colors
+    drawn_polygons = []  # List of dicts with 'id', 'vertices', 'color' keys
+    polygon_counter = 0
+    polygon_colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 
     draw_control = DrawControl(
         polygon={
@@ -475,25 +481,34 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
         ipyleaflet's DrawControl returns standard GeoJSON (lon, lat).
         We'll keep them as (lon, lat).
         """
-        # Clear any previously stored vertices
-        drawn_polygon_vertices.clear()
-
         if action == 'created' and geo_json['geometry']['type'] == 'Polygon':
+            nonlocal polygon_counter
+            polygon_counter += 1
+            
             # The polygon's first ring
             coordinates = geo_json['geometry']['coordinates'][0]
-            print("Vertices of the drawn polygon (Lon-Lat):")
-
-            # Keep GeoJSON (lon,lat) format, skip last repeated coordinate
-            for coord in coordinates[:-1]:
-                lon = coord[0]
-                lat = coord[1]
-                drawn_polygon_vertices.append((lon, lat))
-                print(f" - (lon, lat) = ({lon}, {lat})")
+            vertices = [(coord[0], coord[1]) for coord in coordinates[:-1]]
+            
+            # Assign color (cycle through colors)
+            color = polygon_colors[polygon_counter % len(polygon_colors)]
+            
+            # Store polygon data
+            polygon_data = {
+                'id': polygon_counter,
+                'vertices': vertices,
+                'color': color
+            }
+            drawn_polygons.append(polygon_data)
+            
+            print(f"Polygon {polygon_counter} drawn with {len(vertices)} vertices (color: {color}):")
+            for i, (lon, lat) in enumerate(vertices):
+                print(f"  Vertex {i+1}: (lon, lat) = ({lon}, {lat})")
+            print(f"Total polygons: {len(drawn_polygons)}")
 
     draw_control.on_draw(handle_draw)
     m.add_control(draw_control)
 
-    return m, drawn_polygon_vertices
+    return m, drawn_polygons
 
 def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
     """
@@ -758,6 +773,41 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, r
         print("Draw a polygon to add a new building")
     
     return m, updated_gdf
+
+
+def get_polygon_vertices(drawn_polygons, polygon_id=None):
+    """
+    Extract vertices from drawn polygons data structure.
+    
+    This helper function provides a convenient way to extract polygon vertices
+    from the drawn_polygons list returned by display_buildings_and_draw_polygon().
+    
+    Args:
+        drawn_polygons: The drawn_polygons list returned from display_buildings_and_draw_polygon()
+        polygon_id (int, optional): Specific polygon ID to extract. If None, returns all polygons.
+    
+    Returns:
+        If polygon_id is specified: List of (lon, lat) tuples for that polygon
+        If polygon_id is None: List of lists, where each inner list contains (lon, lat) tuples
+    
+    Example:
+        >>> m, polygons = display_buildings_and_draw_polygon()
+        >>> # Draw some polygons...
+        >>> vertices = get_polygon_vertices(polygons, polygon_id=1)  # Get polygon 1
+        >>> all_vertices = get_polygon_vertices(polygons)  # Get all polygons
+    """
+    if not drawn_polygons:
+        return []
+    
+    if polygon_id is not None:
+        # Return specific polygon
+        for polygon in drawn_polygons:
+            if polygon['id'] == polygon_id:
+                return polygon['vertices']
+        return []  # Polygon not found
+    else:
+        # Return all polygons
+        return [polygon['vertices'] for polygon in drawn_polygons]
 
 
 # Simple convenience function
