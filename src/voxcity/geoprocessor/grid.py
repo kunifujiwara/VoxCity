@@ -144,42 +144,114 @@ def group_and_label_cells(array):
     
     return result
 
-def process_grid(grid_bi, dem_grid):
+def process_grid_optimized(grid_bi, dem_grid):
     """
-    Process a binary grid and DEM grid to create averaged elevation values.
-    
-    This function takes a binary grid identifying regions and a corresponding DEM
-    grid with elevation values. For each non-zero region in the binary grid, it
-    calculates the mean elevation from the DEM grid and assigns this average to
-    all cells in that region. The result is normalized by subtracting the minimum value.
-    
-    Args:
-        grid_bi (numpy.ndarray): Binary grid indicating regions (0 for background,
-                                non-zero for different regions)
-        dem_grid (numpy.ndarray): Grid of elevation values corresponding to the
-                                same spatial extent as grid_bi
-        
-    Returns:
-        numpy.ndarray: Processed grid with averaged and normalized elevation values.
-                      Same shape as input grids.
-        
-    Example:
-        >>> binary_grid = np.array([[1, 1, 0], [1, 1, 2], [0, 2, 2]])
-        >>> elevation = np.array([[100, 110, 90], [105, 115, 120], [95, 125, 130]])
-        >>> result = process_grid(binary_grid, elevation)
+    Optimized version using numpy's bincount for fast averaging.
+    This is much faster than iterating through unique IDs.
     """
-    # Get unique non-zero region IDs
-    unique_ids = np.unique(grid_bi[grid_bi != 0])
     result = dem_grid.copy()
     
-    # For each region, calculate mean elevation and assign to all cells in region
-    for id_num in unique_ids:
-        mask = (grid_bi == id_num)
-        avg_value = np.mean(dem_grid[mask])
-        result[mask] = avg_value
+    # Only process if there are non-zero values
+    if np.any(grid_bi != 0):
+        # Handle float IDs by converting to integers
+        # First check if we have float values
+        if grid_bi.dtype.kind == 'f':
+            # Convert to int, handling NaN values
+            grid_bi_int = np.nan_to_num(grid_bi, nan=0).astype(np.int64)
+        else:
+            grid_bi_int = grid_bi.astype(np.int64)
+        
+        # Flatten arrays for processing
+        flat_bi = grid_bi_int.ravel()
+        flat_dem = dem_grid.ravel()
+        
+        # Filter out zero values
+        mask = flat_bi != 0
+        ids = flat_bi[mask]
+        values = flat_dem[mask]
+        
+        # Check if we have any valid IDs
+        if len(ids) > 0:
+            # Use bincount to sum values for each ID
+            sums = np.bincount(ids, weights=values)
+            counts = np.bincount(ids)
+            
+            # Avoid division by zero
+            counts[counts == 0] = 1
+            
+            # Calculate means
+            means = sums / counts
+            
+            # Apply means back to result
+            # Use the integer version for indexing
+            mask_nonzero = grid_bi_int != 0
+            # Ensure indices are within bounds
+            valid_ids = grid_bi_int[mask_nonzero]
+            valid_mask = valid_ids < len(means)
+            
+            # Apply only to valid indices
+            result_mask = np.zeros_like(mask_nonzero)
+            result_mask[mask_nonzero] = valid_mask
+            
+            # Set values
+            result[result_mask] = means[grid_bi_int[result_mask]]
     
-    # Normalize by subtracting minimum value
     return result - np.min(result)
+
+def process_grid(grid_bi, dem_grid):
+    """
+    Safe version that tries optimization first, then falls back to original method.
+    """
+    try:
+        # Try the optimized version first
+        return process_grid_optimized(grid_bi, dem_grid)
+    except Exception as e:
+        print(f"Optimized process_grid failed: {e}, using original method")
+        # Fall back to original implementation
+        unique_ids = np.unique(grid_bi[grid_bi != 0])
+        result = dem_grid.copy()
+        
+        for id_num in unique_ids:
+            mask = (grid_bi == id_num)
+            avg_value = np.mean(dem_grid[mask])
+            result[mask] = avg_value
+        
+        return result - np.min(result)
+    """
+    Optimized version that avoids converting to Python lists.
+    Works directly with numpy arrays.
+    """
+    if not isinstance(arr, np.ndarray):
+        return arr
+    
+    # Create output array
+    result = np.empty_like(arr, dtype=object)
+    
+    # Vectorized operation for empty cells
+    for i in range(arr.shape[0]):
+        for j in range(arr.shape[1]):
+            cell = arr[i, j]
+            
+            if cell is None or (isinstance(cell, list) and len(cell) == 0):
+                result[i, j] = []
+            elif isinstance(cell, list):
+                # Process list without converting entire array
+                new_cell = []
+                for segment in cell:
+                    if isinstance(segment, (list, np.ndarray)):
+                        # Use numpy operations where possible
+                        if isinstance(segment, np.ndarray):
+                            new_segment = np.where(np.isnan(segment), replace_value, segment).tolist()
+                        else:
+                            new_segment = [replace_value if (isinstance(v, float) and np.isnan(v)) else v for v in segment]
+                        new_cell.append(new_segment)
+                    else:
+                        new_cell.append(segment)
+                result[i, j] = new_cell
+            else:
+                result[i, j] = cell
+    
+    return result
 
 def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
     """

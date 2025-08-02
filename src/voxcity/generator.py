@@ -24,6 +24,19 @@ Key Features:
 # Standard library imports
 import numpy as np
 import os
+try:
+    from numba import jit, prange
+    import numba
+    NUMBA_AVAILABLE = True
+except ImportError:
+    NUMBA_AVAILABLE = False
+    print("Numba not available. Using optimized version without JIT compilation.")
+    # Define dummy decorators
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    prange = range
 
 # Local application/library specific imports
 
@@ -415,9 +428,10 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
     return dem_grid
 
-def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, **kwargs):
+def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, 
+                    building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, 
+                    tree_grid_ori, voxel_size, land_cover_source, **kwargs):
     """Creates a 3D voxel representation combining all input grids.
-
     Args:
         building_height_grid_ori: Grid of building heights
         building_min_height_grid_ori: Grid of building minimum heights
@@ -427,22 +441,19 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, buil
         tree_grid_ori: Grid of tree heights
         voxel_size: Size of each voxel in meters
         land_cover_source: Source of land cover data
-        **kwargs: Additional arguments including:
+        kwargs: Additional arguments including:
             - trunk_height_ratio: Ratio of trunk height to total tree height
-
     Returns:
         numpy.ndarray: 3D voxel grid with encoded values for different features
     """
-
     print("Generating 3D voxel data")
-    
+
     # Convert land cover values to standardized format if needed
     # OpenStreetMap data is already in the correct format
     if (land_cover_source == 'OpenStreetMap'):
         land_cover_grid_converted = land_cover_grid_ori
     else:
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)
-
     # Prepare all input grids for 3D processing
     # Flip vertically to align with standard geographic orientation (north-up)
     # Handle missing data appropriately for each grid type
@@ -453,43 +464,33 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, buil
     dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori) # Normalize DEM to start at 0
     dem_grid = process_grid(building_id_grid, dem_grid) # Process DEM based on building footprints
     tree_grid = np.flipud(tree_grid_ori.copy())
-
     # Validate that all input grids have consistent dimensions
     assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
-
     rows, cols = building_height_grid.shape
-
     # Calculate the required height for the 3D voxel grid
     # Add 1 voxel layer to ensure sufficient vertical space
     max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / voxel_size))+1
-
     # Initialize the 3D voxel grid with zeros
     # Dimensions: (rows, columns, height_layers)
     voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
-
     # Configure tree trunk-to-crown ratio
     # This determines how much of the tree is trunk vs canopy
     trunk_height_ratio = kwargs.get("trunk_height_ratio")
     if trunk_height_ratio is None:
         trunk_height_ratio = 11.76 / 19.98  # Default ratio based on typical tree proportions
-
     # Process each grid cell to build the 3D voxel representation
     for i in range(rows):
         for j in range(cols):
             # Calculate ground level in voxel units
             # Add 1 to ensure space for surface features
             ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1 
-
             # Extract current cell values
             tree_height = tree_grid[i, j]
             land_cover = land_cover_grid[i, j]
-
             # Fill underground voxels with -1 (represents subsurface)
             voxel_grid[i, j, :ground_level] = -1
-
             # Set the ground surface to the land cover type
             voxel_grid[i, j, ground_level-1] = land_cover
-
             # Process tree canopy if trees are present
             if tree_height > 0:
                 # Calculate tree structure: trunk base to crown base to crown top
@@ -497,19 +498,18 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, buil
                 crown_base_height_level = int(crown_base_height / voxel_size + 0.5)
                 crown_top_height = tree_height
                 crown_top_height_level = int(crown_top_height / voxel_size + 0.5)
-                
+
                 # Ensure minimum crown height of 1 voxel
                 # Prevent crown base and top from being at the same level
                 if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level>0):
                     crown_base_height_level -= 1
-                    
+
                 # Calculate absolute positions relative to ground level
                 tree_start = ground_level + crown_base_height_level
                 tree_end = ground_level + crown_top_height_level
-                
+
                 # Fill tree crown voxels with -2 (represents vegetation canopy)
                 voxel_grid[i, j, tree_start:tree_end] = -2
-
             # Process buildings - handle multiple height segments per building
             # Some buildings may have multiple levels or complex height profiles
             for k in building_min_height_grid[i, j]:
@@ -517,7 +517,6 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, buil
                 building_height = int(k[1] / voxel_size + 0.5)      # Upper height of building segment
                 # Fill building voxels with -3 (represents built structures)
                 voxel_grid[i, j, ground_level+building_min_height:ground_level+building_height] = -3
-
     return voxel_grid
 
 def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, layered_interval=None):
@@ -935,32 +934,41 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, filtered_buildings
 
 def replace_nan_in_nested(arr, replace_value=10.0):
-    """Replace NaN values in a nested array structure with a specified value.
-
-    Args:
-        arr: Numpy array containing nested lists and potentially NaN values
-        replace_value: Value to replace NaN with (default: 10.0)
-
-    Returns:
-        Numpy array with NaN values replaced
     """
-    # Convert array to list for easier manipulation of nested structures
-    arr = arr.tolist()
+    Optimized version that avoids converting to Python lists.
+    Works directly with numpy arrays.
+    """
+    if not isinstance(arr, np.ndarray):
+        return arr
     
-    # Iterate through all dimensions of the nested array
-    for i in range(len(arr)):
-        for j in range(len(arr[i])):
-            # Check if the element is a list (building height segments)
-            if arr[i][j]:  # if not empty list
-                for k in range(len(arr[i][j])):
-                    # For each innermost list (individual height segment)
-                    if isinstance(arr[i][j][k], list):
-                        for l in range(len(arr[i][j][k])):
-                            # Replace NaN values with the specified replacement value
-                            if isinstance(arr[i][j][k][l], float) and np.isnan(arr[i][j][k][l]):
-                                arr[i][j][k][l] = replace_value
+    # Create output array
+    result = np.empty_like(arr, dtype=object)
     
-    return np.array(arr, dtype=object)
+    # Vectorized operation for empty cells
+    for i in range(arr.shape[0]):
+        for j in range(arr.shape[1]):
+            cell = arr[i, j]
+            
+            if cell is None or (isinstance(cell, list) and len(cell) == 0):
+                result[i, j] = []
+            elif isinstance(cell, list):
+                # Process list without converting entire array
+                new_cell = []
+                for segment in cell:
+                    if isinstance(segment, (list, np.ndarray)):
+                        # Use numpy operations where possible
+                        if isinstance(segment, np.ndarray):
+                            new_segment = np.where(np.isnan(segment), replace_value, segment).tolist()
+                        else:
+                            new_segment = [replace_value if (isinstance(v, float) and np.isnan(v)) else v for v in segment]
+                        new_cell.append(new_segment)
+                    else:
+                        new_cell.append(segment)
+                result[i, j] = new_cell
+            else:
+                result[i, j] = cell
+    
+    return result
 
 def save_voxcity_data(output_path, voxcity_grid, building_height_grid, building_min_height_grid, 
                      building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
