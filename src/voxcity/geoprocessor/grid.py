@@ -10,18 +10,19 @@ It includes functionality for:
 import numpy as np
 import pandas as pd
 import os
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon, Point, MultiPolygon, box, mapping
 from scipy.ndimage import label, generate_binary_structure
 from pyproj import Geod, Transformer, CRS
 import rasterio
+from rasterio import features
+from rasterio.transform import from_bounds
 from affine import Affine
-from shapely.geometry import box, Polygon, Point, MultiPolygon
-import warnings
-
+import geopandas as gpd
+from collections import defaultdict
 from scipy.interpolate import griddata
 from shapely.errors import GEOSException
-import geopandas as gpd
 from rtree import index
+import warnings
 
 from .utils import (
     initialize_geod,
@@ -666,7 +667,6 @@ def create_building_height_grid_from_gdf_polygon(
 ):
     """
     Create a building height grid from GeoDataFrame data within a polygon boundary.
-    
     Args:
         gdf (geopandas.GeoDataFrame): GeoDataFrame containing building information
         meshsize (float): Size of mesh cells
@@ -675,7 +675,6 @@ def create_building_height_grid_from_gdf_polygon(
         geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
         complement_building_footprints (bool, optional): Whether to complement footprints
         complement_height (float, optional): Height value to use for buildings with height=0
-
     Returns:
         tuple: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
             - building_height_grid (numpy.ndarray): Grid of building heights
@@ -688,21 +687,17 @@ def create_building_height_grid_from_gdf_polygon(
     # --------------------------------------------------------------------------
     geod = initialize_geod()
     vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-
     # Distances for each side
     dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
     dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
-
     # Normalized vectors
     side_1 = np.array(vertex_1) - np.array(vertex_0)
     side_2 = np.array(vertex_3) - np.array(vertex_0)
     u_vec = normalize_to_one_meter(side_1, dist_side_1)
     v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
     # Grid parameters
     origin = np.array(rectangle_vertices[0])
     grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
-
     # Initialize output grids
     building_height_grid = np.zeros(grid_size)
     building_id_grid = np.zeros(grid_size)
@@ -711,7 +706,6 @@ def create_building_height_grid_from_gdf_polygon(
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             building_min_height_grid[i, j] = []
-
     # Filter the input GeoDataFrame by bounding box
     extent = [
         min(coord[1] for coord in rectangle_vertices),
@@ -721,12 +715,10 @@ def create_building_height_grid_from_gdf_polygon(
     ]
     plotting_box = box(extent[2], extent[0], extent[3], extent[1])
     filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
-
     # Count buildings with height=0 or NaN
     zero_height_count = len(filtered_gdf[filtered_gdf['height'] == 0])
     nan_height_count = len(filtered_gdf[filtered_gdf['height'].isna()])
     print(f"{zero_height_count+nan_height_count} of the total {len(filtered_gdf)} building footprint from the base data source did not have height data.")
-
     # Optionally merge heights from complementary sources
     if gdf_comp is not None:
         filtered_gdf_comp = gdf_comp[gdf_comp.geometry.intersects(plotting_box)].copy()
@@ -736,10 +728,8 @@ def create_building_height_grid_from_gdf_polygon(
             filtered_gdf = extract_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
     elif geotiff_path_comp:
         filtered_gdf = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_gdf)
-    
     # After filtering and complementing heights, process overlapping buildings
     filtered_gdf = process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
-
     # --------------------------------------------------------------------------
     # 2) PREPARE BUILDING POLYGONS & SPATIAL INDEX
     #    - fix geometries if needed
@@ -749,17 +739,14 @@ def create_building_height_grid_from_gdf_polygon(
     for idx_b, row in filtered_gdf.iterrows():
         polygon = row.geometry
         height = row.get('height', None)
-        
         # Replace height=0 with complement_height if specified
         if complement_height is not None and (height == 0 or height is None):
             height = complement_height
-            
         min_height = row.get('min_height', 0)
         if pd.isna(min_height):
             min_height = 0      
         is_inner = row.get('is_inner', False)
         feature_id = row.get('id', idx_b)
-
         # Fix invalid geometry (buffer(0) or simplify if needed)
         # Doing this once per building avoids repeated overhead per cell.
         if not polygon.is_valid:
@@ -773,7 +760,6 @@ def create_building_height_grid_from_gdf_polygon(
                 # If still invalid, we keep it as-is; intersection attempts
                 # will be caught in the main loop's try/except
                 pass
-
         bounding_box = polygon.bounds  # (minx, miny, maxx, maxy)
         building_polygons.append(
             (
@@ -785,31 +771,25 @@ def create_building_height_grid_from_gdf_polygon(
                 feature_id
             )
         )
-
     # Build R-tree index using bounding boxes
     idx = index.Index()
     for i_b, (poly, bbox, _, _, _, _) in enumerate(building_polygons):
         idx.insert(i_b, bbox)
-
     # --------------------------------------------------------------------------
     # 3) MAIN GRID LOOP
     # --------------------------------------------------------------------------
     INTERSECTION_THRESHOLD = 0.3
-
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             # Create the cell polygon once
             cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             if not cell.is_valid:
                 cell = cell.buffer(0)
-
             cell_area = cell.area  # reused for intersection ratio checks
-
             # Find possible intersections from the index
             potential = list(idx.intersection(cell.bounds))
             if not potential:
                 continue
-
             # Sort buildings by height descending
             # (height=None => treat as -inf so it sorts last)
             cell_buildings = []
@@ -818,12 +798,9 @@ def create_building_height_grid_from_gdf_polygon(
                 # We only sort by height for a stable layering
                 sort_val = height if (height is not None) else -float('inf')
                 cell_buildings.append((k, bpoly, bbox, height, minh, inr, fid, sort_val))
-
             cell_buildings.sort(key=lambda x: x[-1], reverse=True)
-
             found_intersection = False
             all_zero_or_nan = True
-
             for (
                 k,
                 polygon,
@@ -840,42 +817,34 @@ def create_building_height_grid_from_gdf_polygon(
                     # --------------------------------------------------------
                     minx_p, miny_p, maxx_p, maxy_p = bbox
                     minx_c, miny_c, maxx_c, maxy_c = cell.bounds
-
                     # Overlap bounding box
                     overlap_minx = max(minx_p, minx_c)
                     overlap_miny = max(miny_p, miny_c)
                     overlap_maxx = min(maxx_p, maxx_c)
                     overlap_maxy = min(maxy_p, maxy_c)
-
                     if (overlap_maxx <= overlap_minx) or (overlap_maxy <= overlap_miny):
                         # No bounding-box overlap => skip
                         continue
-
                     # Area of bounding-box intersection
                     bbox_intersect_area = (overlap_maxx - overlap_minx) * (overlap_maxy - overlap_miny)
                     if bbox_intersect_area < INTERSECTION_THRESHOLD * cell_area:
                         # Even if the polygons overlap, they can't exceed threshold
                         continue
                     # --------------------------------------------------------
-
                     # Ensure valid geometry
                     if not polygon.is_valid:
                         polygon = polygon.buffer(0)
                         # If still invalid, let intersection attempt fail
-
                     if cell.intersects(polygon):
                         intersection = cell.intersection(polygon)
                         inter_area = intersection.area
-
                         # If the fraction of cell covered > threshold
                         if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                             found_intersection = True
-
                             # If not an inner courtyard
                             if not is_inner:
                                 building_min_height_grid[i, j].append([min_height, height])
                                 building_id_grid[i, j] = feature_id
-
                                 # Update building height if valid
                                 if (
                                     height is not None
@@ -884,7 +853,6 @@ def create_building_height_grid_from_gdf_polygon(
                                 ):
                                     all_zero_or_nan = False
                                     current_height = building_height_grid[i, j]
-
                                     # Replace if we had 0, nan, or smaller height
                                     if (
                                         current_height == 0
@@ -892,7 +860,6 @@ def create_building_height_grid_from_gdf_polygon(
                                         or current_height < height
                                     ):
                                         building_height_grid[i, j] = height
-
                             else:
                                 # Inner courtyards => override with 0
                                 building_min_height_grid[i, j] = [[0, 0]]
@@ -901,7 +868,6 @@ def create_building_height_grid_from_gdf_polygon(
                                 all_zero_or_nan = False
                                 # Because it's an inner courtyard, we can break
                                 break
-
                 except (GEOSException, ValueError) as e:
                     # Attempt to fix in a fallback
                     try:
@@ -909,13 +875,11 @@ def create_building_height_grid_from_gdf_polygon(
                         if simplified_polygon.is_valid:
                             intersection = cell.intersection(simplified_polygon)
                             inter_area = intersection.area
-
                             if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                                 found_intersection = True
                                 if not is_inner:
                                     building_min_height_grid[i, j].append([min_height, height])
                                     building_id_grid[i, j] = feature_id
-
                                     if (
                                         height is not None
                                         and not np.isnan(height)
@@ -938,11 +902,181 @@ def create_building_height_grid_from_gdf_polygon(
                         # Log and skip
                         print(f"Failed to process cell ({i}, {j}) - Building {k}: {str(fix_error)}")
                         continue
-
             # If we found intersecting buildings but all were zero/NaN, mark as NaN
             if found_intersection and all_zero_or_nan:
                 building_height_grid[i, j] = np.nan
+    return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
+def create_building_height_grid_from_gdf_polygon_rasterio(
+    gdf,
+    meshsize, 
+    rectangle_vertices,
+    gdf_comp=None,
+    geotiff_path_comp=None,
+    complement_building_footprints=None,
+    complement_height=None
+):
+    """
+    Alternative fully vectorized approach using rasterio for maximum speed.
+    This version sacrifices some precision for significant speed gains.
+    """
+    
+    # Same initial setup as original...
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+    
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
+    
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+    
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    
+    # Filter and process buildings (same as original)
+    extent = [
+        min(coord[1] for coord in rectangle_vertices),
+        max(coord[1] for coord in rectangle_vertices),
+        min(coord[0] for coord in rectangle_vertices),
+        max(coord[0] for coord in rectangle_vertices)
+    ]
+    plotting_box = box(extent[2], extent[0], extent[3], extent[1])
+    filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
+    
+    # Handle complementary data...
+    if gdf_comp is not None:
+        filtered_gdf_comp = gdf_comp[gdf_comp.geometry.intersects(plotting_box)].copy()
+        if complement_building_footprints:
+            filtered_gdf = complement_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
+        else:
+            filtered_gdf = extract_building_heights_from_gdf(filtered_gdf, filtered_gdf_comp)
+    elif geotiff_path_comp:
+        filtered_gdf = extract_building_heights_from_geotiff(geotiff_path_comp, filtered_gdf)
+    
+    filtered_gdf = process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
+    
+    # Fully vectorized rasterization approach
+    min_x, min_y = origin[0], origin[1]
+    max_corner = origin + grid_size[0] * adjusted_meshsize[0] * u_vec + grid_size[1] * adjusted_meshsize[1] * v_vec
+    max_x, max_y = max_corner[0], max_corner[1]
+    
+    transform = from_bounds(min_x, min_y, max_x, max_y, grid_size[0], grid_size[1])
+    
+    # Process buildings in height order (tallest last)
+    filtered_gdf = filtered_gdf.copy()
+    if complement_height is not None:
+        mask = (filtered_gdf['height'] == 0) | (filtered_gdf['height'].isna())
+        filtered_gdf.loc[mask, 'height'] = complement_height
+    
+    if complement_height is not None:
+        mask = (filtered_gdf['height'] == 0) | (filtered_gdf['height'].isna())
+        filtered_gdf.loc[mask, 'height'] = complement_height
+    
+    # Add min_height column if not present, then fill NaN with 0
+    if 'min_height' not in filtered_gdf.columns:
+        filtered_gdf['min_height'] = 0
+    else:
+        filtered_gdf['min_height'] = 0
+    
+    # Add is_inner column if not present
+    if 'is_inner' not in filtered_gdf.columns:
+        filtered_gdf['is_inner'] = False
+    
+    # Add ID column if not present
+    if 'id' not in filtered_gdf.columns:
+        filtered_gdf['id'] = range(len(filtered_gdf))
+    
+    # Sort by height for proper layering
+    regular_buildings = filtered_gdf[~filtered_gdf['is_inner']].copy()
+    regular_buildings = regular_buildings.sort_values('height', ascending=True, na_position='first')
+    
+    # Single-pass rasterization for each attribute
+    building_height_grid = np.zeros(grid_size, dtype=np.float64)
+    building_id_grid = np.zeros(grid_size, dtype=np.float64)
+    
+    # Vectorized rasterization
+    if len(regular_buildings) > 0:
+        valid_buildings = regular_buildings[regular_buildings.geometry.is_valid].copy()
+        
+        if len(valid_buildings) > 0:
+            # Height grid
+            height_shapes = [(mapping(geom), height) for geom, height in 
+                           zip(valid_buildings.geometry, valid_buildings['height']) 
+                           if pd.notna(height) and height > 0]
+            
+            if height_shapes:
+                building_height_grid = features.rasterize(
+                    height_shapes,
+                    out_shape=grid_size,
+                    transform=transform,
+                    fill=0,
+                    dtype=np.float64
+                )
+            
+            # ID grid  
+            id_shapes = [(mapping(geom), id_val) for geom, id_val in 
+                        zip(valid_buildings.geometry, valid_buildings['id'])]
+            
+            if id_shapes:
+                building_id_grid = features.rasterize(
+                    id_shapes,
+                    out_shape=grid_size,
+                    transform=transform,
+                    fill=0,
+                    dtype=np.float64
+                )
+    
+    # Handle inner courtyards
+    inner_buildings = filtered_gdf[filtered_gdf['is_inner']].copy()
+    if len(inner_buildings) > 0:
+        inner_shapes = [(mapping(geom), 1) for geom in inner_buildings.geometry if geom.is_valid]
+        if inner_shapes:
+            inner_mask = features.rasterize(
+                inner_shapes,
+                out_shape=grid_size,
+                transform=transform,
+                fill=0,
+                dtype=np.uint8
+            )
+            building_height_grid[inner_mask > 0] = 0
+            building_id_grid[inner_mask > 0] = 0
+    
+    # Simplified min_height grid (approximation for speed)
+    building_min_height_grid = np.empty(grid_size, dtype=object)
+    min_heights = np.zeros(grid_size, dtype=np.float64)
+    
+    if len(regular_buildings) > 0:
+        valid_buildings = regular_buildings[regular_buildings.geometry.is_valid].copy()
+        if len(valid_buildings) > 0:
+            min_height_shapes = [(mapping(geom), min_h) for geom, min_h in 
+                               zip(valid_buildings.geometry, valid_buildings['min_height']) 
+                               if pd.notna(min_h)]
+            
+            if min_height_shapes:
+                min_heights = features.rasterize(
+                    min_height_shapes,
+                    out_shape=grid_size,
+                    transform=transform,
+                    fill=0,
+                    dtype=np.float64
+                )
+    
+    # Convert to list format (simplified)
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            if building_height_grid[i, j] > 0:
+                building_min_height_grid[i, j] = [[min_heights[i, j], building_height_grid[i, j]]]
+            else:
+                building_min_height_grid[i, j] = []
+    
+    # Fix north-south orientation by flipping grids
+    building_height_grid = np.flipud(building_height_grid)
+    building_id_grid = np.flipud(building_id_grid)
+    building_min_height_grid = np.flipud(building_min_height_grid)
+    
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
 def create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir):        
