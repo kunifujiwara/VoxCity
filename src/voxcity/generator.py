@@ -257,11 +257,12 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     # This allows combining multiple sources for better coverage or accuracy
     building_complementary_source = kwargs.get("building_complementary_source") 
     building_complement_height = kwargs.get("building_complement_height")
+    overlapping_footprint = kwargs.get("overlapping_footprint")
 
     if (building_complementary_source is None) or (building_complementary_source=='None'):
         # Use only the primary data source
         if source != "Open Building 2.5D Temporal":
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
     else:
         # Combine primary source with complementary data
         if building_complementary_source == "Open Building 2.5D Temporal":
@@ -270,14 +271,14 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             os.makedirs(output_dir, exist_ok=True)
             geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
             save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height)   
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)   
         elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
             # Use digital surface model minus digital terrain model for height estimation
             roi = get_roi(rectangle_vertices)
             os.makedirs(output_dir, exist_ok=True)
             geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
             save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         else:
             # Fetch complementary data from another vector source
             if building_complementary_source == 'Microsoft Building Footprints':
@@ -298,7 +299,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             # Configure how to combine the complementary data
             # Can complement footprints only or both footprints and heights
             complement_building_footprints = kwargs.get("complement_building_footprints")
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=gdf_comp, complement_building_footprints=complement_building_footprints, complement_height=building_complement_height)
+            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, gdf_comp=gdf_comp, complement_building_footprints=complement_building_footprints, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
 
     # Generate visualization if requested
     grid_vis = kwargs.get("gridvis", True)    
