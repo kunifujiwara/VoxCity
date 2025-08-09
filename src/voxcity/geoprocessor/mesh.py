@@ -592,168 +592,160 @@ def split_vertices_manual(mesh):
 
 def save_obj_from_colored_mesh(meshes, output_path, base_filename, max_materials=None):
     """
-    Save a collection of colored meshes as OBJ and MTL files with material support.
-    
-    This function exports colored meshes to the Wavefront OBJ format with an
-    accompanying MTL file for material definitions. It handles the conversion of
-    face colors to materials and ensures proper material assignment in the OBJ file.
-    The function is particularly useful for preserving color information in
-    architectural and urban visualization models.
-    
-    Parameters
-    ----------
-    meshes : dict
-        Dictionary mapping class IDs to trimesh.Trimesh objects.
-        Each mesh should have:
-        - vertices: array of 3D coordinates
-        - faces: array of vertex indices forming triangles
-        - visual.face_colors: RGBA colors for each face
-    
-    output_path : str
-        Directory path where to save the files.
-        Will be created if it doesn't exist.
-        Should be writable by the current user.
-    
-    base_filename : str
-        Base name for the output files (without extension).
-        Will be used to create:
-        - {base_filename}.obj : The main geometry file
-        - {base_filename}.mtl : The material definitions file
-    
-    max_materials : int, optional
-        Maximum number of materials/colors to create. If specified and the number
-        of unique colors exceeds this limit, colors will be quantized using
-        k-means clustering to reduce them to the specified number.
-        If None (default), all unique colors are preserved as separate materials.
-    
-    Returns
-    -------
-    tuple
-        (obj_path, mtl_path) : Paths to the saved OBJ and MTL files.
-        Both paths are absolute or relative depending on the input output_path.
-    
-    Examples
-    --------
-    Basic usage with multiple colored meshes:
-    >>> building_mesh = trimesh.Trimesh(
-    ...     vertices=[[0,0,0], [1,0,0], [1,1,0]],
-    ...     faces=[[0,1,2]],
-    ...     face_colors=[[200,200,200,255]]  # Grey color
-    ... )
-    >>> tree_mesh = trimesh.Trimesh(
-    ...     vertices=[[2,0,0], [3,0,0], [2.5,1,0]],
-    ...     faces=[[0,1,2]],
-    ...     face_colors=[[0,255,0,255]]  # Green color
-    ... )
-    >>> meshes = {-3: building_mesh, -2: tree_mesh}
-    >>> obj_path, mtl_path = save_obj_from_colored_mesh(
-    ...     meshes, 'output/models', 'city'
-    ... )
-    
-    Limiting materials to 5:
-    >>> obj_path, mtl_path = save_obj_from_colored_mesh(
-    ...     meshes, 'output/models', 'city', max_materials=5
-    ... )
-    
-    Notes
-    -----
-    - Creates unique materials for each distinct face color
-    - Material names are auto-generated as 'material_0', 'material_1', etc.
-    - Handles both RGB and RGBA colors (alpha channel supported)
-    - Colors are normalized from [0-255] to [0-1] range for MTL format
-    - Vertices are written in OBJ's 1-based indexing format
-    - Faces are grouped by material for efficient rendering
-    - The MTL file is automatically referenced in the OBJ file
-    - If max_materials is specified, k-means clustering is used for color quantization
-    - Color quantization preserves the overall color distribution while reducing material count
-    - Requires scikit-learn package when max_materials is specified (install with: pip install scikit-learn)
-    
-    File Format Details
-    -----------------
-    OBJ file structure:
-    - mtllib reference to MTL file
-    - All vertex coordinates (v)
-    - Face definitions (f) grouped by material (usemtl)
-    
-    MTL file structure:
-    - newmtl: Material name
-    - Kd: Diffuse color (RGB)
-    - d: Alpha/transparency
+    Memory-safe OBJ/MTL exporter.
+    - Streams vertices/faces to disk (no concatenate, no per-face mini-meshes).
+    - Uses face colors -> materials (no vertex splitting).
+    - Optional color quantization to reduce material count.
     """
+    import os
+    import numpy as np
+
     os.makedirs(output_path, exist_ok=True)
     obj_path = os.path.join(output_path, f"{base_filename}.obj")
     mtl_path = os.path.join(output_path, f"{base_filename}.mtl")
-    
-    # Combine all meshes
-    combined_mesh = trimesh.util.concatenate(list(meshes.values()))
-    combined_mesh = split_vertices_manual(combined_mesh)
-    
-    # Get face colors
-    face_colors = combined_mesh.visual.face_colors
-    
-    # Apply color quantization if max_materials is specified
+
+    # --------------- helpers ---------------
+    def to_uint8_rgba(arr):
+        arr = np.asarray(arr)
+        if arr.dtype != np.uint8:
+            # Handle float [0..1] or int [0..255]
+            if arr.dtype.kind == 'f':
+                arr = np.clip(arr, 0.0, 1.0)
+                arr = (arr * 255.0 + 0.5).astype(np.uint8)
+            else:
+                arr = arr.astype(np.uint8)
+        if arr.shape[1] == 3:
+            alpha = np.full((arr.shape[0], 1), 255, dtype=np.uint8)
+            arr = np.concatenate([arr, alpha], axis=1)
+        return arr
+
+    # First pass: build material palette
+    # We avoid collecting all colors at once—scan per mesh and update a dict.
+    color_to_id = {}
+    ordered_colors = []  # list of RGBA uint8 tuples in material order
+
+    # Optional quantizer (lazy-init)
+    quantizer = None
     if max_materials is not None:
         try:
-            from sklearn.cluster import KMeans
+            from sklearn.cluster import MiniBatchKMeans
+            quantizer = MiniBatchKMeans(n_clusters=max_materials, random_state=42, batch_size=8192)
+            # Partial-fit streaming pass over colors
+            for m in meshes.values():
+                fc = getattr(m.visual, "face_colors", None)
+                if fc is None:
+                    continue
+                fc = to_uint8_rgba(fc)
+                if fc.size == 0: 
+                    continue
+                # Use only RGB for clustering
+                quantizer.partial_fit(fc[:, :3].astype(np.float32))
         except ImportError:
-            raise ImportError("scikit-learn is required for color quantization. "
-                            "Install it with: pip install scikit-learn")
-        
-        # Prepare colors for clustering (use only RGB, not alpha)
-        colors_rgb = face_colors[:, :3].astype(float)
-        
-        # Perform k-means clustering
-        kmeans = KMeans(n_clusters=max_materials, random_state=42, n_init=10)
-        color_labels = kmeans.fit_predict(colors_rgb)
-        
-        # Get the cluster centers as the new colors
-        quantized_colors_rgb = kmeans.cluster_centers_.astype(np.uint8)
-        
-        # Create new face colors with quantized RGB and original alpha
-        quantized_face_colors = np.zeros_like(face_colors)
-        # Assign each face to its nearest cluster center
-        quantized_face_colors[:, :3] = quantized_colors_rgb[color_labels]
-        quantized_face_colors[:, 3] = face_colors[:, 3]  # Preserve original alpha
-        
-        # Update the mesh with quantized colors
-        combined_mesh.visual.face_colors = quantized_face_colors
-        face_colors = quantized_face_colors
-    
-    # Create unique materials for each unique face color
-    unique_colors = np.unique(face_colors, axis=0)
-    
-    # Write MTL file
-    with open(mtl_path, 'w') as mtl_file:
-        for i, color in enumerate(unique_colors):
-            material_name = f'material_{i}'
-            mtl_file.write(f'newmtl {material_name}\n')
-            # Convert RGBA to RGB float values
-            rgb = color[:3].astype(float) / 255.0
-            mtl_file.write(f'Kd {rgb[0]:.6f} {rgb[1]:.6f} {rgb[2]:.6f}\n')
-            mtl_file.write(f'd {color[3]/255.0:.6f}\n\n')  # Alpha value
-    
-    # Create material groups based on face colors
-    color_to_material = {tuple(c): f'material_{i}' for i, c in enumerate(unique_colors)}
-    
-    # Write OBJ file
-    with open(obj_path, 'w') as obj_file:
-        obj_file.write(f'mtllib {os.path.basename(mtl_path)}\n')
-        
-        # Write vertices
-        for vertex in combined_mesh.vertices:
-            obj_file.write(f'v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n')
-        
-        # Write faces grouped by material
+            raise ImportError("scikit-learn is required for color quantization. Install it with: pip install scikit-learn")
+
+    # Assign material ids during a second scan, but still streaming to avoid big unions
+    def get_material_id(rgba):
+        key = (int(rgba[0]), int(rgba[1]), int(rgba[2]), int(rgba[3]))
+        mid = color_to_id.get(key)
+        if mid is None:
+            mid = len(ordered_colors)
+            color_to_id[key] = mid
+            ordered_colors.append(key)
+        return mid
+
+    # 2nd pass if quantizing: we need color centroids
+    centers_u8 = None
+    if quantizer is not None:
+        centers = quantizer.cluster_centers_.astype(np.float32)  # RGB float
+        centers = np.clip(centers, 0.0, 255.0).astype(np.uint8)
+        # Build a quick LUT fun
+        def quantize_rgb(rgb_u8):
+            # rgb_u8: (N,3) uint8 -> labels -> centers
+            labels = quantizer.predict(rgb_u8.astype(np.float32))
+            return centers[labels]
+        # We'll convert each mesh's face colors to quantized RGB on the fly
+        centers_u8 = centers
+
+    # Build materials palette by scanning once (still O(total faces) but tiny memory)
+    for m in meshes.values():
+        fc = getattr(m.visual, "face_colors", None)
+        if fc is None:
+            # No colors: assign default grey
+            rgba = np.array([[200,200,200,255]], dtype=np.uint8)
+            get_material_id(rgba[0])
+            continue
+        fc = to_uint8_rgba(fc)
+        if quantizer is not None:
+            q_rgb = quantize_rgb(fc[:, :3])
+            fc = np.concatenate([q_rgb, fc[:, 3:4]], axis=1)
+        # Iterate unique colors in this mesh to limit get_material_id calls
+        # but don't materialize huge sets; unique per mesh is fine.
+        uniq = np.unique(fc, axis=0)
+        for rgba in uniq:
+            get_material_id(rgba)
+
+    # Write MTL
+    with open(mtl_path, "w") as mtl:
+        for i, (r, g, b, a) in enumerate(ordered_colors):
+            mtl.write(f"newmtl material_{i}\n")
+            mtl.write(f"Kd {r/255.0:.6f} {g/255.0:.6f} {b/255.0:.6f}\n")
+            mtl.write(f"d {a/255.0:.6f}\n\n")
+
+    # Stream OBJ
+    with open(obj_path, "w") as obj:
+        obj.write(f"mtllib {os.path.basename(mtl_path)}\n")
+
+        v_offset = 0  # running vertex index offset
+        # Reusable cache so we don't keep writing 'usemtl' for the same block unnecessarily
         current_material = None
-        for face_idx, face in enumerate(combined_mesh.faces):
-            face_color = tuple(face_colors[face_idx])
-            material_name = color_to_material[face_color]
-            
-            if material_name != current_material:
-                obj_file.write(f'usemtl {material_name}\n')
-                current_material = material_name
-            
-            # OBJ indices are 1-based
-            obj_file.write(f'f {face[0]+1} {face[1]+1} {face[2]+1}\n')
-    
+
+        for class_id, m in meshes.items():
+            verts = np.asarray(m.vertices, dtype=np.float64)
+            faces = np.asarray(m.faces, dtype=np.int64)
+            if verts.size == 0 or faces.size == 0:
+                continue
+
+            # Write vertices
+            # (We do a single pass; writing text is the bottleneck, but memory-safe.)
+            for v in verts:
+                obj.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+
+            # Prepare face colors (face-level)
+            fc = getattr(m.visual, "face_colors", None)
+            if fc is None or len(fc) != len(faces):
+                # default grey if missing or mismatched
+                fc = np.tile(np.array([200,200,200,255], dtype=np.uint8), (len(faces), 1))
+            else:
+                fc = to_uint8_rgba(fc)
+
+            if quantizer is not None:
+                q_rgb = quantize_rgb(fc[:, :3])
+                fc = np.concatenate([q_rgb, fc[:, 3:4]], axis=1)
+
+            # Group faces by material id and stream in order
+            # Build material id per face quickly
+            # Convert face colors to material ids
+            # (Avoid Python loops over faces more than once)
+            # Map unique colors in this mesh to material ids first:
+            uniq_colors, inv_idx = np.unique(fc, axis=0, return_inverse=True)
+            color_to_mid_local = {tuple(c.tolist()): get_material_id(c) for c in uniq_colors}
+            mids = np.fromiter(
+                (color_to_mid_local[tuple(c.tolist())] for c in uniq_colors[inv_idx]),
+                dtype=np.int64,
+                count=len(inv_idx)
+            )
+
+            # Write faces grouped by material, but preserve simple ordering
+            # Cheap approach: emit runs; switching material only when necessary
+            current_material = None
+            for i_face, face in enumerate(faces):
+                mid = int(mids[i_face])
+                if current_material != mid:
+                    obj.write(f"usemtl material_{mid}\n")
+                    current_material = mid
+                a, b, c = face + 1 + v_offset  # OBJ is 1-based
+                obj.write(f"f {a} {b} {c}\n")
+
+            v_offset += len(verts)
+
     return obj_path, mtl_path
