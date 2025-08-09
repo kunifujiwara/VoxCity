@@ -47,6 +47,7 @@ import matplotlib.patches as mpatches
 from numba import njit, prange
 import time
 import trimesh
+import math
 
 from ..geoprocessor.polygon import find_building_containing_point, get_buildings_in_drawn_polygon
 from ..geoprocessor.mesh import create_voxel_mesh
@@ -1336,16 +1337,6 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     return building_mesh
 
 # ==========================
-# Precompute voxel class masks
-# ==========================
-def _prepare_voxel_classes(voxel_data, landmark_value=-30):
-    # booleans are cheap inside njit loops
-    is_tree = (voxel_data == -2)
-    is_opaque = (voxel_data != 0) & (voxel_data != landmark_value) & (~is_tree)
-    return is_tree, is_opaque
-
-
-# ==========================
 # DDA ray traversal (fast)
 # ==========================
 @njit(cache=True, fastmath=True, nogil=True)
@@ -1475,15 +1466,50 @@ def _compute_face_visibility(face_center, face_normal,
 
     return 0.0
 
+# ==========================
+# Precompute voxel class masks
+# ==========================
+def _prepare_voxel_classes(voxel_data, landmark_value=-30):
+    is_tree = (voxel_data == -2)
+    is_opaque = (voxel_data != 0) & (voxel_data != landmark_value) & (~is_tree)
+    return is_tree, is_opaque
 
 # ==========================
-# Parallel face loop
+# Chunked parallel loop for progress
 # ==========================
+def _compute_all_faces_progress(face_centers, face_normals, landmark_positions_vox,
+                                vox_is_tree, vox_is_opaque,
+                                meshsize, att, att_cutoff,
+                                grid_bounds_real, boundary_epsilon,
+                                progress_report=False, chunks=10):
+    n_faces = face_centers.shape[0]
+    results = np.empty(n_faces, dtype=np.float64)
+
+    # Determine chunk size
+    step = math.ceil(n_faces / chunks)
+    for start in range(0, n_faces, step):
+        end = min(start + step, n_faces)
+        # Run parallel compute on this chunk
+        results[start:end] = _compute_faces_chunk(
+            face_centers[start:end],
+            face_normals[start:end],
+            landmark_positions_vox,
+            vox_is_tree, vox_is_opaque,
+            meshsize, att, att_cutoff,
+            grid_bounds_real, boundary_epsilon
+        )
+        if progress_report:
+            pct = (end / n_faces) * 100
+            print(f"  Processed {end}/{n_faces} faces ({pct:.1f}%)")
+
+    return results
+
+
 @njit(parallel=True, cache=True, fastmath=True, nogil=True)
-def _compute_all_faces(face_centers, face_normals, landmark_positions_vox,
-                       vox_is_tree, vox_is_opaque,
-                       meshsize, att, att_cutoff,
-                       grid_bounds_real, boundary_epsilon):
+def _compute_faces_chunk(face_centers, face_normals, landmark_positions_vox,
+                         vox_is_tree, vox_is_opaque,
+                         meshsize, att, att_cutoff,
+                         grid_bounds_real, boundary_epsilon):
     n_faces = face_centers.shape[0]
     out = np.empty(n_faces, dtype=np.float64)
     for f in prange(n_faces):
@@ -1503,6 +1529,8 @@ def _compute_all_faces(face_centers, face_normals, landmark_positions_vox,
 def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, meshsize, **kwargs):
     import matplotlib.pyplot as plt
     import os
+
+    progress_report = kwargs.get("progress_report", False)
 
     # --- Landmark selection logic (unchanged) ---
     landmark_ids = kwargs.get('landmark_building_ids', None)
@@ -1527,7 +1555,6 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
     colormap = kwargs.get("colormap", 'RdYlGn')
-    progress_report = kwargs.get("progress_report", False)
 
     voxel_data_for_mesh = voxel_data.copy()
     voxel_data_modified = voxel_data.copy()
@@ -1575,14 +1602,15 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
     att = float(np.exp(-tree_k * tree_lad * meshsize))
     att_cutoff = 0.01
 
-    visibility_values = _compute_all_faces(
+    visibility_values = _compute_all_faces_progress(
         face_centers,
         face_normals,
         landmark_positions,
         vox_is_tree, vox_is_opaque,
         float(meshsize), att, att_cutoff,
         grid_bounds_real.astype(np.float64),
-        float(boundary_epsilon)
+        float(boundary_epsilon),
+        progress_report=progress_report
     )
 
     building_mesh.metadata = getattr(building_mesh, 'metadata', {})
