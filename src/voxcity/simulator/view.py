@@ -1335,259 +1335,176 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     
     return building_mesh
 
-@njit
-def trace_ray_to_landmark(voxel_data, origin, target, opaque_values, tree_k, tree_lad, meshsize):
-    """Trace a ray from origin to target through voxel data with tree transmittance.
-    
-    Uses DDA algorithm to efficiently traverse voxels along ray path.
-    Checks for opaque voxels and handles tree transmittance using Beer-Lambert law.
-    
-    Args:
-        voxel_data (ndarray): 3D array of voxel values
-        origin (ndarray): Starting point (x,y,z) in voxel coordinates
-        target (ndarray): End point (x,y,z) in voxel coordinates
-        opaque_values (ndarray): Array of voxel values that block the ray
-        tree_k (float): Tree extinction coefficient for Beer-Lambert law
-        tree_lad (float): Leaf area density in m^-1 for tree transmittance
-        meshsize (float): Size of each voxel in meters
-        
-    Returns:
-        bool: True if target is visible from origin, False otherwise
-    """
-    nx, ny, nz = voxel_data.shape
+# ==========================
+# Precompute voxel class masks
+# ==========================
+def _prepare_voxel_classes(voxel_data, landmark_value=-30):
+    # booleans are cheap inside njit loops
+    is_tree = (voxel_data == -2)
+    is_opaque = (voxel_data != 0) & (voxel_data != landmark_value) & (~is_tree)
+    return is_tree, is_opaque
+
+
+# ==========================
+# DDA ray traversal (fast)
+# ==========================
+@njit(cache=True, fastmath=True, nogil=True)
+def _trace_ray(vox_is_tree, vox_is_opaque, origin, target, att, att_cutoff):
+    nx, ny, nz = vox_is_opaque.shape
     x0, y0, z0 = origin[0], origin[1], origin[2]
     x1, y1, z1 = target[0], target[1], target[2]
-    
+
     dx = x1 - x0
     dy = y1 - y0
     dz = z1 - z0
-    
-    # Normalize direction vector
-    length = np.sqrt(dx*dx + dy*dy + dz*dz)
+
+    length = (dx*dx + dy*dy + dz*dz) ** 0.5
     if length == 0.0:
-        return True  # Origin and target are at the same location
-        
-    dx /= length
-    dy /= length
-    dz /= length
-    
-    # Initialize ray position
-    x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
-    i, j, k = int(x0), int(y0), int(z0)
-    
-    # Determine step direction
-    step_x = 1 if dx >= 0 else -1
-    step_y = 1 if dy >= 0 else -1
-    step_z = 1 if dz >= 0 else -1
-    
-    # Calculate distances to next voxel boundaries
-    if dx != 0:
-        t_max_x = ((i + (step_x > 0)) - x) / dx
-        t_delta_x = abs(1 / dx)
+        return True
+    inv_len = 1.0 / length
+    dx *= inv_len; dy *= inv_len; dz *= inv_len
+
+    x = x0 + 0.5
+    y = y0 + 0.5
+    z = z0 + 0.5
+    i = int(x0); j = int(y0); k = int(z0)
+
+    step_x = 1 if dx >= 0.0 else -1
+    step_y = 1 if dy >= 0.0 else -1
+    step_z = 1 if dz >= 0.0 else -1
+
+    BIG = 1e30
+
+    if dx != 0.0:
+        t_max_x = (((i + (1 if step_x > 0 else 0)) - x) / dx)
+        t_delta_x = abs(1.0 / dx)
     else:
-        t_max_x = np.inf
-        t_delta_x = np.inf
-        
-    if dy != 0:
-        t_max_y = ((j + (step_y > 0)) - y) / dy
-        t_delta_y = abs(1 / dy)
+        t_max_x = BIG; t_delta_x = BIG
+
+    if dy != 0.0:
+        t_max_y = (((j + (1 if step_y > 0 else 0)) - y) / dy)
+        t_delta_y = abs(1.0 / dy)
     else:
-        t_max_y = np.inf
-        t_delta_y = np.inf
-        
-    if dz != 0:
-        t_max_z = ((k + (step_z > 0)) - z) / dz
-        t_delta_z = abs(1 / dz)
+        t_max_y = BIG; t_delta_y = BIG
+
+    if dz != 0.0:
+        t_max_z = (((k + (1 if step_z > 0 else 0)) - z) / dz)
+        t_delta_z = abs(1.0 / dz)
     else:
-        t_max_z = np.inf
-        t_delta_z = np.inf
-    
-    # Track cumulative tree transmittance
-    tree_transmittance = 1.0
-    
-    # Main ray traversal loop
+        t_max_z = BIG; t_delta_z = BIG
+
+    T = 1.0
+    ti = int(x1); tj = int(y1); tk = int(z1)
+
     while True:
-        # Check if current voxel is within bounds
-        if (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
-            voxel_value = voxel_data[i, j, k]
-            
-            # Check for tree voxels (-2)
-            if voxel_value == -2:
-                # Apply Beer-Lambert law for tree transmittance
-                tree_transmittance *= np.exp(-tree_k * tree_lad * meshsize)
-                if tree_transmittance < 0.01:  # Ray effectively blocked
-                    return False
-            # Check for other opaque voxels
-            elif voxel_value in opaque_values:
-                return False  # Ray is blocked
-        else:
-            return False  # Ray went out of bounds
-        
-        # Check if we've reached the target voxel
-        if i == int(x1) and j == int(y1) and k == int(z1):
-            return True  # Ray successfully reached the target
-        
-        # Move to next voxel using DDA algorithm
+        if (i < 0) or (i >= nx) or (j < 0) or (j >= ny) or (k < 0) or (k >= nz):
+            return False
+
+        if vox_is_opaque[i, j, k]:
+            return False
+        if vox_is_tree[i, j, k]:
+            T *= att
+            if T < att_cutoff:
+                return False
+
+        if (i == ti) and (j == tj) and (k == tk):
+            return True
+
         if t_max_x < t_max_y:
             if t_max_x < t_max_z:
-                t_max_x += t_delta_x
-                i += step_x
+                t_max_x += t_delta_x; i += step_x
             else:
-                t_max_z += t_delta_z
-                k += step_z
+                t_max_z += t_delta_z; k += step_z
         else:
             if t_max_y < t_max_z:
-                t_max_y += t_delta_y
-                j += step_y
+                t_max_y += t_delta_y; j += step_y
             else:
-                t_max_z += t_delta_z
-                k += step_z
+                t_max_z += t_delta_z; k += step_z
 
 
-@njit
-def compute_face_landmark_visibility(face_center, face_normal, landmark_positions, 
-                                   voxel_data, meshsize, tree_k, tree_lad, 
-                                   grid_bounds_real, boundary_epsilon):
-    """Compute binary landmark visibility for a single face.
-    
-    Args:
-        face_center (ndarray): Face centroid position in real coordinates
-        face_normal (ndarray): Face normal vector (outward pointing)
-        landmark_positions (ndarray): Array of landmark positions in voxel coordinates
-        voxel_data (ndarray): 3D array of voxel values
-        meshsize (float): Size of each voxel in meters
-        tree_k (float): Tree extinction coefficient
-        tree_lad (float): Leaf area density
-        grid_bounds_real (ndarray): Domain bounds in real coordinates
-        boundary_epsilon (float): Tolerance for boundary detection
-        
-    Returns:
-        float: 1.0 if any landmark is visible, 0.0 if none visible, np.nan for boundary faces
-    """
-    # Check for boundary vertical faces
+# ==========================
+# Per-face landmark visibility
+# ==========================
+@njit(cache=True, fastmath=True, nogil=True)
+def _compute_face_visibility(face_center, face_normal,
+                             landmark_positions_vox,
+                             vox_is_tree, vox_is_opaque,
+                             meshsize, att, att_cutoff,
+                             grid_bounds_real, boundary_epsilon):
     is_vertical = (abs(face_normal[2]) < 0.01)
-    
+
     on_x_min = (abs(face_center[0] - grid_bounds_real[0,0]) < boundary_epsilon)
     on_y_min = (abs(face_center[1] - grid_bounds_real[0,1]) < boundary_epsilon)
     on_x_max = (abs(face_center[0] - grid_bounds_real[1,0]) < boundary_epsilon)
     on_y_max = (abs(face_center[1] - grid_bounds_real[1,1]) < boundary_epsilon)
-    
-    is_boundary_vertical = is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max)
-    if is_boundary_vertical:
+
+    if is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max):
         return np.nan
-    
-    # Convert face center to voxel coordinates with small offset
-    norm_n = np.sqrt(face_normal[0]**2 + face_normal[1]**2 + face_normal[2]**2)
-    if norm_n < 1e-12:
+
+    nx = face_normal[0]; ny = face_normal[1]; nz = face_normal[2]
+    nrm = (nx*nx + ny*ny + nz*nz) ** 0.5
+    if nrm < 1e-12:
         return 0.0
-    
-    offset_vox = 0.1  # Offset in voxel units to avoid self-intersection
-    ray_origin = (face_center / meshsize) + (face_normal / norm_n) * offset_vox
-    
-    # Define opaque values (everything except empty space and landmarks)
-    unique_values = np.unique(voxel_data)
-    landmark_value = -30  # Standard landmark value
-    opaque_values = np.array([v for v in unique_values if v != 0 and v != landmark_value], dtype=np.int32)
-    
-    # Check visibility to each landmark
-    for idx in range(landmark_positions.shape[0]):
-        target = landmark_positions[idx]
-        
-        # Check if ray direction points towards the face (not away from it)
-        ray_dir = target - ray_origin
-        ray_length = np.sqrt(ray_dir[0]**2 + ray_dir[1]**2 + ray_dir[2]**2)
-        if ray_length > 0:
-            ray_dir = ray_dir / ray_length
-            dot_product = (ray_dir[0]*face_normal[0] + 
-                          ray_dir[1]*face_normal[1] + 
-                          ray_dir[2]*face_normal[2])
-            
-            # Only trace ray if it points outward from the face
-            if dot_product > 0:
-                is_visible = trace_ray_to_landmark(voxel_data, ray_origin, target, 
-                                                 opaque_values, tree_k, tree_lad, meshsize)
-                if is_visible:
-                    return 1.0  # Return immediately when first visible landmark is found
-    
-    return 0.0  # No landmarks were visible
+    invn = 1.0 / nrm
+    nx *= invn; ny *= invn; nz *= invn
+
+    offset_vox = 0.1
+    ox = face_center[0] / meshsize + nx * offset_vox
+    oy = face_center[1] / meshsize + ny * offset_vox
+    oz = face_center[2] / meshsize + nz * offset_vox
+
+    for idx in range(landmark_positions_vox.shape[0]):
+        tx = landmark_positions_vox[idx, 0]
+        ty = landmark_positions_vox[idx, 1]
+        tz = landmark_positions_vox[idx, 2]
+
+        rx = tx - ox; ry = ty - oy; rz = tz - oz
+        rlen2 = rx*rx + ry*ry + rz*rz
+        if rlen2 == 0.0:
+            return 1.0
+        invr = 1.0 / (rlen2 ** 0.5)
+        rdx = rx * invr; rdy = ry * invr; rdz = rz * invr
+
+        if (rdx*nx + rdy*ny + rdz*nz) <= 0.0:
+            continue
+
+        if _trace_ray(vox_is_tree, vox_is_opaque,
+                      np.array((ox, oy, oz)), np.array((tx, ty, tz)),
+                      att, att_cutoff):
+            return 1.0
+
+    return 0.0
 
 
-@njit(parallel=True)
-def compute_landmark_visibility_for_all_faces(face_centers, face_normals, landmark_positions,
-                                            voxel_data, meshsize, tree_k, tree_lad,
-                                            grid_bounds_real, boundary_epsilon):
-    """Compute binary landmark visibility for all building surface faces.
-    
-    Args:
-        face_centers (ndarray): (n_faces, 3) face centroid positions in real coordinates
-        face_normals (ndarray): (n_faces, 3) face normal vectors
-        landmark_positions (ndarray): (n_landmarks, 3) landmark positions in voxel coordinates
-        voxel_data (ndarray): 3D array of voxel values
-        meshsize (float): Size of each voxel in meters
-        tree_k (float): Tree extinction coefficient
-        tree_lad (float): Leaf area density
-        grid_bounds_real (ndarray): Domain bounds in real coordinates
-        boundary_epsilon (float): Tolerance for boundary detection
-        
-    Returns:
-        ndarray: Binary visibility values for each face (1=visible, 0=not visible, nan=boundary)
-    """
+# ==========================
+# Parallel face loop
+# ==========================
+@njit(parallel=True, cache=True, fastmath=True, nogil=True)
+def _compute_all_faces(face_centers, face_normals, landmark_positions_vox,
+                       vox_is_tree, vox_is_opaque,
+                       meshsize, att, att_cutoff,
+                       grid_bounds_real, boundary_epsilon):
     n_faces = face_centers.shape[0]
-    visibility_values = np.zeros(n_faces, dtype=np.float64)
-    
-    # Process each face in parallel
-    for fidx in prange(n_faces):
-        visibility_values[fidx] = compute_face_landmark_visibility(
-            face_centers[fidx],
-            face_normals[fidx],
-            landmark_positions,
-            voxel_data,
-            meshsize,
-            tree_k,
-            tree_lad,
-            grid_bounds_real,
-            boundary_epsilon
+    out = np.empty(n_faces, dtype=np.float64)
+    for f in prange(n_faces):
+        out[f] = _compute_face_visibility(
+            face_centers[f], face_normals[f],
+            landmark_positions_vox,
+            vox_is_tree, vox_is_opaque,
+            meshsize, att, att_cutoff,
+            grid_bounds_real, boundary_epsilon
         )
-    
-    return visibility_values
+    return out
 
 
+# ==========================
+# Main function
+# ==========================
 def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, meshsize, **kwargs):
-    """
-    Compute binary landmark visibility for building surface meshes.
-    
-    This function extracts building surface meshes and computes whether each face
-    can see any landmark voxel. It uses direct ray tracing from face centers to
-    all landmark positions, accounting for tree transmittance.
-    
-    Args:
-        voxel_data (ndarray): 3D array of voxel values
-        building_id_grid (ndarray): 3D array mapping voxels to building IDs
-        building_gdf (GeoDataFrame): GeoDataFrame containing building features
-        meshsize (float): Size of each voxel in meters
-        **kwargs: Configuration options including:
-            landmark_building_ids (list): List of building IDs to mark as landmarks
-            landmark_polygon (list): Polygon vertices to identify landmarks
-            rectangle_vertices (list): Rectangle vertices to identify landmarks
-            building_class_id (int): Voxel class for buildings (default: -3)
-            tree_k (float): Tree extinction coefficient (default: 0.6)
-            tree_lad (float): Leaf area density (default: 1.0)
-            colormap (str): Matplotlib colormap (default: 'RdYlGn')
-            obj_export (bool): Whether to export mesh as OBJ file
-            output_directory (str): Directory for OBJ export
-            output_file_name (str): Base filename for OBJ export
-            progress_report (bool): Whether to print progress
-            
-    Returns:
-        tuple: (surface_mesh, modified_voxel_data)
-            - surface_mesh: trimesh.Trimesh with binary visibility values in metadata
-            - modified_voxel_data: voxel data with landmarks marked
-            Returns (None, None) if no surfaces or landmarks found
-    """
     import matplotlib.pyplot as plt
     import os
-    
-    # Get landmark building IDs
+
+    # --- Landmark selection logic (unchanged) ---
     landmark_ids = kwargs.get('landmark_building_ids', None)
     landmark_polygon = kwargs.get('landmark_polygon', None)
     if landmark_ids is None:
@@ -1598,50 +1515,38 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
             if rectangle_vertices is None:
                 print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
                 return None, None
-                
-            # Calculate center point of rectangle
             lons = [coord[0] for coord in rectangle_vertices]
             lats = [coord[1] for coord in rectangle_vertices]
             center_lon = (min(lons) + max(lons)) / 2
             center_lat = (min(lats) + max(lats)) / 2
             target_point = (center_lon, center_lat)
-            
-            # Find buildings at center point
             landmark_ids = find_building_containing_point(building_gdf, target_point)
-    
-    # Extract configuration parameters
+
     building_class_id = kwargs.get("building_class_id", -3)
     landmark_value = -30
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
     colormap = kwargs.get("colormap", 'RdYlGn')
     progress_report = kwargs.get("progress_report", False)
-    
-    # Create a copy of voxel data for modifications
+
     voxel_data_for_mesh = voxel_data.copy()
     voxel_data_modified = voxel_data.copy()
-    
-    # Mark landmark buildings with special value in modified data
+
     voxel_data_modified = mark_building_by_id(voxel_data_modified, building_id_grid, landmark_ids, landmark_value)
-    
-    # In the mesh extraction data, change landmark buildings to a different value
-    # so they won't be included in the surface mesh extraction
     voxel_data_for_mesh = mark_building_by_id(voxel_data_for_mesh, building_id_grid, landmark_ids, 0)
-    
-    # Find positions of all landmark voxels
+
     landmark_positions = np.argwhere(voxel_data_modified == landmark_value).astype(np.float64)
     if landmark_positions.shape[0] == 0:
         print(f"No landmarks found after marking buildings with IDs: {landmark_ids}")
         return None, None
-    
+
     if progress_report:
         print(f"Found {landmark_positions.shape[0]} landmark voxels")
         print(f"Landmark building IDs: {landmark_ids}")
-    
-    # Extract building surface mesh excluding landmark buildings
+
     try:
         building_mesh = create_voxel_mesh(
-            voxel_data_for_mesh,  # Use data where landmarks are excluded
+            voxel_data_for_mesh,
             building_class_id,
             meshsize,
             building_id_grid=building_id_grid,
@@ -1653,71 +1558,63 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
     except Exception as e:
         print(f"Error during mesh extraction: {e}")
         return None, None
-    
+
     if progress_report:
         print(f"Processing landmark visibility for {len(building_mesh.faces)} faces...")
-    
-    # Get mesh properties
-    face_centers = building_mesh.triangles_center
-    face_normals = building_mesh.face_normals
-    
-    # Calculate domain bounds
+
+    face_centers = building_mesh.triangles_center.astype(np.float64)
+    face_normals = building_mesh.face_normals.astype(np.float64)
+
     nx, ny, nz = voxel_data_modified.shape
     grid_bounds_voxel = np.array([[0,0,0],[nx, ny, nz]], dtype=np.float64)
     grid_bounds_real = grid_bounds_voxel * meshsize
     boundary_epsilon = meshsize * 0.05
-    
-    # Compute binary visibility for all faces using modified voxel data
-    visibility_values = compute_landmark_visibility_for_all_faces(
+
+    # Precompute masks + attenuation
+    vox_is_tree, vox_is_opaque = _prepare_voxel_classes(voxel_data_modified, landmark_value)
+    att = float(np.exp(-tree_k * tree_lad * meshsize))
+    att_cutoff = 0.01
+
+    visibility_values = _compute_all_faces(
         face_centers,
         face_normals,
         landmark_positions,
-        voxel_data_modified,  # Use modified data with landmarks marked
-        meshsize,
-        tree_k,
-        tree_lad,
-        grid_bounds_real,
-        boundary_epsilon
+        vox_is_tree, vox_is_opaque,
+        float(meshsize), att, att_cutoff,
+        grid_bounds_real.astype(np.float64),
+        float(boundary_epsilon)
     )
-    
-    # Store visibility values in mesh metadata
-    if not hasattr(building_mesh, 'metadata'):
-        building_mesh.metadata = {}
+
+    building_mesh.metadata = getattr(building_mesh, 'metadata', {})
     building_mesh.metadata['landmark_visibility'] = visibility_values
-    
-    # Count visible faces (excluding NaN boundary faces)
+
     valid_mask = ~np.isnan(visibility_values)
     n_valid = np.sum(valid_mask)
     n_visible = np.sum(visibility_values[valid_mask] > 0.5)
-    
+
     if progress_report:
         print(f"Landmark visibility statistics:")
         print(f"  Total faces: {len(visibility_values)}")
         print(f"  Valid faces: {n_valid}")
         print(f"  Faces with landmark visibility: {n_visible} ({n_visible/n_valid*100:.1f}%)")
-    
-    # Optional OBJ export
+
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "surface_landmark_visibility")
         os.makedirs(output_dir, exist_ok=True)
-        
         try:
-            # Apply colormap to visibility values for visualization
             cmap = plt.cm.get_cmap(colormap)
             face_colors = np.zeros((len(visibility_values), 4))
-            
             for i, val in enumerate(visibility_values):
                 if np.isnan(val):
-                    face_colors[i] = [0.7, 0.7, 0.7, 1.0]  # Gray for boundary faces
+                    face_colors[i] = [0.7, 0.7, 0.7, 1.0]
                 else:
                     face_colors[i] = cmap(val)
-            
             building_mesh.visual.face_colors = face_colors
             building_mesh.export(f"{output_dir}/{output_file_name}.obj")
             print(f"Exported surface mesh to {output_dir}/{output_file_name}.obj")
         except Exception as e:
             print(f"Error exporting mesh: {e}")
-    
+
     return building_mesh, voxel_data_modified
