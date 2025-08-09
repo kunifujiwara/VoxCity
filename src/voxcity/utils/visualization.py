@@ -45,6 +45,7 @@ import trimesh
 import pyvista as pv
 from IPython.display import display
 import os
+import sys
 
 # Import utility functions for land cover classification
 from .lc import get_land_cover_classes
@@ -1839,13 +1840,34 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
     >>> views = create_multi_view_scene(meshes, "renders/", "orthographic", 1.5)
     >>> print(f"Generated {len(views)} views")
     """
-    # Compute overall bounding box across all meshes
-    vertices_list = [mesh.vertices for mesh in meshes.values()]
-    all_vertices = np.vstack(vertices_list)
-    bbox = np.array([
-        [all_vertices[:, 0].min(), all_vertices[:, 1].min(), all_vertices[:, 2].min()],
-        [all_vertices[:, 0].max(), all_vertices[:, 1].max(), all_vertices[:, 2].max()]
-    ])
+    # Precompute PyVista meshes once to avoid repeated conversion per view
+    pv_meshes = {}
+    for class_id, mesh in meshes.items():
+        if mesh is None or len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+            continue
+        # PyVista expects a faces array where each face is prefixed by its vertex count (3 for triangles)
+        faces = np.hstack([[3, *face] for face in mesh.faces])
+        pv_mesh = pv.PolyData(mesh.vertices, faces)
+        # Attach per-cell colors if provided
+        colors = getattr(mesh.visual, 'face_colors', None)
+        if colors is not None:
+            colors = np.asarray(colors)
+            if colors.size and colors.max() > 1:
+                colors = colors / 255.0
+            pv_mesh.cell_data['colors'] = colors
+        pv_meshes[class_id] = pv_mesh
+
+    # Compute overall bounding box across all meshes without stacking
+    min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
+    max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+    for mesh in meshes.values():
+        if mesh is None or len(mesh.vertices) == 0:
+            continue
+        v = mesh.vertices
+        # update mins and maxs
+        min_xyz = np.minimum(min_xyz, v.min(axis=0))
+        max_xyz = np.maximum(max_xyz, v.max(axis=0))
+    bbox = np.vstack([min_xyz, max_xyz])
 
     # Compute the center and diagonal of the bounding box
     center = (bbox[1] + bbox[0]) / 2
@@ -1897,21 +1919,14 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
         elif projection_type.lower() != "perspective":
             print(f"Warning: Unknown projection_type '{projection_type}'. Using perspective projection.")
 
-        # Add each mesh to the scene
-        for class_id, mesh in meshes.items():
-            vertices = mesh.vertices
-            faces = np.hstack([[3, *face] for face in mesh.faces])
-            pv_mesh = pv.PolyData(vertices, faces)
-
-            if hasattr(mesh.visual, 'face_colors'):
-                colors = mesh.visual.face_colors
-                if colors.max() > 1:
-                    colors = colors / 255.0
-                pv_mesh.cell_data['colors'] = colors
-
-            plotter.add_mesh(pv_mesh,
-                           rgb=True,
-                           scalars='colors' if hasattr(mesh.visual, 'face_colors') else None)
+        # Add each precomputed mesh to the scene
+        for class_id, pv_mesh in pv_meshes.items():
+            has_colors = 'colors' in pv_mesh.cell_data
+            plotter.add_mesh(
+                pv_mesh,
+                rgb=True,
+                scalars='colors' if has_colors else None
+            )
 
         # Set camera position for this view
         plotter.camera_position = camera_pos
@@ -2350,8 +2365,11 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     - visualize_voxcity_multi_view(): Basic voxel visualization without custom meshes
     - create_multi_view_scene(): Lower-level rendering function
     """
-    os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
-    os.environ['DISPLAY'] = ':99'
+    # Setup offscreen rendering only when needed and supported
+    if sys.platform.startswith('linux'):
+        if 'DISPLAY' not in os.environ:
+            os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
+            os.environ['DISPLAY'] = ':99'
 
     # Configure PyVista settings
     pv.set_plot_theme('document')
@@ -2381,13 +2399,25 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     nan_color = kwargs.get("nan_color", "gray")
     show_views = kwargs.get("show_views", True)
     save_obj = kwargs.get("save_obj", False)
+    include_classes = kwargs.get("include_classes", None)
+    exclude_classes = kwargs.get("exclude_classes", None)
+    copy_custom_mesh = kwargs.get("copy_custom_mesh", False)
     
     if value_name is None:
         print("Set value_name")
 
     # Create meshes from voxel data
     print("Creating voxel meshes...")
-    meshes = create_city_meshes(voxel_array, vox_dict, meshsize=meshsize)
+    # Skip generating voxel meshes for classes that will be replaced by custom meshes
+    if exclude_classes is None and custom_meshes is not None:
+        exclude_classes = list(custom_meshes.keys())
+    meshes = create_city_meshes(
+        voxel_array,
+        vox_dict,
+        meshsize=meshsize,
+        include_classes=include_classes,
+        exclude_classes=exclude_classes,
+    )
     
     # Replace specific voxel class meshes with custom simulation meshes
     if custom_meshes is not None:
@@ -2399,18 +2429,23 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
                 import matplotlib.colors as mcolors
                 
                 # Get values from metadata
-                values = custom_mesh.metadata[value_name]
+                values = np.asarray(custom_mesh.metadata[value_name])
                 
                 # Set vmin/vmax if not provided
-                local_vmin = vmin if vmin is not None else np.nanmin(values[~np.isnan(values)])
-                local_vmax = vmax if vmax is not None else np.nanmax(values[~np.isnan(values)])
+                finite_mask = np.isfinite(values)
+                if not np.any(finite_mask):
+                    local_vmin = 0.0 if vmin is None else vmin
+                    local_vmax = 1.0 if vmax is None else vmax
+                else:
+                    local_vmin = vmin if vmin is not None else float(np.nanmin(values[finite_mask]))
+                    local_vmax = vmax if vmax is not None else float(np.nanmax(values[finite_mask]))
 
                 # Create colors
                 cmap = cm.get_cmap(cmap_name)
                 norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)
                 
                 # Handle NaN values with custom color
-                face_colors = np.zeros((len(values), 4))
+                face_colors = np.zeros((len(values), 4), dtype=float)
                 
                 # Convert string color to RGBA if needed
                 if isinstance(nan_color, str):
@@ -2421,25 +2456,25 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
                     nan_rgba = np.array(nan_color)
                 
                 # Apply colors: NaN values get nan_color, others get colormap colors
-                nan_mask = np.isnan(values)
+                nan_mask = ~finite_mask
                 face_colors[~nan_mask] = cmap(norm(values[~nan_mask]))
                 face_colors[nan_mask] = nan_rgba
                 
                 # Create a copy with colors
-                vis_mesh = custom_mesh.copy()
+                vis_mesh = custom_mesh.copy() if copy_custom_mesh else custom_mesh
                 vis_mesh.visual.face_colors = face_colors
 
-                # Prepare the colormap and create colorbar
-                norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)
-                scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
-                
-                # Create a figure and axis for the colorbar but don't display
-                fig, ax = plt.subplots(figsize=(6, 1))
-                cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
-                if colorbar_title:
-                    cbar.set_label(colorbar_title)
-                plt.tight_layout()
-                plt.show()  
+                # Prepare the colormap and create colorbar if views will be shown
+                if show_views:
+                    norm = mcolors.Normalize(vmin=local_vmin, vmax=local_vmax)
+                    scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap_name)
+                    fig, ax = plt.subplots(figsize=(6, 1))
+                    cbar = plt.colorbar(scalar_map, cax=ax, orientation='horizontal')
+                    if colorbar_title:
+                        cbar.set_label(colorbar_title)
+                    plt.tight_layout()
+                    plt.show()
+                    plt.close(fig)
                 
                 if class_id in meshes:
                     print(f"Replacing voxel class {class_id} with colored custom simulation mesh")
@@ -2504,8 +2539,12 @@ def visualize_voxcity_with_sim_meshes(voxel_array, meshsize, custom_meshes=None,
     if save_obj:
         output_directory = kwargs.get('output_directory', 'output')
         output_file_name = kwargs.get('output_file_name', 'voxcity_mesh')
-        max_materials = kwargs.get('max_materials', 20)
-        obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name, max_materials=max_materials)
+        # Default: do NOT quantize to preserve exact face colors like in images
+        max_materials = kwargs.get('max_materials', None)
+        if max_materials is None:
+            obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name)
+        else:
+            obj_path, mtl_path = save_obj_from_colored_mesh(meshes, output_directory, output_file_name, max_materials=max_materials)
         print(f"Saved mesh files to:\n  {obj_path}\n  {mtl_path}")    
 
     if show_views:
@@ -2559,6 +2598,13 @@ def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **k
     
     # Create custom meshes dictionary with the building simulation mesh
     custom_meshes = {building_class_id: building_sim_mesh}
+
+    # Performance: skip voxel mesh generation for building class by default
+    if "include_classes" not in kwargs and "exclude_classes" not in kwargs:
+        kwargs["exclude_classes"] = [building_class_id]
+
+    # Memory-safety: do not duplicate the provided mesh unless requested
+    kwargs.setdefault("copy_custom_mesh", False)
     
     # Add colorbar title if not provided
     if "colorbar_title" not in kwargs:

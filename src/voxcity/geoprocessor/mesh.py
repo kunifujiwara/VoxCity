@@ -350,7 +350,13 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
 
     return mesh
 
-def create_city_meshes(voxel_array, vox_dict, meshsize=1.0):
+def create_city_meshes(
+    voxel_array,
+    vox_dict,
+    meshsize=1.0,
+    include_classes=None,
+    exclude_classes=None,
+):
     """
     Create a collection of colored 3D meshes representing different city elements.
     
@@ -418,9 +424,24 @@ def create_city_meshes(voxel_array, vox_dict, meshsize=1.0):
     color_dict = {k: mcolors.rgb2hex([v[0]/255, v[1]/255, v[2]/255])
                  for k, v in vox_dict.items() if k != 0}  # Exclude air
 
+    # Determine which classes to process
+    unique_classes = np.unique(voxel_array)
+
+    if include_classes is not None:
+        # Only keep classes explicitly requested (and present in the data)
+        class_iterable = [c for c in include_classes if c in unique_classes]
+    else:
+        class_iterable = list(unique_classes)
+
+    exclude_set = set(exclude_classes) if exclude_classes is not None else set()
+
     # Create vertices and faces for each object class
-    for class_id in np.unique(voxel_array):
+    for class_id in class_iterable:
         if class_id == 0:  # Skip air
+            continue
+
+        if class_id in exclude_set:
+            # Explicitly skipped (e.g., will be replaced with custom mesh)
             continue
 
         try:
@@ -430,6 +451,9 @@ def create_city_meshes(voxel_array, vox_dict, meshsize=1.0):
                 continue
 
             # Convert hex color to RGBA
+            if class_id not in color_dict:
+                # Color not provided; skip silently for robustness
+                continue
             rgb_color = np.array(mcolors.hex2color(color_dict[class_id]))
             rgba_color = np.concatenate([rgb_color, [1.0]])
 
@@ -688,7 +712,16 @@ def save_obj_from_colored_mesh(meshes, output_path, base_filename, max_materials
     with open(mtl_path, "w") as mtl:
         for i, (r, g, b, a) in enumerate(ordered_colors):
             mtl.write(f"newmtl material_{i}\n")
-            mtl.write(f"Kd {r/255.0:.6f} {g/255.0:.6f} {b/255.0:.6f}\n")
+            # Match viewport look: diffuse only, no specular. Many viewers assume sRGB.
+            kd_r, kd_g, kd_b = r/255.0, g/255.0, b/255.0
+            mtl.write(f"Kd {kd_r:.6f} {kd_g:.6f} {kd_b:.6f}\n")
+            # Ambient same as diffuse to avoid darkening in some viewers
+            mtl.write(f"Ka {kd_r:.6f} {kd_g:.6f} {kd_b:.6f}\n")
+            # No specular highlight
+            mtl.write("Ks 0.000000 0.000000 0.000000\n")
+            # Disable lighting model with specular; keep simple shading
+            mtl.write("illum 1\n")
+            # Alpha
             mtl.write(f"d {a/255.0:.6f}\n\n")
 
     # Stream OBJ
