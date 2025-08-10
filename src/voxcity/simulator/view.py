@@ -1340,9 +1340,7 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     face_centers = building_mesh.triangles_center  # Centroid of each face
     face_normals = building_mesh.face_normals      # Outward normal of each face
     
-    # Generate hemisphere ray directions using spherical coordinates
-    # These directions will be rotated to align with each face's normal
-    # Use midpoint sampling to avoid axis-aligned and grazing directions
+    # Generate hemisphere ray directions using spherical coordinates (local +Z hemisphere)
     azimuth_angles   = (np.arange(N_azimuth) + 0.5) / N_azimuth * (2*np.pi)
     elevation_angles = (np.arange(N_elevation) + 0.5) / N_elevation * (np.pi/2)
     hemisphere_list = []
@@ -1350,10 +1348,9 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
         sin_elev = np.sin(elev)
         cos_elev = np.cos(elev)
         for az in azimuth_angles:
-            # Convert spherical to Cartesian coordinates
             x = cos_elev * np.cos(az)
             y = cos_elev * np.sin(az)
-            z = sin_elev  # Always positive (upper hemisphere)
+            z = sin_elev
             hemisphere_list.append([x, y, z])
     hemisphere_dirs = np.array(hemisphere_list, dtype=np.float64)
     
@@ -1363,20 +1360,48 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     grid_bounds_real = grid_bounds_voxel * meshsize
     boundary_epsilon = meshsize * 0.05  # Tolerance for boundary detection
     
-    # Compute view factors for all faces using optimized Numba implementation
-    face_vf_values = compute_view_factor_for_all_faces(
-        face_centers,
-        face_normals,
-        hemisphere_dirs,
-        voxel_data,
-        meshsize,
-        tree_k,
-        tree_lad,
-        target_values,   # User-specified target voxel classes
-        inclusion_mode,  # User-specified hit interpretation
-        grid_bounds_real,
-        boundary_epsilon
-    )
+    # Attempt fast path using boolean masks + orthonormal basis + parallel Numba
+    fast_path = kwargs.get("fast_path", True)
+    face_vf_values = None
+    if fast_path:
+        try:
+            vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque = _prepare_masks_for_view(
+                voxel_data, target_values, inclusion_mode
+            )
+            att = float(np.exp(-tree_k * tree_lad * meshsize))
+            att_cutoff = 0.01
+            trees_are_targets = bool((-2 in target_values) and inclusion_mode)
+
+            face_vf_values = _compute_view_factor_faces_progress(
+                face_centers.astype(np.float64),
+                face_normals.astype(np.float64),
+                hemisphere_dirs.astype(np.float64),
+                vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+                float(meshsize), float(att), float(att_cutoff),
+                grid_bounds_real.astype(np.float64), float(boundary_epsilon),
+                inclusion_mode, trees_are_targets,
+                progress_report=progress_report
+            )
+        except Exception as e:
+            if debug:
+                print(f"Fast view-factor path failed: {e}. Falling back to standard path.")
+            face_vf_values = None
+
+    # Fallback to original implementation if fast path unavailable/failed
+    if face_vf_values is None:
+        face_vf_values = compute_view_factor_for_all_faces(
+            face_centers,
+            face_normals,
+            hemisphere_dirs,
+            voxel_data,
+            meshsize,
+            tree_k,
+            tree_lad,
+            target_values,
+            inclusion_mode,
+            grid_bounds_real,
+            boundary_epsilon
+        )
     
     # Store computed view factor values in mesh metadata for later access
     if not hasattr(building_mesh, 'metadata'):
@@ -1396,6 +1421,218 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
             print(f"Error exporting mesh: {e}")
     
     return building_mesh
+
+# ==========================
+# Fast per-face view factor (parallel)
+# ==========================
+def _prepare_masks_for_view(voxel_data, target_values, inclusion_mode):
+    is_tree = (voxel_data == -2)
+    # Targets mask (for inclusion mode)
+    target_mask = np.zeros(voxel_data.shape, dtype=np.bool_)
+    for tv in target_values:
+        target_mask |= (voxel_data == tv)
+    if inclusion_mode:
+        # Opaque: anything non-air, non-tree, and not target
+        is_opaque = (voxel_data != 0) & (~is_tree) & (~target_mask)
+        # Allowed mask is unused in inclusion mode but keep shape compatibility
+        is_allowed = target_mask.copy()
+    else:
+        # Exclusion mode: allowed voxels are target_values (e.g., sky=0)
+        is_allowed = target_mask
+        # Opaque: anything not tree and not allowed
+        is_opaque = (~is_tree) & (~is_allowed)
+    return is_tree, target_mask, is_allowed, is_opaque
+
+@njit(cache=True, fastmath=True, nogil=True)
+def _build_face_basis(normal):
+    nx = normal[0]; ny = normal[1]; nz = normal[2]
+    nrm = (nx*nx + ny*ny + nz*nz) ** 0.5
+    if nrm < 1e-12:
+        # Default to +Z if degenerate
+        return (np.array((1.0, 0.0, 0.0)),
+                np.array((0.0, 1.0, 0.0)),
+                np.array((0.0, 0.0, 1.0)))
+    invn = 1.0 / nrm
+    nx *= invn; ny *= invn; nz *= invn
+    n = np.array((nx, ny, nz))
+    # Choose helper to avoid near-parallel cross
+    if abs(nz) < 0.999:
+        helper = np.array((0.0, 0.0, 1.0))
+    else:
+        helper = np.array((1.0, 0.0, 0.0))
+    # u = normalize(helper x n)
+    ux = helper[1]*n[2] - helper[2]*n[1]
+    uy = helper[2]*n[0] - helper[0]*n[2]
+    uz = helper[0]*n[1] - helper[1]*n[0]
+    ul = (ux*ux + uy*uy + uz*uz) ** 0.5
+    if ul < 1e-12:
+        u = np.array((1.0, 0.0, 0.0))
+    else:
+        invul = 1.0 / ul
+        u = np.array((ux*invul, uy*invul, uz*invul))
+    # v = n x u
+    vx = n[1]*u[2] - n[2]*u[1]
+    vy = n[2]*u[0] - n[0]*u[2]
+    vz = n[0]*u[1] - n[1]*u[0]
+    v = np.array((vx, vy, vz))
+    return u, v, n
+
+@njit(cache=True, fastmath=True, nogil=True)
+def _ray_visibility_contrib(origin, direction,
+                            vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+                            att, att_cutoff,
+                            inclusion_mode, trees_are_targets):
+    nx, ny, nz = vox_is_opaque.shape
+    x0 = origin[0]; y0 = origin[1]; z0 = origin[2]
+    dx = direction[0]; dy = direction[1]; dz = direction[2]
+
+    # Normalize
+    L = (dx*dx + dy*dy + dz*dz) ** 0.5
+    if L == 0.0:
+        return 0.0
+    invL = 1.0 / L
+    dx *= invL; dy *= invL; dz *= invL
+
+    # Starting point and indices
+    x = x0 + 0.5
+    y = y0 + 0.5
+    z = z0 + 0.5
+    i = int(x0); j = int(y0); k = int(z0)
+
+    step_x = 1 if dx >= 0.0 else -1
+    step_y = 1 if dy >= 0.0 else -1
+    step_z = 1 if dz >= 0.0 else -1
+
+    BIG = 1e30
+    if dx != 0.0:
+        t_max_x = (((i + (1 if step_x > 0 else 0)) - x) / dx)
+        t_delta_x = abs(1.0 / dx)
+    else:
+        t_max_x = BIG; t_delta_x = BIG
+    if dy != 0.0:
+        t_max_y = (((j + (1 if step_y > 0 else 0)) - y) / dy)
+        t_delta_y = abs(1.0 / dy)
+    else:
+        t_max_y = BIG; t_delta_y = BIG
+    if dz != 0.0:
+        t_max_z = (((k + (1 if step_z > 0 else 0)) - z) / dz)
+        t_delta_z = abs(1.0 / dz)
+    else:
+        t_max_z = BIG; t_delta_z = BIG
+
+    T = 1.0
+
+    while True:
+        if (i < 0) or (i >= nx) or (j < 0) or (j >= ny) or (k < 0) or (k >= nz):
+            # Out of bounds: for exclusion mode return transmittance, else no hit
+            if inclusion_mode:
+                return 0.0
+            else:
+                return T
+
+        if vox_is_opaque[i, j, k]:
+            return 0.0
+
+        if vox_is_tree[i, j, k]:
+            T *= att
+            if T < att_cutoff:
+                return 0.0
+            if inclusion_mode and trees_are_targets:
+                # First tree encountered; contribution is partial visibility
+                return 1.0 - (T if T < 1.0 else 1.0)
+
+        if inclusion_mode:
+            if (not vox_is_tree[i, j, k]) and vox_is_target[i, j, k]:
+                return 1.0
+        else:
+            # Exclusion: allow only allowed or tree; any other value blocks
+            if (not vox_is_tree[i, j, k]) and (not vox_is_allowed[i, j, k]):
+                return 0.0
+
+        # Step DDA
+        if t_max_x < t_max_y:
+            if t_max_x < t_max_z:
+                t_max_x += t_delta_x; i += step_x
+            else:
+                t_max_z += t_delta_z; k += step_z
+        else:
+            if t_max_y < t_max_z:
+                t_max_y += t_delta_y; j += step_y
+            else:
+                t_max_z += t_delta_z; k += step_z
+
+@njit(parallel=True, cache=True, fastmath=True, nogil=True)
+def _compute_view_factor_faces_chunk(face_centers, face_normals, hemisphere_dirs,
+                                     vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+                                     meshsize, att, att_cutoff,
+                                     grid_bounds_real, boundary_epsilon,
+                                     inclusion_mode, trees_are_targets):
+    n_faces = face_centers.shape[0]
+    out = np.empty(n_faces, dtype=np.float64)
+    for f in prange(n_faces):
+        center = face_centers[f]
+        normal = face_normals[f]
+
+        # Boundary vertical exclusion
+        is_vertical = (abs(normal[2]) < 0.01)
+        on_x_min = (abs(center[0] - grid_bounds_real[0,0]) < boundary_epsilon)
+        on_y_min = (abs(center[1] - grid_bounds_real[0,1]) < boundary_epsilon)
+        on_x_max = (abs(center[0] - grid_bounds_real[1,0]) < boundary_epsilon)
+        on_y_max = (abs(center[1] - grid_bounds_real[1,1]) < boundary_epsilon)
+        if is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max):
+            out[f] = np.nan
+            continue
+
+        u, v, n = _build_face_basis(normal)
+
+        # Origin slightly outside face
+        ox = center[0] / meshsize + n[0] * 0.51
+        oy = center[1] / meshsize + n[1] * 0.51
+        oz = center[2] / meshsize + n[2] * 0.51
+        origin = np.array((ox, oy, oz))
+
+        vis_sum = 0.0
+        valid = 0
+        for i in range(hemisphere_dirs.shape[0]):
+            lx = hemisphere_dirs[i,0]; ly = hemisphere_dirs[i,1]; lz = hemisphere_dirs[i,2]
+            # Transform local hemisphere (+Z up) into world; outward is +n
+            dx = u[0]*lx + v[0]*ly + n[0]*lz
+            dy = u[1]*lx + v[1]*ly + n[1]*lz
+            dz = u[2]*lx + v[2]*ly + n[2]*lz
+            # Only outward directions
+            if (dx*n[0] + dy*n[1] + dz*n[2]) <= 0.0:
+                continue
+            contrib = _ray_visibility_contrib(origin, np.array((dx, dy, dz)),
+                                              vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+                                              att, att_cutoff,
+                                              inclusion_mode, trees_are_targets)
+            vis_sum += contrib
+            valid += 1
+        out[f] = 0.0 if valid == 0 else (vis_sum / valid)
+    return out
+
+def _compute_view_factor_faces_progress(face_centers, face_normals, hemisphere_dirs,
+                                        vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+                                        meshsize, att, att_cutoff,
+                                        grid_bounds_real, boundary_epsilon,
+                                        inclusion_mode, trees_are_targets,
+                                        progress_report=False, chunks=10):
+    n_faces = face_centers.shape[0]
+    results = np.empty(n_faces, dtype=np.float64)
+    step = math.ceil(n_faces / chunks) if n_faces > 0 else 1
+    for start in range(0, n_faces, step):
+        end = min(start + step, n_faces)
+        results[start:end] = _compute_view_factor_faces_chunk(
+            face_centers[start:end], face_normals[start:end], hemisphere_dirs,
+            vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+            float(meshsize), float(att), float(att_cutoff),
+            grid_bounds_real, float(boundary_epsilon),
+            inclusion_mode, trees_are_targets
+        )
+        if progress_report:
+            pct = (end / n_faces) * 100 if n_faces > 0 else 100.0
+            print(f"  Processed {end}/{n_faces} faces ({pct:.1f}%)")
+    return results
 
 # ==========================
 # DDA ray traversal (fast)
