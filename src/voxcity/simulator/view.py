@@ -180,9 +180,15 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
             transmittance = calculate_transmittance(segment_length, tree_k, tree_lad)
             cumulative_transmittance *= transmittance
 
-            # If transmittance becomes too low, consider the ray blocked
+            # If transmittance becomes too low, consider the ray blocked.
+            # In exclusion mode (e.g., sky view), a blocked ray counts as a hit (obstruction).
+            # In inclusion mode (e.g., building view), trees should NOT count as a target hit;
+            # we terminate traversal early but report no hit so callers can treat it as 0 visibility.
             if cumulative_transmittance < 0.01:
-                return True, cumulative_transmittance
+                if inclusion_mode:
+                    return False, cumulative_transmittance
+                else:
+                    return True, cumulative_transmittance
 
         # Check for hits with target objects based on inclusion/exclusion mode
         if inclusion_mode:
@@ -190,6 +196,9 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
             for hv in hit_values:
                 if voxel_value == hv:
                     return True, cumulative_transmittance
+            # Opaque blockers (anything non-air, non-tree, and not a target) stop visibility
+            if voxel_value != 0 and voxel_value != -2:
+                return False, cumulative_transmittance
         else:
             # Exclusion mode: hit if voxel value is NOT in the allowed set
             in_set = False
@@ -202,26 +211,78 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
 
         # Update for next iteration
         last_t = t_next
-        
-        # Move to next voxel using DDA step logic
-        if t_max_x < t_max_y:
-            if t_max_x < t_max_z:
-                # Step in X direction
-                t_max_x += t_delta_x
-                i += step_x
+
+        # Tie-aware DDA stepping to reduce corner leaks
+        TIE_EPS = 1e-12
+        eq_x = abs(t_max_x - t_next) <= TIE_EPS
+        eq_y = abs(t_max_y - t_next) <= TIE_EPS
+        eq_z = abs(t_max_z - t_next) <= TIE_EPS
+
+        # Conservative occlusion at exact grid corner crossings in inclusion mode
+        if inclusion_mode and ((eq_x and eq_y) or (eq_x and eq_z) or (eq_y and eq_z)):
+            # Probe neighbor cells we are about to enter on tied axes; if any is opaque non-target, block
+            # Note: bounds checks guard against out-of-grid probes
+            if eq_x:
+                ii = i + step_x
+                if 0 <= ii < nx:
+                    val = voxel_data[ii, j, k]
+                    is_target = False
+                    for hv in hit_values:
+                        if val == hv:
+                            is_target = True
+                            break
+                    if (val != 0) and (val != -2) and (not is_target):
+                        return False, cumulative_transmittance
+            if eq_y:
+                jj = j + step_y
+                if 0 <= jj < ny:
+                    val = voxel_data[i, jj, k]
+                    is_target = False
+                    for hv in hit_values:
+                        if val == hv:
+                            is_target = True
+                            break
+                    if (val != 0) and (val != -2) and (not is_target):
+                        return False, cumulative_transmittance
+            if eq_z:
+                kk = k + step_z
+                if 0 <= kk < nz:
+                    val = voxel_data[i, j, kk]
+                    is_target = False
+                    for hv in hit_values:
+                        if val == hv:
+                            is_target = True
+                            break
+                    if (val != 0) and (val != -2) and (not is_target):
+                        return False, cumulative_transmittance
+
+        # Step along all axes that hit at t_next (handles ties robustly)
+        stepped = False
+        if eq_x:
+            t_max_x += t_delta_x
+            i += step_x
+            stepped = True
+        if eq_y:
+            t_max_y += t_delta_y
+            j += step_y
+            stepped = True
+        if eq_z:
+            t_max_z += t_delta_z
+            k += step_z
+            stepped = True
+
+        if not stepped:
+            # Fallback: should not happen, but keep classic ordering
+            if t_max_x < t_max_y:
+                if t_max_x < t_max_z:
+                    t_max_x += t_delta_x; i += step_x
+                else:
+                    t_max_z += t_delta_z; k += step_z
             else:
-                # Step in Z direction
-                t_max_z += t_delta_z
-                k += step_z
-        else:
-            if t_max_y < t_max_z:
-                # Step in Y direction
-                t_max_y += t_delta_y
-                j += step_y
-            else:
-                # Step in Z direction
-                t_max_z += t_delta_z
-                k += step_z
+                if t_max_y < t_max_z:
+                    t_max_y += t_delta_y; j += step_y
+                else:
+                    t_max_z += t_delta_z; k += step_z
 
     # Ray exited the grid without hitting a target
     return False, cumulative_transmittance
@@ -265,10 +326,12 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
         # Accumulate visibility contributions based on mode
         if inclusion_mode:
             if hit:
-                # For trees in hit_values, use partial visibility based on transmittance
+                # For trees in hit_values, use partial visibility based on transmittance (Beer-Lambert)
                 if -2 in hit_values:
-                    # Use the hit contribution (1 - transmittance) for tree visibility
-                    visibility_sum += value if value < 1.0 else 1.0
+                    # value is cumulative transmittance (0..1).
+                    # Contribution should be 1 - transmittance.
+                    contrib = 1.0 - max(0.0, min(1.0, value))
+                    visibility_sum += contrib
                 else:
                     # Full visibility for non-tree targets
                     visibility_sum += 1.0
@@ -1010,7 +1073,7 @@ def compute_view_factor_for_all_faces(
     inclusion_mode,
     grid_bounds_real,
     boundary_epsilon,
-    ignore_downward=True
+    offset_vox=0.51
 ):
     """
     Compute a per-face "view factor" for a specified set of target voxel classes.
@@ -1037,7 +1100,6 @@ def compute_view_factor_for_all_faces(
                                If False, hitting anything NOT in target_values blocks the ray.
         grid_bounds_real (np.ndarray): [[x_min,y_min,z_min],[x_max,y_max,z_max]] in real coords.
         boundary_epsilon (float): Tolerance for identifying boundary vertical faces.
-        ignore_downward (bool): If True, only consider upward rays. If False, consider all outward rays.
 
     Returns:
         np.ndarray of shape (n_faces,): Computed view factor for each face.
@@ -1109,9 +1171,9 @@ def compute_view_factor_for_all_faces(
                     angle
                 )
         
-        # Count valid ray directions based on face orientation and downward filtering
+        # Count valid ray directions based on face orientation (outward only)
         total_outward = 0  # Rays pointing away from face surface
-        num_valid = 0      # Rays that meet all criteria (outward + optionally upward)
+        num_valid = 0      # Rays that meet all criteria (outward)
         
         for i in range(local_dirs.shape[0]):
             dvec = local_dirs[i]
@@ -1119,9 +1181,7 @@ def compute_view_factor_for_all_faces(
             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
             if dp > 0.0:
                 total_outward += 1
-                # Apply downward filtering if requested
-                if not ignore_downward or dvec[2] > 0.0:
-                    num_valid += 1
+                num_valid += 1
         
         # Handle cases with no valid directions
         if total_outward == 0:
@@ -1138,14 +1198,14 @@ def compute_view_factor_for_all_faces(
         for i in range(local_dirs.shape[0]):
             dvec = local_dirs[i]
             dp = dvec[0]*normal[0] + dvec[1]*normal[1] + dvec[2]*normal[2]
-            if dp > 0.0 and (not ignore_downward or dvec[2] > 0.0):
+            if dp > 0.0:
                 valid_dirs_arr[out_idx, 0] = dvec[0]
                 valid_dirs_arr[out_idx, 1] = dvec[1]
                 valid_dirs_arr[out_idx, 2] = dvec[2]
                 out_idx += 1
         
         # Set ray origin slightly offset from face surface to avoid self-intersection
-        offset_vox = 0.1  # Offset in voxel units
+        # Use configurable offset to reduce self-hit artifacts.
         ray_origin = (center / meshsize) + (normal / norm_n) * offset_vox
         
         # Compute fraction of valid rays that "see" the target using generic ray tracing
@@ -1282,8 +1342,9 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     
     # Generate hemisphere ray directions using spherical coordinates
     # These directions will be rotated to align with each face's normal
-    azimuth_angles   = np.linspace(0, 2*np.pi, N_azimuth, endpoint=False)
-    elevation_angles = np.linspace(0, np.pi/2, N_elevation)  # Upper hemisphere only
+    # Use midpoint sampling to avoid axis-aligned and grazing directions
+    azimuth_angles   = (np.arange(N_azimuth) + 0.5) / N_azimuth * (2*np.pi)
+    elevation_angles = (np.arange(N_elevation) + 0.5) / N_elevation * (np.pi/2)
     hemisphere_list = []
     for elev in elevation_angles:
         sin_elev = np.sin(elev)

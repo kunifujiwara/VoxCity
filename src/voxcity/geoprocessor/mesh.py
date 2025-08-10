@@ -187,9 +187,16 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     # Merge vertices that are at the same position
     mesh.merge_vertices()
     
+    # Ensure metadata dict exists
+    if not hasattr(mesh, 'metadata') or mesh.metadata is None:
+        mesh.metadata = {}
+
+    # Store intended per-triangle normals to avoid reliance on auto-computed normals
+    mesh.metadata['provided_face_normals'] = face_normals_list
+
     # Add building IDs as metadata for buildings
     if class_id == -3 and building_id_grid is not None and building_ids:
-        mesh.metadata = {'building_id': np.array(building_ids)}
+        mesh.metadata['building_id'] = np.array(building_ids)
 
     return mesh
 
