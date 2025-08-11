@@ -1031,12 +1031,12 @@ def get_global_solar_irradiance_using_epw(
 import numpy as np
 import trimesh
 import time
-from numba import njit
+from numba import njit, prange
 
 ##############################################################################
 # 1) New Numba helper: per-face solar irradiance computation
 ##############################################################################
-@njit
+@njit(parallel=True)
 def compute_solar_irradiance_for_all_faces(
     face_centers,
     face_normals,
@@ -1117,7 +1117,7 @@ def compute_solar_irradiance_for_all_faces(
     x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
     
     # Process each face individually (Numba optimizes this loop)
-    for fidx in range(n_faces):
+    for fidx in prange(n_faces):
         center = face_centers[fidx]
         normal = face_normals[fidx]
         svf    = face_svf[fidx]
@@ -1301,24 +1301,47 @@ def get_building_solar_irradiance(
     grid_bounds_real = grid_bounds_voxel * meshsize
     boundary_epsilon = meshsize * 0.05  # Small tolerance for boundary detection
     
-    # Call high-performance Numba-compiled calculation function
+    # Optional fast path using masked DDA kernel
+    fast_path = kwargs.get("fast_path", True)
     t0 = time.time()
-    face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
-        face_centers,
-        face_normals,
-        face_svf,
-        sun_direction,
-        direct_normal_irradiance,
-        diffuse_irradiance,
-        voxel_data,
-        meshsize,
-        tree_k,
-        tree_lad,
-        hit_values,
-        inclusion_mode,
-        grid_bounds_real,
-        boundary_epsilon
-    )
+    if fast_path:
+        # Prepare masks once
+        vox_is_tree = (voxel_data == -2)
+        vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
+        att = float(np.exp(-tree_k * tree_lad * meshsize))
+
+        face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces_masked(
+            face_centers.astype(np.float64),
+            face_normals.astype(np.float64),
+            face_svf.astype(np.float64),
+            sun_direction.astype(np.float64),
+            float(direct_normal_irradiance),
+            float(diffuse_irradiance),
+            vox_is_tree,
+            vox_is_opaque,
+            float(meshsize),
+            att,
+            float(grid_bounds_real[0,0]), float(grid_bounds_real[0,1]), float(grid_bounds_real[0,2]),
+            float(grid_bounds_real[1,0]), float(grid_bounds_real[1,1]), float(grid_bounds_real[1,2]),
+            float(boundary_epsilon)
+        )
+    else:
+        face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
+            face_centers,
+            face_normals,
+            face_svf,
+            sun_direction,
+            direct_normal_irradiance,
+            diffuse_irradiance,
+            voxel_data,
+            meshsize,
+            tree_k,
+            tree_lad,
+            hit_values,
+            inclusion_mode,
+            grid_bounds_real,
+            boundary_epsilon
+        )
     
     # Report performance timing if requested
     if progress_report:
@@ -1349,6 +1372,148 @@ def get_building_solar_irradiance(
     #     irradiance_mesh.export(f"{output_dir}/{output_file_name}.obj")
     
     return irradiance_mesh
+
+##############################################################################
+# 2.5) Specialized masked DDA for per-face irradiance (parallel)
+##############################################################################
+@njit(cache=True, fastmath=True, nogil=True)
+def _trace_direct_masked(vox_is_tree, vox_is_opaque, origin, direction, att, att_cutoff=0.01):
+    nx, ny, nz = vox_is_opaque.shape
+    x0 = origin[0]; y0 = origin[1]; z0 = origin[2]
+    dx = direction[0]; dy = direction[1]; dz = direction[2]
+
+    # Normalize
+    L = (dx*dx + dy*dy + dz*dz) ** 0.5
+    if L == 0.0:
+        return False, 1.0
+    invL = 1.0 / L
+    dx *= invL; dy *= invL; dz *= invL
+
+    # Start at voxel centers
+    x = x0 + 0.5; y = y0 + 0.5; z = z0 + 0.5
+    i = int(x0); j = int(y0); k = int(z0)
+
+    step_x = 1 if dx >= 0.0 else -1
+    step_y = 1 if dy >= 0.0 else -1
+    step_z = 1 if dz >= 0.0 else -1
+
+    BIG = 1e30
+    if dx != 0.0:
+        t_max_x = (((i + (1 if step_x > 0 else 0)) - x) / dx)
+        t_delta_x = abs(1.0 / dx)
+    else:
+        t_max_x = BIG; t_delta_x = BIG
+    if dy != 0.0:
+        t_max_y = (((j + (1 if step_y > 0 else 0)) - y) / dy)
+        t_delta_y = abs(1.0 / dy)
+    else:
+        t_max_y = BIG; t_delta_y = BIG
+    if dz != 0.0:
+        t_max_z = (((k + (1 if step_z > 0 else 0)) - z) / dz)
+        t_delta_z = abs(1.0 / dz)
+    else:
+        t_max_z = BIG; t_delta_z = BIG
+
+    T = 1.0
+    while True:
+        if (i < 0) or (i >= nx) or (j < 0) or (j >= ny) or (k < 0) or (k >= nz):
+            # Exited grid: not blocked
+            return False, T
+
+        if vox_is_opaque[i, j, k]:
+            # Hit opaque (non-sky, non-tree)
+            return True, T
+
+        if vox_is_tree[i, j, k]:
+            T *= att
+            if T < att_cutoff:
+                # Consider fully attenuated
+                return True, T
+
+        # Step DDA
+        if t_max_x < t_max_y:
+            if t_max_x < t_max_z:
+                t_max_x += t_delta_x; i += step_x
+            else:
+                t_max_z += t_delta_z; k += step_z
+        else:
+            if t_max_y < t_max_z:
+                t_max_y += t_delta_y; j += step_y
+            else:
+                t_max_z += t_delta_z; k += step_z
+
+@njit(parallel=True, cache=True, fastmath=True, nogil=True)
+def compute_solar_irradiance_for_all_faces_masked(
+    face_centers,
+    face_normals,
+    face_svf,
+    sun_direction,
+    direct_normal_irradiance,
+    diffuse_irradiance,
+    vox_is_tree,
+    vox_is_opaque,
+    meshsize,
+    att,
+    x_min, y_min, z_min,
+    x_max, y_max, z_max,
+    boundary_epsilon
+):
+    n_faces = face_centers.shape[0]
+    face_direct = np.zeros(n_faces, dtype=np.float64)
+    face_diffuse = np.zeros(n_faces, dtype=np.float64)
+    face_global = np.zeros(n_faces, dtype=np.float64)
+
+    for fidx in prange(n_faces):
+        center = face_centers[fidx]
+        normal = face_normals[fidx]
+        svf = face_svf[fidx]
+
+        # Boundary vertical exclusion
+        is_vertical = (abs(normal[2]) < 0.01)
+        on_x_min = (abs(center[0] - x_min) < boundary_epsilon)
+        on_y_min = (abs(center[1] - y_min) < boundary_epsilon)
+        on_x_max = (abs(center[0] - x_max) < boundary_epsilon)
+        on_y_max = (abs(center[1] - y_max) < boundary_epsilon)
+        if is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max):
+            face_direct[fidx] = np.nan
+            face_diffuse[fidx] = np.nan
+            face_global[fidx] = np.nan
+            continue
+
+        if svf != svf:
+            face_direct[fidx] = np.nan
+            face_diffuse[fidx] = np.nan
+            face_global[fidx] = np.nan
+            continue
+
+        # Direct component
+        cos_incidence = normal[0]*sun_direction[0] + normal[1]*sun_direction[1] + normal[2]*sun_direction[2]
+        direct_val = 0.0
+        if cos_incidence > 0.0 and direct_normal_irradiance > 0.0:
+            offset_vox = 0.1
+            ox = center[0]/meshsize + normal[0]*offset_vox
+            oy = center[1]/meshsize + normal[1]*offset_vox
+            oz = center[2]/meshsize + normal[2]*offset_vox
+            blocked, T = _trace_direct_masked(
+                vox_is_tree,
+                vox_is_opaque,
+                np.array((ox, oy, oz), dtype=np.float64),
+                sun_direction,
+                att
+            )
+            if not blocked:
+                direct_val = direct_normal_irradiance * cos_incidence * T
+
+        # Diffuse component
+        diffuse_val = svf * diffuse_irradiance
+        if diffuse_val > diffuse_irradiance:
+            diffuse_val = diffuse_irradiance
+
+        face_direct[fidx] = direct_val
+        face_diffuse[fidx] = diffuse_val
+        face_global[fidx] = direct_val + diffuse_val
+
+    return face_direct, face_diffuse, face_global
 
 ##############################################################################
 # 4) Modified get_cumulative_building_solar_irradiance
