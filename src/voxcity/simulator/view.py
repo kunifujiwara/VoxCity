@@ -403,7 +403,275 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
     # Flip vertically to match display orientation
     return np.flipud(vi_map)
 
-def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, **kwargs):
+# ==========================
+# Fast-path helpers (mask-based)
+# ==========================
+
+def _prepare_masks_for_vi(voxel_data: np.ndarray, hit_values, inclusion_mode: bool):
+    """Precompute boolean masks to avoid expensive value checks inside Numba loops.
+
+    Returns a tuple (is_tree, is_target, is_allowed, is_blocker_inc), where some entries
+    may be None depending on mode.
+    """
+    is_tree = (voxel_data == -2)
+    if inclusion_mode:
+        is_target = np.isin(voxel_data, hit_values)
+        is_blocker_inc = (voxel_data != 0) & (~is_tree) & (~is_target)
+        return is_tree, is_target, None, is_blocker_inc
+    else:
+        is_allowed = np.isin(voxel_data, hit_values)
+        return is_tree, None, is_allowed, None
+
+
+@njit(cache=True, fastmath=True)
+def _trace_ray_inclusion_masks(is_tree, is_target, is_blocker_inc,
+                               origin, direction,
+                               meshsize, tree_k, tree_lad):
+    """DDA traversal using precomputed masks for inclusion mode.
+
+    Returns (hit, cumulative_transmittance).
+    Tree transmittance uses Beer-Lambert with LAD and segment length in meters.
+    """
+    nx, ny, nz = is_tree.shape
+
+    x0, y0, z0 = origin
+    dx, dy, dz = direction
+
+    # Normalize
+    length = (dx*dx + dy*dy + dz*dz) ** 0.5
+    if length == 0.0:
+        return False, 1.0
+    dx /= length; dy /= length; dz /= length
+
+    x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
+    i, j, k = int(x0), int(y0), int(z0)
+
+    step_x = 1 if dx >= 0 else -1
+    step_y = 1 if dy >= 0 else -1
+    step_z = 1 if dz >= 0 else -1
+
+    EPS = 1e-10
+    if abs(dx) > EPS:
+        t_max_x = ((i + (step_x > 0)) - x) / dx
+        t_delta_x = abs(1.0 / dx)
+    else:
+        t_max_x = np.inf; t_delta_x = np.inf
+    if abs(dy) > EPS:
+        t_max_y = ((j + (step_y > 0)) - y) / dy
+        t_delta_y = abs(1.0 / dy)
+    else:
+        t_max_y = np.inf; t_delta_y = np.inf
+    if abs(dz) > EPS:
+        t_max_z = ((k + (step_z > 0)) - z) / dz
+        t_delta_z = abs(1.0 / dz)
+    else:
+        t_max_z = np.inf; t_delta_z = np.inf
+
+    cumulative_transmittance = 1.0
+    last_t = 0.0
+
+    while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
+        t_next = t_max_x
+        axis = 0
+        if t_max_y < t_next:
+            t_next = t_max_y; axis = 1
+        if t_max_z < t_next:
+            t_next = t_max_z; axis = 2
+
+        segment_length = (t_next - last_t) * meshsize
+        if segment_length < 0.0:
+            segment_length = 0.0
+
+        # Tree attenuation
+        if is_tree[i, j, k]:
+            # Beer-Lambert law over segment length
+            trans = np.exp(-tree_k * tree_lad * segment_length)
+            cumulative_transmittance *= trans
+            if cumulative_transmittance < 1e-2:
+                # Trees do not count as target here; early exit as blocked but no hit for inclusion mode
+                return False, cumulative_transmittance
+
+        # Inclusion: hit if voxel is in target set
+        if is_target[i, j, k]:
+            return True, cumulative_transmittance
+
+        # Opaque blockers stop visibility
+        if is_blocker_inc[i, j, k]:
+            return False, cumulative_transmittance
+
+        # advance
+        last_t = t_next
+        if axis == 0:
+            t_max_x += t_delta_x; i += step_x
+        elif axis == 1:
+            t_max_y += t_delta_y; j += step_y
+        else:
+            t_max_z += t_delta_z; k += step_z
+
+    return False, cumulative_transmittance
+
+
+@njit(cache=True, fastmath=True)
+def _trace_ray_exclusion_masks(is_tree, is_allowed,
+                               origin, direction,
+                               meshsize, tree_k, tree_lad):
+    """DDA traversal using precomputed masks for exclusion mode.
+
+    Returns (hit_blocker, cumulative_transmittance).
+    For exclusion, a hit means obstruction (voxel not in allowed set and not a tree).
+    """
+    nx, ny, nz = is_tree.shape
+
+    x0, y0, z0 = origin
+    dx, dy, dz = direction
+
+    length = (dx*dx + dy*dy + dz*dz) ** 0.5
+    if length == 0.0:
+        return False, 1.0
+    dx /= length; dy /= length; dz /= length
+
+    x, y, z = x0 + 0.5, y0 + 0.5, z0 + 0.5
+    i, j, k = int(x0), int(y0), int(z0)
+
+    step_x = 1 if dx >= 0 else -1
+    step_y = 1 if dy >= 0 else -1
+    step_z = 1 if dz >= 0 else -1
+
+    EPS = 1e-10
+    if abs(dx) > EPS:
+        t_max_x = ((i + (step_x > 0)) - x) / dx
+        t_delta_x = abs(1.0 / dx)
+    else:
+        t_max_x = np.inf; t_delta_x = np.inf
+    if abs(dy) > EPS:
+        t_max_y = ((j + (step_y > 0)) - y) / dy
+        t_delta_y = abs(1.0 / dy)
+    else:
+        t_max_y = np.inf; t_delta_y = np.inf
+    if abs(dz) > EPS:
+        t_max_z = ((k + (step_z > 0)) - z) / dz
+        t_delta_z = abs(1.0 / dz)
+    else:
+        t_max_z = np.inf; t_delta_z = np.inf
+
+    cumulative_transmittance = 1.0
+    last_t = 0.0
+
+    while (0 <= i < nx) and (0 <= j < ny) and (0 <= k < nz):
+        t_next = t_max_x
+        axis = 0
+        if t_max_y < t_next:
+            t_next = t_max_y; axis = 1
+        if t_max_z < t_next:
+            t_next = t_max_z; axis = 2
+
+        segment_length = (t_next - last_t) * meshsize
+        if segment_length < 0.0:
+            segment_length = 0.0
+
+        # Tree attenuation
+        if is_tree[i, j, k]:
+            trans = np.exp(-tree_k * tree_lad * segment_length)
+            cumulative_transmittance *= trans
+            # In exclusion, a tree alone never counts as obstruction; but we can early exit
+            if cumulative_transmittance < 1e-2:
+                return True, cumulative_transmittance
+
+        # Obstruction if voxel is not allowed and not a tree
+        if (not is_allowed[i, j, k]) and (not is_tree[i, j, k]):
+            return True, cumulative_transmittance
+
+        last_t = t_next
+        if axis == 0:
+            t_max_x += t_delta_x; i += step_x
+        elif axis == 1:
+            t_max_y += t_delta_y; j += step_y
+        else:
+            t_max_z += t_delta_z; k += step_z
+
+    return False, cumulative_transmittance
+
+
+@njit(parallel=True, cache=True, fastmath=True)
+def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel,
+                                 meshsize, tree_k, tree_lad,
+                                 is_tree, is_target, is_allowed, is_blocker_inc,
+                                 inclusion_mode, trees_in_targets):
+    """Fast mask-based computation of VI map.
+
+    trees_in_targets indicates whether to use partial contribution 1 - T for inclusion mode.
+    """
+    nx, ny, nz = voxel_data.shape
+    vi_map = np.full((nx, ny), np.nan)
+
+    # Precompute observer z for each (x,y): returns -1 if invalid, else z index base
+    obs_base_z = _precompute_observer_base_z(voxel_data)
+
+    for x in prange(nx):
+        for y in range(ny):
+            base_z = obs_base_z[x, y]
+            if base_z < 0:
+                vi_map[x, y] = np.nan
+                continue
+
+            # Skip invalid ground: water or negative
+            below = voxel_data[x, y, base_z]
+            if (below == 7) or (below == 8) or (below == 9) or (below < 0):
+                vi_map[x, y] = np.nan
+                continue
+
+            oz = base_z + 1 + view_height_voxel
+            obs = np.array([x, y, oz], dtype=np.float64)
+
+            visibility_sum = 0.0
+            n_rays = ray_directions.shape[0]
+            for r in range(n_rays):
+                direction = ray_directions[r]
+                if inclusion_mode:
+                    hit, value = _trace_ray_inclusion_masks(is_tree, is_target, is_blocker_inc,
+                                                            obs, direction,
+                                                            meshsize, tree_k, tree_lad)
+                    if hit:
+                        if trees_in_targets:
+                            contrib = 1.0 - max(0.0, min(1.0, value))
+                            visibility_sum += contrib
+                        else:
+                            visibility_sum += 1.0
+                else:
+                    hit, value = _trace_ray_exclusion_masks(is_tree, is_allowed,
+                                                            obs, direction,
+                                                            meshsize, tree_k, tree_lad)
+                    if not hit:
+                        visibility_sum += value
+
+            vi_map[x, y] = visibility_sum / n_rays
+
+    return np.flipud(vi_map)
+
+
+@njit(cache=True, fastmath=True)
+def _precompute_observer_base_z(voxel_data):
+    """For each (x,y), find the highest z such that z+1 is empty/tree and z is solid (non-empty & non-tree).
+    Returns int32 array of shape (nx,ny) with z or -1 if none.
+    """
+    nx, ny, nz = voxel_data.shape
+    out = np.empty((nx, ny), dtype=np.int32)
+    for x in range(nx):
+        for y in range(ny):
+            found = False
+            for z in range(1, nz):
+                v_above = voxel_data[x, y, z]
+                v_base = voxel_data[x, y, z - 1]
+                if (v_above == 0 or v_above == -2) and not (v_base == 0 or v_base == -2):
+                    out[x, y] = z - 1
+                    found = True
+                    break
+            if not found:
+                out[x, y] = -1
+    return out
+
+
+def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, fast_path=True, **kwargs):
     """Calculate and visualize a generic view index for a voxel city model.
 
     This is a high-level function that provides a flexible interface for computing
@@ -494,9 +762,34 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
             ray_directions.append([dx, dy, dz])
     ray_directions = np.array(ray_directions, dtype=np.float64)
 
+    # Optional: configure numba threads
+    num_threads = kwargs.get("num_threads", None)
+    if num_threads is not None:
+        try:
+            from numba import set_num_threads
+            set_num_threads(int(num_threads))
+        except Exception:
+            pass
+
     # Compute the view index map with transmittance parameters
-    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
-                                  hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+    if fast_path:
+        try:
+            is_tree, is_target, is_allowed, is_blocker_inc = _prepare_masks_for_vi(voxel_data, hit_values, inclusion_mode)
+            trees_in_targets = bool(inclusion_mode and (-2 in hit_values))
+            vi_map = _compute_vi_map_generic_fast(
+                voxel_data, ray_directions, view_height_voxel,
+                meshsize, tree_k, tree_lad,
+                is_tree, is_target if is_target is not None else np.zeros(1, dtype=np.bool_),
+                is_allowed if is_allowed is not None else np.zeros(1, dtype=np.bool_),
+                is_blocker_inc if is_blocker_inc is not None else np.zeros(1, dtype=np.bool_),
+                inclusion_mode, trees_in_targets
+            )
+        except Exception:
+            vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
+                                           hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+    else:
+        vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
+                                       hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
 
     # Create visualization with custom colormap handling
     import matplotlib.pyplot as plt
