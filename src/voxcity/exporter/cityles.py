@@ -1,28 +1,14 @@
 """
-CityLES Exporter Module for VoxCity
+CityLES export module for VoxCity
+Exports VoxCity grid data to CityLES input file format
+Updated 2025/08/05 with corrected land use and building material codes
+Integrated with VoxCity land cover utilities
 
-This module provides functionality to export VoxCity grid data to the CityLES input file format.
-CityLES is a large-eddy simulation (LES) model for urban environments, requiring specific input files
-describing land use, building geometry, vegetation, and terrain.
-
-Key Features:
-    - Converts VoxCity grids to CityLES-compatible input files (topog.txt, landuse.txt, dem.txt, vmap.txt, lonlat.txt)
-    - Handles land cover, building heights, canopy heights, and digital elevation models
-    - Supports flexible mapping from land cover and building types to CityLES codes
-    - Generates all required text files and metadata for CityLES runs
-
-Main Functions:
-    - export_cityles: Main function to export all required CityLES input files
-    - export_topog: Exports building geometry (topog.txt)
-    - export_landuse: Exports land use grid (landuse.txt)
-    - export_dem: Exports digital elevation model (dem.txt)
-    - export_vmap: Exports vegetation map (vmap.txt)
-    - export_lonlat: Exports longitude/latitude grid (lonlat.txt)
-
-Dependencies:
-    - numpy: For array operations
-    - pathlib: For file and directory management
-    - os: For file system operations
+Notes:
+- This module expects raw land cover grids as produced per-source by VoxCity, not
+  standardized/converted indices. Supported sources:
+  'OpenStreetMap', 'Urbanwatch', 'OpenEarthMapJapan', 'ESA WorldCover',
+  'ESRI 10m Annual Land Cover', 'Dynamic World V1'.
 """
 
 import os
@@ -30,47 +16,134 @@ import numpy as np
 from pathlib import Path
 
 
-# Land cover to CityLES land use mapping
-# Based on common land cover classifications to CityLES codes
-LANDCOVER_TO_CITYLES_LANDUSE = {
-    # Built-up areas
-    'building': 4,           # Concrete building
-    'road': 2,              # High reflective asphalt without AH
-    'parking': 2,           # High reflective asphalt without AH
-    'pavement': 11,         # Concrete (proxy of block)
-    
-    # Vegetation
-    'grass': 10,            # Grassland
-    'forest': 16,           # Deciduous broadleaf forest
-    'tree': 16,             # Deciduous broadleaf forest
-    'agriculture': 7,       # Dryland cropland and pasture
-    'cropland': 7,          # Dryland cropland and pasture
-    'paddy': 6,             # Paddy
-    
-    # Water and bare land
-    'water': 9,             # Water
-    'bare_soil': 8,         # Barren or sparsely vegetated
-    'sand': 8,              # Barren or sparsely vegetated
-    
-    # Default
-    'default': 10           # Grassland as default
+# VoxCity standard land cover classes after conversion
+# Based on convert_land_cover function output
+VOXCITY_STANDARD_CLASSES = {
+    0: 'Bareland',
+    1: 'Rangeland',
+    2: 'Shrub',
+    3: 'Agriculture land',
+    4: 'Tree',
+    5: 'Moss and lichen',
+    6: 'Wet land',
+    7: 'Mangrove',
+    8: 'Water',
+    9: 'Snow and ice',
+    10: 'Developed space',
+    11: 'Road',
+    12: 'Building',
+    13: 'No Data'
 }
 
-# Building material mapping
-# Maps building types to CityLES building attribute codes
+## Source-specific class name to CityLES land use mappings
+# CityLES land use codes: 1=Water, 2=Rice Paddy, 3=Crops, 4=Grassland, 5=Deciduous Broadleaf Forest,
+# 9=Bare Land, 10=Building, 16=Asphalt (road), etc.
+
+# OpenStreetMap / Standard
+OSM_CLASS_TO_CITYLES = {
+    'Bareland': 9,
+    'Rangeland': 4,
+    'Shrub': 4,
+    'Moss and lichen': 4,
+    'Agriculture land': 3,
+    'Tree': 5,
+    'Wet land': 2,
+    'Mangroves': 5,
+    'Water': 1,
+    'Snow and ice': 9,
+    'Developed space': 10,
+    'Road': 16,
+    'Building': 10,
+    'No Data': 4
+}
+
+# Urbanwatch
+URBANWATCH_CLASS_TO_CITYLES = {
+    'Building': 10,
+    'Road': 16,
+    'Parking Lot': 16,
+    'Tree Canopy': 5,
+    'Grass/Shrub': 4,
+    'Agriculture': 3,
+    'Water': 1,
+    'Barren': 9,
+    'Unknown': 4,
+    'Sea': 1
+}
+
+# OpenEarthMapJapan
+OEMJ_CLASS_TO_CITYLES = {
+    'Bareland': 9,
+    'Rangeland': 4,
+    'Developed space': 10,
+    'Road': 16,
+    'Tree': 5,
+    'Water': 1,
+    'Agriculture land': 3,
+    'Building': 10
+}
+
+# ESA WorldCover
+ESA_CLASS_TO_CITYLES = {
+    'Trees': 5,
+    'Shrubland': 4,
+    'Grassland': 4,
+    'Cropland': 3,
+    'Built-up': 10,
+    'Barren / sparse vegetation': 9,
+    'Snow and ice': 9,
+    'Open water': 1,
+    'Herbaceous wetland': 2,
+    'Mangroves': 5,
+    'Moss and lichen': 9
+}
+
+# ESRI 10m Annual Land Cover
+ESRI_CLASS_TO_CITYLES = {
+    'No Data': 4,
+    'Water': 1,
+    'Trees': 5,
+    'Grass': 4,
+    'Flooded Vegetation': 2,
+    'Crops': 3,
+    'Scrub/Shrub': 4,
+    'Built Area': 10,
+    'Bare Ground': 9,
+    'Snow/Ice': 9,
+    'Clouds': 4
+}
+
+# Dynamic World V1
+DYNAMIC_WORLD_CLASS_TO_CITYLES = {
+    'Water': 1,
+    'Trees': 5,
+    'Grass': 4,
+    'Flooded Vegetation': 2,
+    'Crops': 3,
+    'Shrub and Scrub': 4,
+    'Built': 10,
+    'Bare': 9,
+    'Snow and Ice': 9
+}
+
+# Building material mapping based on corrected documentation
 BUILDING_MATERIAL_MAPPING = {
-    'concrete': 104,        # Concrete building
-    'residential': 105,     # Slate roof (ordinal wooden house)
-    'commercial': 104,      # Concrete building
-    'industrial': 104,      # Concrete building
-    'default': 104          # Default to concrete building
+    'building': 110,         # Building (general)
+    'concrete': 110,         # Building (concrete)
+    'residential': 111,      # Old wooden house
+    'wooden': 111,           # Old wooden house
+    'commercial': 110,       # Building (commercial)
+    'industrial': 110,       # Building (industrial)
+    'default': 110           # Default to general building
 }
 
-# Tree type mapping
+# Tree type mapping for vmap.txt
 TREE_TYPE_MAPPING = {
-    'deciduous': 101,       # Leaf
-    'evergreen': 101,       # Leaf (simplified)
-    'default': 101          # Default to leaf
+    'deciduous': 101,        # Leaf
+    'evergreen': 101,        # Leaf (simplified)
+    'leaf': 101,             # Leaf
+    'shade': 102,            # Shade
+    'default': 101           # Default to leaf
 }
 
 
@@ -81,44 +154,39 @@ def create_cityles_directories(output_directory):
     return output_path
 
 
-def get_land_use_code(land_cover_value, land_cover_source=None):
-    """
-    Convert land cover value to CityLES land use code
-    
-    Parameters:
-    -----------
-    land_cover_value : int or str
-        Land cover value from VoxCity
-    land_cover_source : str, optional
-        Source of land cover data (e.g., 'esri', 'esa', 'osm')
-    
-    Returns:
-    --------
-    int : CityLES land use code (1-17)
-    """
-    # If using numeric codes, you might need source-specific mappings
-    # This is a simplified example
-    if isinstance(land_cover_value, str):
-        return LANDCOVER_TO_CITYLES_LANDUSE.get(land_cover_value.lower(), 
-                                                LANDCOVER_TO_CITYLES_LANDUSE['default'])
-    
-    # Example mapping for ESRI land cover (adjust based on actual data source)
-    if land_cover_source == 'esri':
-        esri_mapping = {
-            1: 9,    # Water -> Water
-            2: 16,   # Trees -> Deciduous broadleaf forest  
-            4: 8,    # Flooded vegetation -> Barren
-            5: 10,   # Crops -> Grassland (simplified)
-            7: 4,    # Built Area -> Concrete building
-            8: 8,    # Bare ground -> Barren
-            9: 3,    # Snow/Ice -> Concrete (proxy of jari)
-            10: 9,   # Clouds -> Water (simplified)
-            11: 10   # Rangeland -> Grassland
-        }
-        return esri_mapping.get(land_cover_value, LANDCOVER_TO_CITYLES_LANDUSE['default'])
-    
-    # Default mapping
-    return LANDCOVER_TO_CITYLES_LANDUSE['default']
+def _get_source_name_mapping(land_cover_source):
+    """Return the class-name-to-CityLES mapping dictionary for the given source."""
+    if land_cover_source == 'OpenStreetMap' or land_cover_source == 'Standard':
+        return OSM_CLASS_TO_CITYLES
+    if land_cover_source == 'Urbanwatch':
+        return URBANWATCH_CLASS_TO_CITYLES
+    if land_cover_source == 'OpenEarthMapJapan':
+        return OEMJ_CLASS_TO_CITYLES
+    if land_cover_source == 'ESA WorldCover':
+        return ESA_CLASS_TO_CITYLES
+    if land_cover_source == 'ESRI 10m Annual Land Cover':
+        return ESRI_CLASS_TO_CITYLES
+    if land_cover_source == 'Dynamic World V1':
+        return DYNAMIC_WORLD_CLASS_TO_CITYLES
+    # Default fallback
+    return OSM_CLASS_TO_CITYLES
+
+
+def _build_index_to_cityles_map(land_cover_source):
+    """Build mapping: raw per-source index -> CityLES code, using source class order."""
+    try:
+        from voxcity.utils.lc import get_land_cover_classes
+        class_dict = get_land_cover_classes(land_cover_source)
+        class_names = list(class_dict.values())
+    except Exception:
+        # Fallback: no class list; return empty so default is used
+        class_names = []
+
+    name_to_code = _get_source_name_mapping(land_cover_source)
+    index_to_code = {}
+    for idx, class_name in enumerate(class_names):
+        index_to_code[idx] = name_to_code.get(class_name, 4)
+    return index_to_code, class_names
 
 
 def export_topog(building_height_grid, building_id_grid, output_path, 
@@ -139,26 +207,26 @@ def export_topog(building_height_grid, building_id_grid, output_path,
     """
     filename = output_path / 'topog.txt'
     
-    # Get building positions (where height > 0)
-    building_positions = np.argwhere(building_height_grid > 0)
-    n_buildings = len(building_positions)
-    
+    ny, nx = building_height_grid.shape
     material_code = BUILDING_MATERIAL_MAPPING.get(building_material, 
                                                   BUILDING_MATERIAL_MAPPING['default'])
+    
+    # Write all grid cells including those without buildings
+    n_buildings = ny * nx
     
     with open(filename, 'w') as f:
         # Write number of buildings
         f.write(f"{n_buildings}\n")
         
-        # Write building data
-        for idx, (j, i) in enumerate(building_positions):
-            # CityLES uses 1-based indexing
-            i_1based = i + 1
-            j_1based = j + 1
-            height = building_height_grid[j, i]
-            
-            # Format: i j height material_code depth1 depth2 changed_material
-            f.write(f"{i_1based} {j_1based} {height:.1f} {material_code} 0.0 0.0 102\n")
+        # Write data for ALL grid points (buildings and non-buildings)
+        for j in range(ny):
+            for i in range(nx):
+                # CityLES uses 1-based indexing
+                i_1based = i + 1
+                j_1based = j + 1
+                height = float(building_height_grid[j, i])
+                # Format: i j height material_code depth1 depth2 changed_material
+                f.write(f"{i_1based} {j_1based} {height:.1f} {material_code} 0.0 0.0 102\n")
 
 
 def export_landuse(land_cover_grid, output_path, land_cover_source=None):
@@ -168,7 +236,7 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
     Parameters:
     -----------
     land_cover_grid : numpy.ndarray
-        2D array of land cover values
+        2D array of land cover values (may be raw or converted)
     output_path : Path
         Output directory path
     land_cover_source : str, optional
@@ -176,13 +244,38 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
     """
     filename = output_path / 'landuse.txt'
     
-    # Flatten the grid and convert to CityLES codes
-    flat_grid = land_cover_grid.flatten()
-    
+    ny, nx = land_cover_grid.shape
+
+    # Build per-source index mapping
+    index_to_code, class_names = _build_index_to_cityles_map(land_cover_source)
+
+    print(f"Land cover source: {land_cover_source} (raw indices)")
+
+    # Create mapping statistics
+    mapping_stats = {}
+
     with open(filename, 'w') as f:
-        for value in flat_grid:
-            cityles_code = get_land_use_code(value, land_cover_source)
-            f.write(f"{cityles_code}\n")
+        # Write in row-major order (j varies first, then i)
+        for j in range(ny):
+            for i in range(nx):
+                idx = int(land_cover_grid[j, i])
+                cityles_code = index_to_code.get(idx, 4)
+                f.write(f"{cityles_code}\n")
+
+                # Track mapping statistics
+                if idx not in mapping_stats:
+                    mapping_stats[idx] = {'cityles_code': cityles_code, 'count': 0}
+                mapping_stats[idx]['count'] += 1
+
+    # Print mapping summary
+    print("\nLand cover mapping summary (by source class):")
+    total = ny * nx
+    for idx in sorted(mapping_stats.keys()):
+        stats = mapping_stats[idx]
+        percentage = (stats['count'] / total) * 100
+        class_name = class_names[idx] if 0 <= idx < len(class_names) else 'Unknown'
+        print(f"  {idx}: {class_name} -> CityLES {stats['cityles_code']}: "
+              f"{stats['count']} cells ({percentage:.1f}%)")
 
 
 def export_dem(dem_grid, output_path):
@@ -228,27 +321,27 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
     """
     filename = output_path / 'vmap.txt'
     
-    # Get tree positions (where canopy height > 0)
-    tree_positions = np.argwhere(canopy_height_grid > 0)
-    n_trees = len(tree_positions)
-    
+    ny, nx = canopy_height_grid.shape
     tree_code = TREE_TYPE_MAPPING.get(tree_type, TREE_TYPE_MAPPING['default'])
+    
+    # Write all grid cells including those without vegetation
+    n_trees = ny * nx
     
     with open(filename, 'w') as f:
         # Write number of trees
         f.write(f"{n_trees}\n")
         
-        # Write tree data
-        for idx, (j, i) in enumerate(tree_positions):
-            # CityLES uses 1-based indexing
-            i_1based = i + 1
-            j_1based = j + 1
-            total_height = canopy_height_grid[j, i]
-            lower_height = total_height * tree_base_ratio
-            upper_height = total_height
-            
-            # Format: i j lower_height upper_height tree_type
-            f.write(f"{i_1based} {j_1based} {lower_height:.1f} {upper_height:.1f} {tree_code}\n")
+        # Write data for ALL grid points (vegetation and non-vegetation)
+        for j in range(ny):
+            for i in range(nx):
+                # CityLES uses 1-based indexing
+                i_1based = i + 1
+                j_1based = j + 1
+                total_height = float(canopy_height_grid[j, i])
+                lower_height = total_height * tree_base_ratio
+                upper_height = total_height
+                # Format: i j lower_height upper_height tree_type
+                f.write(f"{i_1based} {j_1based} {lower_height:.1f} {upper_height:.1f} {tree_code}\n")
 
 
 def export_lonlat(rectangle_vertices, grid_shape, output_path):
@@ -287,6 +380,7 @@ def export_lonlat(rectangle_vertices, grid_shape, output_path):
                 lon = lon_vals[i]
                 lat = lat_vals[j]
                 
+                # Note: Format is i j longitude latitude (not latitude longitude)
                 f.write(f"{i_1based} {j_1based} {lon:.7f} {lat:.8f}\n")
 
 
@@ -307,13 +401,13 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     canopy_height_grid : numpy.ndarray
         2D array of canopy heights
     land_cover_grid : numpy.ndarray
-        2D array of land cover values
+        2D array of land cover values (may be raw or VoxCity standard)
     dem_grid : numpy.ndarray
         2D array of elevation values
     meshsize : float
         Grid cell size in meters
     land_cover_source : str
-        Source of land cover data (e.g., 'esri', 'esa', 'osm')
+        Source of land cover data (e.g., 'ESRI 10m Annual Land Cover', 'ESA WorldCover')
     rectangle_vertices : list of tuples
         List of (lon, lat) vertices defining the area
     output_directory : str
@@ -335,21 +429,22 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     output_path = create_cityles_directories(output_directory)
     
     print(f"Exporting CityLES files to: {output_path}")
+    print(f"Land cover source: {land_cover_source}")
     
     # Export individual files
-    print("Exporting topog.txt...")
+    print("\nExporting topog.txt...")
     export_topog(building_height_grid, building_id_grid, output_path, building_material)
     
-    print("Exporting landuse.txt...")
+    print("\nExporting landuse.txt...")
     export_landuse(land_cover_grid, output_path, land_cover_source)
     
-    print("Exporting dem.txt...")
+    print("\nExporting dem.txt...")
     export_dem(dem_grid, output_path)
     
-    print("Exporting vmap.txt...")
+    print("\nExporting vmap.txt...")
     export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type)
     
-    print("Exporting lonlat.txt...")
+    print("\nExporting lonlat.txt...")
     export_lonlat(rectangle_vertices, building_height_grid.shape, output_path)
     
     # Create metadata file for reference
@@ -357,12 +452,52 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     with open(metadata_file, 'w') as f:
         f.write("CityLES Export Metadata\n")
         f.write("====================\n")
+        f.write(f"Export date: 2025/08/05\n")
         f.write(f"Grid shape: {building_height_grid.shape}\n")
         f.write(f"Mesh size: {meshsize} m\n")
         f.write(f"Land cover source: {land_cover_source}\n")
         f.write(f"Building material: {building_material}\n")
         f.write(f"Tree type: {tree_type}\n")
         f.write(f"Bounds: {rectangle_vertices}\n")
+        f.write(f"Buildings: {np.sum(building_height_grid > 0)}\n")
+        f.write(f"Trees: {np.sum(canopy_height_grid > 0)}\n")
+        
+        # Add land use value ranges
+        f.write(f"\nLand cover value range: {land_cover_grid.min()} - {land_cover_grid.max()}\n")
+        unique_values = np.unique(land_cover_grid)
+        f.write(f"Unique land cover values: {unique_values}\n")
     
-    print(f"CityLES export completed successfully!")
-    return str(output_path) 
+    print(f"\nCityLES export completed successfully!")
+    return str(output_path)
+
+
+# Helper function to apply VoxCity's convert_land_cover if needed
+def ensure_converted_land_cover(land_cover_grid, land_cover_source):
+    """
+    Ensure land cover grid uses VoxCity standard indices
+    
+    This function checks if the land cover data needs conversion and applies
+    VoxCity's convert_land_cover function if necessary.
+    
+    Parameters:
+    -----------
+    land_cover_grid : numpy.ndarray
+        2D array of land cover values
+    land_cover_source : str
+        Source of land cover data
+        
+    Returns:
+    --------
+    numpy.ndarray : Land cover grid with VoxCity standard indices (0-13)
+    """
+    # Import VoxCity's convert function if available
+    try:
+        from voxcity.utils.lc import convert_land_cover
+        
+        # Apply conversion
+        converted_grid = convert_land_cover(land_cover_grid, land_cover_source)
+        print(f"Applied VoxCity land cover conversion for {land_cover_source}")
+        return converted_grid
+    except ImportError:
+        print("Warning: Could not import VoxCity land cover utilities. Using direct mapping.")
+        return land_cover_grid
