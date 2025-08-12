@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from numba import njit, prange
+import os
+import numba
 from datetime import datetime, timezone
 import pytz
 from astral import Observer
@@ -618,6 +620,44 @@ def get_solar_positions_astral(times, lon, lat):
 
     return df_pos
 
+def _configure_num_threads(desired_threads=None, progress=False):
+    try:
+        cores = os.cpu_count() or 4
+    except Exception:
+        cores = 4
+    used = desired_threads if desired_threads is not None else cores
+    try:
+        numba.set_num_threads(int(used))
+    except Exception:
+        pass
+    # Best-effort oversubscription guards (only set defaults if unset)
+    os.environ.setdefault('MKL_NUM_THREADS', '1')
+    if 'OMP_NUM_THREADS' not in os.environ:
+        os.environ['OMP_NUM_THREADS'] = str(int(used))
+    if progress:
+        try:
+            print(f"Numba threads: {numba.get_num_threads()} (requested {used})")
+        except Exception:
+            print(f"Numba threads set to {used}")
+    return used
+
+def _auto_time_batch_size(n_faces, total_steps, user_value=None):
+    if user_value is not None:
+        return max(1, int(user_value))
+    # Heuristic based on face count
+    if total_steps <= 0:
+        return 1
+    if n_faces <= 5_000:
+        batches = 2
+    elif n_faces <= 50_000:
+        batches = 8
+    elif n_faces <= 200_000:
+        batches = 16
+    else:
+        batches = 32
+    batches = min(batches, total_steps)
+    return max(1, total_steps // batches)
+
 def get_cumulative_global_solar_irradiance(
     voxel_data,
     meshsize,
@@ -710,6 +750,10 @@ def get_cumulative_global_solar_irradiance(
     colormap = kwargs.get("colormap", 'magma')
     start_time = kwargs.get("start_time", "01-01 05:00:00")
     end_time = kwargs.get("end_time", "01-01 20:00:00")
+    # Optional: configure num threads here as well when called directly
+    desired_threads = kwargs.get("numba_num_threads", None)
+    progress_report = kwargs.get("progress_report", False)
+    _configure_num_threads(desired_threads, progress=progress_report)
 
     # Validate input data
     if df.empty:
@@ -1515,6 +1559,107 @@ def compute_solar_irradiance_for_all_faces_masked(
 
     return face_direct, face_diffuse, face_global
 
+@njit(parallel=True, cache=True, fastmath=True, nogil=True)
+def compute_cumulative_solar_irradiance_faces_masked_timeseries(
+    face_centers,
+    face_normals,
+    face_svf,
+    sun_dirs_arr,      # shape (T, 3)
+    DNI_arr,           # shape (T,)
+    DHI_arr,           # shape (T,)
+    vox_is_tree,
+    vox_is_opaque,
+    meshsize,
+    att,
+    x_min, y_min, z_min,
+    x_max, y_max, z_max,
+    boundary_epsilon,
+    t_start, t_end,              # [start, end) indices
+    time_step_hours
+):
+    n_faces = face_centers.shape[0]
+    out_dir  = np.zeros(n_faces, dtype=np.float64)
+    out_diff = np.zeros(n_faces, dtype=np.float64)
+    out_glob = np.zeros(n_faces, dtype=np.float64)
+
+    for fidx in prange(n_faces):
+        center = face_centers[fidx]
+        normal = face_normals[fidx]
+        svf = face_svf[fidx]
+
+        # Boundary vertical exclusion
+        is_vertical = (abs(normal[2]) < 0.01)
+        on_x_min = (abs(center[0] - x_min) < boundary_epsilon)
+        on_y_min = (abs(center[1] - y_min) < boundary_epsilon)
+        on_x_max = (abs(center[0] - x_max) < boundary_epsilon)
+        on_y_max = (abs(center[1] - y_max) < boundary_epsilon)
+        if is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max):
+            out_dir[fidx]  = np.nan
+            out_diff[fidx] = np.nan
+            out_glob[fidx] = np.nan
+            continue
+
+        if svf != svf:
+            out_dir[fidx]  = np.nan
+            out_diff[fidx] = np.nan
+            out_glob[fidx] = np.nan
+            continue
+
+        accum_dir = 0.0
+        accum_diff = 0.0
+        accum_glob = 0.0
+
+        # Precompute ray origin (voxel coords) once per face
+        offset_vox = 0.1
+        ox = center[0]/meshsize + normal[0]*offset_vox
+        oy = center[1]/meshsize + normal[1]*offset_vox
+        oz = center[2]/meshsize + normal[2]*offset_vox
+        origin = np.array((ox, oy, oz), dtype=np.float64)
+
+        for t in range(t_start, t_end):
+            dni = DNI_arr[t]
+            dhi = DHI_arr[t]
+            sd0 = sun_dirs_arr[t, 0]
+            sd1 = sun_dirs_arr[t, 1]
+            sd2 = sun_dirs_arr[t, 2]
+            # Skip below horizon quickly: dz <= 0 implies elevation<=0
+            if sd2 <= 0.0:
+                # diffuse only
+                diff_val = svf * dhi
+                if diff_val > dhi:
+                    diff_val = dhi
+                accum_diff += diff_val * time_step_hours
+                accum_glob += diff_val * time_step_hours
+                continue
+
+            # Direct
+            cos_inc = normal[0]*sd0 + normal[1]*sd1 + normal[2]*sd2
+            direct_val = 0.0
+            if (dni > 0.0) and (cos_inc > 0.0):
+                blocked, T = _trace_direct_masked(
+                    vox_is_tree,
+                    vox_is_opaque,
+                    origin,
+                    np.array((sd0, sd1, sd2), dtype=np.float64),
+                    att
+                )
+                if not blocked:
+                    direct_val = dni * cos_inc * T
+
+            diff_val = svf * dhi
+            if diff_val > dhi:
+                diff_val = dhi
+
+            accum_dir  += direct_val * time_step_hours
+            accum_diff += diff_val   * time_step_hours
+            accum_glob += (direct_val + diff_val) * time_step_hours
+
+        out_dir[fidx]  = accum_dir
+        out_diff[fidx] = accum_diff
+        out_glob[fidx] = accum_glob
+
+    return out_dir, out_diff, out_glob
+
 ##############################################################################
 # 4) Modified get_cumulative_building_solar_irradiance
 ##############################################################################
@@ -1545,6 +1690,7 @@ def get_cumulative_building_solar_irradiance(
     """
     import pytz
     from datetime import datetime
+    import numpy as np
     
     period_start = kwargs.get("period_start", "01-01 00:00:00")
     period_end   = kwargs.get("period_end",   "12-31 23:59:59")
@@ -1589,6 +1735,20 @@ def get_cumulative_building_solar_irradiance(
         solar_positions = precomputed_solar_positions
     else:
         solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
+
+    # Precompute arrays to avoid per-iteration pandas operations
+    times_len = len(df_period_utc.index)
+    azimuth_deg_arr = solar_positions['azimuth'].to_numpy()
+    elev_deg_arr = solar_positions['elevation'].to_numpy()
+    az_rad_arr = np.deg2rad(180.0 - azimuth_deg_arr)
+    el_rad_arr = np.deg2rad(elev_deg_arr)
+    sun_dx_arr = np.cos(el_rad_arr) * np.cos(az_rad_arr)
+    sun_dy_arr = np.cos(el_rad_arr) * np.sin(az_rad_arr)
+    sun_dz_arr = np.sin(el_rad_arr)
+    sun_dirs_arr = np.stack([sun_dx_arr, sun_dy_arr, sun_dz_arr], axis=1).astype(np.float64)
+    DNI_arr = (df_period_utc['DNI'].to_numpy() * direct_normal_irradiance_scaling).astype(np.float64)
+    DHI_arr = (df_period_utc['DHI'].to_numpy() * diffuse_irradiance_scaling).astype(np.float64)
+    sun_above_mask = elev_deg_arr > 0.0
     
     # Prepare arrays for accumulation
     n_faces = len(building_svf_mesh.faces)
@@ -1615,67 +1775,80 @@ def get_cumulative_building_solar_irradiance(
     instant_kwargs = kwargs.copy()
     instant_kwargs['obj_export'] = False
 
-    total_steps = len(df_period_utc.index)
-    last_progress_print = -1
+    total_steps = times_len
+    progress_every = max(1, total_steps // 20)  # ~5% steps
 
-    # Iterate over each timestep
-    for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
-        DNI = row['DNI'] * direct_normal_irradiance_scaling
-        DHI = row['DHI'] * diffuse_irradiance_scaling
+    # Pre-cast stable arrays to avoid repeated allocations
+    face_centers64 = building_svf_mesh.triangles_center.astype(np.float64)
+    face_normals64 = building_svf_mesh.face_normals.astype(np.float64)
+    face_svf64 = face_svf.astype(np.float64)
+    x_min, y_min, z_min = grid_bounds_real[0, 0], grid_bounds_real[0, 1], grid_bounds_real[0, 2]
+    x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
 
-        # Sun angles
-        az_deg = solar_positions.loc[time_utc, 'azimuth']
-        el_deg = solar_positions.loc[time_utc, 'elevation']
+    if fast_path:
+        # Use masked cumulative kernel with chunking to minimize Python overhead
+        vox_is_tree = (voxel_data == -2)
+        vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
+        att = float(np.exp(-tree_k * tree_lad * meshsize))
 
-        # Skip if sun below horizon
-        if el_deg <= 0:
-            # Only diffuse term contributes (still based on SVF)
-            if boundary_mask is None:
-                boundary_mask = np.isnan(face_svf)
-            # Accumulate diffuse only
-            face_cum_diffuse += np.nan_to_num(face_svf * DHI) * time_step_hours
-            face_cum_global  += np.nan_to_num(face_svf * DHI) * time_step_hours
-            # progress
-            if progress_report:
-                pct = int((idx + 1) * 100 / total_steps)
-                if pct != last_progress_print:
-                    print(f"Cumulative irradiance: {idx+1}/{total_steps} ({pct}%)")
-                    last_progress_print = pct
-            continue
+        # Auto-tune chunk size if user didn't pass one
+        time_batch_size = _auto_time_batch_size(n_faces, total_steps, kwargs.get("time_batch_size", None))
 
-        if fast_path:
-            # Use Numba kernel directly to avoid Python overhead
-            az_rad = np.deg2rad(180 - az_deg)
-            el_rad = np.deg2rad(el_deg)
-            sun_dx = np.cos(el_rad) * np.cos(az_rad)
-            sun_dy = np.cos(el_rad) * np.sin(az_rad)
-            sun_dz = np.sin(el_rad)
-            sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
-
-            face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
-                face_centers.astype(np.float64),
-                face_normals.astype(np.float64),
-                face_svf.astype(np.float64),
-                sun_direction,
-                float(DNI),
-                float(DHI),
-                voxel_data,
+        for start in range(0, total_steps, time_batch_size):
+            end = min(start + time_batch_size, total_steps)
+            # Accumulate Wh/m² over this chunk inside the kernel
+            ch_dir, ch_diff, ch_glob = compute_cumulative_solar_irradiance_faces_masked_timeseries(
+                face_centers64,
+                face_normals64,
+                face_svf64,
+                sun_dirs_arr,
+                DNI_arr,
+                DHI_arr,
+                vox_is_tree,
+                vox_is_opaque,
                 float(meshsize),
-                float(tree_k),
-                float(tree_lad),
-                hit_values,
-                inclusion_mode,
-                grid_bounds_real.astype(np.float64),
-                float(boundary_epsilon)
+                float(att),
+                float(x_min), float(y_min), float(z_min),
+                float(x_max), float(y_max), float(z_max),
+                float(boundary_epsilon),
+                int(start), int(end),
+                float(time_step_hours)
             )
-        else:
+            face_cum_direct  += ch_dir
+            face_cum_diffuse += ch_diff
+            face_cum_global  += ch_glob
+
+            if progress_report:
+                pct = (end * 100.0) / total_steps
+                print(f"Cumulative irradiance: {end}/{total_steps} ({pct:.1f}%)")
+    else:
+        # Iterate per timestep (fallback)
+        for idx in range(total_steps):
+            DNI = float(DNI_arr[idx])
+            DHI = float(DHI_arr[idx])
+
+            # Skip if sun below horizon
+            if not sun_above_mask[idx]:
+                # Only diffuse term contributes (still based on SVF)
+                if boundary_mask is None:
+                    boundary_mask = np.isnan(face_svf)
+                # Accumulate diffuse only
+                face_cum_diffuse += np.nan_to_num(face_svf * DHI) * time_step_hours
+                face_cum_global  += np.nan_to_num(face_svf * DHI) * time_step_hours
+                # progress
+                if progress_report:
+                    if ((idx + 1) % progress_every == 0) or (idx == total_steps - 1):
+                        pct = (idx + 1) * 100.0 / total_steps
+                        print(f"Cumulative irradiance: {idx+1}/{total_steps} ({pct:.1f}%)")
+                continue
+
             # Fallback to wrapper per-timestep
             irr_mesh = get_building_solar_irradiance(
                 voxel_data,
                 meshsize,
                 building_svf_mesh,
-                az_deg,
-                el_deg,
+                float(azimuth_deg_arr[idx]),
+                float(elev_deg_arr[idx]),
                 DNI,
                 DHI,
                 show_plot=False,
@@ -1685,20 +1858,18 @@ def get_cumulative_building_solar_irradiance(
             face_diffuse = irr_mesh.metadata['diffuse']
             face_global  = irr_mesh.metadata['global']
 
-        # If first time, note boundary mask from NaNs
-        if boundary_mask is None:
-            boundary_mask = np.isnan(face_global)
+            # If first time, note boundary mask from NaNs
+            if boundary_mask is None:
+                boundary_mask = np.isnan(face_global)
 
-        # Convert from W/m² to Wh/m² by multiplying time_step_hours
-        face_cum_direct  += np.nan_to_num(face_direct)  * time_step_hours
-        face_cum_diffuse += np.nan_to_num(face_diffuse) * time_step_hours
-        face_cum_global  += np.nan_to_num(face_global)  * time_step_hours
+            # Convert from W/m² to Wh/m² by multiplying time_step_hours
+            face_cum_direct  += np.nan_to_num(face_direct)  * time_step_hours
+            face_cum_diffuse += np.nan_to_num(face_diffuse) * time_step_hours
+            face_cum_global  += np.nan_to_num(face_global)  * time_step_hours
 
-        if progress_report:
-            pct = int((idx + 1) * 100 / total_steps)
-            if pct != last_progress_print:
-                print(f"Cumulative irradiance: {idx+1}/{total_steps} ({pct}%)")
-                last_progress_print = pct
+            if progress_report and (((idx + 1) % progress_every == 0) or (idx == total_steps - 1)):
+                pct = (idx + 1) * 100.0 / total_steps
+                print(f"Cumulative irradiance: {idx+1}/{total_steps} ({pct:.1f}%)")
     
     # Reapply NaN for boundary
     if boundary_mask is not None:
@@ -1794,6 +1965,10 @@ def get_building_global_solar_irradiance_using_epw(
     building_svf_mesh = kwargs.get("building_svf_mesh", None)
     progress_report = kwargs.get("progress_report", False)
     fast_path = kwargs.get("fast_path", True)
+
+    # Threading tuning (auto): choose sensible defaults based on hardware
+    desired_threads = kwargs.get("numba_num_threads", None)
+    _configure_num_threads(desired_threads, progress=kwargs.get("progress_report", False))
 
     if download_nearest_epw:
         if rectangle_vertices is None:
