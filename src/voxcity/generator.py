@@ -472,8 +472,22 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori,
     # Add 1 voxel layer to ensure sufficient vertical space
     max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / voxel_size))+1
     # Initialize the 3D voxel grid with zeros
-    # Dimensions: (rows, columns, height_layers)
-    voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
+    # Use int8 by default to reduce memory (values range from about -99 to small positives)
+    # Allow override via kwarg 'voxel_dtype'
+    voxel_dtype = kwargs.get("voxel_dtype", np.int8)
+
+    # Optional: estimate memory and allow a soft limit before allocating
+    try:
+        bytes_per_elem = np.dtype(voxel_dtype).itemsize
+        est_mb = rows * cols * max_height * bytes_per_elem / (1024 ** 2)
+        print(f"Voxel grid shape: ({rows}, {cols}, {max_height}), dtype: {voxel_dtype}, ~{est_mb:.1f} MB")
+        max_ram_mb = kwargs.get("max_voxel_ram_mb")
+        if (max_ram_mb is not None) and (est_mb > max_ram_mb):
+            raise MemoryError(f"Estimated voxel grid memory {est_mb:.1f} MB exceeds limit {max_ram_mb} MB. Increase mesh size or restrict ROI.")
+    except Exception:
+        pass
+
+    voxel_grid = np.zeros((rows, cols, max_height), dtype=voxel_dtype)
     # Configure tree trunk-to-crown ratio
     # This determines how much of the tree is trunk vs canopy
     trunk_height_ratio = kwargs.get("trunk_height_ratio")

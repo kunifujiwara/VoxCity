@@ -147,56 +147,37 @@ def group_and_label_cells(array):
 
 def process_grid_optimized(grid_bi, dem_grid):
     """
-    Optimized version using numpy's bincount for fast averaging.
-    This is much faster than iterating through unique IDs.
+    Optimized version that computes per-building averages without allocating
+    huge arrays when building IDs are large and sparse.
     """
     result = dem_grid.copy()
-    
+
     # Only process if there are non-zero values
     if np.any(grid_bi != 0):
-        # Handle float IDs by converting to integers
-        # First check if we have float values
+        # Convert to integer IDs (handle NaN for float arrays)
         if grid_bi.dtype.kind == 'f':
-            # Convert to int, handling NaN values
             grid_bi_int = np.nan_to_num(grid_bi, nan=0).astype(np.int64)
         else:
             grid_bi_int = grid_bi.astype(np.int64)
-        
-        # Flatten arrays for processing
-        flat_bi = grid_bi_int.ravel()
+
+        # Work only on non-zero cells
+        flat_ids = grid_bi_int.ravel()
         flat_dem = dem_grid.ravel()
-        
-        # Filter out zero values
-        mask = flat_bi != 0
-        ids = flat_bi[mask]
-        values = flat_dem[mask]
-        
-        # Check if we have any valid IDs
-        if len(ids) > 0:
-            # Use bincount to sum values for each ID
-            sums = np.bincount(ids, weights=values)
-            counts = np.bincount(ids)
-            
-            # Avoid division by zero
+        nz_mask = flat_ids != 0
+        if np.any(nz_mask):
+            ids_nz = flat_ids[nz_mask]
+            vals_nz = flat_dem[nz_mask]
+
+            # Densify IDs via inverse indices to avoid np.bincount on large max(id)
+            unique_ids, inverse_idx = np.unique(ids_nz, return_inverse=True)
+            sums = np.bincount(inverse_idx, weights=vals_nz)
+            counts = np.bincount(inverse_idx)
             counts[counts == 0] = 1
-            
-            # Calculate means
             means = sums / counts
-            
-            # Apply means back to result
-            # Use the integer version for indexing
-            mask_nonzero = grid_bi_int != 0
-            # Ensure indices are within bounds
-            valid_ids = grid_bi_int[mask_nonzero]
-            valid_mask = valid_ids < len(means)
-            
-            # Apply only to valid indices
-            result_mask = np.zeros_like(mask_nonzero)
-            result_mask[mask_nonzero] = valid_mask
-            
-            # Set values
-            result[result_mask] = means[grid_bi_int[result_mask]]
-    
+
+            # Scatter means back to result for non-zero cells
+            result.ravel()[nz_mask] = means[inverse_idx]
+
     return result - np.min(result)
 
 def process_grid(grid_bi, dem_grid):
