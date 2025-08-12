@@ -1,6 +1,6 @@
 [project]
 name = "voxcity"
-version = "0.6.2"
+version = "0.6.3"
 requires-python = ">=3.10,<3.13"
 classifiers = [
     "Programming Language :: Python :: 3.10",
@@ -10,10 +10,10 @@ classifiers = [
 description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.md"
 authors = [
-  {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
+  {name = "Kunihiko Fujiwara", email = "fujiwara.kunihiko@takenaka.co.jp"}
 ]
 maintainers = [
-  {name = "Kunihiko Fujiwara", email = "kunihiko@nus.edu.sg"}
+  {name = "Kunihiko Fujiwara", email = "fujiwara.kunihiko@takenaka.co.jp"}
 ]
 license = {text = "MIT"}
 dependencies = [

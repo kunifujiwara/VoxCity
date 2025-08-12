@@ -1328,9 +1328,17 @@ def get_building_solar_irradiance(
     sun_dz = np.sin(el_rad)
     sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
     
-    # Extract mesh geometry data for processing
-    face_centers = building_svf_mesh.triangles_center  # Center point of each face
-    face_normals = building_svf_mesh.face_normals      # Normal vector for each face
+    # Extract mesh geometry data for processing (optionally from cache)
+    precomputed_geometry = kwargs.get("precomputed_geometry", None)
+    if precomputed_geometry is not None:
+        face_centers = precomputed_geometry.get("face_centers", building_svf_mesh.triangles_center)
+        face_normals = precomputed_geometry.get("face_normals", building_svf_mesh.face_normals)
+        face_svf_opt = precomputed_geometry.get("face_svf", None)
+        grid_bounds_real = precomputed_geometry.get("grid_bounds_real", None)
+        boundary_epsilon = precomputed_geometry.get("boundary_epsilon", None)
+    else:
+        face_centers = building_svf_mesh.triangles_center  # Center point of each face
+        face_normals = building_svf_mesh.face_normals      # Normal vector for each face
     
     # Extract Sky View Factor data from mesh metadata
     if hasattr(building_svf_mesh, 'metadata') and ('svf' in building_svf_mesh.metadata):
@@ -1339,20 +1347,27 @@ def get_building_solar_irradiance(
         # Initialize with zeros if SVF not available (should be pre-calculated)
         face_svf = np.zeros(len(building_svf_mesh.faces), dtype=np.float64)
     
-    # Set up domain boundaries for boundary face detection
-    grid_shape = voxel_data.shape
-    grid_bounds_voxel = np.array([[0,0,0],[grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
-    grid_bounds_real = grid_bounds_voxel * meshsize
-    boundary_epsilon = meshsize * 0.05  # Small tolerance for boundary detection
+    # Set up domain boundaries for boundary face detection (use cache if available)
+    if grid_bounds_real is None or boundary_epsilon is None:
+        grid_shape = voxel_data.shape
+        grid_bounds_voxel = np.array([[0,0,0],[grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
+        grid_bounds_real = grid_bounds_voxel * meshsize
+        boundary_epsilon = meshsize * 0.05  # Small tolerance for boundary detection
     
     # Optional fast path using masked DDA kernel
     fast_path = kwargs.get("fast_path", True)
+    precomputed_masks = kwargs.get("precomputed_masks", None)
     t0 = time.time()
     if fast_path:
-        # Prepare masks once
-        vox_is_tree = (voxel_data == -2)
-        vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
-        att = float(np.exp(-tree_k * tree_lad * meshsize))
+        # Prepare masks (reuse cache when possible)
+        if precomputed_masks is not None:
+            vox_is_tree = precomputed_masks.get("vox_is_tree", (voxel_data == -2))
+            vox_is_opaque = precomputed_masks.get("vox_is_opaque", (voxel_data != 0) & (voxel_data != -2))
+            att = float(precomputed_masks.get("att", np.exp(-tree_k * tree_lad * meshsize)))
+        else:
+            vox_is_tree = (voxel_data == -2)
+            vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
+            att = float(np.exp(-tree_k * tree_lad * meshsize))
 
         face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces_masked(
             face_centers.astype(np.float64),
@@ -1373,7 +1388,7 @@ def get_building_solar_irradiance(
         face_direct, face_diffuse, face_global = compute_solar_irradiance_for_all_faces(
             face_centers,
             face_normals,
-            face_svf,
+            face_svf_opt if (precomputed_geometry is not None and face_svf_opt is not None) else face_svf,
             sun_direction,
             direct_normal_irradiance,
             diffuse_irradiance,
@@ -1757,13 +1772,29 @@ def get_cumulative_building_solar_irradiance(
     face_cum_global  = np.zeros(n_faces, dtype=np.float64)
 
     # Pre-extract mesh face arrays and domain bounds for fast path
-    face_centers = building_svf_mesh.triangles_center
-    face_normals = building_svf_mesh.face_normals
-    face_svf = building_svf_mesh.metadata['svf'] if ('svf' in building_svf_mesh.metadata) else np.zeros(n_faces, dtype=np.float64)
-    grid_shape = voxel_data.shape
-    grid_bounds_voxel = np.array([[0, 0, 0], [grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
-    grid_bounds_real = grid_bounds_voxel * meshsize
-    boundary_epsilon = meshsize * 0.05
+    # Optionally reuse precomputed geometry/bounds
+    precomputed_geometry = kwargs.get("precomputed_geometry", None)
+    if precomputed_geometry is not None:
+        face_centers = precomputed_geometry.get("face_centers", building_svf_mesh.triangles_center)
+        face_normals = precomputed_geometry.get("face_normals", building_svf_mesh.face_normals)
+        face_svf = precomputed_geometry.get(
+            "face_svf",
+            building_svf_mesh.metadata['svf'] if ('svf' in building_svf_mesh.metadata) else np.zeros(n_faces, dtype=np.float64)
+        )
+        grid_bounds_real = precomputed_geometry.get("grid_bounds_real", None)
+        boundary_epsilon = precomputed_geometry.get("boundary_epsilon", None)
+    else:
+        face_centers = building_svf_mesh.triangles_center
+        face_normals = building_svf_mesh.face_normals
+        face_svf = building_svf_mesh.metadata['svf'] if ('svf' in building_svf_mesh.metadata) else np.zeros(n_faces, dtype=np.float64)
+        grid_bounds_real = None
+        boundary_epsilon = None
+
+    if grid_bounds_real is None or boundary_epsilon is None:
+        grid_shape = voxel_data.shape
+        grid_bounds_voxel = np.array([[0, 0, 0], [grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
+        grid_bounds_real = grid_bounds_voxel * meshsize
+        boundary_epsilon = meshsize * 0.05
 
     # Params used in Numba kernel
     hit_values = (0,)      # sky
@@ -1779,20 +1810,28 @@ def get_cumulative_building_solar_irradiance(
     progress_every = max(1, total_steps // 20)  # ~5% steps
 
     # Pre-cast stable arrays to avoid repeated allocations
-    face_centers64 = building_svf_mesh.triangles_center.astype(np.float64)
-    face_normals64 = building_svf_mesh.face_normals.astype(np.float64)
+    face_centers64 = (face_centers if isinstance(face_centers, np.ndarray) else building_svf_mesh.triangles_center).astype(np.float64)
+    face_normals64 = (face_normals if isinstance(face_normals, np.ndarray) else building_svf_mesh.face_normals).astype(np.float64)
     face_svf64 = face_svf.astype(np.float64)
     x_min, y_min, z_min = grid_bounds_real[0, 0], grid_bounds_real[0, 1], grid_bounds_real[0, 2]
     x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
 
     if fast_path:
         # Use masked cumulative kernel with chunking to minimize Python overhead
-        vox_is_tree = (voxel_data == -2)
-        vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
-        att = float(np.exp(-tree_k * tree_lad * meshsize))
+        precomputed_masks = kwargs.get("precomputed_masks", None)
+        if precomputed_masks is not None:
+            vox_is_tree = precomputed_masks.get("vox_is_tree", (voxel_data == -2))
+            vox_is_opaque = precomputed_masks.get("vox_is_opaque", (voxel_data != 0) & (voxel_data != -2))
+            att = float(precomputed_masks.get("att", np.exp(-tree_k * tree_lad * meshsize)))
+        else:
+            vox_is_tree = (voxel_data == -2)
+            vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
+            att = float(np.exp(-tree_k * tree_lad * meshsize))
 
         # Auto-tune chunk size if user didn't pass one
         time_batch_size = _auto_time_batch_size(n_faces, total_steps, kwargs.get("time_batch_size", None))
+        if progress_report:
+            print(f"Faces: {n_faces:,}, Timesteps: {total_steps:,}, Batch size: {time_batch_size}")
 
         for start in range(0, total_steps, time_batch_size):
             end = min(start + time_batch_size, total_steps)
@@ -2023,6 +2062,38 @@ def get_building_global_solar_irradiance_using_epw(
         )
 
     if progress_report:
+        print(f"SVF ready. Faces: {len(building_svf_mesh.faces):,}")
+
+    # Step 2: Build precomputed caches (geometry, masks, attenuation) for speed
+    precomputed_geometry = {}
+    try:
+        grid_shape = voxel_data.shape
+        grid_bounds_voxel = np.array([[0, 0, 0], [grid_shape[0], grid_shape[1], grid_shape[2]]], dtype=np.float64)
+        grid_bounds_real = grid_bounds_voxel * meshsize
+        boundary_epsilon = meshsize * 0.05
+        precomputed_geometry = {
+            'face_centers': building_svf_mesh.triangles_center,
+            'face_normals': building_svf_mesh.face_normals,
+            'face_svf': building_svf_mesh.metadata['svf'] if ('svf' in building_svf_mesh.metadata) else None,
+            'grid_bounds_real': grid_bounds_real,
+            'boundary_epsilon': boundary_epsilon,
+        }
+    except Exception:
+        # Fallback silently
+        precomputed_geometry = {}
+
+    tree_k = kwargs.get("tree_k", 0.6)
+    tree_lad = kwargs.get("tree_lad", 1.0)
+    precomputed_masks = {
+        'vox_is_tree': (voxel_data == -2),
+        'vox_is_opaque': (voxel_data != 0) & (voxel_data != -2),
+        'att': float(np.exp(-tree_k * tree_lad * meshsize)),
+    }
+
+    if progress_report:
+        t_cnt = int(np.count_nonzero(precomputed_masks['vox_is_tree']))
+        b_cnt = int(np.count_nonzero(voxel_data == -3)) if hasattr(voxel_data, 'shape') else 0
+        print(f"Precomputed caches: trees={t_cnt:,}, buildings={b_cnt:,}, tree_att_per_voxel={precomputed_masks['att']:.4f}")
         print(f"Processing Solar Irradiance for building surfaces...")
     result_mesh = None
     
@@ -2084,6 +2155,9 @@ def get_building_global_solar_irradiance_using_epw(
                 direct_normal_irradiance,
                 diffuse_irradiance,
                 progress_report=progress_report,
+                fast_path=fast_path,
+                precomputed_geometry=precomputed_geometry,
+                precomputed_masks=precomputed_masks,
                 **_call_kwargs
             )
 
@@ -2146,6 +2220,8 @@ def get_building_global_solar_irradiance_using_epw(
             progress_report=progress_report,
             fast_path=fast_path,
             precomputed_solar_positions=solar_positions,
+            precomputed_geometry=precomputed_geometry,
+            precomputed_masks=precomputed_masks,
             colormap=kwargs.get('colormap', 'jet'),
             show_each_timestep=kwargs.get('show_each_timestep', False),
             obj_export=kwargs.get('obj_export', False),
