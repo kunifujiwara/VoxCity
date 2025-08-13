@@ -1654,7 +1654,8 @@ def visualize_numerical_grid_on_basemap(grid, rectangle_vertices, meshsize, valu
 
 def visualize_numerical_gdf_on_basemap(gdf, value_name="value", cmap='viridis', vmin=None, vmax=None,
                             alpha=0.6, figsize=(12, 8), basemap='CartoDB light',
-                            show_edge=False, edge_color='black', edge_width=0.5):
+                            show_edge=False, edge_color='black', edge_width=0.5,
+                            input_crs=None):
     """Visualizes a GeoDataFrame with numerical values on a basemap.
     
     Args:
@@ -1669,9 +1670,34 @@ def visualize_numerical_gdf_on_basemap(gdf, value_name="value", cmap='viridis', 
         show_edge: Whether to show cell edges (default: False)
         edge_color: Color of cell edges (default: 'black')
         edge_width: Width of cell edges (default: 0.5)
+        input_crs: Optional CRS to assign if the GeoDataFrame has no CRS. If not provided
+            and CRS is missing, the function will attempt to infer WGS84 (EPSG:4326)
+            when coordinates look like lon/lat; otherwise it will raise a clear error.
     """
+    # Ensure CRS is defined; if missing, assign or infer
+    if gdf.crs is None:
+        if input_crs is not None:
+            gdf = gdf.set_crs(input_crs, allow_override=True)
+        else:
+            # Try to infer WGS84 if bounds look like lon/lat
+            try:
+                minx, miny, maxx, maxy = gdf.total_bounds
+                looks_like_lonlat = (
+                    -180.0 <= minx <= 180.0 and -180.0 <= maxx <= 180.0 and
+                    -90.0 <= miny <= 90.0 and -90.0 <= maxy <= 90.0
+                )
+            except Exception:
+                looks_like_lonlat = False
+            if looks_like_lonlat:
+                gdf = gdf.set_crs("EPSG:4326", allow_override=True)
+            else:
+                raise ValueError(
+                    "Input GeoDataFrame has no CRS. Provide 'input_crs' (e.g., 'EPSG:4326' or 'EPSG:XXXX') "
+                    "or set gdf.crs before calling visualize_numerical_gdf_on_basemap."
+                )
+
     # Convert to Web Mercator if not already in that CRS
-    if gdf.crs != 'EPSG:3857':
+    if str(gdf.crs) != 'EPSG:3857':
         gdf_web = gdf.to_crs(epsg=3857)
     else:
         gdf_web = gdf
