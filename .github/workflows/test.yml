@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +52,12 @@ jobs:
             reverse_geocoder pycountry geopy pytz timezonefinder \
             gdown ipyleaflet trimesh earthengine-api geemap contextily \
             overturemaps py-vox-io
+          python -m pip install seaborn
+
+      - name: Install voxcity package (no-deps, uses Poetry build backend)
+        shell: bash -l {0}
+        run: |
+          python -m pip install --no-deps .
       
       - name: Run tests with coverage
         shell: bash -l {0}
