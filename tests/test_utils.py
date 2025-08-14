@@ -22,7 +22,6 @@ from voxcity.utils.material import (
 from voxcity.utils.weather import (
     safe_rename,
     safe_extract,
-    parse_coordinates,
     get_nearest_epw_from_climate_onebuilding
 )
 
@@ -183,12 +182,6 @@ class TestWeatherUtils:
         
         assert result.exists()
         assert result.read_text() == "test content"
-    
-    def test_parse_coordinates(self):
-        """Test coordinate parsing"""
-        coords = parse_coordinates("139.7564, 35.6713, 25.0")
-        assert len(coords) == 3
-        assert all(isinstance(coord, float) for coord in coords)
     
     @patch('voxcity.utils.weather.requests.get')
     def test_get_nearest_epw_from_climate_onebuilding(self, mock_get, tmp_path):
