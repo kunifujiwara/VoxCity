@@ -1,0 +1,446 @@
+<ENVI-MET_Datafile>
+    <Header>
+    <filetype>INPX ENVI-met Area Input File</filetype>
+    <version>440</version>
+    <revisiondate>7/5/2024 5:44:52 PM</revisiondate>
+    <remark>Created with SPACES 5.6.1</remark>
+    <checksum>0</checksum>
+    <encryptionlevel>0</encryptionlevel>
+    </Header>
+      <baseData>
+         <modelDescription> [Enter model desctription] </modelDescription>
+         <modelAuthor> [Enter model author name] </modelAuthor>
+         <modelcopyright> The creator or distributor is responsible for following Copyright Laws </modelcopyright>
+      </baseData>
+      <modelGeometry>
+         <grids-I> 10 </grids-I>
+         <grids-J> 10 </grids-J>
+         <grids-Z> 274 </grids-Z>
+         <dx> 1.0 </dx>
+         <dy> 1.0 </dy>
+         <dz-base> 1.0 </dz-base>
+         <useTelescoping_grid> 0 </useTelescoping_grid>
+         <useSplitting> 1 </useSplitting>
+         <verticalStretch> 0 </verticalStretch>
+         <startStretch> 0 </startStretch>
+         <has3DModel> 0 </has3DModel>
+         <isFull3DDesign> 0 </isFull3DDesign>
+      </modelGeometry>
+      <nestingArea>
+         <numberNestinggrids> 0 </numberNestinggrids>
+         <soilProfileA> 000000 </soilProfileA>
+         <soilProfileB> 000000 </soilProfileB>
+      </nestingArea>
+      <locationData>
+         <modelRotation> 0 </modelRotation>
+         <projectionSystem> GCS_WGS_1984 </projectionSystem>
+         <UTMZone> 0 </UTMZone>
+         <realworldLowerLeft_X> 0.00000 </realworldLowerLeft_X>
+         <realworldLowerLeft_Y> 0.00000 </realworldLowerLeft_Y>
+         <locationName> Unknown Location/ Unknown Country </locationName>
+         <location_Longitude> 0.5 </location_Longitude>
+         <location_Latitude> 0.5 </location_Latitude>
+         <locationTimeZone_Name> UTC+0.00 </locationTimeZone_Name>
+         <locationTimeZone_Longitude> 0.00000 </locationTimeZone_Longitude>
+      </locationData>
+      <defaultSettings>
+         <commonWallMaterial> 000000 </commonWallMaterial>
+         <commonRoofMaterial> 000000 </commonRoofMaterial>
+      </defaultSettings>
+      <buildings2D>
+         <zTop type="matrix-data" dataI="10" dataJ="10">
+         0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+     0.0,28.0,12.0,31.0,1.0,7.0,49.0,1.0,1.0,0.0
+     0.0,24.0,38.0,24.0,20.0,12.0,37.0,10.0,36.0,0.0
+     0.0,16.0,26.0,39.0,6.0,42.0,23.0,24.0,4.0,0.0
+     0.0,8.0,3.0,42.0,50.0,4.0,30.0,11.0,37.0,0.0
+     0.0,46.0,11.0,36.0,2.0,15.0,9.0,22.0,47.0,0.0
+     0.0,10.0,14.0,5.0,20.0,14.0,24.0,41.0,33.0,0.0
+     0.0,8.0,49.0,18.0,9.0,4.0,15.0,44.0,3.0,0.0
+     0.0,27.0,26.0,32.0,4.0,28.0,11.0,16.0,49.0,0.0
+     0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+         </zTop>
+         <zBottom type="matrix-data" dataI="10" dataJ="10">
+         0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+         </zBottom>
+         <buildingNr type="matrix-data" dataI="10" dataJ="10">
+         5,2,2,0,1,6,3,0,7,2
+     0,0,9,5,4,1,1,4,1,2
+     2,3,2,7,6,6,0,4,1,0
+     8,4,4,3,4,5,6,1,0,2
+     0,3,1,5,1,4,2,3,9,6
+     3,4,6,9,0,9,2,1,6,4
+     5,0,6,5,8,7,4,3,5,2
+     0,8,8,1,5,1,7,1,0,4
+     5,9,7,3,0,0,1,8,4,2
+     0,3,0,5,8,7,9,8,3,4
+         </buildingNr>
+         <fixedheight type="matrix-data" dataI="10" dataJ="10">
+         0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+     0,0,0,0,0,0,0,0,0,0
+         </fixedheight>
+      </buildings2D>
+      <simpleplants2D>
+         <ID_plants1D type="matrix-data" dataI="10" dataJ="10">
+         ,,0200XX,,,,,,0200XX,0200XX
+     0200XX,,0200XX,,,,,,,
+     ,0200XX,,0200XX,,,,0200XX,0200XX,0200XX
+     0200XX,,,,,,0200XX,0200XX,0200XX,0200XX
+     ,0200XX,0200XX,0200XX,,,,0200XX,,
+     0200XX,0200XX,,0200XX,0200XX,,0200XX,0200XX,,0200XX
+     0200XX,,,,0200XX,0200XX,0200XX,0200XX,0200XX,
+     ,0200XX,0200XX,,0200XX,0200XX,,0200XX,0200XX,0200XX
+     ,,0200XX,0200XX,0200XX,,0200XX,,,
+     ,,,0200XX,,,0200XX,,,
+         </ID_plants1D>
+      </simpleplants2D>
+    
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H14W01 </plantID>
+     <name> .H14W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 2 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H10W01 </plantID>
+     <name> .H10W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 3 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H02W01 </plantID>
+     <name> .H02W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 4 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H17W01 </plantID>
+     <name> .H17W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 5 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H12W01 </plantID>
+     <name> .H12W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 6 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H05W01 </plantID>
+     <name> .H05W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 7 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H16W01 </plantID>
+     <name> .H16W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 8 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H01W01 </plantID>
+     <name> .H01W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 9 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H03W01 </plantID>
+     <name> .H03W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 1 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H14W01 </plantID>
+     <name> .H14W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 2 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H14W01 </plantID>
+     <name> .H14W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 2 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H19W01 </plantID>
+     <name> .H19W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 3 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H08W01 </plantID>
+     <name> .H08W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 3 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H02W01 </plantID>
+     <name> .H02W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 4 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H04W01 </plantID>
+     <name> .H04W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 4 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H10W01 </plantID>
+     <name> .H10W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 5 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H16W01 </plantID>
+     <name> .H16W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 5 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H13W01 </plantID>
+     <name> .H13W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 6 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H12W01 </plantID>
+     <name> .H12W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 6 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H05W01 </plantID>
+     <name> .H05W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 7 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H07W01 </plantID>
+     <name> .H07W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 7 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H03W01 </plantID>
+     <name> .H03W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 8 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H17W01 </plantID>
+     <name> .H17W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 8 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H06W01 </plantID>
+     <name> .H06W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 9 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H08W01 </plantID>
+     <name> .H08W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 9 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H11W01 </plantID>
+     <name> .H11W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 1 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H03W01 </plantID>
+     <name> .H03W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 2 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H04W01 </plantID>
+     <name> .H04W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 3 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H08W01 </plantID>
+     <name> .H08W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 4 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H00W01 </plantID>
+     <name> .H00W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 5 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H06W01 </plantID>
+     <name> .H06W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 6 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H19W01 </plantID>
+     <name> .H19W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 7 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H13W01 </plantID>
+     <name> .H13W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 8 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H05W01 </plantID>
+     <name> .H05W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 9 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H01W01 </plantID>
+     <name> .H01W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+  <3Dplants>
+     <rootcell_i> 10 </rootcell_i>
+     <rootcell_j> 10 </rootcell_j>
+     <rootcell_k> 0 </rootcell_k>
+     <plantID> H02W01 </plantID>
+     <name> .H02W01 </name>
+     <observe> 0 </observe>
+  </3Dplants>
+      <soils2D>
+         <ID_soilprofile type="matrix-data" dataI="10" dataJ="10">
+         0200PG,0200PG,000000,0200PG,0200ST,0200PG,0200ST,0200PG,000000,000000
+     000000,0200ST,000000,0200ST,0200PG,0200PG,0200PG,0200PG,0200PG,0200PG
+     0200PG,000000,0200ST,000000,0200PG,0200PG,0200ST,000000,000000,000000
+     000000,0200PG,0200PG,0200ST,0200PG,0200PG,000000,000000,000000,000000
+     0200ST,000000,000000,000000,0200ST,0200ST,0200ST,000000,0200ST,0200PG
+     000000,000000,0200ST,000000,000000,0200ST,000000,000000,0200ST,000000
+     000000,0200ST,0200ST,0200PG,000000,000000,000000,000000,000000,0200ST
+     0200PG,000000,000000,0200ST,000000,000000,0200ST,000000,000000,000000
+     0200ST,0200ST,000000,000000,000000,0200PG,000000,0200PG,0200ST,0200PG
+     0200ST,0200PG,0200ST,000000,0200PG,0200PG,000000,0200ST,0200PG,0200ST
+         </ID_soilprofile>
+      </soils2D>
+      <dem>
+         <DEMReference> 0 </DEMReference>
+         <terrainheight type="matrix-data" dataI="10" dataJ="10">
+         26,50,50,7,31,43,35,0,25,50
+     44,22,21,26,33,31,31,33,31,50
+     50,35,50,25,43,43,43,33,31,11
+     42,33,33,35,33,26,43,31,82,50
+     45,35,31,26,31,33,50,35,21,43
+     35,33,43,21,66,21,50,31,43,33
+     26,51,43,26,42,25,33,35,26,50
+     31,42,42,31,26,31,25,31,63,33
+     26,21,25,35,45,69,31,42,33,50
+     14,35,5,26,42,25,21,42,35,33
+         </terrainheight>
+      </dem>
+      <sources2D>
+         <ID_sources type="matrix-data" dataI="10" dataJ="10">
+         ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+     ,,,,,,,,,
+         </ID_sources>
+      </sources2D>
+    </ENVI-MET_Datafile>

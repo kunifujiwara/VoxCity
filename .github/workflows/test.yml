@@ -31,21 +31,33 @@ jobs:
       - name: Install conda dependencies
         shell: bash -l {0}
         run: |
-          conda install -c conda-forge gdal llvmlite numba
-          conda install -c conda-forge shapely=2.0.2
-          conda install -c conda-forge osmnx=1.6.0
+          conda install -c conda-forge -y \
+            gdal proj geos libspatialindex \
+            fiona rasterio shapely pyproj rtree \
+            geopandas llvmlite numba
       
-      - name: Install Python dependencies
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: false
+          virtualenvs-in-project: false
+      
+      - name: Clean and regenerate lock file
         shell: bash -l {0}
         run: |
-          pip install pytest pytest-cov
-          pip install -e .
+          rm -f poetry.lock
+          poetry lock --no-update
+      
+      - name: Install dependencies
+        shell: bash -l {0}
+        run: |
+          poetry install --no-interaction
       
       - name: Run tests with coverage
         shell: bash -l {0}
         run: |
-          cd tests
-          python -m pytest --cov=voxcity --cov-report=xml
+          poetry run pytest --cov=voxcity --cov-report=xml
       
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
