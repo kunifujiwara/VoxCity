@@ -28,7 +28,8 @@ def test_normalize_to_one_meter():
     vector = np.array([3.0, 4.0])
     distance = 5.0
     result = normalize_to_one_meter(vector, distance)
-    assert np.allclose(np.linalg.norm(result), 1 / distance)
+    # Function returns a unit-length direction vector scaled to 1 meter
+    assert np.allclose(np.linalg.norm(result), 1.0)
 
 
 def test_get_timezone_info(sample_rectangle_vertices):
