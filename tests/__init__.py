@@ -1,1 +1,1 @@
-"""Unit test package for voxelcity."""
+"""Test suite for VoxelCity package."""
