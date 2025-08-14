@@ -49,7 +49,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest pytest-cov \
-            reverse_geocoder pycountry geopy pytz timezonefinder
+            reverse_geocoder pycountry geopy pytz timezonefinder \
+            gdown ipyleaflet trimesh
       
       - name: Run tests with coverage
         shell: bash -l {0}
