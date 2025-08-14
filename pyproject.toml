@@ -1,4 +1,4 @@
-[project]
+[tool.poetry]
 name = "voxcity"
 version = "0.6.4"
 requires-python = ">=3.10,<3.13"
@@ -87,3 +87,7 @@ warn_no_return = true
 module = "tests.*"
 allow_untyped_defs = true
 disable_error_code = "attr-defined"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
