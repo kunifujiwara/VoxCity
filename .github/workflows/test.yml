@@ -38,7 +38,7 @@ jobs:
             mamba install -y \
               gdal proj geos libspatialindex \
               fiona rasterio shapely pyproj rtree \
-              geopandas llvmlite numba && break || { \
+              geopandas llvmlite numba osmnx && break || { \
                 echo "mamba install failed (attempt $attempt). Retrying in 15s..."; \
                 sleep 15; \
               }; \
