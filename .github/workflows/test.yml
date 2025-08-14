@@ -27,7 +27,7 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
-          miniforge-variant: Mambaforge
+          miniforge-variant: Miniforge3
           use-mamba: true
       
       - name: Install conda dependencies (with retry via mamba)
