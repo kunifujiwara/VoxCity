@@ -44,23 +44,12 @@ jobs:
               }; \
           done
       
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.7.1
-          virtualenvs-create: false
-          virtualenvs-in-project: false
-      
-      - name: Clean and regenerate lock file
+      - name: Install Python test dependencies (pip)
         shell: bash -l {0}
         run: |
-          rm -f poetry.lock
-          poetry lock --no-update
-      
-      - name: Install dependencies
-        shell: bash -l {0}
-        run: |
-          poetry install --no-interaction
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-cov \
+            reverse_geocoder pycountry geopy pytz timezonefinder
       
       - name: Run tests with coverage
         shell: bash -l {0}
