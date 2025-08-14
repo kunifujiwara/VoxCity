@@ -43,7 +43,7 @@ from rtree import index
 
 # Geocoding and location services
 from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError, GeocoderInsufficientPrivileges
 from geopy.extra.rate_limiter import RateLimiter
 import reverse_geocoder as rg
 import pycountry
@@ -58,6 +58,25 @@ warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarni
 
 # Global constants
 floor_height = 2.5  # Standard floor height in meters used for building height calculations
+
+# Build a compliant Nominatim user agent once and reuse it
+try:
+    # Prefer package metadata if available
+    from voxcity import __version__ as _vox_version, __email__ as _vox_email
+except Exception:
+    _vox_version, _vox_email = "dev", "contact@voxcity.local"
+
+_ENV_UA = os.environ.get("VOXCITY_NOMINATIM_UA", "").strip()
+_DEFAULT_UA = f"voxcity/{_vox_version} (+https://github.com/kunifujiwara/voxcity; contact: {_vox_email})"
+_NOMINATIM_USER_AGENT = _ENV_UA or _DEFAULT_UA
+
+def _create_nominatim_geolocator() -> Nominatim:
+    """
+    Create a Nominatim geolocator with a compliant identifying user agent.
+    The user agent can be overridden via the environment variable
+    VOXCITY_NOMINATIM_UA.
+    """
+    return Nominatim(user_agent=_NOMINATIM_USER_AGENT)
 
 def tile_from_lat_lon(lat, lon, level_of_detail):
     """
@@ -479,17 +498,21 @@ def get_coordinates_from_cityname(place_name):
         ...     lat, lon = coords
         ...     print(f"Paris coordinates: {lat}, {lon}")
     """
-    # Initialize geocoder with user agent
-    geolocator = Nominatim(user_agent="my_geocoding_script")
+    # Initialize geocoder with compliant user agent
+    geolocator = _create_nominatim_geolocator()
+    geocode_once = RateLimiter(geolocator.geocode, min_delay_seconds=1.0, max_retries=0)
     
     try:
-        # Attempt to geocode the place name
-        location = geolocator.geocode(place_name)
+        # Attempt to geocode the place name (single try; no retries on 403)
+        location = geocode_once(place_name, exactly_one=True, timeout=10)
         
         if location:
             return (location.latitude, location.longitude)
         else:
             return None
+    except GeocoderInsufficientPrivileges:
+        print("Warning: Nominatim blocked the request (HTTP 403). Please set a proper user agent and avoid bulk requests.")
+        return None
     except (GeocoderTimedOut, GeocoderServiceError):
         print(f"Error: Geocoding service timed out or encountered an error for {place_name}")
         return None
@@ -523,13 +546,13 @@ def get_city_country_name_from_rectangle(coordinates):
     center_lat = sum(latitudes) / len(latitudes)
     center_coord = (center_lat, center_lon)
 
-    # Initialize geocoder with rate limiting to avoid hitting API limits
-    geolocator = Nominatim(user_agent="your_app_name (your_email@example.com)")
-    reverse = RateLimiter(geolocator.reverse, min_delay_seconds=2, error_wait_seconds=5, max_retries=3)
+    # Initialize geocoder with compliant user agent and conservative rate limit (1 req/sec)
+    geolocator = _create_nominatim_geolocator()
+    reverse_once = RateLimiter(geolocator.reverse, min_delay_seconds=1.0, max_retries=0)
 
     try:
-        # Attempt reverse geocoding of center coordinates
-        location = reverse(center_coord, language='en')
+        # Attempt reverse geocoding of center coordinates (single try; no retries on 403)
+        location = reverse_once(center_coord, language='en', exactly_one=True, timeout=10)
         if location:
             address = location.raw['address']
             # Try multiple address fields to find city name, falling back to county if needed
@@ -539,7 +562,19 @@ def get_city_country_name_from_rectangle(coordinates):
         else:
             print("Location not found")
             return "Unknown Location/ Unknown Country"
-    except Exception as e:
+    except GeocoderInsufficientPrivileges:
+        # Fallback to offline reverse_geocoder at coarse resolution
+        try:
+            results = rg.search((center_lat, center_lon))
+            name = results[0].get('name') or ''
+            country = get_country_name(center_lon, center_lat) or ''
+            if name or country:
+                return f"{name}/ {country}".strip()
+        except Exception:
+            pass
+        print("Warning: Nominatim blocked the request (HTTP 403). Falling back to offline coarse reverse geocoding.")
+        return "Unknown Location/ Unknown Country"
+    except (GeocoderTimedOut, GeocoderServiceError) as e:
         print(f"Error retrieving location for {center_coord}: {e}")
         return "Unknown Location/ Unknown Country"
 

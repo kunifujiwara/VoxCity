@@ -26,16 +26,21 @@ import geemap
 # Local imports
 # from ..geo.utils import convert_format_lat_lon
 
-def initialize_earth_engine():
-    """Initialize the Earth Engine API.
-    
-    This function must be called before using any other Earth Engine functionality.
-    It assumes that Earth Engine authentication has been set up properly.
-    
-    Raises:
-        ee.EEException: If authentication fails or Earth Engine is unavailable
+def initialize_earth_engine(**initialize_kwargs):
+    """Initialize the Earth Engine API if not already initialized.
+
+    Uses a public-behavior check to determine whether Earth Engine is already
+    initialized by attempting to access asset roots. If that call fails, it will
+    initialize Earth Engine using the provided keyword arguments.
+
+    Arguments are passed through to ``ee.Initialize`` to support contexts such as
+    specifying a ``project`` or service account credentials.
     """
-    ee.Initialize()
+    try:
+        # If this succeeds, EE is already initialized
+        ee.data.getAssetRoots()
+    except Exception:
+        ee.Initialize(**initialize_kwargs)
 
 def get_roi(input_coords):
     """Create an Earth Engine region of interest polygon from coordinates.
@@ -243,7 +248,7 @@ def save_geotiff_esa_land_cover(roi, geotiff_path):
         resolution of the ESA WorldCover dataset.
     """
     # Initialize Earth Engine
-    ee.Initialize()
+    initialize_earth_engine()
 
     # Load and clip the ESA WorldCover dataset
     esa = ee.ImageCollection("ESA/WorldCover/v200").first()
@@ -307,7 +312,7 @@ def save_geotiff_dynamic_world_v1(roi, geotiff_path, date=None):
         actual date used.
     """
     # Initialize Earth Engine
-    ee.Initialize()
+    initialize_earth_engine()
 
     # Load and filter Dynamic World dataset
     # Load the Dynamic World dataset and filter by ROI
@@ -416,7 +421,7 @@ def save_geotiff_esri_landcover(roi, geotiff_path, year=None):
         differ from the requested year if data is not available for that time.
     """
     # Initialize Earth Engine
-    ee.Initialize()
+    initialize_earth_engine()
 
     # Load the ESRI Land Cover dataset and filter by ROI
     esri_lulc = ee.ImageCollection("projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m_TS").filterBounds(roi)
@@ -508,7 +513,7 @@ def save_geotiff_open_buildings_temporal(aoi, geotiff_path):
         - Areas without buildings will have no-data values
     """
     # Initialize Earth Engine
-    ee.Initialize()
+    initialize_earth_engine()
 
     # Load the dataset
     collection = ee.ImageCollection('GOOGLE/Research/open-buildings-temporal/v1')
@@ -554,7 +559,7 @@ def save_geotiff_dsm_minus_dtm(roi, geotiff_path, meshsize, source):
         - The function requires both DSM and DTM data to be available for the region
     """
     # Initialize Earth Engine
-    ee.Initialize()
+    initialize_earth_engine()
 
     # Add buffer around ROI to ensure smooth interpolation at edges
     buffer_distance = 100
