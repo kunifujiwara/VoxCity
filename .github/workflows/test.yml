@@ -51,8 +51,7 @@ jobs:
           python -m pip install pytest pytest-cov \
             reverse_geocoder pycountry geopy pytz timezonefinder \
             gdown ipyleaflet trimesh earthengine-api geemap contextily \
-            overturemaps py-vox-io
-          python -m pip install seaborn
+            overturemaps py-vox-io seaborn pyvista
 
       - name: Install voxcity package (no-deps, uses Poetry build backend)
         shell: bash -l {0}
