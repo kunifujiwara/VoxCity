@@ -60,23 +60,23 @@ jobs:
             echo "${GEE_KEY}" > /tmp/gee-key.json
             export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gee-key.json
             python -c "
-            import ee
-            import json
-            
-            # Load service account info
-            with open('/tmp/gee-key.json', 'r') as f:
-                key_data = json.load(f)
-            
-            # Create service account credentials
-            credentials = ee.ServiceAccountCredentials(
-                email=key_data['client_email'],
-                key_file='/tmp/gee-key.json'
-            )
-            
-            # Initialize with service account
-            ee.Initialize(credentials)
-            print('Earth Engine initialized successfully with service account')
-            "
+import ee
+import json
+
+# Load service account info
+with open('/tmp/gee-key.json', 'r') as f:
+    key_data = json.load(f)
+
+# Create service account credentials
+credentials = ee.ServiceAccountCredentials(
+    email=key_data['client_email'],
+    key_file='/tmp/gee-key.json'
+)
+
+# Initialize with service account
+ee.Initialize(credentials)
+print('Earth Engine initialized successfully with service account')
+"
             echo "GEE_AUTHENTICATED=true" >> $GITHUB_ENV
           else
             echo "GEE_AUTHENTICATED=false" >> $GITHUB_ENV
