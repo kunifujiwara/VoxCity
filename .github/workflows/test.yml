@@ -51,6 +51,19 @@ jobs:
           python -m pip install pytest pytest-cov
           python -m pip install .
       
+      - name: Setup Earth Engine authentication (if credentials available)
+        shell: bash -l {0}
+        run: |
+          if [ -n "${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}" ]; then
+            echo "${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}" > /tmp/gee-key.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gee-key.json
+            python -c "import ee; ee.Initialize()"
+            echo "GEE_AUTHENTICATED=true" >> $GITHUB_ENV
+          else
+            echo "GEE_AUTHENTICATED=false" >> $GITHUB_ENV
+            echo "No GEE credentials found - Earth Engine tests will be skipped"
+          fi
+      
       - name: Run tests with coverage
         shell: bash -l {0}
         run: |

@@ -37,4 +37,9 @@ def sample_geojson():
             "min_height": 0.0,
             "id": 1
         }
-    } 
+    }
+
+@pytest.fixture(scope="session")
+def gee_authenticated():
+    """Check if Google Earth Engine is authenticated and available."""
+    return os.getenv('GEE_AUTHENTICATED', 'false').lower() == 'true' 
