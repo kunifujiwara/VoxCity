@@ -58,8 +58,8 @@ jobs:
         run: |
           if [ -n "${GEE_KEY}" ]; then
             echo "${GEE_KEY}" > /tmp/gee-key.json
-            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gee-key.json
-            python -c "import ee, json; key_data = json.load(open('/tmp/gee-key.json')); credentials = ee.ServiceAccountCredentials(email=key_data['client_email'], key_file='/tmp/gee-key.json'); ee.Initialize(credentials); print('Earth Engine initialized successfully')"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gee-key.json" >> $GITHUB_ENV
+            python -c 'import os,ee,json; key_data=json.load(open("/tmp/gee-key.json")); os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS","/tmp/gee-key.json"); credentials=ee.ServiceAccountCredentials(email=key_data["client_email"], key_file="/tmp/gee-key.json"); ee.Initialize(credentials); ee.data.getAssetRoots(); print("Earth Engine initialized successfully")'
             echo "GEE_AUTHENTICATED=true" >> $GITHUB_ENV
           else
             echo "GEE_AUTHENTICATED=false" >> $GITHUB_ENV
@@ -68,12 +68,16 @@ jobs:
       
       - name: Run fast tests with coverage
         shell: bash -l {0}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
           pytest --cov=voxcity --cov-report=xml -m "not slow"
       
       - name: Run integration tests (if matrix includes integration)
         if: matrix.python-version == '3.11'
         shell: bash -l {0}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
           pytest -m "slow and integration" -v --tb=short
       
