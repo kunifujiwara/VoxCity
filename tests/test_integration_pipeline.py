@@ -4,6 +4,38 @@ import tempfile
 import shutil
 from pathlib import Path
 
+# Apply Earth Engine patch for CI service account authentication
+def _patch_voxcity_gee_for_service_account():
+    """Patch VoxelCity's Earth Engine initialization for service account support."""
+    try:
+        import ee
+        import json
+        from voxcity.downloader import gee
+        
+        original_init = gee.initialize_earth_engine
+        
+        def patched_init(**kwargs):
+            credentials_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            if credentials_path and os.path.exists(credentials_path):
+                try:
+                    with open(credentials_path, 'r') as f:
+                        key_data = json.load(f)
+                    credentials = ee.ServiceAccountCredentials(
+                        email=key_data['client_email'], 
+                        key_file=credentials_path
+                    )
+                    ee.Initialize(credentials)
+                    return
+                except Exception:
+                    pass
+            return original_init(**kwargs)
+        
+        gee.initialize_earth_engine = patched_init
+    except ImportError:
+        pass
+
+_patch_voxcity_gee_for_service_account()
+
 
 def run_voxelcity_pipeline(
     rectangle_vertices,
