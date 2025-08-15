@@ -54,8 +54,8 @@ jobs:
       - name: Setup Earth Engine authentication (if credentials available)
         shell: bash -l {0}
         run: |
-          if [ -n "${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}" ]; then
-            echo "${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}" > /tmp/gee-key.json
+          if [ -n "${{ secrets.SAEETEST }}" ]; then
+            echo "${{ secrets.SAEETEST }}" > /tmp/gee-key.json
             export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gee-key.json
             python -c "import ee; ee.Initialize()"
             echo "GEE_AUTHENTICATED=true" >> $GITHUB_ENV
