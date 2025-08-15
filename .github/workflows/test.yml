@@ -66,10 +66,16 @@ jobs:
             echo "No GEE credentials found - Earth Engine tests will be skipped"
           fi
       
-      - name: Run tests with coverage
+      - name: Run fast tests with coverage
         shell: bash -l {0}
         run: |
-          pytest --cov=voxcity --cov-report=xml
+          pytest --cov=voxcity --cov-report=xml -m "not slow"
+      
+      - name: Run integration tests (if matrix includes integration)
+        if: matrix.python-version == '3.11'
+        shell: bash -l {0}
+        run: |
+          pytest -m "slow and integration" -v --tb=short
       
       - name: Upload coverage reports to Codecov
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
