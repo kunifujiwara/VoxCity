@@ -53,6 +53,64 @@ from ..geoprocessor.polygon import find_building_containing_point, get_buildings
 from ..geoprocessor.mesh import create_voxel_mesh
 from ..exporter.obj import grid_to_obj, export_obj
 
+
+def _generate_ray_directions_grid(N_azimuth: int,
+                                  N_elevation: int,
+                                  elevation_min_degrees: float,
+                                  elevation_max_degrees: float) -> np.ndarray:
+    """Generate ray directions using azimuth/elevation grid sampling.
+
+    Elevation is measured from the horizontal plane: 0 deg at horizon, +90 at zenith.
+    """
+    azimuth_angles = np.linspace(0.0, 2.0 * np.pi, int(N_azimuth), endpoint=False)
+    elevation_angles = np.deg2rad(
+        np.linspace(float(elevation_min_degrees), float(elevation_max_degrees), int(N_elevation))
+    )
+
+    ray_directions = np.empty((len(azimuth_angles) * len(elevation_angles), 3), dtype=np.float64)
+    out_idx = 0
+    for elevation in elevation_angles:
+        cos_elev = np.cos(elevation)
+        sin_elev = np.sin(elevation)
+        for azimuth in azimuth_angles:
+            dx = cos_elev * np.cos(azimuth)
+            dy = cos_elev * np.sin(azimuth)
+            dz = sin_elev
+            ray_directions[out_idx, 0] = dx
+            ray_directions[out_idx, 1] = dy
+            ray_directions[out_idx, 2] = dz
+            out_idx += 1
+    return ray_directions
+
+
+def _generate_ray_directions_fibonacci(N_rays: int,
+                                       elevation_min_degrees: float,
+                                       elevation_max_degrees: float) -> np.ndarray:
+    """Generate ray directions with near-uniform solid-angle spacing using a Fibonacci lattice.
+
+    Elevation is measured from the horizontal plane. Uniform solid-angle sampling over an
+    elevation band [emin, emax] is achieved by sampling z = sin(elev) uniformly over
+    [sin(emin), sin(emax)] and using a golden-angle azimuth sequence.
+    """
+    N = int(max(1, N_rays))
+    emin = np.deg2rad(float(elevation_min_degrees))
+    emax = np.deg2rad(float(elevation_max_degrees))
+    # Map to z-range where z = sin(elevation)
+    z_min = np.sin(min(emin, emax))
+    z_max = np.sin(max(emin, emax))
+    # Golden angle in radians
+    golden_angle = np.pi * (3.0 - np.sqrt(5.0))
+
+    i = np.arange(N, dtype=np.float64)
+    # Uniform in z over the band (equal solid angle within the band)
+    z = z_min + (i + 0.5) * (z_max - z_min) / N
+    # Wrap azimuth via golden-angle progression
+    phi = i * golden_angle
+    r = np.sqrt(np.clip(1.0 - z * z, 0.0, 1.0))
+    x = r * np.cos(phi)
+    y = r * np.sin(phi)
+    return np.stack((x, y, z), axis=1).astype(np.float64)
+
 @njit
 def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
     """Calculate tree transmittance using the Beer-Lambert law.
@@ -740,27 +798,22 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     N_elevation = kwargs.get("N_elevation", 10)
     elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
+    ray_sampling = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
+    N_rays = kwargs.get("N_rays", N_azimuth * N_elevation)
     
     # Tree transmittance parameters for Beer-Lambert law
     tree_k = kwargs.get("tree_k", 0.5)
     tree_lad = kwargs.get("tree_lad", 1.0)
 
-    # Generate ray directions using spherical coordinates
-    # Create uniform sampling over specified azimuth and elevation ranges
-    azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
-    elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
-
-    ray_directions = []
-    for elevation in elevation_angles:
-        cos_elev = np.cos(elevation)
-        sin_elev = np.sin(elevation)
-        for azimuth in azimuth_angles:
-            # Convert spherical coordinates to Cartesian
-            dx = cos_elev * np.cos(azimuth)
-            dy = cos_elev * np.sin(azimuth)
-            dz = sin_elev
-            ray_directions.append([dx, dy, dz])
-    ray_directions = np.array(ray_directions, dtype=np.float64)
+    # Generate ray directions
+    if str(ray_sampling).lower() == "fibonacci":
+        ray_directions = _generate_ray_directions_fibonacci(
+            int(N_rays), elevation_min_degrees, elevation_max_degrees
+        )
+    else:
+        ray_directions = _generate_ray_directions_grid(
+            int(N_azimuth), int(N_elevation), elevation_min_degrees, elevation_max_degrees
+        )
 
     # Optional: configure numba threads
     num_threads = kwargs.get("num_threads", None)
@@ -1233,6 +1286,8 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     N_elevation = kwargs.get("N_elevation", 10)   # Hemisphere elevation sampling
     elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)   # Horizon
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)  # Zenith
+    ray_sampling = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
+    N_rays = kwargs.get("N_rays", N_azimuth * N_elevation)
 
     # Tree transmittance parameters for Beer-Lambert law
     tree_k = kwargs.get("tree_k", 0.6)    # Static extinction coefficient
@@ -1243,20 +1298,14 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     inclusion_mode = False   # Count rays that DON'T hit obstacles (exclusion mode)
 
     # Generate ray directions over the sky hemisphere (0 to 90 degrees elevation)
-    azimuth_angles = np.linspace(0, 2 * np.pi, N_azimuth, endpoint=False)
-    elevation_angles = np.deg2rad(np.linspace(elevation_min_degrees, elevation_max_degrees, N_elevation))
-
-    ray_directions = []
-    for elevation in elevation_angles:
-        cos_elev = np.cos(elevation)
-        sin_elev = np.sin(elevation)
-        for azimuth in azimuth_angles:
-            # Convert spherical to Cartesian coordinates
-            dx = cos_elev * np.cos(azimuth)
-            dy = cos_elev * np.sin(azimuth)
-            dz = sin_elev  # Always positive for sky hemisphere
-            ray_directions.append([dx, dy, dz])
-    ray_directions = np.array(ray_directions, dtype=np.float64)
+    if str(ray_sampling).lower() == "fibonacci":
+        ray_directions = _generate_ray_directions_fibonacci(
+            int(N_rays), elevation_min_degrees, elevation_max_degrees
+        )
+    else:
+        ray_directions = _generate_ray_directions_grid(
+            int(N_azimuth), int(N_elevation), elevation_min_degrees, elevation_max_degrees
+        )
 
     # Compute the SVF map using the generic view index computation
     vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, 
@@ -1595,6 +1644,8 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     vmax           = kwargs.get("vmax", 1.0)
     N_azimuth      = kwargs.get("N_azimuth", 60)
     N_elevation    = kwargs.get("N_elevation", 10)
+    ray_sampling   = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
+    N_rays         = kwargs.get("N_rays", N_azimuth * N_elevation)
     debug          = kwargs.get("debug", False)
     progress_report= kwargs.get("progress_report", False)
     building_id_grid = kwargs.get("building_id_grid", None)
@@ -1633,19 +1684,15 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     face_centers = building_mesh.triangles_center  # Centroid of each face
     face_normals = building_mesh.face_normals      # Outward normal of each face
     
-    # Generate hemisphere ray directions using spherical coordinates (local +Z hemisphere)
-    azimuth_angles   = (np.arange(N_azimuth) + 0.5) / N_azimuth * (2*np.pi)
-    elevation_angles = (np.arange(N_elevation) + 0.5) / N_elevation * (np.pi/2)
-    hemisphere_list = []
-    for elev in elevation_angles:
-        sin_elev = np.sin(elev)
-        cos_elev = np.cos(elev)
-        for az in azimuth_angles:
-            x = cos_elev * np.cos(az)
-            y = cos_elev * np.sin(az)
-            z = sin_elev
-            hemisphere_list.append([x, y, z])
-    hemisphere_dirs = np.array(hemisphere_list, dtype=np.float64)
+    # Generate hemisphere ray directions (local +Z hemisphere)
+    if str(ray_sampling).lower() == "fibonacci":
+        hemisphere_dirs = _generate_ray_directions_fibonacci(
+            int(N_rays), 0.0, 90.0
+        )
+    else:
+        hemisphere_dirs = _generate_ray_directions_grid(
+            int(N_azimuth), int(N_elevation), 0.0, 90.0
+        )
     
     # Calculate domain bounds for boundary face detection
     nx, ny, nz = voxel_data.shape
