@@ -211,8 +211,9 @@ def export_topog(building_height_grid, building_id_grid, output_path,
     material_code = BUILDING_MATERIAL_MAPPING.get(building_material, 
                                                   BUILDING_MATERIAL_MAPPING['default'])
     
-    # Write all grid cells including those without buildings
-    n_buildings = ny * nx
+    # Count only cells with building height > 0
+    building_mask = building_height_grid > 0
+    n_buildings = int(np.count_nonzero(building_mask))
     
     with open(filename, 'w') as f:
         # Write number of buildings
@@ -324,8 +325,9 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
     ny, nx = canopy_height_grid.shape
     tree_code = TREE_TYPE_MAPPING.get(tree_type, TREE_TYPE_MAPPING['default'])
     
-    # Write all grid cells including those without vegetation
-    n_trees = ny * nx
+    # Count only cells with canopy height > 0
+    vegetation_mask = canopy_height_grid > 0
+    n_trees = int(np.count_nonzero(vegetation_mask))
     
     with open(filename, 'w') as f:
         # Write number of trees
