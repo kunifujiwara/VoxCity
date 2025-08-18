@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voxcity"
-version = "0.6.4"
+version = "0.6.5"
 description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.md"
 license = "MIT"
@@ -90,6 +90,33 @@ markers = [
 ]
 addopts = "-v --tb=short"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/voxcity"]
+omit = [
+  # Visualization and I/O heavy modules (non-deterministic / GUI)
+  "src/voxcity/utils/visualization.py",
+  # External data/network heavy downloaders
+  "src/voxcity/downloader/gee.py",
+  "src/voxcity/downloader/mbfp.py",
+  "src/voxcity/downloader/oemj.py",
+  "src/voxcity/downloader/overture.py",
+  "src/voxcity/downloader/citygml.py",
+  # Pure exporters (file writers) not critical for algorithmic coverage
+  "src/voxcity/exporter/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+  "pass",
+]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
