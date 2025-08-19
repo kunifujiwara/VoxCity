@@ -315,12 +315,14 @@ def export_dem(dem_grid, output_path):
                 # CityLES uses 1-based indexing
                 i_1based = i + 1
                 j_1based = j + 1
-                elevation = dem_grid[j, i]
-                
+                elevation = float(dem_grid[j, i])
+                # Clamp negative elevations to 0.0 meters
+                if elevation < 0.0:
+                    elevation = 0.0
                 f.write(f"{i_1based} {j_1based} {elevation:.1f}\n")
 
 
-def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type='default'):
+def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type='default', building_height_grid=None):
     """
     Export vmap.txt file for CityLES
     
@@ -340,8 +342,14 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
     ny, nx = canopy_height_grid.shape
     tree_code = TREE_TYPE_MAPPING.get(tree_type, TREE_TYPE_MAPPING['default'])
     
+    # If building heights are provided, remove trees where buildings exist
+    if building_height_grid is not None:
+        effective_canopy = np.where(building_height_grid > 0, 0.0, canopy_height_grid)
+    else:
+        effective_canopy = canopy_height_grid
+    
     # Count only cells with canopy height > 0
-    vegetation_mask = canopy_height_grid > 0
+    vegetation_mask = effective_canopy > 0
     n_trees = int(np.count_nonzero(vegetation_mask))
     
     with open(filename, 'w') as f:
@@ -354,7 +362,7 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
                 # CityLES uses 1-based indexing
                 i_1based = i + 1
                 j_1based = j + 1
-                total_height = float(canopy_height_grid[j, i])
+                total_height = float(effective_canopy[j, i])
                 lower_height = total_height * tree_base_ratio
                 upper_height = total_height
                 # Format: i j lower_height upper_height tree_type
@@ -465,7 +473,7 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     export_dem(dem_grid, output_path)
     
     print("\nExporting vmap.txt...")
-    export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type)
+    export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type, building_height_grid=building_height_grid)
     
     print("\nExporting lonlat.txt...")
     export_lonlat(rectangle_vertices, building_height_grid.shape, output_path)
@@ -483,7 +491,9 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
         f.write(f"Tree type: {tree_type}\n")
         f.write(f"Bounds: {rectangle_vertices}\n")
         f.write(f"Buildings: {np.sum(building_height_grid > 0)}\n")
-        f.write(f"Trees: {np.sum(canopy_height_grid > 0)}\n")
+        # Trees count after removing overlaps with buildings
+        trees_count = int(np.sum(np.where(building_height_grid > 0, 0.0, canopy_height_grid) > 0))
+        f.write(f"Trees: {trees_count}\n")
         
         # Add land use value ranges
         f.write(f"\nLand cover value range: {land_cover_grid.min()} - {land_cover_grid.max()}\n")
