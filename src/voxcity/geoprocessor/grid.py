@@ -263,14 +263,19 @@ def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
         >>> mesh = 10                    # Desired 10-unit mesh
         >>> grid_size, adj_mesh = calculate_grid_size(side1, side2, u, v, mesh)
     """
-    # Calculate number of cells needed in each direction, rounding to nearest integer
-    grid_size_0 = int(np.linalg.norm(side_1) / np.linalg.norm(meshsize * u_vec) + 0.5)
-    grid_size_1 = int(np.linalg.norm(side_2) / np.linalg.norm(meshsize * v_vec) + 0.5)
-    
-    # Adjust mesh sizes to exactly fit the desired area with the calculated number of cells
-    adjusted_mesh_size_0 = meshsize *  np.linalg.norm(meshsize * u_vec) * grid_size_0 / np.linalg.norm(side_1)
-    adjusted_mesh_size_1 = meshsize *  np.linalg.norm(meshsize * v_vec) * grid_size_1 / np.linalg.norm(side_2)
-    
+    # Calculate total side lengths in meters using the relationship between side vectors and unit vectors
+    # u_vec and v_vec represent degrees per meter along each side direction
+    dist_side_1_m = np.linalg.norm(side_1) / (np.linalg.norm(u_vec) + 1e-12)
+    dist_side_2_m = np.linalg.norm(side_2) / (np.linalg.norm(v_vec) + 1e-12)
+
+    # Calculate number of cells (nx along u, ny along v), rounding to nearest integer and ensuring at least 1
+    grid_size_0 = max(1, int(dist_side_1_m / meshsize + 0.5))
+    grid_size_1 = max(1, int(dist_side_2_m / meshsize + 0.5))
+
+    # Adjust mesh sizes (in meters) to exactly fit the sides with the calculated number of cells
+    adjusted_mesh_size_0 = dist_side_1_m / grid_size_0
+    adjusted_mesh_size_1 = dist_side_2_m / grid_size_1
+
     return (grid_size_0, grid_size_1), (adjusted_mesh_size_0, adjusted_mesh_size_1)
 
 def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
@@ -908,12 +913,19 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
     Process buildings using fast rasterio-based approach.
     Faster but less precise for overlapping footprints.
     """
-    # Set up transform for rasterio
-    min_x, min_y = origin[0], origin[1]
-    max_corner = origin + grid_size[0] * adjusted_meshsize[0] * u_vec + grid_size[1] * adjusted_meshsize[1] * v_vec
-    max_x, max_y = max_corner[0], max_corner[1]
-    
-    transform = from_bounds(min_x, min_y, max_x, max_y, grid_size[0], grid_size[1])
+    # Set up transform for rasterio using rotated basis defined by u_vec and v_vec
+    # Step vectors in coordinate units (degrees) per cell
+    u_step = adjusted_meshsize[0] * u_vec
+    v_step = adjusted_meshsize[1] * v_vec
+
+    # Define the top-left corner so that row=0 is the northern edge
+    top_left = origin + grid_size[1] * v_step
+
+    # Affine transform mapping (col, row) -> (x, y)
+    # x = a*col + b*row + c ; y = d*col + e*row + f
+    # col increases along u_step; row increases southward, hence -v_step
+    transform = Affine(u_step[0], -v_step[0], top_left[0],
+                       u_step[1], -v_step[1], top_left[1])
     
     # Process buildings data
     filtered_gdf = filtered_gdf.copy()
@@ -934,9 +946,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
     regular_buildings = filtered_gdf[~filtered_gdf['is_inner']].copy()
     regular_buildings = regular_buildings.sort_values('height', ascending=True, na_position='first')
     
-    # Initialize grids
-    building_height_grid = np.zeros(grid_size, dtype=np.float64)
-    building_id_grid = np.zeros(grid_size, dtype=np.float64)
+    # Temporary raster grids in rasterio's (rows=ny, cols=nx) order
+    height_raster = np.zeros((grid_size[1], grid_size[0]), dtype=np.float64)
+    id_raster = np.zeros((grid_size[1], grid_size[0]), dtype=np.float64)
     
     # Vectorized rasterization
     if len(regular_buildings) > 0:
@@ -949,9 +961,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                            if pd.notna(height) and height > 0]
             
             if height_shapes:
-                building_height_grid = features.rasterize(
+                height_raster = features.rasterize(
                     height_shapes,
-                    out_shape=grid_size,
+                    out_shape=(grid_size[1], grid_size[0]),
                     transform=transform,
                     fill=0,
                     dtype=np.float64
@@ -962,9 +974,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                         zip(valid_buildings.geometry, valid_buildings['id'])]
             
             if id_shapes:
-                building_id_grid = features.rasterize(
+                id_raster = features.rasterize(
                     id_shapes,
-                    out_shape=grid_size,
+                    out_shape=(grid_size[1], grid_size[0]),
                     transform=transform,
                     fill=0,
                     dtype=np.float64
@@ -977,17 +989,17 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
         if inner_shapes:
             inner_mask = features.rasterize(
                 inner_shapes,
-                out_shape=grid_size,
+                out_shape=(grid_size[1], grid_size[0]),
                 transform=transform,
                 fill=0,
                 dtype=np.uint8
             )
-            building_height_grid[inner_mask > 0] = 0
-            building_id_grid[inner_mask > 0] = 0
+            height_raster[inner_mask > 0] = 0
+            id_raster[inner_mask > 0] = 0
     
     # Simplified min_height grid 
     building_min_height_grid = np.empty(grid_size, dtype=object)
-    min_heights = np.zeros(grid_size, dtype=np.float64)
+    min_heights_raster = np.zeros((grid_size[1], grid_size[0]), dtype=np.float64)
     
     if len(regular_buildings) > 0:
         valid_buildings = regular_buildings[regular_buildings.geometry.is_valid].copy()
@@ -997,27 +1009,27 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                                if pd.notna(min_h)]
             
             if min_height_shapes:
-                min_heights = features.rasterize(
+                min_heights_raster = features.rasterize(
                     min_height_shapes,
-                    out_shape=grid_size,
+                    out_shape=(grid_size[1], grid_size[0]),
                     transform=transform,
                     fill=0,
                     dtype=np.float64
                 )
     
     # Convert to list format (simplified)
+    # Convert raster (ny, nx) to internal orientation (nx, ny) with north-up
+    building_height_grid = np.flipud(height_raster).T
+    building_id_grid = np.flipud(id_raster).T
+    min_heights = np.flipud(min_heights_raster).T
+
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):
             if building_height_grid[i, j] > 0:
                 building_min_height_grid[i, j] = [[min_heights[i, j], building_height_grid[i, j]]]
             else:
                 building_min_height_grid[i, j] = []
-    
-    # Fix north-south orientation by flipping grids
-    building_height_grid = np.flipud(building_height_grid)
-    building_id_grid = np.flipud(building_id_grid)
-    building_min_height_grid = np.flipud(building_min_height_grid)
-    
+
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
 def create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir):        
