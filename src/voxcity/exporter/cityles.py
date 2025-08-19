@@ -190,7 +190,7 @@ def _build_index_to_cityles_map(land_cover_source):
 
 
 def export_topog(building_height_grid, building_id_grid, output_path, 
-                 building_material='default'):
+                 building_material='default', cityles_landuse_grid=None):
     """
     Export topog.txt file for CityLES
     
@@ -226,8 +226,17 @@ def export_topog(building_height_grid, building_id_grid, output_path,
                 i_1based = i + 1
                 j_1based = j + 1
                 height = float(building_height_grid[j, i])
+                # Decide material code per cell
+                if cityles_landuse_grid is not None:
+                    cell_lu = int(cityles_landuse_grid[j, i])
+                    material_code_cell = cell_lu + 100
+                else:
+                    if height > 0:
+                        material_code_cell = material_code
+                    else:
+                        material_code_cell = 102
                 # Format: i j height material_code depth1 depth2 changed_material
-                f.write(f"{i_1based} {j_1based} {height:.1f} {material_code} 0.0 0.0 102\n")
+                f.write(f"{i_1based} {j_1based} {height:.1f} {material_code_cell} 0.0 0.0 102\n")
 
 
 def export_landuse(land_cover_grid, output_path, land_cover_source=None):
@@ -254,6 +263,8 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
 
     # Create mapping statistics
     mapping_stats = {}
+    # Prepare grid to return
+    cityles_landuse_grid = np.zeros((ny, nx), dtype=int)
 
     with open(filename, 'w') as f:
         # Write in row-major order (j varies first, then i)
@@ -262,6 +273,8 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
                 idx = int(land_cover_grid[j, i])
                 cityles_code = index_to_code.get(idx, 4)
                 f.write(f"{cityles_code}\n")
+
+                cityles_landuse_grid[j, i] = cityles_code
 
                 # Track mapping statistics
                 if idx not in mapping_stats:
@@ -277,6 +290,8 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
         class_name = class_names[idx] if 0 <= idx < len(class_names) else 'Unknown'
         print(f"  {idx}: {class_name} -> CityLES {stats['cityles_code']}: "
               f"{stats['count']} cells ({percentage:.1f}%)")
+    
+    return cityles_landuse_grid
 
 
 def export_dem(dem_grid, output_path):
@@ -434,11 +449,17 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     print(f"Land cover source: {land_cover_source}")
     
     # Export individual files
-    print("\nExporting topog.txt...")
-    export_topog(building_height_grid, building_id_grid, output_path, building_material)
-    
     print("\nExporting landuse.txt...")
-    export_landuse(land_cover_grid, output_path, land_cover_source)
+    cityles_landuse_grid = export_landuse(land_cover_grid, output_path, land_cover_source)
+
+    print("\nExporting topog.txt...")
+    export_topog(
+        building_height_grid,
+        building_id_grid,
+        output_path,
+        building_material,
+        cityles_landuse_grid=cityles_landuse_grid,
+    )
     
     print("\nExporting dem.txt...")
     export_dem(dem_grid, output_path)
