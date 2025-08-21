@@ -855,7 +855,18 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     # building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
     print("Creating building height grid")
-    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(building_gdf, meshsize, rectangle_vertices, **kwargs)
+    # Filter kwargs to only those accepted by create_building_height_grid_from_gdf_polygon
+    _allowed_building_kwargs = {
+        "overlapping_footprint",
+        "gdf_comp",
+        "geotiff_path_comp",
+        "complement_building_footprints",
+        "complement_height",
+    }
+    _building_kwargs = {k: v for k, v in kwargs.items() if k in _allowed_building_kwargs}
+    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(
+        building_gdf, meshsize, rectangle_vertices, **_building_kwargs
+    )
 
     # Visualize grid if requested
     grid_vis = kwargs.get("gridvis", True)    
