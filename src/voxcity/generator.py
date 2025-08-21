@@ -710,6 +710,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     # This is useful when the area of interest is part of a larger urban area
     remove_perimeter_object = kwargs.get("remove_perimeter_object")
     if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
+        print("apply perimeter removal")
         # Calculate perimeter width based on grid dimensions
         w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
         h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
@@ -729,6 +730,31 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             positions = np.where(building_id_grid == remove_id)
             building_height_grid[positions] = 0
             building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))]
+
+        # Visualize grids after optional perimeter removal
+        grid_vis = kwargs.get("gridvis", True)
+        if grid_vis:
+            # Building height grid visualization (zeros hidden)
+            building_height_grid_nan = building_height_grid.copy()
+            building_height_grid_nan[building_height_grid_nan == 0] = np.nan
+            visualize_numerical_grid(
+                np.flipud(building_height_grid_nan),
+                meshsize,
+                "building height (m)",
+                cmap='viridis',
+                label='Value'
+            )
+
+            # Canopy height grid visualization (zeros hidden)
+            canopy_height_grid_nan = canopy_height_grid.copy()
+            canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+            visualize_numerical_grid(
+                np.flipud(canopy_height_grid_nan),
+                meshsize,
+                "Tree canopy height (m)",
+                cmap='Greens',
+                label='Tree canopy height (m)'
+            )
 
     # STEP 5: Generate optional 2D visualizations on interactive maps
     mapvis = kwargs.get("mapvis")
@@ -926,6 +952,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # Remove objects near perimeter if specified
     remove_perimeter_object = kwargs.get("remove_perimeter_object")
     if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
+        print("apply perimeter removal")
         # Calculate perimeter width based on grid dimensions
         w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
         h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
@@ -944,7 +971,32 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         for remove_id in remove_ids:
             positions = np.where(building_id_grid == remove_id)
             building_height_grid[positions] = 0
-            building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))]    
+            building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))] 
+
+        # Visualize grids after optional perimeter removal
+        grid_vis = kwargs.get("gridvis", True)
+        if grid_vis:
+            # Building height grid visualization (zeros hidden)
+            building_height_grid_nan = building_height_grid.copy()
+            building_height_grid_nan[building_height_grid_nan == 0] = np.nan
+            visualize_numerical_grid(
+                np.flipud(building_height_grid_nan),
+                meshsize,
+                "building height (m)",
+                cmap='viridis',
+                label='Value'
+            )
+
+            # Canopy height grid visualization (zeros hidden)
+            canopy_height_grid_nan = canopy_height_grid.copy()
+            canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+            visualize_numerical_grid(
+                np.flipud(canopy_height_grid_nan),
+                meshsize,
+                "Tree canopy height (m)",
+                cmap='Greens',
+                label='Tree canopy height (m)'
+            )
 
     # Generate 3D voxel grid
     voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
