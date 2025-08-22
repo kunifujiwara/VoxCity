@@ -398,6 +398,43 @@ def extract_vegetation_info(file_path, namespaces):
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
+
+        # Build namespaces dynamically from the file and merge with provided ones
+        nsmap = root.nsmap or {}
+        # Fallbacks in case discovery fails
+        fallback_ns = {
+            'core': 'http://www.opengis.net/citygml/2.0',
+            'bldg': 'http://www.opengis.net/citygml/building/2.0',
+            'gml': 'http://www.opengis.net/gml',
+            'uro': 'https://www.geospatial.jp/iur/uro/3.0',
+            'dem': 'http://www.opengis.net/citygml/relief/2.0',
+            'veg': 'http://www.opengis.net/citygml/vegetation/2.0'
+        }
+
+        def pick_ns(prefix, keyword=None, fallback_key=None):
+            # Prefer provided namespaces if valid
+            if isinstance(namespaces, dict) and prefix in namespaces and namespaces[prefix]:
+                return namespaces[prefix]
+            # Then try from document nsmap
+            uri = nsmap.get(prefix)
+            if uri:
+                return uri
+            # Then try keyword search
+            if keyword:
+                for v in nsmap.values():
+                    if isinstance(v, str) and keyword in v:
+                        return v
+            # Finally fallback
+            return fallback_ns[fallback_key or prefix]
+
+        ns = {
+            'core': pick_ns('core', keyword='citygml', fallback_key='core'),
+            'bldg': pick_ns('bldg', keyword='building', fallback_key='bldg'),
+            'gml': pick_ns('gml', keyword='gml', fallback_key='gml'),
+            'uro': pick_ns('uro', keyword='iur/uro', fallback_key='uro'),
+            'dem': pick_ns('dem', keyword='relief', fallback_key='dem'),
+            'veg': pick_ns('veg', keyword='vegetation', fallback_key='veg')
+        }
     except Exception as e:
         print(f"Error parsing CityGML file {Path(file_path).name}: {e}")
         return vegetation_elements
@@ -405,8 +442,8 @@ def extract_vegetation_info(file_path, namespaces):
     # Helper: parse polygons in <gml:MultiSurface> or <veg:lodXMultiSurface>
     def parse_lod_multisurface(lod_elem):
         polygons = []
-        for poly_node in lod_elem.findall('.//gml:Polygon', namespaces):
-            ring_node = poly_node.find('.//gml:exterior//gml:LinearRing//gml:posList', namespaces)
+        for poly_node in lod_elem.findall('.//gml:Polygon', ns):
+            ring_node = poly_node.find('.//gml:exterior//gml:LinearRing//gml:posList', ns)
             if ring_node is None or ring_node.text is None:
                 continue
             coords_text = ring_node.text.strip().split()
@@ -442,24 +479,67 @@ def extract_vegetation_info(file_path, namespaces):
             "lod0MultiSurface", "lod1MultiSurface", "lod2MultiSurface", "lod3MultiSurface", "lod4MultiSurface"
         ]
         for lod_tag in geometry_lods:
-            lod_elem = veg_elem.find(f'.//veg:{lod_tag}', namespaces)
+            lod_elem = veg_elem.find(f'.//veg:{lod_tag}', ns)
             if lod_elem is not None:
                 geom = parse_lod_multisurface(lod_elem)
                 if geom is not None:
                     return geom
         return None
 
+    def compute_lod_height(veg_elem):
+        """
+        Fallback: compute vegetation height from Z values in any gml:posList
+        under the available LOD geometry elements. Returns (max_z - min_z)
+        if any Z values are found; otherwise None.
+        """
+        z_values = []
+        geometry_lods = [
+            "lod0Geometry", "lod1Geometry", "lod2Geometry", "lod3Geometry", "lod4Geometry",
+            "lod0MultiSurface", "lod1MultiSurface", "lod2MultiSurface", "lod3MultiSurface", "lod4MultiSurface"
+        ]
+        try:
+            for lod_tag in geometry_lods:
+                lod_elem = veg_elem.find(f'.//veg:{lod_tag}', ns)
+                if lod_elem is None:
+                    continue
+                for pos_list in lod_elem.findall('.//gml:posList', ns):
+                    if pos_list.text is None:
+                        continue
+                    coords_text = pos_list.text.strip().split()
+                    # Expect triplets (x,y,z) or (lat,lon,z). Z should be each 3rd value
+                    for i in range(2, len(coords_text), 3):
+                        try:
+                            z = float(coords_text[i])
+                            if not np.isinf(z) and not np.isnan(z):
+                                z_values.append(z)
+                        except Exception:
+                            continue
+            if z_values:
+                return float(max(z_values) - min(z_values))
+        except Exception:
+            pass
+        return None
+
     # 1) PlantCover
-    for plant_cover in root.findall('.//veg:PlantCover', namespaces):
+    for plant_cover in root.findall('.//veg:PlantCover', ns):
         cover_id = plant_cover.get('{http://www.opengis.net/gml}id')
-        avg_height_elem = plant_cover.find('.//veg:averageHeight', namespaces)
+        avg_height_elem = plant_cover.find('.//veg:averageHeight', ns)
         if avg_height_elem is not None and avg_height_elem.text:
             try:
                 vegetation_height = float(avg_height_elem.text)
+                # Treat sentinel values like -9999 as missing
+                if vegetation_height <= -9998:
+                    vegetation_height = None
             except:
                 vegetation_height = None
         else:
             vegetation_height = None
+
+        # Fallback to geometry-derived height if needed
+        if vegetation_height is None:
+            derived_h = compute_lod_height(plant_cover)
+            if derived_h is not None:
+                vegetation_height = derived_h
 
         geometry = get_veg_geometry(plant_cover)
         if geometry is not None and not geometry.is_empty:
@@ -472,16 +552,25 @@ def extract_vegetation_info(file_path, namespaces):
             })
 
     # 2) SolitaryVegetationObject
-    for solitary in root.findall('.//veg:SolitaryVegetationObject', namespaces):
+    for solitary in root.findall('.//veg:SolitaryVegetationObject', ns):
         veg_id = solitary.get('{http://www.opengis.net/gml}id')
-        height_elem = solitary.find('.//veg:height', namespaces)
+        height_elem = solitary.find('.//veg:height', ns)
         if height_elem is not None and height_elem.text:
             try:
                 veg_height = float(height_elem.text)
+                # Treat sentinel values like -9999 as missing
+                if veg_height <= -9998:
+                    veg_height = None
             except:
                 veg_height = None
         else:
             veg_height = None
+
+        # Fallback to geometry-derived height if attribute is missing/unparseable
+        if veg_height is None:
+            derived_h = compute_lod_height(solitary)
+            if derived_h is not None:
+                veg_height = derived_h
 
         geometry = get_veg_geometry(solitary)
         if geometry is not None and not geometry.is_empty:
@@ -577,7 +666,8 @@ def process_citygml_file(file_path):
     terrain_elements = []
     vegetation_elements = []
 
-    namespaces = {
+    # Default/fallback namespaces (used if not present in the file)
+    fallback_namespaces = {
         'core': 'http://www.opengis.net/citygml/2.0',
         'bldg': 'http://www.opengis.net/citygml/building/2.0',
         'gml': 'http://www.opengis.net/gml',
@@ -589,6 +679,32 @@ def process_citygml_file(file_path):
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
+
+        # Build namespaces dynamically from the file, falling back to defaults.
+        nsmap = root.nsmap or {}
+
+        def pick_ns(prefix, keyword=None, fallback_key=None):
+            # Try explicit prefix first
+            uri = nsmap.get(prefix)
+            if uri:
+                return uri
+            # Try to discover by keyword in URI (e.g., 'vegetation', 'building', 'relief')
+            if keyword:
+                for v in nsmap.values():
+                    if isinstance(v, str) and keyword in v:
+                        return v
+            # Fallback to defaults
+            return fallback_namespaces[fallback_key or prefix]
+
+        namespaces = {
+            'core': pick_ns('core', keyword='citygml', fallback_key='core'),
+            'bldg': pick_ns('bldg', keyword='building', fallback_key='bldg'),
+            'gml': pick_ns('gml', keyword='gml', fallback_key='gml'),
+            'uro': pick_ns('uro', keyword='iur/uro', fallback_key='uro'),
+            'dem': pick_ns('dem', keyword='relief', fallback_key='dem'),
+            # Accept CityGML 2.0 or 3.0 vegetation namespaces
+            'veg': pick_ns('veg', keyword='vegetation', fallback_key='veg')
+        }
 
         # Extract Buildings
         for building in root.findall('.//bldg:Building', namespaces):
