@@ -1096,10 +1096,7 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
 
                 tree_layers[next_tree_id] = circle
 
-                with status_output:
-                    print(f"Tree {next_tree_id} added at (lon, lat)=({lon:.6f}, {lat:.6f})")
-                    print(f"Top: {new_row['top_height']} m, Bottom: {new_row['bottom_height']} m, Crown: {new_row['crown_diameter']} m")
-                    print(f"Total trees: {len(updated_trees)}")
+                # Suppress status prints on add
             else:
                 # Remove mode: find the nearest tree within its crown radius + 5m
                 candidate_id = None
@@ -1127,12 +1124,10 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
                     # Remove from gdf
                     updated_trees.drop(index=candidate_idx, inplace=True)
                     updated_trees.reset_index(drop=True, inplace=True)
-                    with status_output:
-                        print(f"Removed tree {candidate_id} (distance {candidate_dist:.2f} m)")
-                        print(f"Total trees: {len(updated_trees)}")
+                    # Suppress status prints on remove
                 else:
-                    with status_output:
-                        print("No tree near the clicked location to remove")
+                    # Suppress status prints when nothing to remove
+                    pass
         elif kwargs.get('type') == 'mousemove':
             lat, lon = kwargs.get('coordinates', (None, None))
             if lat is None or lon is None:
