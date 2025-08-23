@@ -30,7 +30,10 @@ from ipyleaflet import (
     DrawControl, 
     Rectangle, 
     Polygon as LeafletPolygon,
-    WidgetControl
+    WidgetControl,
+    Circle,
+    basemaps,
+    basemap_to_tiles
 )
 from geopy import distance
 import shapely.geometry as geom
@@ -113,7 +116,7 @@ def rotate_rectangle(m, rectangle_vertices, angle):
     new_vertices = [transform(mercator, wgs84, x, y) for x, y in rotated_vertices]
 
     # Create and add new polygon layer to map
-    polygon = ipyleaflet.Polygon(
+    polygon = LeafletPolygon(
         locations=[(lat, lon) for lon, lat in new_vertices],  # Convert to (lat,lon) for ipyleaflet
         color="red",
         fill_color="red"
@@ -632,6 +635,7 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, r
     )
     
     status_output = Output()
+    hover_info = HTML("")
     
     # Create control panel
     control_panel = VBox([
@@ -829,5 +833,254 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
         >>> print(buildings)  # Automatically contains all drawn buildings
     """
     m, gdf = draw_additional_buildings(building_gdf, initial_center, zoom, rectangle_vertices)
+    display(m)
+    return gdf
+
+
+def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
+    """
+    Creates an interactive map to add trees by clicking and setting parameters.
+    
+    Users can:
+    - Set tree parameters: top height, bottom height, crown diameter
+    - Click multiple times to add multiple trees with the same parameters
+    - Update parameters at any time to change subsequent trees
+    
+    Args:
+        tree_gdf (GeoDataFrame, optional): Existing trees to display.
+            Expected columns: ['tree_id', 'top_height', 'bottom_height', 'crown_diameter', 'geometry']
+        initial_center (tuple, optional): (lon, lat) for initial map center.
+        zoom (int): Initial zoom level. Default=17.
+        rectangle_vertices (list, optional): If provided, used to set center like buildings.
+    
+    Returns:
+        tuple: (map_object, updated_tree_gdf)
+    """
+    # Initialize or copy the tree GeoDataFrame
+    if tree_gdf is None:
+        updated_trees = gpd.GeoDataFrame(
+            columns=['tree_id', 'top_height', 'bottom_height', 'crown_diameter', 'geometry'],
+            crs='EPSG:4326'
+        )
+    else:
+        updated_trees = tree_gdf.copy()
+        # Ensure required columns exist
+        if 'tree_id' not in updated_trees.columns:
+            updated_trees['tree_id'] = range(1, len(updated_trees) + 1)
+        for col, default in [('top_height', 10.0), ('bottom_height', 4.0), ('crown_diameter', 6.0)]:
+            if col not in updated_trees.columns:
+                updated_trees[col] = default
+
+    # Determine map center
+    if initial_center is not None:
+        center_lon, center_lat = initial_center
+    elif updated_trees is not None and len(updated_trees) > 0:
+        min_lon, min_lat, max_lon, max_lat = updated_trees.total_bounds
+        center_lon = (min_lon + max_lon) / 2
+        center_lat = (min_lat + max_lat) / 2
+    elif rectangle_vertices is not None:
+        center_lon, center_lat = (rectangle_vertices[0][0] + rectangle_vertices[2][0]) / 2, (rectangle_vertices[0][1] + rectangle_vertices[2][1]) / 2
+    else:
+        center_lon, center_lat = -100.0, 40.0
+
+    # Create map
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    # Add aerial/satellite basemap
+    try:
+        m.add_layer(basemap_to_tiles(basemaps.Esri.WorldImagery))
+    except Exception:
+        # Fallback silently if basemap cannot be added
+        pass
+
+    # If rectangle_vertices provided, draw its edges on the map
+    if rectangle_vertices is not None and len(rectangle_vertices) >= 4:
+        try:
+            lat_lon_coords = [(lat, lon) for lon, lat in rectangle_vertices]
+            rect_outline = LeafletPolygon(
+                locations=lat_lon_coords,
+                color="#fed766",
+                weight=2,
+                fill_color="#fed766",
+                fill_opacity=0.0
+            )
+            m.add_layer(rect_outline)
+        except Exception:
+            pass
+
+    # Display existing trees as circles
+    tree_layers = {}
+    for idx, row in updated_trees.iterrows():
+        if row.geometry is not None and hasattr(row.geometry, 'x'):
+            lat = row.geometry.y
+            lon = row.geometry.x
+            # Ensure integer radius in meters as required by ipyleaflet Circle
+            radius_m = max(int(round(float(row.get('crown_diameter', 6.0)) / 2.0)), 1)
+            tree_id_val = int(row.get('tree_id', idx+1))
+            circle = Circle(location=(lat, lon), radius=radius_m, color='#2ab7ca', weight=1, opacity=1.0, fill_color='#2ab7ca', fill_opacity=0.3)
+            m.add_layer(circle)
+            tree_layers[tree_id_val] = circle
+
+    # UI widgets for parameters
+    top_height_input = FloatText(value=10.0, description='Top height (m):', disabled=False, style={'description_width': 'initial'})
+    bottom_height_input = FloatText(value=4.0, description='Bottom height (m):', disabled=False, style={'description_width': 'initial'})
+    crown_diameter_input = FloatText(value=6.0, description='Crown diameter (m):', disabled=False, style={'description_width': 'initial'})
+
+    add_mode_button = Button(description='Add', button_style='success')
+    remove_mode_button = Button(description='Remove', button_style='')
+    status_output = Output()
+    hover_info = HTML("")
+
+    control_panel = VBox([
+        HTML("<h3 style=\"margin:0 0 4px 0;\">Tree Placement Tool</h3>"),
+        HTML("<div style=\"margin:0 0 6px 0;\">1. Choose Add/Remove mode<br>2. Set tree parameters (top, bottom, crown)<br>3. Click on the map to add/remove consecutively<br>4. Hover over a tree to view parameters</div>"),
+        HBox([add_mode_button, remove_mode_button]),
+        top_height_input,
+        bottom_height_input,
+        crown_diameter_input,
+        hover_info,
+        status_output
+    ])
+
+    widget_control = WidgetControl(widget=control_panel, position='topright')
+    m.add_control(widget_control)
+
+    # State for mode
+    mode = 'add'
+
+    def set_mode(new_mode):
+        nonlocal mode
+        mode = new_mode
+        # Visual feedback
+        add_mode_button.button_style = 'success' if mode == 'add' else ''
+        remove_mode_button.button_style = 'danger' if mode == 'remove' else ''
+        # No on-screen mode label
+
+    def on_click_add(b):
+        set_mode('add')
+
+    def on_click_remove(b):
+        set_mode('remove')
+
+    add_mode_button.on_click(on_click_add)
+    remove_mode_button.on_click(on_click_remove)
+
+    # Consecutive placements by map click
+    def handle_map_click(**kwargs):
+        nonlocal updated_trees
+        with status_output:
+            clear_output()
+
+        if kwargs.get('type') == 'click':
+            lat, lon = kwargs.get('coordinates', (None, None))
+            if lat is None or lon is None:
+                return
+            if mode == 'add':
+                # Determine next tree_id
+                next_tree_id = int(updated_trees['tree_id'].max() + 1) if len(updated_trees) > 0 else 1
+
+                # Clamp/validate parameters
+                th = float(top_height_input.value)
+                bh = float(bottom_height_input.value)
+                cd = float(crown_diameter_input.value)
+                if bh > th:
+                    bh, th = th, bh
+                if cd < 0:
+                    cd = 0.0
+
+                # Create new tree row
+                new_row = {
+                    'tree_id': next_tree_id,
+                    'top_height': th,
+                    'bottom_height': bh,
+                    'crown_diameter': cd,
+                    'geometry': geom.Point(lon, lat)
+                }
+
+                # Append
+                new_index = len(updated_trees)
+                updated_trees.loc[new_index] = new_row
+
+                # Add circle layer representing crown diameter (radius in meters)
+                radius_m = max(int(round(new_row['crown_diameter'] / 2.0)), 1)
+                circle = Circle(location=(lat, lon), radius=radius_m, color='#2ab7ca', weight=1, opacity=1.0, fill_color='#2ab7ca', fill_opacity=0.3)
+                m.add_layer(circle)
+
+                tree_layers[next_tree_id] = circle
+
+                with status_output:
+                    print(f"Tree {next_tree_id} added at (lon, lat)=({lon:.6f}, {lat:.6f})")
+                    print(f"Top: {new_row['top_height']} m, Bottom: {new_row['bottom_height']} m, Crown: {new_row['crown_diameter']} m")
+                    print(f"Total trees: {len(updated_trees)}")
+            else:
+                # Remove mode: find the nearest tree within its crown radius + 5m
+                candidate_id = None
+                candidate_idx = None
+                candidate_dist = None
+                for idx2, row2 in updated_trees.iterrows():
+                    if row2.geometry is None or not hasattr(row2.geometry, 'x'):
+                        continue
+                    lat2 = row2.geometry.y
+                    lon2 = row2.geometry.x
+                    dist_m = distance.distance((lat, lon), (lat2, lon2)).meters
+                    rad_m = max(int(round(float(row2.get('crown_diameter', 6.0)) / 2.0)), 1)
+                    thr_m = rad_m + 5
+                    if (candidate_dist is None and dist_m <= thr_m) or (candidate_dist is not None and dist_m < candidate_dist and dist_m <= thr_m):
+                        candidate_dist = dist_m
+                        candidate_id = int(row2.get('tree_id', idx2+1))
+                        candidate_idx = idx2
+
+                if candidate_id is not None:
+                    # Remove layer
+                    layer = tree_layers.get(candidate_id)
+                    if layer is not None:
+                        m.remove_layer(layer)
+                        del tree_layers[candidate_id]
+                    # Remove from gdf
+                    updated_trees.drop(index=candidate_idx, inplace=True)
+                    updated_trees.reset_index(drop=True, inplace=True)
+                    with status_output:
+                        print(f"Removed tree {candidate_id} (distance {candidate_dist:.2f} m)")
+                        print(f"Total trees: {len(updated_trees)}")
+                else:
+                    with status_output:
+                        print("No tree near the clicked location to remove")
+        elif kwargs.get('type') == 'mousemove':
+            lat, lon = kwargs.get('coordinates', (None, None))
+            if lat is None or lon is None:
+                return
+            # Find a tree the cursor is over (within crown radius)
+            shown = False
+            for _, row2 in updated_trees.iterrows():
+                if row2.geometry is None or not hasattr(row2.geometry, 'x'):
+                    continue
+                lat2 = row2.geometry.y
+                lon2 = row2.geometry.x
+                dist_m = distance.distance((lat, lon), (lat2, lon2)).meters
+                rad_m = max(int(round(float(row2.get('crown_diameter', 6.0)) / 2.0)), 1)
+                if dist_m <= rad_m:
+                    hover_info.value = (
+                        f"<div style=\"color:#d61f1f; font-weight:600; margin:2px 0;\">"
+                        f"Tree {int(row2.get('tree_id', 0))} | Top {float(row2.get('top_height', 10.0))} m | "
+                        f"Bottom {float(row2.get('bottom_height', 0.0))} m | Crown {float(row2.get('crown_diameter', 6.0))} m"
+                        f"</div>"
+                    )
+                    shown = True
+                    break
+            if not shown:
+                hover_info.value = ""
+    m.on_interaction(handle_map_click)
+
+    with status_output:
+        print(f"Total trees loaded: {len(updated_trees)}")
+        print("Set parameters, then click on the map to add trees")
+
+    return m, updated_trees
+
+
+def create_tree_editor(tree_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
+    """
+    Convenience wrapper to display the tree editor map and return the GeoDataFrame.
+    """
+    m, gdf = draw_additional_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
     display(m)
     return gdf
