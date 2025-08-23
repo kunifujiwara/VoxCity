@@ -398,7 +398,12 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
     max_lat = max(v[1] for v in rectangle_vertices)
     
     # Enhanced Overpass API query with recursive member extraction
-    overpass_url = "http://overpass-api.de/api/interpreter"
+    # Try multiple Overpass endpoints to improve resiliency against rate limits or outages
+    overpass_endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter",
+    ]
     overpass_query = f"""
     [out:json];
     (
@@ -412,9 +417,40 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
     out geom;
     """
     
-    # Send the request to the Overpass API
-    response = requests.get(overpass_url, params={'data': overpass_query})
-    data = response.json()
+    # Send the request to the Overpass API with fallbacks and robust JSON handling
+    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
+    data = None
+    last_error = None
+    for overpass_url in overpass_endpoints:
+        try:
+            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=30)
+            # Ensure HTTP OK
+            if response.status_code != 200:
+                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
+                continue
+            # Some servers return HTML/plain text on rate-limit; guard JSON parsing
+            content_type = response.headers.get("Content-Type", "")
+            if "json" not in content_type.lower():
+                # Attempt JSON anyway; if fails, try next endpoint
+                try:
+                    data = response.json()
+                except Exception as e:
+                    last_error = e
+                    continue
+            else:
+                data = response.json()
+            # Validate structure
+            if not isinstance(data, dict) or "elements" not in data:
+                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
+                data = None
+                continue
+            # Success
+            break
+        except Exception as e:
+            last_error = e
+            continue
+    if data is None:
+        raise RuntimeError(f"Failed to fetch OSM data from Overpass endpoints. Last error: {last_error}")
     
     # Build a mapping from (type, id) to element
     id_map = {}
@@ -932,14 +968,43 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
         "out skel qt;"
     )
 
-    # Overpass API endpoint
-    overpass_url = "http://overpass-api.de/api/interpreter"
+    # Overpass API endpoints (fallbacks)
+    overpass_endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter",
+    ]
 
-    # Fetch data from Overpass API
+    # Fetch data from Overpass API with fallbacks and robust JSON handling
     print("Fetching data from Overpass API...")
-    response = requests.get(overpass_url, params={'data': query})
-    response.raise_for_status()
-    data = response.json()
+    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
+    data = None
+    last_error = None
+    for overpass_url in overpass_endpoints:
+        try:
+            response = requests.get(overpass_url, params={'data': query}, headers=headers, timeout=30)
+            if response.status_code != 200:
+                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
+                continue
+            content_type = response.headers.get("Content-Type", "")
+            if "json" not in content_type.lower():
+                try:
+                    data = response.json()
+                except Exception as e:
+                    last_error = e
+                    continue
+            else:
+                data = response.json()
+            if not isinstance(data, dict) or 'elements' not in data:
+                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
+                data = None
+                continue
+            break
+        except Exception as e:
+            last_error = e
+            continue
+    if data is None:
+        raise RuntimeError(f"Failed to fetch OSM data from Overpass endpoints. Last error: {last_error}")
 
     # Convert OSM data to GeoJSON format using our custom converter instead of json2geojson
     print("Converting data to GeoJSON format...")
