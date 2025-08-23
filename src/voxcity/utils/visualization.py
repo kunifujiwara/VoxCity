@@ -1933,8 +1933,8 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
 
     images = []
     for view_name, camera_pos in camera_positions.items():
-        # Create new plotter for each view
-        plotter = pv.Plotter(notebook=True, off_screen=True)
+        # Create new plotter for each view (avoid notebook backend in headless/CI)
+        plotter = pv.Plotter(off_screen=True)
         
         # Set the projection type
         if projection_type.lower() == "orthographic":
@@ -2047,10 +2047,6 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     ...     save_obj=True
     ... )
     """
-    # Set up headless rendering environment for PyVista
-    os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
-    os.environ['DISPLAY'] = ':99'
-
     # Configure PyVista settings for high-quality rendering
     pv.set_plot_theme('document')
     pv.global_theme.background = 'white'
@@ -2082,6 +2078,18 @@ def visualize_voxcity_multi_view(voxel_array, meshsize, **kwargs):
     # Output control parameters
     save_obj = kwargs.get("save_obj", False)
     show_views = kwargs.get("show_views", True)
+    # Disable rendering in CI/headless to avoid VTK segfaults
+    if os.getenv('GITHUB_ACTIONS', 'false').lower() == 'true' or os.getenv('CI', 'false').lower() == 'true':
+        show_views = False
+
+    # Set up headless rendering environment for PyVista only if we will render
+    if show_views and sys.platform.startswith('linux'):
+        try:
+            import pyvista as _pv
+            _pv.start_xvfb()
+        except Exception:
+            os.system('Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &')
+            os.environ['DISPLAY'] = ':99'
 
     # Create 3D meshes from voxel data
     print("Creating voxel meshes...")

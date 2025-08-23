@@ -79,7 +79,8 @@ def run_voxelcity_pipeline(
     # 4.2 Visualize voxel city
     from voxcity.utils.visualization import visualize_voxcity_multi_view
     t0 = t_start()
-    visualize_voxcity_multi_view(voxcity_grid, meshsize)
+    # Avoid rendering heavy 3D views in CI to prevent VTK segfaults
+    visualize_voxcity_multi_view(voxcity_grid, meshsize, show_views=False)
     t_end("4.2 visualize_voxcity_multi_view", t0)
 
     # 5.1 ENVI-MET INX and EDB
