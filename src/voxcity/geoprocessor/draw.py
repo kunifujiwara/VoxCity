@@ -33,12 +33,13 @@ from ipyleaflet import (
     WidgetControl,
     Circle,
     basemaps,
-    basemap_to_tiles
+    basemap_to_tiles,
+    TileLayer
 )
 from geopy import distance
 import shapely.geometry as geom
 import geopandas as gpd
-from ipywidgets import VBox, HBox, Button, FloatText, Label, Output, HTML
+from ipywidgets import VBox, HBox, Button, FloatText, Label, Output, HTML, Checkbox
 import pandas as pd
 from IPython.display import display, clear_output
 
@@ -885,12 +886,21 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
 
     # Create map
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
-    # Add aerial/satellite basemap
+    # Add Google Satellite basemap with Esri fallback
     try:
-        m.add_layer(basemap_to_tiles(basemaps.Esri.WorldImagery))
+        google_sat = TileLayer(
+            url='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            name='Google Satellite',
+            attribution='Google Satellite'
+        )
+        # Replace default base layer with Google Satellite
+        m.layers = tuple([google_sat])
     except Exception:
-        # Fallback silently if basemap cannot be added
-        pass
+        try:
+            m.layers = tuple([basemap_to_tiles(basemaps.Esri.WorldImagery)])
+        except Exception:
+            # Fallback silently if basemap cannot be added
+            pass
 
     # If rectangle_vertices provided, draw its edges on the map
     if rectangle_vertices is not None and len(rectangle_vertices) >= 4:
@@ -924,6 +934,7 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
     top_height_input = FloatText(value=10.0, description='Top height (m):', disabled=False, style={'description_width': 'initial'})
     bottom_height_input = FloatText(value=4.0, description='Bottom height (m):', disabled=False, style={'description_width': 'initial'})
     crown_diameter_input = FloatText(value=6.0, description='Crown diameter (m):', disabled=False, style={'description_width': 'initial'})
+    fixed_prop_checkbox = Checkbox(value=True, description='Fixed proportion', indent=False)
 
     add_mode_button = Button(description='Add', button_style='success')
     remove_mode_button = Button(description='Remove', button_style='')
@@ -937,6 +948,7 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
         top_height_input,
         bottom_height_input,
         crown_diameter_input,
+        fixed_prop_checkbox,
         hover_info,
         status_output
     ])
@@ -946,6 +958,83 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
 
     # State for mode
     mode = 'add'
+    # Fixed proportion state
+    base_bottom_ratio = bottom_height_input.value / top_height_input.value if top_height_input.value else 0.4
+    base_crown_ratio = crown_diameter_input.value / top_height_input.value if top_height_input.value else 0.6
+    updating_params = False
+
+    def recompute_from_top(new_top: float):
+        nonlocal updating_params
+        if new_top <= 0:
+            return
+        new_bottom = max(0.0, base_bottom_ratio * new_top)
+        new_crown = max(0.0, base_crown_ratio * new_top)
+        updating_params = True
+        bottom_height_input.value = new_bottom
+        crown_diameter_input.value = new_crown
+        updating_params = False
+
+    def recompute_from_bottom(new_bottom: float):
+        nonlocal updating_params
+        if base_bottom_ratio <= 0:
+            return
+        new_top = max(0.0, new_bottom / base_bottom_ratio)
+        new_crown = max(0.0, base_crown_ratio * new_top)
+        updating_params = True
+        top_height_input.value = new_top
+        crown_diameter_input.value = new_crown
+        updating_params = False
+
+    def recompute_from_crown(new_crown: float):
+        nonlocal updating_params
+        if base_crown_ratio <= 0:
+            return
+        new_top = max(0.0, new_crown / base_crown_ratio)
+        new_bottom = max(0.0, base_bottom_ratio * new_top)
+        updating_params = True
+        top_height_input.value = new_top
+        bottom_height_input.value = new_bottom
+        updating_params = False
+
+    def on_toggle_fixed(change):
+        nonlocal base_bottom_ratio, base_crown_ratio
+        if change['name'] == 'value':
+            if change['new']:
+                # Capture current ratios as baseline
+                top = float(top_height_input.value) or 1.0
+                bot = float(bottom_height_input.value)
+                crn = float(crown_diameter_input.value)
+                base_bottom_ratio = max(0.0, bot / top)
+                base_crown_ratio = max(0.0, crn / top)
+            else:
+                # Keep last ratios but do not auto-update
+                pass
+
+    def on_top_change(change):
+        if change['name'] == 'value' and fixed_prop_checkbox.value and not updating_params:
+            try:
+                recompute_from_top(float(change['new']))
+            except Exception:
+                pass
+
+    def on_bottom_change(change):
+        if change['name'] == 'value' and fixed_prop_checkbox.value and not updating_params:
+            try:
+                recompute_from_bottom(float(change['new']))
+            except Exception:
+                pass
+
+    def on_crown_change(change):
+        if change['name'] == 'value' and fixed_prop_checkbox.value and not updating_params:
+            try:
+                recompute_from_crown(float(change['new']))
+            except Exception:
+                pass
+
+    fixed_prop_checkbox.observe(on_toggle_fixed, names='value')
+    top_height_input.observe(on_top_change, names='value')
+    bottom_height_input.observe(on_bottom_change, names='value')
+    crown_diameter_input.observe(on_crown_change, names='value')
 
     def set_mode(new_mode):
         nonlocal mode
