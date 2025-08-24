@@ -1566,3 +1566,168 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     # If you prefer the bottom row as index=0, you'd do: np.flipud(dem_grid)
 
     return np.flipud(dem_grid)
+
+def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
+    """
+    Create canopy top and bottom height grids from a tree GeoDataFrame.
+
+    Assumptions:
+    - Each tree is a point with attributes: 'top_height', 'bottom_height', 'crown_diameter'.
+    - The crown is modeled as a solid of revolution with an ellipsoidal vertical profile.
+      For a tree with top H_t, bottom H_b and crown radius R = crown_diameter/2,
+      at a horizontal distance r (r <= R) from the tree center:
+        z_top(r) = z0 + a * sqrt(1 - (r/R)^2)
+        z_bot(r) = z0 - a * sqrt(1 - (r/R)^2)
+      where a = (H_t - H_b)/2 and z0 = (H_t + H_b)/2.
+
+    The function outputs two grids (shape: (nx, ny) consistent with other grid functions):
+    - canopy_height_grid: maximum canopy top height per cell across trees
+    - canopy_bottom_height_grid: maximum canopy bottom height per cell across trees
+
+    Args:
+        tree_gdf (geopandas.GeoDataFrame): Tree points with required columns.
+        meshsize (float): Grid spacing in meters.
+        rectangle_vertices (list[tuple]): 4 vertices [(lon,lat), ...] defining the grid rectangle.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: (canopy_height_grid, canopy_bottom_height_grid)
+    """
+
+    # Validate and prepare input GeoDataFrame
+    if tree_gdf is None or len(tree_gdf) == 0:
+        return np.array([]), np.array([])
+
+    required_cols = ['top_height', 'bottom_height', 'crown_diameter', 'geometry']
+    for col in required_cols:
+        if col not in tree_gdf.columns:
+            raise ValueError(f"tree_gdf must contain '{col}' column.")
+
+    # Ensure CRS is WGS84
+    if tree_gdf.crs is None:
+        warnings.warn("tree_gdf has no CRS. Assuming EPSG:4326.")
+        tree_gdf = tree_gdf.set_crs(epsg=4326)
+    elif tree_gdf.crs.to_epsg() != 4326:
+        tree_gdf = tree_gdf.to_crs(epsg=4326)
+
+    # Grid setup consistent with building/land cover grid functions
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
+
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+
+    origin = np.array(rectangle_vertices[0])
+    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+
+    nx, ny = grid_size[0], grid_size[1]
+
+    # Precompute metric cell-center coordinates in grid's (u,v) metric space (meters from origin)
+    i_centers_m = (np.arange(nx) + 0.5) * adjusted_meshsize[0]
+    j_centers_m = (np.arange(ny) + 0.5) * adjusted_meshsize[1]
+
+    # Initialize output grids
+    canopy_top = np.zeros((nx, ny), dtype=float)
+    canopy_bottom = np.zeros((nx, ny), dtype=float)
+
+    # Matrix to convert lon/lat offsets to metric (u,v) using u_vec, v_vec
+    # delta_lonlat ≈ [u_vec v_vec] @ [alpha; beta], where alpha/beta are meters along u/v
+    transform_mat = np.column_stack((u_vec, v_vec))  # shape (2,2)
+    try:
+        transform_inv = np.linalg.inv(transform_mat)
+    except np.linalg.LinAlgError:
+        # Fallback if u_vec/v_vec are degenerate (shouldn't happen for proper rectangles)
+        transform_inv = np.linalg.pinv(transform_mat)
+
+    # Iterate trees and accumulate ellipsoidal canopy surfaces
+    for _, row in tree_gdf.iterrows():
+        geom = row['geometry']
+        if geom is None or not hasattr(geom, 'x'):
+            continue
+
+        top_h = float(row.get('top_height', 0.0) or 0.0)
+        bot_h = float(row.get('bottom_height', 0.0) or 0.0)
+        dia = float(row.get('crown_diameter', 0.0) or 0.0)
+
+        # Sanity checks and clamps
+        if dia <= 0 or top_h <= 0:
+            continue
+        if bot_h < 0:
+            bot_h = 0.0
+        if bot_h > top_h:
+            top_h, bot_h = bot_h, top_h
+
+        R = dia / 2.0  # radius (meters)
+        a = max((top_h - bot_h) / 2.0, 0.0)
+        z0 = (top_h + bot_h) / 2.0
+        if a == 0:
+            # Flat disk between bot_h and top_h collapses; treat as constant top/bottom
+            a = 0.0
+
+        # Tree center in lon/lat
+        tree_lon = float(geom.x)
+        tree_lat = float(geom.y)
+
+        # Map tree center to (u,v) metric coordinates relative to origin
+        delta = np.array([tree_lon, tree_lat]) - origin
+        alpha_beta = transform_inv @ delta  # meters along u (alpha) and v (beta)
+        alpha_m = alpha_beta[0]
+        beta_m = alpha_beta[1]
+
+        # Determine affected index ranges (bounding box in grid indices)
+        # Convert radius in meters to index offsets along u and v
+        du_cells = int(R / adjusted_meshsize[0] + 2)
+        dv_cells = int(R / adjusted_meshsize[1] + 2)
+
+        i_center_idx = int(alpha_m / adjusted_meshsize[0])
+        j_center_idx = int(beta_m / adjusted_meshsize[1])
+
+        i_min = max(0, i_center_idx - du_cells)
+        i_max = min(nx - 1, i_center_idx + du_cells)
+        j_min = max(0, j_center_idx - dv_cells)
+        j_max = min(ny - 1, j_center_idx + dv_cells)
+
+        if i_min > i_max or j_min > j_max:
+            continue
+
+        # Slice cell center coords for local window
+        ic = i_centers_m[i_min:i_max + 1][:, None]  # shape (Ii,1)
+        jc = j_centers_m[j_min:j_max + 1][None, :]  # shape (1,Jj)
+
+        # Compute radial distance in meters in grid metric space
+        di = ic - alpha_m
+        dj = jc - beta_m
+        r = np.sqrt(di * di + dj * dj)
+
+        # Mask for points within crown radius
+        within = r <= R
+        if not np.any(within):
+            continue
+
+        # Ellipsoidal vertical profile
+        # Avoid numerical issues for r slightly > R due to precision
+        ratio = np.clip(r / max(R, 1e-9), 0.0, 1.0)
+        factor = np.sqrt(1.0 - ratio * ratio)
+        local_top = z0 + a * factor
+        local_bot = z0 - a * factor
+
+        # Apply mask; cells outside remain zero contribution
+        local_top_masked = np.where(within, local_top, 0.0)
+        local_bot_masked = np.where(within, local_bot, 0.0)
+
+        # Merge with maxima to represent union of crowns
+        canopy_top[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
+            canopy_top[i_min:i_max + 1, j_min:j_max + 1], local_top_masked
+        )
+        canopy_bottom[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
+            canopy_bottom[i_min:i_max + 1, j_min:j_max + 1], local_bot_masked
+        )
+
+    # Ensure bottom <= top everywhere
+    canopy_bottom = np.minimum(canopy_bottom, canopy_top)
+
+    return canopy_top, canopy_bottom
