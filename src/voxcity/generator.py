@@ -75,6 +75,7 @@ from .geoprocessor.grid import (
     create_land_cover_grid_from_gdf_polygon,
     create_building_height_grid_from_open_building_temporal_polygon,
     create_vegetation_height_grid_from_gdf_polygon,
+    create_canopy_grids_from_tree_gdf,
     create_dem_grid_from_gdf_polygon
 )
 
@@ -313,58 +314,85 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
-    """Creates a grid of tree canopy heights.
+    """Creates canopy top and bottom height grids.
+
+    Supports satellite sources and a GeoDataFrame source (from draw_additional_trees).
 
     Args:
         rectangle_vertices: List of coordinates defining the area of interest
         meshsize: Size of each grid cell in meters
-        source: Data source for canopy heights
+        source: Data source for canopy heights. Use 'GeoDataFrame' or 'tree_gdf' for tree_gdf path/object.
         output_dir: Directory to save output files
         **kwargs: Additional arguments including:
             - gridvis: Whether to visualize the grid
+            - tree_gdf: GeoDataFrame of trees (optional when source='GeoDataFrame')
+            - tree_gdf_path: Path to a local file (e.g., .gpkg) with trees when source='GeoDataFrame'
+            - trunk_height_ratio: Fraction of top height used as canopy bottom for non-GDF sources
 
     Returns:
-        numpy.ndarray: Grid of canopy heights
+        tuple[numpy.ndarray, numpy.ndarray]: (canopy_top_height_grid, canopy_bottom_height_grid)
     """
 
     print("Creating Canopy Height grid\n ")
-    print(f"Data source: High Resolution Canopy Height Maps by WRI and Meta")
-    
-    # Initialize Earth Engine for satellite-based canopy height data
-    initialize_earth_engine()
+    print(f"Data source: {source}")
 
     os.makedirs(output_dir, exist_ok=True)
+
+    # Branch: compute from a provided GeoDataFrame (draw_additional_trees output)
+    if source in ('GeoDataFrame', 'tree_gdf', 'Tree_GeoDataFrame', 'GDF'):
+        tree_gdf = kwargs.get('tree_gdf')
+        tree_gdf_path = kwargs.get('tree_gdf_path')
+        if tree_gdf is None and tree_gdf_path is not None:
+            _, ext = os.path.splitext(tree_gdf_path)
+            if ext.lower() == '.gpkg':
+                tree_gdf = get_gdf_from_gpkg(tree_gdf_path, rectangle_vertices)
+            else:
+                raise ValueError("Unsupported tree file format. Use .gpkg or pass a GeoDataFrame.")
+        if tree_gdf is None:
+            raise ValueError("When source='GeoDataFrame', provide 'tree_gdf' or 'tree_gdf_path'.")
+
+        canopy_top, canopy_bottom = create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices)
+
+        # Visualization
+        grid_vis = kwargs.get("gridvis", True)
+        if grid_vis:
+            vis = canopy_top.copy()
+            vis[vis == 0] = np.nan
+            visualize_numerical_grid(np.flipud(vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+
+        return canopy_top, canopy_bottom
+
+    # Default: satellite/remote sensing sources
+    print("Data source: High Resolution Canopy Height Maps by WRI and Meta")
+    initialize_earth_engine()
+
     geotiff_path = os.path.join(output_dir, "canopy_height.tif")
-    
-    # Get region of interest and fetch canopy height data
+
     roi = get_roi(rectangle_vertices)
     if source == 'High Resolution 1m Global Canopy Height Maps':
-        # High-resolution (1m) global canopy height maps from Meta and WRI
-        # Based on satellite imagery and machine learning models
-        collection_name = "projects/meta-forest-monitoring-okw37/assets/CanopyHeight"  
-        image = get_ee_image_collection(collection_name, roi)      
+        collection_name = "projects/meta-forest-monitoring-okw37/assets/CanopyHeight"
+        image = get_ee_image_collection(collection_name, roi)
     elif source == 'ETH Global Sentinel-2 10m Canopy Height (2020)':
-        # Medium-resolution (10m) canopy height from ETH Zurich
-        # Derived from Sentinel-2 satellite data
         collection_name = "users/nlang/ETH_GlobalCanopyHeight_2020_10m_v1"
         image = get_ee_image(collection_name, roi)
-    
-    # Save canopy height data as GeoTIFF with specified resolution
-    save_geotiff(image, geotiff_path, resolution=meshsize)  
+    else:
+        raise ValueError(f"Unsupported canopy source: {source}")
 
-    # Convert GeoTIFF to regular grid format
+    save_geotiff(image, geotiff_path, resolution=meshsize)
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
-    # Generate visualization if requested
-    grid_vis = kwargs.get("gridvis", True)    
+    # Derive bottom grid using trunk_height_ratio (consistent with create_3d_voxel)
+    trunk_height_ratio = kwargs.get("trunk_height_ratio")
+    if trunk_height_ratio is None:
+        trunk_height_ratio = 11.76 / 19.98
+    canopy_bottom_grid = canopy_height_grid * float(trunk_height_ratio)
+
+    grid_vis = kwargs.get("gridvis", True)
     if grid_vis:
-        # Replace zeros with NaN for better visualization (show only areas with trees)
         canopy_height_grid_nan = canopy_height_grid.copy()
         canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-        # Use green color scheme appropriate for vegetation
         visualize_numerical_grid(np.flipud(canopy_height_grid_nan), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
-
-    return canopy_height_grid
+    return canopy_height_grid, canopy_bottom_grid
 
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     """Creates a digital elevation model grid.
@@ -431,7 +459,7 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
 def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, 
                     building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, 
-                    tree_grid_ori, voxel_size, land_cover_source, **kwargs):
+                    tree_grid_ori, voxel_size, land_cover_source, canopy_bottom_height_grid_ori=None, **kwargs):
     """Creates a 3D voxel representation combining all input grids.
     Args:
         building_height_grid_ori: Grid of building heights
@@ -465,6 +493,9 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori,
     dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori) # Normalize DEM to start at 0
     dem_grid = process_grid(building_id_grid, dem_grid) # Process DEM based on building footprints
     tree_grid = np.flipud(tree_grid_ori.copy())
+    canopy_bottom_grid = None
+    if canopy_bottom_height_grid_ori is not None:
+        canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
     # Validate that all input grids have consistent dimensions
     assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
     rows, cols = building_height_grid.shape
@@ -509,7 +540,10 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori,
             # Process tree canopy if trees are present
             if tree_height > 0:
                 # Calculate tree structure: trunk base to crown base to crown top
-                crown_base_height = (tree_height * trunk_height_ratio)
+                if canopy_bottom_grid is not None:
+                    crown_base_height = canopy_bottom_grid[i, j]
+                else:
+                    crown_base_height = (tree_height * trunk_height_ratio)
                 crown_base_height_level = int(crown_base_height / voxel_size + 0.5)
                 crown_top_height = tree_height
                 crown_top_height_level = int(crown_top_height / voxel_size + 0.5)
@@ -648,7 +682,8 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             - building_height_grid: 2D grid of building heights
             - building_min_height_grid: 2D grid of minimum building heights
             - building_id_grid: 2D grid of building IDs
-            - canopy_height_grid: 2D grid of tree canopy heights
+            - canopy_height_grid: 2D grid of tree canopy top heights
+            - canopy_bottom_height_grid: 2D grid of tree canopy bottom heights
             - land_cover_grid: 2D grid of land cover classifications
             - dem_grid: 2D grid of ground elevation
             - building_geojson: GeoJSON of building footprints and metadata
@@ -677,19 +712,20 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     # STEP 2: Handle canopy height data
     # Either use static values or fetch from satellite sources
     if canopy_height_source == "Static":
-        # Create uniform canopy height for all tree-covered areas
+        # Create uniform canopy height for all tree-covered areas (top grid)
         canopy_height_grid = np.zeros_like(land_cover_grid, dtype=float)
-        
-        # Apply static height to areas classified as trees
-        # Default height represents typical urban tree height
         static_tree_height = kwargs.get("static_tree_height", 10.0)
         tree_mask = (land_cover_grid == 4)
-        
-        # Set static height for tree cells
         canopy_height_grid[tree_mask] = static_tree_height
+
+        # Derive bottom from trunk_height_ratio
+        trunk_height_ratio = kwargs.get("trunk_height_ratio")
+        if trunk_height_ratio is None:
+            trunk_height_ratio = 11.76 / 19.98
+        canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
     else:
-        # Fetch canopy height from satellite/remote sensing sources
-        canopy_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
+        # Fetch canopy top/bottom from source
+        canopy_height_grid, canopy_bottom_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     
     # STEP 3: Handle digital elevation model (terrain)
     if dem_source == "Flat":
@@ -705,6 +741,8 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     min_canopy_height = kwargs.get("min_canopy_height")
     if min_canopy_height is not None:
         canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0        
+        if 'canopy_bottom_height_grid' in locals():
+            canopy_bottom_height_grid[canopy_height_grid == 0] = 0
 
     # Remove objects near the boundary to avoid edge effects
     # This is useful when the area of interest is part of a larger urban area
@@ -717,6 +755,8 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         
         # Clear canopy heights in perimeter areas
         canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
+        if 'canopy_bottom_height_grid' in locals():
+            canopy_bottom_height_grid[:w_peri, :] = canopy_bottom_height_grid[-w_peri:, :] = canopy_bottom_height_grid[:, :h_peri] = canopy_bottom_height_grid[:, -h_peri:] = 0
 
         # Identify buildings that intersect with perimeter areas
         ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
@@ -815,7 +855,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
 
     # STEP 6: Generate the final 3D voxel model
     # This combines all 2D grids into a comprehensive 3D representation
-    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
+    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source, canopy_bottom_height_grid)
 
     # STEP 7: Generate optional 3D visualization
     voxelvis = kwargs.get("voxelvis")
@@ -836,7 +876,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
                          building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
                          building_gdf, meshsize, rectangle_vertices)
     
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, building_gdf
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, building_gdf
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
     """Main function to generate a complete voxel city model.
@@ -917,19 +957,37 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         
         # Set static height for tree cells
         canopy_height_grid_comp[tree_mask] = static_tree_height
+
+        # Bottom comp from trunk ratio
+        trunk_height_ratio = kwargs.get("trunk_height_ratio")
+        if trunk_height_ratio is None:
+            trunk_height_ratio = 11.76 / 19.98
+        canopy_bottom_height_grid_comp = canopy_height_grid_comp * float(trunk_height_ratio)
     else:
-        canopy_height_grid_comp = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
+        canopy_height_grid_comp, canopy_bottom_height_grid_comp = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     
     # In the get_voxcity_CityGML function, modify it to handle None vegetation_gdf
     if vegetation_gdf is not None:
         canopy_height_grid = create_vegetation_height_grid_from_gdf_polygon(vegetation_gdf, meshsize, rectangle_vertices)
+        # Base bottom grid from ratio
+        trunk_height_ratio = kwargs.get("trunk_height_ratio")
+        if trunk_height_ratio is None:
+            trunk_height_ratio = 11.76 / 19.98
+        canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
     else:
         # Create an empty canopy_height_grid with the same shape as your other grids
         # This depends on the expected shape, you might need to adjust
         canopy_height_grid = np.zeros_like(building_height_grid)
+        canopy_bottom_height_grid = np.zeros_like(building_height_grid)
 
     mask = (canopy_height_grid == 0) & (canopy_height_grid_comp != 0)
     canopy_height_grid[mask] = canopy_height_grid_comp[mask]
+    # Apply same complementation to bottom grid
+    mask_b = (canopy_bottom_height_grid == 0) & (canopy_bottom_height_grid_comp != 0)
+    canopy_bottom_height_grid[mask_b] = canopy_bottom_height_grid_comp[mask_b]
+
+    # Ensure bottom <= top
+    canopy_bottom_height_grid = np.minimum(canopy_bottom_height_grid, canopy_height_grid)
     
     # Handle DEM - either flat or from source
     if kwargs.pop('flat_dem', None):
@@ -948,6 +1006,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     min_canopy_height = kwargs.get("min_canopy_height")
     if min_canopy_height is not None:
         canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0        
+        canopy_bottom_height_grid[canopy_height_grid == 0] = 0
 
     # Remove objects near perimeter if specified
     remove_perimeter_object = kwargs.get("remove_perimeter_object")
@@ -959,6 +1018,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         
         # Clear canopy heights in perimeter
         canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
+        canopy_bottom_height_grid[:w_peri, :] = canopy_bottom_height_grid[-w_peri:, :] = canopy_bottom_height_grid[:, :h_peri] = canopy_bottom_height_grid[:, -h_peri:] = 0
 
         # Find building IDs in perimeter regions
         ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
@@ -999,7 +1059,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             )
 
     # Generate 3D voxel grid
-    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source)
+    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source, canopy_bottom_height_grid)
 
     # Save all data if a save path is provided
     save_voxcity = kwargs.get("save_voxctiy_data", True)
@@ -1009,7 +1069,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
                          building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
                          building_gdf, meshsize, rectangle_vertices)
     
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, filtered_buildings
+    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, filtered_buildings
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     """

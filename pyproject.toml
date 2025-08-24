@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voxcity"
-version = "0.6.15"
+version = "0.6.16"
 description = "voxcity is an easy and one-stop tool to output 3d city models for microclimate simulation by integrating multiple geospatial open-data"
 readme = "README.md"
 license = "MIT"

@@ -322,7 +322,7 @@ def export_dem(dem_grid, output_path):
                 f.write(f"{i_1based} {j_1based} {elevation:.1f}\n")
 
 
-def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type='default', building_height_grid=None):
+def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type='default', building_height_grid=None, canopy_bottom_height_grid=None):
     """
     Export vmap.txt file for CityLES
     
@@ -363,7 +363,10 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
                 i_1based = i + 1
                 j_1based = j + 1
                 total_height = float(effective_canopy[j, i])
-                lower_height = total_height * tree_base_ratio
+                if canopy_bottom_height_grid is not None:
+                    lower_height = float(np.clip(canopy_bottom_height_grid[j, i], 0.0, total_height))
+                else:
+                    lower_height = total_height * tree_base_ratio
                 upper_height = total_height
                 # Format: i j lower_height upper_height tree_type
                 f.write(f"{i_1based} {j_1based} {lower_height:.1f} {upper_height:.1f} {tree_code}\n")
@@ -413,7 +416,7 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
                    land_cover_grid, dem_grid, meshsize, land_cover_source,
                    rectangle_vertices, output_directory="output/cityles",
                    building_material='default', tree_type='default',
-                   tree_base_ratio=0.3, **kwargs):
+                   tree_base_ratio=0.3, canopy_bottom_height_grid=None, **kwargs):
     """
     Export VoxCity data to CityLES format
     
@@ -473,7 +476,7 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     export_dem(dem_grid, output_path)
     
     print("\nExporting vmap.txt...")
-    export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type, building_height_grid=building_height_grid)
+    export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type, building_height_grid=building_height_grid, canopy_bottom_height_grid=canopy_bottom_height_grid)
     
     print("\nExporting lonlat.txt...")
     export_lonlat(rectangle_vertices, building_height_grid.shape, output_path)
