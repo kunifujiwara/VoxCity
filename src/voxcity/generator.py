@@ -917,11 +917,78 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # get all required gdfs    
     building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(url=url_citygml, citygml_path=citygml_path, base_dir=output_dir, rectangle_vertices=rectangle_vertices)
 
+    # Normalize CRS to WGS84 (EPSG:4326) to ensure consistent operations downstream
+    try:
+        import geopandas as gpd  # noqa: F401
+        if building_gdf is not None:
+            if building_gdf.crs is None:
+                building_gdf = building_gdf.set_crs(epsg=4326)
+            elif getattr(building_gdf.crs, 'to_epsg', lambda: None)() != 4326 and building_gdf.crs != "EPSG:4326":
+                building_gdf = building_gdf.to_crs(epsg=4326)
+        if terrain_gdf is not None:
+            if terrain_gdf.crs is None:
+                terrain_gdf = terrain_gdf.set_crs(epsg=4326)
+            elif getattr(terrain_gdf.crs, 'to_epsg', lambda: None)() != 4326 and terrain_gdf.crs != "EPSG:4326":
+                terrain_gdf = terrain_gdf.to_crs(epsg=4326)
+        if vegetation_gdf is not None:
+            if vegetation_gdf.crs is None:
+                vegetation_gdf = vegetation_gdf.set_crs(epsg=4326)
+            elif getattr(vegetation_gdf.crs, 'to_epsg', lambda: None)() != 4326 and vegetation_gdf.crs != "EPSG:4326":
+                vegetation_gdf = vegetation_gdf.to_crs(epsg=4326)
+    except Exception:
+        pass
+
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)        
 
     # building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, **kwargs)
     print("Creating building height grid")
-    # Filter kwargs to only those accepted by create_building_height_grid_from_gdf_polygon
+    # Prepare complementary building source if provided
+    building_complementary_source = kwargs.get("building_complementary_source")
+    gdf_comp = None
+    geotiff_path_comp = None
+    complement_building_footprints = kwargs.get("complement_building_footprints")
+    # Default to complement footprints when a complementary source is specified
+    if complement_building_footprints is None and (building_complementary_source not in (None, "None")):
+        complement_building_footprints = True
+
+    if (building_complementary_source is not None) and (building_complementary_source != "None"):
+        # Vector complementary sources
+        if building_complementary_source == 'Microsoft Building Footprints':
+            gdf_comp = get_mbfp_gdf(kwargs.get("output_dir", "output"), rectangle_vertices)
+        elif building_complementary_source == 'OpenStreetMap':
+            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
+        elif building_complementary_source == 'EUBUCCO v0.1':
+            gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
+        elif building_complementary_source == 'Overture':
+            gdf_comp = load_gdf_from_overture(rectangle_vertices)
+        elif building_complementary_source == 'Local file':
+            comp_path = kwargs.get("building_complementary_path")
+            if comp_path is not None:
+                _, extension = os.path.splitext(comp_path)
+                if extension == ".gpkg":
+                    gdf_comp = get_gdf_from_gpkg(comp_path, rectangle_vertices)
+        # Ensure complementary GDF uses WGS84
+        if gdf_comp is not None:
+            try:
+                if gdf_comp.crs is None:
+                    gdf_comp = gdf_comp.set_crs(epsg=4326)
+                elif getattr(gdf_comp.crs, 'to_epsg', lambda: None)() != 4326 and gdf_comp.crs != "EPSG:4326":
+                    gdf_comp = gdf_comp.to_crs(epsg=4326)
+            except Exception:
+                pass
+        # Raster complementary sources (height only)
+        elif building_complementary_source == "Open Building 2.5D Temporal":
+            roi = get_roi(rectangle_vertices)
+            os.makedirs(kwargs.get("output_dir", "output"), exist_ok=True)
+            geotiff_path_comp = os.path.join(kwargs.get("output_dir", "output"), "building_height.tif")
+            save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
+        elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
+            roi = get_roi(rectangle_vertices)
+            os.makedirs(kwargs.get("output_dir", "output"), exist_ok=True)
+            geotiff_path_comp = os.path.join(kwargs.get("output_dir", "output"), "building_height.tif")
+            save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
+
+    # Filter and assemble kwargs accepted by the grid function
     _allowed_building_kwargs = {
         "overlapping_footprint",
         "gdf_comp",
@@ -930,6 +997,21 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         "complement_height",
     }
     _building_kwargs = {k: v for k, v in kwargs.items() if k in _allowed_building_kwargs}
+    if gdf_comp is not None:
+        _building_kwargs["gdf_comp"] = gdf_comp
+    if geotiff_path_comp is not None:
+        _building_kwargs["geotiff_path_comp"] = geotiff_path_comp
+    if complement_building_footprints is not None:
+        _building_kwargs["complement_building_footprints"] = complement_building_footprints
+
+    # Map user-provided building_complement_height -> complement_height for grid builder
+    comp_height_user = kwargs.get("building_complement_height")
+    if comp_height_user is not None:
+        _building_kwargs["complement_height"] = comp_height_user
+    # If footprints are being complemented and no height provided, default to 10
+    if _building_kwargs.get("complement_building_footprints") and ("complement_height" not in _building_kwargs):
+        _building_kwargs["complement_height"] = 10.0
+
     building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(
         building_gdf, meshsize, rectangle_vertices, **_building_kwargs
     )

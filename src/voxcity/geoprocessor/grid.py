@@ -938,6 +938,12 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
     
     if 'is_inner' not in filtered_gdf.columns:
         filtered_gdf['is_inner'] = False
+    else:
+        # Ensure boolean dtype with NaN treated as False for safe boolean operations
+        try:
+            filtered_gdf['is_inner'] = filtered_gdf['is_inner'].fillna(False).astype(bool)
+        except Exception:
+            filtered_gdf['is_inner'] = False
     
     if 'id' not in filtered_gdf.columns:
         filtered_gdf['id'] = range(len(filtered_gdf))
