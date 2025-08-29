@@ -370,7 +370,7 @@ def create_rings_from_ways(way_ids, ways, nodes):
     
     return rings
 
-def load_gdf_from_openstreetmap(rectangle_vertices):
+def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     """Download and process building footprint data from OpenStreetMap.
     
     This function:
@@ -471,7 +471,7 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
         """
         return [coord for coord in geometry]  # Keep original order since already (lon, lat)
     
-    def get_height_from_properties(properties):
+    def get_height_from_properties(properties, floor_height=3.0):
         """Helper function to extract height from properties.
         
         Args:
@@ -487,9 +487,25 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
             except ValueError:
                 pass
         
+        # Infer from floors when available
+        floors_candidates = [
+            properties.get('building:levels'),
+            properties.get('levels'),
+            properties.get('num_floors')
+        ]
+        for floors in floors_candidates:
+            if floors is None:
+                continue
+            try:
+                floors_val = float(floors)
+                if floors_val > 0:
+                    return float(floor_height) * floors_val
+            except ValueError:
+                continue
+        
         return 0  # Default height if no valid height found
     
-    def extract_properties(element):
+    def extract_properties(element, floor_height=3.0):
         """Helper function to extract and process properties from an element.
         
         Args:
@@ -501,7 +517,7 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
         properties = element.get('tags', {})
         
         # Get height (now using the helper function)
-        height = get_height_from_properties(properties)
+        height = get_height_from_properties(properties, floor_height=floor_height)
             
         # Get min_height and min_level
         min_height = properties.get('min_height', '0')
@@ -526,7 +542,7 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
             "is_inner": False,
             "levels": levels,
             "height_source": "explicit" if properties.get('height') or properties.get('building:height') 
-                               else "levels" if levels is not None 
+                               else "levels" if (levels is not None) or (properties.get('num_floors') is not None)
                                else "default",
             "min_level": min_level if min_level != '0' else None,
             "building": properties.get('building', 'no'),
@@ -584,13 +600,13 @@ def load_gdf_from_openstreetmap(rectangle_vertices):
         if element['type'] == 'way':
             if 'geometry' in element:
                 coords = [(node['lon'], node['lat']) for node in element['geometry']]
-                properties = extract_properties(element)
+                properties = extract_properties(element, floor_height=floor_height)
                 feature = create_polygon_feature(coords, properties)
                 if feature:
                     features.append(feature)
                     
         elif element['type'] == 'relation':
-            properties = extract_properties(element)
+            properties = extract_properties(element, floor_height=floor_height)
             
             # Process each member of the relation
             for member in element['members']:

@@ -226,12 +226,14 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     else:
         # Fetch building data from primary source
         # Each source has different data formats and processing requirements
+        # Floor height (m) for inferring heights from floors/levels
+        floor_height = kwargs.get("floor_height", 3.0)
         if source == 'Microsoft Building Footprints':
             # Machine learning-derived building footprints from satellite imagery
             gdf = get_mbfp_gdf(output_dir, rectangle_vertices)
         elif source == 'OpenStreetMap':
             # Crowd-sourced building data with varying completeness
-            gdf = load_gdf_from_openstreetmap(rectangle_vertices)
+            gdf = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
         elif source == "Open Building 2.5D Temporal":
             # Special case: this source provides both footprints and heights
             # Skip GeoDataFrame processing and create grids directly
@@ -244,7 +246,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         #     gdf = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
         elif source == "Overture":
             # Open building dataset from Overture Maps Foundation
-            gdf = load_gdf_from_overture(rectangle_vertices)
+            gdf = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
         elif source == "Local file":
             # Handle user-provided local building data files
             _, extension = os.path.splitext(kwargs["building_path"])
@@ -285,13 +287,13 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             if building_complementary_source == 'Microsoft Building Footprints':
                 gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices)
             elif building_complementary_source == 'OpenStreetMap':
-                gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
+                gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
             elif building_complementary_source == 'EUBUCCO v0.1':
                 gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir)
             # elif building_complementary_source == "OpenMapTiles":
             #     gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
             elif building_complementary_source == "Overture":
-                gdf_comp = load_gdf_from_overture(rectangle_vertices)
+                gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
             elif building_complementary_source == "Local file":
                 _, extension = os.path.splitext(kwargs["building_complementary_path"])
                 if extension == ".gpkg":
@@ -953,14 +955,15 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     if (building_complementary_source is not None) and (building_complementary_source != "None"):
         # Vector complementary sources
+        floor_height = kwargs.get("floor_height", 3.0)
         if building_complementary_source == 'Microsoft Building Footprints':
             gdf_comp = get_mbfp_gdf(kwargs.get("output_dir", "output"), rectangle_vertices)
         elif building_complementary_source == 'OpenStreetMap':
-            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices)
+            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
         elif building_complementary_source == 'EUBUCCO v0.1':
             gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
         elif building_complementary_source == 'Overture':
-            gdf_comp = load_gdf_from_overture(rectangle_vertices)
+            gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
         elif building_complementary_source == 'Local file':
             comp_path = kwargs.get("building_complementary_path")
             if comp_path is not None:

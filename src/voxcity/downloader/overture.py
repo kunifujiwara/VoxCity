@@ -254,7 +254,7 @@ def join_gdfs_vertically(gdf1, gdf2):
     
     return combined_gdf
 
-def load_gdf_from_overture(rectangle_vertices):
+def load_gdf_from_overture(rectangle_vertices, floor_height=3.0):
     """
     Download and process building footprint data from Overture Maps.
     
@@ -286,6 +286,31 @@ def load_gdf_from_overture(rectangle_vertices):
     
     # Combine both datasets into a single comprehensive building dataset
     joined_building_gdf = join_gdfs_vertically(building_gdf, building_part_gdf)
+
+    # Ensure numeric height and infer from floors when missing
+    try:
+        joined_building_gdf['height'] = pd.to_numeric(joined_building_gdf.get('height', None), errors='coerce')
+    except Exception:
+        # Create height column if missing
+        joined_building_gdf['height'] = None
+        joined_building_gdf['height'] = pd.to_numeric(joined_building_gdf['height'], errors='coerce')
+
+    # Combine possible floors columns (first non-null among candidates)
+    floors_candidates = []
+    for col in ['building:levels', 'levels', 'num_floors', 'floors']:
+        if col in joined_building_gdf.columns:
+            floors_candidates.append(pd.to_numeric(joined_building_gdf[col], errors='coerce'))
+    if floors_candidates:
+        floors_series = floors_candidates[0]
+        for s in floors_candidates[1:]:
+            floors_series = floors_series.combine_first(s)
+        # Infer height where height is NaN/<=0 and floors > 0
+        mask_missing_height = (~joined_building_gdf['height'].notna()) | (joined_building_gdf['height'] <= 0)
+        if isinstance(floor_height, (int, float)):
+            inferred = floors_series * float(floor_height)
+        else:
+            inferred = floors_series * 3.0
+        joined_building_gdf.loc[mask_missing_height & (floors_series > 0), 'height'] = inferred
 
     # Assign sequential IDs based on the final dataset index
     joined_building_gdf['id'] = joined_building_gdf.index
