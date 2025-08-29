@@ -717,7 +717,12 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         # Create uniform canopy height for all tree-covered areas (top grid)
         canopy_height_grid = np.zeros_like(land_cover_grid, dtype=float)
         static_tree_height = kwargs.get("static_tree_height", 10.0)
-        tree_mask = (land_cover_grid == 4)
+        # Determine tree class indices based on source-specific class names
+        _classes = get_land_cover_classes(land_cover_source)
+        _class_to_int = {name: i for i, name in enumerate(_classes.values())}
+        _tree_labels = ["Tree", "Trees", "Tree Canopy"]
+        _tree_indices = [_class_to_int[label] for label in _tree_labels if label in _class_to_int]
+        tree_mask = np.isin(land_cover_grid, _tree_indices) if _tree_indices else np.zeros_like(land_cover_grid, dtype=bool)
         canopy_height_grid[tree_mask] = static_tree_height
 
         # Derive bottom from trunk_height_ratio
@@ -1038,7 +1043,12 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         
         # Set default static height for trees (20 meters is a typical average tree height)
         static_tree_height = kwargs.get("static_tree_height", 10.0)
-        tree_mask = (land_cover_grid == 4)
+        # Determine tree class indices based on source-specific class names
+        _classes = get_land_cover_classes(land_cover_source)
+        _class_to_int = {name: i for i, name in enumerate(_classes.values())}
+        _tree_labels = ["Tree", "Trees", "Tree Canopy"]
+        _tree_indices = [_class_to_int[label] for label in _tree_labels if label in _class_to_int]
+        tree_mask = np.isin(land_cover_grid, _tree_indices) if _tree_indices else np.zeros_like(land_cover_grid, dtype=bool)
         
         # Set static height for tree cells
         canopy_height_grid_comp[tree_mask] = static_tree_height
