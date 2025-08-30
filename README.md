@@ -174,7 +174,7 @@ Generate voxel data grids and corresponding building geoJSON:
 from voxcity.generator import get_voxcity
 
 voxcity_grid, building_height_grid, building_min_height_grid, \
-building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, \
+building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, \
 building_gdf = get_voxcity(
     rectangle_vertices,
     building_source,

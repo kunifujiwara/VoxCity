@@ -56,6 +56,8 @@ pyvista = "*"
 IPython = "*"
 lxml = "*"
 scikit-learn = "*"
+xarray = "*"
+netCDF4 = "*"
 
 [tool.poetry.group.dev.dependencies]
 coverage = "*"
