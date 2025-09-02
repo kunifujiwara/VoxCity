@@ -111,6 +111,7 @@ def get_voxel_color_map(color_scheme='default'):
         - 'pastel': Softer, muted colors for aesthetic appeal
         - 'dark_mode': Darker colors for dark backgrounds
         - 'grayscale': Black and white gradient with color accents
+        - 'white_mode': Light minimal palette for white backgrounds
         
         Thematic Schemes:
         - 'autumn': Warm reds, oranges, and browns
@@ -327,6 +328,36 @@ def get_voxel_color_map(color_scheme='default'):
             12: [30, 30, 30],     # 'Road'
             13: [170, 170, 170],  # 'Building'
             14: [230, 230, 230],  # 'No Data'
+        }
+
+    elif color_scheme == 'white_mode':
+        return {
+            -99: [0, 0, 0],          # void (transparent in rendering)
+            -30: [220, 80, 80],      # subtle highlight for landmarks
+            -17: [250, 250, 250],    # plaster (near white)
+            -16: [210, 225, 235],    # glass (light blue-gray)
+            -15: [230, 225, 215],    # stone (warm light gray)
+            -14: [225, 230, 235],    # metal (cool light gray)
+            -13: [236, 236, 236],    # concrete (very light gray)
+            -12: [245, 232, 210],    # wood (light beige)
+            -11: [235, 210, 205],    # brick (light rose)
+            -3: [225, 230, 240],     # Building (soft blue-gray)
+            -2: [190, 210, 190],     # Tree (soft green)
+            -1: [230, 215, 215],     # Underground (soft pinkish)
+            1: [248, 245, 235],      # Bareland
+            2: [225, 235, 215],      # Rangeland
+            3: [220, 235, 220],      # Shrub
+            4: [240, 235, 215],      # Agriculture land
+            5: [210, 230, 210],      # Tree (ground)
+            6: [245, 250, 235],      # Moss and lichen
+            7: [220, 235, 230],      # Wet land
+            8: [205, 215, 210],      # Mangrove
+            9: [200, 220, 245],      # Water (pale blue)
+            10: [252, 252, 252],     # Snow and ice (almost white)
+            11: [230, 230, 230],     # Developed space
+            12: [210, 210, 215],     # Road (light neutral)
+            13: [230, 235, 240],     # Building (ground surface)
+            14: [248, 245, 235],     # No Data
         }
 
     elif color_scheme == 'autumn':

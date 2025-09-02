@@ -653,3 +653,540 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
             f.write('\n')
 
     print(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
+
+
+def export_netcdf_to_obj(
+    voxcity_nc,
+    scalar_nc,
+    lonlat_txt,
+    output_dir,
+    vox_base_filename="voxcity_objects",
+    tm_base_filename="tm_isosurfaces",
+    scalar_var="tm",
+    scalar_building_value=-999.99,
+    scalar_building_tol=1e-4,
+    stride_vox=(1, 1, 1),
+    stride_scalar=(1, 1, 1),
+    contour_levels=24,
+    cmap_name="magma",
+    opacity_points=None,
+    max_opacity=0.10,
+    classes_to_show=None,
+    voxel_color_scheme="default",
+    max_faces_warn=1_000_000,
+):
+    """
+    Export two OBJ/MTL files using the same local meter frame:
+    - VoxCity voxels: opaque, per-class color, fixed face winding and normals
+    - Scalar iso-surfaces: colormap colors with variable transparency
+
+    The two outputs share the same XY origin and axes (X east, Y north, Z up),
+    anchored at the minimum lon/lat of the VoxCity bounding rectangle.
+
+    Args:
+        voxcity_nc (str): Path to VoxCity NetCDF (must include variable 'voxels' and coords 'x','y','z').
+        scalar_nc (str): Path to scalar NetCDF containing variable specified by scalar_var.
+        lonlat_txt (str): Text file with columns: i j lon lat (1-based indices) describing the scalar grid georef.
+        output_dir (str): Directory to write results.
+        vox_base_filename (str): Base filename for VoxCity OBJ/MTL.
+        tm_base_filename (str): Base filename for scalar iso-surfaces OBJ/MTL.
+        scalar_var (str): Name of scalar variable in scalar_nc.
+        scalar_building_value (float): Value used in scalar field to mark buildings (to be masked).
+        scalar_building_tol (float): Tolerance for building masking (isclose).
+        stride_vox (tuple[int,int,int]): Downsampling strides for VoxCity (z,y,x) in voxels.
+        stride_scalar (tuple[int,int,int]): Downsampling strides for scalar (k,j,i).
+        contour_levels (int): Number of iso-surface levels between vmin and vmax.
+        cmap_name (str): Matplotlib colormap name for iso-surfaces.
+        opacity_points (list[tuple[float,float]]|None): Transfer function control points (value, alpha in [0..1]).
+        max_opacity (float): Global max opacity multiplier for iso-surfaces (0..1).
+        classes_to_show (set[int]|None): Optional subset of voxel classes to export; None -> all present (except 0).
+        voxel_color_scheme (str): Color scheme name passed to get_voxel_color_map.
+        max_faces_warn (int): Warn if a single class exceeds this many faces.
+
+    Returns:
+        dict: Paths of written files: keys 'vox_obj','vox_mtl','tm_obj','tm_mtl' (values may be None).
+    """
+    import json
+    import numpy as np
+    import os
+    import xarray as xr
+    import trimesh
+
+    try:
+        from skimage import measure as skim
+    except Exception as e:  # pragma: no cover - optional dependency
+        raise ImportError(
+            "scikit-image is required for iso-surface generation. Install 'scikit-image'."
+        ) from e
+
+    from matplotlib import cm
+
+    if opacity_points is None:
+        opacity_points = [(-0.2, 0.00), (2.0, 1.00)]
+
+    def find_dims(ds):
+        lvl = ["k", "level", "lev", "z", "height", "alt", "plev"]
+        yy = ["j", "y", "south_north", "lat", "latitude"]
+        xx = ["i", "x", "west_east", "lon", "longitude"]
+        tt = ["time", "Times"]
+
+        def pick(cands):
+            for c in cands:
+                if c in ds.dims:
+                    return c
+            return None
+
+        t = pick(tt)
+        k = pick(lvl)
+        j = pick(yy)
+        i = pick(xx)
+        if (k is None or j is None or i is None) and len(ds.dims) >= 3:
+            dims = list(ds.dims)
+            k = k or dims[0]
+            j = j or dims[-2]
+            i = i or dims[-1]
+        return t, k, j, i
+
+    def squeeze_to_kji(da, tname, kname, jname, iname, time_index=0):
+        if tname and tname in da.dims:
+            da = da.isel({tname: time_index})
+        for d in list(da.dims):
+            if d not in (kname, jname, iname):
+                da = da.isel({d: 0})
+        return da.transpose(*(d for d in (kname, jname, iname) if d in da.dims))
+
+    def downsample3(a, sk, sj, si):
+        return a[:: max(1, sk), :: max(1, sj), :: max(1, si)]
+
+    def clip_minmax(arr, frac):
+        v = np.asarray(arr)
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            return 0.0, 1.0
+        if frac <= 0:
+            return float(np.nanmin(v)), float(np.nanmax(v))
+        vmin_ = float(np.nanpercentile(v, 100 * frac))
+        vmax_ = float(np.nanpercentile(v, 100 * (1 - frac)))
+        if vmin_ >= vmax_:
+            vmin_, vmax_ = float(np.nanmin(v)), float(np.nanmax(v))
+        return vmin_, vmax_
+
+    def meters_per_degree(lat_rad):
+        m_per_deg_lat = 111132.92 - 559.82 * np.cos(2 * lat_rad) + 1.175 * np.cos(4 * lat_rad) - 0.0023 * np.cos(6 * lat_rad)
+        m_per_deg_lon = 111412.84 * np.cos(lat_rad) - 93.5 * np.cos(3 * lat_rad) + 0.118 * np.cos(5 * lat_rad)
+        return m_per_deg_lat, m_per_deg_lon
+
+    def opacity_at(v, points):
+        if not points:
+            return 0.0 if np.isscalar(v) else np.zeros_like(v)
+        pts = sorted((float(x), float(a)) for x, a in points)
+        xs = np.array([p[0] for p in pts], dtype=float)
+        as_ = np.array([p[1] for p in pts], dtype=float)
+        v_arr = np.asarray(v, dtype=float)
+        out = np.empty_like(v_arr, dtype=float)
+        out[v_arr <= xs[0]] = as_[0]
+        out[v_arr >= xs[-1]] = as_[-1]
+        idx = np.searchsorted(xs, v_arr, side="right") - 1
+        idx = np.clip(idx, 0, len(xs) - 2)
+        x0, x1 = xs[idx], xs[idx + 1]
+        a0, a1 = as_[idx], as_[idx + 1]
+        t = np.where(x1 > x0, (v_arr - x0) / (x1 - x0), 0.0)
+        mid = (v_arr > xs[0]) & (v_arr < xs[-1])
+        out[mid] = a0[mid] + t[mid] * (a1[mid] - a0[mid])
+        return out.item() if np.isscalar(v) else out
+
+    def _exposed_face_masks(occ):
+        K, J, I = occ.shape
+        p = np.pad(occ, ((0, 0), (0, 0), (0, 1)), constant_values=False)
+        posx = occ & (~p[..., 1:])
+        p = np.pad(occ, ((0, 0), (0, 0), (1, 0)), constant_values=False)
+        negx = occ & (~p[..., :-1])
+        p = np.pad(occ, ((0, 0), (0, 1), (0, 0)), constant_values=False)
+        posy = occ & (~p[:, 1:, :])
+        p = np.pad(occ, ((0, 0), (1, 0), (0, 0)), constant_values=False)
+        negy = occ & (~p[:, :-1, :])
+        p = np.pad(occ, ((0, 1), (0, 0), (0, 0)), constant_values=False)
+        posz = occ & (~p[1:, :, :])
+        p = np.pad(occ, ((1, 0), (0, 0), (0, 0)), constant_values=False)
+        negz = occ & (~p[:-1, :, :])
+        return posx, negx, posy, negy, posz, negz
+
+    def _emit_faces_trimesh(k, j, i, plane, X, Y, Z, start_idx):
+        N = k.size
+        if N == 0:
+            return np.empty((0, 3)), np.empty((0, 3), dtype=np.int64), start_idx
+
+        dx = (X[1] - X[0]) if len(X) > 1 else 1.0
+        dy = (Y[1] - Y[0]) if len(Y) > 1 else 1.0
+        dz = (Z[1] - Z[0]) if len(Z) > 1 else 1.0
+
+        x = X[i].astype(np.float64)
+        y = Y[j].astype(np.float64)
+        z = Z[k].astype(np.float64)
+        hx, hy, hz = dx / 2.0, dy / 2.0, dz / 2.0
+
+        if plane == "+x":
+            P = np.column_stack([x + hx, y - hy, z - hz])
+            Q = np.column_stack([x + hx, y + hy, z - hz])
+            R = np.column_stack([x + hx, y + hy, z + hz])
+            S = np.column_stack([x + hx, y - hy, z + hz])
+            order = "default"
+        elif plane == "-x":
+            P = np.column_stack([x - hx, y - hy, z + hz])
+            Q = np.column_stack([x - hx, y + hy, z + hz])
+            R = np.column_stack([x - hx, y + hy, z - hz])
+            S = np.column_stack([x - hx, y - hy, z - hz])
+            order = "default"
+        elif plane == "+y":
+            P = np.column_stack([x - hx, y + hy, z - hz])
+            Q = np.column_stack([x + hx, y + hy, z - hz])
+            R = np.column_stack([x + hx, y + hy, z + hz])
+            S = np.column_stack([x - hx, y + hy, z + hz])
+            order = "flip"  # enforce outward normals
+        elif plane == "-y":
+            P = np.column_stack([x - hx, y - hy, z + hz])
+            Q = np.column_stack([x + hx, y - hy, z + hz])
+            R = np.column_stack([x + hx, y - hy, z - hz])
+            S = np.column_stack([x - hx, y - hy, z - hz])
+            order = "flip"
+        elif plane == "+z":
+            P = np.column_stack([x - hx, y - hy, z + hz])
+            Q = np.column_stack([x + hx, y - hy, z + hz])
+            R = np.column_stack([x + hx, y + hy, z + hz])
+            S = np.column_stack([x - hx, y + hy, z + hz])
+            order = "default"
+        else:  # "-z"
+            P = np.column_stack([x - hx, y + hy, z - hz])
+            Q = np.column_stack([x + hx, y + hy, z - hz])
+            R = np.column_stack([x + hx, y - hy, z - hz])
+            S = np.column_stack([x - hx, y - hy, z - hz])
+            order = "default"
+
+        verts = np.vstack([P, Q, R, S])
+        a = np.arange(N, dtype=np.int64) + start_idx
+        b = a + N
+        c = a + 2 * N
+        d = a + 3 * N
+
+        if order == "default":
+            tris = np.vstack([np.column_stack([a, b, c]), np.column_stack([a, c, d])])
+        else:
+            tris = np.vstack([np.column_stack([a, c, b]), np.column_stack([a, d, c])])
+
+        return verts, tris, start_idx + 4 * N
+
+    def make_voxel_mesh_uniform_color(occ_mask, X, Y, Z, rgb, name="class"):
+        posx, negx, posy, negy, posz, negz = _exposed_face_masks(occ_mask.astype(bool))
+        total_faces = int(posx.sum() + negx.sum() + posy.sum() + negy.sum() + posz.sum() + negz.sum())
+        if total_faces == 0:
+            return None, 0
+        if total_faces > max_faces_warn:
+            print(f"  Warning: {name} faces={total_faces:,} (> {max_faces_warn:,}). Consider increasing stride.")
+
+        verts_all, tris_all, start_idx = [], [], 0
+        for plane, mask in (("+x", posx), ("-x", negx), ("+y", posy), ("-y", negy), ("+z", posz), ("-z", negz)):
+            idx = np.argwhere(mask)
+            if idx.size == 0:
+                continue
+            k, j, i = idx[:, 0], idx[:, 1], idx[:, 2]
+            Vp, Tp, start_idx = _emit_faces_trimesh(k, j, i, plane, X, Y, Z, start_idx)
+            verts_all.append(Vp)
+            tris_all.append(Tp)
+
+        V = np.vstack(verts_all)
+        F = np.vstack(tris_all)
+        mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
+        rgba = np.array([int(rgb[0]), int(rgb[1]), int(rgb[2]), 255], dtype=np.uint8)
+        mesh.visual.face_colors = np.tile(rgba, (len(F), 1))
+        return mesh, len(F)
+
+    def build_tm_isosurfaces_regular_grid(A_scalar, vmin, vmax, levels, dx, dy, dz, origin_xyz, cmap_name, opacity_points, max_opacity):
+        cmap = cm.get_cmap(cmap_name)
+        meshes = []
+        if levels <= 0:
+            return meshes
+        iso_vals = np.linspace(vmin, vmax, int(levels))
+        for iso in iso_vals:
+            a_base = float(opacity_at(iso, opacity_points or []))
+            a_base = min(max(a_base, 0.0), 1.0)
+            alpha = a_base * max_opacity
+            if alpha <= 0.0:
+                continue
+            try:
+                verts, faces, _, _ = skim.marching_cubes(A_scalar, level=iso, spacing=(dz, dy, dx))
+            except Exception:
+                continue
+            if len(verts) == 0 or len(faces) == 0:
+                continue
+            V = verts[:, [2, 1, 0]].astype(np.float64)
+            V += np.array(origin_xyz, dtype=np.float64)[None, :]
+            m = trimesh.Trimesh(vertices=V, faces=faces.astype(np.int64), process=False)
+            t = 0.0 if vmax <= vmin else (iso - vmin) / (vmax - vmin)
+            r, g, b, _ = cmap(np.clip(t, 0.0, 1.0))
+            rgba = (
+                int(round(255 * r)),
+                int(round(255 * g)),
+                int(round(255 * b)),
+                int(round(255 * alpha)),
+            )
+            m.visual.face_colors = np.tile(np.array(rgba, dtype=np.uint8), (len(m.faces), 1))
+            meshes.append((iso, m, rgba))
+            print(f"Iso {iso:.4f}: faces={len(m.faces):,}, alpha={alpha:.4f}")
+        return meshes
+
+    def save_obj_with_mtl_and_normals(meshes_dict, output_path, base_filename):
+        os.makedirs(output_path, exist_ok=True)
+        obj_path = os.path.join(output_path, f"{base_filename}.obj")
+        mtl_path = os.path.join(output_path, f"{base_filename}.mtl")
+
+        def to_uint8_rgba(arr):
+            arr = np.asarray(arr)
+            if arr.dtype != np.uint8:
+                if arr.dtype.kind == "f":
+                    arr = np.clip(arr, 0.0, 1.0)
+                    arr = (arr * 255.0 + 0.5).astype(np.uint8)
+                else:
+                    arr = arr.astype(np.uint8)
+            if arr.shape[1] == 3:
+                arr = np.concatenate([arr, np.full((arr.shape[0], 1), 255, np.uint8)], axis=1)
+            return arr
+
+        color_to_id, ordered = {}, []
+
+        def mid_of(rgba):
+            if rgba not in color_to_id:
+                color_to_id[rgba] = len(ordered)
+                ordered.append(rgba)
+            return color_to_id[rgba]
+
+        for m in meshes_dict.values():
+            fc = getattr(m.visual, "face_colors", None)
+            if fc is None or len(fc) == 0:
+                mid_of((200, 200, 200, 255))
+                continue
+            for rgba in np.unique(to_uint8_rgba(fc), axis=0):
+                mid_of(tuple(int(x) for x in rgba.tolist()))
+
+        with open(mtl_path, "w") as mtl:
+            for i, (r, g, b, a) in enumerate(ordered):
+                kd = (r / 255.0, g / 255.0, b / 255.0)
+                ka = kd
+                dval = a / 255.0
+                tr = max(0.0, min(1.0, 1.0 - dval))
+                mtl.write(f"newmtl material_{i}\n")
+                mtl.write(f"Kd {kd[0]:.6f} {kd[1]:.6f} {kd[2]:.6f}\n")
+                mtl.write(f"Ka {ka[0]:.6f} {ka[1]:.6f} {ka[2]:.6f}\n")
+                mtl.write("Ks 0.000000 0.000000 0.000000\n")
+                mtl.write("Ns 0.000000\n")
+                mtl.write("illum 1\n")
+                mtl.write(f"d {dval:.6f}\n")
+                mtl.write(f"Tr {tr:.6f}\n\n")
+
+        def face_normals(V, F):
+            v0, v1, v2 = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+            n = np.cross(v1 - v0, v2 - v0)
+            L = np.linalg.norm(n, axis=1)
+            mask = L > 0
+            n[mask] /= L[mask][:, None]
+            if (~mask).any():
+                n[~mask] = np.array([0.0, 0.0, 1.0])
+            return n
+
+        with open(obj_path, "w") as obj:
+            obj.write(f"mtllib {os.path.basename(mtl_path)}\n")
+            v_offset = 0
+            n_offset = 0
+            for name, m in meshes_dict.items():
+                V = np.asarray(m.vertices, dtype=np.float64)
+                F = np.asarray(m.faces, dtype=np.int64)
+                if len(V) == 0 or len(F) == 0:
+                    continue
+                obj.write(f"o {name}\n")
+                obj.write("s off\n")
+                for vx, vy, vz in V:
+                    obj.write(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+
+                fc = getattr(m.visual, "face_colors", None)
+                if fc is None or len(fc) != len(F):
+                    fc = np.tile(np.array([200, 200, 200, 255], dtype=np.uint8), (len(F), 1))
+                else:
+                    fc = to_uint8_rgba(fc)
+                uniq, inv = np.unique(fc, axis=0, return_inverse=True)
+                color2mid = {tuple(int(x) for x in c.tolist()): mid_of(tuple(int(x) for x in c.tolist())) for c in uniq}
+
+                FN = face_normals(V, F)
+                for nx, ny, nz in FN:
+                    obj.write(f"vn {float(nx):.6f} {float(ny):.6f} {float(nz):.6f}\n")
+
+                current_mid = None
+                for i_face, face in enumerate(F):
+                    key = tuple(int(x) for x in uniq[inv[i_face]].tolist())
+                    mid = color2mid[key]
+                    if current_mid != mid:
+                        obj.write(f"usemtl material_{mid}\n")
+                        current_mid = mid
+                    a, b, c = face + 1 + v_offset
+                    ni = n_offset + i_face + 1
+                    obj.write(f"f {a}//{ni} {b}//{ni} {c}//{ni}\n")
+
+                v_offset += len(V)
+                n_offset += len(F)
+
+        return obj_path, mtl_path
+
+    # Load VoxCity
+    dsv = xr.open_dataset(voxcity_nc)
+    if "voxels" not in dsv:
+        raise KeyError("'voxels' not found in VoxCity dataset.")
+    dav = dsv["voxels"]
+    if tuple(dav.dims) != ("y", "x", "z") and all(d in dav.dims for d in ("y", "x", "z")):
+        dav = dav.transpose("y", "x", "z")
+
+    Yv = dsv["y"].values.astype(float)
+    Xv = dsv["x"].values.astype(float)
+    Zv = dsv["z"].values.astype(float)
+
+    Av = dav.values  # (y,x,z)
+    Av_kji = np.transpose(Av, (2, 0, 1))  # (K=z, J=y, I=x)
+    svz, svy, svx = stride_vox
+    Av_kji = downsample3(Av_kji, svz, svy, svx)
+    # Y flip (north-up)
+    Av_kji = Av_kji[:, ::-1, :]
+
+    Zv_s = Zv[:: max(1, svz)].astype(float)
+    Yv_s = (Yv[:: max(1, svy)] - Yv.min()).astype(float)
+    Xv_s = (Xv[:: max(1, svx)] - Xv.min()).astype(float)
+
+    # Load scalar and georeference using lon/lat table
+    dss = xr.open_dataset(scalar_nc, decode_coords="all", decode_times=True)
+    tname, kname, jname, iname = find_dims(dss)
+    if scalar_var not in dss:
+        raise KeyError(f"{scalar_var} not found in scalar dataset")
+
+    A = squeeze_to_kji(dss[scalar_var], tname, kname, jname, iname).values  # (K,J,I)
+    K0, J0, I0 = map(int, A.shape)
+
+    ll = np.loadtxt(lonlat_txt, comments="#")
+    ii = ll[:, 0].astype(int) - 1
+    jj = ll[:, 1].astype(int) - 1
+    lon = ll[:, 2].astype(float)
+    lat = ll[:, 3].astype(float)
+    I_ll = int(ii.max() + 1)
+    J_ll = int(jj.max() + 1)
+    lon_grid = np.full((J_ll, I_ll), np.nan, float)
+    lat_grid = np.full((J_ll, I_ll), np.nan, float)
+    lon_grid[jj, ii] = lon
+    lat_grid[jj, ii] = lat
+
+    Jc = min(J0, J_ll)
+    Ic = min(I0, I_ll)
+    if (Jc != J0) or (Ic != I0):
+        print(
+            f"Warning: scalar (J,I)=({J0},{I0}) vs lonlat ({J_ll},{I_ll}); using common ({Jc},{Ic})."
+        )
+    A = A[:, :Jc, :Ic]
+    lon_grid = lon_grid[:Jc, :Ic]
+    lat_grid = lat_grid[:Jc, :Ic]
+
+    ssk, ssj, ssi = stride_scalar
+    A_s = downsample3(A, ssk, ssj, ssi)
+    lon_s = lon_grid[:: max(1, ssj), :: max(1, ssi)]
+    lat_s = lat_grid[:: max(1, ssj), :: max(1, ssi)]
+    Ks, Js, Is = A_s.shape
+
+    rect = np.array(json.loads(dsv.attrs.get("rectangle_vertices_lonlat_json", "[]")), float)
+    if rect.size == 0:
+        raise RuntimeError("VoxCity attribute 'rectangle_vertices_lonlat_json' missing.")
+    lon0 = float(np.min(rect[:, 0]))
+    lat0 = float(np.min(rect[:, 1]))
+    lat_c = float(np.mean(rect[:, 1]))
+    m_per_deg_lat, m_per_deg_lon = meters_per_degree(np.deg2rad(lat_c))
+    Xs_m = (lon_s - lon0) * m_per_deg_lon
+    Ys_m = (lat_s - lat0) * m_per_deg_lat
+
+    if (kname is not None) and (kname in dss.coords):
+        zc = dss.coords[kname].values
+        if np.issubdtype(zc.dtype, np.number) and zc.ndim == 1 and len(zc) >= Ks:
+            Zk = zc.astype(float)[:: max(1, ssk)][:Ks]
+        else:
+            Zk = np.arange(Ks, dtype=float) * float(dsv.attrs.get("meshsize_m", 1.0))
+    else:
+        Zk = np.arange(Ks, dtype=float) * float(dsv.attrs.get("meshsize_m", 1.0))
+
+    # Mask scalar buildings
+    bmask_scalar = downsample3(
+        np.isclose(A, scalar_building_value, atol=scalar_building_tol), ssk, ssj, ssi
+    )
+    A_s = A_s.astype(float)
+    A_s[bmask_scalar] = np.nan
+
+    finite_vals = A_s[np.isfinite(A_s)]
+    if finite_vals.size == 0:
+        raise RuntimeError("No finite scalar values after masking.")
+    vmin, vmax = clip_minmax(finite_vals, 0.0)
+    A_s[np.isnan(A_s)] = vmin - 1e6
+
+    Xmin, Xmax = np.nanmin(Xs_m), np.nanmax(Xs_m)
+    Ymin, Ymax = np.nanmin(Ys_m), np.nanmax(Ys_m)
+    dx_s = (Xmax - Xmin) / max(1, Is - 1)
+    dy_s = (Ymax - Ymin) / max(1, Js - 1)
+    dz_s = (Zk[-1] - Zk[0]) / max(1, Ks - 1) if Ks > 1 else 1.0
+    origin_xyz = (float(Xmin), float(Ymin), float(Zk[0]))
+
+    vox_meshes = {}
+    tm_meshes = {}
+
+    present = set(np.unique(Av_kji))
+    present.discard(0)
+    if classes_to_show is not None:
+        present &= set(classes_to_show)
+    present = sorted(present)
+
+    faces_total = 0
+    voxel_color_map = get_voxel_color_map(color_scheme=voxel_color_scheme)
+    for cls in present:
+        mask = Av_kji == cls
+        if not np.any(mask):
+            continue
+        rgb = voxel_color_map.get(int(cls), [200, 200, 200])
+        m_cls, faces = make_voxel_mesh_uniform_color(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
+        if m_cls is not None:
+            vox_meshes[f"voxclass_{int(cls)}"] = m_cls
+            faces_total += faces
+    print(f"[VoxCity] total voxel faces: {faces_total:,}")
+
+    iso_meshes = build_tm_isosurfaces_regular_grid(
+        A_scalar=A_s,
+        vmin=vmin,
+        vmax=vmax,
+        levels=contour_levels,
+        dx=dx_s,
+        dy=dy_s,
+        dz=dz_s,
+        origin_xyz=origin_xyz,
+        cmap_name=cmap_name,
+        opacity_points=opacity_points,
+        max_opacity=max_opacity,
+    )
+    for iso, m, rgba in iso_meshes:
+        tm_meshes[f"iso_{iso:.6f}"] = m
+
+    if not vox_meshes and not tm_meshes:
+        raise RuntimeError("Nothing to export.")
+
+    os.makedirs(output_dir, exist_ok=True)
+    obj_vox = mtl_vox = obj_tm = mtl_tm = None
+    if vox_meshes:
+        obj_vox, mtl_vox = save_obj_with_mtl_and_normals(vox_meshes, output_dir, vox_base_filename)
+    if tm_meshes:
+        obj_tm, mtl_tm = save_obj_with_mtl_and_normals(tm_meshes, output_dir, tm_base_filename)
+
+    print("Export finished.")
+    if obj_vox:
+        print(f"VoxCity OBJ: {obj_vox}")
+        print(f"VoxCity MTL: {mtl_vox}")
+    if obj_tm:
+        print(f"Scalar Iso OBJ: {obj_tm}")
+        print(f"Scalar Iso MTL: {mtl_tm}")
+
+    return {"vox_obj": obj_vox, "vox_mtl": mtl_vox, "tm_obj": obj_tm, "tm_mtl": mtl_tm}
