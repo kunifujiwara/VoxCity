@@ -17,6 +17,7 @@ import zipfile
 import tempfile
 import glob
 import requests
+from geopy import distance
 
 # Import VoxCity modules
 try:
@@ -264,15 +265,17 @@ with tab1:
                                     # Use current dimension inputs from widgets (persisted by keys)
                                     w_m = st.session_state.get("search_width_m", 1250)
                                     h_m = st.session_state.get("search_height_m", 1250)
-                                    degree_per_meter_lat = 1 / 111000
-                                    degree_per_meter_lon = 1 / (111000 * np.cos(np.radians(center_used[1])))
-                                    half_w = (w_m / 2.0) * degree_per_meter_lon
-                                    half_h = (h_m / 2.0) * degree_per_meter_lat
+                                    # Use geodesic bearings to compute accurate rectangle corners around the clicked center
+                                    lon_c, lat_c = center_used
+                                    north = distance.distance(meters=h_m / 2.0).destination((lat_c, lon_c), bearing=0)
+                                    south = distance.distance(meters=h_m / 2.0).destination((lat_c, lon_c), bearing=180)
+                                    east = distance.distance(meters=w_m / 2.0).destination((lat_c, lon_c), bearing=90)
+                                    west = distance.distance(meters=w_m / 2.0).destination((lat_c, lon_c), bearing=270)
                                     st.session_state.rectangle_vertices = [
-                                        (center_used[0] - half_w, center_used[1] - half_h),
-                                        (center_used[0] - half_w, center_used[1] + half_h),
-                                        (center_used[0] + half_w, center_used[1] + half_h),
-                                        (center_used[0] + half_w, center_used[1] - half_h)
+                                        (west.longitude, south.latitude),
+                                        (west.longitude, north.latitude),
+                                        (east.longitude, north.latitude),
+                                        (east.longitude, south.latitude)
                                     ]
                                     # Show toast before rerun by storing a flag
                                     st.session_state["show_dims_success"] = True
@@ -373,15 +376,17 @@ with tab1:
                             # Pull current dimension inputs stored by keys
                             w_m = st.session_state.get("search_width_m", 1250)
                             h_m = st.session_state.get("search_height_m", 1250)
-                            degree_per_meter_lat = 1 / 111000
-                            degree_per_meter_lon = 1 / (111000 * np.cos(np.radians(center_used[1])))
-                            half_w = (w_m / 2.0) * degree_per_meter_lon
-                            half_h = (h_m / 2.0) * degree_per_meter_lat
+                            # Use geodesic bearings to compute accurate rectangle corners around the clicked center
+                            lon_c, lat_c = center_used
+                            north = distance.distance(meters=h_m / 2.0).destination((lat_c, lon_c), bearing=0)
+                            south = distance.distance(meters=h_m / 2.0).destination((lat_c, lon_c), bearing=180)
+                            east = distance.distance(meters=w_m / 2.0).destination((lat_c, lon_c), bearing=90)
+                            west = distance.distance(meters=w_m / 2.0).destination((lat_c, lon_c), bearing=270)
                             st.session_state.rectangle_vertices = [
-                                (center_used[0] - half_w, center_used[1] - half_h),
-                                (center_used[0] - half_w, center_used[1] + half_h),
-                                (center_used[0] + half_w, center_used[1] + half_h),
-                                (center_used[0] + half_w, center_used[1] - half_h)
+                                (west.longitude, south.latitude),
+                                (west.longitude, north.latitude),
+                                (east.longitude, north.latitude),
+                                (east.longitude, south.latitude)
                             ]
                             st.rerun()
                         else:
