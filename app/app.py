@@ -2,6 +2,7 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import Draw, Geocoder
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -15,6 +16,7 @@ from io import BytesIO
 import zipfile
 import tempfile
 import glob
+import requests
 
 # Import VoxCity modules
 try:
@@ -31,22 +33,29 @@ except ImportError:
     st.error("VoxCity package not installed. Please install it using: pip install voxcity")
     st.stop()
 
-# Try to import and initialize Earth Engine silently
-try:
-    import ee
-    # Try to initialize with default credentials
+# Helper to show a visible toast on rerender
+def _notify_success(message: str) -> None:
     try:
-        ee.Initialize()
-        EE_AUTHENTICATED = True
-    except:
-        # Try to initialize with project ID if available
+        st.toast(message)
+    except Exception:
+        st.success(message)
+
+# Try to import and initialize Earth Engine only if explicitly requested to avoid startup hangs
+EE_AUTHENTICATED = False
+if os.environ.get("VOXCITY_INIT_EE", "0") == "1":
+    try:
+        import ee
         try:
-            ee.Initialize(project='earthengine-legacy')
+            ee.Initialize()
             EE_AUTHENTICATED = True
-        except:
-            EE_AUTHENTICATED = False
-except ImportError:
-    EE_AUTHENTICATED = False
+        except Exception:
+            try:
+                ee.Initialize(project='earthengine-legacy')
+                EE_AUTHENTICATED = True
+            except Exception:
+                EE_AUTHENTICATED = False
+    except ImportError:
+        EE_AUTHENTICATED = False
 
 # Use /tmp for all outputs - this is always writable
 BASE_OUTPUT_DIR = "/tmp/voxcity_output"
@@ -96,7 +105,31 @@ with tab1:
     st.header("Set Target Area")
     
     area_method = st.radio("Select method to define target area:", 
-                          ["Enter coordinates", "Search by city name", "Set center and dimensions"])
+                          ["Search by city name", "Draw on map", "Enter coordinates", "Set center and dimensions"],
+                          index=0)
+
+    # Simple geocoder for city names
+    @st.cache_data(show_spinner=False, ttl=3600)
+    def geocode_city(name: str):
+        try:
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {"q": name, "format": "json", "limit": 1}
+            headers = {"User-Agent": "VoxCityApp/1.0 (streamlit)"}
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            if not data:
+                return None
+            item = data[0]
+            lat = float(item.get("lat"))
+            lon = float(item.get("lon"))
+            bbox = item.get("boundingbox")
+            if bbox and len(bbox) == 4:
+                south, north, west, east = map(float, bbox)
+                return {"lat": lat, "lon": lon, "bbox": (west, south, east, north)}
+            return {"lat": lat, "lon": lon, "bbox": None}
+        except Exception:
+            return None
     
     col1, col2 = st.columns([2, 1])
     
@@ -123,28 +156,306 @@ with tab1:
                 ]
                 st.success("Rectangle vertices set successfully!")
         
-        elif area_method == "Search by city name":
+        if area_method == "Search by city name":
             st.subheader("Search by City Name")
-            city_name = st.text_input("Enter city name", value="new york")
-            zoom_level = st.slider("Zoom level", 10, 18, 15)
+            city_name = st.text_input("Enter city name", value="New York")
+            zoom_level = st.slider("Zoom level", 10, 18, 13)
+            selection_mode = st.radio(
+                "Selection mode",
+                ["Free hand (draw)", "Set dimensions"],
+                index=0,
+                horizontal=True,
+                key="search_select_mode",
+            )
+            # Show success toast if a rectangle was just applied in Set dimensions
+            if st.session_state.get("show_dims_success"):
+                _notify_success("Rectangle captured from map.")
+                st.session_state["show_dims_success"] = False
+            if selection_mode == "Set dimensions":
+                col_w, col_h = st.columns(2)
+                with col_w:
+                    width_m = st.number_input("Width (m)", min_value=50, max_value=20000, value=1250, step=50, key="search_width_m")
+                with col_h:
+                    height_m = st.number_input("Height (m)", min_value=50, max_value=20000, value=1250, step=50, key="search_height_m")
             
             if st.button("Load Map"):
                 with st.spinner("Loading map..."):
                     try:
-                        # Create a simple map centered on the city
-                        # Note: In a real implementation, you would use the actual VoxCity draw functions
-                        st.info("Please use the VoxCity drawing tools to select your area on the map.")
-                        # Placeholder for map interaction
-                        st.session_state.rectangle_vertices = [
-                            (-74.02034270713835, 40.69992881162822),
-                            (-74.02034270713835, 40.7111851828668),
-                            (-74.00555129286164, 40.7111851828668),
-                            (-74.00555129286164, 40.69992881162822)
-                        ]
+                        geo = geocode_city(city_name.strip()) if city_name.strip() else None
+                        if geo is None:
+                            st.warning("Could not find the city. Showing default center (New York).")
+                            center_lon, center_lat = -74.0129, 40.7056
+                            city_bbox = None
+                        else:
+                            center_lon, center_lat = geo["lon"], geo["lat"]
+                            city_bbox = geo.get("bbox")
+                        # Persist center/zoom to keep map visible after interactions
+                        st.session_state["search_map_center"] = (center_lat, center_lon)
+                        st.session_state["search_map_zoom"] = zoom_level
+                        st.session_state["search_map_bbox"] = city_bbox
+                        if st.session_state.get("show_dims_success"):
+                            _notify_success("Rectangle captured from map.")
+                            st.session_state["show_dims_success"] = False
+                        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
+                        # Simple geocoder control (browser-side) to refine center
+                        try:
+                            Geocoder(collapsed=True, add_marker=False).add_to(m)
+                        except Exception:
+                            pass
+                        if selection_mode == "Free hand (draw)":
+                            Draw(
+                                export=False,
+                                draw_options={
+                                    'polyline': False,
+                                    'polygon': False,
+                                    'circle': False,
+                                    'circlemarker': False,
+                                    'marker': False,
+                                    'rectangle': {
+                                        'shapeOptions': {
+                                            'color': '#3388ff',
+                                            'fillColor': '#3388ff',
+                                            'fillOpacity': 0.2
+                                        }
+                                    }
+                                },
+                                edit_options={'edit': True}
+                            ).add_to(m)
+                        else:
+                            st.info("Click the map to set the rectangle center, then press 'Apply dimensions'.")
+                            try:
+                                m.get_root().html.add_child(folium.Element("<style>.leaflet-container{cursor:crosshair !important;}</style>"))
+                            except Exception:
+                                pass
+                        out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"])            
+                        feature = None
+                        if isinstance(out, dict):
+                            feature = out.get('last_active_drawing') or out.get('last_drawn')
+                            if (feature is None) and out.get('all_drawings'):
+                                drawings = out.get('all_drawings') or []
+                                feature = drawings[-1] if len(drawings) > 0 else None
+                        if feature and (selection_mode == "Free hand (draw)"):
+                            geometry = feature.get('geometry', feature)
+                            if geometry and geometry.get('type') == 'Polygon':
+                                coords = geometry['coordinates'][0]
+                                lons = [c[0] for c in coords]
+                                lats = [c[1] for c in coords]
+                                lon_min, lon_max = min(lons), max(lons)
+                                lat_min, lat_max = min(lats), max(lats)
+                                st.session_state.rectangle_vertices = [
+                                    (lon_min, lat_min),
+                                    (lon_min, lat_max),
+                                    (lon_max, lat_max),
+                                    (lon_max, lat_min)
+                                ]
+                                st.success("Rectangle captured from map.")
+                        if selection_mode == "Set dimensions":
+                            last_click = None
+                            if isinstance(out, dict):
+                                lc = out.get('last_clicked')
+                                if lc and isinstance(lc, dict) and ('lat' in lc) and ('lng' in lc):
+                                    last_click = (float(lc['lng']), float(lc['lat']))
+                            prev_click = st.session_state.get("search_last_click")
+                            if last_click is not None:
+                                # Only update/apply if the click changed
+                                if (prev_click is None) or (prev_click != last_click):
+                                    st.session_state["search_last_click"] = last_click
+                                    center_used = last_click
+                                    # Use current dimension inputs from widgets (persisted by keys)
+                                    w_m = st.session_state.get("search_width_m", 1250)
+                                    h_m = st.session_state.get("search_height_m", 1250)
+                                    degree_per_meter_lat = 1 / 111000
+                                    degree_per_meter_lon = 1 / (111000 * np.cos(np.radians(center_used[1])))
+                                    half_w = (w_m / 2.0) * degree_per_meter_lon
+                                    half_h = (h_m / 2.0) * degree_per_meter_lat
+                                    st.session_state.rectangle_vertices = [
+                                        (center_used[0] - half_w, center_used[1] - half_h),
+                                        (center_used[0] - half_w, center_used[1] + half_h),
+                                        (center_used[0] + half_w, center_used[1] + half_h),
+                                        (center_used[0] + half_w, center_used[1] - half_h)
+                                    ]
+                                    # Show toast before rerun by storing a flag
+                                    st.session_state["show_dims_success"] = True
+                                    st.rerun()
+                                else:
+                                    st.caption(f"Center set at lon {last_click[0]:.6f}, lat {last_click[1]:.6f}")
+                                st.session_state["show_dims_success"] = True
+                                st.rerun()
+                        # Offer to use city bounding box directly
+                        if (st.session_state.rectangle_vertices is None) and city_bbox:
+                            if st.button("Use city bounding box as rectangle"):
+                                west, south, east, north = city_bbox
+                                st.session_state.rectangle_vertices = [
+                                    (west, south), (west, north), (east, north), (east, south)
+                                ]
+                                st.success("Rectangle set from city bounding box.")
                     except Exception as e:
                         st.error(f"Error loading map: {str(e)}")
+            # Keep map visible after draw/app reruns using persisted center/zoom
+            elif st.session_state.get("search_map_center"):
+                center_lat, center_lon = st.session_state["search_map_center"]
+                zoom = st.session_state.get("search_map_zoom", 13)
+                if st.session_state.get("show_dims_success"):
+                    _notify_success("Rectangle captured from map.")
+                    st.session_state["show_dims_success"] = False
+                m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom)
+                try:
+                    Geocoder(collapsed=True, add_marker=False).add_to(m)
+                except Exception:
+                    pass
+                if selection_mode == "Free hand (draw)":
+                    Draw(
+                        export=False,
+                        draw_options={
+                            'polyline': False,
+                            'polygon': False,
+                            'circle': False,
+                            'circlemarker': False,
+                            'marker': False,
+                            'rectangle': {
+                                'shapeOptions': {
+                                    'color': '#3388ff',
+                                    'fillColor': '#3388ff',
+                                    'fillOpacity': 0.2
+                                }
+                            }
+                        },
+                        edit_options={'edit': True}
+                    ).add_to(m)
+                # Overlay existing rectangle if available (with consistent draw color)
+                if st.session_state.rectangle_vertices:
+                    folium.Rectangle(
+                        bounds=[
+                            [st.session_state.rectangle_vertices[0][1], st.session_state.rectangle_vertices[0][0]],
+                            [st.session_state.rectangle_vertices[2][1], st.session_state.rectangle_vertices[2][0]]
+                        ],
+                        color='#3388ff',
+                        fill=True,
+                        fillColor='#3388ff',
+                        fillOpacity=0.2
+                    ).add_to(m)
+                # Always render map with a stable key and capture clicks/draws
+                out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"])            
+                if selection_mode == "Free hand (draw)":
+                    feature = None
+                    if isinstance(out, dict):
+                        feature = out.get('last_active_drawing') or out.get('last_drawn')
+                        if (feature is None) and out.get('all_drawings'):
+                            drawings = out.get('all_drawings') or []
+                            feature = drawings[-1] if len(drawings) > 0 else None
+                    if feature:
+                        geometry = feature.get('geometry', feature)
+                        if geometry and geometry.get('type') == 'Polygon':
+                            coords = geometry['coordinates'][0]
+                            lons = [c[0] for c in coords]
+                            lats = [c[1] for c in coords]
+                            lon_min, lon_max = min(lons), max(lons)
+                            lat_min, lat_max = min(lats), max(lats)
+                            st.session_state.rectangle_vertices = [
+                                (lon_min, lat_min),
+                                (lon_min, lat_max),
+                                (lon_max, lat_max),
+                                (lon_max, lat_min)
+                            ]
+                            st.success("Rectangle captured from map.")
+                else:
+                    # Set-dimensions: capture center click and immediately apply current dimensions
+                    last_click = None
+                    if isinstance(out, dict):
+                        lc = out.get('last_clicked')
+                        if lc and isinstance(lc, dict) and ('lat' in lc) and ('lng' in lc):
+                            last_click = (float(lc['lng']), float(lc['lat']))
+                    prev_click = st.session_state.get("search_last_click")
+                    if last_click is not None:
+                        if (prev_click is None) or (prev_click != last_click):
+                            st.session_state["search_last_click"] = last_click
+                            center_used = last_click
+                            # Pull current dimension inputs stored by keys
+                            w_m = st.session_state.get("search_width_m", 1250)
+                            h_m = st.session_state.get("search_height_m", 1250)
+                            degree_per_meter_lat = 1 / 111000
+                            degree_per_meter_lon = 1 / (111000 * np.cos(np.radians(center_used[1])))
+                            half_w = (w_m / 2.0) * degree_per_meter_lon
+                            half_h = (h_m / 2.0) * degree_per_meter_lat
+                            st.session_state.rectangle_vertices = [
+                                (center_used[0] - half_w, center_used[1] - half_h),
+                                (center_used[0] - half_w, center_used[1] + half_h),
+                                (center_used[0] + half_w, center_used[1] + half_h),
+                                (center_used[0] + half_w, center_used[1] - half_h)
+                            ]
+                            st.rerun()
+                        else:
+                            st.caption(f"Center set at lon {last_click[0]:.6f}, lat {last_click[1]:.6f}")
+                        # Immediately draw rectangle on the same map
+                        try:
+                            folium.Rectangle(
+                                bounds=[
+                                    [st.session_state.rectangle_vertices[0][1], st.session_state.rectangle_vertices[0][0]],
+                                    [st.session_state.rectangle_vertices[2][1], st.session_state.rectangle_vertices[2][0]]
+                                ],
+                                color='#3388ff',
+                                fill=True,
+                                fillColor='#3388ff',
+                                fillOpacity=0.2
+                            ).add_to(m)
+                        except Exception:
+                            pass
+                        # Force a re-render to keep map with overlay
+                        st.session_state["show_dims_success"] = True
+                        st.rerun()
+        elif area_method == "Draw on map":
+            st.subheader("Draw Rectangle on Interactive Map")
+            center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
+            center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
+            zoom_level = st.slider("Zoom level", 10, 18, 13, key="draw_zoom")
+            
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
+            try:
+                Geocoder(collapsed=True, add_marker=False).add_to(m)
+            except Exception:
+                pass
+            Draw(
+                export=False,
+                draw_options={
+                    'polyline': False,
+                    'polygon': False,
+                    'circle': False,
+                    'circlemarker': False,
+                    'marker': False,
+                    'rectangle': {
+                        'shapeOptions': {
+                            'color': '#3388ff',
+                            'fillColor': '#3388ff',
+                            'fillOpacity': 0.2
+                        }
+                    }
+                },
+                edit_options={'edit': True}
+            ).add_to(m)
+            out = st_folium(m, height=500, width=700, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            feature = None
+            if isinstance(out, dict):
+                feature = out.get('last_active_drawing') or out.get('last_drawn')
+                if (feature is None) and out.get('all_drawings'):
+                    drawings = out.get('all_drawings') or []
+                    feature = drawings[-1] if len(drawings) > 0 else None
+            if feature:
+                geometry = feature.get('geometry', feature)
+                if geometry and geometry.get('type') == 'Polygon':
+                    coords = geometry['coordinates'][0]
+                    lons = [c[0] for c in coords]
+                    lats = [c[1] for c in coords]
+                    lon_min, lon_max = min(lons), max(lons)
+                    lat_min, lat_max = min(lats), max(lats)
+                    st.session_state.rectangle_vertices = [
+                        (lon_min, lat_min),
+                        (lon_min, lat_max),
+                        (lon_max, lat_max),
+                        (lon_max, lat_min)
+                    ]
+                    st.success("Rectangle captured from map.")
         
-        else:  # Set center and dimensions
+        elif area_method == "Set center and dimensions":
             st.subheader("Set Center Location and Dimensions")
             center_lon = st.number_input("Center Longitude", value=-74.0129, format="%.6f")
             center_lat = st.number_input("Center Latitude", value=40.7056, format="%.6f")
@@ -167,9 +478,56 @@ with tab1:
                     (center_lon + half_width_deg, center_lat - half_height_deg)
                 ]
                 st.success("Rectangle calculated successfully!")
+        else:  # Draw on map
+            st.subheader("Draw Rectangle on Interactive Map")
+            center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
+            center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
+            zoom_level = st.slider("Zoom level", 10, 18, 15, key="draw_zoom")
+            
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
+            Draw(
+                export=False,
+                draw_options={
+                    'polyline': False,
+                    'polygon': False,
+                    'circle': False,
+                    'circlemarker': False,
+                    'marker': False,
+                    'rectangle': {
+                        'shapeOptions': {
+                            'color': '#3388ff',
+                            'fillColor': '#3388ff',
+                            'fillOpacity': 0.2
+                        }
+                    }
+                },
+                edit_options={'edit': True}
+            ).add_to(m)
+            out = st_folium(m, height=500, width=700, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            feature = None
+            if isinstance(out, dict):
+                feature = out.get('last_active_drawing') or out.get('last_drawn')
+                if (feature is None) and out.get('all_drawings'):
+                    drawings = out.get('all_drawings') or []
+                    feature = drawings[-1] if len(drawings) > 0 else None
+            if feature:
+                geometry = feature.get('geometry', feature)
+                if geometry and geometry.get('type') == 'Polygon':
+                    coords = geometry['coordinates'][0]
+                    lons = [c[0] for c in coords]
+                    lats = [c[1] for c in coords]
+                    lon_min, lon_max = min(lons), max(lons)
+                    lat_min, lat_max = min(lats), max(lats)
+                    st.session_state.rectangle_vertices = [
+                        (lon_min, lat_min),
+                        (lon_min, lat_max),
+                        (lon_max, lat_max),
+                        (lon_max, lat_min)
+                    ]
+                    st.success("Rectangle captured from map.")
     
     with col2:
-        if st.session_state.rectangle_vertices:
+        if st.session_state.rectangle_vertices and (area_method in ["Enter coordinates", "Set center and dimensions"]):
             st.subheader("Selected Area Preview")
             # Create a simple folium map to show the selected area
             m = folium.Map(location=[
@@ -180,8 +538,9 @@ with tab1:
             # Add rectangle to map
             folium.Rectangle(
                 bounds=[[v[1], v[0]] for v in st.session_state.rectangle_vertices[:3:2]],
-                color='red',
+                color='#3388ff',
                 fill=True,
+                fillColor='#3388ff',
                 fillOpacity=0.2
             ).add_to(m)
             
