@@ -228,9 +228,16 @@ with tab1:
                                 m.get_root().html.add_child(folium.Element("<style>.leaflet-container{cursor:crosshair !important;}</style>"))
                             except Exception:
                                 pass
-                        out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"])            
+                        out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked", "zoom", "center"])            
                         feature = None
                         if isinstance(out, dict):
+                            # Persist current map view to avoid zoom/center jumps on rerun
+                            z = out.get('zoom')
+                            c = out.get('center')
+                            if isinstance(z, (int, float)):
+                                st.session_state["search_map_zoom"] = int(z)
+                            if isinstance(c, dict) and ('lat' in c) and ('lng' in c):
+                                st.session_state["search_map_center"] = (float(c['lat']), float(c['lng']))
                             feature = out.get('last_active_drawing') or out.get('last_drawn')
                             if (feature is None) and out.get('all_drawings'):
                                 drawings = out.get('all_drawings') or []
@@ -277,13 +284,18 @@ with tab1:
                                         (east.longitude, north.latitude),
                                         (east.longitude, south.latitude)
                                     ]
-                                    # Show toast before rerun by storing a flag
+                                    # Persist latest view before rerun
+                                    z = out.get('zoom') if isinstance(out, dict) else None
+                                    c = out.get('center') if isinstance(out, dict) else None
+                                    if isinstance(z, (int, float)):
+                                        st.session_state["search_map_zoom"] = int(z)
+                                    if isinstance(c, dict) and ('lat' in c) and ('lng' in c):
+                                        st.session_state["search_map_center"] = (float(c['lat']), float(c['lng']))
                                     st.session_state["show_dims_success"] = True
                                     st.rerun()
                                 else:
                                     st.caption(f"Center set at lon {last_click[0]:.6f}, lat {last_click[1]:.6f}")
-                                st.session_state["show_dims_success"] = True
-                                st.rerun()
+                                    # No rerun if nothing changed
                         # Offer to use city bounding box directly
                         if (st.session_state.rectangle_vertices is None) and city_bbox:
                             if st.button("Use city bounding box as rectangle"):
@@ -338,10 +350,17 @@ with tab1:
                         fillOpacity=0.2
                     ).add_to(m)
                 # Always render map with a stable key and capture clicks/draws
-                out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"])            
+                out = st_folium(m, height=500, width=700, key="search_map", returned_objects=["last_active_drawing", "all_drawings", "last_drawn", "last_clicked", "zoom", "center"])            
                 if selection_mode == "Free hand (draw)":
                     feature = None
                     if isinstance(out, dict):
+                        # Persist current map view to avoid zoom/center jumps on rerun
+                        z = out.get('zoom')
+                        c = out.get('center')
+                        if isinstance(z, (int, float)):
+                            st.session_state["search_map_zoom"] = int(z)
+                        if isinstance(c, dict) and ('lat' in c) and ('lng' in c):
+                            st.session_state["search_map_center"] = (float(c['lat']), float(c['lng']))
                         feature = out.get('last_active_drawing') or out.get('last_drawn')
                         if (feature is None) and out.get('all_drawings'):
                             drawings = out.get('all_drawings') or []
@@ -365,6 +384,13 @@ with tab1:
                     # Set-dimensions: capture center click and immediately apply current dimensions
                     last_click = None
                     if isinstance(out, dict):
+                        # Persist current map view to avoid zoom/center jumps on rerun
+                        z = out.get('zoom')
+                        c = out.get('center')
+                        if isinstance(z, (int, float)):
+                            st.session_state["search_map_zoom"] = int(z)
+                        if isinstance(c, dict) and ('lat' in c) and ('lng' in c):
+                            st.session_state["search_map_center"] = (float(c['lat']), float(c['lng']))
                         lc = out.get('last_clicked')
                         if lc and isinstance(lc, dict) and ('lat' in lc) and ('lng' in lc):
                             last_click = (float(lc['lng']), float(lc['lat']))
@@ -388,6 +414,14 @@ with tab1:
                                 (east.longitude, north.latitude),
                                 (east.longitude, south.latitude)
                             ]
+                            # Persist latest view before rerun
+                            z = out.get('zoom') if isinstance(out, dict) else None
+                            c = out.get('center') if isinstance(out, dict) else None
+                            if isinstance(z, (int, float)):
+                                st.session_state["search_map_zoom"] = int(z)
+                            if isinstance(c, dict) and ('lat' in c) and ('lng' in c):
+                                st.session_state["search_map_center"] = (float(c['lat']), float(c['lng']))
+                            st.session_state["show_dims_success"] = True
                             st.rerun()
                         else:
                             st.caption(f"Center set at lon {last_click[0]:.6f}, lat {last_click[1]:.6f}")
