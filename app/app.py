@@ -700,23 +700,20 @@ with tab3:
                     with col3:
                         st.metric("Mesh Size", f"{meshsize} m")
                     
-                    # Visualization option
-                    if st.checkbox("Visualize 3D Model"):
-                        with st.spinner("Generating 3D visualization..."):
-                            try:
-                                vis_dir = os.path.join(BASE_OUTPUT_DIR, "vis")
-                                os.makedirs(vis_dir, exist_ok=True)
-                                # Render and save PNG views
-                                visualize_voxcity_multi_view(result[0], meshsize, output_directory=vis_dir, show_views=True)
-                                # Display saved images
-                                images = sorted(glob.glob(os.path.join(vis_dir, "city_view_*.png")))
-                                if images:
-                                    for img_path in images:
-                                        st.image(img_path, caption=os.path.basename(img_path), use_column_width=True)
-                                else:
-                                    st.info("No images were generated.")
-                            except Exception as e:
-                                st.error(f"Visualization error: {str(e)}")
+                    # Display 3D visualization immediately after generation
+                    with st.spinner("Rendering 3D views..."):
+                        try:
+                            vis_dir = os.path.join(BASE_OUTPUT_DIR, "vis")
+                            os.makedirs(vis_dir, exist_ok=True)
+                            visualize_voxcity_multi_view(result[0], meshsize, output_directory=vis_dir, show_views=True)
+                            images = sorted(glob.glob(os.path.join(vis_dir, "city_view_*.png")))
+                            if images:
+                                for img_path in images:
+                                    st.image(img_path, caption=os.path.basename(img_path), use_column_width=True)
+                            else:
+                                st.info("No images were generated.")
+                        except Exception as e:
+                            st.warning(f"Visualization error: {str(e)}")
                     
                 except Exception as e:
                     st.error(f"Error generating VoxCity model: {str(e)}")
