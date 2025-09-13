@@ -669,6 +669,8 @@ def export_netcdf_to_obj(
     stride_scalar=(1, 1, 1),
     contour_levels=24,
     cmap_name="magma",
+    vmin=None,
+    vmax=None,
     opacity_points=None,
     max_opacity=0.10,
     classes_to_show=None,
@@ -697,6 +699,8 @@ def export_netcdf_to_obj(
         stride_scalar (tuple[int,int,int]): Downsampling strides for scalar (k,j,i).
         contour_levels (int): Number of iso-surface levels between vmin and vmax.
         cmap_name (str): Matplotlib colormap name for iso-surfaces.
+        vmin (float|None): Minimum scalar value for color mapping and iso range. If None, inferred.
+        vmax (float|None): Maximum scalar value for color mapping and iso range. If None, inferred.
         opacity_points (list[tuple[float,float]]|None): Transfer function control points (value, alpha in [0..1]).
         max_opacity (float): Global max opacity multiplier for iso-surfaces (0..1).
         classes_to_show (set[int]|None): Optional subset of voxel classes to export; None -> all present (except 0).
@@ -1123,7 +1127,14 @@ def export_netcdf_to_obj(
     finite_vals = A_s[np.isfinite(A_s)]
     if finite_vals.size == 0:
         raise RuntimeError("No finite scalar values after masking.")
-    vmin, vmax = clip_minmax(finite_vals, 0.0)
+    if (vmin is None) or (vmax is None):
+        auto_vmin, auto_vmax = clip_minmax(finite_vals, 0.0)
+        if vmin is None:
+            vmin = auto_vmin
+        if vmax is None:
+            vmax = auto_vmax
+    if not (vmin < vmax):
+        raise ValueError("vmin must be less than vmax.")
     A_s[np.isnan(A_s)] = vmin - 1e6
 
     Xmin, Xmax = np.nanmin(Xs_m), np.nanmax(Xs_m)
