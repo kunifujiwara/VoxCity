@@ -671,6 +671,8 @@ def export_netcdf_to_obj(
     cmap_name="magma",
     vmin=None,
     vmax=None,
+    iso_vmin=None,
+    iso_vmax=None,
     vox_voxel_size=None,
     scalar_spacing=None,
     opacity_points=None,
@@ -703,6 +705,8 @@ def export_netcdf_to_obj(
         cmap_name (str): Matplotlib colormap name for iso-surfaces.
         vmin (float|None): Minimum scalar value for color mapping and iso range. If None, inferred.
         vmax (float|None): Maximum scalar value for color mapping and iso range. If None, inferred.
+        iso_vmin (float|None): Minimum scalar value to generate iso-surface levels. If None, uses vmin.
+        iso_vmax (float|None): Maximum scalar value to generate iso-surface levels. If None, uses vmax.
         vox_voxel_size (float|tuple[float,float,float]|None): If provided, overrides VoxCity voxel spacing
             for X,Y,Z respectively in meters. A single float applies to all axes.
         scalar_spacing (tuple[float,float,float]|None): If provided, overrides scalar grid spacing (dx,dy,dz)
@@ -910,12 +914,16 @@ def export_netcdf_to_obj(
         mesh.visual.face_colors = np.tile(rgba, (len(F), 1))
         return mesh, len(F)
 
-    def build_tm_isosurfaces_regular_grid(A_scalar, vmin, vmax, levels, dx, dy, dz, origin_xyz, cmap_name, opacity_points, max_opacity):
+    def build_tm_isosurfaces_regular_grid(A_scalar, vmin, vmax, levels, dx, dy, dz, origin_xyz, cmap_name, opacity_points, max_opacity, iso_vmin=None, iso_vmax=None):
         cmap = cm.get_cmap(cmap_name)
         meshes = []
         if levels <= 0:
             return meshes
-        iso_vals = np.linspace(vmin, vmax, int(levels))
+        ivmin = vmin if (iso_vmin is None) else float(iso_vmin)
+        ivmax = vmax if (iso_vmax is None) else float(iso_vmax)
+        if not (ivmin < ivmax):
+            return meshes
+        iso_vals = np.linspace(ivmin, ivmax, int(levels))
         for iso in iso_vals:
             a_base = float(opacity_at(iso, opacity_points or []))
             a_base = min(max(a_base, 0.0), 1.0)
@@ -1157,6 +1165,12 @@ def export_netcdf_to_obj(
         raise ValueError("vmin must be less than vmax.")
     A_s[np.isnan(A_s)] = vmin - 1e6
 
+    # Determine iso-surface generation range (defaults to color mapping range)
+    iso_vmin_eff = vmin if (iso_vmin is None) else float(iso_vmin)
+    iso_vmax_eff = vmax if (iso_vmax is None) else float(iso_vmax)
+    if not (iso_vmin_eff < iso_vmax_eff):
+        raise ValueError("iso_vmin must be less than iso_vmax.")
+
     Xmin, Xmax = np.nanmin(Xs_m), np.nanmax(Xs_m)
     Ymin, Ymax = np.nanmin(Ys_m), np.nanmax(Ys_m)
     dx_s = (Xmax - Xmin) / max(1, Is - 1)
@@ -1203,6 +1217,8 @@ def export_netcdf_to_obj(
         cmap_name=cmap_name,
         opacity_points=opacity_points,
         max_opacity=max_opacity,
+        iso_vmin=iso_vmin_eff,
+        iso_vmax=iso_vmax_eff,
     )
     for iso, m, rgba in iso_meshes:
         tm_meshes[f"iso_{iso:.6f}"] = m
