@@ -671,6 +671,8 @@ def export_netcdf_to_obj(
     cmap_name="magma",
     vmin=None,
     vmax=None,
+    vox_voxel_size=None,
+    scalar_spacing=None,
     opacity_points=None,
     max_opacity=0.10,
     classes_to_show=None,
@@ -701,6 +703,10 @@ def export_netcdf_to_obj(
         cmap_name (str): Matplotlib colormap name for iso-surfaces.
         vmin (float|None): Minimum scalar value for color mapping and iso range. If None, inferred.
         vmax (float|None): Maximum scalar value for color mapping and iso range. If None, inferred.
+        vox_voxel_size (float|tuple[float,float,float]|None): If provided, overrides VoxCity voxel spacing
+            for X,Y,Z respectively in meters. A single float applies to all axes.
+        scalar_spacing (tuple[float,float,float]|None): If provided, overrides scalar grid spacing (dx,dy,dz)
+            used for iso-surface generation. Values are in meters.
         opacity_points (list[tuple[float,float]]|None): Transfer function control points (value, alpha in [0..1]).
         max_opacity (float): Global max opacity multiplier for iso-surfaces (0..1).
         classes_to_show (set[int]|None): Optional subset of voxel classes to export; None -> all present (except 0).
@@ -1057,9 +1063,23 @@ def export_netcdf_to_obj(
     # Y flip (north-up)
     Av_kji = Av_kji[:, ::-1, :]
 
-    Zv_s = Zv[:: max(1, svz)].astype(float)
-    Yv_s = (Yv[:: max(1, svy)] - Yv.min()).astype(float)
-    Xv_s = (Xv[:: max(1, svx)] - Xv.min()).astype(float)
+    # VoxCity coordinate spacing (optionally override by vox_voxel_size)
+    Ks, Js, Is = Av_kji.shape
+    if vox_voxel_size is None:
+        Zv_s = Zv[:: max(1, svz)].astype(float)
+        Yv_s = (Yv[:: max(1, svy)] - Yv.min()).astype(float)
+        Xv_s = (Xv[:: max(1, svx)] - Xv.min()).astype(float)
+    else:
+        if isinstance(vox_voxel_size, (int, float)):
+            vx = vy = vz = float(vox_voxel_size)
+        else:
+            try:
+                vx, vy, vz = (float(vox_voxel_size[0]), float(vox_voxel_size[1]), float(vox_voxel_size[2]))
+            except Exception as e:
+                raise ValueError("vox_voxel_size must be a float or a length-3 iterable of floats (vx,vy,vz)") from e
+        Xv_s = (np.arange(Is, dtype=float) * vx)
+        Yv_s = (np.arange(Js, dtype=float) * vy)
+        Zv_s = (np.arange(Ks, dtype=float) * vz)
 
     # Load scalar and georeference using lon/lat table
     dss = xr.open_dataset(scalar_nc, decode_coords="all", decode_times=True)
@@ -1142,6 +1162,11 @@ def export_netcdf_to_obj(
     dx_s = (Xmax - Xmin) / max(1, Is - 1)
     dy_s = (Ymax - Ymin) / max(1, Js - 1)
     dz_s = (Zk[-1] - Zk[0]) / max(1, Ks - 1) if Ks > 1 else 1.0
+    if scalar_spacing is not None:
+        try:
+            dx_s, dy_s, dz_s = (float(scalar_spacing[0]), float(scalar_spacing[1]), float(scalar_spacing[2]))
+        except Exception as e:
+            raise ValueError("scalar_spacing must be a length-3 iterable of floats (dx,dy,dz)") from e
     origin_xyz = (float(Xmin), float(Ymin), float(Zk[0]))
 
     vox_meshes = {}
