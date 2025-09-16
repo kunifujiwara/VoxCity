@@ -673,6 +673,7 @@ def export_netcdf_to_obj(
     vmax=None,
     iso_vmin=None,
     iso_vmax=None,
+    greedy_vox=True,
     vox_voxel_size=None,
     scalar_spacing=None,
     opacity_points=None,
@@ -707,6 +708,7 @@ def export_netcdf_to_obj(
         vmax (float|None): Maximum scalar value for color mapping and iso range. If None, inferred.
         iso_vmin (float|None): Minimum scalar value to generate iso-surface levels. If None, uses vmin.
         iso_vmax (float|None): Maximum scalar value to generate iso-surface levels. If None, uses vmax.
+        greedy_vox (bool): If True, use greedy meshing for VoxCity faces to reduce triangles.
         vox_voxel_size (float|tuple[float,float,float]|None): If provided, overrides VoxCity voxel spacing
             for X,Y,Z respectively in meters. A single float applies to all axes.
         scalar_spacing (tuple[float,float,float]|None): If provided, overrides scalar grid spacing (dx,dy,dz)
@@ -909,6 +911,163 @@ def export_netcdf_to_obj(
 
         V = np.vstack(verts_all)
         F = np.vstack(tris_all)
+        mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
+        rgba = np.array([int(rgb[0]), int(rgb[1]), int(rgb[2]), 255], dtype=np.uint8)
+        mesh.visual.face_colors = np.tile(rgba, (len(F), 1))
+        return mesh, len(F)
+
+    def _greedy_rectangles(mask2d):
+        h, w = mask2d.shape
+        visited = np.zeros_like(mask2d, dtype=bool)
+        rects = []
+        for u in range(h):
+            v = 0
+            while v < w:
+                if visited[u, v] or not mask2d[u, v]:
+                    v += 1
+                    continue
+                # width
+                width = 1
+                while v + width < w and mask2d[u, v + width] and not visited[u, v + width]:
+                    width += 1
+                # height
+                height = 1
+                done = False
+                while u + height < h and not done:
+                    for k_ in range(width):
+                        if (not mask2d[u + height, v + k_]) or visited[u + height, v + k_]:
+                            done = True
+                            break
+                    if not done:
+                        height += 1
+                visited[u:u + height, v:v + width] = True
+                rects.append((u, v, height, width))
+                v += width
+        return rects
+
+    def make_voxel_mesh_uniform_color_greedy(occ_mask, X, Y, Z, rgb, name="class"):
+        posx, negx, posy, negy, posz, negz = _exposed_face_masks(occ_mask.astype(bool))
+        total_faces_naive = int(posx.sum() + negx.sum() + posy.sum() + negy.sum() + posz.sum() + negz.sum())
+        if total_faces_naive == 0:
+            return None, 0
+
+        dx = (X[1] - X[0]) if len(X) > 1 else 1.0
+        dy = (Y[1] - Y[0]) if len(Y) > 1 else 1.0
+        dz = (Z[1] - Z[0]) if len(Z) > 1 else 1.0
+        hx, hy, hz = dx / 2.0, dy / 2.0, dz / 2.0
+
+        V_list = []
+        F_list = []
+        start_idx = 0
+
+        def add_quad(P, Q, R, S, order):
+            nonlocal start_idx
+            V_list.extend([P, Q, R, S])
+            a = start_idx
+            b = start_idx + 1
+            c = start_idx + 2
+            d = start_idx + 3
+            start_idx += 4
+            if order == "default":
+                F_list.append([a, b, c])
+                F_list.append([a, c, d])
+            else:  # flip
+                F_list.append([a, c, b])
+                F_list.append([a, d, c])
+
+        K, J, I = occ_mask.shape
+
+        # +x and -x: iterate i, mask over (k,j)
+        for plane, mask3 in (("+x", posx), ("-x", negx)):
+            order = "default"
+            for i in range(I):
+                m2 = mask3[:, :, i]
+                if not np.any(m2):
+                    continue
+                for u, v, h, w in _greedy_rectangles(m2):
+                    k0, j0 = u, v
+                    k1, j1 = u + h, v + w
+                    z0 = Z[k0] - hz
+                    z1 = Z[k1 - 1] + hz
+                    y0 = Y[j0] - hy
+                    y1 = Y[j1 - 1] + hy
+                    x_center = X[i]
+                    if plane == "+x":
+                        x = x_center + hx
+                        P = (x, y0, z0)
+                        Q = (x, y1, z0)
+                        R = (x, y1, z1)
+                        S = (x, y0, z1)
+                    else:  # -x
+                        x = x_center - hx
+                        P = (x, y0, z1)
+                        Q = (x, y1, z1)
+                        R = (x, y1, z0)
+                        S = (x, y0, z0)
+                    add_quad(P, Q, R, S, order)
+
+        # +y and -y: iterate j, mask over (k,i)
+        for plane, mask3 in (("+y", posy), ("-y", negy)):
+            order = "flip"  # enforce outward normals like original
+            for j in range(J):
+                m2 = mask3[:, j, :]
+                if not np.any(m2):
+                    continue
+                for u, v, h, w in _greedy_rectangles(m2):
+                    k0, i0 = u, v
+                    k1, i1 = u + h, v + w
+                    z0 = Z[k0] - hz
+                    z1 = Z[k1 - 1] + hz
+                    x0 = X[i0] - hx
+                    x1 = X[i1 - 1] + hx
+                    y_center = Y[j]
+                    if plane == "+y":
+                        y = y_center + hy
+                        P = (x0, y, z0)
+                        Q = (x1, y, z0)
+                        R = (x1, y, z1)
+                        S = (x0, y, z1)
+                    else:  # -y
+                        y = y_center - hy
+                        P = (x0, y, z1)
+                        Q = (x1, y, z1)
+                        R = (x1, y, z0)
+                        S = (x0, y, z0)
+                    add_quad(P, Q, R, S, order)
+
+        # +z and -z: iterate k, mask over (j,i)
+        for plane, mask3 in (("+z", posz), ("-z", negz)):
+            order = "default"
+            for k in range(K):
+                m2 = mask3[k, :, :]
+                if not np.any(m2):
+                    continue
+                for u, v, h, w in _greedy_rectangles(m2):
+                    j0, i0 = u, v
+                    j1, i1 = u + h, v + w
+                    y0 = Y[j0] - hy
+                    y1 = Y[j1 - 1] + hy
+                    x0 = X[i0] - hx
+                    x1 = X[i1 - 1] + hx
+                    z_center = Z[k]
+                    if plane == "+z":
+                        z = z_center + hz
+                        P = (x0, y0, z)
+                        Q = (x1, y0, z)
+                        R = (x1, y1, z)
+                        S = (x0, y1, z)
+                    else:  # -z
+                        z = z_center - hz
+                        P = (x0, y1, z)
+                        Q = (x1, y1, z)
+                        R = (x1, y0, z)
+                        S = (x0, y0, z)
+                    add_quad(P, Q, R, S, order)
+
+        if not V_list or not F_list:
+            return None, 0
+        V = np.asarray(V_list, dtype=np.float64)
+        F = np.asarray(F_list, dtype=np.int64)
         mesh = trimesh.Trimesh(vertices=V, faces=F, process=False)
         rgba = np.array([int(rgb[0]), int(rgb[1]), int(rgb[2]), 255], dtype=np.uint8)
         mesh.visual.face_colors = np.tile(rgba, (len(F), 1))
@@ -1199,7 +1358,10 @@ def export_netcdf_to_obj(
         if not np.any(mask):
             continue
         rgb = voxel_color_map.get(int(cls), [200, 200, 200])
-        m_cls, faces = make_voxel_mesh_uniform_color(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
+        if greedy_vox:
+            m_cls, faces = make_voxel_mesh_uniform_color_greedy(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
+        else:
+            m_cls, faces = make_voxel_mesh_uniform_color(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
         if m_cls is not None:
             vox_meshes[f"voxclass_{int(cls)}"] = m_cls
             faces_total += faces
