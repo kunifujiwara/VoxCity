@@ -233,10 +233,15 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
                                        If no stations within this distance, uses closest available.
         extract_zip (bool): Whether to extract the ZIP file (default True)
         load_data (bool): Whether to load the EPW data into a DataFrame (default True)
-        region (str or List[str], optional): Specific region(s) to scan for stations.
-                                            Options: "Africa", "Asia", "Japan", "India", "Argentina",
-                                            "Canada", "USA", "Caribbean", "Southwest_Pacific", 
-                                            "Europe", "Antarctica", or "all".
+        region (str or List[str], optional): Specific region(s) or dataset(s) to scan for stations.
+                                            Regions: "Africa", "Asia", "South_America",
+                                            "North_and_Central_America", "Southwest_Pacific",
+                                            "Europe", "Antarctica".
+                                            Sub-datasets (can be used alone or auto-included by region):
+                                            "Japan", "India", "CSWD", "CityUHK", "PHIKO",
+                                            "Argentina", "INMET_TRY", "AMTUes", "BrazFuture",
+                                            plus legacy "Canada", "USA", "Caribbean" (Region 4).
+                                            Use "all" to scan every dataset.
                                             If None, will auto-detect region based on coordinates.
     
     Returns:
@@ -250,20 +255,51 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         requests.exceptions.RequestException: If network requests fail
     """
     
-    # Regional KML sources from Climate.OneBuilding.Org
-    # Each region maintains its own KML file with weather station locations and metadata
+    # Regional KML sources from Climate.OneBuilding.Org (2024+ TMYx structure)
+    # Each WMO region maintains a primary KML in /sources with the naming pattern:
+    #   Region{N}_{Name}_TMYx_EPW_Processing_locations.kml
+    # Keep sub-region keys for backward compatibility (mapping to the Region KML where applicable)
     KML_SOURCES = {
-        "Africa": "https://climate.onebuilding.org/WMO_Region_1_Africa/Region1_Africa_EPW_Processing_locations.kml",
-        "Asia": "https://climate.onebuilding.org/WMO_Region_2_Asia/Region2_Asia_EPW_Processing_locations.kml",
+        # WMO Region 1
+        "Africa": "https://climate.onebuilding.org/sources/Region1_Africa_TMYx_EPW_Processing_locations.kml",
+        # WMO Region 2
+        "Asia": "https://climate.onebuilding.org/sources/Region2_Asia_TMYx_EPW_Processing_locations.kml",
+        # Subsets/datasets within Asia that still publish dedicated KMLs
         "Japan": "https://climate.onebuilding.org/sources/JGMY_EPW_Processing_locations.kml",
         "India": "https://climate.onebuilding.org/sources/ITMY_EPW_Processing_locations.kml",
+        "CSWD": "https://climate.onebuilding.org/sources/CSWD_EPW_Processing_locations.kml",
+        "CityUHK": "https://climate.onebuilding.org/sources/CityUHK_EPW_Processing_locations.kml",
+        "PHIKO": "https://climate.onebuilding.org/sources/PHIKO_EPW_Processing_locations.kml",
+        # WMO Region 3
+        "South_America": "https://climate.onebuilding.org/sources/Region3_South_America_TMYx_EPW_Processing_locations.kml",
+        # Historical/legacy dataset for Argentina maintained separately
         "Argentina": "https://climate.onebuilding.org/sources/ArgTMY_EPW_Processing_locations.kml",
+        "INMET_TRY": "https://climate.onebuilding.org/sources/INMET_TRY_EPW_Processing_locations.kml",
+        "AMTUes": "https://climate.onebuilding.org/sources/AMTUes_EPW_Processing_locations.kml",
+        "BrazFuture": "https://climate.onebuilding.org/sources/BrazFuture_EPW_Processing_locations.kml",
+        # WMO Region 4 (use subregion KMLs; umbrella selection expands to these)
+        # Note: There is no single unified Region 4 KML in /sources as of 2024.
+        # Use these three subregion KMLs instead.
         "Canada": "https://climate.onebuilding.org/sources/Region4_Canada_TMYx_EPW_Processing_locations.kml",
         "USA": "https://climate.onebuilding.org/sources/Region4_USA_TMYx_EPW_Processing_locations.kml",
         "Caribbean": "https://climate.onebuilding.org/sources/Region4_NA_CA_Caribbean_TMYx_EPW_Processing_locations.kml",
+        # WMO Region 5
         "Southwest_Pacific": "https://climate.onebuilding.org/sources/Region5_Southwest_Pacific_TMYx_EPW_Processing_locations.kml",
+        # WMO Region 6
         "Europe": "https://climate.onebuilding.org/sources/Region6_Europe_TMYx_EPW_Processing_locations.kml",
-        "Antarctica": "https://climate.onebuilding.org/sources/Region7_Antarctica_TMYx_EPW_Processing_locations.kml"
+        # WMO Region 7
+        "Antarctica": "https://climate.onebuilding.org/sources/Region7_Antarctica_TMYx_EPW_Processing_locations.kml",
+    }
+
+    # Group region selections to include relevant sub-datasets automatically
+    REGION_DATASET_GROUPS = {
+        "Africa": ["Africa"],
+        "Asia": ["Asia", "Japan", "India", "CSWD", "CityUHK", "PHIKO"],
+        "South_America": ["South_America", "Argentina", "INMET_TRY", "AMTUes", "BrazFuture"],
+        "North_and_Central_America": ["North_and_Central_America", "Canada", "USA", "Caribbean"],
+        "Southwest_Pacific": ["Southwest_Pacific"],
+        "Europe": ["Europe"],
+        "Antarctica": ["Antarctica"],
     }
     
     # Define approximate geographical boundaries for automatic region detection
@@ -273,7 +309,13 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         "Asia": {"lon_min": 25, "lon_max": 150, "lat_min": 0, "lat_max": 55},
         "Japan": {"lon_min": 127, "lon_max": 146, "lat_min": 24, "lat_max": 46},
         "India": {"lon_min": 68, "lon_max": 97, "lat_min": 6, "lat_max": 36},
+        # WMO Region 3 (approximate)
+        "South_America": {"lon_min": -90, "lon_max": -30, "lat_min": -60, "lat_max": 15},
+        # Legacy/compatibility subset
         "Argentina": {"lon_min": -75, "lon_max": -53, "lat_min": -55, "lat_max": -22},
+        # WMO Region 4 (approximate), with synonyms below
+        "North_and_Central_America": {"lon_min": -180, "lon_max": -50, "lat_min": 5, "lat_max": 83},
+        # Backward-compatible subsets mapped to Region 4 KML
         "Canada": {"lon_min": -141, "lon_max": -52, "lat_min": 42, "lat_max": 83},
         "USA": {"lon_min": -170, "lon_max": -65, "lat_min": 20, "lat_max": 72},
         "Caribbean": {"lon_min": -90, "lon_max": -59, "lat_min": 10, "lat_max": 27},
@@ -511,6 +553,74 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         
         return metadata
 
+    def try_download_station_zip(original_url: str, timeout_s: int = 30) -> Optional[bytes]:
+        """
+        Try downloading station archive; on 404s, attempt smart fallbacks.
+        
+        Fallback strategies:
+        - Country rename: /TUR_Turkey/ -> /TUR_Turkiye/ (per Oct 2024 site update)
+        - TMYx period variants: .2009-2023.zip, .2007-2021.zip, .zip, .2004-2018.zip
+        
+        Args:
+            original_url: URL extracted from KML
+            timeout_s: request timeout seconds
+        Returns:
+            Bytes of the downloaded zip on success, otherwise None
+        """
+        def candidate_urls(url: str) -> List[str]:
+            urls = []
+            urls.append(url)
+            # Country rename variants
+            if "/TUR_Turkey/" in url:
+                urls.append(url.replace("/TUR_Turkey/", "/TUR_Turkiye/"))
+            if "/TUR_Turkiye/" in url:
+                urls.append(url.replace("/TUR_Turkiye/", "/TUR_Turkey/"))
+            # TMYx period variants
+            m = re.search(r"(.*_TMYx)(?:\.(\d{4}-\d{4}))?\.zip$", url)
+            if m:
+                base = m.group(1)
+                suffix = m.group(2)
+                variants = [
+                    f"{base}.2009-2023.zip",
+                    f"{base}.2007-2021.zip",
+                    f"{base}.zip",
+                    f"{base}.2004-2018.zip",
+                ]
+                for v in variants:
+                    if v not in urls:
+                        urls.append(v)
+                # Also apply country rename to each variant
+                extra = []
+                for v in variants:
+                    if "/TUR_Turkey/" in url:
+                        extra.append(v.replace("/TUR_Turkey/", "/TUR_Turkiye/"))
+                    if "/TUR_Turkiye/" in url:
+                        extra.append(v.replace("/TUR_Turkiye/", "/TUR_Turkey/"))
+                for v in extra:
+                    if v not in urls:
+                        urls.append(v)
+            return urls
+
+        tried = set()
+        for u in candidate_urls(original_url):
+            if u in tried:
+                continue
+            tried.add(u)
+            try:
+                resp = requests.get(u, timeout=timeout_s)
+                resp.raise_for_status()
+                return resp.content
+            except requests.exceptions.HTTPError as he:
+                # Only continue on 404; raise on other HTTP errors
+                if getattr(he.response, "status_code", None) == 404:
+                    continue
+                else:
+                    raise
+            except requests.exceptions.RequestException:
+                # On network errors, try next candidate
+                continue
+        return None
+
     def get_stations_from_kml(kml_url: str) -> List[Dict]:
         """
         Get weather stations from a KML file.
@@ -584,6 +694,18 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         
         # Determine which regions to scan based on user input or auto-detection
         regions_to_scan = {}
+        def _add_selection(selection_name: str, mapping: Dict[str, str], out: Dict[str, str]):
+            """Expand a region or dataset selection into concrete KML URLs."""
+            if selection_name in REGION_DATASET_GROUPS:
+                for key in REGION_DATASET_GROUPS[selection_name]:
+                    if key in KML_SOURCES:
+                        out[key] = KML_SOURCES[key]
+            elif selection_name in KML_SOURCES:
+                out[selection_name] = KML_SOURCES[selection_name]
+            else:
+                valid = sorted(list(REGION_DATASET_GROUPS.keys()) + list(KML_SOURCES.keys()))
+                raise ValueError(f"Invalid region/dataset: '{selection_name}'. Valid options include: {', '.join(valid)}")
+
         if region is None:
             # Auto-detect regions based on coordinates
             detected_regions = detect_regions(longitude, latitude)
@@ -591,34 +713,32 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
             if detected_regions:
                 print(f"Auto-detected regions: {', '.join(detected_regions)}")
                 for r in detected_regions:
-                    regions_to_scan[r] = KML_SOURCES[r]
+                    _add_selection(r, KML_SOURCES, regions_to_scan)
             else:
                 # Fallback to all regions if detection fails
                 print("Could not determine region from coordinates. Scanning all regions.")
-                regions_to_scan = KML_SOURCES
+                regions_to_scan = dict(KML_SOURCES)
         elif isinstance(region, str):
             # Handle string input for region selection
             if region.lower() == "all":
-                regions_to_scan = KML_SOURCES
-            elif region in KML_SOURCES:
-                regions_to_scan[region] = KML_SOURCES[region]
+                regions_to_scan = dict(KML_SOURCES)
             else:
-                valid_regions = ", ".join(KML_SOURCES.keys())
-                raise ValueError(f"Invalid region: '{region}'. Valid regions are: {valid_regions}")
+                _add_selection(region, KML_SOURCES, regions_to_scan)
         else:
             # Handle list input for multiple regions
             for r in region:
-                if r not in KML_SOURCES:
-                    valid_regions = ", ".join(KML_SOURCES.keys())
-                    raise ValueError(f"Invalid region: '{r}'. Valid regions are: {valid_regions}")
-                regions_to_scan[r] = KML_SOURCES[r]
+                _add_selection(r, KML_SOURCES, regions_to_scan)
         
         # Get stations from selected KML sources
         print("Fetching weather station data from Climate.OneBuilding.Org...")
         all_stations = []
         
         # Process each selected region
+        scanned_urls = set()
         for region_name, url in regions_to_scan.items():
+            if url in scanned_urls:
+                continue
+            scanned_urls.add(url)
             print(f"Scanning {region_name}...")
             stations = get_stations_from_kml(url)
             all_stations.extend(stations)
@@ -627,7 +747,23 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         print(f"\nTotal stations found: {len(all_stations)}")
         
         if not all_stations:
-            raise ValueError("No weather stations found")
+            # Fallback: if no stations found, try scanning all available datasets
+            if not (isinstance(region, str) and region.lower() == "all"):
+                print("No stations found from detected/selected regions. Falling back to global scan...")
+                regions_to_scan = dict(KML_SOURCES)
+                all_stations = []
+                scanned_urls = set()
+                for region_name, url in regions_to_scan.items():
+                    if url in scanned_urls:
+                        continue
+                    scanned_urls.add(url)
+                    print(f"Scanning {region_name}...")
+                    stations = get_stations_from_kml(url)
+                    all_stations.extend(stations)
+                    print(f"Found {len(stations)} stations in {region_name}")
+                print(f"\nTotal stations found after global scan: {len(all_stations)}")
+            if not all_stations:
+                raise ValueError("No weather stations found")
             
         # Calculate distances from target coordinates to all stations
         stations_with_distances = [
@@ -654,10 +790,11 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         # Find the nearest weather station
         nearest_station, distance = min(stations_with_distances, key=lambda x: x[1])
         
-        # Download the EPW file from the nearest station
+        # Download the EPW archive from the nearest station with fallbacks
         print(f"\nDownloading EPW file for {nearest_station['name']}...")
-        epw_response = requests.get(nearest_station['url'])
-        epw_response.raise_for_status()
+        archive_bytes = try_download_station_zip(nearest_station['url'], timeout_s=30)
+        if archive_bytes is None:
+            raise ValueError(f"Failed to download EPW archive from station URL and fallbacks: {nearest_station['url']}")
         
         # Create a temporary directory for zip extraction
         temp_dir = Path(output_dir) / "temp"
@@ -666,7 +803,7 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         # Save the downloaded zip file temporarily
         zip_file = temp_dir / "weather_data.zip"
         with open(zip_file, 'wb') as f:
-            f.write(epw_response.content)
+            f.write(archive_bytes)
         
         final_epw = None
         try:
