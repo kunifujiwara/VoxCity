@@ -305,22 +305,33 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
     # Define approximate geographical boundaries for automatic region detection
     # These bounds help determine which regional KML files to scan based on coordinates
     REGION_BOUNDS = {
-        "Africa": {"lon_min": -20, "lon_max": 55, "lat_min": -35, "lat_max": 40},
-        "Asia": {"lon_min": 25, "lon_max": 150, "lat_min": 0, "lat_max": 55},
+        # WMO Region 1 - Africa (includes islands in Indian Ocean and Spanish territories off N. Africa)
+        "Africa": {"lon_min": -25, "lon_max": 80, "lat_min": -55, "lat_max": 45},
+        # WMO Region 2 - Asia (includes SE Asia, West Asia, Asian Russia, and BIOT)
+        "Asia": {"lon_min": 20, "lon_max": 180, "lat_min": -10, "lat_max": 80},
+        # Subsets
         "Japan": {"lon_min": 127, "lon_max": 146, "lat_min": 24, "lat_max": 46},
         "India": {"lon_min": 68, "lon_max": 97, "lat_min": 6, "lat_max": 36},
-        # WMO Region 3 (approximate)
-        "South_America": {"lon_min": -90, "lon_max": -30, "lat_min": -60, "lat_max": 15},
+        # WMO Region 3 - South America (includes Falklands, South Georgia/Sandwich, Galapagos)
+        "South_America": {"lon_min": -92, "lon_max": -20, "lat_min": -60, "lat_max": 15},
         # Legacy/compatibility subset
         "Argentina": {"lon_min": -75, "lon_max": -53, "lat_min": -55, "lat_max": -22},
-        # WMO Region 4 (approximate), with synonyms below
-        "North_and_Central_America": {"lon_min": -180, "lon_max": -50, "lat_min": 5, "lat_max": 83},
+        # WMO Region 4 - North and Central America (includes Greenland and Caribbean)
+        "North_and_Central_America": {"lon_min": -180, "lon_max": 20, "lat_min": -10, "lat_max": 85},
         # Backward-compatible subsets mapped to Region 4 KML
         "Canada": {"lon_min": -141, "lon_max": -52, "lat_min": 42, "lat_max": 83},
         "USA": {"lon_min": -170, "lon_max": -65, "lat_min": 20, "lat_max": 72},
         "Caribbean": {"lon_min": -90, "lon_max": -59, "lat_min": 10, "lat_max": 27},
-        "Southwest_Pacific": {"lon_min": 110, "lon_max": 180, "lat_min": -50, "lat_max": 0},
-        "Europe": {"lon_min": -25, "lon_max": 40, "lat_min": 35, "lat_max": 72},
+        # WMO Region 5 - Southwest Pacific (covers SE Asia + Pacific islands + Hawaii via antimeridian)
+        "Southwest_Pacific": {
+            "boxes": [
+                {"lon_min": 90, "lon_max": 180, "lat_min": -50, "lat_max": 25},
+                {"lon_min": -180, "lon_max": -140, "lat_min": -50, "lat_max": 25},
+            ]
+        },
+        # WMO Region 6 - Europe (includes Middle East countries listed and Greenland)
+        "Europe": {"lon_min": -75, "lon_max": 60, "lat_min": 25, "lat_max": 85},
+        # WMO Region 7 - Antarctica
         "Antarctica": {"lon_min": -180, "lon_max": 180, "lat_min": -90, "lat_max": -60}
     }
 
@@ -348,34 +359,45 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         elif lon > 180:
             lon_adjusted = lon - 360
             
-        # Check if coordinates fall within any region bounds
+        # Helper to test point within a single box
+        def _in_box(bx: Dict[str, float], lon_v: float, lat_v: float) -> bool:
+            return (bx["lon_min"] <= lon_v <= bx["lon_max"] and
+                    bx["lat_min"] <= lat_v <= bx["lat_max"]) 
+
+        # Check if coordinates fall within any region bounds (support multi-box)
         for region_name, bounds in REGION_BOUNDS.items():
-            # Check if point is within region bounds
-            if (bounds["lon_min"] <= lon_adjusted <= bounds["lon_max"] and 
-                bounds["lat_min"] <= lat <= bounds["lat_max"]):
-                matching_regions.append(region_name)
+            if "boxes" in bounds:
+                for bx in bounds["boxes"]:
+                    if _in_box(bx, lon_adjusted, lat):
+                        matching_regions.append(region_name)
+                        break
+            else:
+                if _in_box(bounds, lon_adjusted, lat):
+                    matching_regions.append(region_name)
         
         # If no regions matched, find the closest regions by boundary distance
         if not matching_regions:
             # Calculate "distance" to each region's boundary (simplified metric)
             region_distances = []
             for region_name, bounds in REGION_BOUNDS.items():
-                # Calculate distance to closest edge of region bounds
-                lon_dist = 0
-                if lon_adjusted < bounds["lon_min"]:
-                    lon_dist = bounds["lon_min"] - lon_adjusted
-                elif lon_adjusted > bounds["lon_max"]:
-                    lon_dist = lon_adjusted - bounds["lon_max"]
-                
-                lat_dist = 0
-                if lat < bounds["lat_min"]:
-                    lat_dist = bounds["lat_min"] - lat
-                elif lat > bounds["lat_max"]:
-                    lat_dist = lat - bounds["lat_max"]
-                
-                # Simple Euclidean distance metric (not actual geographic distance)
-                distance = (lon_dist**2 + lat_dist**2)**0.5
-                region_distances.append((region_name, distance))
+                def _box_distance(bx: Dict[str, float]) -> float:
+                    lon_dist = 0
+                    if lon_adjusted < bx["lon_min"]:
+                        lon_dist = bx["lon_min"] - lon_adjusted
+                    elif lon_adjusted > bx["lon_max"]:
+                        lon_dist = lon_adjusted - bx["lon_max"]
+                    lat_dist = 0
+                    if lat < bx["lat_min"]:
+                        lat_dist = bx["lat_min"] - lat
+                    elif lat > bx["lat_max"]:
+                        lat_dist = lat - bx["lat_max"]
+                    return (lon_dist**2 + lat_dist**2)**0.5
+
+                if "boxes" in bounds:
+                    d = min(_box_distance(bx) for bx in bounds["boxes"])
+                else:
+                    d = _box_distance(bounds)
+                region_distances.append((region_name, d))
             
             # Get 3 closest regions to ensure we find stations
             closest_regions = sorted(region_distances, key=lambda x: x[1])[:3]
