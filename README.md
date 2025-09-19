@@ -67,7 +67,7 @@ Make sure you have Python 3.12 installed. Install voxcity with:
 ```bash
 conda create --name voxcity python=3.12
 conda activate voxcity
-conda install -c conda-forge gdal
+conda install -c conda-forge gdal timezonefinder
 pip install voxcity
 ```
 
