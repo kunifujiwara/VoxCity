@@ -624,325 +624,6 @@ def get_voxel_color_map(color_scheme='default'):
         print(f"Unknown color scheme '{color_scheme}'. Using default instead.")
         return get_voxel_color_map('default')
 
-def visualize_3d_voxel(voxel_grid, voxel_color_map = 'default', voxel_size=2.0, save_path=None):
-    """
-    Visualizes 3D voxel data using matplotlib's 3D plotting capabilities.
-    
-    This function creates a 3D visualization of voxel data where each non-zero voxel
-    is rendered as a colored cube. The colors are determined by the voxel values
-    and the specified color scheme. The visualization includes proper transparency
-    handling and aspect ratio adjustment.
-    
-    Parameters:
-    -----------
-    voxel_grid : numpy.ndarray
-        3D numpy array containing voxel data. Shape should be (x, y, z) where
-        each element represents a voxel class ID. Zero values are treated as empty space.
-        
-    voxel_color_map : str, optional
-        Name of the color scheme to use for voxel coloring. Default is 'default'.
-        See get_voxel_color_map() for available options.
-        
-    voxel_size : float, optional
-        Physical size of each voxel in meters. Used for z-axis scaling and labels.
-        Default is 2.0 meters.
-        
-    save_path : str, optional
-        File path to save the generated plot. If None, the plot is only displayed.
-        Default is None.
-        
-    Returns:
-    --------
-    None
-        The function displays the plot and optionally saves it to file.
-        
-    Notes:
-    ------
-    - Void voxels (value -99) are rendered transparent
-    - Underground voxels (value -1) and trees (value -2) have reduced transparency
-    - Z-axis ticks are automatically scaled to show real-world heights
-    - The plot aspect ratio is adjusted to maintain proper voxel proportions
-    - For large voxel grids, this function may be slow due to matplotlib's 3D rendering
-    
-    Examples:
-    ---------
-    >>> # Basic visualization
-    >>> visualize_3d_voxel(voxel_array)
-    
-    >>> # Use cyberpunk color scheme and save to file
-    >>> visualize_3d_voxel(voxel_array, 'cyberpunk', save_path='city_view.png')
-    
-    >>> # Adjust voxel size for different scale
-    >>> visualize_3d_voxel(voxel_array, voxel_size=1.0)
-    """
-    # Get the color mapping for the specified scheme
-    color_map = get_voxel_color_map(voxel_color_map)
-
-    print("\tVisualizing 3D voxel data")
-    # Create a figure and a 3D axis
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-
-    print("\tProcessing voxels...")
-    # Create boolean mask for voxels that should be rendered (non-zero values)
-    filled_voxels = voxel_grid != 0
-    
-    # Initialize color array with RGBA values (Red, Green, Blue, Alpha)
-    colors = np.zeros(voxel_grid.shape + (4,))  # RGBA
-
-    # Process each possible voxel value and assign colors
-    for val in range(-99, 15):  # Updated range to include -3 and -2
-        # Create mask for voxels with this specific value
-        mask = voxel_grid == val
-        
-        if val in color_map:
-            # Convert RGB values from [0,255] to [0,1] range for matplotlib
-            rgb = [x/255 for x in color_map[val]]  # Normalize RGB values to [0, 1]
-            
-            # Set transparency based on voxel type
-            # alpha = 0.7 if ((val == -1) or (val == -2)) else 0.9  # More transparent for underground and below
-            alpha = 0.0 if (val == -99) else 1  # Void voxels are completely transparent
-            # alpha = 1
-            
-            # Assign RGBA color to all voxels of this type
-            colors[mask] = rgb + [alpha]
-        else:
-            # Default color for undefined voxel types
-            colors[mask] = [0, 0, 0, 0.9]  # Default color if not in color_map
-
-    # Render voxels with progress bar
-    with tqdm(total=np.prod(voxel_grid.shape)) as pbar:
-        ax.voxels(filled_voxels, facecolors=colors, edgecolors=None)
-        pbar.update(np.prod(voxel_grid.shape))
-
-    # print("Finalizing plot...")
-    # Set labels and title
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # ax.set_zlabel('Z (meters)')
-    # ax.set_title('3D Voxel Visualization')
-
-    # Configure z-axis ticks to show meaningful height values
-    # Adjust z-axis ticks to show every 10 cells or less
-    z_max = voxel_grid.shape[2]
-    if z_max <= 10:
-        z_ticks = range(0, z_max + 1)
-    else:
-        z_ticks = range(0, z_max + 1, 10)
-        
-    # Remove axes for cleaner appearance
-    ax.axis('off')
-    # ax.set_zticks(z_ticks)
-    # ax.set_zticklabels([f"{z * voxel_size:.1f}" for z in z_ticks])
-
-    # Set aspect ratio to be equal for realistic proportions
-    max_range = np.array([voxel_grid.shape[0], voxel_grid.shape[1], voxel_grid.shape[2]]).max()
-    ax.set_box_aspect((voxel_grid.shape[0]/max_range, voxel_grid.shape[1]/max_range, voxel_grid.shape[2]/max_range))
-
-    # Set z-axis limits to focus on the relevant height range
-    ax.set_zlim(bottom=0)
-    ax.set_zlim(top=150)
-
-    # print("Visualization complete. Displaying plot...")
-    plt.tight_layout()
-
-    # Save plot if path is provided
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
-
-def visualize_3d_voxel_plotly(voxel_grid, voxel_color_map = 'default', voxel_size=2.0):
-    """
-    Creates an interactive 3D visualization of voxel data using Plotly.
-    
-    This function generates an interactive 3D visualization using Plotly's Mesh3d
-    and Scatter3d objects. Each voxel is rendered as a cube with proper lighting
-    and edge visualization. The resulting plot supports interactive rotation,
-    zooming, and panning.
-    
-    Parameters:
-    -----------
-    voxel_grid : numpy.ndarray
-        3D numpy array containing voxel data. Shape should be (x, y, z) where
-        each element represents a voxel class ID. Zero values are treated as empty space.
-        
-    voxel_color_map : str, optional
-        Name of the color scheme to use for voxel coloring. Default is 'default'.
-        See get_voxel_color_map() for available options.
-        
-    voxel_size : float, optional
-        Physical size of each voxel in meters. Used for z-axis scaling and labels.
-        Default is 2.0 meters.
-        
-    Returns:
-    --------
-    None
-        The function displays the interactive plot in the browser or notebook.
-        
-    Notes:
-    ------
-    - Creates individual cube geometries for each non-zero voxel
-    - Includes edge lines for better visual definition
-    - Uses orthographic projection for technical visualization
-    - May be slow for very large voxel grids due to individual cube generation
-    - Lighting is optimized for clear visualization of building structures
-    
-    Technical Details:
-    ------------------
-    - Each cube is defined by 8 vertices and 12 triangular faces
-    - Edge lines are generated separately for visual clarity
-    - Color mapping follows the same convention as matplotlib version
-    - Camera is positioned for isometric view with orthographic projection
-    
-    Examples:
-    ---------
-    >>> # Basic interactive visualization
-    >>> visualize_3d_voxel_plotly(voxel_array)
-    
-    >>> # Use high contrast colors for better visibility
-    >>> visualize_3d_voxel_plotly(voxel_array, 'high_contrast')
-    
-    >>> # Adjust scale for different voxel sizes
-    >>> visualize_3d_voxel_plotly(voxel_array, voxel_size=1.0)
-    """
-    # Get the color mapping for the specified scheme
-    color_map = get_voxel_color_map(voxel_color_map)
-
-    print("Preparing visualization...")
-
-    print("Processing voxels...")
-    # Initialize lists to store mesh data
-    x, y, z = [], [], []  # Vertex coordinates
-    i, j, k = [], [], []  # Face indices (triangles)
-    colors = []           # Vertex colors
-    edge_x, edge_y, edge_z = [], [], []  # Edge line coordinates
-    vertex_index = 0      # Current vertex index counter
-
-    # Define cube faces using vertex indices
-    # Each cube has 12 triangular faces (2 per square face)
-    cube_i = [7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2]
-    cube_j = [3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3]
-    cube_k = [0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6]
-
-    # Process each voxel in the grid
-    with tqdm(total=np.prod(voxel_grid.shape)) as pbar:
-        for xi in range(voxel_grid.shape[0]):
-            for yi in range(voxel_grid.shape[1]):
-                for zi in range(voxel_grid.shape[2]):
-                    # Only process non-zero voxels
-                    if voxel_grid[xi, yi, zi] != 0:
-                        # Define the 8 vertices of a unit cube at this position
-                        # Vertices are ordered: bottom face (z), then top face (z+1)
-                        cube_vertices = [
-                            [xi, yi, zi], [xi+1, yi, zi], [xi+1, yi+1, zi], [xi, yi+1, zi],        # Bottom face
-                            [xi, yi, zi+1], [xi+1, yi, zi+1], [xi+1, yi+1, zi+1], [xi, yi+1, zi+1]  # Top face
-                        ]
-                        
-                        # Add vertex coordinates to the mesh data
-                        x.extend([v[0] for v in cube_vertices])
-                        y.extend([v[1] for v in cube_vertices])
-                        z.extend([v[2] for v in cube_vertices])
-
-                        # Add face indices (offset by current vertex_index)
-                        i.extend([x + vertex_index for x in cube_i])
-                        j.extend([x + vertex_index for x in cube_j])
-                        k.extend([x + vertex_index for x in cube_k])
-
-                        # Get color for this voxel type and replicate for all 8 vertices
-                        color = color_map.get(voxel_grid[xi, yi, zi], [0, 0, 0])
-                        colors.extend([color] * 8)
-
-                        # Generate edge lines for visual clarity
-                        # Define the 12 edges of a cube (4 bottom + 4 top + 4 vertical)
-                        edges = [
-                            (0,1), (1,2), (2,3), (3,0),  # Bottom face edges
-                            (4,5), (5,6), (6,7), (7,4),  # Top face edges
-                            (0,4), (1,5), (2,6), (3,7)   # Vertical edges
-                        ]
-                        
-                        # Add edge coordinates (None creates line breaks between edges)
-                        for start, end in edges:
-                            edge_x.extend([cube_vertices[start][0], cube_vertices[end][0], None])
-                            edge_y.extend([cube_vertices[start][1], cube_vertices[end][1], None])
-                            edge_z.extend([cube_vertices[start][2], cube_vertices[end][2], None])
-
-                        # Increment vertex index for next cube
-                        vertex_index += 8
-                    pbar.update(1)
-
-    print("Creating Plotly figure...")
-    # Create 3D mesh object with vertices, faces, and colors
-    mesh = go.Mesh3d(
-        x=x, y=y, z=z,
-        i=i, j=j, k=k,
-        vertexcolor=colors,
-        opacity=1,
-        flatshading=True,
-        name='Voxel Grid'
-    )
-
-    # Configure lighting for better visualization
-    # Add lighting to the mesh
-    mesh.update(
-        lighting=dict(ambient=0.7,      # Ambient light (overall brightness)
-                      diffuse=1,        # Diffuse light (surface shading)
-                      fresnel=0.1,      # Fresnel effect (edge highlighting)
-                      specular=1,       # Specular highlights
-                      roughness=0.05,   # Surface roughness
-                      facenormalsepsilon=1e-15,
-                      vertexnormalsepsilon=1e-15),
-        lightposition=dict(x=100,       # Light source position
-                           y=200,
-                           z=0)
-    )
-
-    # Create edge lines for better visual definition
-    edges = go.Scatter3d(
-        x=edge_x, y=edge_y, z=edge_z,
-        mode='lines',
-        line=dict(color='lightgrey', width=1),
-        name='Edges'
-    )
-
-    # Combine mesh and edges into a figure
-    fig = go.Figure(data=[mesh, edges])
-
-    # Configure plot layout and camera settings
-    # Set labels, title, and use orthographic projection
-    fig.update_layout(
-        scene=dict(
-            xaxis_title='X',
-            yaxis_title='Y',
-            zaxis_title='Z (meters)',
-            aspectmode='data',          # Maintain data aspect ratios
-            camera=dict(
-                projection=dict(type="orthographic")  # Use orthographic projection
-            )
-        ),
-        title='3D Voxel Visualization'
-    )
-
-    # Configure z-axis to show real-world heights
-    # Adjust z-axis ticks to show every 10 cells or less
-    z_max = voxel_grid.shape[2]
-    if z_max <= 10:
-        z_ticks = list(range(0, z_max + 1))
-    else:
-        z_ticks = list(range(0, z_max + 1, 10))
-
-    # Update z-axis with meaningful height labels
-    fig.update_layout(
-        scene=dict(
-            zaxis=dict(
-                tickvals=z_ticks,
-                ticktext=[f"{z * voxel_size:.1f}" for z in z_ticks]
-            )
-        )
-    )
-
-    print("Visualization complete. Displaying plot...")
-    fig.show()
-
 def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertices, data_type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light', **kwargs):
     """
     Core function for plotting 2D grid data overlaid on basemaps.
@@ -2689,3 +2370,365 @@ def visualize_building_sim_results(voxel_array, meshsize, building_sim_mesh, **k
         custom_meshes=custom_meshes,
         **kwargs
     )
+
+
+def _rgb_tuple_to_plotly_color(rgb_tuple):
+    """
+    Convert [R, G, B] or (R, G, B) with 0-255 range to plotly 'rgb(r,g,b)' string.
+    """
+    try:
+        r, g, b = rgb_tuple
+        r = int(max(0, min(255, r)))
+        g = int(max(0, min(255, g)))
+        b = int(max(0, min(255, b)))
+        return f"rgb({r},{g},{b})"
+    except Exception:
+        return "rgb(128,128,128)"
+
+
+def visualize_voxcity_plotly(
+    voxel_array,
+    meshsize,
+    classes=None,
+    voxel_color_map='default',
+    opacity=None,
+    max_dimension=128,
+    downsample=None,
+    title=None,
+    width=1000,
+    height=800,
+    show=True,
+    return_fig=False,
+):
+    """
+    Interactive 3D visualization of a voxcity voxel grid using Plotly.
+
+    Parameters
+    ----------
+    voxel_array : np.ndarray
+        3D array of voxel class IDs with shape (nx, ny, nz).
+    meshsize : float
+        Physical size of each voxel in meters.
+    classes : list[int], optional
+        Voxel class IDs to render. Defaults to prominent classes if None. Typical IDs:
+        - -3: Buildings
+        - -2: Vegetation
+        - -1: Underground
+        - 1..: Ground surface classes
+    voxel_color_map : str
+        Name of color scheme to fetch via get_voxel_color_map.
+    opacity : float or dict[int,float], optional
+        Single opacity for all classes (0-1) or per-class mapping.
+    max_dimension : int
+        If any axis exceeds this and downsample is None, auto downsample to keep
+        dimensions <= max_dimension.
+    downsample : int, optional
+        Explicit stride for all axes (e.g., 2 renders every other voxel).
+    title : str, optional
+        Figure title.
+    width, height : int
+        Figure size in pixels.
+    show : bool
+        Whether to display the figure (default True).
+    return_fig : bool
+        Whether to return the plotly Figure object.
+
+    Notes
+    -----
+    - Uses one Isosurface trace per class with isomin/isomax around the class value.
+    - For large grids, consider downsampling for performance.
+    """
+    if voxel_array is None or getattr(voxel_array, 'ndim', 0) != 3:
+        raise ValueError("voxel_array must be a 3D numpy array (nx, ny, nz)")
+
+    vox = voxel_array
+
+    # Downsample for performance if requested or auto-needed
+    stride = 1
+    if downsample is not None and downsample > 1:
+        stride = int(downsample)
+    else:
+        nx, ny, nz = vox.shape
+        max_dim = max(nx, ny, nz)
+        if max_dim > max_dimension:
+            # ceil so that max_dim/stride <= max_dimension
+            stride = int(np.ceil(max_dim / max_dimension))
+
+    if stride > 1:
+        vox = vox[::stride, ::stride, ::stride]
+
+    nx, ny, nz = vox.shape
+    # Coordinate axes in meters
+    x = np.arange(nx, dtype=float) * meshsize * stride
+    y = np.arange(ny, dtype=float) * meshsize * stride
+    z = np.arange(nz, dtype=float) * meshsize * stride
+
+    # Select default classes if not provided: render all non-zero classes present
+    if classes is None:
+        classes = np.unique(vox[vox != 0]).tolist()
+
+    if not classes:
+        raise ValueError("No classes to visualize (voxel grid may be empty)")
+
+    # Colors
+    vox_dict = get_voxel_color_map(voxel_color_map)
+    class_to_color = {}
+    for c in classes:
+        color_rgb = vox_dict.get(int(c), [128, 128, 128])
+        class_to_color[c] = _rgb_tuple_to_plotly_color(color_rgb)
+
+    # Opacity per class
+    def get_opacity(c):
+        if isinstance(opacity, dict):
+            return float(opacity.get(c, 0.6))
+        if isinstance(opacity, (int, float)):
+            return float(opacity)
+        # defaults: buildings opaque, vegetation semi
+        return 0.95 if c == -3 else 0.6
+
+    # Build figure
+    fig = go.Figure()
+
+    # Precompute flat coordinates for isosurface
+    # Plotly Isosurface accepts 1D arrays for x, y, z defining positions
+    # combined with a 3D value grid.
+    X = np.broadcast_to(x[:, None, None], (nx, ny, nz)).ravel()
+    Y = np.broadcast_to(y[None, :, None], (nx, ny, nz)).ravel()
+    Z = np.broadcast_to(z[None, None, :], (nx, ny, nz)).ravel()
+
+    for cls in classes:
+        # Skip if class not present
+        if not np.any(vox == cls):
+            continue
+
+        # Colorscale with a single color
+        color = class_to_color.get(cls, "rgb(128,128,128)")
+        colorscale = [[0.0, color], [1.0, color]]
+
+        # Use binary mask per class to ensure iso level lies strictly between 0 and 1
+        M = (vox == cls).astype(np.uint8).ravel()
+
+        fig.add_trace(
+            go.Isosurface(
+                x=X,
+                y=Y,
+                z=Z,
+                value=M,
+                isomin=0.5,
+                isomax=0.5001,
+                surface_count=1,
+                caps=dict(x_show=False, y_show=False, z_show=False),
+                colorscale=colorscale,
+                showscale=False,
+                opacity=get_opacity(cls),
+                name=str(cls),
+            )
+        )
+
+    # Layout
+    fig.update_layout(
+        title=title or "VoxCity 3D (Plotly)",
+        width=width,
+        height=height,
+        scene=dict(
+            xaxis_title="X (m)",
+            yaxis_title="Y (m)",
+            zaxis_title="Z (m)",
+            aspectmode="data",
+        ),
+        legend=dict(itemsizing='constant')
+    )
+
+    if show:
+        fig.show()
+    if return_fig:
+        return fig
+    return None
+
+
+def visualize_voxcity_plotly_voxels(
+    voxel_array,
+    meshsize,
+    classes=None,
+    voxel_color_map='default',
+    opacity=1.0,
+    max_dimension=160,
+    downsample=None,
+    title=None,
+    width=1000,
+    height=800,
+    show=True,
+    return_fig=False,
+):
+    """
+    Interactive 3D visualization where each occupied cell is rendered as a cube (six faces)
+    using Plotly Mesh3d. One Mesh3d trace per class.
+
+    Parameters are similar to visualize_voxcity_plotly, but rendering is via exact cubes.
+    """
+    if voxel_array is None or getattr(voxel_array, 'ndim', 0) != 3:
+        raise ValueError("voxel_array must be a 3D numpy array (nx, ny, nz)")
+
+    vox = voxel_array
+
+    # Downsample for performance if requested or auto-needed
+    stride = 1
+    if downsample is not None and downsample > 1:
+        stride = int(downsample)
+    else:
+        nx, ny, nz = vox.shape
+        max_dim = max(nx, ny, nz)
+        if max_dim > max_dimension:
+            stride = int(np.ceil(max_dim / max_dimension))
+
+    if stride > 1:
+        vox = vox[::stride, ::stride, ::stride]
+
+    nx, ny, nz = vox.shape
+
+    # Coordinate of voxel centers in meters
+    dx = meshsize * stride
+    dy = meshsize * stride
+    dz = meshsize * stride
+    x = np.arange(nx, dtype=float) * dx
+    y = np.arange(ny, dtype=float) * dy
+    z = np.arange(nz, dtype=float) * dz
+
+    # Choose classes
+    if classes is None:
+        classes = np.unique(vox[vox != 0]).tolist()
+    if not classes:
+        raise ValueError("No classes to visualize (voxel grid may be empty)")
+
+    vox_dict = get_voxel_color_map(voxel_color_map)
+
+    def exposed_face_masks(occ):
+        # occ shape (nx, ny, nz)
+        p = np.pad(occ, ((0,1),(0,0),(0,0)), constant_values=False)
+        posx = occ & (~p[1:,:,:])
+        p = np.pad(occ, ((1,0),(0,0),(0,0)), constant_values=False)
+        negx = occ & (~p[:-1,:,:])
+        p = np.pad(occ, ((0,0),(0,1),(0,0)), constant_values=False)
+        posy = occ & (~p[:,1:,:])
+        p = np.pad(occ, ((0,0),(1,0),(0,0)), constant_values=False)
+        negy = occ & (~p[:,:-1,:])
+        p = np.pad(occ, ((0,0),(0,0),(0,1)), constant_values=False)
+        posz = occ & (~p[:,:,1:])
+        p = np.pad(occ, ((0,0),(0,0),(1,0)), constant_values=False)
+        negz = occ & (~p[:,:,:-1])
+        return posx, negx, posy, negy, posz, negz
+
+    def add_faces(fig, mask, plane, color_rgb):
+        idx = np.argwhere(mask)
+        if idx.size == 0:
+            return
+        xi, yi, zi = idx[:,0], idx[:,1], idx[:,2]
+        xc = x[xi]; yc = y[yi]; zc = z[zi]
+        x0, x1 = xc - dx/2.0, xc + dx/2.0
+        y0, y1 = yc - dy/2.0, yc + dy/2.0
+        z0, z1 = zc - dz/2.0, zc + dz/2.0
+
+        if plane == '+x':
+            verts = np.column_stack([
+                np.repeat(x1, 4),
+                np.stack([y0, y1, y1, y0], axis=1).reshape(-1)[0::4].repeat(4)  # placeholder, will rebuild below
+            ])
+        # Build vertices for all faces vectorized per plane
+        if plane == '+x':
+            vx = np.stack([x1, x1, x1, x1], axis=1)
+            vy = np.stack([y0, y1, y1, y0], axis=1)
+            vz = np.stack([z0, z0, z1, z1], axis=1)
+        elif plane == '-x':
+            vx = np.stack([x0, x0, x0, x0], axis=1)
+            vy = np.stack([y0, y1, y1, y0], axis=1)
+            vz = np.stack([z1, z1, z0, z0], axis=1)
+        elif plane == '+y':
+            vx = np.stack([x0, x1, x1, x0], axis=1)
+            vy = np.stack([y1, y1, y1, y1], axis=1)
+            vz = np.stack([z0, z0, z1, z1], axis=1)
+        elif plane == '-y':
+            vx = np.stack([x0, x1, x1, x0], axis=1)
+            vy = np.stack([y0, y0, y0, y0], axis=1)
+            vz = np.stack([z1, z1, z0, z0], axis=1)
+        elif plane == '+z':
+            vx = np.stack([x0, x1, x1, x0], axis=1)
+            vy = np.stack([y0, y0, y1, y1], axis=1)
+            vz = np.stack([z1, z1, z1, z1], axis=1)
+        elif plane == '-z':
+            vx = np.stack([x0, x1, x1, x0], axis=1)
+            vy = np.stack([y1, y1, y0, y0], axis=1)
+            vz = np.stack([z0, z0, z0, z0], axis=1)
+        else:
+            return
+
+        V = np.column_stack([vx.reshape(-1), vy.reshape(-1), vz.reshape(-1)])
+        # Two triangles per quad
+        n = idx.shape[0]
+        starts = np.arange(0, 4*n, 4, dtype=np.int32)
+        tris = np.vstack([
+            np.stack([starts, starts+1, starts+2], axis=1),
+            np.stack([starts, starts+2, starts+3], axis=1)
+        ])
+
+        # Lighting for shading contrast (higher ambient + diffuse + specular)
+        lighting = dict(
+            ambient=0.35,
+            diffuse=1.0,
+            specular=0.4,
+            roughness=0.5,
+            fresnel=0.1,
+        )
+        # Directional light position near the scene center
+        cx = (x.min() + x.max()) * 0.5 if len(x) > 0 else 0.0
+        cy = (y.min() + y.max()) * 0.5 if len(y) > 0 else 0.0
+        cz = (z.min() + z.max()) * 0.5 if len(z) > 0 else 0.0
+        lx = cx + (x.max() - x.min() + dx) * 0.9
+        ly = cy + (y.max() - y.min() + dy) * 0.6
+        lz = cz + (z.max() - z.min() + dz) * 1.4
+
+        fig.add_trace(
+            go.Mesh3d(
+                x=V[:,0], y=V[:,1], z=V[:,2],
+                i=tris[:,0], j=tris[:,1], k=tris[:,2],
+                color=_rgb_tuple_to_plotly_color(color_rgb),
+                opacity=float(opacity),
+                flatshading=False,
+                lighting=lighting,
+                lightposition=dict(x=lx, y=ly, z=lz),
+                name=f"{plane}"
+            )
+        )
+
+    fig = go.Figure()
+
+    for cls in classes:
+        if not np.any(vox == cls):
+            continue
+        occ = (vox == cls)
+        posx, negx, posy, negy, posz, negz = exposed_face_masks(occ)
+        color_rgb = vox_dict.get(int(cls), [128,128,128])
+        add_faces(fig, posx, '+x', color_rgb)
+        add_faces(fig, negx, '-x', color_rgb)
+        add_faces(fig, posy, '+y', color_rgb)
+        add_faces(fig, negy, '-y', color_rgb)
+        add_faces(fig, posz, '+z', color_rgb)
+        add_faces(fig, negz, '-z', color_rgb)
+
+    fig.update_layout(
+        title=title or "VoxCity 3D (Voxel Cubes)",
+        width=width,
+        height=height,
+        scene=dict(
+            xaxis_title="X (m)",
+            yaxis_title="Y (m)",
+            zaxis_title="Z (m)",
+            aspectmode="data",
+            camera=dict(eye=dict(x=1.6, y=1.6, z=1.0)),
+        )
+    )
+
+    if show:
+        fig.show()
+    if return_fig:
+        return fig
+    return None
