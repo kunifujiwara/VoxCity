@@ -88,10 +88,6 @@ from .utils.visualization import (
     get_land_cover_classes,
     visualize_land_cover_grid,
     visualize_numerical_grid,
-    # visualize_land_cover_grid_on_map,
-    # visualize_numerical_grid_on_map,
-    # visualize_building_height_grid_on_map,
-    visualize_3d_voxel,
     visualize_landcover_grid_on_basemap,
     visualize_numerical_grid_on_basemap,
 )
@@ -865,15 +861,15 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source, canopy_bottom_height_grid)
 
     # STEP 7: Generate optional 3D visualization
-    voxelvis = kwargs.get("voxelvis")
-    if voxelvis:
-        # Create a taller grid for better visualization
-        # Fixed height ensures consistent camera positioning
-        new_height = int(550/meshsize+0.5)     
-        voxcity_grid_vis = np.zeros((voxcity_grid.shape[0], voxcity_grid.shape[1], new_height))
-        voxcity_grid_vis[:, :, :voxcity_grid.shape[2]] = voxcity_grid
-        voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
-        visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
+    # voxelvis = kwargs.get("voxelvis")
+    # if voxelvis:
+    #     # Create a taller grid for better visualization
+    #     # Fixed height ensures consistent camera positioning
+    #     new_height = int(550/meshsize+0.5)     
+    #     voxcity_grid_vis = np.zeros((voxcity_grid.shape[0], voxcity_grid.shape[1], new_height))
+    #     voxcity_grid_vis[:, :, :voxcity_grid.shape[2]] = voxcity_grid
+    #     voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
+    #     visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
 
     # STEP 8: Save all generated data for future use
     save_voxcity = kwargs.get("save_voxctiy_data", True)
