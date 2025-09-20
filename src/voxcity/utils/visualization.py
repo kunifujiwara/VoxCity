@@ -2391,166 +2391,6 @@ def visualize_voxcity_plotly(
     meshsize,
     classes=None,
     voxel_color_map='default',
-    opacity=None,
-    max_dimension=128,
-    downsample=None,
-    title=None,
-    width=1000,
-    height=800,
-    show=True,
-    return_fig=False,
-):
-    """
-    Interactive 3D visualization of a voxcity voxel grid using Plotly.
-
-    Parameters
-    ----------
-    voxel_array : np.ndarray
-        3D array of voxel class IDs with shape (nx, ny, nz).
-    meshsize : float
-        Physical size of each voxel in meters.
-    classes : list[int], optional
-        Voxel class IDs to render. Defaults to prominent classes if None. Typical IDs:
-        - -3: Buildings
-        - -2: Vegetation
-        - -1: Underground
-        - 1..: Ground surface classes
-    voxel_color_map : str
-        Name of color scheme to fetch via get_voxel_color_map.
-    opacity : float or dict[int,float], optional
-        Single opacity for all classes (0-1) or per-class mapping.
-    max_dimension : int
-        If any axis exceeds this and downsample is None, auto downsample to keep
-        dimensions <= max_dimension.
-    downsample : int, optional
-        Explicit stride for all axes (e.g., 2 renders every other voxel).
-    title : str, optional
-        Figure title.
-    width, height : int
-        Figure size in pixels.
-    show : bool
-        Whether to display the figure (default True).
-    return_fig : bool
-        Whether to return the plotly Figure object.
-
-    Notes
-    -----
-    - Uses one Isosurface trace per class with isomin/isomax around the class value.
-    - For large grids, consider downsampling for performance.
-    """
-    if voxel_array is None or getattr(voxel_array, 'ndim', 0) != 3:
-        raise ValueError("voxel_array must be a 3D numpy array (nx, ny, nz)")
-
-    vox = voxel_array
-
-    # Downsample for performance if requested or auto-needed
-    stride = 1
-    if downsample is not None and downsample > 1:
-        stride = int(downsample)
-    else:
-        nx, ny, nz = vox.shape
-        max_dim = max(nx, ny, nz)
-        if max_dim > max_dimension:
-            # ceil so that max_dim/stride <= max_dimension
-            stride = int(np.ceil(max_dim / max_dimension))
-
-    if stride > 1:
-        vox = vox[::stride, ::stride, ::stride]
-
-    nx, ny, nz = vox.shape
-    # Coordinate axes in meters
-    x = np.arange(nx, dtype=float) * meshsize * stride
-    y = np.arange(ny, dtype=float) * meshsize * stride
-    z = np.arange(nz, dtype=float) * meshsize * stride
-
-    # Select default classes if not provided: render all non-zero classes present
-    if classes is None:
-        classes = np.unique(vox[vox != 0]).tolist()
-
-    if not classes:
-        raise ValueError("No classes to visualize (voxel grid may be empty)")
-
-    # Colors
-    vox_dict = get_voxel_color_map(voxel_color_map)
-    class_to_color = {}
-    for c in classes:
-        color_rgb = vox_dict.get(int(c), [128, 128, 128])
-        class_to_color[c] = _rgb_tuple_to_plotly_color(color_rgb)
-
-    # Opacity per class
-    def get_opacity(c):
-        if isinstance(opacity, dict):
-            return float(opacity.get(c, 0.6))
-        if isinstance(opacity, (int, float)):
-            return float(opacity)
-        # defaults: buildings opaque, vegetation semi
-        return 0.95 if c == -3 else 0.6
-
-    # Build figure
-    fig = go.Figure()
-
-    # Precompute flat coordinates for isosurface
-    # Plotly Isosurface accepts 1D arrays for x, y, z defining positions
-    # combined with a 3D value grid.
-    X = np.broadcast_to(x[:, None, None], (nx, ny, nz)).ravel()
-    Y = np.broadcast_to(y[None, :, None], (nx, ny, nz)).ravel()
-    Z = np.broadcast_to(z[None, None, :], (nx, ny, nz)).ravel()
-
-    for cls in classes:
-        # Skip if class not present
-        if not np.any(vox == cls):
-            continue
-
-        # Colorscale with a single color
-        color = class_to_color.get(cls, "rgb(128,128,128)")
-        colorscale = [[0.0, color], [1.0, color]]
-
-        # Use binary mask per class to ensure iso level lies strictly between 0 and 1
-        M = (vox == cls).astype(np.uint8).ravel()
-
-        fig.add_trace(
-            go.Isosurface(
-                x=X,
-                y=Y,
-                z=Z,
-                value=M,
-                isomin=0.5,
-                isomax=0.5001,
-                surface_count=1,
-                caps=dict(x_show=False, y_show=False, z_show=False),
-                colorscale=colorscale,
-                showscale=False,
-                opacity=get_opacity(cls),
-                name=str(cls),
-            )
-        )
-
-    # Layout
-    fig.update_layout(
-        title=title or "VoxCity 3D (Plotly)",
-        width=width,
-        height=height,
-        scene=dict(
-            xaxis_title="X (m)",
-            yaxis_title="Y (m)",
-            zaxis_title="Z (m)",
-            aspectmode="data",
-        ),
-        legend=dict(itemsizing='constant')
-    )
-
-    if show:
-        fig.show()
-    if return_fig:
-        return fig
-    return None
-
-
-def visualize_voxcity_plotly_voxels(
-    voxel_array,
-    meshsize,
-    classes=None,
-    voxel_color_map='default',
     opacity=1.0,
     max_dimension=160,
     downsample=None,
@@ -2572,10 +2412,11 @@ def visualize_voxcity_plotly_voxels(
     vox = voxel_array
 
     # Downsample for performance if requested or auto-needed
-    stride = 1
-    if downsample is not None and downsample > 1:
-        stride = int(downsample)
+    # Respect explicit downsample even when it is 1 (no auto-downsample)
+    if downsample is not None:
+        stride = max(1, int(downsample))
     else:
+        stride = 1
         nx, ny, nz = vox.shape
         max_dim = max(nx, ny, nz)
         if max_dim > max_dimension:
