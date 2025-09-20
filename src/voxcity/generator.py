@@ -922,7 +922,8 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     kwargs.pop('output_dir', None)
 
     # SSL/HTTP options for CityGML download (optional)
-    verify = kwargs.pop('verify', True)
+    # Backward compatible: accept 'verify' but prefer 'ssl_verify'
+    ssl_verify = kwargs.pop('ssl_verify', kwargs.pop('verify', True))
     ca_bundle = kwargs.pop('ca_bundle', None)
     timeout = kwargs.pop('timeout', 60)
 
@@ -932,7 +933,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         citygml_path=citygml_path,
         base_dir=output_dir,
         rectangle_vertices=rectangle_vertices,
-        verify=verify,
+        ssl_verify=ssl_verify,
         ca_bundle=ca_bundle,
         timeout=timeout
     )

@@ -1007,10 +1007,15 @@ def get_global_solar_irradiance_using_epw(
                 output_dir=output_dir,
                 max_distance=max_distance,
                 extract_zip=True,
-                load_data=True
+                load_data=True,
+                allow_insecure_ssl=kwargs.get("allow_insecure_ssl", False),
+                allow_http_fallback=kwargs.get("allow_http_fallback", False),
+                ssl_verify=kwargs.get("ssl_verify", True)
             )
 
     # Read EPW data
+    if epw_file_path is None:
+        raise RuntimeError("EPW file path is None. Set 'epw_file_path' or enable 'download_nearest_epw' and ensure network succeeds.")
     df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
     if df.empty:
         raise ValueError("No data in EPW file.")
@@ -2030,10 +2035,15 @@ def get_building_global_solar_irradiance_using_epw(
                 output_dir=output_dir,
                 max_distance=max_distance,
                 extract_zip=True,
-                load_data=True
+                load_data=True,
+                allow_insecure_ssl=kwargs.get("allow_insecure_ssl", False),
+                allow_http_fallback=kwargs.get("allow_http_fallback", False),
+                ssl_verify=kwargs.get("ssl_verify", True)
             )
 
     # Read EPW data
+    if epw_file_path is None:
+        raise RuntimeError("EPW file path is None. Set 'epw_file_path' or enable 'download_nearest_epw' and ensure network succeeds.")
     df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
     if df.empty:
         raise ValueError("No data in EPW file.")
