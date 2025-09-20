@@ -2386,6 +2386,188 @@ def _rgb_tuple_to_plotly_color(rgb_tuple):
         return "rgb(128,128,128)"
 
 
+def visualize_building_sim_results_plotly(
+    voxel_array,
+    meshsize,
+    building_sim_mesh,
+    **kwargs
+):
+    """
+    Interactive Plotly visualization of voxels with an overlaid building simulation mesh.
+
+    This function reuses visualize_voxcity_plotly to render voxel cubes and adds a
+    Plotly Mesh3d trace for a provided building simulation mesh (e.g., SVF, temperature).
+
+    Parameters (kwargs)
+    -------------------
+    classes : list[int] or None
+        Classes to render for voxel cubes. Default: all non-zero classes present.
+    voxel_color_map : str or dict
+        Scheme name understood by get_voxel_color_map or explicit mapping {class_id: [R,G,B]}.
+    downsample : int or None
+        Stride for voxel cubes. 1 means no downsampling.
+    cubes_opacity : float
+        Opacity for voxel cubes (default 0.95 for buildings, 0.6 for others via function's per-class logic; here default 0.9).
+    title : str
+        Figure title.
+    width, height : int
+        Figure size.
+    value_name : str
+        Metadata field name on building_sim_mesh storing per-face values (default 'svf_values').
+    colormap : str
+        Matplotlib colormap name for the simulation values (default 'viridis').
+    vmin, vmax : float or None
+        Value range for color mapping. If None, computed from finite values.
+    nan_color : str
+        Color name for NaN values (default 'gray').
+    building_opacity : float
+        Opacity for the simulation mesh (default 1.0).
+    shaded : bool
+        If True, apply lighting-based shading to the simulation mesh. Default False (unlit colors).
+    render_voxel_buildings : bool
+        If True, also render voxel buildings (-3) from voxcity_grid. Default False (hide voxel buildings
+        so only simulation mesh buildings are visible).
+    show : bool, return_fig : bool
+        Standard display controls.
+    """
+    classes = kwargs.get('classes')
+    voxel_color_map = kwargs.get('voxel_color_map', 'default')
+    downsample = kwargs.get('downsample')
+    title = kwargs.get('title', None)
+    width = kwargs.get('width', 1000)
+    height = kwargs.get('height', 800)
+    cubes_opacity = kwargs.get('cubes_opacity', 0.9)
+    show = kwargs.get('show', True)
+    return_fig = kwargs.get('return_fig', False)
+    render_voxel_buildings = kwargs.get('render_voxel_buildings', False)
+
+    # Determine classes for voxel cubes and exclude buildings (-3) by default
+    if classes is None:
+        classes_all = np.unique(voxel_array[voxel_array != 0]).tolist()
+    else:
+        classes_all = list(classes)
+    classes_cubes = classes_all if render_voxel_buildings else [c for c in classes_all if int(c) != -3]
+
+    # Render voxel cubes background (or blank scene if nothing to render)
+    if len(classes_cubes) > 0:
+        fig = visualize_voxcity_plotly(
+            voxel_array,
+            meshsize,
+            classes=classes_cubes,
+            voxel_color_map=voxel_color_map,
+            opacity=cubes_opacity,
+            downsample=downsample,
+            title=title or "Building Simulation (Plotly)",
+            width=width,
+            height=height,
+            show=False,
+            return_fig=True,
+        )
+    else:
+        fig = go.Figure()
+        fig.update_layout(
+            title=title or "Building Simulation (Plotly)",
+            width=width,
+            height=height,
+            scene=dict(
+                xaxis_title="X (m)",
+                yaxis_title="Y (m)",
+                zaxis_title="Z (m)",
+                aspectmode="data",
+                camera=dict(eye=dict(x=1.6, y=1.6, z=1.0)),
+            )
+        )
+
+    # Nothing to overlay
+    if building_sim_mesh is None or getattr(building_sim_mesh, 'vertices', None) is None:
+        if show:
+            fig.show()
+        if return_fig:
+            return fig
+        return None
+
+    # Extract geometry
+    V = np.asarray(building_sim_mesh.vertices)
+    F = np.asarray(building_sim_mesh.faces)
+    values = None
+    value_name = kwargs.get('value_name', 'svf_values')
+    if hasattr(building_sim_mesh, 'metadata') and isinstance(building_sim_mesh.metadata, dict):
+        values = building_sim_mesh.metadata.get(value_name)
+    if values is not None:
+        values = np.asarray(values)
+
+    # Compute per-face scalar to avoid color interpolation across edges
+    face_vals = None
+    if values is not None and values.size == len(F):
+        # Already per-face
+        face_vals = values.astype(float)
+    elif values is not None and values.size == len(V):
+        # Average the three vertex values per face
+        vals_v = values.astype(float)
+        face_vals = np.nanmean(vals_v[F], axis=1)
+
+    # Map to colors
+    cmap_name = kwargs.get('colormap', 'viridis')
+    vmin = kwargs.get('vmin')
+    vmax = kwargs.get('vmax')
+    nan_color = kwargs.get('nan_color', 'gray')
+    building_opacity = kwargs.get('building_opacity', 1.0)
+
+    facecolor = None
+    if face_vals is not None:
+        # Compute range
+        finite = np.isfinite(face_vals)
+        if vmin is None:
+            vmin = float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0
+        if vmax is None:
+            vmax = float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        cmap = cm.get_cmap(cmap_name)
+        # Colors per face (constant on each triangle)
+        colors_rgba = np.zeros((len(F), 4), dtype=float)
+        colors_rgba[finite] = cmap(norm(face_vals[finite]))
+        nan_rgba = np.array(mcolors.to_rgba(nan_color))
+        colors_rgba[~finite] = nan_rgba
+        facecolor = [
+            f"rgb({int(255*c[0])},{int(255*c[1])},{int(255*c[2])})" for c in colors_rgba
+        ]
+
+    # Lighting (disable shading by default for true color rendering)
+    shaded = kwargs.get('shaded', False)
+    if shaded:
+        lighting = dict(ambient=0.35, diffuse=1.0, specular=0.4, roughness=0.5, fresnel=0.1)
+        flat = False
+    else:
+        # Unlit: make colors independent of lighting
+        lighting = dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=0.0, fresnel=0.0)
+        flat = False
+    cx = float((V[:,0].min() + V[:,0].max()) * 0.5)
+    cy = float((V[:,1].min() + V[:,1].max()) * 0.5)
+    cz = float((V[:,2].min() + V[:,2].max()) * 0.5)
+    lx = cx + (V[:,0].max() - V[:,0].min() + meshsize) * 0.9
+    ly = cy + (V[:,1].max() - V[:,1].min() + meshsize) * 0.6
+    lz = cz + (V[:,2].max() - V[:,2].min() + meshsize) * 1.4
+
+    fig.add_trace(
+        go.Mesh3d(
+            x=V[:,0], y=V[:,1], z=V[:,2],
+            i=F[:,0], j=F[:,1], k=F[:,2],
+            facecolor=facecolor if facecolor is not None else None,
+            color=None if facecolor is not None else 'rgb(200,200,200)',
+            opacity=float(building_opacity),
+            flatshading=flat,
+            lighting=lighting,
+            lightposition=dict(x=lx, y=ly, z=lz),
+            name=value_name if facecolor is not None else 'building_mesh'
+        )
+    )
+
+    if show:
+        fig.show()
+    if return_fig:
+        return fig
+    return None
+
 def visualize_voxcity_plotly(
     voxel_array,
     meshsize,
@@ -2405,6 +2587,8 @@ def visualize_voxcity_plotly(
     using Plotly Mesh3d. One Mesh3d trace per class.
 
     Parameters are similar to visualize_voxcity_plotly, but rendering is via exact cubes.
+    voxel_color_map may be either a scheme name (str) understood by get_voxel_color_map,
+    or a dict mapping class_id -> [R, G, B] (0-255).
     """
     if voxel_array is None or getattr(voxel_array, 'ndim', 0) != 3:
         raise ValueError("voxel_array must be a 3D numpy array (nx, ny, nz)")
@@ -2441,7 +2625,11 @@ def visualize_voxcity_plotly(
     if not classes:
         raise ValueError("No classes to visualize (voxel grid may be empty)")
 
-    vox_dict = get_voxel_color_map(voxel_color_map)
+    # Resolve color map: accept scheme name or explicit dict
+    if isinstance(voxel_color_map, dict):
+        vox_dict = voxel_color_map
+    else:
+        vox_dict = get_voxel_color_map(voxel_color_map)
 
     def exposed_face_masks(occ):
         # occ shape (nx, ny, nz)
