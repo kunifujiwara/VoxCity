@@ -209,7 +209,9 @@ def process_epw(epw_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict]:
 # =============================================================================
 
 def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, output_dir: str = "./", max_distance: Optional[float] = None, 
-                extract_zip: bool = True, load_data: bool = True, region: Optional[Union[str, List[str]]] = None) -> Tuple[Optional[str], Optional[pd.DataFrame], Optional[Dict]]:
+                extract_zip: bool = True, load_data: bool = True, region: Optional[Union[str, List[str]]] = None,
+                allow_insecure_ssl: bool = False, allow_http_fallback: bool = False,
+                ssl_verify: Union[bool, str] = True) -> Tuple[Optional[str], Optional[pd.DataFrame], Optional[Dict]]:
     """
     Download and process EPW weather file from Climate.OneBuilding.Org based on coordinates.
     
@@ -243,6 +245,9 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
                                             plus legacy "Canada", "USA", "Caribbean" (Region 4).
                                             Use "all" to scan every dataset.
                                             If None, will auto-detect region based on coordinates.
+            allow_insecure_ssl (bool): If True, on SSL errors retry with certificate verification disabled.
+            allow_http_fallback (bool): If True, on SSL/network errors, also try HTTP (insecure) fallback.
+            ssl_verify (bool|str): Passed to requests as 'verify' parameter for HTTPS; can be False or CA bundle path.
     
     Returns:
         Tuple containing:
@@ -629,9 +634,36 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
                 continue
             tried.add(u)
             try:
-                resp = requests.get(u, timeout=timeout_s)
+                resp = requests.get(u, timeout=timeout_s, verify=ssl_verify)
                 resp.raise_for_status()
                 return resp.content
+            except requests.exceptions.SSLError:
+                # Retry with user-controlled insecure SSL
+                if allow_insecure_ssl:
+                    try:
+                        resp = requests.get(u, timeout=timeout_s, verify=False)
+                        resp.raise_for_status()
+                        return resp.content
+                    except requests.exceptions.RequestException:
+                        if allow_http_fallback and u.lower().startswith("https://"):
+                            insecure_url = "http://" + u.split("://", 1)[1]
+                            try:
+                                resp = requests.get(insecure_url, timeout=timeout_s)
+                                resp.raise_for_status()
+                                return resp.content
+                            except requests.exceptions.RequestException:
+                                pass
+                        continue
+                else:
+                    if allow_http_fallback and u.lower().startswith("https://"):
+                        insecure_url = "http://" + u.split("://", 1)[1]
+                        try:
+                            resp = requests.get(insecure_url, timeout=timeout_s)
+                            resp.raise_for_status()
+                            return resp.content
+                        except requests.exceptions.RequestException:
+                            pass
+                    continue
             except requests.exceptions.HTTPError as he:
                 # Only continue on 404; raise on other HTTP errors
                 if getattr(he.response, "status_code", None) == 404:
@@ -658,9 +690,32 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
             List of dictionaries containing station metadata
         """
         try:
-            # Download KML file with timeout
-            response = requests.get(kml_url, timeout=30)
-            response.raise_for_status()
+            # Download KML file with timeout (secure first)
+            try:
+                response = requests.get(kml_url, timeout=30, verify=ssl_verify)
+                response.raise_for_status()
+            except requests.exceptions.SSLError:
+                if allow_insecure_ssl:
+                    # Retry with certificate verification disabled (last resort)
+                    try:
+                        response = requests.get(kml_url, timeout=30, verify=False)
+                        response.raise_for_status()
+                    except requests.exceptions.RequestException:
+                        # Try HTTP fallback if original was HTTPS and allowed
+                        if allow_http_fallback and kml_url.lower().startswith("https://"):
+                            insecure_url = "http://" + kml_url.split("://", 1)[1]
+                            response = requests.get(insecure_url, timeout=30)
+                            response.raise_for_status()
+                        else:
+                            raise
+                else:
+                    # Try HTTP fallback only if allowed and original was HTTPS
+                    if allow_http_fallback and kml_url.lower().startswith("https://"):
+                        insecure_url = "http://" + kml_url.split("://", 1)[1]
+                        response = requests.get(insecure_url, timeout=30)
+                        response.raise_for_status()
+                    else:
+                        raise
             
             # Try to decode content with multiple encodings
             content = try_decode(response.content)
@@ -917,8 +972,15 @@ def read_epw_for_solar_simulation(epw_file_path):
     Raises:
         ValueError: If LOCATION line not found or data parsing fails
     """
+    # Validate input path
+    if epw_file_path is None:
+        raise TypeError("EPW file path is None. Provide a valid path or ensure download succeeded.")
+    epw_path_obj = Path(epw_file_path)
+    if not epw_path_obj.exists() or not epw_path_obj.is_file():
+        raise FileNotFoundError(f"EPW file not found: {epw_file_path}")
+
     # Read the entire EPW file
-    with open(epw_file_path, 'r', encoding='utf-8') as f:
+    with open(epw_path_obj, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
     # Find the LOCATION line (first line in EPW format)

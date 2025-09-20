@@ -156,14 +156,14 @@ def get_tile_polygon_from_filename(filename):
 # Original script logic
 # --------------------------------------------------------------------
 
-def download_and_extract_zip(url, extract_to='.', verify=True, ca_bundle=None, timeout=60):
+def download_and_extract_zip(url, extract_to='.', ssl_verify=True, ca_bundle=None, timeout=60):
     """
     Download and extract a zip file from a URL to specified directory.
 
     Args:
         url (str): URL of the zip file to download.
         extract_to (str): Directory to extract files to (default: current directory).
-        verify (bool): Whether to verify SSL certificates (default: True).
+        ssl_verify (bool): Whether to verify SSL certificates (default: True).
         ca_bundle (str|None): Path to a CA bundle file. Overrides verify when provided.
         timeout (int|float): Request timeout in seconds (default: 60).
 
@@ -174,7 +174,7 @@ def download_and_extract_zip(url, extract_to='.', verify=True, ca_bundle=None, t
         - Creates a subdirectory named after the zip file (without .zip)
         - Prints status messages for success/failure
     """
-    verify_arg = ca_bundle if ca_bundle else verify
+    verify_arg = ca_bundle if ca_bundle else ssl_verify
     try:
         response = requests.get(url, verify=verify_arg, timeout=timeout)
         if response.status_code == 200:
@@ -192,7 +192,7 @@ def download_and_extract_zip(url, extract_to='.', verify=True, ca_bundle=None, t
         else:
             print(f"Failed to download the file. Status code: {response.status_code}")
     except requests.exceptions.SSLError as e:
-        print("SSL error when downloading CityGML zip. You can pass 'verify=False' to skip verification, "
+        print("SSL error when downloading CityGML zip. You can pass 'ssl_verify=False' to skip verification, "
               "or provide a CA bundle path via 'ca_bundle'. Error:", e)
         raise
 
@@ -858,7 +858,7 @@ def load_buid_dem_veg_from_citygml(url=None,
                               base_dir='.', 
                               citygml_path=None,
                               rectangle_vertices=None,
-                              verify=True,
+                              ssl_verify=True,
                               ca_bundle=None,
                               timeout=60):
     """
@@ -892,7 +892,7 @@ def load_buid_dem_veg_from_citygml(url=None,
     
     if url:
         citygml_path, foldername = download_and_extract_zip(
-            url, extract_to=base_dir, verify=verify, ca_bundle=ca_bundle, timeout=timeout
+            url, extract_to=base_dir, ssl_verify=ssl_verify, ca_bundle=ca_bundle, timeout=timeout
         )
     elif citygml_path:
         foldername = os.path.basename(citygml_path)
