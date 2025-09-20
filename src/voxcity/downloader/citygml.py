@@ -156,13 +156,16 @@ def get_tile_polygon_from_filename(filename):
 # Original script logic
 # --------------------------------------------------------------------
 
-def download_and_extract_zip(url, extract_to='.'):
+def download_and_extract_zip(url, extract_to='.', verify=True, ca_bundle=None, timeout=60):
     """
     Download and extract a zip file from a URL to specified directory.
 
     Args:
         url (str): URL of the zip file to download.
         extract_to (str): Directory to extract files to (default: current directory).
+        verify (bool): Whether to verify SSL certificates (default: True).
+        ca_bundle (str|None): Path to a CA bundle file. Overrides verify when provided.
+        timeout (int|float): Request timeout in seconds (default: 60).
 
     Returns:
         tuple: (extraction_path, folder_name) where files were extracted.
@@ -171,21 +174,27 @@ def download_and_extract_zip(url, extract_to='.'):
         - Creates a subdirectory named after the zip file (without .zip)
         - Prints status messages for success/failure
     """
-    response = requests.get(url)
-    if response.status_code == 200:
-        parsed_url = urlparse(url)
-        zip_filename = os.path.basename(parsed_url.path)
-        folder_name = os.path.splitext(zip_filename)[0]  # Remove the .zip extension
+    verify_arg = ca_bundle if ca_bundle else verify
+    try:
+        response = requests.get(url, verify=verify_arg, timeout=timeout)
+        if response.status_code == 200:
+            parsed_url = urlparse(url)
+            zip_filename = os.path.basename(parsed_url.path)
+            folder_name = os.path.splitext(zip_filename)[0]  # Remove the .zip extension
 
-        extraction_path = os.path.join(extract_to, folder_name)
-        os.makedirs(extraction_path, exist_ok=True)
+            extraction_path = os.path.join(extract_to, folder_name)
+            os.makedirs(extraction_path, exist_ok=True)
 
-        zip_file = io.BytesIO(response.content)
-        with zipfile.ZipFile(zip_file) as z:
-            z.extractall(extraction_path)
-            print(f"Extracted to {extraction_path}")
-    else:
-        print(f"Failed to download the file. Status code: {response.status_code}")
+            zip_file = io.BytesIO(response.content)
+            with zipfile.ZipFile(zip_file) as z:
+                z.extractall(extraction_path)
+                print(f"Extracted to {extraction_path}")
+        else:
+            print(f"Failed to download the file. Status code: {response.status_code}")
+    except requests.exceptions.SSLError as e:
+        print("SSL error when downloading CityGML zip. You can pass 'verify=False' to skip verification, "
+              "or provide a CA bundle path via 'ca_bundle'. Error:", e)
+        raise
 
     return extraction_path, folder_name
 
@@ -848,7 +857,10 @@ def swap_coordinates_if_needed(gdf, geometry_col='geometry'):
 def load_buid_dem_veg_from_citygml(url=None, 
                               base_dir='.', 
                               citygml_path=None,
-                              rectangle_vertices=None):
+                              rectangle_vertices=None,
+                              verify=True,
+                              ca_bundle=None,
+                              timeout=60):
     """
     Load and process PLATEAU data from URL or local files.
 
@@ -879,7 +891,9 @@ def load_buid_dem_veg_from_citygml(url=None,
         rectangle_polygon = Polygon(rectangle_vertices)
     
     if url:
-        citygml_path, foldername = download_and_extract_zip(url, extract_to=base_dir)
+        citygml_path, foldername = download_and_extract_zip(
+            url, extract_to=base_dir, verify=verify, ca_bundle=ca_bundle, timeout=timeout
+        )
     elif citygml_path:
         foldername = os.path.basename(citygml_path)
     else:

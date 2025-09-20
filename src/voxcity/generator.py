@@ -921,8 +921,21 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # Remove 'output_dir' from kwargs to prevent duplication
     kwargs.pop('output_dir', None)
 
+    # SSL/HTTP options for CityGML download (optional)
+    verify = kwargs.pop('verify', True)
+    ca_bundle = kwargs.pop('ca_bundle', None)
+    timeout = kwargs.pop('timeout', 60)
+
     # get all required gdfs    
-    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(url=url_citygml, citygml_path=citygml_path, base_dir=output_dir, rectangle_vertices=rectangle_vertices)
+    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
+        url=url_citygml,
+        citygml_path=citygml_path,
+        base_dir=output_dir,
+        rectangle_vertices=rectangle_vertices,
+        verify=verify,
+        ca_bundle=ca_bundle,
+        timeout=timeout
+    )
 
     # Normalize CRS to WGS84 (EPSG:4326) to ensure consistent operations downstream
     try:
