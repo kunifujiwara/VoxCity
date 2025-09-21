@@ -2385,6 +2385,23 @@ def _rgb_tuple_to_plotly_color(rgb_tuple):
     except Exception:
         return "rgb(128,128,128)"
 
+def _mpl_cmap_to_plotly_colorscale(cmap_name, n=256):
+    """
+    Convert a matplotlib colormap name to a Plotly colorscale list.
+    """
+    try:
+        cmap = cm.get_cmap(cmap_name)
+    except Exception:
+        cmap = cm.get_cmap('viridis')
+    if n < 2:
+        n = 2
+    scale = []
+    for i in range(n):
+        x = i / (n - 1)
+        r, g, b, _ = cmap(x)
+        scale.append([x, f"rgb({int(255*r)},{int(255*g)},{int(255*b)})"])
+    return scale
+
 
 def visualize_voxcity_plotly(
     voxel_array,
@@ -2692,6 +2709,27 @@ def visualize_voxcity_plotly(
             )
         )
 
+        # Colorbar for building overlay
+        if face_vals is not None:
+            colorscale_b = _mpl_cmap_to_plotly_colorscale(building_colormap)
+            fig.add_trace(
+                go.Scatter3d(
+                    x=[None], y=[None], z=[None],
+                    mode='markers',
+                    marker=dict(
+                        size=0.1,
+                        color=[vmin_b, vmax_b],
+                        colorscale=colorscale_b,
+                        cmin=vmin_b,
+                        cmax=vmax_b,
+                        colorbar=dict(title=building_value_name, len=0.5, y=0.8),
+                        showscale=True,
+                    ),
+                    showlegend=False,
+                    hoverinfo='skip',
+                )
+            )
+
     # Ground simulation surface overlay
     if ground_sim_grid is not None and ground_dem_grid is not None:
         sim_vals = np.asarray(ground_sim_grid, dtype=float)
@@ -2768,6 +2806,26 @@ def visualize_voxcity_plotly(
                     lighting=lighting,
                     lightposition=dict(x=lx, y=ly, z=lz),
                     name='sim_surface'
+                )
+            )
+
+            # Colorbar for ground overlay
+            colorscale_g = _mpl_cmap_to_plotly_colorscale(ground_colormap)
+            fig.add_trace(
+                go.Scatter3d(
+                    x=[None], y=[None], z=[None],
+                    mode='markers',
+                    marker=dict(
+                        size=0.1,
+                        color=[vmin_g, vmax_g],
+                        colorscale=colorscale_g,
+                        cmin=vmin_g,
+                        cmax=vmax_g,
+                        colorbar=dict(title='ground', len=0.5, y=0.2),
+                        showscale=True,
+                    ),
+                    showlegend=False,
+                    hoverinfo='skip',
                 )
             )
 
