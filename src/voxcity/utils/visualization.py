@@ -2568,6 +2568,201 @@ def visualize_building_sim_results_plotly(
         return fig
     return None
 
+
+def visualize_ground_sim_results_plotly(
+    voxel_array,
+    meshsize,
+    sim_grid,
+    dem_grid,
+    **kwargs
+):
+    """
+    Interactive Plotly visualization of voxels with an elevated ground-level simulation surface.
+
+    This renders voxel cubes for the city model and overlays a triangulated surface mesh
+    created from a 2D ground simulation grid (e.g., temperature, wind) elevated by the DEM
+    plus a configurable offset. The surface is colored using a matplotlib colormap.
+
+    Parameters (kwargs)
+    -------------------
+    classes : list[int] or None
+        Classes to render for voxel cubes. Default: all non-zero classes present.
+    voxel_color_map : str or dict
+        Scheme name understood by get_voxel_color_map or explicit mapping {class_id: [R,G,B]}.
+    downsample : int or None
+        Stride for voxel cubes. 1 means no downsampling.
+    cubes_opacity : float
+        Opacity for voxel cubes (default 0.9).
+    title : str
+        Figure title.
+    width, height : int
+        Figure size.
+    view_point_height : float
+        Height offset above DEM for the simulation surface (default 1.5m).
+    colormap : str
+        Matplotlib colormap name for the simulation values (default 'viridis').
+    vmin, vmax : float or None
+        Value range for color mapping. If None, computed from finite values.
+    sim_surface_opacity : float
+        Opacity for the simulation surface (default 0.95).
+    shaded : bool
+        If True, apply lighting-based shading to the simulation mesh. Default False (unlit colors).
+    show, return_fig : bool
+        Standard display controls.
+    """
+    # Background voxel cubes
+    classes = kwargs.get('classes')
+    voxel_color_map = kwargs.get('voxel_color_map', 'default')
+    downsample = kwargs.get('downsample')
+    title = kwargs.get('title', None)
+    width = kwargs.get('width', 1000)
+    height = kwargs.get('height', 800)
+    cubes_opacity = kwargs.get('cubes_opacity', 0.9)
+    show = kwargs.get('show', True)
+    return_fig = kwargs.get('return_fig', False)
+
+    if classes is None and voxel_array is not None:
+        try:
+            classes = np.unique(voxel_array[voxel_array != 0]).tolist()
+        except Exception:
+            classes = []
+
+    if voxel_array is not None and len(classes) > 0:
+        fig = visualize_voxcity_plotly(
+            voxel_array,
+            meshsize,
+            classes=classes,
+            voxel_color_map=voxel_color_map,
+            opacity=cubes_opacity,
+            downsample=downsample,
+            title=title or "Ground Simulation (Plotly)",
+            width=width,
+            height=height,
+            show=False,
+            return_fig=True,
+        )
+    else:
+        fig = go.Figure()
+        fig.update_layout(
+            title=title or "Ground Simulation (Plotly)",
+            width=width,
+            height=height,
+            scene=dict(
+                xaxis_title="X (m)",
+                yaxis_title="Y (m)",
+                zaxis_title="Z (m)",
+                aspectmode="data",
+                camera=dict(eye=dict(x=1.6, y=1.6, z=1.0)),
+            )
+        )
+
+    # Nothing to overlay
+    if sim_grid is None or dem_grid is None:
+        if show:
+            fig.show()
+        if return_fig:
+            return fig
+        return None
+
+    # Determine color mapping range
+    sim_vals = np.asarray(sim_grid, dtype=float)
+    finite = np.isfinite(sim_vals)
+    vmin = kwargs.get('vmin')
+    vmax = kwargs.get('vmax')
+    if vmin is None:
+        vmin = float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0
+    if vmax is None:
+        vmax = float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0
+
+    # Build elevated simulation surface (triangulated) using existing mesh utility
+    # Elevation offset above ground; support both names for consistency
+    z_offset = kwargs.get('z_offset', kwargs.get('view_point_height', 1.5))
+    try:
+        z_offset = float(z_offset)
+    except Exception:
+        z_offset = 1.5
+    # Ensure offset is at least one meshsize and round up to a multiple of meshsize
+    if meshsize is not None:
+        try:
+            ms = float(meshsize)
+            if z_offset < ms:
+                z_offset = ms
+            # Round up to next multiple of meshsize
+            z_offset = ms * math.ceil(z_offset / ms)
+        except Exception:
+            pass
+    cmap_name = kwargs.get('colormap', 'viridis')
+    sim_surface_opacity = kwargs.get('sim_surface_opacity', 0.95)
+    shaded = kwargs.get('shaded', False)
+
+    # Normalize DEM so its minimum becomes 0, matching voxel Z coordinates
+    try:
+        dem_norm = np.asarray(dem_grid, dtype=float)
+        dem_norm = dem_norm - np.nanmin(dem_norm)
+    except Exception:
+        dem_norm = dem_grid
+
+    sim_mesh = create_sim_surface_mesh(
+        sim_grid, dem_norm,
+        meshsize=meshsize,
+        z_offset=z_offset,
+        cmap_name=cmap_name,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    # If mesh successfully created, overlay it as a Mesh3d trace with per-face colors
+    if sim_mesh is not None and getattr(sim_mesh, 'vertices', None) is not None:
+        V = np.asarray(sim_mesh.vertices)
+        F = np.asarray(sim_mesh.faces)
+
+        # Prefer face colors from the mesh if available
+        facecolor = None
+        try:
+            colors_rgba = np.asarray(sim_mesh.visual.face_colors)
+            if colors_rgba.ndim == 2 and colors_rgba.shape[0] == len(F):
+                facecolor = [
+                    f"rgb({int(c[0])},{int(c[1])},{int(c[2])})" for c in colors_rgba
+                ]
+        except Exception:
+            facecolor = None
+
+        # Lighting setup
+        if shaded:
+            lighting = dict(ambient=0.35, diffuse=1.0, specular=0.4, roughness=0.5, fresnel=0.1)
+            flat = False
+        else:
+            lighting = dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=0.0, fresnel=0.0)
+            flat = False
+
+        # Place a directional light near scene center
+        cx = float((V[:,0].min() + V[:,0].max()) * 0.5)
+        cy = float((V[:,1].min() + V[:,1].max()) * 0.5)
+        cz = float((V[:,2].min() + V[:,2].max()) * 0.5)
+        lx = cx + (V[:,0].max() - V[:,0].min() + meshsize) * 0.9
+        ly = cy + (V[:,1].max() - V[:,1].min() + meshsize) * 0.6
+        lz = cz + (V[:,2].max() - V[:,2].min() + meshsize) * 1.4
+
+        fig.add_trace(
+            go.Mesh3d(
+                x=V[:,0], y=V[:,1], z=V[:,2],
+                i=F[:,0], j=F[:,1], k=F[:,2],
+                facecolor=facecolor,
+                color=None if facecolor is not None else 'rgb(200,200,200)',
+                opacity=float(sim_surface_opacity),
+                flatshading=flat,
+                lighting=lighting,
+                lightposition=dict(x=lx, y=ly, z=lz),
+                name='sim_surface'
+            )
+        )
+
+    if show:
+        fig.show()
+    if return_fig:
+        return fig
+    return None
+
 def visualize_voxcity_plotly(
     voxel_array,
     meshsize,
