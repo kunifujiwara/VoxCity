@@ -57,7 +57,13 @@ RUN pip install \
     plotly>=5.17.0 \
     pillow \
     scipy \
-    scikit-image
+    scikit-image \
+    requests \
+    geopy \
+    seaborn \
+    contextily \
+    tqdm \
+    ipython
 
 # Install additional packages that might be needed for VoxCity
 RUN pip install \
@@ -72,20 +78,21 @@ RUN useradd -m -s /bin/bash voxcity
 # Create workspace directory
 WORKDIR /app
 
-# Copy the web application files
+# Copy the web application file
 COPY app.py /app/
-COPY requirements.txt /app/
 
-# Create necessary directories for outputs with proper permissions
-RUN mkdir -p /app/output/test \
-    /app/output/envimet \
-    /app/output/magicavoxel \
-    /app/output/obj \
-    /app/output/solar \
-    /app/output/view \
-    /app/output/3d_vis && \
-    chown -R voxcity:voxcity /app && \
-    chmod -R 755 /app/output
+# Prepare runtime output directories used by the app (/tmp/voxcity_output)
+RUN mkdir -p /tmp/voxcity_output/test \
+    /tmp/voxcity_output/envimet \
+    /tmp/voxcity_output/magicavoxel \
+    /tmp/voxcity_output/obj \
+    /tmp/voxcity_output/solar \
+    /tmp/voxcity_output/view \
+    /tmp/voxcity_output/epw \
+    /tmp/voxcity_output/netcdf \
+    /tmp/voxcity_output/3d_vis && \
+    chown -R voxcity:voxcity /tmp/voxcity_output && \
+    chmod -R 777 /tmp/voxcity_output
 
 # Switch to non-root user
 USER voxcity

@@ -41,6 +41,33 @@ def _notify_success(message: str) -> None:
     except Exception:
         st.success(message)
 
+# Helpers for downloadable exports
+def _zip_directory_to_bytes(dir_path: str) -> BytesIO:
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(dir_path):
+            for fname in files:
+                full_path = os.path.join(root, fname)
+                arcname = os.path.relpath(full_path, start=dir_path)
+                try:
+                    zf.write(full_path, arcname)
+                except Exception:
+                    pass
+    memory_file.seek(0)
+    return memory_file
+
+def _zip_files_to_bytes(file_paths) -> BytesIO:
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for p in file_paths:
+            if os.path.isfile(p):
+                try:
+                    zf.write(p, arcname=os.path.basename(p))
+                except Exception:
+                    pass
+    memory_file.seek(0)
+    return memory_file
+
 # Try to import and initialize Earth Engine only if explicitly requested to avoid startup hangs
 EE_AUTHENTICATED = False
 if os.environ.get("VOXCITY_INIT_EE", "0") == "1":
@@ -1121,7 +1148,16 @@ with tab5:
                         
                         st.success("ENVI-MET files exported successfully!")
                         st.info(f"Files saved to {output_dir}")
-                        
+                        try:
+                            zip_buf = _zip_directory_to_bytes(output_dir)
+                            st.download_button(
+                                label="Download ENVI-MET outputs (ZIP)",
+                                data=zip_buf,
+                                file_name="envimet_outputs.zip",
+                                mime="application/zip"
+                            )
+                        except Exception as e:
+                            st.warning(f"Could not prepare ZIP for download: {e}")
                     except Exception as e:
                         st.error(f"Error exporting ENVI-MET files: {str(e)}")
         
@@ -1140,7 +1176,16 @@ with tab5:
                         
                         st.success("MagicaVoxel file exported successfully!")
                         st.info(f"File saved to {output_path}")
-                        
+                        try:
+                            zip_buf = _zip_directory_to_bytes(output_path)
+                            st.download_button(
+                                label="Download MagicaVoxel outputs (ZIP)",
+                                data=zip_buf,
+                                file_name="magicavoxel_outputs.zip",
+                                mime="application/zip"
+                            )
+                        except Exception as e:
+                            st.warning(f"Could not prepare ZIP for download: {e}")
                     except Exception as e:
                         st.error(f"Error exporting MagicaVoxel file: {str(e)}")
         
@@ -1179,14 +1224,37 @@ with tab5:
                                     rectangle_vertices=data['rectangle_vertices'],
                                 )
                                 st.info(f"NetCDF saved to {nc_path}")
+                                try:
+                                    with open(nc_path, 'rb') as f:
+                                        st.download_button(
+                                            label="Download NetCDF",
+                                            data=f.read(),
+                                            file_name=os.path.basename(nc_path),
+                                            mime="application/netcdf"
+                                        )
+                                except Exception as e:
+                                    st.warning(f"Could not prepare NetCDF for download: {e}")
                             except Exception as ne:
                                 st.warning(f"NetCDF export failed: {ne}")
 
                         st.success("OBJ file exported successfully!")
                         st.info(f"File saved to {output_directory}/{output_filename}.obj")
-                        
+                        try:
+                            files_to_zip = [
+                                os.path.join(output_directory, f"{output_filename}.obj"),
+                                os.path.join(output_directory, f"{output_filename}.mtl")
+                            ]
+                            zip_buf = _zip_files_to_bytes(files_to_zip)
+                            st.download_button(
+                                label="Download OBJ + MTL (ZIP)",
+                                data=zip_buf,
+                                file_name=f"{output_filename}.zip",
+                                mime="application/zip"
+                            )
+                        except Exception as e:
+                            st.warning(f"Could not prepare ZIP for download: {e}")
                     except Exception as e:
-                        st.error(f"Error exporting OBJ file: {str(e)}")
+                        st.error(f"Error exporting OBJ/NetCDF: {str(e)}")
 
 # Footer
 st.markdown("---")
