@@ -36,106 +36,125 @@ VOXCITY_STANDARD_CLASSES = {
 }
 
 ## Source-specific class name to CityLES land use mappings
-# CityLES land use codes: 1=Water, 2=Rice Paddy, 3=Crops, 4=Grassland, 5=Deciduous Broadleaf Forest,
-# 9=Bare Land, 10=Building, 16=Asphalt (road), etc.
+# CityLES land use codes (updated to match provided definitions):
+# 1: High reflective ASPHALT, 2: High reflective ASPHALT without AH,
+# 3: CONCRETE (proxy of jari), 4: CONCRETE building,
+# 5: Slate roof (Ordinal wooden house), 6: PADDY,
+# 7: Dryland Cropland and Pasture, 8: Barren or Sparsely Vegetated,
+# 9: WATER, 10: Grassland, 11: CONCRETE (proxy of block),
+# 12: ASPHALT without AH, 13: ASPHALT,
+# 14-17: Deciduous Broadleaf Forest
 
-# OpenStreetMap / Standard
+# OpenStreetMap / Standard (mapped to updated CityLES landuse codes)
 OSM_CLASS_TO_CITYLES = {
-    'Bareland': 9,
-    'Rangeland': 4,
-    'Shrub': 4,
-    'Moss and lichen': 4,
-    'Agriculture land': 3,
-    'Tree': 5,
-    'Wet land': 2,
-    'Mangroves': 5,
-    'Water': 1,
-    'Snow and ice': 9,
-    'Developed space': 10,
-    'Road': 16,
-    'Building': 10,
-    'No Data': 4
+    'Bareland': 8,
+    'Rangeland': 10,
+    'Shrub': 10,
+    'Moss and lichen': 10,
+    'Agriculture land': 7,
+    'Tree': 14,
+    'Wet land': 6,
+    'Mangroves': 14,
+    'Water': 9,
+    'Snow and ice': 8,
+    'Developed space': 4,
+    'Road': 13,
+    'Building': 4,
+    'No Data': 10
 }
 
 # Urbanwatch
 URBANWATCH_CLASS_TO_CITYLES = {
-    'Building': 10,
-    'Road': 16,
-    'Parking Lot': 16,
-    'Tree Canopy': 5,
-    'Grass/Shrub': 4,
-    'Agriculture': 3,
-    'Water': 1,
-    'Barren': 9,
-    'Unknown': 4,
-    'Sea': 1
+    'Building': 4,
+    'Road': 13,
+    'Parking Lot': 13,
+    'Tree Canopy': 14,
+    'Grass/Shrub': 10,
+    'Agriculture': 7,
+    'Water': 9,
+    'Barren': 8,
+    'Unknown': 10,
+    'Sea': 9
 }
 
 # OpenEarthMapJapan
 OEMJ_CLASS_TO_CITYLES = {
-    'Bareland': 9,
-    'Rangeland': 4,
-    'Developed space': 10,
-    'Road': 16,
-    'Tree': 5,
-    'Water': 1,
-    'Agriculture land': 3,
-    'Building': 10
+    'Bareland': 8,
+    'Rangeland': 10,
+    'Developed space': 4,
+    'Road': 13,
+    'Tree': 14,
+    'Water': 9,
+    'Agriculture land': 7,
+    'Building': 4
 }
 
 # ESA WorldCover
 ESA_CLASS_TO_CITYLES = {
-    'Trees': 5,
-    'Shrubland': 4,
-    'Grassland': 4,
-    'Cropland': 3,
-    'Built-up': 10,
-    'Barren / sparse vegetation': 9,
-    'Snow and ice': 9,
-    'Open water': 1,
-    'Herbaceous wetland': 2,
-    'Mangroves': 5,
-    'Moss and lichen': 9
+    'Trees': 14,
+    'Shrubland': 10,
+    'Grassland': 10,
+    'Cropland': 7,
+    'Built-up': 4,
+    'Barren / sparse vegetation': 8,
+    'Snow and ice': 8,
+    'Open water': 9,
+    'Herbaceous wetland': 6,
+    'Mangroves': 14,
+    'Moss and lichen': 10
 }
 
 # ESRI 10m Annual Land Cover
 ESRI_CLASS_TO_CITYLES = {
-    'No Data': 4,
-    'Water': 1,
-    'Trees': 5,
-    'Grass': 4,
-    'Flooded Vegetation': 2,
-    'Crops': 3,
-    'Scrub/Shrub': 4,
-    'Built Area': 10,
-    'Bare Ground': 9,
-    'Snow/Ice': 9,
-    'Clouds': 4
+    'No Data': 10,
+    'Water': 9,
+    'Trees': 14,
+    'Grass': 10,
+    'Flooded Vegetation': 6,
+    'Crops': 7,
+    'Scrub/Shrub': 10,
+    'Built Area': 4,
+    'Bare Ground': 8,
+    'Snow/Ice': 8,
+    'Clouds': 10
 }
 
 # Dynamic World V1
 DYNAMIC_WORLD_CLASS_TO_CITYLES = {
-    'Water': 1,
-    'Trees': 5,
-    'Grass': 4,
-    'Flooded Vegetation': 2,
-    'Crops': 3,
-    'Shrub and Scrub': 4,
-    'Built': 10,
-    'Bare': 9,
-    'Snow and Ice': 9
+    'Water': 9,
+    'Trees': 14,
+    'Grass': 10,
+    'Flooded Vegetation': 6,
+    'Crops': 7,
+    'Shrub and Scrub': 10,
+    'Built': 4,
+    'Bare': 8,
+    'Snow and Ice': 8
 }
 
-# Building material mapping based on corrected documentation
+# Building material mapping based on corrected definitions (101-117)
 BUILDING_MATERIAL_MAPPING = {
-    'building': 110,         # Building (general)
-    'concrete': 110,         # Building (concrete)
-    'residential': 111,      # Old wooden house
-    'wooden': 111,           # Old wooden house
-    'commercial': 110,       # Building (commercial)
-    'industrial': 110,       # Building (industrial)
-    'default': 110           # Default to general building
+    'building': 104,         # CONCRETE building
+    'concrete': 104,         # CONCRETE building
+    'residential': 105,      # Slate roof (Ordinal wooden house)
+    'wooden': 105,           # Slate roof (Ordinal wooden house)
+    'commercial': 104,       # CONCRETE building
+    'industrial': 104,       # CONCRETE building
+    'default': 104           # Default to CONCRETE building
 }
+
+# Helper to convert landuse code (1-17) to building material code (101-117)
+def landuse_to_building_material_code(landuse_code: int) -> int:
+    """Map landuse code to building-material code with required adjustments.
+
+    The general rule is 100 + landuse_code, except for ASPHALT classes where
+    landuse 12 (ASPHALT without AH) maps to 113 and landuse 13 (ASPHALT) maps to 112.
+    """
+    # if landuse_code == 12:
+    #     return 113
+    # if landuse_code == 13:
+    #     return 112
+    return 100 + int(landuse_code)
 
 # Tree type mapping for vmap.txt
 TREE_TYPE_MAPPING = {
@@ -229,7 +248,7 @@ def export_topog(building_height_grid, building_id_grid, output_path,
                 # Decide material code per cell
                 if cityles_landuse_grid is not None:
                     cell_lu = int(cityles_landuse_grid[j, i])
-                    material_code_cell = cell_lu + 100
+                    material_code_cell = landuse_to_building_material_code(cell_lu)
                 else:
                     if height > 0:
                         material_code_cell = material_code
