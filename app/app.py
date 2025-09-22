@@ -28,7 +28,7 @@ try:
     from voxcity.exporter.envimet import export_inx, generate_edb_file
     from voxcity.exporter.magicavoxel import export_magicavoxel_vox
     from voxcity.exporter.obj import export_obj
-    from voxcity.utils.visualization import visualize_voxcity_multi_view, visualize_building_sim_results, visualize_numerical_gdf_on_basemap
+    from voxcity.utils.visualization import visualize_voxcity_plotly, visualize_building_sim_results, visualize_numerical_gdf_on_basemap
     from voxcity.geoprocessor.network import get_network_values
 except ImportError:
     st.error("VoxCity package not installed. Please install it using: pip install voxcity")
@@ -701,17 +701,24 @@ with tab3:
                         st.metric("Mesh Size", f"{meshsize} m")
                     
                     # Display 3D visualization immediately after generation
-                    with st.spinner("Rendering 3D views..."):
+                    with st.spinner("Rendering 3D view..."):
                         try:
-                            vis_dir = os.path.join(BASE_OUTPUT_DIR, "vis")
-                            os.makedirs(vis_dir, exist_ok=True)
-                            visualize_voxcity_multi_view(result[0], meshsize, output_directory=vis_dir, show_views=True)
-                            images = sorted(glob.glob(os.path.join(vis_dir, "city_view_*.png")))
-                            if images:
-                                for img_path in images:
-                                    st.image(img_path, caption=os.path.basename(img_path), use_column_width=True)
+                            fig = visualize_voxcity_plotly(
+                                result[0],
+                                meshsize,
+                                downsample=1,
+                                show=False,
+                                return_fig=True,
+                                title="VoxCity 3D"
+                            )
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                                try:
+                                    st.caption(f"Grid: {result[0].shape} • Buildings: {len(result[8])} • Meshsize: {meshsize} m")
+                                except Exception:
+                                    pass
                             else:
-                                st.info("No images were generated.")
+                                st.info("No visualization generated.")
                         except Exception as e:
                             st.warning(f"Visualization error: {str(e)}")
                     
@@ -744,10 +751,14 @@ with tab4:
                     calc_time = st.time_input("Time", datetime.now().time())
                     calc_datetime = f"{calc_date.strftime('%m-%d')} {calc_time.strftime('%H:%M:%S')}"
                 else:
-                    start_date = st.date_input("Start Date", datetime.now().date())
-                    start_time = st.time_input("Start Time", datetime.strptime("07:00", "%H:%M").time())
-                    end_date = st.date_input("End Date", datetime.now().date())
-                    end_time = st.time_input("End Time", datetime.strptime("19:00", "%H:%M").time())
+                    # EPW is a typical meteorological year; year is ignored downstream.
+                    # Defaults reflect month-day only window: 01-01 01:00:00 to 01-31 23:00:00
+                    default_start_date = datetime(datetime.now().year, 1, 1).date()
+                    default_end_date = datetime(datetime.now().year, 1, 31).date()
+                    start_date = st.date_input("Start Date (MM-DD)", default_start_date)
+                    start_time = st.time_input("Start Time", datetime.strptime("01:00:00", "%H:%M:%S").time())
+                    end_date = st.date_input("End Date (MM-DD)", default_end_date)
+                    end_time = st.time_input("End Time", datetime.strptime("23:00:00", "%H:%M:%S").time())
             
             with col2:
                 analysis_target = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"])
@@ -812,33 +823,35 @@ with tab4:
                             
                             st.success("Solar analysis completed!")
                             
-                            # Display results
-                            fig, ax = plt.subplots(figsize=(10, 8))
-                            im = ax.imshow(solar_grid, cmap='magma', origin='lower')
-                            plt.colorbar(im, ax=ax, label='Solar Irradiance (W/m²)')
-                            ax.set_title(f"{'Instantaneous' if solar_calc_type == 'Instantaneous' else 'Cumulative'} Solar Irradiance")
-                            st.pyplot(fig)
-                            
-                            # Optional 3D multi-view overlay
-                            if st.checkbox("Also render 3D views with overlay", key="solar_overlay"):
-                                with st.spinner("Rendering 3D overlay views..."):
-                                    try:
-                                        vis_dir = os.path.join(BASE_OUTPUT_DIR, "vis_solar")
-                                        os.makedirs(vis_dir, exist_ok=True)
-                                        visualize_voxcity_multi_view(
-                                            data['voxcity_grid'],
-                                            data['meshsize'],
-                                            sim_grid=solar_grid,
-                                            dem_grid=data['dem_grid'],
-                                            colormap='magma',
-                                            output_directory=vis_dir,
-                                            show_views=True,
-                                        )
-                                        images = sorted(glob.glob(os.path.join(vis_dir, "city_view_*.png")))
-                                        for img_path in images:
-                                            st.image(img_path, caption=os.path.basename(img_path), use_column_width=True)
-                                    except Exception as ee:
-                                        st.warning(f"3D overlay rendering failed: {ee}")
+                            # 3D Plotly visualization of ground-level results
+                            with st.spinner("Rendering 3D overlay..."):
+                                try:
+                                    fig = visualize_voxcity_plotly(
+                                        data['voxcity_grid'],
+                                        data['meshsize'],
+                                        downsample=1,
+                                        ground_sim_grid=solar_grid,
+                                        ground_dem_grid=data['dem_grid'],
+                                        ground_view_point_height=1.5,
+                                        ground_colormap='magma',
+                                        ground_vmin=0.0,
+                                        sim_surface_opacity=0.95,
+                                        show=False,
+                                        return_fig=True,
+                                        title="Solar overlay"
+                                    )
+                                    if fig is not None:
+                                        st.plotly_chart(fig, use_container_width=True)
+                                        try:
+                                            st.caption(
+                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                            )
+                                        except Exception:
+                                            pass
+                                    else:
+                                        st.info("No 3D overlay generated.")
+                                except Exception as ee:
+                                    st.warning(f"3D overlay rendering failed: {ee}")
                             
                         else:  # Building Surfaces
                             irradiance_kwargs = {
@@ -923,22 +936,33 @@ with tab4:
                         
                         # Optional 3D multi-view overlay
                         if st.checkbox("Also render 3D views with overlay", key="view_overlay"):
-                            with st.spinner("Rendering 3D overlay views..."):
+                            with st.spinner("Rendering 3D overlay..."):
                                 try:
-                                    vis_dir = os.path.join(BASE_OUTPUT_DIR, "vis_view")
-                                    os.makedirs(vis_dir, exist_ok=True)
-                                    visualize_voxcity_multi_view(
+                                    fig = visualize_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
-                                        sim_grid=view_grid,
-                                        dem_grid=data['dem_grid'],
-                                        colormap=colormap,
-                                        output_directory=vis_dir,
-                                        show_views=True,
+                                        downsample=1,
+                                        ground_sim_grid=view_grid,
+                                        ground_dem_grid=data['dem_grid'],
+                                        ground_view_point_height=view_point_height,
+                                        ground_colormap=colormap,
+                                        ground_vmin=0.0,
+                                        ground_vmax=1.0,
+                                        sim_surface_opacity=0.95,
+                                        show=False,
+                                        return_fig=True,
+                                        title=view_type
                                     )
-                                    images = sorted(glob.glob(os.path.join(vis_dir, "city_view_*.png")))
-                                    for img_path in images:
-                                        st.image(img_path, caption=os.path.basename(img_path), use_column_width=True)
+                                    if fig is not None:
+                                        st.plotly_chart(fig, use_container_width=True)
+                                        try:
+                                            st.caption(
+                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                            )
+                                        except Exception:
+                                            pass
+                                    else:
+                                        st.info("No 3D overlay generated.")
                                 except Exception as ee:
                                     st.warning(f"3D overlay rendering failed: {ee}")
                         
