@@ -747,8 +747,11 @@ with tab4:
             
             with col1:
                 if solar_calc_type == "Instantaneous":
-                    calc_date = st.date_input("Date", datetime.now().date())
-                    calc_time = st.time_input("Time", datetime.now().time())
+                    # Persist user selections with stable keys to avoid resetting on rerun
+                    default_inst_date = st.session_state.get('solar_inst_date', datetime.now().date())
+                    default_inst_time = st.session_state.get('solar_inst_time', datetime.strptime("12:00:00", "%H:%M:%S").time())
+                    calc_date = st.date_input("Date (MM-DD)", value=default_inst_date, key="solar_inst_date")
+                    calc_time = st.time_input("Time (HH:MM:SS)", value=default_inst_time, key="solar_inst_time")
                     calc_datetime = f"{calc_date.strftime('%m-%d')} {calc_time.strftime('%H:%M:%S')}"
                 else:
                     # EPW is a typical meteorological year; year is ignored downstream.
@@ -795,14 +798,19 @@ with tab4:
                                 "colormap": 'magma',
                                 "obj_export": False,
                                 "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
+                                "output_dir": os.path.join(BASE_OUTPUT_DIR, 'epw'),
                                 "alpha": 1.0,
                                 "vmin": 0,
                             }
                             if epw_local_path:
                                 solar_kwargs["epw_file_path"] = epw_local_path
                             
-                            # Create output directory
+                            # Create output directories (for EPW downloads and outputs)
                             os.makedirs(solar_kwargs["output_directory"], exist_ok=True)
+                            try:
+                                os.makedirs(solar_kwargs["output_dir"], exist_ok=True)
+                            except Exception:
+                                pass
                             
                             if solar_calc_type == "Instantaneous":
                                 solar_kwargs["calc_time"] = calc_datetime
@@ -830,6 +838,7 @@ with tab4:
                                         data['voxcity_grid'],
                                         data['meshsize'],
                                         downsample=1,
+                                        voxel_color_map='grayscale',
                                         ground_sim_grid=solar_grid,
                                         ground_dem_grid=data['dem_grid'],
                                         ground_view_point_height=1.5,
@@ -861,6 +870,13 @@ with tab4:
                             }
                             if epw_local_path:
                                 irradiance_kwargs["epw_file_path"] = epw_local_path
+                            else:
+                                # Ensure EPW download directory exists when downloading
+                                irradiance_kwargs["output_dir"] = os.path.join(BASE_OUTPUT_DIR, 'epw')
+                                try:
+                                    os.makedirs(irradiance_kwargs["output_dir"], exist_ok=True)
+                                except Exception:
+                                    pass
                             
                             if solar_calc_type == "Instantaneous":
                                 irradiance_kwargs["calc_type"] = "instantaneous"
@@ -870,14 +886,45 @@ with tab4:
                                 irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
                                 irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
                             
-                            irradiance = get_building_global_solar_irradiance_using_epw(
-                                data['voxcity_grid'],
-                                data['meshsize'],
-                                **irradiance_kwargs
-                            )
+                            with st.spinner("Computing building-surface solar irradiance..."):
+                                irradiance = get_building_global_solar_irradiance_using_epw(
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
+                                    **irradiance_kwargs
+                                )
                             
                             st.success("Building solar analysis completed!")
-                            st.info("Visualization of building solar irradiance would be displayed here")
+                            # Visualize building-surface irradiance in 3D (Plotly)
+                            try:
+                                fig_b = visualize_voxcity_plotly(
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
+                                    downsample=1,
+                                    voxel_color_map='grayscale',
+                                    building_sim_mesh=irradiance,
+                                    building_value_name='global',
+                                    building_colormap='magma',
+                                    building_vmin=None,
+                                    building_vmax=None,
+                                    building_opacity=1.0,
+                                    building_shaded=False,
+                                    render_voxel_buildings=False,
+                                    show=False,
+                                    return_fig=True,
+                                    title="Building Surface Solar (Global)"
+                                )
+                                if fig_b is not None:
+                                    st.plotly_chart(fig_b, use_container_width=True)
+                                    try:
+                                        st.caption(
+                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                        )
+                                    except Exception:
+                                        pass
+                                else:
+                                    st.info("No building-surface visualization generated.")
+                            except Exception as ve:
+                                st.warning(f"3D building visualization failed: {ve}")
                             
                     except Exception as e:
                         st.error(f"Error in solar analysis: {str(e)}")
@@ -942,6 +989,7 @@ with tab4:
                                         data['voxcity_grid'],
                                         data['meshsize'],
                                         downsample=1,
+                                        voxel_color_map='grayscale',
                                         ground_sim_grid=view_grid,
                                         ground_dem_grid=data['dem_grid'],
                                         ground_view_point_height=view_point_height,
