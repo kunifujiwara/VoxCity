@@ -48,6 +48,7 @@ from .downloader.oemj import save_oemj_as_geotiff
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
 from .downloader.citygml import load_buid_dem_veg_from_citygml
+from .downloader.gba import load_gdf_from_gba
 
 # Google Earth Engine related imports - for satellite and elevation data
 from .downloader.gee import (
@@ -206,8 +207,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             - list: Filtered building features
     """
 
-    # Initialize Earth Engine for satellite-based building data sources
-    if source not in ["OpenStreetMap", "Overture", "Local file", "GeoDataFrame"]:
+    # Initialize Earth Engine only for building sources that require it
+    ee_required_sources = {"Open Building 2.5D Temporal"}
+    if source in ee_required_sources:
         initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
@@ -243,6 +245,11 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         elif source == "Overture":
             # Open building dataset from Overture Maps Foundation
             gdf = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+        elif source in ("GBA", "Global Building Atlas"):
+            # Global Building Atlas LOD1 polygons (GeoParquet tiles)
+            clip_gba = kwargs.get("gba_clip", False)
+            gba_download_dir = kwargs.get("gba_download_dir")
+            gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif source == "Local file":
             # Handle user-provided local building data files
             _, extension = os.path.splitext(kwargs["building_path"])
@@ -290,6 +297,10 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             #     gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
             elif building_complementary_source == "Overture":
                 gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+            elif building_complementary_source in ("GBA", "Global Building Atlas"):
+                clip_gba = kwargs.get("gba_clip", False)
+                gba_download_dir = kwargs.get("gba_download_dir")
+                gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
             elif building_complementary_source == "Local file":
                 _, extension = os.path.splitext(kwargs["building_complementary_path"])
                 if extension == ".gpkg":
@@ -979,6 +990,10 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
         elif building_complementary_source == 'Overture':
             gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+        elif building_complementary_source in ("GBA", "Global Building Atlas"):
+            clip_gba = kwargs.get("gba_clip", False)
+            gba_download_dir = kwargs.get("gba_download_dir")
+            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif building_complementary_source == 'Local file':
             comp_path = kwargs.get("building_complementary_path")
             if comp_path is not None:

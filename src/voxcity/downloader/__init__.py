@@ -5,3 +5,4 @@ from .osm import *
 from .oemj import *
 from .eubucco import *
 from .overture import *
+from .gba import *
