@@ -90,16 +90,30 @@ BASE_OUTPUT_DIR = "/tmp/voxcity_output"
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # Page configuration
-# Use project logo if available; fall back to default iconless style
+# Prefer docs/_static/favicon.ico; fall back to images/logo.png
 APP_DIR = os.path.dirname(__file__)
-_icon_candidate = os.path.join(APP_DIR, '..', 'images', 'logo.png')
-PAGE_ICON = _icon_candidate if os.path.exists(_icon_candidate) else None
+_fav_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'docs', '_static', 'favicon.ico'))
+_logo_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo.png'))
+_logo_white_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo_white.png'))
+PAGE_ICON = (
+    _fav_candidate if os.path.exists(_fav_candidate)
+    else (_logo_candidate if os.path.exists(_logo_candidate) else None)
+)
 st.set_page_config(
     page_title="VoxCity Web App",
     page_icon=PAGE_ICON,
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Try to display project logo in the top header bar
+try:
+    if os.path.exists(_logo_white_candidate):
+        st.logo(_logo_white_candidate)
+    elif os.path.exists(_logo_candidate):
+        st.logo(_logo_candidate)
+except Exception:
+    pass
 
 # Subtle, clean styling inspired by professional budgeting dashboards
 st.markdown(
@@ -112,7 +126,7 @@ st.markdown(
         --vc-muted: #6B7280;
         --vc-ring: #E5E7EB;
       }
-      header[data-testid="stHeader"] { background: var(--vc-bg); }
+      header[data-testid="stHeader"] { background: var(--vc-primary); color: #ffffff; }
       /* Add extra top padding to avoid overlap with Streamlit top bar */
       .block-container { padding-top: 3.5rem; }
       div[data-testid="stSidebar"] { background: #EFF2EE; }
@@ -124,7 +138,34 @@ st.markdown(
       }
       .stButton>button:hover { background: #4a6854; }
       .stAlert { border-radius: 8px; }
-      div[role="tablist"] button { gap: .5rem; }
+      /* Increase tab label font size and weight with strong specificity */
+      /* Streamlit tabs can render labels in different wrappers; cover all */
+      .stTabs [data-baseweb="tab"],
+      .stTabs [data-baseweb="tab"] p,
+      .stTabs [data-baseweb="tab"] span,
+      .stTabs [role="tab"],
+      div[role="tablist"] button,
+      div[role="tablist"] [role="tab"],
+      div[role="tablist"] button p,
+      div[role="tablist"] button span,
+      div[data-baseweb="tab-list"] button,
+      div[data-baseweb="tab"] {
+        gap: .5rem;
+        font-size: 1.4rem !important;
+        font-weight: 600 !important; /* a bit thinner */
+        line-height: 1.2 !important;
+        margin-right: 1.25rem !important; /* extra space between tabs */
+      }
+      /* Increase spacing between tab buttons via container gap as well */
+      div[role="tablist"] { gap: 1.25rem !important; }
+      /* Enlarge header logo image */
+      header [data-testid="stLogo"] img,
+      header .stLogo img,
+      header img[alt="Logo"],
+      header img[alt="logo"] {
+        height: 40px !important; /* slightly smaller */
+        width: auto !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -154,7 +195,7 @@ with st.sidebar:
 
 # Main content area - Remove authentication requirement
 # Create tabs for different steps
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Set Target Area", "Configure & Generate", "Notes", "Simulations", "Export"])
+tab1, tab2, tab4, tab5 = st.tabs(["Set Target Area", "Configure & Generate", "Simulations", "Export"])
 
 # Tab 1: Set Target Area
 with tab1:
@@ -771,9 +812,7 @@ with tab2:
                     pass
 
 # Tab 3: Generate Model
-with tab3:
-    # (Section title removed)
-    st.info("Model generation has been integrated into the 'Configure & Generate' tab for a streamlined workflow.")
+# Notes tab removed per request
 
 # Tab 4: Simulations
 with tab4:
