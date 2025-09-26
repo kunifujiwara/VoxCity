@@ -94,7 +94,7 @@ os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 APP_DIR = os.path.dirname(__file__)
 _fav_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'docs', '_static', 'favicon.ico'))
 _logo_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo.png'))
-_logo_white_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo_white.png'))
+_logo_blue_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo_blue.png'))
 PAGE_ICON = (
     _fav_candidate if os.path.exists(_fav_candidate)
     else (_logo_candidate if os.path.exists(_logo_candidate) else None)
@@ -108,8 +108,8 @@ st.set_page_config(
 
 # Try to display project logo in the top header bar
 try:
-    if os.path.exists(_logo_white_candidate):
-        st.logo(_logo_white_candidate)
+    if os.path.exists(_logo_blue_candidate):
+        st.logo(_logo_blue_candidate)
     elif os.path.exists(_logo_candidate):
         st.logo(_logo_candidate)
 except Exception:
@@ -120,23 +120,24 @@ st.markdown(
     """
     <style>
       :root {
-        --vc-primary: #5B7C65; /* muted green */
-        --vc-bg: #F7F8F6;
-        --vc-surface: #FFFFFF;
-        --vc-muted: #6B7280;
-        --vc-ring: #E5E7EB;
+        /* Neutral gray palette */
+        --vc-primary: #4B5563; /* gray-600 */
+        --vc-bg: #F5F5F5;      /* gray-100 */
+        --vc-surface: #FFFFFF; /* white */
+        --vc-muted: #6B7280;   /* gray-500 */
+        --vc-ring: #E5E7EB;    /* gray-200 */
       }
       header[data-testid="stHeader"] { background: var(--vc-primary); color: #ffffff; }
       /* Add extra top padding to avoid overlap with Streamlit top bar */
       .block-container { padding-top: 3.5rem; }
-      div[data-testid="stSidebar"] { background: #EFF2EE; }
+      div[data-testid="stSidebar"] { background: #F3F4F6; }
       .stButton>button {
         border-radius: 8px;
         border: 1px solid var(--vc-ring);
         background: var(--vc-primary);
         color: #ffffff;
       }
-      .stButton>button:hover { background: #4a6854; }
+      .stButton>button:hover { background: #374151; }
       .stAlert { border-radius: 8px; }
       /* Increase tab label font size and weight with strong specificity */
       /* Streamlit tabs can render labels in different wrappers; cover all */
@@ -228,7 +229,8 @@ with tab1:
         except Exception:
             return None
     
-    col1, col2 = st.columns([2, 1])
+    # Controls (left 25%) and Map/Preview (right 75%)
+    col1, col2 = st.columns([1, 3])
     
     with col1:
         if area_method == "Enter coordinates":
@@ -327,7 +329,8 @@ with tab1:
                         returned_objs = ["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"]
                         if selection_mode == "Set dimensions":
                             returned_objs += ["zoom", "center"]
-                        out = st_folium(m, height=500, width=700, key="search_map", returned_objects=returned_objs)            
+                        with col2:
+                            out = st_folium(m, height=500, width=900, key="search_map", returned_objects=returned_objs)
                         feature = None
                         if isinstance(out, dict):
                             feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -448,7 +451,8 @@ with tab1:
                 returned_objs = ["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"]
                 if selection_mode == "Set dimensions":
                     returned_objs += ["zoom", "center"]
-                out = st_folium(m, height=500, width=700, key="search_map", returned_objects=returned_objs)            
+                with col2:
+                    out = st_folium(m, height=500, width=900, key="search_map", returned_objects=returned_objs)
                 if selection_mode == "Free hand (draw)":
                     feature = None
                     if isinstance(out, dict):
@@ -554,7 +558,8 @@ with tab1:
                 },
                 edit_options={'edit': True}
             ).add_to(m)
-            out = st_folium(m, height=500, width=700, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            with col2:
+                out = st_folium(m, height=500, width=900, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
             feature = None
             if isinstance(out, dict):
                 feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -625,7 +630,8 @@ with tab1:
                 },
                 edit_options={'edit': True}
             ).add_to(m)
-            out = st_folium(m, height=500, width=700, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            with col2:
+                out = st_folium(m, height=500, width=900, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
             feature = None
             if isinstance(out, dict):
                 feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -651,13 +657,10 @@ with tab1:
     with col2:
         if st.session_state.rectangle_vertices and (area_method in ["Enter coordinates", "Set center and dimensions"]):
             st.subheader("Selected Area Preview")
-            # Create a simple folium map to show the selected area
             m = folium.Map(location=[
                 (st.session_state.rectangle_vertices[0][1] + st.session_state.rectangle_vertices[2][1]) / 2,
                 (st.session_state.rectangle_vertices[0][0] + st.session_state.rectangle_vertices[2][0]) / 2
             ], zoom_start=15)
-            
-            # Add rectangle to map
             folium.Rectangle(
                 bounds=[[v[1], v[0]] for v in st.session_state.rectangle_vertices[:3:2]],
                 color='#3388ff',
@@ -665,8 +668,7 @@ with tab1:
                 fillColor='#3388ff',
                 fillOpacity=0.2
             ).add_to(m)
-            
-            st_folium(m, height=400, width=400)
+            st_folium(m, height=500, width=900)
 
 # Tab 2: Configure Parameters
 with tab2:
