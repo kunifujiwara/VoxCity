@@ -103,15 +103,15 @@ st.set_page_config(
     page_title="VoxCity Web App",
     page_icon=PAGE_ICON,
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Try to display project logo in the top header bar
 try:
-    if os.path.exists(_logo_blue_candidate):
-        st.logo(_logo_blue_candidate)
-    elif os.path.exists(_logo_candidate):
+    if os.path.exists(_logo_candidate):
         st.logo(_logo_candidate)
+    elif os.path.exists(_logo_blue_candidate):
+        st.logo(_logo_blue_candidate)
 except Exception:
     pass
 
@@ -127,10 +127,16 @@ st.markdown(
         --vc-muted: #6B7280;   /* gray-500 */
         --vc-ring: #E5E7EB;    /* gray-200 */
       }
-      header[data-testid="stHeader"] { background: var(--vc-primary); color: #ffffff; }
+      header[data-testid="stHeader"] { background: var(--vc-bg); color: inherit; }
       /* Add extra top padding to avoid overlap with Streamlit top bar */
       .block-container { padding-top: 3.5rem; }
-      div[data-testid="stSidebar"] { background: #F3F4F6; }
+      /* Hide sidebar entirely */
+      div[data-testid="stSidebar"],
+      section[data-testid="stSidebar"] { display: none !important; }
+      /* Ensure header branding/logo always visible */
+      header [data-testid="stHeaderBranding"],
+      header .stLogo,
+      header [data-testid="stLogo"] { display: flex !important; opacity: 1 !important; }
       .stButton>button {
         border-radius: 8px;
         border: 1px solid var(--vc-ring);
@@ -152,8 +158,8 @@ st.markdown(
       div[data-baseweb="tab-list"] button,
       div[data-baseweb="tab"] {
         gap: .5rem;
-        font-size: 1.4rem !important;
-        font-weight: 600 !important; /* a bit thinner */
+        font-size: 1.0rem !important; /* a bit smaller */
+        font-weight: 600 !important;
         line-height: 1.2 !important;
         margin-right: 1.25rem !important; /* extra space between tabs */
       }
@@ -164,7 +170,7 @@ st.markdown(
       header .stLogo img,
       header img[alt="Logo"],
       header img[alt="logo"] {
-        height: 40px !important; /* slightly smaller */
+        height: 22px !important; /* smaller logo */
         width: auto !important;
       }
     </style>
@@ -180,19 +186,7 @@ if 'voxcity_data' not in st.session_state:
 
 # (Header removed per request)
 
-# Sidebar for configuration
-with st.sidebar:
-    # (Configuration title removed)
-    
-    # Show Earth Engine status
-    if EE_AUTHENTICATED:
-        st.success("Google Earth Engine: Connected")
-    else:
-        st.warning("Google Earth Engine: Not authenticated")
-        st.info("Some data sources requiring Earth Engine may not be available.")
-    
-    # Show output directory
-    st.info(f"Output directory: {BASE_OUTPUT_DIR}")
+# Sidebar removed per design request
 
 # Main content area - Remove authentication requirement
 # Create tabs for different steps
@@ -202,10 +196,6 @@ tab1, tab2, tab4, tab5 = st.tabs(["Set Target Area", "Configure & Generate", "Si
 with tab1:
     # (Section title removed)
     
-    area_method = st.radio("Select method to define target area:", 
-                          ["Search by city name", "Draw on map", "Enter coordinates", "Set center and dimensions"],
-                          index=0)
-
     # Simple geocoder for city names
     @st.cache_data(show_spinner=False, ttl=3600)
     def geocode_city(name: str):
@@ -231,8 +221,16 @@ with tab1:
     
     # Controls (left 25%) and Map/Preview (right 75%)
     col1, col2 = st.columns([1, 3])
+    # Persistent map container aligned with the radio title row
+    MAP_HEIGHT = 640
+    map_container = col2.container()
     
     with col1:
+        area_method = st.radio(
+            "Select method to define target area:",
+            ["Search by city name", "Draw on map", "Enter coordinates", "Set center and dimensions"],
+            index=0,
+        )
         if area_method == "Enter coordinates":
             st.subheader("Enter Rectangle Vertices")
             st.info("Enter coordinates in the format: (longitude, latitude)")
@@ -256,7 +254,6 @@ with tab1:
                 st.success("Rectangle vertices set successfully!")
         
         if area_method == "Search by city name":
-            st.subheader("Search by City Name")
             city_name = st.text_input("Enter city name", value="New York")
             zoom_level = st.slider("Zoom level", 10, 18, 13)
             selection_mode = st.radio(
@@ -329,8 +326,8 @@ with tab1:
                         returned_objs = ["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"]
                         if selection_mode == "Set dimensions":
                             returned_objs += ["zoom", "center"]
-                        with col2:
-                            out = st_folium(m, height=500, width=900, key="search_map", returned_objects=returned_objs)
+                        with map_container:
+                            out = st_folium(m, height=MAP_HEIGHT, width=1100, key="search_map", returned_objects=returned_objs)
                         feature = None
                         if isinstance(out, dict):
                             feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -451,8 +448,8 @@ with tab1:
                 returned_objs = ["last_active_drawing", "all_drawings", "last_drawn", "last_clicked"]
                 if selection_mode == "Set dimensions":
                     returned_objs += ["zoom", "center"]
-                with col2:
-                    out = st_folium(m, height=500, width=900, key="search_map", returned_objects=returned_objs)
+                with map_container:
+                    out = st_folium(m, height=MAP_HEIGHT, width=1100, key="search_map", returned_objects=returned_objs)
                 if selection_mode == "Free hand (draw)":
                     feature = None
                     if isinstance(out, dict):
@@ -530,7 +527,6 @@ with tab1:
                         st.session_state["show_dims_success"] = True
                         st.rerun()
         elif area_method == "Draw on map":
-            st.subheader("Draw Rectangle on Interactive Map")
             center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
             center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
             zoom_level = st.slider("Zoom level", 10, 18, 13, key="draw_zoom")
@@ -558,8 +554,8 @@ with tab1:
                 },
                 edit_options={'edit': True}
             ).add_to(m)
-            with col2:
-                out = st_folium(m, height=500, width=900, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            with map_container:
+                out = st_folium(m, height=MAP_HEIGHT, width=1100, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
             feature = None
             if isinstance(out, dict):
                 feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -583,7 +579,6 @@ with tab1:
                     st.success("Rectangle captured from map.")
         
         elif area_method == "Set center and dimensions":
-            st.subheader("Set Center Location and Dimensions")
             center_lon = st.number_input("Center Longitude", value=-74.0129, format="%.6f")
             center_lat = st.number_input("Center Latitude", value=40.7056, format="%.6f")
             width = st.number_input("Width (meters)", value=1250, min_value=100, max_value=10000, step=50)
@@ -606,7 +601,6 @@ with tab1:
                 ]
                 st.success("Rectangle calculated successfully!")
         else:  # Draw on map
-            st.subheader("Draw Rectangle on Interactive Map")
             center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
             center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
             zoom_level = st.slider("Zoom level", 10, 18, 15, key="draw_zoom")
@@ -630,8 +624,8 @@ with tab1:
                 },
                 edit_options={'edit': True}
             ).add_to(m)
-            with col2:
-                out = st_folium(m, height=500, width=900, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
+            with map_container:
+                out = st_folium(m, height=MAP_HEIGHT, width=1100, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
             feature = None
             if isinstance(out, dict):
                 feature = out.get('last_active_drawing') or out.get('last_drawn')
@@ -654,9 +648,8 @@ with tab1:
                     ]
                     st.success("Rectangle captured from map.")
     
-    with col2:
+    with map_container:
         if st.session_state.rectangle_vertices and (area_method in ["Enter coordinates", "Set center and dimensions"]):
-            st.subheader("Selected Area Preview")
             m = folium.Map(location=[
                 (st.session_state.rectangle_vertices[0][1] + st.session_state.rectangle_vertices[2][1]) / 2,
                 (st.session_state.rectangle_vertices[0][0] + st.session_state.rectangle_vertices[2][0]) / 2
@@ -668,7 +661,7 @@ with tab1:
                 fillColor='#3388ff',
                 fillOpacity=0.2
             ).add_to(m)
-            st_folium(m, height=500, width=900)
+            st_folium(m, height=MAP_HEIGHT, width=1100)
 
 # Tab 2: Configure Parameters
 with tab2:
