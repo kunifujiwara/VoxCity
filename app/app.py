@@ -127,9 +127,14 @@ st.markdown(
         --vc-muted: #6B7280;   /* gray-500 */
         --vc-ring: #E5E7EB;    /* gray-200 */
       }
-      header[data-testid="stHeader"] { background: var(--vc-bg); color: inherit; }
-      /* Add extra top padding to avoid overlap with Streamlit top bar */
-      .block-container { padding-top: 3.5rem; }
+      header[data-testid="stHeader"] {
+        background: var(--vc-bg);
+        color: inherit;
+        position: relative !important;
+        z-index: 10 !important; /* keep header below fixed tabs */
+      }
+      /* Base top padding under header (overridden below when tabs are fixed) */
+      .block-container { padding-top: 1.5rem; }
       /* Hide sidebar entirely */
       div[data-testid="stSidebar"],
       section[data-testid="stSidebar"] { display: none !important; }
@@ -163,8 +168,23 @@ st.markdown(
         line-height: 1.2 !important;
         margin-right: 1.25rem !important; /* extra space between tabs */
       }
-      /* Increase spacing between tab buttons via container gap as well */
-      div[role="tablist"] { gap: 1.25rem !important; }
+      /* Move tabs into the top bar next to the logo */
+      .stTabs [role="tablist"],
+      div[role="tablist"] {
+        position: fixed !important;
+        top: 8px !important;              /* align vertically with header */
+        left: 230px !important;           /* extra space to the right of the logo */
+        z-index: 2147483647 !important;    /* ensure above header */
+        background: transparent !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 1.25rem !important;
+        padding: 0 .5rem !important;
+        height: 44px !important;
+        pointer-events: auto !important;
+      }
+      /* Tighter top padding so content sits closer to the top bar */
+      .block-container { padding-top: 1.0rem; }
       /* Enlarge header logo image */
       header [data-testid="stLogo"] img,
       header .stLogo img,
