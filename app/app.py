@@ -113,7 +113,8 @@ st.markdown(
         --vc-ring: #E5E7EB;
       }
       header[data-testid="stHeader"] { background: var(--vc-bg); }
-      .block-container { padding-top: 1rem; }
+      /* Add extra top padding to avoid overlap with Streamlit top bar */
+      .block-container { padding-top: 3.5rem; }
       div[data-testid="stSidebar"] { background: #EFF2EE; }
       .stButton>button {
         border-radius: 8px;
@@ -135,16 +136,11 @@ if 'rectangle_vertices' not in st.session_state:
 if 'voxcity_data' not in st.session_state:
     st.session_state.voxcity_data = None
 
-# Title and description
-st.title("VoxCity Web Application")
-st.markdown("""
-This web application provides an interface for VoxCity - a Python package for generating 3D voxel city models 
-and performing urban simulations including solar radiation analysis, view index calculations, and more.
-""")
+# (Header removed per request)
 
 # Sidebar for configuration
 with st.sidebar:
-    st.header("Configuration")
+    # (Configuration title removed)
     
     # Show Earth Engine status
     if EE_AUTHENTICATED:
@@ -158,11 +154,11 @@ with st.sidebar:
 
 # Main content area - Remove authentication requirement
 # Create tabs for different steps
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Set Target Area", "Configure Parameters", "Generate Model", "Simulations", "Export"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Set Target Area", "Configure & Generate", "Notes", "Simulations", "Export"])
 
 # Tab 1: Set Target Area
 with tab1:
-    st.header("Set Target Area")
+    # (Section title removed)
     
     area_method = st.radio("Select method to define target area:", 
                           ["Search by city name", "Draw on map", "Enter coordinates", "Set center and dimensions"],
@@ -633,7 +629,7 @@ with tab1:
 
 # Tab 2: Configure Parameters
 with tab2:
-    st.header("Configure Data Sources and Parameters")
+    # (Section title removed)
     
     # Filter out data sources that require Earth Engine if not authenticated
     if EE_AUTHENTICATED:
@@ -653,24 +649,22 @@ with tab2:
         canopy_height_sources = ['Static']
         dem_sources = ['Flat']
         
-        st.info("Limited data sources available without Earth Engine authentication.")
+        # (Informational note removed by request)
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
+    # Narrower controls column (half the previous width)
+    left_col, right_col = st.columns([1, 5])
+
+    with left_col:
         st.subheader("Data Sources")
         building_source = st.selectbox("Building Source", building_sources)
-        
         building_complementary_source = st.selectbox(
             "Building Complementary Source",
             ['None'] + [s for s in building_sources if s != 'Local file']
         )
-        
         land_cover_source = st.selectbox("Land Cover Source", land_cover_sources)
         canopy_height_source = st.selectbox("Canopy Height Source", canopy_height_sources)
         dem_source = st.selectbox("DEM Source", dem_sources)
-    
-    with col2:
+
         st.subheader("Parameters")
         meshsize = st.number_input("Mesh Size (meters)", value=5, min_value=1, max_value=50)
         
@@ -698,72 +692,54 @@ with tab2:
                 help="Enable step logs"
             )
 
-# Tab 3: Generate Model
-with tab3:
-    st.header("Generate 3D Voxel City Model")
-    
-    if st.session_state.rectangle_vertices is None:
-        st.warning("Please set the target area first in the 'Set Target Area' tab.")
-    else:
-        ctrl_col, vis_col = st.columns([1, 2])
-        with ctrl_col:
-            generate_clicked = st.button("Generate VoxCity Model", type="primary")
-        if generate_clicked:
-            with st.spinner("Generating 3D city model... This may take several minutes."):
-                try:
-                    # Use temp directory for output
-                    output_dir = os.path.join(BASE_OUTPUT_DIR, "test")
-                    os.makedirs(output_dir, exist_ok=True)
-                    
-                    # Prepare kwargs
-                    kwargs = {
-                        "building_complementary_source": building_complementary_source,
-                        "building_complement_height": building_complement_height,
-                        "overlapping_footprint": overlapping_footprint,
-                        "output_dir": output_dir,
-                        "dem_interpolation": dem_interpolation,
-                        "debug_voxel": debug_voxel,
-                    }
-                    
-                    # Generate voxel city
-                    result = get_voxcity(
-                        st.session_state.rectangle_vertices,
-                        building_source,
-                        land_cover_source,
-                        canopy_height_source,
-                        dem_source,
-                        meshsize,
-                        **kwargs
-                    )
-                    
-                    # Store results in session state
-                    st.session_state.voxcity_data = {
-                        'voxcity_grid': result[0],
-                        'building_height_grid': result[1],
-                        'building_min_height_grid': result[2],
-                        'building_id_grid': result[3],
-                        'canopy_height_grid': result[4],
-                        'canopy_bottom_height_grid': result[5],
-                        'land_cover_grid': result[6],
-                        'dem_grid': result[7],
-                        'building_gdf': result[8],
-                        'meshsize': meshsize,
-                        'rectangle_vertices': st.session_state.rectangle_vertices
-                    }
-                    
-                    st.success("VoxCity model generated successfully!")
-                    
-                    # Display basic statistics and 3D visualization in a horizontal layout
-                    with ctrl_col:
-                        st.metric("Grid Shape", str(result[0].shape))
-                        st.metric("Number of Buildings", len(result[8]))
-                        st.metric("Mesh Size", f"{meshsize} m")
-                    with vis_col:
+    with right_col:
+        st.subheader("Generate Model & Preview")
+        if st.session_state.rectangle_vertices is None:
+            st.warning("Set the target area first in the 'Set Target Area' tab.")
+        else:
+            generate_clicked_cfg = st.button("Generate VoxCity Model", type="primary")
+            if generate_clicked_cfg:
+                with st.spinner("Generating 3D city model... This may take several minutes."):
+                    try:
+                        output_dir = os.path.join(BASE_OUTPUT_DIR, "test")
+                        os.makedirs(output_dir, exist_ok=True)
+                        kwargs = {
+                            "building_complementary_source": building_complementary_source,
+                            "building_complement_height": building_complement_height,
+                            "overlapping_footprint": overlapping_footprint,
+                            "output_dir": output_dir,
+                            "dem_interpolation": dem_interpolation,
+                            "debug_voxel": debug_voxel,
+                        }
+                        result = get_voxcity(
+                            st.session_state.rectangle_vertices,
+                            building_source,
+                            land_cover_source,
+                            canopy_height_source,
+                            dem_source,
+                            meshsize,
+                            **kwargs
+                        )
+                        st.session_state.voxcity_data = {
+                            'voxcity_grid': result[0],
+                            'building_height_grid': result[1],
+                            'building_min_height_grid': result[2],
+                            'building_id_grid': result[3],
+                            'canopy_height_grid': result[4],
+                            'canopy_bottom_height_grid': result[5],
+                            'land_cover_grid': result[6],
+                            'dem_grid': result[7],
+                            'building_gdf': result[8],
+                            'meshsize': meshsize,
+                            'rectangle_vertices': st.session_state.rectangle_vertices
+                        }
+                        # Show preview only (no extra messages/metrics)
+                        data = st.session_state.voxcity_data
                         with st.spinner("Rendering 3D view..."):
                             try:
                                 fig = visualize_voxcity_plotly(
-                                    result[0],
-                                    meshsize,
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
                                     downsample=1,
                                     show=False,
                                     return_fig=True,
@@ -771,27 +747,15 @@ with tab3:
                                 )
                                 if fig is not None:
                                     st.plotly_chart(fig, use_container_width=True)
-                                    try:
-                                        st.caption(f"Grid: {result[0].shape} • Buildings: {len(result[8])} • Meshsize: {meshsize} m")
-                                    except Exception:
-                                        pass
-                                else:
-                                    st.info("No visualization generated.")
                             except Exception as e:
                                 st.warning(f"Visualization error: {str(e)}")
-                    
-                except Exception as e:
-                    st.error(f"Error generating VoxCity model: {str(e)}")
-                    st.exception(e)
-        # If a model already exists, keep a horizontal view: controls left, plot right
-        # Avoid duplicating metrics when we just rendered them above on generation
-        if (st.session_state.voxcity_data is not None) and (not generate_clicked):
-            data = st.session_state.voxcity_data
-            with ctrl_col:
-                st.metric("Grid Shape", str(data['voxcity_grid'].shape))
-                st.metric("Number of Buildings", len(data['building_gdf']))
-                st.metric("Mesh Size", f"{data['meshsize']} m")
-            with vis_col:
+                    except Exception as e:
+                        st.error(f"Error generating VoxCity model: {str(e)}")
+                        st.exception(e)
+
+            # Persistent preview if already generated
+            if (st.session_state.voxcity_data is not None) and (not generate_clicked_cfg):
+                data = st.session_state.voxcity_data
                 try:
                     fig = visualize_voxcity_plotly(
                         data['voxcity_grid'],
@@ -803,18 +767,17 @@ with tab3:
                     )
                     if fig is not None:
                         st.plotly_chart(fig, use_container_width=True)
-                        try:
-                            st.caption(
-                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                            )
-                        except Exception:
-                            pass
-                except Exception as _:
+                except Exception:
                     pass
+
+# Tab 3: Generate Model
+with tab3:
+    # (Section title removed)
+    st.info("Model generation has been integrated into the 'Configure & Generate' tab for a streamlined workflow.")
 
 # Tab 4: Simulations
 with tab4:
-    st.header("Urban Simulations")
+    # (Section title removed)
     
     if st.session_state.voxcity_data is None:
         st.warning("Please generate a VoxCity model first in the 'Generate Model' tab.")
@@ -1141,7 +1104,7 @@ with tab4:
 
 # Tab 5: Export
 with tab5:
-    st.header("Export Results")
+    # (Section title removed)
     
     if st.session_state.voxcity_data is None:
         st.warning("Please generate a VoxCity model first in the 'Generate Model' tab.")
