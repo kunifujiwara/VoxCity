@@ -90,11 +90,43 @@ BASE_OUTPUT_DIR = "/tmp/voxcity_output"
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # Page configuration
+# Use project logo if available; fall back to default iconless style
+APP_DIR = os.path.dirname(__file__)
+_icon_candidate = os.path.join(APP_DIR, '..', 'images', 'logo.png')
+PAGE_ICON = _icon_candidate if os.path.exists(_icon_candidate) else None
 st.set_page_config(
     page_title="VoxCity Web App",
-    page_icon="🏙️",
+    page_icon=PAGE_ICON,
     layout="wide",
     initial_sidebar_state="expanded"
+)
+
+# Subtle, clean styling inspired by professional budgeting dashboards
+st.markdown(
+    """
+    <style>
+      :root {
+        --vc-primary: #5B7C65; /* muted green */
+        --vc-bg: #F7F8F6;
+        --vc-surface: #FFFFFF;
+        --vc-muted: #6B7280;
+        --vc-ring: #E5E7EB;
+      }
+      header[data-testid="stHeader"] { background: var(--vc-bg); }
+      .block-container { padding-top: 1rem; }
+      div[data-testid="stSidebar"] { background: #EFF2EE; }
+      .stButton>button {
+        border-radius: 8px;
+        border: 1px solid var(--vc-ring);
+        background: var(--vc-primary);
+        color: #ffffff;
+      }
+      .stButton>button:hover { background: #4a6854; }
+      .stAlert { border-radius: 8px; }
+      div[role="tablist"] button { gap: .5rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # Initialize session state
@@ -104,7 +136,7 @@ if 'voxcity_data' not in st.session_state:
     st.session_state.voxcity_data = None
 
 # Title and description
-st.title("🏙️ VoxCity Web Application")
+st.title("VoxCity Web Application")
 st.markdown("""
 This web application provides an interface for VoxCity - a Python package for generating 3D voxel city models 
 and performing urban simulations including solar radiation analysis, view index calculations, and more.
@@ -116,17 +148,17 @@ with st.sidebar:
     
     # Show Earth Engine status
     if EE_AUTHENTICATED:
-        st.success("✅ Google Earth Engine: Connected")
+        st.success("Google Earth Engine: Connected")
     else:
-        st.warning("⚠️ Google Earth Engine: Not authenticated")
+        st.warning("Google Earth Engine: Not authenticated")
         st.info("Some data sources requiring Earth Engine may not be available.")
     
     # Show output directory
-    st.info(f"📁 Output directory: {BASE_OUTPUT_DIR}")
+    st.info(f"Output directory: {BASE_OUTPUT_DIR}")
 
 # Main content area - Remove authentication requirement
 # Create tabs for different steps
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📍 Set Target Area", "⚙️ Configure Parameters", "🏗️ Generate Model", "🌞 Simulations", "💾 Export"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Set Target Area", "Configure Parameters", "Generate Model", "Simulations", "Export"])
 
 # Tab 1: Set Target Area
 with tab1:
@@ -673,7 +705,10 @@ with tab3:
     if st.session_state.rectangle_vertices is None:
         st.warning("Please set the target area first in the 'Set Target Area' tab.")
     else:
-        if st.button("🏗️ Generate VoxCity Model", type="primary"):
+        ctrl_col, vis_col = st.columns([1, 2])
+        with ctrl_col:
+            generate_clicked = st.button("Generate VoxCity Model", type="primary")
+        if generate_clicked:
             with st.spinner("Generating 3D city model... This may take several minutes."):
                 try:
                     # Use temp directory for output
@@ -718,40 +753,64 @@ with tab3:
                     
                     st.success("VoxCity model generated successfully!")
                     
-                    # Display basic statistics
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
+                    # Display basic statistics and 3D visualization in a horizontal layout
+                    with ctrl_col:
                         st.metric("Grid Shape", str(result[0].shape))
-                    with col2:
                         st.metric("Number of Buildings", len(result[8]))
-                    with col3:
                         st.metric("Mesh Size", f"{meshsize} m")
-                    
-                    # Display 3D visualization immediately after generation
-                    with st.spinner("Rendering 3D view..."):
-                        try:
-                            fig = visualize_voxcity_plotly(
-                                result[0],
-                                meshsize,
-                                downsample=1,
-                                show=False,
-                                return_fig=True,
-                                title="VoxCity 3D"
-                            )
-                            if fig is not None:
-                                st.plotly_chart(fig, use_container_width=True)
-                                try:
-                                    st.caption(f"Grid: {result[0].shape} • Buildings: {len(result[8])} • Meshsize: {meshsize} m")
-                                except Exception:
-                                    pass
-                            else:
-                                st.info("No visualization generated.")
-                        except Exception as e:
-                            st.warning(f"Visualization error: {str(e)}")
+                    with vis_col:
+                        with st.spinner("Rendering 3D view..."):
+                            try:
+                                fig = visualize_voxcity_plotly(
+                                    result[0],
+                                    meshsize,
+                                    downsample=1,
+                                    show=False,
+                                    return_fig=True,
+                                    title="VoxCity 3D"
+                                )
+                                if fig is not None:
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    try:
+                                        st.caption(f"Grid: {result[0].shape} • Buildings: {len(result[8])} • Meshsize: {meshsize} m")
+                                    except Exception:
+                                        pass
+                                else:
+                                    st.info("No visualization generated.")
+                            except Exception as e:
+                                st.warning(f"Visualization error: {str(e)}")
                     
                 except Exception as e:
                     st.error(f"Error generating VoxCity model: {str(e)}")
                     st.exception(e)
+        # If a model already exists, keep a horizontal view: controls left, plot right
+        # Avoid duplicating metrics when we just rendered them above on generation
+        if (st.session_state.voxcity_data is not None) and (not generate_clicked):
+            data = st.session_state.voxcity_data
+            with ctrl_col:
+                st.metric("Grid Shape", str(data['voxcity_grid'].shape))
+                st.metric("Number of Buildings", len(data['building_gdf']))
+                st.metric("Mesh Size", f"{data['meshsize']} m")
+            with vis_col:
+                try:
+                    fig = visualize_voxcity_plotly(
+                        data['voxcity_grid'],
+                        data['meshsize'],
+                        downsample=1,
+                        show=False,
+                        return_fig=True,
+                        title="VoxCity 3D"
+                    )
+                    if fig is not None:
+                        st.plotly_chart(fig, use_container_width=True)
+                        try:
+                            st.caption(
+                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                            )
+                        except Exception:
+                            pass
+                except Exception as _:
+                    pass
 
 # Tab 4: Simulations
 with tab4:
@@ -766,38 +825,31 @@ with tab4:
         )
         
         if simulation_type == "Solar Radiation":
-            st.subheader("🌞 Solar Radiation Analysis")
-            
-            solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"])
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
+            st.subheader("Solar Radiation Analysis")
+            ctrl_col, vis_col = st.columns([1, 2])
+
+            with ctrl_col:
+                solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"]) 
                 if solar_calc_type == "Instantaneous":
-                    # Persist user selections with stable keys to avoid resetting on rerun
                     default_inst_date = st.session_state.get('solar_inst_date', datetime.now().date())
                     default_inst_time = st.session_state.get('solar_inst_time', datetime.strptime("12:00:00", "%H:%M:%S").time())
                     calc_date = st.date_input("Date (MM-DD)", value=default_inst_date, key="solar_inst_date")
                     calc_time = st.time_input("Time (HH:MM:SS)", value=default_inst_time, key="solar_inst_time")
                     calc_datetime = f"{calc_date.strftime('%m-%d')} {calc_time.strftime('%H:%M:%S')}"
                 else:
-                    # EPW is a typical meteorological year; year is ignored downstream.
-                    # Defaults reflect month-day only window: 01-01 01:00:00 to 01-31 23:00:00
                     default_start_date = datetime(datetime.now().year, 1, 1).date()
                     default_end_date = datetime(datetime.now().year, 1, 31).date()
                     start_date = st.date_input("Start Date (MM-DD)", default_start_date)
                     start_time = st.time_input("Start Time", datetime.strptime("01:00:00", "%H:%M:%S").time())
                     end_date = st.date_input("End Date (MM-DD)", default_end_date)
                     end_time = st.time_input("End Time", datetime.strptime("23:00:00", "%H:%M:%S").time())
-            
-            with col2:
                 analysis_target = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"])
                 download_epw = st.checkbox("Download nearest EPW file", value=True)
-                
                 if not download_epw:
                     epw_file = st.file_uploader("Upload EPW file", type=['epw'])
-            
-            if st.button("Run Solar Analysis"):
+                run_solar = st.button("Run Solar Analysis")
+
+            if run_solar:
                 with st.spinner("Running solar radiation analysis..."):
                     try:
                         data = st.session_state.voxcity_data
@@ -858,36 +910,37 @@ with tab4:
                             
                             st.success("Solar analysis completed!")
                             
-                            # 3D Plotly visualization of ground-level results
-                            with st.spinner("Rendering 3D overlay..."):
-                                try:
-                                    fig = visualize_voxcity_plotly(
-                                        data['voxcity_grid'],
-                                        data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        ground_sim_grid=solar_grid,
-                                        ground_dem_grid=data['dem_grid'],
-                                        ground_view_point_height=1.5,
-                                        ground_colormap='magma',
-                                        ground_vmin=0.0,
-                                        sim_surface_opacity=0.95,
-                                        show=False,
-                                        return_fig=True,
-                                        title="Solar overlay"
-                                    )
-                                    if fig is not None:
-                                        st.plotly_chart(fig, use_container_width=True)
-                                        try:
-                                            st.caption(
-                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                            )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        st.info("No 3D overlay generated.")
-                                except Exception as ee:
-                                    st.warning(f"3D overlay rendering failed: {ee}")
+                            # 3D Plotly visualization of ground-level results (left panel)
+                            with vis_col:
+                                with st.spinner("Rendering 3D overlay..."):
+                                    try:
+                                        fig = visualize_voxcity_plotly(
+                                            data['voxcity_grid'],
+                                            data['meshsize'],
+                                            downsample=1,
+                                            voxel_color_map='grayscale',
+                                            ground_sim_grid=solar_grid,
+                                            ground_dem_grid=data['dem_grid'],
+                                            ground_view_point_height=1.5,
+                                            ground_colormap='magma',
+                                            ground_vmin=0.0,
+                                            sim_surface_opacity=0.95,
+                                            show=False,
+                                            return_fig=True,
+                                            title="Solar overlay"
+                                        )
+                                        if fig is not None:
+                                            st.plotly_chart(fig, use_container_width=True)
+                                            try:
+                                                st.caption(
+                                                    f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                                )
+                                            except Exception:
+                                                pass
+                                        else:
+                                            st.info("No 3D overlay generated.")
+                                    except Exception as ee:
+                                        st.warning(f"3D overlay rendering failed: {ee}")
                             
                         else:  # Building Surfaces
                             irradiance_kwargs = {
@@ -921,58 +974,56 @@ with tab4:
                                 )
                             
                             st.success("Building solar analysis completed!")
-                            # Visualize building-surface irradiance in 3D (Plotly)
-                            try:
-                                fig_b = visualize_voxcity_plotly(
-                                    data['voxcity_grid'],
-                                    data['meshsize'],
-                                    downsample=1,
-                                    voxel_color_map='grayscale',
-                                    building_sim_mesh=irradiance,
-                                    building_value_name='global',
-                                    building_colormap='magma',
-                                    building_vmin=None,
-                                    building_vmax=None,
-                                    building_opacity=1.0,
-                                    building_shaded=False,
-                                    render_voxel_buildings=False,
-                                    show=False,
-                                    return_fig=True,
-                                    title="Building Surface Solar (Global)"
-                                )
-                                if fig_b is not None:
-                                    st.plotly_chart(fig_b, use_container_width=True)
-                                    try:
-                                        st.caption(
-                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                        )
-                                    except Exception:
-                                        pass
-                                else:
-                                    st.info("No building-surface visualization generated.")
-                            except Exception as ve:
-                                st.warning(f"3D building visualization failed: {ve}")
+                            # Visualize building-surface irradiance in 3D (left panel)
+                            with vis_col:
+                                try:
+                                    fig_b = visualize_voxcity_plotly(
+                                        data['voxcity_grid'],
+                                        data['meshsize'],
+                                        downsample=1,
+                                        voxel_color_map='grayscale',
+                                        building_sim_mesh=irradiance,
+                                        building_value_name='global',
+                                        building_colormap='magma',
+                                        building_vmin=None,
+                                        building_vmax=None,
+                                        building_opacity=1.0,
+                                        building_shaded=False,
+                                        render_voxel_buildings=False,
+                                        show=False,
+                                        return_fig=True,
+                                        title="Building Surface Solar (Global)"
+                                    )
+                                    if fig_b is not None:
+                                        st.plotly_chart(fig_b, use_container_width=True)
+                                        try:
+                                            st.caption(
+                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                            )
+                                        except Exception:
+                                            pass
+                                    else:
+                                        st.info("No building-surface visualization generated.")
+                                except Exception as ve:
+                                    st.warning(f"3D building visualization failed: {ve}")
                             
                     except Exception as e:
                         st.error(f"Error in solar analysis: {str(e)}")
         
         elif simulation_type == "View Index":
-            st.subheader("👁️ View Index Analysis")
-            
-            view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index"])
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
+            st.subheader("View Index Analysis")
+            ctrl_col, vis_col = st.columns([1, 2])
+
+            with ctrl_col:
+                view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index"])
                 view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
                 tree_k = st.slider("Tree Extinction Coefficient", 0.0, 1.0, 0.6)
                 tree_lad = st.slider("Tree Leaf Area Density", 0.0, 2.0, 1.0)
-            
-            with col2:
                 colormap = st.selectbox("Colormap", ["viridis", "BuPu_r", "RdYlGn", "coolwarm"])
                 export_obj = st.checkbox("Export as OBJ file", value=False)
+                run_view = st.button("Calculate View Index")
             
-            if st.button("Calculate View Index"):
+            if run_view:
                 with st.spinner(f"Calculating {view_type}..."):
                     try:
                         data = st.session_state.voxcity_data
@@ -1001,12 +1052,13 @@ with tab4:
                         
                         st.success(f"{view_type} calculated successfully!")
                         
-                        # Display results
-                        fig, ax = plt.subplots(figsize=(10, 8))
-                        im = ax.imshow(view_grid, cmap=colormap, origin='lower', vmin=0, vmax=1)
-                        plt.colorbar(im, ax=ax, label=view_type)
-                        ax.set_title(view_type)
-                        st.pyplot(fig)
+                        # Display results (left panel)
+                        with vis_col:
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            im = ax.imshow(view_grid, cmap=colormap, origin='lower', vmin=0, vmax=1)
+                            plt.colorbar(im, ax=ax, label=view_type)
+                            ax.set_title(view_type)
+                            st.pyplot(fig)
                         
                         # Optional 3D multi-view overlay
                         if st.checkbox("Also render 3D views with overlay", key="view_overlay"):
@@ -1045,11 +1097,14 @@ with tab4:
                         st.error(f"Error calculating view index: {str(e)}")
         
         else:  # Landmark Visibility
-            st.subheader("🏛️ Landmark Visibility Analysis")
-            st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
-            ids_text = st.text_input("Landmark Building IDs (optional)", value="")
-            export_obj_landmark = st.checkbox("Export landmark visibility OBJ (surfaces)", value=False)
-            if st.button("Run Landmark Visibility"):
+            st.subheader("Landmark Visibility Analysis")
+            ctrl_col, vis_col = st.columns([1, 2])
+            with ctrl_col:
+                st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
+                ids_text = st.text_input("Landmark Building IDs (optional)", value="")
+                export_obj_landmark = st.checkbox("Export landmark visibility OBJ (surfaces)", value=False)
+                run_landmark = st.button("Run Landmark Visibility")
+            if run_landmark:
                 with st.spinner("Computing landmark visibility..."):
                     try:
                         data = st.session_state.voxcity_data
@@ -1075,11 +1130,12 @@ with tab4:
                         if vis_map is None:
                             st.warning("No landmarks found or visible.")
                         else:
-                            fig, ax = plt.subplots(figsize=(10, 8))
-                            im = ax.imshow(vis_map, origin='lower', cmap='RdYlGn', vmin=0, vmax=1)
-                            plt.colorbar(im, ax=ax, label='Landmark Visibility (0/1)')
-                            ax.set_title('Landmark Visibility')
-                            st.pyplot(fig)
+                            with vis_col:
+                                fig, ax = plt.subplots(figsize=(8, 6))
+                                im = ax.imshow(vis_map, origin='lower', cmap='RdYlGn', vmin=0, vmax=1)
+                                plt.colorbar(im, ax=ax, label='Landmark Visibility (0/1)')
+                                ax.set_title('Landmark Visibility')
+                                st.pyplot(fig)
                     except Exception as e:
                         st.error(f"Error computing landmark visibility: {e}")
 
