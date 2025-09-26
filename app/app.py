@@ -164,9 +164,9 @@ st.markdown(
       div[data-baseweb="tab"] {
         gap: .5rem;
         font-size: 1.0rem !important; /* a bit smaller */
-        font-weight: 600 !important;
+        font-weight: 400 !important;
         line-height: 1.2 !important;
-        margin-right: 1.25rem !important; /* extra space between tabs */
+        margin-right: 0.5rem !important; /* tighter space between tabs */
       }
       /* Move tabs into the top bar next to the logo */
       .stTabs [role="tablist"],
@@ -178,7 +178,7 @@ st.markdown(
         background: transparent !important;
         display: flex !important;
         align-items: center !important;
-        gap: 1.25rem !important;
+        gap: 0.5rem !important; /* tighter spacing between tabs */
         padding: 0 .5rem !important;
         height: 44px !important;
         pointer-events: auto !important;
@@ -192,6 +192,34 @@ st.markdown(
       header img[alt="logo"] {
         height: 35px !important; /* slightly bigger logo */
         width: auto !important;
+      }
+      /* Reduce overall font size slightly */
+      html, body, [data-testid="stAppViewContainer"], .block-container {
+        font-size: 0.90rem !important;
+      }
+      /* Make headings more compact and smaller */
+      h1, h2, h3, h4, h5, h6 { margin: 0.35rem 0 !important; }
+      h1 { font-size: 1.35rem !important; }
+      h2 { font-size: 1.15rem !important; }
+      h3 { font-size: 1.00rem !important; }
+      /* Compact common widget text */
+      label,
+      .stCheckbox,
+      .stRadio,
+      .stSelectbox,
+      .stNumberInput,
+      .stTextInput,
+      .stDateInput,
+      .stTimeInput,
+      .stSlider,
+      .stButton > button {
+        font-size: 0.90rem !important;
+      }
+      /* Explicit small subheader utility for specific sections */
+      .vc-subheader-small {
+        font-size: 0.90rem !important;
+        font-weight: 600 !important;
+        margin: 0.25rem 0 0.75rem 0 !important;
       }
     </style>
     """,
@@ -210,7 +238,7 @@ if 'voxcity_data' not in st.session_state:
 
 # Main content area - Remove authentication requirement
 # Create tabs for different steps
-tab1, tab2, tab4, tab5 = st.tabs(["Set Target Area", "Configure & Generate", "Simulations", "Export"])
+tab1, tab2, tab_solar, tab_view, tab_landmark, tab5 = st.tabs(["Target Area", "Generation", "Solar", "View", "Landmark", "Export"])
 
 # Tab 1: Set Target Area
 with tab1:
@@ -248,21 +276,35 @@ with tab1:
     with col1:
         area_method = st.radio(
             "Select method to define target area:",
-            ["Search by city name", "Draw on map", "Enter coordinates", "Set center and dimensions"],
+            ["Draw on map", "Enter coordinates"],
             index=0,
         )
         if area_method == "Enter coordinates":
             st.subheader("Enter Rectangle Vertices")
-            st.info("Enter coordinates in the format: (longitude, latitude)")
             
-            sw_lon = st.number_input("Southwest Longitude", value=-74.02034270713835, format="%.8f")
-            sw_lat = st.number_input("Southwest Latitude", value=40.69992881162822, format="%.8f")
-            nw_lon = st.number_input("Northwest Longitude", value=-74.02034270713835, format="%.8f")
-            nw_lat = st.number_input("Northwest Latitude", value=40.7111851828668, format="%.8f")
-            ne_lon = st.number_input("Northeast Longitude", value=-74.00555129286164, format="%.8f")
-            ne_lat = st.number_input("Northeast Latitude", value=40.7111851828668, format="%.8f")
-            se_lon = st.number_input("Southeast Longitude", value=-74.00555129286164, format="%.8f")
-            se_lat = st.number_input("Southeast Latitude", value=40.69992881162822, format="%.8f")
+            col_sw_lon, col_sw_lat = st.columns(2)
+            with col_sw_lon:
+                sw_lon = st.number_input("Southwest Longitude", value=-74.02034270713835, format="%.8f")
+            with col_sw_lat:
+                sw_lat = st.number_input("Southwest Latitude", value=40.69992881162822, format="%.8f")
+
+            col_nw_lon, col_nw_lat = st.columns(2)
+            with col_nw_lon:
+                nw_lon = st.number_input("Northwest Longitude", value=-74.02034270713835, format="%.8f")
+            with col_nw_lat:
+                nw_lat = st.number_input("Northwest Latitude", value=40.7111851828668, format="%.8f")
+
+            col_ne_lon, col_ne_lat = st.columns(2)
+            with col_ne_lon:
+                ne_lon = st.number_input("Northeast Longitude", value=-74.00555129286164, format="%.8f")
+            with col_ne_lat:
+                ne_lat = st.number_input("Northeast Latitude", value=40.7111851828668, format="%.8f")
+
+            col_se_lon, col_se_lat = st.columns(2)
+            with col_se_lon:
+                se_lon = st.number_input("Southeast Longitude", value=-74.00555129286164, format="%.8f")
+            with col_se_lat:
+                se_lat = st.number_input("Southeast Latitude", value=40.69992881162822, format="%.8f")
             
             if st.button("Set Rectangle"):
                 st.session_state.rectangle_vertices = [
@@ -273,7 +315,7 @@ with tab1:
                 ]
                 st.success("Rectangle vertices set successfully!")
         
-        if area_method == "Search by city name":
+        if area_method == "Draw on map":
             city_name = st.text_input("Enter city name", value="New York")
             zoom_level = st.slider("Zoom level", 10, 18, 13)
             selection_mode = st.radio(
@@ -312,7 +354,7 @@ with tab1:
                         if st.session_state.get("show_dims_success"):
                             _notify_success("Rectangle captured from map.")
                             st.session_state["show_dims_success"] = False
-                        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
+                        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level, tiles="CartoDB positron")
                         # Simple geocoder control (browser-side) to refine center
                         try:
                             Geocoder(collapsed=True, add_marker=False).add_to(m)
@@ -428,7 +470,7 @@ with tab1:
                 if st.session_state.get("show_dims_success"):
                     _notify_success("Rectangle captured from map.")
                     st.session_state["show_dims_success"] = False
-                m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom)
+                m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, tiles="CartoDB positron")
                 try:
                     Geocoder(collapsed=True, add_marker=False).add_to(m)
                 except Exception:
@@ -546,134 +588,16 @@ with tab1:
                         # Force a re-render to keep map with overlay
                         st.session_state["show_dims_success"] = True
                         st.rerun()
-        elif area_method == "Draw on map":
-            center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
-            center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
-            zoom_level = st.slider("Zoom level", 10, 18, 13, key="draw_zoom")
-            
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
-            try:
-                Geocoder(collapsed=True, add_marker=False).add_to(m)
-            except Exception:
-                pass
-            Draw(
-                export=False,
-                draw_options={
-                    'polyline': False,
-                    'polygon': False,
-                    'circle': False,
-                    'circlemarker': False,
-                    'marker': False,
-                    'rectangle': {
-                        'shapeOptions': {
-                            'color': '#3388ff',
-                            'fillColor': '#3388ff',
-                            'fillOpacity': 0.2
-                        }
-                    }
-                },
-                edit_options={'edit': True}
-            ).add_to(m)
-            with map_container:
-                out = st_folium(m, height=MAP_HEIGHT, width=1100, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
-            feature = None
-            if isinstance(out, dict):
-                feature = out.get('last_active_drawing') or out.get('last_drawn')
-                if (feature is None) and out.get('all_drawings'):
-                    drawings = out.get('all_drawings') or []
-                    feature = drawings[-1] if len(drawings) > 0 else None
-            if feature:
-                geometry = feature.get('geometry', feature)
-                if geometry and geometry.get('type') == 'Polygon':
-                    coords = geometry['coordinates'][0]
-                    lons = [c[0] for c in coords]
-                    lats = [c[1] for c in coords]
-                    lon_min, lon_max = min(lons), max(lons)
-                    lat_min, lat_max = min(lats), max(lats)
-                    st.session_state.rectangle_vertices = [
-                        (lon_min, lat_min),
-                        (lon_min, lat_max),
-                        (lon_max, lat_max),
-                        (lon_max, lat_min)
-                    ]
-                    st.success("Rectangle captured from map.")
+        # 'Draw on map' option removed; drawing is available within 'Search by city name'
         
-        elif area_method == "Set center and dimensions":
-            center_lon = st.number_input("Center Longitude", value=-74.0129, format="%.6f")
-            center_lat = st.number_input("Center Latitude", value=40.7056, format="%.6f")
-            width = st.number_input("Width (meters)", value=1250, min_value=100, max_value=10000, step=50)
-            height = st.number_input("Height (meters)", value=1250, min_value=100, max_value=10000, step=50)
-            
-            if st.button("Calculate Rectangle"):
-                # Simple calculation for rectangle from center and dimensions
-                # In reality, you would use proper geographic calculations
-                degree_per_meter_lat = 1 / 111000
-                degree_per_meter_lon = 1 / (111000 * np.cos(np.radians(center_lat)))
-                
-                half_width_deg = (width / 2) * degree_per_meter_lon
-                half_height_deg = (height / 2) * degree_per_meter_lat
-                
-                st.session_state.rectangle_vertices = [
-                    (center_lon - half_width_deg, center_lat - half_height_deg),
-                    (center_lon - half_width_deg, center_lat + half_height_deg),
-                    (center_lon + half_width_deg, center_lat + half_height_deg),
-                    (center_lon + half_width_deg, center_lat - half_height_deg)
-                ]
-                st.success("Rectangle calculated successfully!")
-        else:  # Draw on map
-            center_lon = st.number_input("Map Center Longitude", value=-74.0129, format="%.6f")
-            center_lat = st.number_input("Map Center Latitude", value=40.7056, format="%.6f")
-            zoom_level = st.slider("Zoom level", 10, 18, 15, key="draw_zoom")
-            
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_level)
-            Draw(
-                export=False,
-                draw_options={
-                    'polyline': False,
-                    'polygon': False,
-                    'circle': False,
-                    'circlemarker': False,
-                    'marker': False,
-                    'rectangle': {
-                        'shapeOptions': {
-                            'color': '#3388ff',
-                            'fillColor': '#3388ff',
-                            'fillOpacity': 0.2
-                        }
-                    }
-                },
-                edit_options={'edit': True}
-            ).add_to(m)
-            with map_container:
-                out = st_folium(m, height=MAP_HEIGHT, width=1100, returned_objects=["last_active_drawing", "all_drawings", "last_drawn"])            
-            feature = None
-            if isinstance(out, dict):
-                feature = out.get('last_active_drawing') or out.get('last_drawn')
-                if (feature is None) and out.get('all_drawings'):
-                    drawings = out.get('all_drawings') or []
-                    feature = drawings[-1] if len(drawings) > 0 else None
-            if feature:
-                geometry = feature.get('geometry', feature)
-                if geometry and geometry.get('type') == 'Polygon':
-                    coords = geometry['coordinates'][0]
-                    lons = [c[0] for c in coords]
-                    lats = [c[1] for c in coords]
-                    lon_min, lon_max = min(lons), max(lons)
-                    lat_min, lat_max = min(lats), max(lats)
-                    st.session_state.rectangle_vertices = [
-                        (lon_min, lat_min),
-                        (lon_min, lat_max),
-                        (lon_max, lat_max),
-                        (lon_max, lat_min)
-                    ]
-                    st.success("Rectangle captured from map.")
+        # 'Set center and dimensions' option removed; this mode is available inside 'Search by city name'
     
     with map_container:
-        if st.session_state.rectangle_vertices and (area_method in ["Enter coordinates", "Set center and dimensions"]):
+        if st.session_state.rectangle_vertices and (area_method in ["Enter coordinates"]):
             m = folium.Map(location=[
                 (st.session_state.rectangle_vertices[0][1] + st.session_state.rectangle_vertices[2][1]) / 2,
                 (st.session_state.rectangle_vertices[0][0] + st.session_state.rectangle_vertices[2][0]) / 2
-            ], zoom_start=15)
+            ], zoom_start=15, tiles="CartoDB positron")
             folium.Rectangle(
                 bounds=[[v[1], v[0]] for v in st.session_state.rectangle_vertices[:3:2]],
                 color='#3388ff',
@@ -711,7 +635,7 @@ with tab2:
     left_col, right_col = st.columns([1, 5])
 
     with left_col:
-        st.subheader("Data Sources")
+        st.markdown("<h3 class='vc-subheader-small'>Data Sources</h3>", unsafe_allow_html=True)
         building_source = st.selectbox("Building Source", building_sources)
         building_complementary_source = st.selectbox(
             "Building Complementary Source",
@@ -749,9 +673,8 @@ with tab2:
             )
 
     with right_col:
-        st.subheader("Generate Model & Preview")
         if st.session_state.rectangle_vertices is None:
-            st.warning("Set the target area first in the 'Set Target Area' tab.")
+            st.warning("Set the target area first in the 'Target Area' tab.")
         else:
             generate_clicked_cfg = st.button("Generate VoxCity Model", type="primary")
             if generate_clicked_cfg:
@@ -829,256 +752,107 @@ with tab2:
 # Tab 3: Generate Model
 # Notes tab removed per request
 
-# Tab 4: Simulations
-with tab4:
-    # (Section title removed)
-    
+# Tab 4a: Solar
+with tab_solar:
     if st.session_state.voxcity_data is None:
-        st.warning("Please generate a VoxCity model first in the 'Generate Model' tab.")
+        st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
     else:
-        simulation_type = st.selectbox(
-            "Select Simulation Type",
-            ["Solar Radiation", "View Index", "Landmark Visibility"]
-        )
-        
-        if simulation_type == "Solar Radiation":
-            st.subheader("Solar Radiation Analysis")
-            ctrl_col, vis_col = st.columns([1, 2])
+        st.subheader("Solar Radiation Analysis")
+        ctrl_col, vis_col = st.columns([1, 2])
 
-            with ctrl_col:
-                solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"]) 
-                if solar_calc_type == "Instantaneous":
-                    default_inst_date = st.session_state.get('solar_inst_date', datetime.now().date())
-                    default_inst_time = st.session_state.get('solar_inst_time', datetime.strptime("12:00:00", "%H:%M:%S").time())
+        with ctrl_col:
+            solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"], horizontal=True) 
+            if solar_calc_type == "Instantaneous":
+                default_inst_date = st.session_state.get('solar_inst_date', datetime.now().date())
+                default_inst_time = st.session_state.get('solar_inst_time', datetime.strptime("12:00:00", "%H:%M:%S").time())
+                col_id, col_it = st.columns(2)
+                with col_id:
                     calc_date = st.date_input("Date (MM-DD)", value=default_inst_date, key="solar_inst_date")
+                with col_it:
                     calc_time = st.time_input("Time (HH:MM:SS)", value=default_inst_time, key="solar_inst_time")
-                    calc_datetime = f"{calc_date.strftime('%m-%d')} {calc_time.strftime('%H:%M:%S')}"
-                else:
-                    default_start_date = datetime(datetime.now().year, 1, 1).date()
-                    default_end_date = datetime(datetime.now().year, 1, 31).date()
-                    start_date = st.date_input("Start Date (MM-DD)", default_start_date)
-                    start_time = st.time_input("Start Time", datetime.strptime("01:00:00", "%H:%M:%S").time())
-                    end_date = st.date_input("End Date (MM-DD)", default_end_date)
-                    end_time = st.time_input("End Time", datetime.strptime("23:00:00", "%H:%M:%S").time())
-                analysis_target = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"])
-                download_epw = st.checkbox("Download nearest EPW file", value=True)
-                if not download_epw:
-                    epw_file = st.file_uploader("Upload EPW file", type=['epw'])
-                run_solar = st.button("Run Solar Analysis")
+                calc_datetime = f"{calc_date.strftime('%m-%d')} {calc_time.strftime('%H:%M:%S')}"
+            else:
+                default_start_date = datetime(datetime.now().year, 1, 1).date()
+                default_end_date = datetime(datetime.now().year, 1, 31).date()
+                col_sd, col_st = st.columns(2)
+                with col_sd:
+                    start_date = st.date_input("Start Date (MM-DD)", value=default_start_date)
+                with col_st:
+                    start_time = st.time_input("Start Time", value=datetime.strptime("01:00:00", "%H:%M:%S").time())
+                col_ed, col_et = st.columns(2)
+                with col_ed:
+                    end_date = st.date_input("End Date (MM-DD)", value=default_end_date)
+                with col_et:
+                    end_time = st.time_input("End Time", value=datetime.strptime("23:00:00", "%H:%M:%S").time())
+            analysis_target = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True)
+            download_epw = st.checkbox("Download nearest EPW file", value=True)
+            if not download_epw:
+                epw_file = st.file_uploader("Upload EPW file", type=['epw'])
+            run_solar = st.button("Run Solar Analysis")
 
-            if run_solar:
-                with st.spinner("Running solar radiation analysis..."):
-                    try:
-                        data = st.session_state.voxcity_data
-                        
-                        # Save uploaded EPW to a temp path if provided
-                        epw_local_path = None
-                        if (not download_epw) and ('epw_file' in locals()) and (epw_file is not None):
-                            try:
-                                epw_dir = os.path.join(BASE_OUTPUT_DIR, 'epw')
-                                os.makedirs(epw_dir, exist_ok=True)
-                                epw_local_path = os.path.join(epw_dir, epw_file.name)
-                                with open(epw_local_path, 'wb') as _f:
-                                    _f.write(epw_file.read())
-                            except Exception as _e:
-                                st.warning(f"Failed to persist EPW file: {_e}")
+        if run_solar:
+            with st.spinner("Running solar radiation analysis..."):
+                try:
+                    data = st.session_state.voxcity_data
+                    
+                    # Save uploaded EPW to a temp path if provided
+                    epw_local_path = None
+                    if (not download_epw) and ('epw_file' in locals()) and (epw_file is not None):
+                        try:
+                            epw_dir = os.path.join(BASE_OUTPUT_DIR, 'epw')
+                            os.makedirs(epw_dir, exist_ok=True)
+                            epw_local_path = os.path.join(epw_dir, epw_file.name)
+                            with open(epw_local_path, 'wb') as _f:
+                                _f.write(epw_file.read())
+                        except Exception as _e:
+                            st.warning(f"Failed to persist EPW file: {_e}")
 
-                        if analysis_target == "Ground Level":
-                            solar_kwargs = {
-                                "download_nearest_epw": download_epw,
-                                "rectangle_vertices": data['rectangle_vertices'],
-                                "view_point_height": 1.5,
-                                "tree_k": 0.6,
-                                "tree_lad": 0.5,
-                                "dem_grid": data['dem_grid'],
-                                "colormap": 'magma',
-                                "obj_export": False,
-                                "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
-                                "output_dir": os.path.join(BASE_OUTPUT_DIR, 'epw'),
-                                "alpha": 1.0,
-                                "vmin": 0,
-                            }
-                            if epw_local_path:
-                                solar_kwargs["epw_file_path"] = epw_local_path
-                            
-                            # Create output directories (for EPW downloads and outputs)
-                            os.makedirs(solar_kwargs["output_directory"], exist_ok=True)
-                            try:
-                                os.makedirs(solar_kwargs["output_dir"], exist_ok=True)
-                            except Exception:
-                                pass
-                            
-                            if solar_calc_type == "Instantaneous":
-                                solar_kwargs["calc_time"] = calc_datetime
-                                calc_type = 'instantaneous'
-                            else:
-                                solar_kwargs["start_time"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
-                                solar_kwargs["end_time"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
-                                calc_type = 'cumulative'
-                            
-                            solar_grid = get_global_solar_irradiance_using_epw(
-                                data['voxcity_grid'],
-                                data['meshsize'],
-                                calc_type=calc_type,
-                                direct_normal_irradiance_scaling=1.0,
-                                diffuse_irradiance_scaling=1.0,
-                                **solar_kwargs
-                            )
-                            
-                            st.success("Solar analysis completed!")
-                            
-                            # 3D Plotly visualization of ground-level results (left panel)
-                            with vis_col:
-                                with st.spinner("Rendering 3D overlay..."):
-                                    try:
-                                        fig = visualize_voxcity_plotly(
-                                            data['voxcity_grid'],
-                                            data['meshsize'],
-                                            downsample=1,
-                                            voxel_color_map='grayscale',
-                                            ground_sim_grid=solar_grid,
-                                            ground_dem_grid=data['dem_grid'],
-                                            ground_view_point_height=1.5,
-                                            ground_colormap='magma',
-                                            ground_vmin=0.0,
-                                            sim_surface_opacity=0.95,
-                                            show=False,
-                                            return_fig=True,
-                                            title="Solar overlay"
-                                        )
-                                        if fig is not None:
-                                            st.plotly_chart(fig, use_container_width=True)
-                                            try:
-                                                st.caption(
-                                                    f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                                )
-                                            except Exception:
-                                                pass
-                                        else:
-                                            st.info("No 3D overlay generated.")
-                                    except Exception as ee:
-                                        st.warning(f"3D overlay rendering failed: {ee}")
-                            
-                        else:  # Building Surfaces
-                            irradiance_kwargs = {
-                                "download_nearest_epw": download_epw,
-                                "rectangle_vertices": data['rectangle_vertices'],
-                                "building_id_grid": data['building_id_grid']
-                            }
-                            if epw_local_path:
-                                irradiance_kwargs["epw_file_path"] = epw_local_path
-                            else:
-                                # Ensure EPW download directory exists when downloading
-                                irradiance_kwargs["output_dir"] = os.path.join(BASE_OUTPUT_DIR, 'epw')
-                                try:
-                                    os.makedirs(irradiance_kwargs["output_dir"], exist_ok=True)
-                                except Exception:
-                                    pass
-                            
-                            if solar_calc_type == "Instantaneous":
-                                irradiance_kwargs["calc_type"] = "instantaneous"
-                                irradiance_kwargs["calc_time"] = calc_datetime
-                            else:
-                                irradiance_kwargs["calc_type"] = "cumulative"
-                                irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
-                                irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
-                            
-                            with st.spinner("Computing building-surface solar irradiance..."):
-                                irradiance = get_building_global_solar_irradiance_using_epw(
-                                    data['voxcity_grid'],
-                                    data['meshsize'],
-                                    **irradiance_kwargs
-                                )
-                            
-                            st.success("Building solar analysis completed!")
-                            # Visualize building-surface irradiance in 3D (left panel)
-                            with vis_col:
-                                try:
-                                    fig_b = visualize_voxcity_plotly(
-                                        data['voxcity_grid'],
-                                        data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        building_sim_mesh=irradiance,
-                                        building_value_name='global',
-                                        building_colormap='magma',
-                                        building_vmin=None,
-                                        building_vmax=None,
-                                        building_opacity=1.0,
-                                        building_shaded=False,
-                                        render_voxel_buildings=False,
-                                        show=False,
-                                        return_fig=True,
-                                        title="Building Surface Solar (Global)"
-                                    )
-                                    if fig_b is not None:
-                                        st.plotly_chart(fig_b, use_container_width=True)
-                                        try:
-                                            st.caption(
-                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                            )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        st.info("No building-surface visualization generated.")
-                                except Exception as ve:
-                                    st.warning(f"3D building visualization failed: {ve}")
-                            
-                    except Exception as e:
-                        st.error(f"Error in solar analysis: {str(e)}")
-        
-        elif simulation_type == "View Index":
-            st.subheader("View Index Analysis")
-            ctrl_col, vis_col = st.columns([1, 2])
-
-            with ctrl_col:
-                view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index"])
-                view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
-                tree_k = st.slider("Tree Extinction Coefficient", 0.0, 1.0, 0.6)
-                tree_lad = st.slider("Tree Leaf Area Density", 0.0, 2.0, 1.0)
-                colormap = st.selectbox("Colormap", ["viridis", "BuPu_r", "RdYlGn", "coolwarm"])
-                export_obj = st.checkbox("Export as OBJ file", value=False)
-                run_view = st.button("Calculate View Index")
-            
-            if run_view:
-                with st.spinner(f"Calculating {view_type}..."):
-                    try:
-                        data = st.session_state.voxcity_data
-                        
-                        output_dir = os.path.join(BASE_OUTPUT_DIR, "view")
-                        os.makedirs(output_dir, exist_ok=True)
-                        
-                        view_kwargs = {
-                            "view_point_height": view_point_height,
-                            "tree_k": tree_k,
-                            "tree_lad": tree_lad,
+                    if analysis_target == "Ground Level":
+                        solar_kwargs = {
+                            "download_nearest_epw": download_epw,
+                            "rectangle_vertices": data['rectangle_vertices'],
+                            "view_point_height": 1.5,
+                            "tree_k": 0.6,
+                            "tree_lad": 0.5,
                             "dem_grid": data['dem_grid'],
-                            "colormap": colormap,
-                            "obj_export": export_obj,
-                            "output_directory": output_dir,
-                            "output_file_name": "gvi" if view_type == "Green View Index" else "svi"
+                            "colormap": 'magma',
+                            "obj_export": False,
+                            "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
+                            "output_dir": os.path.join(BASE_OUTPUT_DIR, 'epw'),
+                            "alpha": 1.0,
+                            "vmin": 0,
                         }
+                        if epw_local_path:
+                            solar_kwargs["epw_file_path"] = epw_local_path
                         
-                        mode = 'green' if view_type == "Green View Index" else 'sky'
-                        view_grid = get_view_index(
-                            data['voxcity_grid'], 
-                            data['meshsize'], 
-                            mode=mode, 
-                            **view_kwargs
+                        # Create output directories (for EPW downloads and outputs)
+                        os.makedirs(solar_kwargs["output_directory"], exist_ok=True)
+                        try:
+                            os.makedirs(solar_kwargs["output_dir"], exist_ok=True)
+                        except Exception:
+                            pass
+                        
+                        if solar_calc_type == "Instantaneous":
+                            solar_kwargs["calc_time"] = calc_datetime
+                            calc_type = 'instantaneous'
+                        else:
+                            solar_kwargs["start_time"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
+                            solar_kwargs["end_time"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
+                            calc_type = 'cumulative'
+                        
+                        solar_grid = get_global_solar_irradiance_using_epw(
+                            data['voxcity_grid'],
+                            data['meshsize'],
+                            calc_type=calc_type,
+                            direct_normal_irradiance_scaling=1.0,
+                            diffuse_irradiance_scaling=1.0,
+                            **solar_kwargs
                         )
                         
-                        st.success(f"{view_type} calculated successfully!")
+                        st.success("Solar analysis completed!")
                         
-                        # Display results (left panel)
+                        # 3D Plotly visualization of ground-level results (left panel)
                         with vis_col:
-                            fig, ax = plt.subplots(figsize=(8, 6))
-                            im = ax.imshow(view_grid, cmap=colormap, origin='lower', vmin=0, vmax=1)
-                            plt.colorbar(im, ax=ax, label=view_type)
-                            ax.set_title(view_type)
-                            st.pyplot(fig)
-                        
-                        # Optional 3D multi-view overlay
-                        if st.checkbox("Also render 3D views with overlay", key="view_overlay"):
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
                                     fig = visualize_voxcity_plotly(
@@ -1086,16 +860,15 @@ with tab4:
                                         data['meshsize'],
                                         downsample=1,
                                         voxel_color_map='grayscale',
-                                        ground_sim_grid=view_grid,
+                                        ground_sim_grid=solar_grid,
                                         ground_dem_grid=data['dem_grid'],
-                                        ground_view_point_height=view_point_height,
-                                        ground_colormap=colormap,
+                                        ground_view_point_height=1.5,
+                                        ground_colormap='magma',
                                         ground_vmin=0.0,
-                                        ground_vmax=1.0,
                                         sim_surface_opacity=0.95,
                                         show=False,
                                         return_fig=True,
-                                        title=view_type
+                                        title="Solar overlay"
                                     )
                                     if fig is not None:
                                         st.plotly_chart(fig, use_container_width=True)
@@ -1110,58 +883,211 @@ with tab4:
                                 except Exception as ee:
                                     st.warning(f"3D overlay rendering failed: {ee}")
                         
-                    except Exception as e:
-                        st.error(f"Error calculating view index: {str(e)}")
-        
-        else:  # Landmark Visibility
-            st.subheader("Landmark Visibility Analysis")
-            ctrl_col, vis_col = st.columns([1, 2])
-            with ctrl_col:
-                st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
-                ids_text = st.text_input("Landmark Building IDs (optional)", value="")
-                export_obj_landmark = st.checkbox("Export landmark visibility OBJ (surfaces)", value=False)
-                run_landmark = st.button("Run Landmark Visibility")
-            if run_landmark:
-                with st.spinner("Computing landmark visibility..."):
-                    try:
-                        data = st.session_state.voxcity_data
-                        kwargs_vis = {
+                    else:  # Building Surfaces
+                        irradiance_kwargs = {
+                            "download_nearest_epw": download_epw,
                             "rectangle_vertices": data['rectangle_vertices'],
-                            "obj_export": export_obj_landmark,
-                            "output_directory": os.path.join(BASE_OUTPUT_DIR, 'landmark'),
+                            "building_id_grid": data['building_id_grid']
                         }
-                        os.makedirs(kwargs_vis["output_directory"], exist_ok=True)
-                        if ids_text.strip():
-                            try:
-                                ids = [int(x.strip()) for x in ids_text.split(',') if x.strip()]
-                                kwargs_vis["landmark_building_ids"] = ids
-                            except Exception:
-                                st.warning("Could not parse IDs; falling back to center building detection.")
-                        vis_map, vox_marked = get_landmark_visibility_map(
-                            data['voxcity_grid'],
-                            data['building_id_grid'],
-                            data['building_gdf'],
-                            data['meshsize'],
-                            **kwargs_vis
-                        )
-                        if vis_map is None:
-                            st.warning("No landmarks found or visible.")
+                        if epw_local_path:
+                            irradiance_kwargs["epw_file_path"] = epw_local_path
                         else:
-                            with vis_col:
-                                fig, ax = plt.subplots(figsize=(8, 6))
-                                im = ax.imshow(vis_map, origin='lower', cmap='RdYlGn', vmin=0, vmax=1)
-                                plt.colorbar(im, ax=ax, label='Landmark Visibility (0/1)')
-                                ax.set_title('Landmark Visibility')
-                                st.pyplot(fig)
-                    except Exception as e:
-                        st.error(f"Error computing landmark visibility: {e}")
+                            # Ensure EPW download directory exists when downloading
+                            irradiance_kwargs["output_dir"] = os.path.join(BASE_OUTPUT_DIR, 'epw')
+                            try:
+                                os.makedirs(irradiance_kwargs["output_dir"], exist_ok=True)
+                            except Exception:
+                                pass
+                        
+                        if solar_calc_type == "Instantaneous":
+                            irradiance_kwargs["calc_type"] = "instantaneous"
+                            irradiance_kwargs["calc_time"] = calc_datetime
+                        else:
+                            irradiance_kwargs["calc_type"] = "cumulative"
+                            irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
+                            irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
+                        
+                        with st.spinner("Computing building-surface solar irradiance..."):
+                            irradiance = get_building_global_solar_irradiance_using_epw(
+                                data['voxcity_grid'],
+                                data['meshsize'],
+                                **irradiance_kwargs
+                            )
+                        
+                        st.success("Building solar analysis completed!")
+                        # Visualize building-surface irradiance in 3D (left panel)
+                        with vis_col:
+                            try:
+                                fig_b = visualize_voxcity_plotly(
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
+                                    downsample=1,
+                                    voxel_color_map='grayscale',
+                                    building_sim_mesh=irradiance,
+                                    building_value_name='global',
+                                    building_colormap='magma',
+                                    building_vmin=None,
+                                    building_vmax=None,
+                                    building_opacity=1.0,
+                                    building_shaded=False,
+                                    render_voxel_buildings=False,
+                                    show=False,
+                                    return_fig=True,
+                                    title="Building Surface Solar (Global)"
+                                )
+                                if fig_b is not None:
+                                    st.plotly_chart(fig_b, use_container_width=True)
+                                    try:
+                                        st.caption(
+                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                        )
+                                    except Exception:
+                                        pass
+                                else:
+                                    st.info("No building-surface visualization generated.")
+                            except Exception as ve:
+                                st.warning(f"3D building visualization failed: {ve}")
+                        
+                except Exception as e:
+                    st.error(f"Error in solar analysis: {str(e)}")
+
+# Tab 4b: View
+with tab_view:
+    if st.session_state.voxcity_data is None:
+        st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
+    else:
+        st.subheader("View Index Analysis")
+        ctrl_col, vis_col = st.columns([1, 2])
+
+        with ctrl_col:
+            view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index"])
+            view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
+            export_obj = st.checkbox("Export as OBJ file", value=False)
+            run_view = st.button("Calculate View Index")
+        
+        if run_view:
+            with st.spinner(f"Calculating {view_type}..."):
+                try:
+                    data = st.session_state.voxcity_data
+                    
+                    output_dir = os.path.join(BASE_OUTPUT_DIR, "view")
+                    os.makedirs(output_dir, exist_ok=True)
+                    
+                    view_kwargs = {
+                        "view_point_height": view_point_height,
+                        "dem_grid": data['dem_grid'],
+                        "obj_export": export_obj,
+                        "output_directory": output_dir,
+                        "output_file_name": "gvi" if view_type == "Green View Index" else "svi"
+                    }
+                    
+                    mode = 'green' if view_type == "Green View Index" else 'sky'
+                    view_grid = get_view_index(
+                        data['voxcity_grid'], 
+                        data['meshsize'], 
+                        mode=mode, 
+                        **view_kwargs
+                    )
+                    
+                    st.success(f"{view_type} calculated successfully!")
+                    
+                    # Display results (left panel)
+                    with vis_col:
+                        fig, ax = plt.subplots(figsize=(8, 6))
+                        im = ax.imshow(view_grid, cmap='viridis', origin='lower', vmin=0, vmax=1)
+                        plt.colorbar(im, ax=ax, label=view_type)
+                        ax.set_title(view_type)
+                        st.pyplot(fig)
+                    
+                    # Optional 3D multi-view overlay
+                    if st.checkbox("Also render 3D views with overlay", key="view_overlay"):
+                        with st.spinner("Rendering 3D overlay..."):
+                            try:
+                                fig = visualize_voxcity_plotly(
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
+                                    downsample=1,
+                                    voxel_color_map='grayscale',
+                                    ground_sim_grid=view_grid,
+                                    ground_dem_grid=data['dem_grid'],
+                                    ground_view_point_height=view_point_height,
+                                    ground_colormap='viridis',
+                                    ground_vmin=0.0,
+                                    ground_vmax=1.0,
+                                    sim_surface_opacity=0.95,
+                                    show=False,
+                                    return_fig=True,
+                                    title=view_type
+                                )
+                                if fig is not None:
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    try:
+                                        st.caption(
+                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                        )
+                                    except Exception:
+                                        pass
+                                else:
+                                    st.info("No 3D overlay generated.")
+                            except Exception as ee:
+                                st.warning(f"3D overlay rendering failed: {ee}")
+                    
+                except Exception as e:
+                    st.error(f"Error calculating view index: {str(e)}")
+
+# Tab 4c: Landmark
+with tab_landmark:
+    if st.session_state.voxcity_data is None:
+        st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
+    else:
+        st.subheader("Landmark Visibility Analysis")
+        ctrl_col, vis_col = st.columns([1, 2])
+        with ctrl_col:
+            st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
+            ids_text = st.text_input("Landmark Building IDs (optional)", value="")
+            export_obj_landmark = st.checkbox("Export landmark visibility OBJ (surfaces)", value=False)
+            run_landmark = st.button("Run Landmark Visibility")
+        if run_landmark:
+            with st.spinner("Computing landmark visibility..."):
+                try:
+                    data = st.session_state.voxcity_data
+                    kwargs_vis = {
+                        "rectangle_vertices": data['rectangle_vertices'],
+                        "obj_export": export_obj_landmark,
+                        "output_directory": os.path.join(BASE_OUTPUT_DIR, 'landmark'),
+                    }
+                    os.makedirs(kwargs_vis["output_directory"], exist_ok=True)
+                    if ids_text.strip():
+                        try:
+                            ids = [int(x.strip()) for x in ids_text.split(',') if x.strip()]
+                            kwargs_vis["landmark_building_ids"] = ids
+                        except Exception:
+                            st.warning("Could not parse IDs; falling back to center building detection.")
+                    vis_map, vox_marked = get_landmark_visibility_map(
+                        data['voxcity_grid'],
+                        data['building_id_grid'],
+                        data['building_gdf'],
+                        data['meshsize'],
+                        **kwargs_vis
+                    )
+                    if vis_map is None:
+                        st.warning("No landmarks found or visible.")
+                    else:
+                        with vis_col:
+                            fig, ax = plt.subplots(figsize=(8, 6))
+                            im = ax.imshow(vis_map, origin='lower', cmap='RdYlGn', vmin=0, vmax=1)
+                            plt.colorbar(im, ax=ax, label='Landmark Visibility (0/1)')
+                            ax.set_title('Landmark Visibility')
+                            st.pyplot(fig)
+                except Exception as e:
+                    st.error(f"Error computing landmark visibility: {e}")
 
 # Tab 5: Export
 with tab5:
     # (Section title removed)
     
     if st.session_state.voxcity_data is None:
-        st.warning("Please generate a VoxCity model first in the 'Generate Model' tab.")
+        st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
     else:
         export_format = st.selectbox(
             "Select Export Format",
