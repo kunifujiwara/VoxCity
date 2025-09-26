@@ -2830,7 +2830,7 @@ def visualize_voxcity_plotly(
             )
 
     fig.update_layout(
-        title=title or "VoxCity 3D",
+        # title=title or "VoxCity 3D",
         width=width,
         height=height,
         scene=dict(
