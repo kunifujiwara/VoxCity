@@ -170,7 +170,7 @@ st.markdown(
       header .stLogo img,
       header img[alt="Logo"],
       header img[alt="logo"] {
-        height: 22px !important; /* smaller logo */
+        height: 35px !important; /* slightly bigger logo */
         width: auto !important;
       }
     </style>
