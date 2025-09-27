@@ -24,7 +24,7 @@ try:
     from voxcity.generator import get_voxcity
     from voxcity.geoprocessor.draw import draw_rectangle_map_cityname, center_location_map_cityname
     from voxcity.simulator.solar import get_building_global_solar_irradiance_using_epw, get_global_solar_irradiance_using_epw
-    from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map
+    from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map, mark_building_by_id
     from voxcity.exporter.cityles import export_cityles
     from voxcity.exporter.obj import export_obj
     from voxcity.utils.visualization import visualize_voxcity_plotly, visualize_building_sim_results, visualize_numerical_gdf_on_basemap
@@ -1197,100 +1197,166 @@ with tab_landmark:
             with st.spinner("Computing landmark visibility..."):
                 try:
                     data = st.session_state.voxcity_data
-                    kwargs_vis = {
-                        "rectangle_vertices": data['rectangle_vertices'],
-                        "output_directory": os.path.join(BASE_OUTPUT_DIR, 'landmark'),
-                    }
-                    os.makedirs(kwargs_vis["output_directory"], exist_ok=True)
+                    output_dir_lm = os.path.join(BASE_OUTPUT_DIR, 'landmark')
+                    os.makedirs(output_dir_lm, exist_ok=True)
+                    # Determine landmark IDs
+                    landmark_ids = []
                     if ids_text.strip():
                         try:
-                            ids = [int(x.strip()) for x in ids_text.split(',') if x.strip()]
-                            kwargs_vis["landmark_building_ids"] = ids
+                            landmark_ids = [int(x.strip()) for x in ids_text.split(',') if x.strip()]
                         except Exception:
-                            st.warning("Could not parse IDs; falling back to center building detection.")
-                    vis_map, vox_marked = get_landmark_visibility_map(
-                        data['voxcity_grid'],
-                        data['building_id_grid'],
-                        data['building_gdf'],
-                        data['meshsize'],
-                        **kwargs_vis
-                    )
-                    if vis_map is None:
-                        st.warning("No landmarks found or visible.")
-                    else:
-                        with vis_col:
-                            with st.spinner("Rendering 3D overlay..."):
-                                try:
-                                    # Ensure DEM shape matches visibility map; fallback to flat DEM if needed
-                                    dem_grid = data.get('dem_grid')
-                                    try:
-                                        if dem_grid is None or getattr(dem_grid, 'shape', None) != getattr(vis_map, 'shape', None):
-                                            dem_grid = np.zeros_like(vis_map, dtype=float)
-                                    except Exception:
-                                        dem_grid = np.zeros_like(vis_map, dtype=float)
+                            st.warning("Could not parse IDs; falling back to map/center selection if available.")
+                    # If map selection stored, merge
+                    map_ids_text = st.session_state.get('landmark_ids_text', '')
+                    if map_ids_text.strip():
+                        try:
+                            landmark_ids += [int(x.strip()) for x in map_ids_text.split(',') if x.strip()]
+                        except Exception:
+                            pass
+                    landmark_ids = sorted(list(set(landmark_ids)))
 
-                                    if analysis_target_lm == "Ground Level":
-                                        fig = visualize_voxcity_plotly(
-                                            vox_marked,
-                                            data.get('meshsize'),
-                                            downsample=1,
-                                            voxel_color_map='grayscale',
-                                            ground_sim_grid=vis_map,
-                                            ground_dem_grid=dem_grid,
-                                            ground_view_point_height=1.5,
-                                            ground_colormap='viridis',
-                                            ground_vmin=0.0,
-                                            ground_vmax=1.0,
-                                            sim_surface_opacity=0.95,
-                                            show=False,
-                                            return_fig=True,
-                                            title='Landmark Visibility'
-                                        )
-                                    else:
-                                        # Building-surface visualization for landmarks is not yet available.
-                                        # Fall back to ground-level rendering with a notice.
-                                        st.info("Building-surface landmark view is not yet supported; showing ground-level map.")
-                                        fig = visualize_voxcity_plotly(
-                                            vox_marked,
-                                            data.get('meshsize'),
-                                            downsample=1,
-                                            voxel_color_map='grayscale',
-                                            ground_sim_grid=vis_map,
-                                            ground_dem_grid=dem_grid,
-                                            ground_view_point_height=1.5,
-                                            ground_colormap='viridis',
-                                            ground_vmin=0.0,
-                                            ground_vmax=1.0,
-                                            sim_surface_opacity=0.95,
-                                            show=False,
-                                            return_fig=True,
-                                            title='Landmark Visibility'
-                                        )
-                                    if fig is not None:
-                                        st.plotly_chart(fig, use_container_width=True)
-                                        try:
-                                            st.caption(
-                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                            )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        # Fallback to 2D when 3D surface cannot be generated
-                                        fig2, ax2 = plt.subplots(figsize=(8, 6))
-                                        im2 = ax2.imshow(vis_map, origin='lower', cmap='viridis', vmin=0, vmax=1)
-                                        plt.colorbar(im2, ax=ax2, label='Landmark Visibility')
-                                        ax2.set_title('Landmark Visibility')
-                                        st.pyplot(fig2)
-                                except Exception as ee:
-                                    # Fallback on error
-                                    try:
-                                        fig2, ax2 = plt.subplots(figsize=(8, 6))
-                                        im2 = ax2.imshow(vis_map, origin='lower', cmap='viridis', vmin=0, vmax=1)
-                                        plt.colorbar(im2, ax=ax2, label='Landmark Visibility')
-                                        ax2.set_title('Landmark Visibility')
-                                        st.pyplot(fig2)
-                                    except Exception:
-                                        st.warning(f"3D/2D rendering failed: {ee}")
+                    # Mark landmark voxels in a copy of the grid
+                    voxcity_marked = data['voxcity_grid'].copy()
+                    if len(landmark_ids) == 0:
+                        # Fall back to center building via existing helper
+                        vis_map, vox_marked_tmp = get_landmark_visibility_map(
+                            data['voxcity_grid'],
+                            data['building_id_grid'],
+                            data['building_gdf'],
+                            data['meshsize'],
+                            rectangle_vertices=data['rectangle_vertices'],
+                            output_directory=output_dir_lm,
+                        )
+                        if vox_marked_tmp is not None:
+                            voxcity_marked = vox_marked_tmp
+                    else:
+                        try:
+                            voxcity_marked = mark_building_by_id(
+                                voxcity_marked,
+                                data['building_id_grid'],
+                                landmark_ids,
+                                -30,
+                            )
+                        except Exception as e:
+                            st.warning(f"Failed to mark landmark buildings: {e}")
+
+                    if analysis_target_lm == "Ground Level":
+                        view_kwargs = {
+                            "view_point_height": 1.5,
+                            "dem_grid": data['dem_grid'],
+                            "obj_export": False,
+                            "output_directory": output_dir_lm,
+                            "output_file_name": "landmark"
+                        }
+                        landmark_grid = get_view_index(
+                            voxcity_marked,
+                            data['meshsize'],
+                            hit_values=(-30,),
+                            inclusion_mode=True,
+                            **view_kwargs
+                        )
+                        # Set zeros to NaN for visualization emphasis
+                        try:
+                            lg = np.asarray(landmark_grid, dtype=float)
+                            lg[lg == 0.0] = np.nan
+                            landmark_grid = lg
+                        except Exception:
+                            pass
+                        with vis_col:
+                            fig = visualize_voxcity_plotly(
+                                voxcity_marked,
+                                data['meshsize'],
+                                downsample=1,
+                                voxel_color_map='grayscale',
+                                ground_sim_grid=landmark_grid,
+                                ground_dem_grid=data['dem_grid'],
+                                ground_view_point_height=1.5,
+                                ground_colormap='viridis',
+                                ground_vmin=0.0,
+                                ground_vmax=1.0,
+                                sim_surface_opacity=0.95,
+                                show=False,
+                                return_fig=True,
+                                title='Landmark Visibility (Ground)'
+                            )
+                            if fig is not None:
+                                st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        try:
+                            landmark_mesh = get_surface_view_factor(
+                                voxcity_marked,
+                                data['meshsize'],
+                                target_values=(-30,),
+                                inclusion_mode=True,
+                                progress_report=True,
+                                building_id_grid=data.get('building_id_grid'),
+                                colormap='viridis',
+                                vmin=0.0,
+                                vmax=1.0,
+                                obj_export=False,
+                                output_directory=output_dir_lm,
+                                output_file_name='landmark_surface'
+                            )
+                        except Exception as e:
+                            landmark_mesh = None
+                            st.warning(f"Surface landmark computation failed: {e}")
+                        if landmark_mesh is not None:
+                            try:
+                                vf = np.asarray(landmark_mesh.metadata.get('view_factor_values'), dtype=float).copy()
+                                vf[vf == 0.0] = np.nan
+                                landmark_mesh.metadata['view_factor_values'] = vf
+                            except Exception:
+                                pass
+                            with vis_col:
+                                try:
+                                    fig_b = visualize_voxcity_plotly(
+                                        voxcity_marked,
+                                        data['meshsize'],
+                                        downsample=1,
+                                        voxel_color_map='grayscale',
+                                        building_sim_mesh=landmark_mesh,
+                                        building_value_name='view_factor_values',
+                                        building_colormap='viridis',
+                                        building_vmin=0.0,
+                                        building_vmax=1.0,
+                                        render_voxel_buildings=False,
+                                        show=False,
+                                        return_fig=True,
+                                        title='Landmark Visibility (Surface)'
+                                    )
+                                    if fig_b is not None:
+                                        st.plotly_chart(fig_b, use_container_width=True)
+                                except Exception as ve:
+                                    st.warning(f"3D surface rendering failed: {ve}")
+                        else:
+                            st.info("Falling back to ground-level landmark visibility.")
+                            # Fallback ground visualization
+                            landmark_grid = get_view_index(
+                                voxcity_marked,
+                                data['meshsize'],
+                                hit_values=(-30,),
+                                inclusion_mode=True,
+                            )
+                            with vis_col:
+                                fig = visualize_voxcity_plotly(
+                                    voxcity_marked,
+                                    data['meshsize'],
+                                    downsample=1,
+                                    voxel_color_map='grayscale',
+                                    ground_sim_grid=landmark_grid,
+                                    ground_dem_grid=data['dem_grid'],
+                                    ground_view_point_height=1.5,
+                                    ground_colormap='viridis',
+                                    ground_vmin=0.0,
+                                    ground_vmax=1.0,
+                                    sim_surface_opacity=0.95,
+                                    show=False,
+                                    return_fig=True,
+                                    title='Landmark Visibility (Ground)'
+                                )
+                                if fig is not None:
+                                    st.plotly_chart(fig, use_container_width=True)
+                        # (Removed duplicate rendering block that referenced undefined vis_map/vox_marked)
                 except Exception as e:
                     st.error(f"Error computing landmark visibility: {e}")
 
