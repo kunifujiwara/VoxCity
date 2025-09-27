@@ -631,7 +631,7 @@ with tab2:
         # (Informational note removed by request)
     
     # Narrower controls column (half the previous width)
-    left_col, right_col = st.columns([1, 5])
+    left_col, right_col = st.columns([1, 3])
 
     with left_col:
         st.markdown("<h3 class='vc-subheader-small'>Data Sources</h3>", unsafe_allow_html=True)
@@ -756,8 +756,12 @@ with tab_solar:
     if st.session_state.voxcity_data is None:
         st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
     else:
-        st.subheader("Solar Radiation Analysis")
-        ctrl_col, vis_col = st.columns([1, 2])
+        hdr_l, hdr_r = st.columns([1, 3])
+        with hdr_l:
+            st.subheader("Solar Radiation Analysis")
+        with hdr_r:
+            run_solar = st.button("Run Simulation", key="run_solar_btn")
+        ctrl_col, vis_col = st.columns([1, 3])
 
         with ctrl_col:
             solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"], horizontal=True)
@@ -788,7 +792,6 @@ with tab_solar:
             download_epw = st.checkbox("Download nearest EPW file", value=True)
             if not download_epw:
                 epw_file = st.file_uploader("Upload EPW file", type=['epw'])
-            run_solar = st.button("Run Solar Analysis")
 
         if run_solar:
             with st.spinner("Running solar radiation analysis..."):
@@ -956,8 +959,12 @@ with tab_view:
     if st.session_state.voxcity_data is None:
         st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
     else:
-        st.subheader("View Index Analysis")
-        ctrl_col, vis_col = st.columns([1, 2])
+        hdr_l, hdr_r = st.columns([1, 3])
+        with hdr_l:
+            st.subheader("View Index Analysis")
+        with hdr_r:
+            run_view = st.button("Run Simulation", key="run_view_btn")
+        ctrl_col, vis_col = st.columns([1, 3])
 
         with ctrl_col:
             view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index", "Custom (Select Classes)"])
@@ -1029,7 +1036,7 @@ with tab_view:
                             if checked:
                                 selected_custom_values.append(int(code))
 
-            run_view = st.button("Calculate View Index")
+        # run_view is defined in header; no duplicate button here
         
         if run_view:
             with st.spinner(f"Calculating {view_type}..."):
@@ -1208,8 +1215,12 @@ with tab_landmark:
     if st.session_state.voxcity_data is None:
         st.warning("Please generate a VoxCity model first in the 'Generation' tab.")
     else:
-        st.subheader("Landmark Visibility Analysis")
-        ctrl_col, vis_col = st.columns([1, 2])
+        hdr_l, hdr_r = st.columns([1, 3])
+        with hdr_l:
+            st.subheader("Landmark Visibility Analysis")
+        with hdr_r:
+            run_landmark = st.button("Run Simulation", key="run_landmark_btn")
+        ctrl_col, vis_col = st.columns([1, 3])
         with ctrl_col:
             st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
             analysis_target_lm = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="landmark_analysis_target")
@@ -1292,8 +1303,7 @@ with tab_landmark:
                             pass
             # Use IDs populated from map selection if available (no manual input field)
             ids_text = st.session_state.get('landmark_ids_text', '')
-            # Removed OBJ export option for landmark visibility
-            run_landmark = st.button("Run Landmark Visibility")
+        # run_landmark is defined in header; no duplicate here
         if run_landmark:
             with st.spinner("Computing landmark visibility..."):
                 try:
