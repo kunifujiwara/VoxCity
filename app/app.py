@@ -1217,7 +1217,6 @@ with tab_landmark:
         ctrl_col, vis_col = st.columns([1, 3])
         landmark_status = vis_col.empty()
         with ctrl_col:
-            st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
             analysis_target_lm = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="landmark_analysis_target")
             if 'landmark_ids_text' not in st.session_state:
                 st.session_state['landmark_ids_text'] = ""
