@@ -960,10 +960,52 @@ with tab_view:
         ctrl_col, vis_col = st.columns([1, 2])
 
         with ctrl_col:
-            view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index"])
+            view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index", "Custom (Select Classes)"])
             analysis_target_view = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="view_analysis_target")
             view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
             export_obj = st.checkbox("Export as OBJ file", value=False)
+            # Defaults for custom selection to ensure variables exist even if not used
+            selected_custom_values = []
+            inclusion_mode_custom = True
+
+            # Custom class selection UI
+            if view_type == "Custom (Select Classes)":
+                st.markdown("Select target classes and mode")
+                inc_exc = st.radio(
+                    "Mode",
+                    ["Inclusion (count selected classes)", "Exclusion (allow only selected classes)"],
+                    horizontal=False,
+                    key="view_custom_mode"
+                )
+                inclusion_mode_custom = inc_exc.startswith("Inclusion")
+
+                # Fixed list of selectable classes (display only names)
+                custom_class_options = [
+                    (-3, "Building"),
+                    (-2, "Tree"),
+                    (1, "Bareland (land cover)"),
+                    (2, "Rangeland (land cover)"),
+                    (3, "Shrub (land cover)"),
+                    (4, "Agriculture land (land cover)"),
+                    (5, "Tree (land cover)"),
+                    (6, "Moss and lichen (land cover)"),
+                    (7, "Wet land (land cover)"),
+                    (8, "Mangrove (land cover)"),
+                    (9, "Water (land cover)"),
+                    (10, "Snow and ice (land cover)"),
+                    (11, "Developed space (land cover)"),
+                    (12, "Road (land cover)"),
+                    (13, "Building (land cover)")
+                ]
+
+                # Render checkboxes with names only
+                selected_custom_values = []
+                with st.container():
+                    for code, name in custom_class_options:
+                        checked = st.checkbox(name, value=False, key=f"vc_cls_{code}")
+                        if checked:
+                            selected_custom_values.append(int(code))
+
             run_view = st.button("Calculate View Index")
         
         if run_view:
@@ -980,16 +1022,33 @@ with tab_view:
                             "dem_grid": data['dem_grid'],
                             "obj_export": export_obj,
                             "output_directory": output_dir,
-                            "output_file_name": "gvi" if view_type == "Green View Index" else "svi"
+                            "output_file_name": (
+                                "gvi" if view_type == "Green View Index" else ("svi" if view_type == "Sky View Index" else "custom_vi")
+                            )
                         }
-                        mode = 'green' if view_type == "Green View Index" else 'sky'
-                        view_grid = get_view_index(
-                            data['voxcity_grid'], 
-                            data['meshsize'], 
-                            mode=mode, 
-                            **view_kwargs
-                        )
-                        st.success(f"{view_type} calculated successfully!")
+                        if view_type == "Custom (Select Classes)":
+                            if len(selected_custom_values) == 0:
+                                st.error("Please select at least one class for the custom view.")
+                                view_grid = None
+                            else:
+                                view_grid = get_view_index(
+                                    data['voxcity_grid'],
+                                    data['meshsize'],
+                                    mode=None,
+                                    hit_values=tuple(selected_custom_values),
+                                    inclusion_mode=inclusion_mode_custom,
+                                    **view_kwargs
+                                )
+                                st.success("Custom View Index calculated successfully!")
+                        else:
+                            mode = 'green' if view_type == "Green View Index" else 'sky'
+                            view_grid = get_view_index(
+                                data['voxcity_grid'], 
+                                data['meshsize'], 
+                                mode=mode, 
+                                **view_kwargs
+                            )
+                            st.success(f"{view_type} calculated successfully!")
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
@@ -1007,7 +1066,7 @@ with tab_view:
                                         sim_surface_opacity=0.95,
                                         show=False,
                                         return_fig=True,
-                                        title=view_type
+                                        title=(view_type if view_type != "Custom (Select Classes)" else "Custom View Index")
                                     )
                                     if fig is not None:
                                         st.plotly_chart(fig, use_container_width=True)
@@ -1024,7 +1083,14 @@ with tab_view:
                     else:
                         # Building surfaces: compute surface view factor on building meshes
                         try:
-                            if view_type == "Green View Index":
+                            if view_type == "Custom (Select Classes)":
+                                if len(selected_custom_values) == 0:
+                                    st.error("Please select at least one class for the custom view.")
+                                    mesh = None
+                                else:
+                                    target_values = tuple(selected_custom_values)
+                                    inclusion_mode = inclusion_mode_custom
+                            elif view_type == "Green View Index":
                                 target_values = (-2,)  # trees
                                 inclusion_mode = True
                             else:
@@ -1041,7 +1107,13 @@ with tab_view:
                                 vmax=1.0,
                                 obj_export=export_obj,
                                 output_directory=output_dir,
-                                output_file_name='surface_' + ('gvi' if view_type == 'Green View Index' else 'svi')
+                                output_file_name=(
+                                    'surface_' + (
+                                        'gvi' if view_type == 'Green View Index' else (
+                                            'svi' if view_type == 'Sky View Index' else 'custom_vi'
+                                        )
+                                    )
+                                )
                             )
                         except Exception as e:
                             mesh = None
@@ -1092,7 +1164,13 @@ with tab_view:
                                         render_voxel_buildings=False,
                                         show=False,
                                         return_fig=True,
-                                        title=("Surface " + ("GVI" if view_type=="Green View Index" else "SVI"))
+                                        title=(
+                                            "Surface " + (
+                                                "GVI" if view_type=="Green View Index" else (
+                                                    "SVI" if view_type=="Sky View Index" else "Custom View"
+                                                )
+                                            )
+                                        )
                                     )
                                     if fig_b is not None:
                                         st.plotly_chart(fig_b, use_container_width=True)
