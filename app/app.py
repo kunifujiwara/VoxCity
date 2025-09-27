@@ -970,41 +970,64 @@ with tab_view:
 
             # Custom class selection UI
             if view_type == "Custom (Select Classes)":
-                st.markdown("Select target classes and mode")
-                inc_exc = st.radio(
-                    "Mode",
-                    ["Inclusion (count selected classes)", "Exclusion (allow only selected classes)"],
-                    horizontal=False,
-                    key="view_custom_mode"
-                )
+                col_mode, col_sel = st.columns([1, 2])
+                with col_mode:
+                    inc_exc = st.radio(
+                        "Mode",
+                        ["Inclusion (count selected classes)", "Exclusion (allow only selected classes)"],
+                        horizontal=False,
+                        key="view_custom_mode"
+                    )
                 inclusion_mode_custom = inc_exc.startswith("Inclusion")
 
-                # Fixed list of selectable classes (display only names)
-                custom_class_options = [
+                # Fixed list of selectable classes
+                base_class_options = [
                     (-3, "Building"),
                     (-2, "Tree"),
-                    (1, "Bareland (land cover)"),
-                    (2, "Rangeland (land cover)"),
-                    (3, "Shrub (land cover)"),
-                    (4, "Agriculture land (land cover)"),
-                    (5, "Tree (land cover)"),
-                    (6, "Moss and lichen (land cover)"),
-                    (7, "Wet land (land cover)"),
-                    (8, "Mangrove (land cover)"),
-                    (9, "Water (land cover)"),
-                    (10, "Snow and ice (land cover)"),
-                    (11, "Developed space (land cover)"),
-                    (12, "Road (land cover)"),
-                    (13, "Building (land cover)")
+                ]
+                land_cover_options = [
+                    (1, "Bareland"),
+                    (2, "Rangeland"),
+                    (3, "Shrub"),
+                    (4, "Agriculture land"),
+                    (6, "Moss and lichen"),
+                    (7, "Wet land"),
+                    (8, "Mangrove"),
+                    (9, "Water"),
+                    (10, "Snow and ice"),
+                    (11, "Developed space"),
+                    (12, "Road"),
                 ]
 
-                # Render checkboxes with names only
                 selected_custom_values = []
-                with st.container():
-                    for code, name in custom_class_options:
-                        checked = st.checkbox(name, value=False, key=f"vc_cls_{code}")
-                        if checked:
-                            selected_custom_values.append(int(code))
+                with col_sel:
+                    bcol1, bcol2 = st.columns(2)
+                    with bcol1:
+                        if st.button("Select all", key="vc_cls_btn_all"):
+                            for code, _ in base_class_options + land_cover_options:
+                                st.session_state[f"vc_cls_{code}"] = True
+                    with bcol2:
+                        if st.button("Clear all", key="vc_cls_btn_none"):
+                            for code, _ in base_class_options + land_cover_options:
+                                st.session_state[f"vc_cls_{code}"] = False
+
+                    # Above ground section
+                    st.markdown("Above ground")
+                    b1, b2 = st.columns(2)
+                    for (code, name), col in zip(base_class_options, [b1, b2]):
+                        with col:
+                            checked = st.checkbox(name, key=f"vc_cls_{code}")
+                            if checked:
+                                selected_custom_values.append(int(code))
+
+                    # Land cover section
+                    st.markdown("Land cover")
+                    cols = st.columns(3)
+                    for idx, (code, name) in enumerate(land_cover_options):
+                        with cols[idx % 3]:
+                            checked = st.checkbox(name, key=f"vc_cls_{code}")
+                            if checked:
+                                selected_custom_values.append(int(code))
 
             run_view = st.button("Calculate View Index")
         
