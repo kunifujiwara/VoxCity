@@ -315,7 +315,7 @@ with tab1:
                 st.success("Rectangle vertices set successfully!")
         
         if area_method == "Draw on map":
-            city_name = st.text_input("Enter city name", value="New York")
+            city_name = st.text_input("Enter city name", value="Tokyo")
             zoom_level = 14
             selection_mode = st.radio(
                 "Selection mode",
