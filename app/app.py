@@ -452,14 +452,7 @@ with tab1:
                                     st.caption(f"Center set at lon {last_click[0]:.6f}, lat {last_click[1]:.6f}")
                                 st.session_state["show_dims_success"] = True
                                 st.rerun()
-                        # Offer to use city bounding box directly
-                        if (st.session_state.rectangle_vertices is None) and city_bbox:
-                            if st.button("Use city bounding box as rectangle"):
-                                west, south, east, north = city_bbox
-                                st.session_state.rectangle_vertices = [
-                                    (west, south), (west, north), (east, north), (east, south)
-                                ]
-                                st.success("Rectangle set from city bounding box.")
+                        # Offer to use city bounding box directly (removed per request)
                     except Exception as e:
                         st.error(f"Error loading map: {str(e)}")
             # Keep map visible after draw/app reruns using persisted center/zoom
