@@ -762,6 +762,7 @@ with tab_solar:
         with hdr_r:
             run_solar = st.button("Run Simulation", key="run_solar_btn")
         ctrl_col, vis_col = st.columns([1, 3])
+        solar_status = vis_col.empty()
 
         with ctrl_col:
             solar_calc_type = st.radio("Calculation Type", ["Instantaneous", "Cumulative"], horizontal=True)
@@ -794,8 +795,8 @@ with tab_solar:
                 epw_file = st.file_uploader("Upload EPW file", type=['epw'])
 
         if run_solar:
-            with st.spinner("Running solar radiation analysis..."):
-                try:
+            with solar_status.container():
+                with st.spinner("Running solar radiation analysis..."):
                     data = st.session_state.voxcity_data
                     
                     # Save uploaded EPW to a temp path if provided
@@ -851,8 +852,6 @@ with tab_solar:
                             diffuse_irradiance_scaling=1.0,
                             **solar_kwargs
                         )
-                        
-                        st.success("Solar analysis completed!")
                         
                         # 3D Plotly visualization of ground-level results (left panel)
                         with vis_col:
@@ -916,8 +915,6 @@ with tab_solar:
                             **irradiance_kwargs
                         )
                         
-                        with ctrl_col:
-                            st.success("Building solar analysis completed!")
                         # Visualize building-surface irradiance in 3D (left panel)
                         with vis_col:
                             try:
@@ -951,8 +948,7 @@ with tab_solar:
                             except Exception as ve:
                                 st.warning(f"3D building visualization failed: {ve}")
                         
-                except Exception as e:
-                    st.error(f"Error in solar analysis: {str(e)}")
+                    
 
 # Tab 4b: View
 with tab_view:
@@ -965,6 +961,7 @@ with tab_view:
         with hdr_r:
             run_view = st.button("Run Simulation", key="run_view_btn")
         ctrl_col, vis_col = st.columns([1, 3])
+        view_status = vis_col.empty()
 
         with ctrl_col:
             view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index", "Custom (Select Classes)"])
@@ -1039,8 +1036,8 @@ with tab_view:
         # run_view is defined in header; no duplicate button here
         
         if run_view:
-            with st.spinner(f"Calculating {view_type}..."):
-                try:
+            with view_status.container():
+                with st.spinner(f"Calculating {view_type}..."):
                     data = st.session_state.voxcity_data
                     
                     output_dir = os.path.join(BASE_OUTPUT_DIR, "view")
@@ -1069,7 +1066,6 @@ with tab_view:
                                     inclusion_mode=inclusion_mode_custom,
                                     **view_kwargs
                                 )
-                                st.success("Custom View Index calculated successfully!")
                         else:
                             mode = 'green' if view_type == "Green View Index" else 'sky'
                             view_grid = get_view_index(
@@ -1078,7 +1074,6 @@ with tab_view:
                                 mode=mode, 
                                 **view_kwargs
                             )
-                            st.success(f"{view_type} calculated successfully!")
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
@@ -1207,8 +1202,7 @@ with tab_view:
                                 except Exception as ve:
                                     st.warning(f"Surface view rendering failed: {ve}")
                     
-                except Exception as e:
-                    st.error(f"Error calculating view index: {str(e)}")
+                    
 
 # Tab 4c: Landmark
 with tab_landmark:
@@ -1221,6 +1215,7 @@ with tab_landmark:
         with hdr_r:
             run_landmark = st.button("Run Simulation", key="run_landmark_btn")
         ctrl_col, vis_col = st.columns([1, 3])
+        landmark_status = vis_col.empty()
         with ctrl_col:
             st.caption("Optionally enter landmark building IDs (comma-separated). If left blank, the center building of the rectangle is used.")
             analysis_target_lm = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="landmark_analysis_target")
@@ -1305,8 +1300,8 @@ with tab_landmark:
             ids_text = st.session_state.get('landmark_ids_text', '')
         # run_landmark is defined in header; no duplicate here
         if run_landmark:
-            with st.spinner("Computing landmark visibility..."):
-                try:
+            with landmark_status.container():
+                with st.spinner("Computing landmark visibility..."):
                     data = st.session_state.voxcity_data
                     output_dir_lm = os.path.join(BASE_OUTPUT_DIR, 'landmark')
                     os.makedirs(output_dir_lm, exist_ok=True)
@@ -1468,8 +1463,7 @@ with tab_landmark:
                                 if fig is not None:
                                     st.plotly_chart(fig, use_container_width=True)
                         # (Removed duplicate rendering block that referenced undefined vis_map/vox_marked)
-                except Exception as e:
-                    st.error(f"Error computing landmark visibility: {e}")
+                    
 
 # Tab 5: Export
 with tab5:
