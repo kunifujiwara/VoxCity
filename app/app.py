@@ -624,7 +624,8 @@ with tab2:
     else:
         # Limit to sources that don't require Earth Engine
         building_sources = ['OpenStreetMap', 'Local file']
-        land_cover_sources = ['OpenStreetMap']
+        # OpenEarthMapJapan is available without Earth Engine
+        land_cover_sources = ['OpenStreetMap', 'OpenEarthMapJapan']
         canopy_height_sources = ['Static']
         dem_sources = ['Flat']
         
@@ -635,14 +636,50 @@ with tab2:
 
     with left_col:
         st.markdown("<h3 class='vc-subheader-small'>Data Sources</h3>", unsafe_allow_html=True)
-        building_source = st.selectbox("Building Source", building_sources)
+        # Auto-default data sources based on location (Japan vs Other)
+        rect_vertices = st.session_state.get('rectangle_vertices')
+        loc_signature = tuple(rect_vertices) if rect_vertices else None
+        # Apply defaults only when the target area changes (so user overrides persist)
+        if st.session_state.get('ds_loc_sig') != loc_signature:
+            # Determine if center of rectangle is within Japan bounding box
+            is_japan = False
+            if rect_vertices and len(rect_vertices) >= 3:
+                center_lon = (rect_vertices[0][0] + rect_vertices[2][0]) / 2.0
+                center_lat = (rect_vertices[0][1] + rect_vertices[2][1]) / 2.0
+                if (122.0 <= center_lon <= 154.0) and (24.0 <= center_lat <= 46.5):
+                    is_japan = True
+            # Desired defaults
+            desired_building_source = 'OpenStreetMap'
+            desired_building_complementary = 'None'
+            desired_land_cover = 'OpenEarthMapJapan' if is_japan else 'OpenStreetMap'
+            desired_canopy = 'Static'
+            desired_dem = 'Flat'
+            # Resolve to available options with sensible fallbacks
+            def resolve(desired_value, options, fallback=None):
+                if desired_value in options:
+                    return desired_value
+                if fallback and (fallback in options):
+                    return fallback
+                return options[0] if options else desired_value
+            # Compute lists used by widgets
+            comp_options = ['None'] + [s for s in building_sources if s != 'Local file']
+            st.session_state['ds_building_source'] = resolve(desired_building_source, building_sources)
+            st.session_state['ds_building_complementary_source'] = resolve(desired_building_complementary, comp_options, 'None')
+            st.session_state['ds_land_cover_source'] = resolve(desired_land_cover, land_cover_sources, 'OpenStreetMap')
+            st.session_state['ds_canopy_height_source'] = resolve(desired_canopy, canopy_height_sources)
+            st.session_state['ds_dem_source'] = resolve(desired_dem, dem_sources)
+            st.session_state['ds_loc_sig'] = loc_signature
+
+        # Widgets bound to session state keys, preserving user changes across reruns
+        building_source = st.selectbox("Building Source", building_sources, key='ds_building_source')
         building_complementary_source = st.selectbox(
             "Building Complementary Source",
-            ['None'] + [s for s in building_sources if s != 'Local file']
+            ['None'] + [s for s in building_sources if s != 'Local file'],
+            key='ds_building_complementary_source'
         )
-        land_cover_source = st.selectbox("Land Cover Source", land_cover_sources)
-        canopy_height_source = st.selectbox("Canopy Height Source", canopy_height_sources)
-        dem_source = st.selectbox("DEM Source", dem_sources)
+        land_cover_source = st.selectbox("Land Cover Source", land_cover_sources, key='ds_land_cover_source')
+        canopy_height_source = st.selectbox("Canopy Height Source", canopy_height_sources, key='ds_canopy_height_source')
+        dem_source = st.selectbox("DEM Source", dem_sources, key='ds_dem_source')
 
         st.subheader("Parameters")
         meshsize = st.number_input("Mesh Size (meters)", value=5, min_value=1, max_value=50)
