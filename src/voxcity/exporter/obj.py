@@ -681,6 +681,7 @@ def export_netcdf_to_obj(
     classes_to_show=None,
     voxel_color_scheme="default",
     max_faces_warn=1_000_000,
+    export_vox_base=True,
 ):
     """
     Export two OBJ/MTL files using the same local meter frame:
@@ -718,6 +719,8 @@ def export_netcdf_to_obj(
         classes_to_show (set[int]|None): Optional subset of voxel classes to export; None -> all present (except 0).
         voxel_color_scheme (str): Color scheme name passed to get_voxel_color_map.
         max_faces_warn (int): Warn if a single class exceeds this many faces.
+        export_vox_base (bool): If False, skip exporting VoxCity OBJ/MTL; VoxCity input
+            is still used to define the shared coordinate system for scalar OBJ.
 
     Returns:
         dict: Paths of written files: keys 'vox_obj','vox_mtl','tm_obj','tm_mtl' (values may be None).
@@ -1345,27 +1348,28 @@ def export_netcdf_to_obj(
     vox_meshes = {}
     tm_meshes = {}
 
-    present = set(np.unique(Av_kji))
-    present.discard(0)
-    if classes_to_show is not None:
-        present &= set(classes_to_show)
-    present = sorted(present)
+    if export_vox_base:
+        present = set(np.unique(Av_kji))
+        present.discard(0)
+        if classes_to_show is not None:
+            present &= set(classes_to_show)
+        present = sorted(present)
 
-    faces_total = 0
-    voxel_color_map = get_voxel_color_map(color_scheme=voxel_color_scheme)
-    for cls in present:
-        mask = Av_kji == cls
-        if not np.any(mask):
-            continue
-        rgb = voxel_color_map.get(int(cls), [200, 200, 200])
-        if greedy_vox:
-            m_cls, faces = make_voxel_mesh_uniform_color_greedy(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
-        else:
-            m_cls, faces = make_voxel_mesh_uniform_color(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
-        if m_cls is not None:
-            vox_meshes[f"voxclass_{int(cls)}"] = m_cls
-            faces_total += faces
-    print(f"[VoxCity] total voxel faces: {faces_total:,}")
+        faces_total = 0
+        voxel_color_map = get_voxel_color_map(color_scheme=voxel_color_scheme)
+        for cls in present:
+            mask = Av_kji == cls
+            if not np.any(mask):
+                continue
+            rgb = voxel_color_map.get(int(cls), [200, 200, 200])
+            if greedy_vox:
+                m_cls, faces = make_voxel_mesh_uniform_color_greedy(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
+            else:
+                m_cls, faces = make_voxel_mesh_uniform_color(mask, Xv_s, Yv_s, Zv_s, rgb=rgb, name=f"class_{int(cls)}")
+            if m_cls is not None:
+                vox_meshes[f"voxclass_{int(cls)}"] = m_cls
+                faces_total += faces
+        print(f"[VoxCity] total voxel faces: {faces_total:,}")
 
     iso_meshes = build_tm_isosurfaces_regular_grid(
         A_scalar=A_s,
@@ -1390,7 +1394,7 @@ def export_netcdf_to_obj(
 
     os.makedirs(output_dir, exist_ok=True)
     obj_vox = mtl_vox = obj_tm = mtl_tm = None
-    if vox_meshes:
+    if export_vox_base and vox_meshes:
         obj_vox, mtl_vox = save_obj_with_mtl_and_normals(vox_meshes, output_dir, vox_base_filename)
     if tm_meshes:
         obj_tm, mtl_tm = save_obj_with_mtl_and_normals(tm_meshes, output_dir, tm_base_filename)
