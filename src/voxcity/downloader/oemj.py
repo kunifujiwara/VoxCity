@@ -19,6 +19,7 @@ Example Usage:
 """
 
 import requests
+import os
 from PIL import Image, ImageDraw
 from io import BytesIO
 import math
@@ -73,7 +74,7 @@ def num2deg(xtile, ytile, zoom):
     lat_deg = math.degrees(lat_rad)
     return (lon_deg, lat_deg)
 
-def download_tiles(polygon, zoom):
+def download_tiles(polygon, zoom, *, ssl_verify=True, allow_insecure_ssl=False, allow_http_fallback=False, timeout_s=30):
     """Download satellite imagery tiles covering a polygon region.
     
     Downloads all tiles that intersect with the given polygon at the specified zoom level
@@ -112,11 +113,70 @@ def download_tiles(polygon, zoom):
     for x in range(min(min_x, max_x), max(min_x, max_x) + 1):
         for y in range(min(min_y, max_y), max(min_y, max_y) + 1):
             url = f"https://www.open-earth-map.org/demo/Japan/{zoom}/{x}/{y}.png"
-            response = requests.get(url)
-            if response.status_code == 200:
-                tiles[(x, y)] = Image.open(BytesIO(response.content))
-            else:
-                print(f"Failed to download tile: {url}")
+            # Try secure HTTPS first with user-provided verification option
+            content = None
+            try:
+                resp = requests.get(url, timeout=timeout_s, verify=ssl_verify)
+                if resp.status_code == 200:
+                    content = resp.content
+                else:
+                    print(f"Failed to download tile (status {resp.status_code}): {url}")
+            except requests.exceptions.SSLError:
+                # Optionally retry with certificate verification disabled
+                if allow_insecure_ssl:
+                    try:
+                        resp = requests.get(url, timeout=timeout_s, verify=False)
+                        if resp.status_code == 200:
+                            content = resp.content
+                        else:
+                            print(f"Failed to download tile (status {resp.status_code}) with insecure SSL: {url}")
+                    except requests.exceptions.RequestException as e:
+                        # Optionally try HTTP fallback
+                        if allow_http_fallback and url.lower().startswith("https://"):
+                            http_url = "http://" + url.split("://", 1)[1]
+                            try:
+                                resp = requests.get(http_url, timeout=timeout_s)
+                                if resp.status_code == 200:
+                                    content = resp.content
+                                else:
+                                    print(f"Failed to download tile over HTTP (status {resp.status_code}): {http_url}")
+                            except requests.exceptions.RequestException as e2:
+                                print(f"HTTP fallback failed for tile: {http_url} ({e2})")
+                        else:
+                            print(f"SSL error downloading tile: {url} ({e})")
+                else:
+                    if allow_http_fallback and url.lower().startswith("https://"):
+                        http_url = "http://" + url.split("://", 1)[1]
+                        try:
+                            resp = requests.get(http_url, timeout=timeout_s)
+                            if resp.status_code == 200:
+                                content = resp.content
+                            else:
+                                print(f"Failed to download tile over HTTP (status {resp.status_code}): {http_url}")
+                        except requests.exceptions.RequestException as e:
+                            print(f"HTTP fallback failed for tile: {http_url} ({e})")
+                    else:
+                        print(f"SSL error downloading tile: {url}")
+            except requests.exceptions.RequestException as e:
+                # Network error (timeout/connection). Try HTTP if allowed.
+                if allow_http_fallback and url.lower().startswith("https://"):
+                    http_url = "http://" + url.split("://", 1)[1]
+                    try:
+                        resp = requests.get(http_url, timeout=timeout_s)
+                        if resp.status_code == 200:
+                            content = resp.content
+                        else:
+                            print(f"Failed to download tile over HTTP (status {resp.status_code}): {http_url}")
+                    except requests.exceptions.RequestException as e2:
+                        print(f"HTTP fallback failed for tile: {http_url} ({e2})")
+                else:
+                    print(f"Error downloading tile: {url} ({e})")
+
+            if content is not None:
+                try:
+                    tiles[(x, y)] = Image.open(BytesIO(content))
+                except Exception as e:
+                    print(f"Error decoding tile image for {url}: {e}")
     
     return tiles, (min(min_x, max_x), min(min_y, max_y), max(min_x, max_x), max(min_y, max_y))
 
@@ -231,6 +291,11 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     pixel_size_x = (lower_right_x - upper_left_x) / image.width
     pixel_size_y = (upper_left_y - lower_right_y) / image.height
     
+    # Ensure output directory exists
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
     # Create GeoTIFF
     driver = gdal.GetDriverByName('GTiff')
     dataset = driver.Create(output_path, image.width, image.height, 3, gdal.GDT_Byte)
@@ -249,7 +314,7 @@ def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     
     dataset = None
 
-def save_oemj_as_geotiff(polygon, filepath, zoom=16):
+def save_oemj_as_geotiff(polygon, filepath, zoom=16, *, ssl_verify=True, allow_insecure_ssl=False, allow_http_fallback=False, timeout_s=30):
     """Download and save OpenEarthMap Japan imagery as a georeferenced GeoTIFF file.
     
     This is the main function that orchestrates the entire process of downloading,
@@ -281,7 +346,14 @@ def save_oemj_as_geotiff(polygon, filepath, zoom=16):
         - The output GeoTIFF will be in Web Mercator projection (EPSG:3857)
     """
     try:
-        tiles, bounds = download_tiles(polygon, zoom)
+        tiles, bounds = download_tiles(
+            polygon,
+            zoom,
+            ssl_verify=ssl_verify,
+            allow_insecure_ssl=allow_insecure_ssl,
+            allow_http_fallback=allow_http_fallback,
+            timeout_s=timeout_s,
+        )
         if not tiles:
             raise ValueError("No tiles were downloaded. Please check the polygon coordinates and zoom level.")
 
