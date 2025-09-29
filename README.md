@@ -7,7 +7,7 @@
 <!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
 
 <p align="center">
-  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a> | Documentation: <a href="https://voxcity.readthedocs.io/en/latest">[Read the Docs]</a> | Video: <a href="https://youtu.be/qHusvKB07qk">[YouTube]</a>
+  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a> | Documentation: <a href="https://voxcity.readthedocs.io/en/latest">[Read the Docs]</a> | Video tutorial: <a href="https://youtu.be/qHusvKB07qk">[Watch on YouTube]</a>
 </p>
 
 <p align="center">
@@ -15,9 +15,19 @@
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/qHusvKB07qk">
-    <img src="https://img.youtube.com/vi/qHusvKB07qk/maxresdefault.jpg" alt="VoxCity Tutorial Video" width="800">
+  <a href="https://youtu.be/qHusvKB07qk" title="Click to watch the VoxCity tutorial on YouTube">
+    <img src="https://img.youtube.com/vi/qHusvKB07qk/maxresdefault.jpg" alt="VoxCity Tutorial (YouTube) — Click to watch" width="800">
   </a>
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/qHusvKB07qk" title="Watch on YouTube">
+    <img src="https://img.shields.io/badge/Watch%20on-YouTube-red?logo=youtube&logoColor=white" alt="Watch on YouTube">
+  </a>
+</p>
+
+<p align="center">
+  <em>Click the image or badge to watch the tutorial on YouTube</em>
 </p>
 
 # VoxCity
