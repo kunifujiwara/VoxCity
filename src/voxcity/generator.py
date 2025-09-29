@@ -147,7 +147,26 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         save_geotiff_dynamic_world_v1(roi, geotiff_path, dynamic_world_date)
     elif source == 'OpenEarthMapJapan':
         # Japan-specific land cover dataset
-        save_oemj_as_geotiff(rectangle_vertices, geotiff_path)   
+        # Allow SSL/HTTP options to be passed through kwargs
+        ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
+        allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
+        allow_http_fallback = kwargs.get('allow_http_fallback', False)
+        timeout_s = kwargs.get('timeout', 30)
+
+        save_oemj_as_geotiff(
+            rectangle_vertices,
+            geotiff_path,
+            ssl_verify=ssl_verify,
+            allow_insecure_ssl=allow_insecure_ssl,
+            allow_http_fallback=allow_http_fallback,
+            timeout_s=timeout_s,
+        )
+        # Ensure the file was actually created before proceeding
+        if not os.path.exists(geotiff_path):
+            raise FileNotFoundError(
+                f"OEMJ download failed; expected GeoTIFF not found: {geotiff_path}. "
+                "You can try setting ssl_verify=False or allow_http_fallback=True in kwargs."
+            )   
     elif source == 'OpenStreetMap':
         # Vector-based land cover from OpenStreetMap
         # This bypasses the GeoTIFF workflow and gets data directly as GeoJSON
