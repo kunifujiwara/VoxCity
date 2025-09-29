@@ -7,11 +7,17 @@
 <!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
 
 <p align="center">
-  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a> | Documentation: <a href="https://voxcity.readthedocs.io/en/latest">[Read the Docs]</a>
+  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a> | Documentation: <a href="https://voxcity.readthedocs.io/en/latest">[Read the Docs]</a> | Video: <a href="https://youtu.be/qHusvKB07qk">[YouTube]</a>
 </p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="Voxcity logo" width="550">
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/qHusvKB07qk">
+    <img src="https://img.youtube.com/vi/qHusvKB07qk/maxresdefault.jpg" alt="VoxCity Tutorial Video" width="800">
+  </a>
 </p>
 
 # VoxCity
