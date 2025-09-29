@@ -41,16 +41,6 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="https://youtu.be/qHusvKB07qk" title="Watch on YouTube">
-    <img src="https://img.shields.io/badge/Watch%20on-YouTube-red?logo=youtube&logoColor=white" alt="Watch on YouTube">
-  </a>
-</p>
-
-<p align="center">
-  <em>Click the image or badge to watch the tutorial on YouTube</em>
-</p>
-
 
 ## Key Features
 
