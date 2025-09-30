@@ -37,7 +37,7 @@
 
 <p align="center">
   <a href="https://youtu.be/qHusvKB07qk" title="Click to watch the VoxCity tutorial on YouTube">
-    <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/youtube_thumbnail_play.svg" alt="VoxCity Tutorial — Click to watch on YouTube" width="480">
+    <img src="images/youtube_thumbnail_play.png" alt="VoxCity Tutorial — Click to watch on YouTube" width="480">
   </a>
 </p>
 
