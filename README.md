@@ -36,8 +36,10 @@
 - **YouTube video (walkthrough)**: <a href="https://youtu.be/qHusvKB07qk">Watch on YouTube</a>
 
 <p align="center">
-  <a href="https://youtu.be/qHusvKB07qk" title="Click to watch the VoxCity tutorial on YouTube">
-    <img src="https://img.youtube.com/vi/qHusvKB07qk/maxresdefault.jpg" alt="VoxCity Tutorial (YouTube) — Click to watch" width="800">
+  <a href="https://youtu.be/qHusvKB07qk" title="Click to watch the VoxCity tutorial on YouTube" style="position: relative; display: inline-block;">
+    <img src="https://img.youtube.com/vi/qHusvKB07qk/maxresdefault.jpg" alt="VoxCity Tutorial (YouTube) — Click to watch" width="800" style="display: block;">
+    <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 96px; height: 96px; background: rgba(0, 0, 0, 0.5); border-radius: 50%;"></span>
+    <span style="position: absolute; top: 50%; left: 50%; transform: translate(-35%, -50%); width: 0; height: 0; border-top: 18px solid transparent; border-bottom: 18px solid transparent; border-left: 28px solid white;"></span>
   </a>
 </p>
 
