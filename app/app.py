@@ -997,7 +997,7 @@ with tab_view:
             view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index", "Custom (Select Classes)"])
             analysis_target_view = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="view_analysis_target")
             view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
-            export_obj = st.checkbox("Export as OBJ file", value=False)
+            export_obj_flag = st.checkbox("Export as OBJ file", value=False)
             # Defaults for custom selection to ensure variables exist even if not used
             selected_custom_values = []
             inclusion_mode_custom = True
@@ -1077,7 +1077,7 @@ with tab_view:
                         view_kwargs = {
                             "view_point_height": view_point_height,
                             "dem_grid": data['dem_grid'],
-                            "obj_export": export_obj,
+                            "obj_export": export_obj_flag,
                             "output_directory": output_dir,
                             "output_file_name": (
                                 "gvi" if view_type == "Green View Index" else ("svi" if view_type == "Sky View Index" else "custom_vi")
@@ -1160,7 +1160,7 @@ with tab_view:
                                 colormap='viridis',
                                 vmin=0.0,
                                 vmax=1.0,
-                                obj_export=export_obj,
+                                obj_export=export_obj_flag,
                                 output_directory=output_dir,
                                 output_file_name=(
                                     'surface_' + (
