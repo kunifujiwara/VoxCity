@@ -1,0 +1,2 @@
+docker build -t voxcity-app -f Dockerfile .
+docker run --rm -p 8501:8501 --name voxcity voxcity-app
