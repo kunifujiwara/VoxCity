@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     wget curl vim nano htop \
     build-essential cmake \
     # Geospatial libraries
-    gdal-bin libgdal-dev \
+    gdal-bin libgdal-dev python3-gdal \
     libspatialindex-dev \
     libproj-dev proj-data proj-bin \
     libgeos-dev \
@@ -23,33 +23,19 @@ RUN apt-get update && apt-get install -y \
     gfortran \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up Python environment
-RUN python3 -m venv /opt/venv
+# Set up Python environment (allow access to system site-packages for python3-gdal)
+RUN python3 -m venv /opt/venv --system-site-packages
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Upgrade pip and install wheel
 RUN pip install --upgrade pip setuptools wheel
 
-# Install GDAL Python bindings (version should match system GDAL)
-RUN pip install GDAL==$(gdal-config --version) --global-option=build_ext --global-option="-I/usr/include/gdal"
+# Constrain scientific stack to avoid NumPy 2 ABI issues
+RUN printf "numpy<2\nnumba<0.60\nxarray<2025.1\nrasterio==1.3.11\nfiona<1.10\n" > /tmp/constraints.txt
 
-# Install geospatial Python packages
-RUN pip install \
-    numpy \
-    pandas \
-    geopandas \
-    shapely \
-    fiona \
-    pyproj \
-    rasterio \
-    earthengine-api \
-    geemap
-
-# Install VoxCity and its dependencies
-RUN pip install voxcity
-
-# Install web app specific packages
-RUN pip install \
+# Install VoxCity and app dependencies under constraints
+RUN pip install -c /tmp/constraints.txt \
+    voxcity \
     streamlit>=1.28.0 \
     streamlit-folium>=0.15.0 \
     folium>=0.14.0 \
@@ -63,10 +49,13 @@ RUN pip install \
     seaborn \
     contextily \
     tqdm \
-    ipython
-
-# Install additional packages that might be needed for VoxCity
-RUN pip install \
+    ipython \
+    pandas \
+    geopandas \
+    shapely \
+    pyproj \
+    earthengine-api \
+    geemap \
     trimesh \
     pyvista \
     vtk \
@@ -113,7 +102,7 @@ Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &\n\
 # Wait for display to be ready\n\
 sleep 2\n\
 # Run streamlit app\n\
-streamlit run app.py --server.port=8501 --server.address=0.0.0.0' > /app/entrypoint.sh && \
+/opt/venv/bin/streamlit run app.py --server.port=8501 --server.address=0.0.0.0' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Default command
