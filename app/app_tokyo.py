@@ -18,16 +18,28 @@ import tempfile
 import glob
 import requests
 from geopy import distance
+try:
+    from tokyo_las import (
+        get_ndsm_grid,
+        align_ndsm_to_landcover,
+        build_canopy_from_ndsm,
+        fill_canopy_gaps_with_nearest,
+        summarize_grid,
+    )
+    TOKYO_LAS_AVAILABLE = True
+except Exception:
+    TOKYO_LAS_AVAILABLE = False
 
 # Import VoxCity modules
 try:
     from voxcity.generator import get_voxcity_CityGML
+    from voxcity.generator import create_3d_voxel
     from voxcity.geoprocessor.draw import draw_rectangle_map_cityname, center_location_map_cityname
     from voxcity.simulator.solar import get_building_global_solar_irradiance_using_epw, get_global_solar_irradiance_using_epw
     from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map, mark_building_by_id
     from voxcity.exporter.cityles import export_cityles
     from voxcity.exporter.obj import export_obj
-    from voxcity.utils.visualization import visualize_voxcity_plotly, visualize_building_sim_results, visualize_numerical_gdf_on_basemap
+    from voxcity.utils.visualization import visualize_voxcity_plotly, visualize_building_sim_results, visualize_numerical_gdf_on_basemap, get_land_cover_classes
     from voxcity.geoprocessor.network import get_network_values
 except ImportError:
     st.error("VoxCity package not installed. Please install it using: pip install voxcity")
@@ -100,6 +112,7 @@ APP_DIR = os.path.dirname(__file__)
 _fav_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'docs', '_static', 'favicon.ico'))
 _logo_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo.png'))
 _logo_blue_candidate = os.path.normpath(os.path.join(APP_DIR, '..', 'images', 'logo_blue.png'))
+LAS_DIR = os.path.normpath(os.path.join(APP_DIR, 'data', 'tokyo_las'))
 PAGE_ICON = (
     _fav_candidate if os.path.exists(_fav_candidate)
     else (_logo_candidate if os.path.exists(_logo_candidate) else None)
@@ -736,6 +749,85 @@ with tab2:
                             'meshsize': meshsize,
                             'rectangle_vertices': st.session_state.rectangle_vertices
                         }
+
+                        # Optional: refine canopy using Tokyo LAS nDSM if available and area is in Japan
+                        try:
+                            if TOKYO_LAS_AVAILABLE and os.path.isdir(LAS_DIR) and ('OpenEarthMapJapan' in str(land_cover_source)) and is_japan:
+                                data = st.session_state.voxcity_data
+                                rectangle_vertices = data['rectangle_vertices']
+                                land_cover_grid = data['land_cover_grid']
+
+                                # Resolve tree class id for OEMJ
+                                _lc_classes = get_land_cover_classes(land_cover_source)
+                                _name_to_id = {name: i for i, name in enumerate(_lc_classes.values())}
+                                tree_id = (
+                                    _name_to_id.get('Tree')
+                                    or _name_to_id.get('Trees')
+                                    or _name_to_id.get('Tree Canopy')
+                                    or 4
+                                )
+
+                                ndsm_grid = get_ndsm_grid(
+                                    rectangle_vertices,
+                                    meshsize,
+                                    source='tokyo_dsm',
+                                    output_dir=output_dir,
+                                    las_dir=LAS_DIR,
+                                )
+                                ndsm_aligned, _align_info = align_ndsm_to_landcover(
+                                    ndsm_grid,
+                                    land_cover_grid,
+                                    tree_value=tree_id,
+                                    allow_resample=True,
+                                    try_vertical_flip=True,
+                                )
+                                canopy_initial = build_canopy_from_ndsm(
+                                    ndsm_aligned,
+                                    land_cover_grid,
+                                    tree_value=tree_id,
+                                    non_tree_fill=np.nan,
+                                    clamp_negative_to_zero=True,
+                                )
+                                canopy_refined = fill_canopy_gaps_with_nearest(
+                                    canopy_initial,
+                                    ndsm_aligned,
+                                    land_cover_grid,
+                                    tree_value=tree_id,
+                                    treat_zero_as_missing=False,
+                                    restrict_neighbors_to_tree=False,
+                                    allow_resample=False,
+                                )
+                                # Replace NaN with 0 for downstream processing
+                                canopy_refined = np.nan_to_num(canopy_refined, nan=0.0)
+
+                                # Bottom from trunk ratio
+                                trunk_height_ratio = 11.76 / 19.98
+                                canopy_bottom = np.minimum(canopy_refined * float(trunk_height_ratio), canopy_refined)
+
+                                # Rebuild voxel grid with refined canopy
+                                voxcity_grid_refined = create_3d_voxel(
+                                    data['building_height_grid'],
+                                    data['building_min_height_grid'],
+                                    data['building_id_grid'],
+                                    data['land_cover_grid'],
+                                    data['dem_grid'],
+                                    canopy_refined,
+                                    data['meshsize'],
+                                    land_cover_source,
+                                    canopy_bottom_height_grid_ori=canopy_bottom,
+                                )
+
+                                # Update session data
+                                st.session_state.voxcity_data['canopy_height_grid'] = canopy_refined
+                                st.session_state.voxcity_data['canopy_bottom_height_grid'] = canopy_bottom
+                                st.session_state.voxcity_data['voxcity_grid'] = voxcity_grid_refined
+                                try:
+                                    summarize_grid('Canopy', canopy_refined)
+                                except Exception:
+                                    pass
+                        except Exception as _las_e:
+                            # Non-fatal; keep original canopy if refinement fails
+                            pass
                         # Show preview only (no extra messages/metrics)
                         data = st.session_state.voxcity_data
                         with st.spinner("Rendering 3D view..."):
