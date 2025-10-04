@@ -150,6 +150,74 @@ def find_las_files(base_dir):
 
 
 # =========================
+# LAS spatial filtering
+# =========================
+def read_las_bounds_and_crs(las_path):
+    """Return ((xmin, ymin, xmax, ymax), crs) from LAS/LAZ header.
+    Falls back gracefully if CRS is missing.
+    """
+    try:
+        with laspy.open(las_path) as f:
+            hdr = f.header
+            mins = getattr(hdr, "mins", None)
+            maxs = getattr(hdr, "maxs", None)
+            if mins is None or maxs is None:
+                return None, None
+            x_min, y_min = float(mins[0]), float(mins[1])
+            x_max, y_max = float(maxs[0]), float(maxs[1])
+            try:
+                crs = hdr.parse_crs()
+            except Exception:
+                crs = None
+            return (x_min, y_min, x_max, y_max), crs
+    except Exception as e:
+        print(f"Warning: failed to read LAS header for {las_path}: {e}")
+        return None, None
+
+def filter_las_files_by_aoi(las_files, rectangle_vertices, target_crs, pad_m=0.0):
+    """Filter LAS/LAZ files to only those intersecting the AOI rectangle.
+
+    rectangle_vertices: WGS84 lon/lat vertices (can be open or closed ring)
+    target_crs: CRS string like "EPSG:6677" used to evaluate intersections
+    pad_m: optional buffer in meters around AOI in target CRS
+    """
+    if not las_files:
+        return []
+
+    # Close polygon if needed
+    if rectangle_vertices[0] != rectangle_vertices[-1]:
+        rectangle_vertices = list(rectangle_vertices) + [rectangle_vertices[0]]
+    poly_w84 = Polygon(rectangle_vertices)
+    to_target = Transformer.from_crs("EPSG:4326", target_crs, always_xy=True).transform
+    poly_target = shp_transform(to_target, poly_w84)
+    if pad_m:
+        poly_target = poly_target.buffer(pad_m)
+
+    selected = []
+    for fp in las_files:
+        bounds, las_crs = read_las_bounds_and_crs(fp)
+        if not bounds:
+            continue
+        xmin, ymin, xmax, ymax = bounds
+        bpoly = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax), (xmin, ymin)])
+        try:
+            if las_crs is not None and str(las_crs) != str(target_crs):
+                to_target_from_las = Transformer.from_crs(las_crs, target_crs, always_xy=True).transform
+                bpoly_t = shp_transform(to_target_from_las, bpoly)
+            else:
+                bpoly_t = bpoly
+        except Exception as e:
+            print(f"Warning: CRS transform failed for {fp}: {e}. Assuming target CRS.")
+            bpoly_t = bpoly
+
+        if bpoly_t.intersects(poly_target):
+            selected.append(fp)
+
+    print(f"Selected {len(selected)} / {len(las_files)} LAS files intersecting AOI")
+    return selected
+
+
+# =========================
 # CRS helpers
 # =========================
 def choose_jprcs_epsg(lons):
@@ -592,6 +660,12 @@ def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las"
     print(f"Found {len(las_files)} LAS files")
     if not las_files:
         raise FileNotFoundError(f"No LAS/LAZ files found under '{las_dir}'")
+
+    # New: filter LAS files by AOI intersection in target CRS
+    print("Filtering LAS files by AOI intersection...")
+    las_files = filter_las_files_by_aoi(las_files, rectangle_vertices, target_crs, pad_m=crop_pad_m)
+    if not las_files:
+        raise FileNotFoundError("No LAS/LAZ files intersect the specified rectangle.")
 
     # Step 4: LAS→DSM/DTM (write with target_crs)
     print("\nStep 4: Processing LAS files to create DSM and DTM GeoTIFFs...")
