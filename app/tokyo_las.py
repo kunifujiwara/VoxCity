@@ -969,6 +969,9 @@ def fill_canopy_gaps_with_nearest(
     tie_tol: float = 1e-9,
     k_for_knn: int = 8,
     non_tree_fill: float = 0.0,          # ← ensure non-tree cells are this (default 0)
+    max_neighbor_distance_m: float = None,  # if set, donors must be within this distance (meters)
+    cell_size_m: float = 1.0,            # size of a grid cell (meters)
+    fallback_tree_height_m: float = None # if set, tree cells still missing after fill get this value
 ) -> np.ndarray:
     """
     Fill missing canopy heights at tree cells using nearest valid nDSM cells.
@@ -1043,6 +1046,14 @@ def fill_canopy_gaps_with_nearest(
             di = di[finite]
             ii = ii[finite]
 
+            # Apply distance threshold in meters if requested
+            if max_neighbor_distance_m is not None:
+                allowed = (di * float(cell_size_m)) <= float(max_neighbor_distance_m)
+                if not np.any(allowed):
+                    continue
+                di = di[allowed]
+                ii = ii[allowed]
+
             d0 = di[0]
             tie_mask = np.abs(di - d0) <= tie_tol
             tied_vals = donor_vals[ii[tie_mask]]
@@ -1054,6 +1065,12 @@ def fill_canopy_gaps_with_nearest(
 
         # **Enforce:** non-tree cells = 0 (or non_tree_fill)
         out[~tree_mask] = non_tree_fill
+
+        # Fallback: assign static height to any remaining missing tree cells
+        if fallback_tree_height_m is not None:
+            still_missing = tree_mask & np.isnan(out)
+            if np.any(still_missing):
+                out[still_missing] = float(fallback_tree_height_m)
         return out
 
     except Exception:
@@ -1065,13 +1082,20 @@ def fill_canopy_gaps_with_nearest(
             out[~tree_mask] = non_tree_fill
             return out
 
+        # Limit search radius by max_neighbor_distance_m if provided
+        max_r_cells = max(H, W)
+        if max_neighbor_distance_m is not None:
+            try:
+                max_r_cells = max(1, int(math.floor(float(max_neighbor_distance_m) / float(cell_size_m))))
+            except Exception:
+                max_r_cells = max(H, W)
+
         for (r0, c0) in zip(*np.where(missing)):
             if not np.isnan(out[r0, c0]):
                 continue
 
             found_val = np.nan
-            max_r = max(H, W)
-            for rad in range(1, max_r):
+            for rad in range(1, max_r_cells + 1):
                 r1 = max(0, r0 - rad); r2 = min(H - 1, r0 + rad)
                 c1 = max(0, c0 - rad); c2 = min(W - 1, c0 + rad)
 
@@ -1097,6 +1121,13 @@ def fill_canopy_gaps_with_nearest(
 
         # **Enforce:** non-tree cells = 0 (or non_tree_fill)
         out[~(land_cover_grid == tree_value)] = non_tree_fill
+
+        # Fallback: assign static height to any remaining missing tree cells
+        if fallback_tree_height_m is not None:
+            tree_mask_local = (land_cover_grid == tree_value)
+            still_missing = tree_mask_local & np.isnan(out)
+            if np.any(still_missing):
+                out[still_missing] = float(fallback_tree_height_m)
         return out
 
 def build_canopy_height_grid(
@@ -1128,5 +1159,65 @@ def build_canopy_height_grid(
     valid = ~np.isnan(ndsm)
     canopy[tree_mask & valid] = ndsm[tree_mask & valid]
     return canopy
+
+def _binary_dilation_square(mask: np.ndarray, radius_cells: int) -> np.ndarray:
+    """Simple binary dilation using a square (Chebyshev) radius via numpy rolls."""
+    if radius_cells <= 0:
+        return mask.astype(bool)
+    m = mask.astype(bool)
+    H, W = m.shape
+    out = np.zeros_like(m, dtype=bool)
+    for dr in range(-radius_cells, radius_cells + 1):
+        for dc in range(-radius_cells, radius_cells + 1):
+            out |= np.roll(np.roll(m, dr, axis=0), dc, axis=1)
+    return out
+
+def remove_local_spikes_in_canopy(
+    canopy_grid: np.ndarray,
+    land_cover_grid: np.ndarray,
+    *,
+    tree_value,
+    building_value,
+    high_threshold_m: float = 10.0,
+    min_adjacent_tree_neighbors: int = 4,   # "more than 2"
+    building_buffer_m: float = 15.0,
+    cell_size_m: float = 1.0,
+    replacement_tree_height_m: float = None
+) -> np.ndarray:
+    """
+    Remove canopy spikes:
+      - Any tree cell with height > high_threshold_m must have at least
+        `min_adjacent_tree_neighbors` tree neighbors (8-neighborhood).
+      - Suppress tree heights > high_threshold_m within `building_buffer_m`
+        of building cells.
+    Spikes are set to NaN.
+    """
+    can = canopy_grid.astype(float).copy()
+
+    tree_mask = _tree_mask_from_value(land_cover_grid, tree_value)
+    bld_mask = _tree_mask_from_value(land_cover_grid, building_value)
+
+    # 1) Neighbor tree count (8-connectivity)
+    neighbor_count = np.zeros_like(tree_mask, dtype=np.int32)
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0:
+                continue
+            neighbor_count += np.roll(np.roll(tree_mask, dr, axis=0), dc, axis=1).astype(np.int32)
+
+    high = (tree_mask) & np.isfinite(can) & (can > float(high_threshold_m))
+    insufficient_neighbors = high & (neighbor_count < int(min_adjacent_tree_neighbors))
+
+    # 2) Proximity to buildings
+    radius_cells = int(max(0, math.ceil(float(building_buffer_m) / float(cell_size_m))))
+    near_building = _binary_dilation_square(bld_mask, radius_cells)
+    high_near_building = high & near_building
+
+    to_suppress = insufficient_neighbors | high_near_building
+    if replacement_tree_height_m is None:
+        can[to_suppress] = np.nan
+    else:
+        can[to_suppress] = float(replacement_tree_height_m)
+    return can
 
  
