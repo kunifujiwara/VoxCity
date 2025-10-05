@@ -2502,7 +2502,30 @@ def visualize_voxcity_plotly(
             if max_dim > max_dimension:
                 stride = int(np.ceil(max_dim / max_dimension))
         if stride > 1:
-            vox = vox[::stride, ::stride, ::stride]
+            # Surface-aware downsampling:
+            # - Stride in X and Y for speed
+            # - Along Z, choose the topmost non-zero within each stride window
+            orig = voxel_array
+            nx0, ny0, nz0 = orig.shape
+            xs = orig[::stride, ::stride, :]
+            nx_ds, ny_ds, _ = xs.shape
+            nz_ds = int(np.ceil(nz0 / float(stride)))
+            vox = np.zeros((nx_ds, ny_ds, nz_ds), dtype=orig.dtype)
+            for k in range(nz_ds):
+                z0w = k * stride
+                z1w = min(z0w + stride, nz0)
+                W = xs[:, :, z0w:z1w]
+                if W.size == 0:
+                    continue
+                nz_mask = (W != 0)
+                has_any = nz_mask.any(axis=2)
+                # find topmost index within window where any class exists
+                rev_mask = nz_mask[:, :, ::-1]
+                idx_rev = rev_mask.argmax(axis=2)
+                real_idx = (W.shape[2] - 1) - idx_rev
+                # gather labels at that topmost index
+                gathered = np.take_along_axis(W, real_idx[..., None], axis=2).squeeze(-1)
+                vox[:, :, k] = np.where(has_any, gathered, 0)
 
         nx, ny, nz = vox.shape
 
@@ -2534,19 +2557,54 @@ def visualize_voxcity_plotly(
         else:
             vox_dict = get_voxel_color_map(voxel_color_map)
 
-    def exposed_face_masks(occ):
-        # occ shape (nx, ny, nz)
-        p = np.pad(occ, ((0,1),(0,0),(0,0)), constant_values=False)
+    def _bool_max_pool_3d(arr_bool, sx):
+        """Max-pool a 3D boolean array with cubic window of size sx.
+
+        Pads with False so the output shape equals ceil(n/sx) per axis.
+        """
+        if isinstance(sx, (tuple, list, np.ndarray)):
+            sx, sy, sz = int(sx[0]), int(sx[1]), int(sx[2])
+        else:
+            sy = sz = int(sx)
+            sx = int(sx)
+
+        a = np.asarray(arr_bool, dtype=bool)
+        nx, ny, nz = a.shape
+        px = (sx - (nx % sx)) % sx
+        py = (sy - (ny % sy)) % sy
+        pz = (sz - (nz % sz)) % sz
+        if px or py or pz:
+            a = np.pad(a, ((0, px), (0, py), (0, pz)), constant_values=False)
+        nxp, nyp, nzp = a.shape
+        a = a.reshape(nxp // sx, sx, nyp // sy, sy, nzp // sz, sz)
+        a = a.max(axis=1).max(axis=2).max(axis=4)
+        return a
+
+    # Build an occluder mask that represents occupancy of any class, including those not rendered.
+    # During downsampling, use max-pooling so omitted classes within a block still occlude neighbors.
+    occluder = None
+    if vox is not None:
+        if stride > 1:
+            try:
+                occluder = _bool_max_pool_3d((voxel_array != 0), stride)
+            except Exception:
+                occluder = (vox != 0)
+        else:
+            occluder = (vox != 0)
+
+    def exposed_face_masks(occ, occ_any):
+        # occ, occ_any shape (nx, ny, nz)
+        p = np.pad(occ_any, ((0,1),(0,0),(0,0)), constant_values=False)
         posx = occ & (~p[1:,:,:])
-        p = np.pad(occ, ((1,0),(0,0),(0,0)), constant_values=False)
+        p = np.pad(occ_any, ((1,0),(0,0),(0,0)), constant_values=False)
         negx = occ & (~p[:-1,:,:])
-        p = np.pad(occ, ((0,0),(0,1),(0,0)), constant_values=False)
+        p = np.pad(occ_any, ((0,0),(0,1),(0,0)), constant_values=False)
         posy = occ & (~p[:,1:,:])
-        p = np.pad(occ, ((0,0),(1,0),(0,0)), constant_values=False)
+        p = np.pad(occ_any, ((0,0),(1,0),(0,0)), constant_values=False)
         negy = occ & (~p[:,:-1,:])
-        p = np.pad(occ, ((0,0),(0,0),(0,1)), constant_values=False)
+        p = np.pad(occ_any, ((0,0),(0,0),(0,1)), constant_values=False)
         posz = occ & (~p[:,:,1:])
-        p = np.pad(occ, ((0,0),(0,0),(1,0)), constant_values=False)
+        p = np.pad(occ_any, ((0,0),(0,0),(1,0)), constant_values=False)
         negz = occ & (~p[:,:,:-1])
         return posx, negx, posy, negy, posz, negz
 
@@ -2639,7 +2697,7 @@ def visualize_voxcity_plotly(
             if not np.any(vox == cls):
                 continue
             occ = (vox == cls)
-            posx, negx, posy, negy, posz, negz = exposed_face_masks(occ)
+            posx, negx, posy, negy, posz, negz = exposed_face_masks(occ, occluder)
             color_rgb = vox_dict.get(int(cls), [128,128,128])
             add_faces(fig, posx, '+x', color_rgb)
             add_faces(fig, negx, '-x', color_rgb)
