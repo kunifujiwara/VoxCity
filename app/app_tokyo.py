@@ -24,6 +24,7 @@ try:
         align_ndsm_to_landcover,
         build_canopy_from_ndsm,
         fill_canopy_gaps_with_nearest,
+        remove_local_spikes_in_canopy,
         summarize_grid,
     )
     TOKYO_LAS_AVAILABLE = True
@@ -766,6 +767,14 @@ with tab2:
                                     or _name_to_id.get('Tree Canopy')
                                     or 4
                                 )
+                                if 'Building' in _name_to_id:
+                                    building_id = _name_to_id['Building']
+                                elif 'Buildings' in _name_to_id:
+                                    building_id = _name_to_id['Buildings']
+                                elif 'Building Footprint' in _name_to_id:
+                                    building_id = _name_to_id['Building Footprint']
+                                else:
+                                    building_id = 1
 
                                 ndsm_grid = get_ndsm_grid(
                                     rectangle_vertices,
@@ -794,8 +803,22 @@ with tab2:
                                     land_cover_grid,
                                     tree_value=tree_id,
                                     treat_zero_as_missing=False,
-                                    restrict_neighbors_to_tree=False,
+                                    restrict_neighbors_to_tree=True,
                                     allow_resample=False,
+                                    max_neighbor_distance_m=5.0,
+                                    cell_size_m=meshsize,
+                                    fallback_tree_height_m=float(static_tree_height),
+                                )
+
+                                canopy_refined = remove_local_spikes_in_canopy(
+                                    canopy_refined,
+                                    land_cover_grid,
+                                    tree_value=tree_id,
+                                    building_value=building_id,
+                                    high_threshold_m=10.0,
+                                    building_buffer_m=15.0,
+                                    cell_size_m=meshsize,
+                                    replacement_tree_height_m=float(static_tree_height),
                                 )
                                 # Replace NaN with 0 for downstream processing
                                 canopy_refined = np.nan_to_num(canopy_refined, nan=0.0)
