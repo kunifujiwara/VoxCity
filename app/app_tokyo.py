@@ -80,6 +80,72 @@ def _zip_files_to_bytes(file_paths) -> BytesIO:
     memory_file.seek(0)
     return memory_file
 
+# Streamlit message size error helper and safe Plotly renderer
+try:
+    from streamlit.errors import MessageSizeError  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover
+    class MessageSizeError(Exception):  # type: ignore
+        pass
+
+def _try_plot_voxcity_plotly(voxcity_grid, meshsize, plot_kwargs: dict, container=None):
+    """
+    Render a Plotly figure built by visualize_voxcity_plotly, automatically
+    increasing downsample only if the serialized figure size would exceed
+    Streamlit's server message size. Falls back to catching MessageSizeError
+    if serialization estimation is unavailable.
+
+    Shows an info message when downsampling is applied. Returns (ok, used_ds).
+    """
+    candidates = (1, 2, 3, 4, 5, 8, 10, 12, 15, 20)
+    # Aim a bit below 200 MB to leave headroom
+    size_limit_mb = 190.0
+    last_err = None
+    for ds in candidates:
+        try:
+            fig = visualize_voxcity_plotly(
+                voxcity_grid,
+                meshsize,
+                downsample=ds,
+                show=False,
+                return_fig=True,
+                **plot_kwargs,
+            )
+            if fig is None:
+                continue
+            try:
+                # Pre-check serialized size to avoid raising MessageSizeError
+                fig_json = fig.to_json()
+                approx_mb = (len(fig_json.encode('utf-8')) / (1024.0 * 1024.0))
+                if approx_mb > size_limit_mb:
+                    # Try a coarser downsample
+                    continue
+            except Exception:
+                # If we can't estimate size, fall back to try/except on send
+                pass
+            target = container if container is not None else st
+            try:
+                target.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                # Catch message size related errors
+                if isinstance(e, MessageSizeError) or ('exceeds the message size limit' in str(e)) or ('MessageSizeError' in str(e)):
+                    last_err = e
+                    continue
+                raise
+            if ds > 1:
+                st.info(f"Large 3D view was downsampled (factor {ds}) to fit Streamlit's message limit.")
+            return True, ds
+        except MessageSizeError as e:
+            last_err = e
+            continue
+        except Exception as e:
+            if 'exceeds the message size limit' in str(e) or 'MessageSizeError' in str(e):
+                last_err = e
+                continue
+            raise
+    if last_err is not None:
+        st.warning("Unable to display 3D view due to size. Try smaller area or larger mesh size.")
+    return False, 1
+
 # Try to import and initialize Earth Engine only if explicitly requested to avoid startup hangs
 EE_AUTHENTICATED = False
 if os.environ.get("VOXCITY_INIT_EE", "0") == "1":
@@ -855,16 +921,11 @@ with tab2:
                         data = st.session_state.voxcity_data
                         with st.spinner("Rendering 3D view..."):
                             try:
-                                fig = visualize_voxcity_plotly(
+                                _try_plot_voxcity_plotly(
                                     data['voxcity_grid'],
                                     data['meshsize'],
-                                    downsample=1,
-                                    show=False,
-                                    return_fig=True,
-                                    title="VoxCity 3D"
+                                    {"title": "VoxCity 3D"},
                                 )
-                                if fig is not None:
-                                    st.plotly_chart(fig, use_container_width=True)
                             except Exception as e:
                                 st.warning(f"Visualization error: {str(e)}")
                     except Exception as e:
@@ -875,16 +936,11 @@ with tab2:
             if (st.session_state.voxcity_data is not None) and (not generate_clicked_cfg):
                 data = st.session_state.voxcity_data
                 try:
-                    fig = visualize_voxcity_plotly(
+                    _try_plot_voxcity_plotly(
                         data['voxcity_grid'],
                         data['meshsize'],
-                        downsample=1,
-                        show=False,
-                        return_fig=True,
-                        title="VoxCity 3D"
+                        {"title": "VoxCity 3D"},
                     )
-                    if fig is not None:
-                        st.plotly_chart(fig, use_container_width=True)
                 except Exception:
                     pass
 
@@ -997,31 +1053,27 @@ with tab_solar:
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
-                                    fig = visualize_voxcity_plotly(
+                                    _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        ground_sim_grid=solar_grid,
-                                        ground_dem_grid=data['dem_grid'],
-                                        ground_view_point_height=1.5,
-                                        ground_colormap='magma',
-                                        ground_vmin=0.0,
-                                        sim_surface_opacity=0.95,
-                                        show=False,
-                                        return_fig=True,
-                                        title="Solar overlay"
+                                        {
+                                            "voxel_color_map": 'grayscale',
+                                            "ground_sim_grid": solar_grid,
+                                            "ground_dem_grid": data['dem_grid'],
+                                            "ground_view_point_height": 1.5,
+                                            "ground_colormap": 'magma',
+                                            "ground_vmin": 0.0,
+                                            "sim_surface_opacity": 0.95,
+                                            "title": "Solar overlay",
+                                        },
+                                        container=vis_col,
                                     )
-                                    if fig is not None:
-                                        st.plotly_chart(fig, use_container_width=True)
-                                        try:
-                                            st.caption(
-                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                            )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        st.info("No 3D overlay generated.")
+                                    try:
+                                        st.caption(
+                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                        )
+                                    except Exception:
+                                        pass
                                 except Exception as ee:
                                     st.warning(f"3D overlay rendering failed: {ee}")
                         
@@ -1058,33 +1110,29 @@ with tab_solar:
                         # Visualize building-surface irradiance in 3D (left panel)
                         with vis_col:
                             try:
-                                fig_b = visualize_voxcity_plotly(
+                                _try_plot_voxcity_plotly(
                                     data['voxcity_grid'],
                                     data['meshsize'],
-                                    downsample=1,
-                                    voxel_color_map='grayscale',
-                                    building_sim_mesh=irradiance,
-                                    building_value_name='global',
-                                    building_colormap='magma',
-                                    building_vmin=None,
-                                    building_vmax=None,
-                                    building_opacity=1.0,
-                                    building_shaded=False,
-                                    render_voxel_buildings=False,
-                                    show=False,
-                                    return_fig=True,
-                                    title="Building Surface Solar (Global)"
+                                    {
+                                        "voxel_color_map": 'grayscale',
+                                        "building_sim_mesh": irradiance,
+                                        "building_value_name": 'global',
+                                        "building_colormap": 'magma',
+                                        "building_vmin": None,
+                                        "building_vmax": None,
+                                        "building_opacity": 1.0,
+                                        "building_shaded": False,
+                                        "render_voxel_buildings": False,
+                                        "title": "Building Surface Solar (Global)",
+                                    },
+                                    container=vis_col,
                                 )
-                                if fig_b is not None:
-                                    st.plotly_chart(fig_b, use_container_width=True)
-                                    try:
-                                        st.caption(
-                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                        )
-                                    except Exception:
-                                        pass
-                                else:
-                                    st.info("No building-surface visualization generated.")
+                                try:
+                                    st.caption(
+                                        f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                    )
+                                except Exception:
+                                    pass
                             except Exception as ve:
                                 st.warning(f"3D building visualization failed: {ve}")
                         
@@ -1217,32 +1265,28 @@ with tab_view:
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
-                                    fig = visualize_voxcity_plotly(
+                                    _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        ground_sim_grid=view_grid,
-                                        ground_dem_grid=data['dem_grid'],
-                                        ground_view_point_height=view_point_height,
-                                        ground_colormap='viridis',
-                                        ground_vmin=0.0,
-                                        ground_vmax=1.0,
-                                        sim_surface_opacity=0.95,
-                                        show=False,
-                                        return_fig=True,
-                                        title=(view_type if view_type != "Custom (Select Classes)" else "Custom View Index")
+                                        {
+                                            "voxel_color_map": 'grayscale',
+                                            "ground_sim_grid": view_grid,
+                                            "ground_dem_grid": data['dem_grid'],
+                                            "ground_view_point_height": view_point_height,
+                                            "ground_colormap": 'viridis',
+                                            "ground_vmin": 0.0,
+                                            "ground_vmax": 1.0,
+                                            "sim_surface_opacity": 0.95,
+                                            "title": (view_type if view_type != "Custom (Select Classes)" else "Custom View Index"),
+                                        },
+                                        container=vis_col,
                                     )
-                                    if fig is not None:
-                                        st.plotly_chart(fig, use_container_width=True)
-                                        try:
-                                            st.caption(
-                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                            )
-                                        except Exception:
-                                            pass
-                                    else:
-                                        st.info("No 3D overlay generated.")
+                                    try:
+                                        st.caption(
+                                            f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                        )
+                                    except Exception:
+                                        pass
                                 except Exception as ee:
                                     st.warning(f"3D overlay rendering failed: {ee}")
                     else:
@@ -1295,50 +1339,46 @@ with tab_view:
                                 dem_grid=data['dem_grid'],
                             )
                             with vis_col:
-                                fig = visualize_voxcity_plotly(
-                                    data['voxcity_grid'],
-                                    data['meshsize'],
-                                    downsample=1,
-                                    voxel_color_map='grayscale',
-                                    ground_sim_grid=view_grid,
-                                    ground_dem_grid=data['dem_grid'],
-                                    ground_view_point_height=view_point_height,
-                                    ground_colormap='viridis',
-                                    ground_vmin=0.0,
-                                    ground_vmax=1.0,
-                                    sim_surface_opacity=0.95,
-                                    show=False,
-                                    return_fig=True,
-                                    title=view_type
+                                _try_plot_voxcity_plotly(
+                                    data['voxcity_grid'], 
+                                    data['meshsize'], 
+                                    {
+                                        "voxel_color_map": 'grayscale',
+                                        "ground_sim_grid": view_grid,
+                                        "ground_dem_grid": data['dem_grid'],
+                                        "ground_view_point_height": view_point_height,
+                                        "ground_colormap": 'viridis',
+                                        "ground_vmin": 0.0,
+                                        "ground_vmax": 1.0,
+                                        "sim_surface_opacity": 0.95,
+                                        "title": view_type,
+                                    },
+                                    container=vis_col,
                                 )
-                                if fig is not None:
-                                    st.plotly_chart(fig, use_container_width=True)
                         else:
                             with vis_col:
                                 try:
-                                    fig_b = visualize_voxcity_plotly(
+                                    _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        building_sim_mesh=mesh,
-                                        building_value_name='view_factor_values',
-                                        building_colormap='viridis',
-                                        building_vmin=0.0,
-                                        building_vmax=1.0,
-                                        render_voxel_buildings=False,
-                                        show=False,
-                                        return_fig=True,
-                                        title=(
-                                            "Surface " + (
-                                                "GVI" if view_type=="Green View Index" else (
-                                                    "SVI" if view_type=="Sky View Index" else "Custom View"
+                                        {
+                                            "voxel_color_map": 'grayscale',
+                                            "building_sim_mesh": mesh,
+                                            "building_value_name": 'view_factor_values',
+                                            "building_colormap": 'viridis',
+                                            "building_vmin": 0.0,
+                                            "building_vmax": 1.0,
+                                            "render_voxel_buildings": False,
+                                            "title": (
+                                                "Surface " + (
+                                                    "GVI" if view_type=="Green View Index" else (
+                                                        "SVI" if view_type=="Sky View Index" else "Custom View"
+                                                    )
                                                 )
-                                            )
-                                        )
+                                            ),
+                                        },
+                                        container=vis_col,
                                     )
-                                    if fig_b is not None:
-                                        st.plotly_chart(fig_b, use_container_width=True)
                                 except Exception as ve:
                                     st.warning(f"Surface view rendering failed: {ve}")
                     
@@ -1508,24 +1548,22 @@ with tab_landmark:
                         except Exception:
                             pass
                         with vis_col:
-                            fig = visualize_voxcity_plotly(
+                            _try_plot_voxcity_plotly(
                                 voxcity_marked,
                                 data['meshsize'],
-                                downsample=1,
-                                voxel_color_map='grayscale',
-                                ground_sim_grid=landmark_grid,
-                                ground_dem_grid=data['dem_grid'],
-                                ground_view_point_height=1.5,
-                                ground_colormap='viridis',
-                                ground_vmin=0.0,
-                                ground_vmax=1.0,
-                                sim_surface_opacity=0.95,
-                                show=False,
-                                return_fig=True,
-                                title='Landmark Visibility (Ground)'
+                                {
+                                    "voxel_color_map": 'grayscale',
+                                    "ground_sim_grid": landmark_grid,
+                                    "ground_dem_grid": data['dem_grid'],
+                                    "ground_view_point_height": 1.5,
+                                    "ground_colormap": 'viridis',
+                                    "ground_vmin": 0.0,
+                                    "ground_vmax": 1.0,
+                                    "sim_surface_opacity": 0.95,
+                                    "title": 'Landmark Visibility (Ground)',
+                                },
+                                container=vis_col,
                             )
-                            if fig is not None:
-                                st.plotly_chart(fig, use_container_width=True)
                     else:
                         try:
                             landmark_mesh = get_surface_view_factor(
@@ -1554,23 +1592,21 @@ with tab_landmark:
                                 pass
                             with vis_col:
                                 try:
-                                    fig_b = visualize_voxcity_plotly(
+                                    _try_plot_voxcity_plotly(
                                         voxcity_marked,
                                         data['meshsize'],
-                                        downsample=1,
-                                        voxel_color_map='grayscale',
-                                        building_sim_mesh=landmark_mesh,
-                                        building_value_name='view_factor_values',
-                                        building_colormap='viridis',
-                                        building_vmin=0.0,
-                                        building_vmax=1.0,
-                                        render_voxel_buildings=False,
-                                        show=False,
-                                        return_fig=True,
-                                        title='Landmark Visibility (Surface)'
+                                        {
+                                            "voxel_color_map": 'grayscale',
+                                            "building_sim_mesh": landmark_mesh,
+                                            "building_value_name": 'view_factor_values',
+                                            "building_colormap": 'viridis',
+                                            "building_vmin": 0.0,
+                                            "building_vmax": 1.0,
+                                            "render_voxel_buildings": False,
+                                            "title": 'Landmark Visibility (Surface)',
+                                        },
+                                        container=vis_col,
                                     )
-                                    if fig_b is not None:
-                                        st.plotly_chart(fig_b, use_container_width=True)
                                 except Exception as ve:
                                     st.warning(f"3D surface rendering failed: {ve}")
                         else:
@@ -1583,24 +1619,22 @@ with tab_landmark:
                                 inclusion_mode=True,
                             )
                             with vis_col:
-                                fig = visualize_voxcity_plotly(
+                                _try_plot_voxcity_plotly(
                                     voxcity_marked,
                                     data['meshsize'],
-                                    downsample=1,
-                                    voxel_color_map='grayscale',
-                                    ground_sim_grid=landmark_grid,
-                                    ground_dem_grid=data['dem_grid'],
-                                    ground_view_point_height=1.5,
-                                    ground_colormap='viridis',
-                                    ground_vmin=0.0,
-                                    ground_vmax=1.0,
-                                    sim_surface_opacity=0.95,
-                                    show=False,
-                                    return_fig=True,
-                                    title='Landmark Visibility (Ground)'
+                                    {
+                                        "voxel_color_map": 'grayscale',
+                                        "ground_sim_grid": landmark_grid,
+                                        "ground_dem_grid": data['dem_grid'],
+                                        "ground_view_point_height": 1.5,
+                                        "ground_colormap": 'viridis',
+                                        "ground_vmin": 0.0,
+                                        "ground_vmax": 1.0,
+                                        "sim_surface_opacity": 0.95,
+                                        "title": 'Landmark Visibility (Ground)',
+                                    },
+                                    container=vis_col,
                                 )
-                                if fig is not None:
-                                    st.plotly_chart(fig, use_container_width=True)
                         # (Removed duplicate rendering block that referenced undefined vis_map/vox_marked)
                     
 
