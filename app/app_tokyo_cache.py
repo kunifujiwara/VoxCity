@@ -914,13 +914,18 @@ with tab2:
                                 else:
                                     building_id = 1
 
-                                ndsm_grid = get_ndsm_grid(
-                                    rectangle_vertices,
-                                    meshsize,
-                                    source='tokyo_dsm',
-                                    output_dir=output_dir,
-                                    las_dir=LAS_DIR,
-                                )
+                                # Prefer precomputed nDSM if available
+                                ndsm_cached = os.path.join(APP_DIR, 'data', 'temp', 'ndsm.tif')
+                                if os.path.exists(ndsm_cached):
+                                    ndsm_grid = create_height_grid_from_geotiff_rectangle(ndsm_cached, meshsize, rectangle_vertices)
+                                else:
+                                    ndsm_grid = get_ndsm_grid(
+                                        rectangle_vertices,
+                                        meshsize,
+                                        source='tokyo_dsm',
+                                        output_dir=output_dir,
+                                        las_dir=LAS_DIR,
+                                    )
                                 ndsm_aligned, _align_info = align_ndsm_to_landcover(
                                     ndsm_grid,
                                     land_cover_grid,
