@@ -18,8 +18,11 @@ import typer
 from rio_cogeo.cogeo import cog_translate
 from rio_cogeo.profiles import cog_profiles
 import rasterio
+import geopandas as gpd
+import numpy as np
+from shapely.geometry import Point
 
-from tokyo_las import (
+from .tokyo_las import (
     choose_jprcs_epsg,
     find_las_files,
     filter_las_files_by_aoi,
@@ -45,6 +48,9 @@ def main(
     crop_pad_m: float = typer.Option(2.0, help="Buffer around AOI when cropping (m)"),
     use_mask: bool = typer.Option(False, help="Use polygon mask when cropping (slower)"),
     cog: bool = typer.Option(False, help="Write nDSM as Cloud-Optimized GeoTIFF (COG)"),
+    write_parquet: bool = typer.Option(True, help="Also export nDSM as GeoParquet (.parquet) of sample points"),
+    parquet_stride: int = typer.Option(1, help="Stride when sampling raster to points for Parquet (>=1)"),
+    parquet_crs: int = typer.Option(4326, help="Target CRS EPSG for Parquet points (default WGS84)"),
 ):
     _ensure_dir(output_dir)
 
@@ -123,6 +129,47 @@ def main(
         typer.echo(f"COG written: {dst_cog}")
 
     typer.echo(f"nDSM ready: {final_ndsm}")
+
+    # Optional Parquet export (GeoParquet points at pixel centers)
+    if write_parquet:
+        try:
+            _ndsm_parquet = output_dir / "ndsm.parquet"
+            with rasterio.open(str(final_ndsm)) as src:
+                band = src.read(1)
+                transform = src.transform
+                src_crs = src.crs
+                # Build index arrays with optional stride
+                step = max(1, int(parquet_stride))
+                rows = np.arange(0, band.shape[0], step)
+                cols = np.arange(0, band.shape[1], step)
+                rr, cc = np.meshgrid(rows, cols, indexing='ij')
+                vals = band[rr, cc].ravel()
+                # Filter out nodata if present
+                nodata = src.nodata
+                if nodata is not None:
+                    mask = vals != nodata
+                else:
+                    mask = np.isfinite(vals)
+                rr = rr.ravel()[mask]
+                cc = cc.ravel()[mask]
+                vals = vals[mask]
+                # Compute pixel center coords
+                xs, ys = rasterio.transform.xy(transform, rr, cc, offset='center')
+                # Create GeoDataFrame
+                gdf = gpd.GeoDataFrame({
+                    'ndsm': vals.astype(float),
+                }, geometry=[Point(x, y) for x, y in zip(xs, ys)], crs=src_crs)
+                # Reproject if requested
+                if parquet_crs and gdf.crs:
+                    try:
+                        if getattr(gdf.crs, 'to_epsg', lambda: None)() != parquet_crs and gdf.crs != f"EPSG:{parquet_crs}":
+                            gdf = gdf.to_crs(epsg=parquet_crs)
+                    except Exception:
+                        pass
+                gdf.to_parquet(str(_ndsm_parquet), index=False)
+                typer.echo(f"GeoParquet written: {_ndsm_parquet} (points, stride={step})")
+        except Exception as e:
+            typer.echo(f"Failed to write nDSM GeoParquet: {e}")
 
 
 if __name__ == "__main__":

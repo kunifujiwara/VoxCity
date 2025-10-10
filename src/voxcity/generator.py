@@ -684,7 +684,7 @@ def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, d
 
     return land_cover_voxel_grid, building_voxel_grid, tree_voxel_grid, dem_voxel_grid, layered_voxel_grid
 
-def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, **kwargs):
+def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
     """Main function to generate a complete voxel city model.
 
     Args:
@@ -695,6 +695,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         dem_source: Source for digital elevation model data ('Flat' or other source)
         meshsize: Size of each grid cell in meters
         building_gdf: Optional GeoDataFrame with building footprint, height and other information
+        terrain_gdf: Optional GeoDataFrame with terrain elements including an 'elevation' column
         **kwargs: Additional keyword arguments including:
             - output_dir: Directory to save output files (default: 'output')
             - min_canopy_height: Minimum height threshold for tree canopy
@@ -761,12 +762,16 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         canopy_height_grid, canopy_bottom_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
     
     # STEP 3: Handle digital elevation model (terrain)
-    if dem_source == "Flat":
-        # Create flat terrain for simplified modeling
-        dem_grid = np.zeros_like(land_cover_grid)
+    if terrain_gdf is not None:
+        # Build DEM directly from provided terrain GeoDataFrame (e.g., precomputed from CityGML)
+        dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
     else:
-        # Fetch terrain elevation from various sources
-        dem_grid = get_dem_grid(rectangle_vertices, meshsize, dem_source, output_dir, **kwargs)
+        if dem_source == "Flat":
+            # Create flat terrain for simplified modeling
+            dem_grid = np.zeros_like(land_cover_grid)
+        else:
+            # Fetch terrain elevation from various sources
+            dem_grid = get_dem_grid(rectangle_vertices, meshsize, dem_source, output_dir, **kwargs)
 
     # STEP 4: Apply optional data filtering and cleaning
     

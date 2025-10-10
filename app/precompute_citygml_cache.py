@@ -1,11 +1,12 @@
 """
 CLI to precompute and cache minimal datasets from PLATEAU CityGML:
  - Buildings: 2D footprint, building_id, height_m, ground_z, source_file
- - Terrain: points/polygons with elevation (optional export)
+ - DEM/Terrain: points/polygons with elevation (for downstream DEM grid creation)
 
 Outputs (configurable):
  - GeoParquet (.parquet): columnar, compressed
  - FlatGeobuf (.fgb): spatially indexed
+ - Optional terrain exports are enabled by default
 
 This script reuses existing CityGML parsing utilities from voxcity and
 is intended to run once to avoid repeated heavy XML parsing in workflows.
@@ -120,7 +121,7 @@ def run(
     write_parquet: bool = typer.Option(True, help="Write GeoParquet (.parquet)"),
     write_fgb: bool = typer.Option(True, help="Write FlatGeobuf (.fgb)"),
     target_crs: int = typer.Option(4326, help="Target CRS EPSG code for outputs."),
-    export_terrain: bool = typer.Option(False, help="Also export terrain elements."),
+    export_terrain: bool = typer.Option(True, help="Also export DEM/terrain elements."),
     ssl_verify: bool = typer.Option(True, help="Verify SSL when downloading."),
     ca_bundle: Optional[Path] = typer.Option(None, help="Path to CA bundle for TLS."),
     timeout: int = typer.Option(60, help="Network timeout in seconds."),

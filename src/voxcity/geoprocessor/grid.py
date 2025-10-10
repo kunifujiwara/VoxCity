@@ -1542,18 +1542,35 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
 
     # ------------------------------------------------------------------------
     # 4. Nearest-neighbor join from terrain_gdf to grid points
+    #    Use a projected CRS (UTM zone from polygon centroid) for robust distances
     # ------------------------------------------------------------------------
     if 'elevation' not in terrain_gdf.columns:
         raise ValueError("terrain_gdf must have an 'elevation' column.")
 
-    # Nearest spatial join (requires GeoPandas >= 0.10)
-    # This will assign each grid point the nearest terrain_gdf elevation.
-    grid_points_elev = gpd.sjoin_nearest(
-        grid_points,
-        terrain_gdf[['elevation', 'geometry']],
-        how="left",
-        distance_col="dist_to_terrain"
-    )
+    try:
+        centroid = poly.centroid
+        lon_c, lat_c = float(centroid.x), float(centroid.y)
+        zone = int((lon_c + 180.0) // 6) + 1
+        epsg_proj = 32600 + zone if lat_c >= 0 else 32700 + zone
+        terrain_proj = terrain_gdf.to_crs(epsg=epsg_proj)
+        grid_points_proj = grid_points.to_crs(epsg=epsg_proj)
+
+        grid_points_elev = gpd.sjoin_nearest(
+            grid_points_proj,
+            terrain_proj[['elevation', 'geometry']],
+            how="left",
+            distance_col="dist_to_terrain"
+        )
+        # Keep original index mapping
+        grid_points_elev.index = grid_points.index
+    except Exception:
+        # Fallback to geographic join if projection fails
+        grid_points_elev = gpd.sjoin_nearest(
+            grid_points,
+            terrain_gdf[['elevation', 'geometry']],
+            how="left",
+            distance_col="dist_to_terrain"
+        )
 
     # ------------------------------------------------------------------------
     # 5. Build the final 2D height array

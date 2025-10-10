@@ -36,6 +36,7 @@ try:
     from voxcity.generator import get_voxcity_CityGML
     from voxcity.generator import get_voxcity
     from voxcity.generator import create_3d_voxel
+    from voxcity.geoprocessor.grid import create_dem_grid_from_gdf_polygon, create_height_grid_from_geotiff_polygon
     from voxcity.geoprocessor.draw import draw_rectangle_map_cityname, center_location_map_cityname
     from voxcity.simulator.solar import get_building_global_solar_irradiance_using_epw, get_global_solar_irradiance_using_epw
     from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map, mark_building_by_id
@@ -198,7 +199,10 @@ def _load_citygml_cache(rectangle_vertices):
         cache_dir = os.path.join(APP_DIR, 'data', 'temp', 'citygml_cache')
         b_parquet = os.path.join(cache_dir, 'buildings.parquet')
         b_fgb = os.path.join(cache_dir, 'buildings.fgb')
+        t_parquet = os.path.join(cache_dir, 'terrain.parquet')
+        t_fgb = os.path.join(cache_dir, 'terrain.fgb')
         gdf = None
+        t_gdf = None
         if os.path.exists(b_parquet):
             gdf = gpd.read_parquet(b_parquet)
         elif os.path.exists(b_fgb):
@@ -233,6 +237,20 @@ def _load_citygml_cache(rectangle_vertices):
                 gdf['id'] = range(len(gdf))
         except Exception:
             pass
+        # Load terrain if available
+        try:
+            if os.path.exists(t_parquet):
+                t_gdf = gpd.read_parquet(t_parquet)
+            elif os.path.exists(t_fgb):
+                t_gdf = gpd.read_file(t_fgb)
+            if t_gdf is not None and not t_gdf.empty:
+                if t_gdf.crs is None:
+                    t_gdf = t_gdf.set_crs(epsg=4326)
+                elif getattr(t_gdf.crs, 'to_epsg', lambda: None)() != 4326 and t_gdf.crs != "EPSG:4326":
+                    t_gdf = t_gdf.to_crs(epsg=4326)
+        except Exception:
+            t_gdf = None
+
         # Optional clip to rectangle
         if rectangle_vertices and len(rectangle_vertices) >= 3:
             try:
@@ -243,9 +261,13 @@ def _load_citygml_cache(rectangle_vertices):
                     (rectangle_vertices[3][0], rectangle_vertices[3][1]),
                 ])
                 gdf = gdf[gdf.intersects(rect_poly)].copy()
+                if t_gdf is not None and not t_gdf.empty:
+                    t_gdf = t_gdf[t_gdf.intersects(rect_poly)].copy()
             except Exception:
                 pass
-        return gdf if (gdf is not None and not gdf.empty) else None
+        if gdf is None or gdf.empty:
+            return None
+        return (gdf, t_gdf)
     except Exception:
         return None
 
@@ -852,10 +874,16 @@ with tab2:
                             "dem_interpolation": dem_interpolation,
                             "debug_voxel": debug_voxel,
                             "static_tree_height": static_tree_height,
+                            "gridvis": False,
+                            "mapvis": False,
                         }
                         # Prefer cached CityGML buildings if present
-                        cached_buildings = _load_citygml_cache(st.session_state.rectangle_vertices)
-                        if cached_buildings is not None:
+                        cached = _load_citygml_cache(st.session_state.rectangle_vertices)
+                        if cached is not None:
+                            if isinstance(cached, tuple):
+                                cached_buildings, cached_terrain = cached
+                            else:
+                                cached_buildings, cached_terrain = cached, None
                             result = get_voxcity(
                                 st.session_state.rectangle_vertices,
                                 building_source='GeoDataFrame',
@@ -864,6 +892,7 @@ with tab2:
                                 dem_source='Flat',
                                 meshsize=meshsize,
                                 building_gdf=cached_buildings,
+                                terrain_gdf=cached_terrain,
                                 **kwargs
                             )
                         else:
@@ -915,9 +944,25 @@ with tab2:
                                     building_id = 1
 
                                 # Prefer precomputed nDSM if available
+                                ndsm_parquet = os.path.join(APP_DIR, 'data', 'temp', 'ndsm.parquet')
                                 ndsm_cached = os.path.join(APP_DIR, 'data', 'temp', 'ndsm.tif')
-                                if os.path.exists(ndsm_cached):
-                                    ndsm_grid = create_height_grid_from_geotiff_rectangle(ndsm_cached, meshsize, rectangle_vertices)
+                                if os.path.exists(ndsm_parquet):
+                                    try:
+                                        ndsm_points = gpd.read_parquet(ndsm_parquet)
+                                        if ndsm_points is not None and not ndsm_points.empty:
+                                            if ndsm_points.crs is None:
+                                                ndsm_points = ndsm_points.set_crs(epsg=4326)
+                                            elif getattr(ndsm_points.crs, 'to_epsg', lambda: None)() != 4326 and ndsm_points.crs != "EPSG:4326":
+                                                ndsm_points = ndsm_points.to_crs(epsg=4326)
+                                            if 'elevation' not in ndsm_points.columns and 'ndsm' in ndsm_points.columns:
+                                                ndsm_points = ndsm_points.rename(columns={'ndsm': 'elevation'})
+                                            ndsm_grid = create_dem_grid_from_gdf_polygon(ndsm_points, meshsize, rectangle_vertices)
+                                        else:
+                                            ndsm_grid = None
+                                    except Exception:
+                                        ndsm_grid = None
+                                elif os.path.exists(ndsm_cached):
+                                    ndsm_grid = create_height_grid_from_geotiff_polygon(ndsm_cached, meshsize, rectangle_vertices)
                                 else:
                                     ndsm_grid = get_ndsm_grid(
                                         rectangle_vertices,
