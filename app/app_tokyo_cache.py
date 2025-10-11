@@ -1221,6 +1221,21 @@ with tab_solar:
                     key_prefix='solar'
                 )
 
+            # Advanced visualization controls: select voxel classes to hide
+            with st.expander("Advanced visualization settings"):
+                st.caption("Hide element classes")
+                _voxel_class_options_solar = [
+                    ("Buildings", -3), ("Trees (canopy)", -2), ("Underground", -1), ("Landmark", -30),
+                    ("Bareland", 1), ("Rangeland", 2), ("Shrub", 3), ("Agriculture land", 4),
+                    ("Tree (ground cover)", 5), ("Moss and lichen", 6), ("Wet land", 7), ("Mangrove", 8),
+                    ("Water", 9), ("Snow and ice", 10), ("Developed space", 11), ("Road", 12), ("Building (ground)", 13),
+                ]
+                _label_to_id_solar = {label: cid for label, cid in _voxel_class_options_solar}
+                cols = st.columns(3)
+                for idx, (label, cid) in enumerate(_voxel_class_options_solar):
+                    with cols[idx % 3]:
+                        st.checkbox(label, value=False, key=f"hide_solar_{cid}")
+
         if run_solar:
             with solar_status.container():
                 with st.spinner("Running solar radiation analysis..."):
@@ -1285,10 +1300,17 @@ with tab_solar:
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
+                                    try:
+                                        present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                    except Exception:
+                                        present_classes = []
+                                    _hidden_ids = {cid for _, cid in _voxel_class_options_solar if st.session_state.get(f"hide_solar_{cid}", False)}
+                                    classes_include_solar = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                     _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
                                         {
+                                            "classes": classes_include_solar,
                                             "voxel_color_map": 'grayscale',
                                             "ground_sim_grid": solar_grid,
                                             "ground_dem_grid": data['dem_grid'],
@@ -1343,10 +1365,17 @@ with tab_solar:
                         # Visualize building-surface irradiance in 3D (left panel)
                         with vis_col:
                             try:
+                                try:
+                                    present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                except Exception:
+                                    present_classes = []
+                                _hidden_ids = {cid for _, cid in _voxel_class_options_solar if st.session_state.get(f"hide_solar_{cid}", False)}
+                                classes_include_solar = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                 _try_plot_voxcity_plotly(
                                     data['voxcity_grid'],
                                     data['meshsize'],
                                         {
+                                        "classes": classes_include_solar,
                                         "voxel_color_map": 'grayscale',
                                         "building_sim_mesh": irradiance,
                                         "building_value_name": 'global',
@@ -1397,6 +1426,20 @@ with tab_view:
                     default_vmax=1.0,
                     key_prefix='view'
                 )
+            # Advanced visualization controls: select voxel classes to hide
+            with st.expander("Advanced visualization settings"):
+                st.caption("Hide element classes")
+                _voxel_class_options_view = [
+                    ("Buildings", -3), ("Trees (canopy)", -2), ("Underground", -1), ("Landmark", -30),
+                    ("Bareland", 1), ("Rangeland", 2), ("Shrub", 3), ("Agriculture land", 4),
+                    ("Tree (ground cover)", 5), ("Moss and lichen", 6), ("Wet land", 7), ("Mangrove", 8),
+                    ("Water", 9), ("Snow and ice", 10), ("Developed space", 11), ("Road", 12), ("Building (ground)", 13),
+                ]
+                _label_to_id_view = {label: cid for label, cid in _voxel_class_options_view}
+                cols_view = st.columns(3)
+                for idx, (label, cid) in enumerate(_voxel_class_options_view):
+                    with cols_view[idx % 3]:
+                        st.checkbox(label, value=False, key=f"hide_view_{cid}")
             # Defaults for custom selection to ensure variables exist even if not used
             selected_custom_values = []
             inclusion_mode_custom = True
@@ -1509,10 +1552,17 @@ with tab_view:
                         with vis_col:
                             with st.spinner("Rendering 3D overlay..."):
                                 try:
+                                    try:
+                                        present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                    except Exception:
+                                        present_classes = []
+                                    _hidden_ids = {cid for _, cid in _voxel_class_options_view if st.session_state.get(f"hide_view_{cid}", False)}
+                                    classes_include_view = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                     _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
                                         {
+                                            "classes": classes_include_view,
                                             "voxel_color_map": 'grayscale',
                                             "ground_sim_grid": view_grid,
                                             "ground_dem_grid": data['dem_grid'],
@@ -1583,10 +1633,17 @@ with tab_view:
                                 dem_grid=data['dem_grid'],
                             )
                             with vis_col:
+                                try:
+                                    present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                except Exception:
+                                    present_classes = []
+                                _hidden_ids = {cid for _, cid in _voxel_class_options_view if st.session_state.get(f"hide_view_{cid}", False)}
+                                classes_include_view = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                 _try_plot_voxcity_plotly(
                                     data['voxcity_grid'], 
                                     data['meshsize'], 
                                     {
+                                        "classes": classes_include_view,
                                         "voxel_color_map": 'grayscale',
                                         "ground_sim_grid": view_grid,
                                         "ground_dem_grid": data['dem_grid'],
@@ -1602,10 +1659,17 @@ with tab_view:
                         else:
                             with vis_col:
                                 try:
+                                    try:
+                                        present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                    except Exception:
+                                        present_classes = []
+                                    _hidden_ids = {cid for _, cid in _voxel_class_options_view if st.session_state.get(f"hide_view_{cid}", False)}
+                                    classes_include_view = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                     _try_plot_voxcity_plotly(
                                         data['voxcity_grid'],
                                         data['meshsize'],
                                         {
+                                            "classes": classes_include_view,
                                             "voxel_color_map": 'grayscale',
                                             "building_sim_mesh": mesh,
                                             "building_value_name": 'view_factor_values',
@@ -1727,6 +1791,20 @@ with tab_landmark:
                     default_vmax=1.0,
                     key_prefix='landmark'
                 )
+            # Advanced visualization controls: select voxel classes to hide
+            with st.expander("Advanced visualization settings"):
+                st.caption("Hide element classes")
+                _voxel_class_options_land = [
+                    ("Buildings", -3), ("Trees (canopy)", -2), ("Underground", -1), ("Landmark", -30),
+                    ("Bareland", 1), ("Rangeland", 2), ("Shrub", 3), ("Agriculture land", 4),
+                    ("Tree (ground cover)", 5), ("Moss and lichen", 6), ("Wet land", 7), ("Mangrove", 8),
+                    ("Water", 9), ("Snow and ice", 10), ("Developed space", 11), ("Road", 12), ("Building (ground)", 13),
+                ]
+                _label_to_id_land = {label: cid for label, cid in _voxel_class_options_land}
+                cols_land = st.columns(3)
+                for idx, (label, cid) in enumerate(_voxel_class_options_land):
+                    with cols_land[idx % 3]:
+                        st.checkbox(label, value=False, key=f"hide_land_{cid}")
             # Use IDs populated from map selection if available (no manual input field)
             ids_text = st.session_state.get('landmark_ids_text', '')
         # run_landmark is defined in header; no duplicate here
@@ -1803,10 +1881,17 @@ with tab_landmark:
                         except Exception:
                             pass
                         with vis_col:
+                            try:
+                                present_classes = np.unique(voxcity_marked[voxcity_marked != 0]).tolist()
+                            except Exception:
+                                present_classes = []
+                            _hidden_ids = {cid for _, cid in _voxel_class_options_land if st.session_state.get(f"hide_land_{cid}", False)}
+                            classes_include_land = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                             _try_plot_voxcity_plotly(
                                 voxcity_marked,
                                 data['meshsize'],
                                 {
+                                    "classes": classes_include_land,
                                     "voxel_color_map": 'grayscale',
                                     "ground_sim_grid": landmark_grid,
                                     "ground_dem_grid": data['dem_grid'],
@@ -1847,10 +1932,17 @@ with tab_landmark:
                                 pass
                             with vis_col:
                                 try:
+                                    try:
+                                        present_classes = np.unique(voxcity_marked[voxcity_marked != 0]).tolist()
+                                    except Exception:
+                                        present_classes = []
+                                    _hidden_ids = {cid for _, cid in _voxel_class_options_land if st.session_state.get(f"hide_land_{cid}", False)}
+                                    classes_include_land = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                     _try_plot_voxcity_plotly(
                                         voxcity_marked,
                                         data['meshsize'],
                                         {
+                                            "classes": classes_include_land,
                                             "voxel_color_map": 'grayscale',
                                             "building_sim_mesh": landmark_mesh,
                                             "building_value_name": 'view_factor_values',
@@ -1874,10 +1966,17 @@ with tab_landmark:
                                 inclusion_mode=True,
                             )
                             with vis_col:
+                                try:
+                                    present_classes = np.unique(voxcity_marked[voxcity_marked != 0]).tolist()
+                                except Exception:
+                                    present_classes = []
+                                _hidden_ids = {cid for _, cid in _voxel_class_options_land if st.session_state.get(f"hide_land_{cid}", False)}
+                                classes_include_land = [int(c) for c in present_classes if int(c) not in _hidden_ids]
                                 _try_plot_voxcity_plotly(
                                     voxcity_marked,
                                     data['meshsize'],
                                     {
+                                        "classes": classes_include_land,
                                         "voxel_color_map": 'grayscale',
                                         "ground_sim_grid": landmark_grid,
                                         "ground_dem_grid": data['dem_grid'],
