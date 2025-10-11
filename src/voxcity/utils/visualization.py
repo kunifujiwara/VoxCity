@@ -2804,9 +2804,9 @@ def visualize_voxcity_plotly(
         if meshsize is not None:
             try:
                 ms = float(meshsize)
-                if z_off < ms:
-                    z_off = ms
-                z_off = ms * math.ceil(z_off / ms)
+                # Snap strictly above ground in whole mesh layers:
+                # (ground_z_offset // meshsize + 1) * meshsize
+                z_off = (z_off // ms + 1.0) * ms
             except Exception:
                 pass
 
