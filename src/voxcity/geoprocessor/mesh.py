@@ -318,7 +318,9 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
             if np.isnan(val):
                 continue
 
-            z_base = meshsize * int(dem_grid_flipped[x, y] / meshsize + 1.5) + z_offset            
+            # Match voxel ground rounding: int(dem/mesh + 0.5) + 1 == int(dem/mesh + 1.5)
+            # Then lower the plane by one mesh layer as requested
+            z_base = meshsize * int(dem_grid_flipped[x, y] / meshsize + 1.5) + z_offset - meshsize            
 
             # 4 corners in (x,y)*meshsize
             v0 = [ x      * meshsize,  y      * meshsize, z_base ]
