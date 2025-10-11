@@ -950,6 +950,12 @@ with tab2:
                 help="Enable step logs"
             )
 
+            use_ndsm_canopy = st.checkbox(
+                "Use nDSM for tree canopy height",
+                value=True,
+                help="Refine tree canopy using Tokyo LAS-derived nDSM when available (Japan only).",
+            )
+
     with right_col:
         if st.session_state.rectangle_vertices is None:
             st.warning("Set the target area first in the 'Target Area' tab.")
@@ -1015,7 +1021,7 @@ with tab2:
 
                         # Optional: refine canopy using Tokyo LAS nDSM if available and area is in Japan
                         try:
-                            if TOKYO_LAS_AVAILABLE and os.path.isdir(LAS_DIR) and ('OpenEarthMapJapan' in str(land_cover_source)) and is_japan:
+                            if use_ndsm_canopy and TOKYO_LAS_AVAILABLE and os.path.isdir(LAS_DIR) and ('OpenEarthMapJapan' in str(land_cover_source)) and is_japan:
                                 data = st.session_state.voxcity_data
                                 rectangle_vertices = data['rectangle_vertices']
                                 land_cover_grid = data['land_cover_grid']
