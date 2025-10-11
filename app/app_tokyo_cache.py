@@ -280,6 +280,80 @@ try:
 except Exception:
     pass
 
+
+# ------------------------------
+# Colormap advanced settings UI
+# ------------------------------
+def _colormap_advanced_ui(default_cmap: str, default_vmin, default_vmax, key_prefix: str):
+    """Render an expander to pick a colormap and vmin/vmax.
+
+    Stores selections into session_state using keys:
+      - f"{key_prefix}_cmap"
+      - f"{key_prefix}_auto"
+      - f"{key_prefix}_vmin"
+      - f"{key_prefix}_vmax"
+
+    Returns (cmap_name: str, vmin: float | None, vmax: float | None)
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Curated list of common colormaps
+    common_cmaps = [
+        'viridis','plasma','magma','inferno','cividis','turbo',
+        'Greens','Blues','Purples','OrRd','YlGn','coolwarm',
+        'RdYlBu_r','RdBu_r','Spectral','terrain','gray'
+    ]
+
+    # Initialize session defaults
+    ss = st.session_state
+    if f"{key_prefix}_cmap" not in ss:
+        ss[f"{key_prefix}_cmap"] = default_cmap
+    if f"{key_prefix}_auto" not in ss:
+        ss[f"{key_prefix}_auto"] = (default_vmax is None)
+    if f"{key_prefix}_vmin" not in ss:
+        ss[f"{key_prefix}_vmin"] = 0.0 if default_vmin is None else float(default_vmin)
+    if f"{key_prefix}_vmax" not in ss:
+        ss[f"{key_prefix}_vmax"] = 1.0 if default_vmax is None else float(default_vmax)
+
+    # (Quick palettes removed)
+
+    # Main selector + preview
+    try:
+        sel_index = common_cmaps.index(ss[f"{key_prefix}_cmap"]) if ss[f"{key_prefix}_cmap"] in common_cmaps else 0
+    except Exception:
+        sel_index = 0
+    cmap_name = st.selectbox("Colormap", common_cmaps, index=sel_index, key=f"{key_prefix}_cmap")
+
+    # Swatch preview
+    try:
+        grad = np.linspace(0, 1, 256).reshape(1, -1)
+        fig, ax = plt.subplots(figsize=(4, 0.3))
+        ax.imshow(grad, aspect='auto', cmap=plt.cm.get_cmap(cmap_name))
+        ax.set_xticks([]); ax.set_yticks([])
+        for s in ['top','right','left','bottom']:
+            ax.spines[s].set_visible(False)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+    except Exception:
+        pass
+
+    auto_scale = st.checkbox("Auto scale (vmin/vmax)", value=ss[f"{key_prefix}_auto"], key=f"{key_prefix}_auto")
+    if auto_scale:
+        vmin = None
+        vmax = None
+    else:
+        c1, c2 = st.columns(2)
+        with c1:
+            vmin = st.number_input("vmin", value=float(ss[f"{key_prefix}_vmin"]), key=f"{key_prefix}_vmin_input")
+        with c2:
+            vmax = st.number_input("vmax", value=float(ss[f"{key_prefix}_vmax"]), key=f"{key_prefix}_vmax_input")
+        # Persist into session defaults for next render
+        ss[f"{key_prefix}_vmin"] = float(vmin)
+        ss[f"{key_prefix}_vmax"] = float(vmax)
+
+    return cmap_name, vmin, vmax
+
 # Subtle, clean styling inspired by professional budgeting dashboards
 st.markdown(
     """
@@ -1112,6 +1186,14 @@ with tab_solar:
             if not download_epw:
                 epw_file = st.file_uploader("Upload EPW file", type=['epw'])
 
+            with st.expander("Advanced color settings"):
+                cmap_solar, vmin_solar, vmax_solar = _colormap_advanced_ui(
+                    default_cmap='magma',
+                    default_vmin=0.0,
+                    default_vmax=None,
+                    key_prefix='solar'
+                )
+
         if run_solar:
             with solar_status.container():
                 with st.spinner("Running solar radiation analysis..."):
@@ -1137,12 +1219,13 @@ with tab_solar:
                             "tree_k": 0.6,
                             "tree_lad": 0.5,
                             "dem_grid": data['dem_grid'],
-                            "colormap": 'magma',
+                            "colormap": cmap_solar,
                             "obj_export": False,
                             "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
                             "output_dir": os.path.join(BASE_OUTPUT_DIR, 'epw'),
                             "alpha": 1.0,
-                            "vmin": 0,
+                            "vmin": vmin_solar,
+                            "vmax": vmax_solar,
                         }
                         if epw_local_path:
                             solar_kwargs["epw_file_path"] = epw_local_path
@@ -1183,8 +1266,9 @@ with tab_solar:
                                             "ground_sim_grid": solar_grid,
                                             "ground_dem_grid": data['dem_grid'],
                                             "ground_view_point_height": 1.5,
-                                            "ground_colormap": 'magma',
-                                            "ground_vmin": 0.0,
+                                            "ground_colormap": cmap_solar,
+                                            "ground_vmin": vmin_solar,
+                                            "ground_vmax": vmax_solar,
                                             "sim_surface_opacity": 0.95,
                                             "title": "Solar overlay",
                                         },
@@ -1235,13 +1319,13 @@ with tab_solar:
                                 _try_plot_voxcity_plotly(
                                     data['voxcity_grid'],
                                     data['meshsize'],
-                                    {
+                                        {
                                         "voxel_color_map": 'grayscale',
                                         "building_sim_mesh": irradiance,
                                         "building_value_name": 'global',
-                                        "building_colormap": 'magma',
-                                        "building_vmin": None,
-                                        "building_vmax": None,
+                                            "building_colormap": cmap_solar,
+                                            "building_vmin": vmin_solar,
+                                            "building_vmax": vmax_solar,
                                         "building_opacity": 1.0,
                                         "building_shaded": False,
                                         "render_voxel_buildings": False,
@@ -1278,6 +1362,14 @@ with tab_view:
             analysis_target_view = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="view_analysis_target")
             view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
             export_obj_flag = st.checkbox("Export as OBJ file", value=False)
+            with st.expander("Advanced color settings"):
+                default_cmap_view = 'viridis' if (view_type != "Sky View Index") else 'BuPu_r'
+                cmap_view, vmin_view, vmax_view = _colormap_advanced_ui(
+                    default_cmap=default_cmap_view,
+                    default_vmin=0.0,
+                    default_vmax=1.0,
+                    key_prefix='view'
+                )
             # Defaults for custom selection to ensure variables exist even if not used
             selected_custom_values = []
             inclusion_mode_custom = True
@@ -1361,7 +1453,10 @@ with tab_view:
                             "output_directory": output_dir,
                             "output_file_name": (
                                 "gvi" if view_type == "Green View Index" else ("svi" if view_type == "Sky View Index" else "custom_vi")
-                            )
+                            ),
+                            "colormap": cmap_view,
+                            "vmin": vmin_view,
+                            "vmax": vmax_view,
                         }
                         if view_type == "Custom (Select Classes)":
                             if len(selected_custom_values) == 0:
@@ -1395,9 +1490,9 @@ with tab_view:
                                             "ground_sim_grid": view_grid,
                                             "ground_dem_grid": data['dem_grid'],
                                             "ground_view_point_height": view_point_height,
-                                            "ground_colormap": 'viridis',
-                                            "ground_vmin": 0.0,
-                                            "ground_vmax": 1.0,
+                                            "ground_colormap": cmap_view,
+                                            "ground_vmin": vmin_view,
+                                            "ground_vmax": vmax_view,
                                             "sim_surface_opacity": 0.95,
                                             "title": (view_type if view_type != "Custom (Select Classes)" else "Custom View Index"),
                                         },
@@ -1433,9 +1528,9 @@ with tab_view:
                                 target_values=target_values,
                                 inclusion_mode=inclusion_mode,
                                 building_id_grid=data.get('building_id_grid'),
-                                colormap='viridis',
-                                vmin=0.0,
-                                vmax=1.0,
+                                colormap=cmap_view,
+                                vmin=vmin_view,
+                                vmax=vmax_view,
                                 obj_export=export_obj_flag,
                                 output_directory=output_dir,
                                 output_file_name=(
@@ -1469,9 +1564,9 @@ with tab_view:
                                         "ground_sim_grid": view_grid,
                                         "ground_dem_grid": data['dem_grid'],
                                         "ground_view_point_height": view_point_height,
-                                        "ground_colormap": 'viridis',
-                                        "ground_vmin": 0.0,
-                                        "ground_vmax": 1.0,
+                                        "ground_colormap": cmap_view,
+                                        "ground_vmin": vmin_view,
+                                        "ground_vmax": vmax_view,
                                         "sim_surface_opacity": 0.95,
                                         "title": view_type,
                                     },
@@ -1487,9 +1582,9 @@ with tab_view:
                                             "voxel_color_map": 'grayscale',
                                             "building_sim_mesh": mesh,
                                             "building_value_name": 'view_factor_values',
-                                            "building_colormap": 'viridis',
-                                            "building_vmin": 0.0,
-                                            "building_vmax": 1.0,
+                                            "building_colormap": cmap_view,
+                                            "building_vmin": vmin_view,
+                                            "building_vmax": vmax_view,
                                             "render_voxel_buildings": False,
                                             "title": (
                                                 "Surface " + (
@@ -1597,6 +1692,14 @@ with tab_landmark:
                                 st.success(f"Selected {len(sel_ids)} buildings from map. IDs populated.")
                         except Exception as _:
                             pass
+            # Advanced settings below the map
+            with st.expander("Advanced color settings"):
+                cmap_land, vmin_land, vmax_land = _colormap_advanced_ui(
+                    default_cmap='viridis',
+                    default_vmin=0.0,
+                    default_vmax=1.0,
+                    key_prefix='landmark'
+                )
             # Use IDs populated from map selection if available (no manual input field)
             ids_text = st.session_state.get('landmark_ids_text', '')
         # run_landmark is defined in header; no duplicate here
@@ -1653,7 +1756,10 @@ with tab_landmark:
                             "dem_grid": data['dem_grid'],
                             "obj_export": False,
                             "output_directory": output_dir_lm,
-                            "output_file_name": "landmark"
+                            "output_file_name": "landmark",
+                            "colormap": cmap_land,
+                            "vmin": vmin_land,
+                            "vmax": vmax_land,
                         }
                         landmark_grid = get_view_index(
                             voxcity_marked,
@@ -1678,9 +1784,9 @@ with tab_landmark:
                                     "ground_sim_grid": landmark_grid,
                                     "ground_dem_grid": data['dem_grid'],
                                     "ground_view_point_height": 1.5,
-                                    "ground_colormap": 'viridis',
-                                    "ground_vmin": 0.0,
-                                    "ground_vmax": 1.0,
+                                    "ground_colormap": cmap_land,
+                                    "ground_vmin": vmin_land,
+                                    "ground_vmax": vmax_land,
                                     "sim_surface_opacity": 0.95,
                                     "title": 'Landmark Visibility (Ground)',
                                 },
@@ -1695,9 +1801,9 @@ with tab_landmark:
                                 inclusion_mode=True,
                                 progress_report=True,
                                 building_id_grid=data.get('building_id_grid'),
-                                colormap='viridis',
-                                vmin=0.0,
-                                vmax=1.0,
+                                colormap=cmap_land,
+                                vmin=vmin_land,
+                                vmax=vmax_land,
                                 obj_export=False,
                                 output_directory=output_dir_lm,
                                 output_file_name='landmark_surface'
@@ -1721,9 +1827,9 @@ with tab_landmark:
                                             "voxel_color_map": 'grayscale',
                                             "building_sim_mesh": landmark_mesh,
                                             "building_value_name": 'view_factor_values',
-                                            "building_colormap": 'viridis',
-                                            "building_vmin": 0.0,
-                                            "building_vmax": 1.0,
+                                            "building_colormap": cmap_land,
+                                            "building_vmin": vmin_land,
+                                            "building_vmax": vmax_land,
                                             "render_voxel_buildings": False,
                                             "title": 'Landmark Visibility (Surface)',
                                         },
@@ -1749,9 +1855,9 @@ with tab_landmark:
                                         "ground_sim_grid": landmark_grid,
                                         "ground_dem_grid": data['dem_grid'],
                                         "ground_view_point_height": 1.5,
-                                        "ground_colormap": 'viridis',
-                                        "ground_vmin": 0.0,
-                                        "ground_vmax": 1.0,
+                                        "ground_colormap": cmap_land,
+                                        "ground_vmin": vmin_land,
+                                        "ground_vmax": vmax_land,
                                         "sim_surface_opacity": 0.95,
                                         "title": 'Landmark Visibility (Ground)',
                                     },
