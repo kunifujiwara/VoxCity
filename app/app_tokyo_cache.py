@@ -315,6 +315,16 @@ def _colormap_advanced_ui(default_cmap: str, default_vmin, default_vmax, key_pre
         ss[f"{key_prefix}_vmin"] = 0.0 if default_vmin is None else float(default_vmin)
     if f"{key_prefix}_vmax" not in ss:
         ss[f"{key_prefix}_vmax"] = 1.0 if default_vmax is None else float(default_vmax)
+    if f"{key_prefix}_vmin_str" not in ss:
+        try:
+            ss[f"{key_prefix}_vmin_str"] = f"{float(ss[f'{key_prefix}_vmin']):.6f}"
+        except Exception:
+            ss[f"{key_prefix}_vmin_str"] = ""
+    if f"{key_prefix}_vmax_str" not in ss:
+        try:
+            ss[f"{key_prefix}_vmax_str"] = f"{float(ss[f'{key_prefix}_vmax']):.6f}"
+        except Exception:
+            ss[f"{key_prefix}_vmax_str"] = ""
 
     # (Quick palettes removed)
 
@@ -345,12 +355,23 @@ def _colormap_advanced_ui(default_cmap: str, default_vmin, default_vmax, key_pre
     else:
         c1, c2 = st.columns(2)
         with c1:
-            vmin = st.number_input("vmin", value=float(ss[f"{key_prefix}_vmin"]), key=f"{key_prefix}_vmin_input")
+            vmin_str = st.text_input("vmin", value=ss[f"{key_prefix}_vmin_str"], key=f"{key_prefix}_vmin_input")
         with c2:
-            vmax = st.number_input("vmax", value=float(ss[f"{key_prefix}_vmax"]), key=f"{key_prefix}_vmax_input")
-        # Persist into session defaults for next render
-        ss[f"{key_prefix}_vmin"] = float(vmin)
-        ss[f"{key_prefix}_vmax"] = float(vmax)
+            vmax_str = st.text_input("vmax", value=ss[f"{key_prefix}_vmax_str"], key=f"{key_prefix}_vmax_input")
+        vmin = None
+        vmax = None
+        try:
+            vmin = float(vmin_str.strip()) if vmin_str.strip() != "" else ss[f"{key_prefix}_vmin"]
+            ss[f"{key_prefix}_vmin"] = float(vmin)
+            ss[f"{key_prefix}_vmin_str"] = vmin_str
+        except Exception:
+            vmin = ss[f"{key_prefix}_vmin"]
+        try:
+            vmax = float(vmax_str.strip()) if vmax_str.strip() != "" else ss[f"{key_prefix}_vmax"]
+            ss[f"{key_prefix}_vmax"] = float(vmax)
+            ss[f"{key_prefix}_vmax_str"] = vmax_str
+        except Exception:
+            vmax = ss[f"{key_prefix}_vmax"]
 
     return cmap_name, vmin, vmax
 
