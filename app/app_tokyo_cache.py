@@ -1817,6 +1817,27 @@ with tab_landmark:
                     default_vmax=1.0,
                     key_prefix='landmark'
                 )
+            # Advanced sampling settings
+            with st.expander("Advanced sampling settings"):
+                col_az_l, col_el_l = st.columns(2)
+                with col_az_l:
+                    st.number_input(
+                        "N_azimuth", min_value=1, max_value=360, value=60, step=1, key="land_N_azimuth"
+                    )
+                with col_el_l:
+                    st.number_input(
+                        "N_elevation", min_value=1, max_value=180, value=10, step=1, key="land_N_elevation"
+                    )
+                if analysis_target_lm == "Ground Level":
+                    col_emn_l, col_emx_l = st.columns(2)
+                    with col_emn_l:
+                        st.number_input(
+                            "elevation_min_degrees", min_value=-90.0, max_value=90.0, value=-30.0, step=1.0, key="land_elev_min"
+                        )
+                    with col_emx_l:
+                        st.number_input(
+                            "elevation_max_degrees", min_value=-90.0, max_value=90.0, value=30.0, step=1.0, key="land_elev_max"
+                        )
             # Advanced visualization controls: select voxel classes to hide
             with st.expander("Advanced visualization settings"):
                 st.caption("Hide element classes")
