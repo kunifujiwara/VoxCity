@@ -67,7 +67,7 @@ If builds fail:
 ## Documentation Structure
 
 - `index.md`: Main landing page
-- `example.md`: Quick start guide
+- `example.ipynb`: Quick start guide (rendered via myst-nb)
 - `examples/`: Tutorial examples
 - `autoapi/`: Auto-generated API documentation
 - `references.bib`: Bibliography for citations
