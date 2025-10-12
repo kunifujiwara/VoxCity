@@ -185,14 +185,14 @@ kwargs = {
 
 ### 4. Get voxcity Output
 
-Generate voxel data grids and corresponding building geoJSON:
+Generate voxel data grids and a corresponding building GeoDataFrame:
 
 ```python
 from voxcity.generator import get_voxcity
 
 voxcity_grid, building_height_grid, building_min_height_grid, \
-building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, \
-building_gdf = get_voxcity(
+    building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, \
+    building_gdf = get_voxcity(
     rectangle_vertices,
     building_source,
     land_cover_source,
@@ -239,6 +239,7 @@ from voxcity.exporter.obj import export_obj
 
 output_directory = "output"  # Directory where output files will be saved
 output_file_name = "voxcity" # Base name for the output OBJ file
+# export_obj signature: export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None)
 export_obj(voxcity_grid, output_directory, output_file_name, meshsize)
 ```
 The generated OBJ files can be opened and rendered in the following 3D visualization software:
@@ -310,7 +311,7 @@ solar_grid = get_global_solar_irradiance_using_epw(
 # Adjust parameters for cumulative calculation
 solar_kwargs["start_time"] = "01-01 01:00:00" # Start time for cumulative calculation
 solar_kwargs["end_time"] = "01-31 23:00:00" # End time for cumulative calculation
-solar_kwargs["output_file_name"] = 'cummulative_solar_irradiance',  # Base filename for outputs (without extension)
+solar_kwargs["output_file_name"] = 'cumulative_solar_irradiance'  # Base filename for outputs (without extension)
 
 # Calculate cumulative solar irradiance over the specified time period
 cum_solar_grid = get_global_solar_irradiance_using_epw(    
