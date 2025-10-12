@@ -1415,53 +1415,10 @@ with tab_view:
 
         with ctrl_col:
             view_type = st.selectbox("View Type", ["Green View Index", "Sky View Index", "Custom (Select Classes)"])
-            analysis_target_view = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="view_analysis_target")
-            view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
-            export_obj_flag = st.checkbox("Export as OBJ file", value=False)
-            with st.expander("Advanced color settings"):
-                default_cmap_view = 'viridis' if (view_type != "Sky View Index") else 'BuPu_r'
-                cmap_view, vmin_view, vmax_view = _colormap_advanced_ui(
-                    default_cmap=default_cmap_view,
-                    default_vmin=0.0,
-                    default_vmax=1.0,
-                    key_prefix='view'
-                )
-            # Advanced sampling settings
-            with st.expander("Advanced sampling settings"):
-                col_az, col_el = st.columns(2)
-                with col_az:
-                    N_azimuth_view = st.number_input("N_azimuth", min_value=1, max_value=360, value=60, step=1, key="view_N_azimuth")
-                with col_el:
-                    N_elevation_view = st.number_input("N_elevation", min_value=1, max_value=180, value=10, step=1, key="view_N_elevation")
-                if analysis_target_view == "Ground Level":
-                    col_emn, col_emx = st.columns(2)
-                    with col_emn:
-                        elevation_min_degrees_view = st.number_input(
-                            "elevation_min_degrees", min_value=-90.0, max_value=90.0, value=-30.0, step=1.0, key="view_elev_min"
-                        )
-                    with col_emx:
-                        elevation_max_degrees_view = st.number_input(
-                            "elevation_max_degrees", min_value=-90.0, max_value=90.0, value=30.0, step=1.0, key="view_elev_max"
-                        )
-            # Advanced visualization controls: select voxel classes to hide
-            with st.expander("Advanced visualization settings"):
-                st.caption("Hide element classes")
-                _voxel_class_options_view = [
-                    ("Buildings", -3), ("Trees (canopy)", -2), ("Underground", -1), ("Landmark", -30),
-                    ("Bareland", 1), ("Rangeland", 2), ("Shrub", 3), ("Agriculture land", 4),
-                    ("Tree (ground cover)", 5), ("Moss and lichen", 6), ("Wet land", 7), ("Mangrove", 8),
-                    ("Water", 9), ("Snow and ice", 10), ("Developed space", 11), ("Road", 12), ("Building (ground)", 13),
-                ]
-                _label_to_id_view = {label: cid for label, cid in _voxel_class_options_view}
-                cols_view = st.columns(3)
-                for idx, (label, cid) in enumerate(_voxel_class_options_view):
-                    with cols_view[idx % 3]:
-                        st.checkbox(label, value=False, key=f"hide_view_{cid}")
-            # Defaults for custom selection to ensure variables exist even if not used
+            # Defaults for custom selection so downstream logic always has values
             selected_custom_values = []
             inclusion_mode_custom = True
-
-            # Custom class selection UI
+            # Place Custom selection UI directly under the View Type selector
             if view_type == "Custom (Select Classes)":
                 col_mode, col_sel = st.columns([1, 2])
                 with col_mode:
@@ -1521,6 +1478,49 @@ with tab_view:
                             checked = st.checkbox(name, key=f"vc_cls_{code}")
                             if checked:
                                 selected_custom_values.append(int(code))
+            analysis_target_view = st.radio("Analysis Target", ["Ground Level", "Building Surfaces"], horizontal=True, key="view_analysis_target")
+            view_point_height = st.number_input("View Point Height (m)", value=1.5, min_value=0.0, max_value=10.0)
+            export_obj_flag = st.checkbox("Export as OBJ file", value=False)
+            with st.expander("Advanced color settings"):
+                default_cmap_view = 'viridis' if (view_type != "Sky View Index") else 'BuPu_r'
+                cmap_view, vmin_view, vmax_view = _colormap_advanced_ui(
+                    default_cmap=default_cmap_view,
+                    default_vmin=0.0,
+                    default_vmax=1.0,
+                    key_prefix='view'
+                )
+            # Advanced sampling settings
+            with st.expander("Advanced sampling settings"):
+                col_az, col_el = st.columns(2)
+                with col_az:
+                    N_azimuth_view = st.number_input("N_azimuth", min_value=1, max_value=360, value=60, step=1, key="view_N_azimuth")
+                with col_el:
+                    N_elevation_view = st.number_input("N_elevation", min_value=1, max_value=180, value=10, step=1, key="view_N_elevation")
+                if analysis_target_view == "Ground Level":
+                    col_emn, col_emx = st.columns(2)
+                    with col_emn:
+                        elevation_min_degrees_view = st.number_input(
+                            "elevation_min_degrees", min_value=-90.0, max_value=90.0, value=-30.0, step=1.0, key="view_elev_min"
+                        )
+                    with col_emx:
+                        elevation_max_degrees_view = st.number_input(
+                            "elevation_max_degrees", min_value=-90.0, max_value=90.0, value=30.0, step=1.0, key="view_elev_max"
+                        )
+            # Advanced visualization controls: select voxel classes to hide
+            with st.expander("Advanced visualization settings"):
+                st.caption("Hide element classes")
+                _voxel_class_options_view = [
+                    ("Buildings", -3), ("Trees (canopy)", -2), ("Underground", -1), ("Landmark", -30),
+                    ("Bareland", 1), ("Rangeland", 2), ("Shrub", 3), ("Agriculture land", 4),
+                    ("Tree (ground cover)", 5), ("Moss and lichen", 6), ("Wet land", 7), ("Mangrove", 8),
+                    ("Water", 9), ("Snow and ice", 10), ("Developed space", 11), ("Road", 12), ("Building (ground)", 13),
+                ]
+                _label_to_id_view = {label: cid for label, cid in _voxel_class_options_view}
+                cols_view = st.columns(3)
+                for idx, (label, cid) in enumerate(_voxel_class_options_view):
+                    with cols_view[idx % 3]:
+                        st.checkbox(label, value=False, key=f"hide_view_{cid}")
+            
 
         # run_view is defined in header; no duplicate button here
         
