@@ -1426,6 +1426,23 @@ with tab_view:
                     default_vmax=1.0,
                     key_prefix='view'
                 )
+            # Advanced sampling settings
+            with st.expander("Advanced sampling settings"):
+                col_az, col_el = st.columns(2)
+                with col_az:
+                    N_azimuth_view = st.number_input("N_azimuth", min_value=1, max_value=360, value=60, step=1, key="view_N_azimuth")
+                with col_el:
+                    N_elevation_view = st.number_input("N_elevation", min_value=1, max_value=180, value=10, step=1, key="view_N_elevation")
+                if analysis_target_view == "Ground Level":
+                    col_emn, col_emx = st.columns(2)
+                    with col_emn:
+                        elevation_min_degrees_view = st.number_input(
+                            "elevation_min_degrees", min_value=-90.0, max_value=90.0, value=-30.0, step=1.0, key="view_elev_min"
+                        )
+                    with col_emx:
+                        elevation_max_degrees_view = st.number_input(
+                            "elevation_max_degrees", min_value=-90.0, max_value=90.0, value=30.0, step=1.0, key="view_elev_max"
+                        )
             # Advanced visualization controls: select voxel classes to hide
             with st.expander("Advanced visualization settings"):
                 st.caption("Hide element classes")
@@ -1527,7 +1544,14 @@ with tab_view:
                             "colormap": cmap_view,
                             "vmin": vmin_view,
                             "vmax": vmax_view,
+                            "N_azimuth": int(N_azimuth_view),
+                            "N_elevation": int(N_elevation_view),
                         }
+                        try:
+                            view_kwargs["elevation_min_degrees"] = float(elevation_min_degrees_view)
+                            view_kwargs["elevation_max_degrees"] = float(elevation_max_degrees_view)
+                        except Exception:
+                            pass
                         if view_type == "Custom (Select Classes)":
                             if len(selected_custom_values) == 0:
                                 st.error("Please select at least one class for the custom view.")
@@ -1616,7 +1640,9 @@ with tab_view:
                                             'svi' if view_type == 'Sky View Index' else 'custom_vi'
                                         )
                                     )
-                                )
+                                ),
+                                N_azimuth=int(N_azimuth_view),
+                                N_elevation=int(N_elevation_view),
                             )
                         except Exception as e:
                             mesh = None
@@ -1865,6 +1891,10 @@ with tab_landmark:
                             "colormap": cmap_land,
                             "vmin": vmin_land,
                             "vmax": vmax_land,
+                            "N_azimuth": int(st.session_state.get("land_N_azimuth", 60)),
+                            "N_elevation": int(st.session_state.get("land_N_elevation", 10)),
+                            "elevation_min_degrees": float(st.session_state.get("land_elev_min", -30.0)),
+                            "elevation_max_degrees": float(st.session_state.get("land_elev_max", 30.0)),
                         }
                         landmark_grid = get_view_index(
                             voxcity_marked,
@@ -1918,7 +1948,9 @@ with tab_landmark:
                                 vmax=vmax_land,
                                 obj_export=False,
                                 output_directory=output_dir_lm,
-                                output_file_name='landmark_surface'
+                                output_file_name='landmark_surface',
+                                N_azimuth=int(st.session_state.get("land_N_azimuth", 60)),
+                                N_elevation=int(st.session_state.get("land_N_elevation", 10)),
                             )
                         except Exception as e:
                             landmark_mesh = None
@@ -1964,6 +1996,10 @@ with tab_landmark:
                                 data['meshsize'],
                                 hit_values=(-30,),
                                 inclusion_mode=True,
+                                N_azimuth=int(st.session_state.get("land_N_azimuth", 60)),
+                                N_elevation=int(st.session_state.get("land_N_elevation", 10)),
+                                elevation_min_degrees=float(st.session_state.get("land_elev_min", -30.0)),
+                                elevation_max_degrees=float(st.session_state.get("land_elev_max", 30.0)),
                             )
                             with vis_col:
                                 try:
