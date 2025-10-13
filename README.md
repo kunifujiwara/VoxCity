@@ -46,17 +46,6 @@
 </p>
 
 
-## Interactive 3D Demo (Plotly)
-
-- **Open interactive demo**: <a href="https://voxcity.readthedocs.io/en/latest/_static/plotly/voxcity_demo.html">Launch the Plotly 3D viewer</a>
-
-<p align="center">
-  <a href="https://voxcity.readthedocs.io/en/latest/_static/plotly/voxcity_demo.html" title="Open the interactive 3D VoxCity demo">
-    <img src="images/visualization.png" alt="Interactive VoxCity Plotly demo" width="600">
-  </a>
-</p>
-
-
 ## Key Features
 
 - **Integration of Multiple Data Sources:**  
@@ -213,6 +202,10 @@ voxcity_grid, building_height_grid, building_min_height_grid, \
     **kwargs
 )
 ```
+
+### Interactive 3D Demo (Plotly)
+
+- **Open interactive demo**: <a href="https://voxcity.readthedocs.io/en/latest/_static/plotly/voxcity_demo.html">Launch the Plotly 3D viewer</a>
 
 ### 5. Exporting Files
 
