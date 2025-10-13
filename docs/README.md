@@ -10,6 +10,9 @@ To build the documentation locally:
 # Install documentation dependencies
 pip install -r docs/requirements.txt
 
+# Install the package (editable) for API docs
+pip install -e .
+
 # Build the documentation
 cd docs
 make html
@@ -20,34 +23,14 @@ make html
 
 ## Read the Docs Deployment
 
-The documentation is automatically deployed to Read the Docs when changes are pushed to the main branch.
+Documentation builds on Read the Docs using `.readthedocs.yml` in the repo root.
 
-### Setup Instructions
+### Key settings
 
-1. **Connect to Read the Docs**:
-   - Go to [readthedocs.org](https://readthedocs.org)
-   - Sign in with your GitHub account
-   - Click "Import a Project"
-   - Select your VoxCity repository
-
-2. **Configuration**:
-   - The `.readthedocs.yml` file in the root directory configures the build
-   - Documentation will be built from the `docs/` directory
-   - The build uses Python 3.11 and Ubuntu 22.04
-
-3. **Automatic Builds**:
-   - Documentation builds automatically on every push to main
-   - New versions are created for git tags
-   - Build status is shown in the GitHub repository
-
-### Configuration Details
-
-The `.readthedocs.yml` file specifies:
-- **Python version**: 3.11
-- **Build system**: Sphinx
-- **Configuration file**: `docs/conf.py`
+- **Python**: 3.12
+- **Sphinx config**: `docs/conf.py`
 - **Requirements**: `docs/requirements.txt`
-- **Output formats**: HTML, PDF, ePub
+- **Output**: HTML
 
 ### Customization
 
@@ -74,9 +57,9 @@ If builds fail:
 
 ## Documentation Branch Deployment
 
-The documentation is automatically deployed to the `documentation` branch using GitHub Actions. The workflow is defined in `.github/workflows/docs.yml`.
+A GitHub Actions workflow (`.github/workflows/docs.yml`) can publish the built HTML to the `documentation` branch for GitHub Pages or archival.
 
-### Manual Deployment
+### Manual Deployment (optional)
 
 If you need to deploy manually:
 
