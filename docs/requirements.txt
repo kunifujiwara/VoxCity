@@ -1,8 +1,7 @@
-myst-nb
-sphinx-autoapi
-sphinx-rtd-theme
-furo
-sphinxcontrib-bibtex
-sphinx
-# Install voxcity in editable mode for documentation generation
--e .
+myst-nb>=1.1.0
+sphinx-autoapi>=3.4.0
+furo>=2024.8.6
+sphinxcontrib-bibtex>=2.6.0
+sphinx>=7.3
+# For building notebooks with images/plots consistently
+ipykernel>=6.29
