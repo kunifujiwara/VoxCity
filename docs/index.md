@@ -1,3 +1,9 @@
+```{raw} html
+<style>
+@import url("_static/custom.css");
+</style>
+```
+
 ```{include} ../README.md
 ```
 
