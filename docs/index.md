@@ -13,6 +13,7 @@
 :caption: Getting Started:
 example
 autoapi/index
+interactive_plotly
 ```
 
 ```{toctree}
