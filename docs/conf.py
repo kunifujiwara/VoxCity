@@ -15,6 +15,7 @@ author = "Kunihiko Fujiwara"
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
+nbsphinx_execute = "never"
 
 extensions = [
     "myst_nb",
@@ -24,7 +25,7 @@ extensions = [
     "sphinxcontrib.bibtex",
 ]
 
-# Configure myst-nb to not execute notebooks during the build
+# Add these lines to configure myst-nb
 nb_execution_mode = "off"
 
 # Bibtex settings
@@ -67,9 +68,59 @@ html_theme_options = {
 }
 
 html_title = "VoxCity Documentation"
-html_logo = "logo.png"
+# Remove or comment out the following line:
+# html_logo = "logo.png"
 html_favicon = "_static/favicon.ico"  # Make sure you have a favicon file
 
 # Add these lines near the other html_* configurations
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
+
+def skip_util_classes(app, what, name, obj, skip, options):
+    skip_packages = [
+        "mapillary",
+        "kartaview",
+        "classification",
+        "segmentation",
+        "low_level",
+        "depth_estimation",
+        "embeddings",
+        "object_detection"
+    ]
+    skip_modules = [
+        "base",
+        "font_property",
+        "gsv",
+        "ams",
+        "mly",
+        "kv",
+        "depth_estimation",
+        "embeddings",
+        "mly_metadata",
+        "image_to_pointcloud",
+        "transform_image",
+        "hist",
+        "image",
+        "kde",
+        "map",
+        "config"
+    ]
+    skip_classes = ["ImageDataset", "GSVDownloader", "Logger"]
+    skip_keywords = ["utils", "torchhub", "zoedepth", "depth_anything", "dinov2"]
+
+    if what == "package" and any(pkg in name for pkg in skip_packages):
+        return True
+    if what == "module" and any(mod in name for mod in skip_modules):
+        return True
+    if what == "class" and any(cls in name for cls in skip_classes):
+        return True
+    if any(keyword in name for keyword in skip_keywords):
+        return True
+    if what == "attribute":
+        return True
+
+    return skip
+
+
+def setup(app):
+    app.connect("autoapi-skip-member", skip_util_classes)

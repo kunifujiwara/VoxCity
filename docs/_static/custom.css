@@ -38,8 +38,3 @@
 .top-level-nav a:hover {
     text-decoration: underline;
 }
-
-/* Hide duplicated adjacent theme toggle icon if double-inserted by host */
-.theme-toggle[aria-label="Toggle color mode"] + .theme-toggle[aria-label="Toggle color mode"] {
-    display: none;
-}
