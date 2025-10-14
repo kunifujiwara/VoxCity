@@ -410,20 +410,40 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
             except: pass
 
 def build_ndsm(dsm_path, dtm_path, out_path, nodata_value=-9999.0):
+    """Compute nDSM = DSM - DTM in streaming windows to avoid large RAM usage.
+
+    Writes directly to disk using tiled BigTIFF with compression.
+    """
     with rasterio.open(dsm_path) as dsm, rasterio.open(dtm_path) as dtm:
         if dsm.crs != dtm.crs or dsm.transform != dtm.transform or dsm.shape != dtm.shape:
             raise ValueError("DSM and DTM are not perfectly aligned.")
-        d = dsm.read(1).astype(np.float32)
-        g = dtm.read(1).astype(np.float32)
-        d[d == dsm.nodata] = np.nan
-        g[g == dtm.nodata] = np.nan
-        ndsm = d - g
-        ndsm = np.where(np.isnan(ndsm), nodata_value, ndsm).astype(np.float32)
 
         meta = dsm.meta.copy()
-        meta.update({"nodata": nodata_value, "dtype": rasterio.float32})
-        with rasterio.open(out_path, 'w', **meta) as dst:
-            dst.write(ndsm, 1)
+        meta.update({
+            "count": 1,
+            "dtype": rasterio.float32,
+            "nodata": nodata_value,
+            # Use tiling and compression to keep IO efficient and file sizes reasonable
+            "tiled": True,
+            "blockxsize": 512,
+            "blockysize": 512,
+            "compress": "deflate",
+            "predictor": 3,
+        })
+
+        # Enable BigTIFF to support very large rasters
+        with rasterio.open(out_path, 'w', BIGTIFF='YES', **meta) as dst:
+            for _, window in dst.block_windows(1):
+                # Read masked arrays so nodata is already masked
+                d = dsm.read(1, window=window, masked=True).astype(np.float32, copy=False)
+                g = dtm.read(1, window=window, masked=True).astype(np.float32, copy=False)
+
+                # Subtract; mask propagates automatically
+                nd = d - g
+                out = nd.filled(nodata_value).astype(np.float32, copy=False)
+
+                dst.write(out, 1, window=window)
+
     print(f"Created initial normalized DSM (nDSM): {out_path}")
     return out_path
 
