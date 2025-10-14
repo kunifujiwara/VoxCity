@@ -28,6 +28,7 @@ from .tokyo_las import (
     filter_las_files_by_aoi,
     process_las_files,
     merge_geotiffs,
+    merge_geotiffs_batched,
     build_ndsm,
     crop_geotiff_by_vertices_exact,
 )
@@ -50,7 +51,10 @@ def main(
     cog: bool = typer.Option(False, help="Write nDSM as Cloud-Optimized GeoTIFF (COG)"),
     write_parquet: bool = typer.Option(True, help="Also export nDSM as GeoParquet (.parquet) of sample points"),
     parquet_stride: int = typer.Option(1, help="Stride when sampling raster to points for Parquet (>=1)"),
+    parquet_max_points: int = typer.Option(5_000_000, help="Max points to write to Parquet; stride auto-increased to stay under this cap"),
     parquet_crs: int = typer.Option(4326, help="Target CRS EPSG for Parquet points (default WGS84)"),
+    merge_batch_size: int = typer.Option(300, help="Batch size for merging GeoTIFFs to limit memory (<= number of tiles)"),
+    merge_tmp_dir: Optional[Path] = typer.Option(None, help="Temporary directory for intermediate merges"),
 ):
     _ensure_dir(output_dir)
 
@@ -96,8 +100,13 @@ def main(
     dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
 
     # Merge
-    merged_dsm_path = merge_geotiffs(dsm_list, str(merged_dsm_file), target_crs) if dsm_list else None
-    merged_dtm_path = merge_geotiffs(dtm_list, str(merged_dtm_file), target_crs) if dtm_list else None
+    # Use batched merge to handle thousands of tiles
+    merged_dsm_path = merge_geotiffs_batched(
+        dsm_list, str(merged_dsm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+    ) if dsm_list else None
+    merged_dtm_path = merge_geotiffs_batched(
+        dtm_list, str(merged_dtm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+    ) if dtm_list else None
     if not (merged_dsm_path and merged_dtm_path):
         typer.echo("Missing merged DSM/DTM; cannot create nDSM")
         raise typer.Exit(code=1)
@@ -140,6 +149,15 @@ def main(
                 src_crs = src.crs
                 # Build index arrays with optional stride
                 step = max(1, int(parquet_stride))
+                # Auto-increase stride to respect point cap
+                approx_rows = int(np.ceil(band.shape[0] / step))
+                approx_cols = int(np.ceil(band.shape[1] / step))
+                approx_points = approx_rows * approx_cols
+                if parquet_max_points and approx_points > int(parquet_max_points):
+                    factor = int(np.ceil((approx_points / float(parquet_max_points)) ** 0.5))
+                    # Increase stride by factor (at least 1)
+                    step = step * max(1, factor)
+                    typer.echo(f"Adjusted Parquet stride to {step} to keep points <= {parquet_max_points}")
                 rows = np.arange(0, band.shape[0], step)
                 cols = np.arange(0, band.shape[1], step)
                 rr, cc = np.meshgrid(rows, cols, indexing='ij')
