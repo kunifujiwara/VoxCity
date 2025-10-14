@@ -186,6 +186,11 @@ PAGE_ICON = (
     _fav_candidate if os.path.exists(_fav_candidate)
     else (_logo_candidate if os.path.exists(_logo_candidate) else None)
 )
+DEFAULT_TOKYO_EPW = os.path.join(
+    APP_DIR,
+    'data', 'temp', 'epw_tokyo',
+    'JPN_TK_Tokyo-Chiyoda.476620_TMYx.epw'
+)
 st.set_page_config(
     page_title="VoxCity Web App",
     page_icon=PAGE_ICON,
@@ -1209,9 +1214,18 @@ with tab_solar:
                     end_date = st.date_input("End Date (MM-DD)", value=default_end_date)
                 with col_et:
                     end_time = st.time_input("End Time", value=datetime.strptime("23:00:00", "%H:%M:%S").time())
-            download_epw = st.checkbox("Download nearest EPW file", value=True)
-            if not download_epw:
+            epw_source = st.radio(
+                "Weather file (EPW)",
+                ["Default Tokyo EPW", "Upload EPW"],
+                horizontal=True,
+                index=0
+            )
+            epw_file = None
+            if epw_source == "Upload EPW":
                 epw_file = st.file_uploader("Upload EPW file", type=['epw'])
+            else:
+                if not os.path.exists(DEFAULT_TOKYO_EPW):
+                    st.warning("Default Tokyo EPW not found. Please upload an EPW file.")
 
             with st.expander("Advanced color settings"):
                 cmap_solar, vmin_solar, vmax_solar = _colormap_advanced_ui(
@@ -1241,64 +1255,127 @@ with tab_solar:
                 with st.spinner("Running solar radiation analysis..."):
                     data = st.session_state.voxcity_data
                     
-                    # Save uploaded EPW to a temp path if provided
+                    # Resolve EPW path based on selection
                     epw_local_path = None
-                    if (not download_epw) and ('epw_file' in locals()) and (epw_file is not None):
-                        try:
-                            epw_dir = os.path.join(BASE_OUTPUT_DIR, 'epw')
-                            os.makedirs(epw_dir, exist_ok=True)
-                            epw_local_path = os.path.join(epw_dir, epw_file.name)
-                            with open(epw_local_path, 'wb') as _f:
-                                _f.write(epw_file.read())
-                        except Exception as _e:
-                            st.warning(f"Failed to persist EPW file: {_e}")
+                    if 'epw_source' in locals() and epw_source == "Default Tokyo EPW":
+                        if os.path.exists(DEFAULT_TOKYO_EPW):
+                            epw_local_path = DEFAULT_TOKYO_EPW
+                        else:
+                            st.warning("Default Tokyo EPW file is missing.")
+                    elif 'epw_source' in locals() and epw_source == "Upload EPW":
+                        if ('epw_file' in locals()) and (epw_file is not None):
+                            try:
+                                epw_dir = os.path.join(BASE_OUTPUT_DIR, 'epw')
+                                os.makedirs(epw_dir, exist_ok=True)
+                                epw_local_path = os.path.join(epw_dir, epw_file.name)
+                                with open(epw_local_path, 'wb') as _f:
+                                    _f.write(epw_file.read())
+                            except Exception as _e:
+                                st.warning(f"Failed to persist EPW file: {_e}")
+                        else:
+                            st.warning("Please upload an EPW file.")
 
                     if analysis_target == "Ground Level":
-                        solar_kwargs = {
-                            "download_nearest_epw": download_epw,
-                            "rectangle_vertices": data['rectangle_vertices'],
-                            "view_point_height": 1.5,
-                            "tree_k": 0.6,
-                            "tree_lad": 0.5,
-                            "dem_grid": data['dem_grid'],
-                            "colormap": cmap_solar,
-                            "obj_export": False,
-                            "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
-                            "output_dir": os.path.join(BASE_OUTPUT_DIR, 'epw'),
-                            "alpha": 1.0,
-                            "vmin": vmin_solar,
-                            "vmax": vmax_solar,
-                        }
-                        if epw_local_path:
-                            solar_kwargs["epw_file_path"] = epw_local_path
-                        
-                        # Create output directories (for EPW downloads and outputs)
-                        os.makedirs(solar_kwargs["output_directory"], exist_ok=True)
-                        try:
-                            os.makedirs(solar_kwargs["output_dir"], exist_ok=True)
-                        except Exception:
-                            pass
-                        
-                        if solar_calc_type == "Instantaneous":
-                            solar_kwargs["calc_time"] = calc_datetime
-                            calc_type = 'instantaneous'
+                        if not epw_local_path:
+                            st.error("No EPW file available. Please ensure the default EPW exists or upload one.")
                         else:
-                            solar_kwargs["start_time"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
-                            solar_kwargs["end_time"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
-                            calc_type = 'cumulative'
-                        
-                        solar_grid = get_global_solar_irradiance_using_epw(
-                            data['voxcity_grid'],
-                            data['meshsize'],
-                            calc_type=calc_type,
-                            direct_normal_irradiance_scaling=1.0,
-                            diffuse_irradiance_scaling=1.0,
-                            **solar_kwargs
-                        )
-                        
-                        # 3D Plotly visualization of ground-level results (left panel)
-                        with vis_col:
-                            with st.spinner("Rendering 3D overlay..."):
+                            solar_kwargs = {
+                                "download_nearest_epw": False,
+                                "rectangle_vertices": data['rectangle_vertices'],
+                                "view_point_height": 1.5,
+                                "tree_k": 0.6,
+                                "tree_lad": 0.5,
+                                "dem_grid": data['dem_grid'],
+                                "colormap": cmap_solar,
+                                "obj_export": False,
+                                "output_directory": os.path.join(BASE_OUTPUT_DIR, 'solar'),
+                                "alpha": 1.0,
+                                "vmin": vmin_solar,
+                                "vmax": vmax_solar,
+                                "epw_file_path": epw_local_path,
+                            }
+                            # Create output directory for results
+                            os.makedirs(solar_kwargs["output_directory"], exist_ok=True)
+                            
+                            if solar_calc_type == "Instantaneous":
+                                solar_kwargs["calc_time"] = calc_datetime
+                                calc_type = 'instantaneous'
+                            else:
+                                solar_kwargs["start_time"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
+                                solar_kwargs["end_time"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
+                                calc_type = 'cumulative'
+                            
+                            solar_grid = get_global_solar_irradiance_using_epw(
+                                data['voxcity_grid'],
+                                data['meshsize'],
+                                calc_type=calc_type,
+                                direct_normal_irradiance_scaling=1.0,
+                                diffuse_irradiance_scaling=1.0,
+                                **solar_kwargs
+                            )
+                            
+                            # 3D Plotly visualization of ground-level results (left panel)
+                            with vis_col:
+                                with st.spinner("Rendering 3D overlay..."):
+                                    try:
+                                        try:
+                                            present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
+                                        except Exception:
+                                            present_classes = []
+                                        _hidden_ids = {cid for _, cid in _voxel_class_options_solar if st.session_state.get(f"hide_solar_{cid}", False)}
+                                        classes_include_solar = [int(c) for c in present_classes if int(c) not in _hidden_ids]
+                                        _try_plot_voxcity_plotly(
+                                            data['voxcity_grid'],
+                                            data['meshsize'],
+                                            {
+                                                "classes": classes_include_solar,
+                                                "voxel_color_map": 'grayscale',
+                                                "ground_sim_grid": solar_grid,
+                                                "ground_dem_grid": data['dem_grid'],
+                                                "ground_view_point_height": 1.5,
+                                                "ground_colormap": cmap_solar,
+                                                "ground_vmin": vmin_solar,
+                                                "ground_vmax": vmax_solar,
+                                                "sim_surface_opacity": 0.95,
+                                                "title": "Solar overlay",
+                                            },
+                                            container=vis_col,
+                                        )
+                                        try:
+                                            st.caption(
+                                                f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
+                                            )
+                                        except Exception:
+                                            pass
+                                    except Exception as ee:
+                                        st.warning(f"3D overlay rendering failed: {ee}")
+                    else:  # Building Surfaces
+                        if not epw_local_path:
+                            st.error("No EPW file available. Please ensure the default EPW exists or upload one.")
+                        else:
+                            irradiance_kwargs = {
+                                "download_nearest_epw": False,
+                                "rectangle_vertices": data['rectangle_vertices'],
+                                "building_id_grid": data['building_id_grid'],
+                                "epw_file_path": epw_local_path,
+                            }
+                            
+                            if solar_calc_type == "Instantaneous":
+                                irradiance_kwargs["calc_type"] = "instantaneous"
+                                irradiance_kwargs["calc_time"] = calc_datetime
+                            else:
+                                irradiance_kwargs["calc_type"] = "cumulative"
+                                irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
+                                irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
+                            
+                            irradiance = get_building_global_solar_irradiance_using_epw(
+                                data['voxcity_grid'],
+                                data['meshsize'],
+                                **irradiance_kwargs
+                            )
+                            
+                            # Visualize building-surface irradiance in 3D (left panel)
+                            with vis_col:
                                 try:
                                     try:
                                         present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
@@ -1312,14 +1389,15 @@ with tab_solar:
                                         {
                                             "classes": classes_include_solar,
                                             "voxel_color_map": 'grayscale',
-                                            "ground_sim_grid": solar_grid,
-                                            "ground_dem_grid": data['dem_grid'],
-                                            "ground_view_point_height": 1.5,
-                                            "ground_colormap": cmap_solar,
-                                            "ground_vmin": vmin_solar,
-                                            "ground_vmax": vmax_solar,
-                                            "sim_surface_opacity": 0.95,
-                                            "title": "Solar overlay",
+                                            "building_sim_mesh": irradiance,
+                                            "building_value_name": 'global',
+                                            "building_colormap": cmap_solar,
+                                            "building_vmin": vmin_solar,
+                                            "building_vmax": vmax_solar,
+                                            "building_opacity": 1.0,
+                                            "building_shaded": False,
+                                            "render_voxel_buildings": False,
+                                            "title": "Building Surface Solar (Global)",
                                         },
                                         container=vis_col,
                                     )
@@ -1329,74 +1407,8 @@ with tab_solar:
                                         )
                                     except Exception:
                                         pass
-                                except Exception as ee:
-                                    st.warning(f"3D overlay rendering failed: {ee}")
-                        
-                    else:  # Building Surfaces
-                        irradiance_kwargs = {
-                            "download_nearest_epw": download_epw,
-                            "rectangle_vertices": data['rectangle_vertices'],
-                            "building_id_grid": data['building_id_grid']
-                        }
-                        if epw_local_path:
-                            irradiance_kwargs["epw_file_path"] = epw_local_path
-                        else:
-                            # Ensure EPW download directory exists when downloading
-                            irradiance_kwargs["output_dir"] = os.path.join(BASE_OUTPUT_DIR, 'epw')
-                            try:
-                                os.makedirs(irradiance_kwargs["output_dir"], exist_ok=True)
-                            except Exception:
-                                pass
-                        
-                        if solar_calc_type == "Instantaneous":
-                            irradiance_kwargs["calc_type"] = "instantaneous"
-                            irradiance_kwargs["calc_time"] = calc_datetime
-                        else:
-                            irradiance_kwargs["calc_type"] = "cumulative"
-                            irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
-                            irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
-                        
-                        irradiance = get_building_global_solar_irradiance_using_epw(
-                            data['voxcity_grid'],
-                            data['meshsize'],
-                            **irradiance_kwargs
-                        )
-                        
-                        # Visualize building-surface irradiance in 3D (left panel)
-                        with vis_col:
-                            try:
-                                try:
-                                    present_classes = np.unique(data['voxcity_grid'][data['voxcity_grid'] != 0]).tolist()
-                                except Exception:
-                                    present_classes = []
-                                _hidden_ids = {cid for _, cid in _voxel_class_options_solar if st.session_state.get(f"hide_solar_{cid}", False)}
-                                classes_include_solar = [int(c) for c in present_classes if int(c) not in _hidden_ids]
-                                _try_plot_voxcity_plotly(
-                                    data['voxcity_grid'],
-                                    data['meshsize'],
-                                        {
-                                        "classes": classes_include_solar,
-                                        "voxel_color_map": 'grayscale',
-                                        "building_sim_mesh": irradiance,
-                                        "building_value_name": 'global',
-                                            "building_colormap": cmap_solar,
-                                            "building_vmin": vmin_solar,
-                                            "building_vmax": vmax_solar,
-                                        "building_opacity": 1.0,
-                                        "building_shaded": False,
-                                        "render_voxel_buildings": False,
-                                        "title": "Building Surface Solar (Global)",
-                                    },
-                                    container=vis_col,
-                                )
-                                try:
-                                    st.caption(
-                                        f"Grid: {data['voxcity_grid'].shape} • Buildings: {len(data['building_gdf'])} • Meshsize: {data['meshsize']} m"
-                                    )
-                                except Exception:
-                                    pass
-                            except Exception as ve:
-                                st.warning(f"3D building visualization failed: {ve}")
+                                except Exception as ve:
+                                    st.warning(f"3D building visualization failed: {ve}")
                         
                     
 
