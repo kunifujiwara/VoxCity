@@ -446,6 +446,62 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
             try: src.close()
             except: pass
 
+def merge_geotiffs_batched(
+    input_files,
+    output_path,
+    target_crs,
+    nodata_value=-9999.0,
+    res=None,
+    batch_size=250,
+    tmp_dir=None,
+):
+    """Merge many GeoTIFFs in batches to reduce peak memory.
+
+    - Chunks inputs into groups of batch_size and merges each group to a temp file
+    - Recursively merges the intermediate files until a single output remains
+    - Uses the same reprojection logic as merge_geotiffs
+    """
+    files = list(input_files)
+    if not files:
+        print("No GeoTIFF files to merge")
+        return None
+
+    if len(files) <= int(batch_size):
+        return merge_geotiffs(files, output_path, target_crs, nodata_value=nodata_value, res=res)
+
+    base_dir = tmp_dir or os.path.join(os.path.dirname(output_path) or ".", "_merge_tmp")
+    os.makedirs(base_dir, exist_ok=True)
+
+    intermediates = []
+    try:
+        for i in range(0, len(files), int(batch_size)):
+            chunk = files[i:i+int(batch_size)]
+            tmp_out = os.path.join(base_dir, f"chunk_{i//int(batch_size):04d}.tif")
+            print(f"Merging batch {i//int(batch_size)+1}/{int(math.ceil(len(files)/float(batch_size)))} → {tmp_out}")
+            merged_path = merge_geotiffs(chunk, tmp_out, target_crs, nodata_value=nodata_value, res=res)
+            if merged_path is None:
+                continue
+            intermediates.append(merged_path)
+
+        if not intermediates:
+            print("No intermediates produced; aborting batched merge")
+            return None
+
+        # Final merge of intermediates
+        print(f"Merging {len(intermediates)} intermediate files into final output ...")
+        final_path = merge_geotiffs(intermediates, output_path, target_crs, nodata_value=nodata_value, res=res)
+        print("Batched merge completed successfully")
+        return final_path
+    finally:
+        # Best-effort cleanup of intermediate files
+        for fp in intermediates:
+            try:
+                if os.path.exists(fp):
+                    os.remove(fp)
+            except Exception:
+                pass
+        # Do not remove the tmp directory automatically; it might be shared
+
 def build_ndsm(dsm_path, dtm_path, out_path, nodata_value=-9999.0):
     """Compute nDSM = DSM - DTM in streaming windows to avoid large RAM usage.
 
