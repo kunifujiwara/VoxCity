@@ -27,7 +27,7 @@ from rasterio.transform import from_origin
 from rasterio.mask import mask as rio_mask
 from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
- 
+import rasterio.crs
 
 import laspy
 from shapely.geometry import Polygon, mapping
@@ -188,7 +188,8 @@ def filter_las_files_by_aoi(las_files, rectangle_vertices, target_crs, pad_m=0.0
     if rectangle_vertices[0] != rectangle_vertices[-1]:
         rectangle_vertices = list(rectangle_vertices) + [rectangle_vertices[0]]
     poly_w84 = Polygon(rectangle_vertices)
-    to_target = Transformer.from_crs("EPSG:4326", target_crs, always_xy=True).transform
+    tcrs = normalize_crs(target_crs) or target_crs
+    to_target = Transformer.from_crs("EPSG:4326", tcrs, always_xy=True).transform
     poly_target = shp_transform(to_target, poly_w84)
     if pad_m:
         poly_target = poly_target.buffer(pad_m)
@@ -201,8 +202,8 @@ def filter_las_files_by_aoi(las_files, rectangle_vertices, target_crs, pad_m=0.0
         xmin, ymin, xmax, ymax = bounds
         bpoly = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax), (xmin, ymin)])
         try:
-            if las_crs is not None and str(las_crs) != str(target_crs):
-                to_target_from_las = Transformer.from_crs(las_crs, target_crs, always_xy=True).transform
+            if las_crs is not None:
+                to_target_from_las = Transformer.from_crs(las_crs, tcrs, always_xy=True).transform
                 bpoly_t = shp_transform(to_target_from_las, bpoly)
             else:
                 bpoly_t = bpoly
@@ -224,6 +225,40 @@ def choose_jprcs_epsg(lons):
     """Pick JGD2011 Plane Rectangular CRS by AOI lon; Tokyo central → EPSG:6677."""
     lon_c = sum(lons) / len(lons)
     return "EPSG:6677" if lon_c >= 139.0 else "EPSG:6676"  # simple, effective for Kanto
+
+
+def normalize_crs(crs_like):
+    """Return a rasterio CRS object, with safe fallbacks for older GDAL/PROJ.
+
+    - Try rasterio's native parsing first
+    - Fall back to PROJ4 strings for JGD2011 PRCS zones 8/9 (EPSG:6676/6677)
+    - Return None if input is falsy or cannot be parsed
+    """
+    if not crs_like:
+        return None
+    try:
+        return rasterio.crs.CRS.from_user_input(crs_like)
+    except Exception:
+        text = str(crs_like).strip().upper()
+        if text.endswith("EPSG:6677") or text == "6677":
+            proj4 = (
+                "+proj=tmerc +lat_0=36 +lon_0=139.83333333333334 +k=0.9999 "
+                "+x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs"
+            )
+            try:
+                return rasterio.crs.CRS.from_string(proj4)
+            except Exception:
+                return None
+        if text.endswith("EPSG:6676") or text == "6676":
+            proj4 = (
+                "+proj=tmerc +lat_0=36 +lon_0=138.5 +k=0.9999 "
+                "+x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs"
+            )
+            try:
+                return rasterio.crs.CRS.from_string(proj4)
+            except Exception:
+                return None
+        return None
 
 
 # =========================
@@ -301,8 +336,10 @@ def save_raster(raster_data, output_path, crs):
         'dtype':  rasterio.float32,
         'transform': transform,
         'nodata': nodata,
-        'crs': crs
     }
+    crs_obj = normalize_crs(crs)
+    if crs_obj is not None:
+        profile['crs'] = crs_obj
 
     array = np.where(np.isnan(array), nodata, array).astype(np.float32, copy=False)
     with rasterio.open(output_path, 'w', **profile) as dst:
@@ -354,33 +391,33 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
         if res is None:
             res = default_res
 
+        tcrs = normalize_crs(target_crs) or target_crs
         for fp in input_files:
             src = rasterio.open(fp)
             opened.append(src)
             if src.crs is None:
-                raise ValueError(f"{fp} has no CRS; cannot reproject.")
-            if str(src.crs) == str(target_crs):
-                # Already in target CRS → still wrap so nodata/resampling are uniform
+                # Assume inputs are already in target CRS; set src_crs and wrap
                 vrt = WarpedVRT(
                     src,
-                    crs=target_crs,
+                    crs=tcrs,
+                    src_crs=tcrs,
                     src_nodata=src.nodata,
                     dst_nodata=nodata_value,
                     resampling=Resampling.nearest,
-                    resolution=res
+                    resolution=res,
                 )
             else:
                 vrt = WarpedVRT(
                     src,
-                    crs=target_crs,
+                    crs=tcrs,
                     src_nodata=src.nodata,
                     dst_nodata=nodata_value,
                     resampling=Resampling.nearest,
-                    resolution=res
+                    resolution=res,
                 )
             warped.append(vrt)
 
-        print(f"Target CRS: {target_crs}")
+        print(f"Target CRS: {tcrs}")
         print("Merging files...")
         # No dst_crs here — all inputs are already warped VRTs
         merged, transform = merge(warped, nodata=nodata_value, method="first")
@@ -391,7 +428,7 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
             "width": merged.shape[2],
             "count": merged.shape[0],
             "dtype": merged.dtype,
-            "crs": target_crs,
+            "crs": tcrs,
             "transform": transform,
             "nodata": nodata_value
         }
