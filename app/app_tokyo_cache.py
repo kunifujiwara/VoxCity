@@ -1206,19 +1206,12 @@ with tab2:
                                     non_tree_fill=np.nan,
                                     clamp_negative_to_zero=True,
                                 )
-                                canopy_refined = fill_canopy_gaps_with_nearest(
-                                    canopy_initial,
-                                    ndsm_aligned,
-                                    land_cover_grid,
-                                    tree_value=tree_id,
-                                    treat_zero_as_missing=True,
-                                    restrict_neighbors_to_tree=True,
-                                    allow_resample=False,
-                                    max_neighbor_distance_m=max(30.0, 6.0*float(meshsize)),
-                                    cell_size_m=float(meshsize),
-                                    # Assign static height only if still missing after neighborhood search
-                                    fallback_tree_height_m=float(static_tree_height),
-                                )
+                                # Directly fill missing tree cells with static height (no neighbor infill)
+                                canopy_refined = canopy_initial.copy().astype(float)
+                                tree_mask_local = (land_cover_grid == tree_id)
+                                missing_tree = tree_mask_local & np.isnan(canopy_refined)
+                                if np.any(missing_tree):
+                                    canopy_refined[missing_tree] = float(static_tree_height)
 
                                 canopy_refined = remove_local_spikes_in_canopy(
                                     canopy_refined,
