@@ -1764,6 +1764,8 @@ with tab_view:
                                 ),
                                 N_azimuth=int(N_azimuth_view),
                                 N_elevation=int(N_elevation_view),
+                                ray_sampling='fibonacci',
+                                N_rays=int(N_azimuth_view) * int(N_elevation_view),
                             )
                         except Exception as e:
                             mesh = None
@@ -2093,6 +2095,8 @@ with tab_landmark:
                                 output_file_name='landmark_surface',
                                 N_azimuth=int(st.session_state.get("land_N_azimuth", 60)),
                                 N_elevation=int(st.session_state.get("land_N_elevation", 10)),
+                                ray_sampling='fibonacci',
+                                N_rays=int(st.session_state.get("land_N_azimuth", 60)) * int(st.session_state.get("land_N_elevation", 10)),
                             )
                         except Exception as e:
                             landmark_mesh = None
