@@ -18,6 +18,10 @@ import tempfile
 import glob
 import requests
 from geopy import distance
+from pyproj import Transformer, CRS
+import rasterio
+from rasterio.enums import Resampling
+from rasterio.windows import from_bounds, Window
 try:
     from tokyo_las import (
         get_ndsm_grid,
@@ -81,6 +85,104 @@ def _zip_files_to_bytes(file_paths) -> BytesIO:
                     pass
     memory_file.seek(0)
     return memory_file
+
+# Load nDSM points from tiled full-resolution Parquet directory using spatial filtering
+def _load_ndsm_points_from_full_parquet(base_dir: str, rectangle_vertices):
+    try:
+        import pyarrow.dataset as ds  # type: ignore
+    except Exception:
+        ds = None
+    try:
+        min_lon = min(v[0] for v in rectangle_vertices)
+        min_lat = min(v[1] for v in rectangle_vertices)
+        max_lon = max(v[0] for v in rectangle_vertices)
+        max_lat = max(v[1] for v in rectangle_vertices)
+
+        # nDSM raster and derived Parquet coordinates are in JGD2011 / Japan Plane Rectangular (EPSG:6677)
+        to_native = Transformer.from_crs(CRS.from_epsg(4326), CRS.from_epsg(6677), always_xy=True)
+        minx7, miny7 = to_native.transform(min_lon, min_lat)
+        maxx7, maxy7 = to_native.transform(max_lon, max_lat)
+
+        if ds is not None:
+            dataset = ds.dataset(base_dir, format="parquet")
+            filt = (
+                (ds.field("x") >= minx7) & (ds.field("x") <= maxx7) &
+                (ds.field("y") >= miny7) & (ds.field("y") <= maxy7)
+            )
+            table = dataset.to_table(filter=filt, columns=["x", "y", "ndsm"])
+            df = table.to_pandas()
+        else:
+            # Fallback: read all files and filter in pandas (slower)
+            import pandas as pd  # type: ignore
+            import glob
+            parts = glob.glob(os.path.join(base_dir, "*.parquet"))
+            if not parts:
+                return None
+            frames = []
+            for p in parts:
+                try:
+                    frames.append(pd.read_parquet(p, columns=["x", "y", "ndsm"]))
+                except Exception:
+                    continue
+            if not frames:
+                return None
+            df = pd.concat(frames, ignore_index=True)
+            df = df[(df["x"] >= minx7) & (df["x"] <= maxx7) & (df["y"] >= miny7) & (df["y"] <= maxy7)]
+
+        if df is None or len(df) == 0:
+            return None
+
+        # Transform native coords back to WGS84 for VoxCity grid functions
+        to_wgs84 = Transformer.from_crs(CRS.from_epsg(6677), CRS.from_epsg(4326), always_xy=True)
+        lons, lats = to_wgs84.transform(df["x"].to_numpy(), df["y"].to_numpy())
+
+        gdf = gpd.GeoDataFrame(
+            {"elevation": df["ndsm"].astype(float)},
+            geometry=gpd.points_from_xy(lons, lats),
+            crs="EPSG:4326",
+        )
+        return gdf
+    except Exception:
+        return None
+
+# Compute averaged nDSM per mesh cell from GeoTIFF/COG over the AOI
+def _ndsm_average_grid_from_geotiff(tiff_path: str, meshsize: float, rectangle_vertices):
+    try:
+        poly = Polygon([
+            (rectangle_vertices[0][0], rectangle_vertices[0][1]),
+            (rectangle_vertices[1][0], rectangle_vertices[1][1]),
+            (rectangle_vertices[2][0], rectangle_vertices[2][1]),
+            (rectangle_vertices[3][0], rectangle_vertices[3][1]),
+        ])
+    except Exception:
+        poly = None
+    with rasterio.open(tiff_path) as src:
+        if src.crs is None:
+            raise ValueError("Raster has no CRS")
+        # Transform AOI to raster CRS and get bounds
+        to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+        (minx, miny) = to_src.transform(float(min(v[0] for v in rectangle_vertices)), float(min(v[1] for v in rectangle_vertices)))
+        (maxx, maxy) = to_src.transform(float(max(v[0] for v in rectangle_vertices)), float(max(v[1] for v in rectangle_vertices)))
+        # Ensure ordering
+        minx, maxx = (min(minx, maxx), max(minx, maxx))
+        miny, maxy = (min(miny, maxy), max(miny, maxy))
+
+        # Build window and target out_shape using average resampling
+        win = from_bounds(minx, miny, maxx, maxy, src.transform)
+        win = win.round_offsets().round_lengths()
+
+        # Pixel counts from meter extents / meshsize (src CRS is projected meters for JGD2011)
+        width_m = maxx - minx
+        height_m = maxy - miny
+        out_w = max(1, int(round(width_m / float(meshsize))))
+        out_h = max(1, int(round(height_m / float(meshsize))))
+
+        arr = src.read(1, window=win, out_shape=(out_h, out_w), resampling=Resampling.average)
+        nodata = src.nodata
+        arr = arr.astype(float, copy=False)
+        if nodata is not None:
+            arr = np.where(arr == float(nodata), np.nan, arr)
+        return arr
 
 # Streamlit message size error helper and safe Plotly renderer
 try:
@@ -1051,8 +1153,15 @@ with tab2:
 
                                 # Prefer precomputed nDSM if available
                                 ndsm_parquet = os.path.join(APP_DIR, 'data', 'temp', 'ndsm.parquet')
+                                ndsm_full_parquet_dir = os.path.join(APP_DIR, 'data', 'temp', 'ndsm_full_parquet')
+                                ndsm_cog = os.path.join(APP_DIR, 'data', 'temp', 'ndsm_cog.tif')
                                 ndsm_cached = os.path.join(APP_DIR, 'data', 'temp', 'ndsm.tif')
-                                if os.path.exists(ndsm_parquet):
+                                if os.path.exists(ndsm_cog):
+                                    # High-fidelity: average within each mesh cell from COG/TIFF
+                                    ndsm_grid = _ndsm_average_grid_from_geotiff(ndsm_cog, meshsize, rectangle_vertices)
+                                elif os.path.exists(ndsm_cached):
+                                    ndsm_grid = _ndsm_average_grid_from_geotiff(ndsm_cached, meshsize, rectangle_vertices)
+                                elif os.path.exists(ndsm_parquet):
                                     try:
                                         ndsm_points = gpd.read_parquet(ndsm_parquet)
                                         if ndsm_points is not None and not ndsm_points.empty:
@@ -1067,8 +1176,13 @@ with tab2:
                                             ndsm_grid = None
                                     except Exception:
                                         ndsm_grid = None
-                                elif os.path.exists(ndsm_cached):
-                                    ndsm_grid = create_height_grid_from_geotiff_polygon(ndsm_cached, meshsize, rectangle_vertices)
+                                elif os.path.isdir(ndsm_full_parquet_dir):
+                                    # Prefer full-resolution tiled Parquet if present
+                                    ndsm_points = _load_ndsm_points_from_full_parquet(ndsm_full_parquet_dir, rectangle_vertices)
+                                    if ndsm_points is not None and not ndsm_points.empty:
+                                        ndsm_grid = create_dem_grid_from_gdf_polygon(ndsm_points, meshsize, rectangle_vertices)
+                                    else:
+                                        ndsm_grid = None
                                 else:
                                     ndsm_grid = get_ndsm_grid(
                                         rectangle_vertices,
@@ -1084,6 +1198,7 @@ with tab2:
                                     allow_resample=True,
                                     try_vertical_flip=True,
                                 )
+                                # Build canopy: average-per-cell-derived ndsm already aligned roughly; enforce NaN for non-tree
                                 canopy_initial = build_canopy_from_ndsm(
                                     ndsm_aligned,
                                     land_cover_grid,
@@ -1096,11 +1211,12 @@ with tab2:
                                     ndsm_aligned,
                                     land_cover_grid,
                                     tree_value=tree_id,
-                                    treat_zero_as_missing=False,
+                                    treat_zero_as_missing=True,
                                     restrict_neighbors_to_tree=True,
                                     allow_resample=False,
-                                    max_neighbor_distance_m=5.0,
-                                    cell_size_m=meshsize,
+                                    max_neighbor_distance_m=max(30.0, 6.0*float(meshsize)),
+                                    cell_size_m=float(meshsize),
+                                    # Assign static height only if still missing after neighborhood search
                                     fallback_tree_height_m=float(static_tree_height),
                                 )
 
@@ -1109,10 +1225,10 @@ with tab2:
                                     land_cover_grid,
                                     tree_value=tree_id,
                                     building_value=building_id,
-                                    high_threshold_m=10.0,
-                                    building_buffer_m=15.0,
-                                    cell_size_m=meshsize,
-                                    replacement_tree_height_m=float(static_tree_height),
+                                    high_threshold_m=12.0,
+                                    building_buffer_m=20.0,
+                                    cell_size_m=float(meshsize),
+                                    replacement_tree_height_m=None,
                                 )
                                 # Replace NaN with 0 for downstream processing
                                 canopy_refined = np.nan_to_num(canopy_refined, nan=0.0)

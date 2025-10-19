@@ -40,6 +40,108 @@ def _ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def _write_ndsm_full_parquet(
+    ndsm_path: str,
+    output_dir: Path,
+    tile_size: int = 2048,
+    include_nodata: bool = False,
+) -> Path:
+    """
+    Stream-write the full-resolution nDSM raster to a directory of Parquet files without sampling.
+
+    Each tile (window) is written as one Parquet file with columns: row, col, x, y, ndsm.
+
+    Returns the directory path created.
+    """
+    out_dir = output_dir / "ndsm_full_parquet"
+    _ensure_dir(out_dir)
+
+    with rasterio.open(str(ndsm_path)) as src:
+        transform = src.transform
+        nodata = src.nodata
+        height = src.height
+        width = src.width
+
+        # Affine coefficients for fast center coordinate computation
+        a = transform.a
+        b = transform.b
+        c = transform.c
+        d = transform.d
+        e = transform.e
+        f = transform.f
+
+        for row_off in range(0, height, tile_size):
+            win_h = min(tile_size, height - row_off)
+            for col_off in range(0, width, tile_size):
+                win_w = min(tile_size, width - col_off)
+                window = rasterio.windows.Window(
+                    col_off=col_off, row_off=row_off, width=win_w, height=win_h
+                )
+                band = src.read(1, window=window)
+
+                # Build row/col indices in image coordinates
+                rows = np.arange(row_off, row_off + win_h)
+                cols = np.arange(col_off, col_off + win_w)
+                rr, cc = np.meshgrid(rows, cols, indexing="ij")
+
+                vals = band.reshape(-1)
+                rr = rr.reshape(-1)
+                cc = cc.reshape(-1)
+
+                if not include_nodata and nodata is not None:
+                    mask = vals != nodata
+                    if not np.any(mask):
+                        continue
+                    vals = vals[mask]
+                    rr = rr[mask]
+                    cc = cc[mask]
+
+                # Compute center coordinates using the affine transform
+                # x = c + a*(col + 0.5) + b*(row + 0.5)
+                # y = f + d*(col + 0.5) + e*(row + 0.5)
+                cc_center = cc.astype(np.float64) + 0.5
+                rr_center = rr.astype(np.float64) + 0.5
+                xs = c + a * cc_center + b * rr_center
+                ys = f + d * cc_center + e * rr_center
+
+                # Write one parquet per tile
+                file_name = f"part_r{row_off}_c{col_off}.parquet"
+                out_path = out_dir / file_name
+
+                # Prefer pyarrow directly for speed and lower overhead
+                try:
+                    import pyarrow as pa  # type: ignore
+                    import pyarrow.parquet as pq  # type: ignore
+
+                    table = pa.table({
+                        "row": pa.array(rr, type=pa.int32()),
+                        "col": pa.array(cc, type=pa.int32()),
+                        "x": pa.array(xs, type=pa.float64()),
+                        "y": pa.array(ys, type=pa.float64()),
+                        "ndsm": pa.array(vals.astype(np.float32)),
+                    })
+                    pq.write_table(
+                        table,
+                        where=str(out_path),
+                        compression="zstd",
+                        version="2.6",
+                    )
+                except Exception:
+                    # Fallback to pandas writer
+                    import pandas as pd  # type: ignore
+
+                    df = pd.DataFrame({
+                        "row": rr.astype(np.int32),
+                        "col": cc.astype(np.int32),
+                        "x": xs,
+                        "y": ys,
+                        "ndsm": vals.astype(np.float32),
+                    })
+                    df.to_parquet(str(out_path), index=False)
+
+    return out_dir
+
+
 @app.command()
 def main(
     las_dir: Path = typer.Option(Path("app/data/tokyo_las"), exists=True, file_okay=False, dir_okay=True),
@@ -53,6 +155,9 @@ def main(
     parquet_stride: int = typer.Option(1, help="Stride when sampling raster to points for Parquet (>=1)"),
     parquet_max_points: int = typer.Option(5_000_000, help="Max points to write to Parquet; stride auto-increased to stay under this cap"),
     parquet_crs: int = typer.Option(4326, help="Target CRS EPSG for Parquet points (default WGS84)"),
+    write_parquet_full: bool = typer.Option(False, help="Write ALL nDSM pixels to partitioned Parquet (no sampling)"),
+    parquet_tile_size: int = typer.Option(2048, help="Tile size for full-resolution Parquet export"),
+    parquet_include_nodata: bool = typer.Option(False, help="Include nodata pixels in full Parquet export"),
     merge_batch_size: int = typer.Option(300, help="Batch size for merging GeoTIFFs to limit memory (<= number of tiles)"),
     merge_tmp_dir: Optional[Path] = typer.Option(None, help="Temporary directory for intermediate merges"),
 ):
@@ -130,7 +235,9 @@ def main(
     # Optional COG conversion of final nDSM
     if cog:
         dst_cog = output_dir / "ndsm_cog.tif"
-        profile = cog_profiles.get("deflate")
+        profile = cog_profiles.get("deflate").copy()
+        # Force BigTIFF to avoid Classic TIFF 32-bit directory offset overflow on very large datasets
+        profile.update({"BIGTIFF": "YES"})
         cog_translate(
             str(final_ndsm), str(dst_cog), profile,
             in_memory=False, quiet=True
@@ -139,7 +246,7 @@ def main(
 
     typer.echo(f"nDSM ready: {final_ndsm}")
 
-    # Optional Parquet export (GeoParquet points at pixel centers)
+    # Optional Parquet export (sampled points at pixel centers)
     if write_parquet:
         try:
             _ndsm_parquet = output_dir / "ndsm.parquet"
@@ -188,6 +295,19 @@ def main(
                 typer.echo(f"GeoParquet written: {_ndsm_parquet} (points, stride={step})")
         except Exception as e:
             typer.echo(f"Failed to write nDSM GeoParquet: {e}")
+
+    # Optional full-resolution Parquet export (no sampling)
+    if write_parquet_full:
+        try:
+            out_dir = _write_ndsm_full_parquet(
+                str(final_ndsm),
+                output_dir=output_dir,
+                tile_size=int(parquet_tile_size),
+                include_nodata=bool(parquet_include_nodata),
+            )
+            typer.echo(f"Full-resolution Parquet written: {out_dir}")
+        except Exception as e:
+            typer.echo(f"Failed to write full-resolution nDSM Parquet: {e}")
 
 
 if __name__ == "__main__":
