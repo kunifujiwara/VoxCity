@@ -679,7 +679,8 @@ def create_height_grid_from_geotiff_rectangle(tiff_path, mesh_size_m, rectangle_
         else:
             print("  Data range: (no valid values in requested rectangle)")
 
-        return grid
+        # Convert to VoxCity 2D grid convention (south-up): row 0 = south
+        return np.flipud(grid)
 
 def visualize_height_grid(
     grid,
@@ -859,23 +860,6 @@ def align_ndsm_to_landcover(
             raise ValueError(f"Shape mismatch: nDSM {nd.shape} vs land_cover {lc.shape}")
         nd = _resize_nearest_centered(nd, lc.shape)
         info["resampled"] = True
-
-    # 2) Optional: *explicitly* try a vertical flip heuristic
-    if try_vertical_flip:
-        # Heuristic uses valid-mask overlap ONLY when a tree mask is provided.
-        if tree_value is not None:
-            tree_mask = (lc == tree_value)
-        else:
-            # fall back to full domain (weak signal)
-            tree_mask = np.ones_like(lc, dtype=bool)
-
-        valid = ~np.isnan(nd)
-        score_as_is = np.count_nonzero(valid & tree_mask)
-        score_flip  = np.count_nonzero(np.flipud(valid) & tree_mask)
-
-        if score_flip > score_as_is:
-            nd = np.flipud(nd)
-            info["vertical_flipped"] = True
 
     return nd, info
 

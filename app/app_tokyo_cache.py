@@ -182,6 +182,14 @@ def _ndsm_average_grid_from_geotiff(tiff_path: str, meshsize: float, rectangle_v
         arr = arr.astype(float, copy=False)
         if nodata is not None:
             arr = np.where(arr == float(nodata), np.nan, arr)
+        # Normalize orientation to VoxCity convention (south-up, row 0 = south)
+        try:
+            # rasterio Affine: a,b,c,d,e,f; e < 0 => north-up; e > 0 => south-up
+            if getattr(src, 'transform', None) is not None:
+                if float(src.transform.e) < 0:
+                    arr = np.flipud(arr)
+        except Exception:
+            pass
         return arr
 
 # Streamlit message size error helper and safe Plotly renderer
