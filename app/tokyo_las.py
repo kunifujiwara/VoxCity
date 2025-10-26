@@ -1258,16 +1258,18 @@ def build_canopy_height_grid(
     return canopy
 
 def _binary_dilation_square(mask: np.ndarray, radius_cells: int) -> np.ndarray:
-    """Simple binary dilation using a square (Chebyshev) radius via numpy rolls."""
+    """Binary dilation with a square structuring element without wrap-around."""
     if radius_cells <= 0:
         return mask.astype(bool)
     m = mask.astype(bool)
     H, W = m.shape
-    out = np.zeros_like(m, dtype=bool)
-    for dr in range(-radius_cells, radius_cells + 1):
-        for dc in range(-radius_cells, radius_cells + 1):
-            out |= np.roll(np.roll(m, dr, axis=0), dc, axis=1)
-    return out
+    pad = int(radius_cells)
+    padded = np.pad(m, pad_width=pad, mode='constant', constant_values=False)
+    out_core = np.zeros((H, W), dtype=bool)
+    for dr in range(-pad, pad + 1):
+        for dc in range(-pad, pad + 1):
+            out_core |= padded[pad + dr: pad + dr + H, pad + dc: pad + dc + W]
+    return out_core
 
 def remove_local_spikes_in_canopy(
     canopy_grid: np.ndarray,
@@ -1295,12 +1297,15 @@ def remove_local_spikes_in_canopy(
     bld_mask = _tree_mask_from_value(land_cover_grid, building_value)
 
     # 1) Neighbor tree count (8-connectivity)
-    neighbor_count = np.zeros_like(tree_mask, dtype=np.int32)
+    # Neighbor count (8-connectivity) without wrap-around
+    H, W = tree_mask.shape
+    padded = np.pad(tree_mask.astype(np.uint8), pad_width=1, mode='constant', constant_values=0)
+    neighbor_count = np.zeros((H, W), dtype=np.int32)
     for dr in (-1, 0, 1):
         for dc in (-1, 0, 1):
             if dr == 0 and dc == 0:
                 continue
-            neighbor_count += np.roll(np.roll(tree_mask, dr, axis=0), dc, axis=1).astype(np.int32)
+            neighbor_count += padded[1 + dr: 1 + dr + H, 1 + dc: 1 + dc + W].astype(np.int32)
 
     high = (tree_mask) & np.isfinite(can) & (can > float(high_threshold_m))
     insufficient_neighbors = high & (neighbor_count < int(min_adjacent_tree_neighbors))

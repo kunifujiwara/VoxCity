@@ -236,7 +236,7 @@ def _try_plot_voxcity_plotly(voxcity_grid, meshsize, plot_kwargs: dict, containe
                 pass
             target = container if container is not None else st
             try:
-                target.plotly_chart(fig, use_container_width=True)
+                target.plotly_chart(fig, width='stretch')
             except Exception as e:
                 # Catch message size related errors
                 if isinstance(e, MessageSizeError) or ('exceeds the message size limit' in str(e)) or ('MessageSizeError' in str(e)):
@@ -257,6 +257,58 @@ def _try_plot_voxcity_plotly(voxcity_grid, meshsize, plot_kwargs: dict, containe
     if last_err is not None:
         st.warning("Unable to display 3D view due to size. Try smaller area or larger mesh size.")
     return False, 1
+
+# Debug helpers for nDSM/Canopy inspection
+def _downsample_for_debug(arr: np.ndarray, max_dim: int = 800) -> np.ndarray:
+    try:
+        h, w = arr.shape[:2]
+        step = int(max(1, np.ceil(max(h, w) / float(max_dim))))
+        return arr[::step, ::step]
+    except Exception:
+        return arr
+
+def _grid_stats_text(name: str, arr: np.ndarray) -> str:
+    try:
+        a = np.asarray(arr, dtype=float)
+        finite = np.isfinite(a)
+        n_total = a.size
+        n_nan = int(np.count_nonzero(~finite))
+        if np.any(finite):
+            vmin = float(np.nanmin(a))
+            vmax = float(np.nanmax(a))
+            vmean = float(np.nanmean(a))
+        else:
+            vmin = vmax = vmean = float('nan')
+        return (
+            f"{name} | shape={a.shape}, min={vmin:.3f}, max={vmax:.3f}, mean={vmean:.3f}, "
+            f"nan_ratio={(n_nan / n_total) if n_total else 0.0:.3f}"
+        )
+    except Exception:
+        return f"{name} | stats unavailable"
+
+def _plot_debug_heatmap(arr: np.ndarray, title: str, cmap: str = 'viridis', vmin=None, vmax=None):
+    try:
+        a = np.asarray(arr, dtype=float)
+        a_plot = _downsample_for_debug(a)
+        # Set NaNs to show as light gray for visibility
+        cm = plt.get_cmap(cmap).copy()
+        try:
+            cm.set_bad(color=(0.85, 0.85, 0.85, 1.0))
+        except Exception:
+            pass
+        fig, ax = plt.subplots(figsize=(6.0, 5.0))
+        im = ax.imshow(a_plot, origin='lower', cmap=cm, vmin=vmin, vmax=vmax, interpolation='nearest')
+        ax.set_title(title)
+        ax.set_xticks([]); ax.set_yticks([])
+        cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+        cbar.ax.set_ylabel('value', rotation=90)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+    except Exception as _:
+        try:
+            st.caption(f"{title} (unable to render heatmap)")
+        except Exception:
+            pass
 
 # Try to import and initialize Earth Engine only if explicitly requested to avoid startup hangs
 EE_AUTHENTICATED = False
@@ -454,11 +506,11 @@ def _colormap_advanced_ui(default_cmap: str, default_vmin, default_vmax, key_pre
     try:
         grad = np.linspace(0, 1, 256).reshape(1, -1)
         fig, ax = plt.subplots(figsize=(4, 0.3))
-        ax.imshow(grad, aspect='auto', cmap=plt.cm.get_cmap(cmap_name))
+        ax.imshow(grad, aspect='auto', cmap=plt.get_cmap(cmap_name))
         ax.set_xticks([]); ax.set_yticks([])
         for s in ['top','right','left','bottom']:
             ax.spines[s].set_visible(False)
-        st.pyplot(fig, use_container_width=True)
+        st.pyplot(fig, width='stretch')
         plt.close(fig)
     except Exception:
         pass
@@ -1071,6 +1123,37 @@ with tab2:
                 help="Refine tree canopy using Tokyo LAS-derived nDSM when available (Japan only).",
             )
 
+            # Enable detailed debug for nDSM/Canopy computations and plots
+            st.checkbox(
+                "Debug nDSM/Canopy (print stats + heatmaps)",
+                value=False,
+                key="debug_ndsm_canopy",
+                help="Show diagnostic stats and heatmaps for nDSM and canopy grids to investigate sparse areas."
+            )
+            # Controls for canopy refinement
+            st.markdown("Canopy refinement")
+            col_thr, col_buf, col_rep = st.columns(3)
+            with col_thr:
+                st.number_input(
+                    "High spike threshold (m)", min_value=0.0, max_value=100.0, value=12.0, step=0.5,
+                    key="canopy_high_threshold_m",
+                    help="Tree cells above this height are checked for spikes."
+                )
+            with col_buf:
+                st.number_input(
+                    "Building buffer (m)", min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+                    key="canopy_building_buffer_m",
+                    help="Suppress spikes within this distance from buildings."
+                )
+            with col_rep:
+                st.selectbox(
+                    "Spike replace",
+                    ["NaN (then fill)", "Static tree height"],
+                    index=1,
+                    key="canopy_replace_mode",
+                    help="How to treat suppressed spike cells before final fill."
+                )
+
     with right_col:
         if st.session_state.rectangle_vertices is None:
             st.warning("Set the target area first in the 'Target Area' tab.")
@@ -1140,6 +1223,7 @@ with tab2:
                                 data = st.session_state.voxcity_data
                                 rectangle_vertices = data['rectangle_vertices']
                                 land_cover_grid = data['land_cover_grid']
+                                _dbg_nc = bool(st.session_state.get('debug_ndsm_canopy', False))
 
                                 # Resolve tree class id for OEMJ
                                 _lc_classes = get_land_cover_classes(land_cover_source)
@@ -1199,6 +1283,10 @@ with tab2:
                                         output_dir=output_dir,
                                         las_dir=LAS_DIR,
                                     )
+                                if _dbg_nc and (ndsm_grid is not None):
+                                    st.text(_grid_stats_text('nDSM (COG/GeoTIFF averaged)', ndsm_grid))
+                                    _plot_debug_heatmap(ndsm_grid, 'nDSM (COG/GeoTIFF averaged)')
+
                                 ndsm_aligned, _align_info = align_ndsm_to_landcover(
                                     ndsm_grid,
                                     land_cover_grid,
@@ -1206,6 +1294,9 @@ with tab2:
                                     allow_resample=True,
                                     try_vertical_flip=True,
                                 )
+                                if _dbg_nc and (ndsm_aligned is not None):
+                                    st.text(_grid_stats_text('nDSM (aligned to land cover)', ndsm_aligned))
+                                    _plot_debug_heatmap(ndsm_aligned, 'nDSM (aligned to land cover)')
                                 # Build canopy: average-per-cell-derived ndsm already aligned roughly; enforce NaN for non-tree
                                 canopy_initial = build_canopy_from_ndsm(
                                     ndsm_aligned,
@@ -1214,6 +1305,9 @@ with tab2:
                                     non_tree_fill=np.nan,
                                     clamp_negative_to_zero=True,
                                 )
+                                if _dbg_nc and (canopy_initial is not None):
+                                    st.text(_grid_stats_text('Canopy (initial from nDSM)', canopy_initial))
+                                    _plot_debug_heatmap(canopy_initial, 'Canopy (initial from nDSM)')
                                 # Directly fill missing tree cells with static height (no neighbor infill)
                                 canopy_refined = canopy_initial.copy().astype(float)
                                 tree_mask_local = (land_cover_grid == tree_id)
@@ -1221,22 +1315,89 @@ with tab2:
                                 if np.any(missing_tree):
                                     canopy_refined[missing_tree] = float(static_tree_height)
 
+                                canopy_refined_before = canopy_refined.copy()
                                 canopy_refined = remove_local_spikes_in_canopy(
                                     canopy_refined,
                                     land_cover_grid,
                                     tree_value=tree_id,
                                     building_value=building_id,
-                                    high_threshold_m=12.0,
-                                    building_buffer_m=20.0,
+                                    high_threshold_m=float(st.session_state.get('canopy_high_threshold_m', 12.0)),
+                                    building_buffer_m=float(st.session_state.get('canopy_building_buffer_m', 20.0)),
                                     cell_size_m=float(meshsize),
-                                    replacement_tree_height_m=None,
+                                    replacement_tree_height_m=(
+                                        float(static_tree_height)
+                                        if st.session_state.get('canopy_replace_mode') == 'Static tree height'
+                                        else None
+                                    ),
                                 )
+                                if _dbg_nc:
+                                    try:
+                                        suppressed_mask = np.isfinite(canopy_refined_before) & ~np.isfinite(canopy_refined)
+                                        if st.session_state.get('canopy_replace_mode') == 'Static tree height':
+                                            suppressed_mask = np.zeros_like(suppressed_mask, dtype=bool)
+                                        st.text(_grid_stats_text('Suppressed by refinement (mask)', suppressed_mask.astype(float)))
+                                        _plot_debug_heatmap(suppressed_mask.astype(float), 'Suppressed by refinement (mask)', cmap='gray')
+                                    except Exception:
+                                        pass
                                 # Replace NaN with 0 for downstream processing
                                 canopy_refined = np.nan_to_num(canopy_refined, nan=0.0)
+                                if _dbg_nc:
+                                    st.text(_grid_stats_text('Canopy (refined)', canopy_refined))
+                                    _plot_debug_heatmap(canopy_refined, 'Canopy (refined)')
+
+                                    # Additional diagnostics: sparse areas near buildings and near perimeter
+                                    try:
+                                        bid = np.asarray(data.get('building_id_grid'))
+                                        near_b = np.zeros_like(bid, dtype=bool)
+                                        base = bid != 0
+                                        # 2-cell dilation using neighbor rolls
+                                        for _ in range(2):
+                                            nb = base
+                                            nb = nb | np.roll(base, 1, axis=0) | np.roll(base, -1, axis=0)
+                                            nb = nb | np.roll(base, 1, axis=1) | np.roll(base, -1, axis=1)
+                                            nb = nb | np.roll(base, (1,1), axis=(0,1)) | np.roll(base, (1,-1), axis=(0,1))
+                                            nb = nb | np.roll(base, (-1,1), axis=(0,1)) | np.roll(base, (-1,-1), axis=(0,1))
+                                            base = nb
+                                        near_b = base
+                                        far_b = ~near_b
+                                        can = np.asarray(canopy_refined, dtype=float)
+                                        with np.errstate(invalid='ignore'):
+                                            nb_vals = can[near_b]
+                                            fb_vals = can[far_b]
+                                            st.text(
+                                                f"Near-buildings (<=2 cells) canopy -> count={nb_vals.size}, mean={np.nanmean(nb_vals):.3f}, zero_ratio={(np.count_nonzero(nb_vals==0)/nb_vals.size) if nb_vals.size else 0:.3f}"
+                                            )
+                                            st.text(
+                                                f"Away-from-buildings canopy -> count={fb_vals.size}, mean={np.nanmean(fb_vals):.3f}, zero_ratio={(np.count_nonzero(fb_vals==0)/fb_vals.size) if fb_vals.size else 0:.3f}"
+                                            )
+                                        # Perimeter mask (within 2 cells of edges)
+                                        h, w = can.shape
+                                        perim = np.zeros_like(can, dtype=bool)
+                                        margin = 2
+                                        perim[:margin, :] = True; perim[-margin:, :] = True
+                                        perim[:, :margin] = True; perim[:, -margin:] = True
+                                        inner = ~perim
+                                        pv = can[perim]
+                                        iv = can[inner]
+                                        with np.errstate(invalid='ignore'):
+                                            st.text(
+                                                f"Perimeter (<=2 cells) canopy -> count={pv.size}, mean={np.nanmean(pv):.3f}, zero_ratio={(np.count_nonzero(pv==0)/pv.size) if pv.size else 0:.3f}"
+                                            )
+                                            st.text(
+                                                f"Interior canopy -> count={iv.size}, mean={np.nanmean(iv):.3f}, zero_ratio={(np.count_nonzero(iv==0)/iv.size) if iv.size else 0:.3f}"
+                                            )
+                                        # Optional mask previews
+                                        _plot_debug_heatmap(near_b.astype(float), 'Mask: near buildings (<=2 cells)', cmap='gray')
+                                        _plot_debug_heatmap(perim.astype(float), 'Mask: perimeter (<=2 cells)', cmap='gray')
+                                    except Exception:
+                                        pass
 
                                 # Bottom from trunk ratio
                                 trunk_height_ratio = 11.76 / 19.98
                                 canopy_bottom = np.minimum(canopy_refined * float(trunk_height_ratio), canopy_refined)
+                                if _dbg_nc:
+                                    st.text(_grid_stats_text('Canopy bottom (estimated)', canopy_bottom))
+                                    _plot_debug_heatmap(canopy_bottom, 'Canopy bottom (estimated)')
 
                                 # Rebuild voxel grid with refined canopy
                                 voxcity_grid_refined = create_3d_voxel(
