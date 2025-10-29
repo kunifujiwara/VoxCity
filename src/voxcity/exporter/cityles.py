@@ -189,6 +189,27 @@ def _build_index_to_cityles_map(land_cover_source):
     return index_to_code, class_names
 
 
+def _resolve_under_tree_code(under_tree_class_name, under_tree_cityles_code, land_cover_source):
+    """Resolve the CityLES land-use code used under tree canopy.
+
+    Priority:
+    1) Explicit numeric code if provided
+    2) Class name using the source-specific mapping
+    3) Class name using the standard (OSM) mapping
+    4) Default to 9 (Bare Land)
+    """
+    if under_tree_cityles_code is not None:
+        try:
+            return int(under_tree_cityles_code)
+        except Exception:
+            pass
+    name_to_code = _get_source_name_mapping(land_cover_source)
+    code = name_to_code.get(under_tree_class_name)
+    if code is None:
+        code = OSM_CLASS_TO_CITYLES.get(under_tree_class_name, 9)
+    return code
+
+
 def export_topog(building_height_grid, building_id_grid, output_path, 
                  building_material='default', cityles_landuse_grid=None):
     """
@@ -239,7 +260,9 @@ def export_topog(building_height_grid, building_id_grid, output_path,
                 f.write(f"{i_1based} {j_1based} {height:.1f} {material_code_cell} 0.0 0.0 102\n")
 
 
-def export_landuse(land_cover_grid, output_path, land_cover_source=None):
+def export_landuse(land_cover_grid, output_path, land_cover_source=None,
+                   canopy_height_grid=None, building_height_grid=None,
+                   under_tree_class_name='Bareland', under_tree_cityles_code=None):
     """
     Export landuse.txt file for CityLES
     
@@ -251,6 +274,17 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
         Output directory path
     land_cover_source : str, optional
         Source of land cover data
+    canopy_height_grid : numpy.ndarray, optional
+        2D array of canopy heights; if provided, cells with canopy (>0) will be
+        assigned the ground class under the canopy instead of a tree class.
+    building_height_grid : numpy.ndarray, optional
+        2D array of building heights; if provided, canopy overrides will not be
+        applied where buildings exist (height > 0).
+    under_tree_class_name : str, optional
+        Name of ground land-cover class to use under tree canopy. Defaults to 'Bareland'.
+    under_tree_cityles_code : int, optional
+        Explicit CityLES land-use code to use under canopy; if provided it takes
+        precedence over under_tree_class_name.
     """
     filename = output_path / 'landuse.txt'
     
@@ -261,7 +295,12 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
 
     print(f"Land cover source: {land_cover_source} (raw indices)")
 
-    # Create mapping statistics
+    # Resolve the CityLES code to use under tree canopy
+    under_tree_code = _resolve_under_tree_code(
+        under_tree_class_name, under_tree_cityles_code, land_cover_source
+    )
+
+    # Create mapping statistics: per raw index, count per resulting CityLES code
     mapping_stats = {}
     # Prepare grid to return
     cityles_landuse_grid = np.zeros((ny, nx), dtype=int)
@@ -272,24 +311,33 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None):
             for i in range(nx):
                 idx = int(land_cover_grid[j, i])
                 cityles_code = index_to_code.get(idx, 4)
+
+                # If a canopy grid is provided, override tree canopy cells to the
+                # specified ground class, optionally skipping where buildings exist.
+                if canopy_height_grid is not None:
+                    has_canopy = float(canopy_height_grid[j, i]) > 0.0
+                    has_building = False
+                    if building_height_grid is not None:
+                        has_building = float(building_height_grid[j, i]) > 0.0
+                    if has_canopy and not has_building:
+                        cityles_code = under_tree_code
                 f.write(f"{cityles_code}\n")
 
                 cityles_landuse_grid[j, i] = cityles_code
 
                 # Track mapping statistics
                 if idx not in mapping_stats:
-                    mapping_stats[idx] = {'cityles_code': cityles_code, 'count': 0}
-                mapping_stats[idx]['count'] += 1
+                    mapping_stats[idx] = {}
+                mapping_stats[idx][cityles_code] = mapping_stats[idx].get(cityles_code, 0) + 1
 
     # Print mapping summary
     print("\nLand cover mapping summary (by source class):")
     total = ny * nx
     for idx in sorted(mapping_stats.keys()):
-        stats = mapping_stats[idx]
-        percentage = (stats['count'] / total) * 100
         class_name = class_names[idx] if 0 <= idx < len(class_names) else 'Unknown'
-        print(f"  {idx}: {class_name} -> CityLES {stats['cityles_code']}: "
-              f"{stats['count']} cells ({percentage:.1f}%)")
+        for code, count in sorted(mapping_stats[idx].items()):
+            percentage = (count / total) * 100
+            print(f"  {idx}: {class_name} -> CityLES {code}: {count} cells ({percentage:.1f}%)")
     
     return cityles_landuse_grid
 
@@ -416,7 +464,9 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
                    land_cover_grid, dem_grid, meshsize, land_cover_source,
                    rectangle_vertices, output_directory="output/cityles",
                    building_material='default', tree_type='default',
-                   tree_base_ratio=0.3, canopy_bottom_height_grid=None, **kwargs):
+                   tree_base_ratio=0.3, canopy_bottom_height_grid=None,
+                   under_tree_class_name='Bareland', under_tree_cityles_code=None,
+                   **kwargs):
     """
     Export VoxCity data to CityLES format
     
@@ -461,7 +511,15 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     
     # Export individual files
     print("\nExporting landuse.txt...")
-    cityles_landuse_grid = export_landuse(land_cover_grid, output_path, land_cover_source)
+    cityles_landuse_grid = export_landuse(
+        land_cover_grid,
+        output_path,
+        land_cover_source,
+        canopy_height_grid=canopy_height_grid,
+        building_height_grid=building_height_grid,
+        under_tree_class_name=under_tree_class_name,
+        under_tree_cityles_code=under_tree_cityles_code,
+    )
 
     print("\nExporting topog.txt...")
     export_topog(
@@ -497,6 +555,11 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
         # Trees count after removing overlaps with buildings
         trees_count = int(np.sum(np.where(building_height_grid > 0, 0.0, canopy_height_grid) > 0))
         f.write(f"Trees: {trees_count}\n")
+        # Under-tree land-use selection
+        under_tree_code = _resolve_under_tree_code(
+            under_tree_class_name, under_tree_cityles_code, land_cover_source
+        )
+        f.write(f"Under-tree land use: {under_tree_class_name} (CityLES {under_tree_code})\n")
         
         # Add land use value ranges
         f.write(f"\nLand cover value range: {land_cover_grid.min()} - {land_cover_grid.max()}\n")
