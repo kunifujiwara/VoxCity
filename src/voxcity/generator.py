@@ -4,6 +4,15 @@ This module provides functions to generate 3D voxel representations of cities us
 It handles land cover, building heights, canopy heights, and digital elevation models to create detailed
 3D city models.
 
+Orientation contract:
+- All 2D grids in this module use the canonical internal orientation "north_up":
+  row 0 is the northern/top row and the last row is the southern/bottom row.
+- Columns increase eastward: column 0 is the western/leftmost column and
+  indices increase toward the east/right.
+- Processing functions accept and return grids in north_up orientation.
+- Visualization utilities may vertically flip arrays for display purposes only.
+- 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
+
 The main functions are:
 - get_land_cover_grid: Creates a grid of land cover classifications
 - get_building_height_grid: Creates a grid of building heights (supports GeoDataFrame input)
@@ -106,6 +115,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
             - dynamic_world_date: Date for Dynamic World data
             - gridvis: Whether to visualize the grid
             - default_land_cover_class: Default class for grid cells with no intersecting polygons (default: 'Developed space')
+
+    Orientation:
+        All inputs and the returned grid use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left). Downstream visualization may
+        flip vertically for display, but processing remains north_up/eastward.
 
     Returns:
         numpy.ndarray: Grid of land cover classifications as integer values
@@ -217,6 +231,10 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             - building_path: Path to local building data file
             - building_complementary_source: Additional building data source
             - gridvis: Whether to visualize the grid
+
+    Orientation:
+        All inputs and outputs use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
 
     Returns:
         tuple:
@@ -357,6 +375,10 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
             - tree_gdf_path: Path to a local file (e.g., .gpkg) with trees when source='GeoDataFrame'
             - trunk_height_ratio: Fraction of top height used as canopy bottom for non-GDF sources
 
+    Orientation:
+        Inputs and returned grids use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
+
     Returns:
         tuple[numpy.ndarray, numpy.ndarray]: (canopy_top_height_grid, canopy_bottom_height_grid)
     """
@@ -434,6 +456,10 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
             - dem_interpolation: Interpolation method for DEM
             - gridvis: Whether to visualize the grid
 
+    Orientation:
+        Returned DEM grid uses north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
+
     Returns:
         numpy.ndarray: Grid of elevation values
     """
@@ -500,6 +526,11 @@ def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori,
         land_cover_source: Source of land cover data
         kwargs: Additional arguments including:
             - trunk_height_ratio: Ratio of trunk height to total tree height
+    Orientation:
+        All 2D inputs must be north_up (row 0 = north/top) with columns increasing
+        eastward (col 0 = west/left). 3D indexing follows (row, col, z) =
+        (north→south, west→east, ground→up).
+
     Returns:
         numpy.ndarray: 3D voxel grid with encoded values for different features
     """
@@ -608,6 +639,11 @@ def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, d
         land_cover_source: Source of land cover data
         layered_interval: Interval for layered output
 
+    Orientation:
+        All 2D inputs must be north_up (row 0 = north/top) with columns increasing
+        eastward (col 0 = west/left). Each returned 3D grid preserves this X,Y
+        orientation, with z increasing upward.
+
     Returns:
         tuple:
             - numpy.ndarray: Land cover voxel grid
@@ -704,6 +740,11 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             - voxelvis: Whether to visualize 3D voxel model
             - voxelvis_img_save_path: Path to save 3D visualization
             - default_land_cover_class: Default class for land cover grid cells with no intersecting polygons (default: 'Developed space')
+
+    Orientation:
+        All intermediate and final 2D grids use north_up (row 0 = north/top) with
+        columns increasing eastward (col 0 = west/left). Visual previews may flip
+        vertically for display only.
 
     Returns:
         tuple containing:
@@ -933,6 +974,11 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             - mapvis: Whether to visualize grids on map
             - voxelvis: Whether to visualize 3D voxel model
             - voxelvis_img_save_path: Path to save 3D visualization
+
+    Orientation:
+        All intermediate and final 2D grids use north_up (row 0 = north/top) with
+        columns increasing eastward (col 0 = west/left). Visual previews may flip
+        vertically for display only.
 
     Returns:
         tuple containing:

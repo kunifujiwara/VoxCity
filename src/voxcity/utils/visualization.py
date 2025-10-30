@@ -20,6 +20,12 @@ Key Features:
 - Mesh export functionality (OBJ format)
 - Multi-view scene generation
 - Custom simulation result overlays
+
+Orientation contract:
+- Visualization functions accept grids in the canonical internal orientation:
+  north_up (row 0 = north/top) with columns increasing eastward (col 0 = west/left).
+- Some display helpers flip vertically for plotting only; they never change east–west.
+- 3D indexing for voxel arrays follows (row, col, z) = (north→south, west→east, ground→up).
 """
 
 import numpy as np

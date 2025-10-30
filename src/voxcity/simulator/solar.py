@@ -15,6 +15,13 @@ Key Features:
 - Visualization and export capabilities
 
 The module uses numba for performance optimization in computationally intensive calculations.
+
+Orientation contract:
+- Simulation inputs (2D grids and voxel arrays) follow the canonical orientation:
+  north_up (row 0 = north/top), columns increase eastward (col 0 = west/left), and
+  3D indexing (row, col, z) = (north→south, west→east, ground→up).
+- Any internal flips are implementation details for rendering or mapping and do not
+  change the semantic orientation of inputs/outputs.
 """
 
 import numpy as np

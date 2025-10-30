@@ -5,6 +5,13 @@ It includes functionality for:
 - Coordinate transformations and spatial operations
 - Data interpolation and aggregation
 - Vector to raster conversion
+
+Orientation contract:
+- All public functions accept and return 2D grids using the canonical internal
+  orientation "north_up": row 0 is the northern/top row.
+- Where data sources use south_up, conversions are performed internally; outputs
+  are always north_up unless explicitly documented otherwise.
+ - Columns increase eastward (col 0 = west/left), indices increase to the east.
 """
 
 import numpy as np

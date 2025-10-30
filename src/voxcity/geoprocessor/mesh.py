@@ -1,3 +1,12 @@
+"""Mesh generation utilities for voxel and 2D grid visualization.
+
+Orientation contract:
+- Mesh builders expect 2D inputs (e.g., simulation grids, building_id grids)
+  to be provided in north_up orientation (row 0 = north/top) with columns
+  increasing eastward (col 0 = west/left). Any internal flips are
+  implementation details to match mesh coordinates.
+"""
+
 import numpy as np
 import os
 import trimesh
