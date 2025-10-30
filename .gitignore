@@ -109,3 +109,6 @@ ENV/
 .vscode/
 .idea/
 
+# Local demo outputs
+demo/output/
+
