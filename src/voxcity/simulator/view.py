@@ -39,6 +39,11 @@ Additional implementation details:
 - Provides flexible observer placement rules
 - Includes comprehensive error checking and validation
 - Allows customization of visualization parameters
+
+Orientation contract:
+- Inputs follow north_up orientation (row 0 = north/top), columns increase eastward
+  (col 0 = west/left). 3D indexing uses (row, col, z) = (north→south, west→east, ground→up).
+- Internal visualization flips, if any, are for display only and preserve east–west.
 """
 
 import numpy as np

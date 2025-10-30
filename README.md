@@ -124,6 +124,22 @@ ee.Authenticate()
 ee.Initialize(project='your-project-id')
 ```
 
+## Grid Orientation
+
+- Canonical internal orientation is north_up: row 0 = north/top, last row = south/bottom for all 2D grids.
+- Columns increase eastward: col 0 = west/left, indices increase to the east.
+- Processing functions accept and return north_up/eastward grids. Visualization utilities may flip vertically only for display; they never change east–west.
+- 3D indexing uses (row, col, z) = (north→south, west→east, ground→up).
+- If your input data uses a south_up convention, normalize it at the boundary using:
+
+```python
+from voxcity.utils.orientation import ensure_orientation, ORIENTATION_SOUTH_UP
+
+grid_north_up = ensure_orientation(grid, orientation_in=ORIENTATION_SOUTH_UP)
+```
+
+This keeps orientation handling explicit and avoids surprises.
+
 ### 2. Define Target Area
 
 You can define your target area in three ways:

@@ -23,6 +23,13 @@ Dependencies:
 - numpy: For array operations
 - matplotlib: For colormap handling
 - trimesh: For mesh operations
+
+Orientation contract:
+- Export functions assume input 2D grids are north_up (row 0 = north/top) with
+  columns increasing eastward (col 0 = west/left), and voxel arrays use
+  (row, col, z) = (north→south, west→east, ground→up).
+- Internal flips may be applied to match OBJ coordinate conventions; these do
+  not change the semantic orientation of the data.
 """
 
 import numpy as np
