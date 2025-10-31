@@ -14,6 +14,7 @@ Notes:
 import os
 import numpy as np
 from pathlib import Path
+from ..models import VoxCity
 
 
 # VoxCity standard land cover classes after conversion
@@ -568,6 +569,33 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     
     print(f"\nCityLES export completed successfully!")
     return str(output_path)
+
+
+class CityLesExporter:
+    """Exporter adapter to write a VoxCity model to CityLES text files."""
+
+    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
+        if not isinstance(obj, VoxCity):
+            raise TypeError("CityLesExporter expects a VoxCity instance")
+        city: VoxCity = obj
+        rect = city.extras.get("rectangle_vertices")
+        land_cover_source = city.extras.get("land_cover_source", "Standard")
+        # CityLES writes multiple files; use output_directory/base_filename as folder/name
+        out_dir = os.path.join(output_directory, base_filename)
+        os.makedirs(out_dir, exist_ok=True)
+        export_cityles(
+            city.buildings.heights,
+            city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int),
+            city.extras.get("canopy_top", np.zeros_like(city.land_cover.classes, dtype=float)),
+            city.land_cover.classes,
+            city.dem.elevation,
+            city.voxels.meta.meshsize,
+            land_cover_source,
+            rect if rect is not None else [(0.0, 0.0)] * 4,
+            output_directory=out_dir,
+            **kwargs,
+        )
+        return out_dir
 
 
 # Helper function to apply VoxCity's convert_land_cover if needed

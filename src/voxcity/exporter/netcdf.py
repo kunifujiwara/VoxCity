@@ -38,6 +38,7 @@ except Exception:  # pragma: no cover - optional dependency
 __all__ = [
     "voxel_to_xarray_dataset",
     "save_voxel_netcdf",
+    "NetCDFExporter",
 ]
 
 
@@ -208,4 +209,30 @@ def save_voxel_netcdf(
 
     return str(path)
 
+
+class NetCDFExporter:
+    """Exporter adapter to write a VoxCity voxel grid to NetCDF."""
+
+    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
+        from ..models import VoxCity
+        path = Path(output_directory) / f"{base_filename}.nc"
+        if not isinstance(obj, VoxCity):
+            raise TypeError("NetCDFExporter expects a VoxCity instance")
+        rect = obj.extras.get("rectangle_vertices")
+        # Merge default attrs with user-provided extras
+        user_extra = kwargs.get("extra_attrs") or {}
+        attrs = {
+            "land_cover_source": obj.extras.get("land_cover_source", ""),
+            "building_source": obj.extras.get("building_source", ""),
+            "dem_source": obj.extras.get("dem_source", ""),
+        }
+        attrs.update(user_extra)
+        return save_voxel_netcdf(
+            voxcity_grid=obj.voxels.classes,
+            output_path=path,
+            voxel_size_m=obj.voxels.meta.meshsize,
+            rectangle_vertices=rect,
+            extra_attrs=attrs,
+            engine=kwargs.get("engine"),
+        )
 

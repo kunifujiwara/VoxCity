@@ -33,6 +33,9 @@ Key Features:
 # Standard library imports
 import numpy as np
 import os
+from typing import Optional
+import warnings
+from abc import ABC, abstractmethod
 try:
     from numba import jit, prange
     import numba
@@ -90,17 +93,415 @@ from .geoprocessor.grid import (
 )
 
 # Utility functions
-from .utils.lc import convert_land_cover, convert_land_cover_array
+from .utils.lc import convert_land_cover, convert_land_cover_array, get_land_cover_classes
 from .geoprocessor.polygon import get_gdf_from_gpkg, save_geojson
 
-# Visualization functions - for creating plots and 3D visualizations
-from .utils.visualization import (
-    get_land_cover_classes,
-    visualize_land_cover_grid,
-    visualize_numerical_grid,
-    visualize_landcover_grid_on_basemap,
-    visualize_numerical_grid_on_basemap,
+# Visualization imports removed; use visualizer subpackage as needed
+from .models import (
+    GridMetadata,
+    BuildingGrid,
+    LandCoverGrid,
+    DemGrid,
+    VoxelGrid,
+    VoxCity,
+    PipelineConfig,
 )
+from .visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
+
+
+class VoxCityPipeline:
+    """OOP orchestrator to build a VoxCity model from configured sources.
+
+    This wraps the existing procedural steps while returning a structured VoxCity object.
+    """
+
+    def __init__(self, meshsize: float, rectangle_vertices, crs: str = "EPSG:4326") -> None:
+        self.meshsize = float(meshsize)
+        self.rectangle_vertices = rectangle_vertices
+        self.crs = crs
+
+    def _bounds(self):
+        xs = [p[0] for p in self.rectangle_vertices]
+        ys = [p[1] for p in self.rectangle_vertices]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def _meta(self) -> GridMetadata:
+        return GridMetadata(crs=self.crs, bounds=self._bounds(), meshsize=self.meshsize)
+
+    def assemble_voxcity(
+        self,
+        voxcity_grid: np.ndarray,
+        building_height_grid: np.ndarray,
+        building_min_height_grid: np.ndarray,
+        building_id_grid: np.ndarray,
+        land_cover_grid: np.ndarray,
+        dem_grid: np.ndarray,
+        canopy_height_top: Optional[np.ndarray] = None,
+        canopy_height_bottom: Optional[np.ndarray] = None,
+        extras: Optional[dict] = None,
+    ) -> VoxCity:
+        meta = self._meta()
+        buildings = BuildingGrid(
+            heights=building_height_grid,
+            min_heights=building_min_height_grid,
+            ids=building_id_grid,
+            meta=meta,
+        )
+        land = LandCoverGrid(classes=land_cover_grid, meta=meta)
+        dem = DemGrid(elevation=dem_grid, meta=meta)
+        voxels = VoxelGrid(classes=voxcity_grid, meta=meta)
+        _extras = {
+            "canopy_top": canopy_height_top,
+            "canopy_bottom": canopy_height_bottom,
+            "rectangle_vertices": self.rectangle_vertices,
+        }
+        if extras:
+            _extras.update(extras)
+        return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, extras=_extras)
+
+    def run(self, cfg: PipelineConfig, building_gdf=None, terrain_gdf=None, **kwargs) -> VoxCity:
+        os.makedirs(cfg.output_dir, exist_ok=True)
+        # Use strategy objects for data sources
+        land_strategy = LandCoverSourceFactory.create(cfg.land_cover_source)
+        build_strategy = BuildingSourceFactory.create(cfg.building_source)
+        canopy_strategy = CanopySourceFactory.create(cfg.canopy_height_source, cfg)
+        dem_strategy = DemSourceFactory.create(cfg.dem_source)
+
+        land_cover_grid = land_strategy.build_grid(cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir, **kwargs)
+        bh, bmin, bid, building_gdf_out = build_strategy.build_grids(cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir, building_gdf=building_gdf, **kwargs)
+        canopy_top, canopy_bottom = canopy_strategy.build_grids(cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir, **kwargs)
+        dem = dem_strategy.build_grid(cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir, terrain_gdf=terrain_gdf, **kwargs)
+
+        # Optional perimeter removal
+        ro = cfg.remove_perimeter_object
+        if (ro is not None) and (ro > 0):
+            w_peri = int(ro * bh.shape[0] + 0.5)
+            h_peri = int(ro * bh.shape[1] + 0.5)
+            canopy_top[:w_peri, :] = canopy_top[-w_peri:, :] = canopy_top[:, :h_peri] = canopy_top[:, -h_peri:] = 0
+            canopy_bottom[:w_peri, :] = canopy_bottom[-w_peri:, :] = canopy_bottom[:, :h_peri] = canopy_bottom[:, -h_peri:] = 0
+            ids1 = np.unique(bid[:w_peri, :][bid[:w_peri, :] > 0]); ids2 = np.unique(bid[-w_peri:, :][bid[-w_peri:, :] > 0])
+            ids3 = np.unique(bid[:, :h_peri][bid[:, :h_peri] > 0]); ids4 = np.unique(bid[:, -h_peri:][bid[:, -h_peri:] > 0])
+            for rid in np.concatenate((ids1, ids2, ids3, ids4)):
+                pos = np.where(bid == rid)
+                bh[pos] = 0
+                bmin[pos] = [[] for _ in range(len(bmin[pos]))]
+
+        # Build voxel grid using OOP Voxelizer
+        voxelizer = Voxelizer(
+            voxel_size=cfg.meshsize,
+            land_cover_source=cfg.land_cover_source,
+            trunk_height_ratio=cfg.trunk_height_ratio,
+            voxel_dtype=kwargs.get("voxel_dtype", np.int8),
+            max_voxel_ram_mb=kwargs.get("max_voxel_ram_mb"),
+        )
+        vox = voxelizer.generate_combined(
+            building_height_grid_ori=bh,
+            building_min_height_grid_ori=bmin,
+            building_id_grid_ori=bid,
+            land_cover_grid_ori=land_cover_grid,
+            dem_grid_ori=dem,
+            tree_grid_ori=canopy_top,
+            canopy_bottom_height_grid_ori=canopy_bottom,
+        )
+        return self.assemble_voxcity(
+            voxcity_grid=vox,
+            building_height_grid=bh,
+            building_min_height_grid=bmin,
+            building_id_grid=bid,
+            land_cover_grid=land_cover_grid,
+            dem_grid=dem,
+            canopy_height_top=canopy_top,
+            canopy_height_bottom=canopy_bottom,
+            extras={
+                "building_gdf": building_gdf_out,
+                "land_cover_source": cfg.land_cover_source,
+                "building_source": cfg.building_source,
+                "dem_source": cfg.dem_source,
+            },
+        )
+
+
+# -----------------------------
+# Data source strategies
+# -----------------------------
+
+
+class LandCoverSourceStrategy(ABC):
+    @abstractmethod
+    def build_grid(self, rectangle_vertices, meshsize: float, output_dir: str, **kwargs) -> np.ndarray:  # pragma: no cover - interface
+        ...
+
+
+class DefaultLandCoverStrategy(LandCoverSourceStrategy):
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def build_grid(self, rectangle_vertices, meshsize: float, output_dir: str, **kwargs) -> np.ndarray:
+        return get_land_cover_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+
+
+class LandCoverSourceFactory:
+    @staticmethod
+    def create(source: str) -> LandCoverSourceStrategy:
+        return DefaultLandCoverStrategy(source)
+
+
+class BuildingSourceStrategy(ABC):
+    @abstractmethod
+    def build_grids(self, rectangle_vertices, meshsize: float, output_dir: str, **kwargs):  # pragma: no cover - interface
+        ...
+
+
+class DefaultBuildingSourceStrategy(BuildingSourceStrategy):
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def build_grids(self, rectangle_vertices, meshsize: float, output_dir: str, **kwargs):
+        return get_building_height_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+
+
+class BuildingSourceFactory:
+    @staticmethod
+    def create(source: str) -> BuildingSourceStrategy:
+        return DefaultBuildingSourceStrategy(source)
+
+
+class CanopySourceStrategy(ABC):
+    @abstractmethod
+    def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):  # pragma: no cover
+        ...
+
+
+class StaticCanopyStrategy(CanopySourceStrategy):
+    def __init__(self, cfg: PipelineConfig) -> None:
+        self.cfg = cfg
+
+    def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
+        canopy_top = np.zeros_like(land_cover_grid, dtype=float)
+        static_h = self.cfg.static_tree_height if self.cfg.static_tree_height is not None else kwargs.get("static_tree_height", 10.0)
+        _classes = get_land_cover_classes(self.cfg.land_cover_source)
+        _class_to_int = {name: i for i, name in enumerate(_classes.values())}
+        _tree_labels = ["Tree", "Trees", "Tree Canopy"]
+        _tree_idx = [_class_to_int[label] for label in _tree_labels if label in _class_to_int]
+        tree_mask = np.isin(land_cover_grid, _tree_idx) if _tree_idx else np.zeros_like(land_cover_grid, dtype=bool)
+        canopy_top[tree_mask] = static_h
+        tr = self.cfg.trunk_height_ratio if self.cfg.trunk_height_ratio is not None else (11.76 / 19.98)
+        canopy_bottom = canopy_top * float(tr)
+        return canopy_top, canopy_bottom
+
+
+class SourceCanopyStrategy(CanopySourceStrategy):
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
+        return get_canopy_height_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+
+
+class CanopySourceFactory:
+    @staticmethod
+    def create(source: str, cfg: PipelineConfig) -> CanopySourceStrategy:
+        if source == "Static":
+            return StaticCanopyStrategy(cfg)
+        return SourceCanopyStrategy(source)
+
+
+class DemSourceStrategy(ABC):
+    @abstractmethod
+    def build_grid(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs) -> np.ndarray:  # pragma: no cover
+        ...
+
+
+class FlatDemStrategy(DemSourceStrategy):
+    def build_grid(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs) -> np.ndarray:
+        return np.zeros_like(land_cover_grid)
+
+
+class SourceDemStrategy(DemSourceStrategy):
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def build_grid(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs) -> np.ndarray:
+        terrain_gdf = kwargs.get("terrain_gdf")
+        if terrain_gdf is not None:
+            return create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
+        return get_dem_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+
+
+class DemSourceFactory:
+    @staticmethod
+    def create(source: str) -> DemSourceStrategy:
+        if source == "Flat":
+            return FlatDemStrategy()
+        return SourceDemStrategy(source)
+
+
+class Voxelizer:
+    """Encapsulates voxel generation from 2D grids.
+
+    - Handles orientation normalization
+    - Applies DEM normalization and processing
+    - Supports memory-guard and dtype configuration
+    - Encodes class semantics in voxel layers
+    """
+
+    def __init__(
+        self,
+        voxel_size: float,
+        land_cover_source: str,
+        trunk_height_ratio: Optional[float] = None,
+        voxel_dtype=np.int8,
+        max_voxel_ram_mb: Optional[float] = None,
+    ) -> None:
+        self.voxel_size = float(voxel_size)
+        self.land_cover_source = land_cover_source
+        self.trunk_height_ratio = float(trunk_height_ratio) if trunk_height_ratio is not None else (11.76 / 19.98)
+        self.voxel_dtype = voxel_dtype
+        self.max_voxel_ram_mb = max_voxel_ram_mb
+
+    def _estimate_and_allocate(self, rows: int, cols: int, max_height: int) -> np.ndarray:
+        try:
+            bytes_per_elem = np.dtype(self.voxel_dtype).itemsize
+            est_mb = rows * cols * max_height * bytes_per_elem / (1024 ** 2)
+            print(f"Voxel grid shape: ({rows}, {cols}, {max_height}), dtype: {self.voxel_dtype}, ~{est_mb:.1f} MB")
+            if (self.max_voxel_ram_mb is not None) and (est_mb > self.max_voxel_ram_mb):
+                raise MemoryError(
+                    f"Estimated voxel grid memory {est_mb:.1f} MB exceeds limit {self.max_voxel_ram_mb} MB. Increase mesh size or restrict ROI."
+                )
+        except Exception:
+            # Best-effort estimation; continue
+            pass
+        return np.zeros((rows, cols, max_height), dtype=self.voxel_dtype)
+
+    def _convert_land_cover(self, land_cover_grid_ori: np.ndarray) -> np.ndarray:
+        if self.land_cover_source == 'OpenStreetMap':
+            return land_cover_grid_ori
+        return convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
+
+    def generate_combined(
+        self,
+        building_height_grid_ori: np.ndarray,
+        building_min_height_grid_ori: np.ndarray,
+        building_id_grid_ori: np.ndarray,
+        land_cover_grid_ori: np.ndarray,
+        dem_grid_ori: np.ndarray,
+        tree_grid_ori: np.ndarray,
+        canopy_bottom_height_grid_ori: Optional[np.ndarray] = None,
+        **kwargs,
+    ) -> np.ndarray:
+        """Combined voxel build equivalent to legacy create_3d_voxel."""
+        print("Generating 3D voxel data")
+
+        land_cover_grid_converted = self._convert_land_cover(land_cover_grid_ori)
+
+        building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0))
+        building_min_height_grid = np.flipud(replace_nan_in_nested(building_min_height_grid_ori))
+        building_id_grid = np.flipud(building_id_grid_ori)
+        land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
+        dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
+        dem_grid = process_grid(building_id_grid, dem_grid)
+        tree_grid = np.flipud(tree_grid_ori.copy())
+        canopy_bottom_grid = None
+        if canopy_bottom_height_grid_ori is not None:
+            canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
+
+        assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
+        rows, cols = building_height_grid.shape
+        max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / self.voxel_size)) + 1
+
+        voxel_grid = self._estimate_and_allocate(rows, cols, max_height)
+
+        trunk_height_ratio = float(kwargs.get("trunk_height_ratio", self.trunk_height_ratio))
+
+        for i in range(rows):
+            for j in range(cols):
+                ground_level = int(dem_grid[i, j] / self.voxel_size + 0.5) + 1
+                tree_height = tree_grid[i, j]
+                land_cover = land_cover_grid[i, j]
+
+                voxel_grid[i, j, :ground_level] = -1
+                voxel_grid[i, j, ground_level - 1] = land_cover
+
+                if tree_height > 0:
+                    if canopy_bottom_grid is not None:
+                        crown_base_height = canopy_bottom_grid[i, j]
+                    else:
+                        crown_base_height = (tree_height * trunk_height_ratio)
+                    crown_base_height_level = int(crown_base_height / self.voxel_size + 0.5)
+                    crown_top_height = tree_height
+                    crown_top_height_level = int(crown_top_height / self.voxel_size + 0.5)
+
+                    if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level > 0):
+                        crown_base_height_level -= 1
+
+                    tree_start = ground_level + crown_base_height_level
+                    tree_end = ground_level + crown_top_height_level
+                    voxel_grid[i, j, tree_start:tree_end] = -2
+
+                for k in building_min_height_grid[i, j]:
+                    building_min_height = int(k[0] / self.voxel_size + 0.5)
+                    building_height = int(k[1] / self.voxel_size + 0.5)
+                    voxel_grid[i, j, ground_level + building_min_height:ground_level + building_height] = -3
+
+        return voxel_grid
+
+    def generate_components(
+        self,
+        building_height_grid_ori: np.ndarray,
+        land_cover_grid_ori: np.ndarray,
+        dem_grid_ori: np.ndarray,
+        tree_grid_ori: np.ndarray,
+        layered_interval: Optional[int] = None,
+    ):
+        """Separate component voxel builds equivalent to legacy create_3d_voxel_individuals."""
+        print("Generating 3D voxel data")
+
+        if self.land_cover_source != 'OpenEarthMapJapan':
+            land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
+        else:
+            land_cover_grid_converted = land_cover_grid_ori
+
+        building_height_grid = np.flipud(building_height_grid_ori.copy())
+        land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
+        dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
+        building_nr_grid = group_and_label_cells(np.flipud(building_height_grid_ori.copy()))
+        dem_grid = process_grid(building_nr_grid, dem_grid)
+        tree_grid = np.flipud(tree_grid_ori.copy())
+
+        assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
+        rows, cols = building_height_grid.shape
+        max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / self.voxel_size))
+
+        land_cover_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
+        building_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
+        tree_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
+        dem_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
+
+        for i in range(rows):
+            for j in range(cols):
+                ground_level = int(dem_grid[i, j] / self.voxel_size + 0.5)
+                building_height = int(building_height_grid[i, j] / self.voxel_size + 0.5)
+                tree_height = int(tree_grid[i, j] / self.voxel_size + 0.5)
+                land_cover = land_cover_grid[i, j]
+
+                dem_voxel_grid[i, j, :ground_level + 1] = -1
+                land_cover_voxel_grid[i, j, 0] = land_cover
+                if tree_height > 0:
+                    tree_voxel_grid[i, j, :tree_height] = -2
+                if building_height > 0:
+                    building_voxel_grid[i, j, :building_height] = -3
+
+        if not layered_interval:
+            layered_interval = max(max_height, int(dem_grid.shape[0] / 4 + 0.5))
+
+        extract_height = min(layered_interval, max_height)
+        layered_voxel_grid = np.zeros((rows, cols, layered_interval * 4), dtype=np.int32)
+        layered_voxel_grid[:, :, :extract_height] = dem_voxel_grid[:, :, :extract_height]
+        layered_voxel_grid[:, :, layered_interval:layered_interval + extract_height] = land_cover_voxel_grid[:, :, :extract_height]
+        layered_voxel_grid[:, :, 2 * layered_interval:2 * layered_interval + extract_height] = building_voxel_grid[:, :, :extract_height]
+        layered_voxel_grid[:, :, 3 * layered_interval:3 * layered_interval + extract_height] = tree_voxel_grid[:, :, :extract_height]
+
+        return land_cover_voxel_grid, building_voxel_grid, tree_voxel_grid, dem_voxel_grid, layered_voxel_grid
 
 def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     """Creates a grid of land cover classifications.
@@ -511,217 +912,12 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
     return dem_grid
 
-def create_3d_voxel(building_height_grid_ori, building_min_height_grid_ori, 
-                    building_id_grid_ori, land_cover_grid_ori, dem_grid_ori, 
-                    tree_grid_ori, voxel_size, land_cover_source, canopy_bottom_height_grid_ori=None, **kwargs):
-    """Creates a 3D voxel representation combining all input grids.
-    Args:
-        building_height_grid_ori: Grid of building heights
-        building_min_height_grid_ori: Grid of building minimum heights
-        building_id_grid_ori: Grid of building IDs
-        land_cover_grid_ori: Grid of land cover classifications
-        dem_grid_ori: Grid of elevation values
-        tree_grid_ori: Grid of tree heights
-        voxel_size: Size of each voxel in meters
-        land_cover_source: Source of land cover data
-        kwargs: Additional arguments including:
-            - trunk_height_ratio: Ratio of trunk height to total tree height
-    Orientation:
-        All 2D inputs must be north_up (row 0 = north/top) with columns increasing
-        eastward (col 0 = west/left). 3D indexing follows (row, col, z) =
-        (north→south, west→east, ground→up).
+# Removed: legacy create_3d_voxel (use Voxelizer.generate_combined)
 
-    Returns:
-        numpy.ndarray: 3D voxel grid with encoded values for different features
-    """
-    print("Generating 3D voxel data")
-
-    # Convert land cover values to standardized format if needed
-    # OpenStreetMap data is already in the correct format
-    if (land_cover_source == 'OpenStreetMap'):
-        land_cover_grid_converted = land_cover_grid_ori
-    else:
-        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)
-    # Prepare all input grids for 3D processing
-    # Flip vertically to align with standard geographic orientation (north-up)
-    # Handle missing data appropriately for each grid type
-    building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)) # Replace NaN values with 10m height
-    building_min_height_grid = np.flipud(replace_nan_in_nested(building_min_height_grid_ori)) # Replace NaN in nested arrays
-    building_id_grid = np.flipud(building_id_grid_ori)
-    land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1 # Add 1 to avoid 0 values in land cover
-    dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori) # Normalize DEM to start at 0
-    dem_grid = process_grid(building_id_grid, dem_grid) # Process DEM based on building footprints
-    tree_grid = np.flipud(tree_grid_ori.copy())
-    canopy_bottom_grid = None
-    if canopy_bottom_height_grid_ori is not None:
-        canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
-    # Validate that all input grids have consistent dimensions
-    assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
-    rows, cols = building_height_grid.shape
-    # Calculate the required height for the 3D voxel grid
-    # Add 1 voxel layer to ensure sufficient vertical space
-    max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / voxel_size))+1
-    # Initialize the 3D voxel grid with zeros
-    # Use int8 by default to reduce memory (values range from about -99 to small positives)
-    # Allow override via kwarg 'voxel_dtype'
-    voxel_dtype = kwargs.get("voxel_dtype", np.int8)
-
-    # Optional: estimate memory and allow a soft limit before allocating
-    try:
-        bytes_per_elem = np.dtype(voxel_dtype).itemsize
-        est_mb = rows * cols * max_height * bytes_per_elem / (1024 ** 2)
-        print(f"Voxel grid shape: ({rows}, {cols}, {max_height}), dtype: {voxel_dtype}, ~{est_mb:.1f} MB")
-        max_ram_mb = kwargs.get("max_voxel_ram_mb")
-        if (max_ram_mb is not None) and (est_mb > max_ram_mb):
-            raise MemoryError(f"Estimated voxel grid memory {est_mb:.1f} MB exceeds limit {max_ram_mb} MB. Increase mesh size or restrict ROI.")
-    except Exception:
-        pass
-
-    voxel_grid = np.zeros((rows, cols, max_height), dtype=voxel_dtype)
-    # Configure tree trunk-to-crown ratio
-    # This determines how much of the tree is trunk vs canopy
-    trunk_height_ratio = kwargs.get("trunk_height_ratio")
-    if trunk_height_ratio is None:
-        trunk_height_ratio = 11.76 / 19.98  # Default ratio based on typical tree proportions
-    # Process each grid cell to build the 3D voxel representation
-    for i in range(rows):
-        for j in range(cols):
-            # Calculate ground level in voxel units
-            # Add 1 to ensure space for surface features
-            ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1 
-            # Extract current cell values
-            tree_height = tree_grid[i, j]
-            land_cover = land_cover_grid[i, j]
-            # Fill underground voxels with -1 (represents subsurface)
-            voxel_grid[i, j, :ground_level] = -1
-            # Set the ground surface to the land cover type
-            voxel_grid[i, j, ground_level-1] = land_cover
-            # Process tree canopy if trees are present
-            if tree_height > 0:
-                # Calculate tree structure: trunk base to crown base to crown top
-                if canopy_bottom_grid is not None:
-                    crown_base_height = canopy_bottom_grid[i, j]
-                else:
-                    crown_base_height = (tree_height * trunk_height_ratio)
-                crown_base_height_level = int(crown_base_height / voxel_size + 0.5)
-                crown_top_height = tree_height
-                crown_top_height_level = int(crown_top_height / voxel_size + 0.5)
-
-                # Ensure minimum crown height of 1 voxel
-                # Prevent crown base and top from being at the same level
-                if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level>0):
-                    crown_base_height_level -= 1
-
-                # Calculate absolute positions relative to ground level
-                tree_start = ground_level + crown_base_height_level
-                tree_end = ground_level + crown_top_height_level
-
-                # Fill tree crown voxels with -2 (represents vegetation canopy)
-                voxel_grid[i, j, tree_start:tree_end] = -2
-            # Process buildings - handle multiple height segments per building
-            # Some buildings may have multiple levels or complex height profiles
-            for k in building_min_height_grid[i, j]:
-                building_min_height = int(k[0] / voxel_size + 0.5)  # Lower height of building segment
-                building_height = int(k[1] / voxel_size + 0.5)      # Upper height of building segment
-                # Fill building voxels with -3 (represents built structures)
-                voxel_grid[i, j, ground_level+building_min_height:ground_level+building_height] = -3
-    return voxel_grid
-
-def create_3d_voxel_individuals(building_height_grid_ori, land_cover_grid_ori, dem_grid_ori, tree_grid_ori, voxel_size, land_cover_source, layered_interval=None):
-    """Creates separate 3D voxel grids for each component.
-
-    Args:
-        building_height_grid_ori: Grid of building heights
-        land_cover_grid_ori: Grid of land cover classifications
-        dem_grid_ori: Grid of elevation values
-        tree_grid_ori: Grid of tree heights
-        voxel_size: Size of each voxel in meters
-        land_cover_source: Source of land cover data
-        layered_interval: Interval for layered output
-
-    Orientation:
-        All 2D inputs must be north_up (row 0 = north/top) with columns increasing
-        eastward (col 0 = west/left). Each returned 3D grid preserves this X,Y
-        orientation, with z increasing upward.
-
-    Returns:
-        tuple:
-            - numpy.ndarray: Land cover voxel grid
-            - numpy.ndarray: Building voxel grid
-            - numpy.ndarray: Tree voxel grid
-            - numpy.ndarray: DEM voxel grid
-            - numpy.ndarray: Combined layered voxel grid
-    """
-
-    print("Generating 3D voxel data")
-    # Convert land cover values if not from OpenEarthMapJapan
-    if land_cover_source != 'OpenEarthMapJapan':
-        land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)  
-    else:
-        land_cover_grid_converted = land_cover_grid_ori      
-
-    # Prepare and flip all input grids vertically
-    building_height_grid = np.flipud(building_height_grid_ori.copy())
-    land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1  # Add 1 to avoid 0 values
-    dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)  # Normalize DEM to start at 0
-    building_nr_grid = group_and_label_cells(np.flipud(building_height_grid_ori.copy()))
-    dem_grid = process_grid(building_nr_grid, dem_grid)  # Process DEM based on building footprints
-    tree_grid = np.flipud(tree_grid_ori.copy())
-
-    # Validate input dimensions
-    assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
-
-    rows, cols = building_height_grid.shape
-
-    # Calculate required height for 3D grid
-    max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / voxel_size))
-
-    # Initialize empty 3D grids for each component
-    land_cover_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
-    building_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
-    tree_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
-    dem_voxel_grid = np.zeros((rows, cols, max_height), dtype=np.int32)
-
-    # Fill individual component grids
-    for i in range(rows):
-        for j in range(cols):
-            ground_level = int(dem_grid[i, j] / voxel_size + 0.5)
-            building_height = int(building_height_grid[i, j] / voxel_size + 0.5)
-            tree_height = int(tree_grid[i, j] / voxel_size + 0.5)
-            land_cover = land_cover_grid[i, j]
-
-            # Fill underground cells with -1
-            dem_voxel_grid[i, j, :ground_level+1] = -1
-
-            # Set ground level cell to land cover
-            land_cover_voxel_grid[i, j, 0] = land_cover
-
-            # Fill tree crown with value -2
-            if tree_height > 0:
-                tree_voxel_grid[i, j, :tree_height] = -2
-
-            # Fill building with value -3
-            if building_height > 0:
-                building_voxel_grid[i, j, :building_height] = -3
-    
-    # Set default layered interval if not provided
-    if not layered_interval:
-        layered_interval = max(max_height, int(dem_grid.shape[0]/4 + 0.5))
-
-    # Create combined layered visualization
-    extract_height = min(layered_interval, max_height)
-    layered_voxel_grid = np.zeros((rows, cols, layered_interval*4), dtype=np.int32)
-    
-    # Stack components in layers with equal spacing
-    layered_voxel_grid[:, :, :extract_height] = dem_voxel_grid[:, :, :extract_height]
-    layered_voxel_grid[:, :, layered_interval:layered_interval+extract_height] = land_cover_voxel_grid[:, :, :extract_height]
-    layered_voxel_grid[:, :, 2*layered_interval:2*layered_interval+extract_height] = building_voxel_grid[:, :, :extract_height]
-    layered_voxel_grid[:, :, 3*layered_interval:3*layered_interval+extract_height] = tree_voxel_grid[:, :, :extract_height]
-
-    return land_cover_voxel_grid, building_voxel_grid, tree_voxel_grid, dem_voxel_grid, layered_voxel_grid
+# Removed: legacy create_3d_voxel_individuals (use Voxelizer.generate_components)
 
 def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
-    """Main function to generate a complete voxel city model.
+    """Main function to generate a complete VoxCity model.
 
     Args:
         rectangle_vertices: List of coordinates defining the area of interest
@@ -747,218 +943,37 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         vertically for display only.
 
     Returns:
-        tuple containing:
-            - voxcity_grid: 3D voxel grid of the complete city model
-            - building_height_grid: 2D grid of building heights
-            - building_min_height_grid: 2D grid of minimum building heights
-            - building_id_grid: 2D grid of building IDs
-            - canopy_height_grid: 2D grid of tree canopy top heights
-            - canopy_bottom_height_grid: 2D grid of tree canopy bottom heights
-            - land_cover_grid: 2D grid of land cover classifications
-            - dem_grid: 2D grid of ground elevation
-            - building_geojson: GeoJSON of building footprints and metadata
+        VoxCity: structured city model with voxel grid, 2D grids, and metadata.
     """
-    # Set up output directory for intermediate and final files
+    # Build via pipeline
     output_dir = kwargs.get("output_dir", "output")
-    os.makedirs(output_dir, exist_ok=True)
-        
-    # Remove 'output_dir' from kwargs to prevent duplication in function calls
-    kwargs.pop('output_dir', None)
+    cfg = PipelineConfig(
+        rectangle_vertices=rectangle_vertices,
+        meshsize=float(meshsize),
+        building_source=building_source,
+        land_cover_source=land_cover_source,
+        canopy_height_source=canopy_height_source,
+        dem_source=dem_source,
+        output_dir=output_dir,
+        trunk_height_ratio=kwargs.get("trunk_height_ratio"),
+        static_tree_height=kwargs.get("static_tree_height"),
+        remove_perimeter_object=kwargs.get("remove_perimeter_object"),
+        mapvis=bool(kwargs.get("mapvis", False)),
+        gridvis=bool(kwargs.get("gridvis", True)),
+    )
+    city = VoxCityPipeline(meshsize=cfg.meshsize, rectangle_vertices=cfg.rectangle_vertices).run(cfg, building_gdf=building_gdf, terrain_gdf=terrain_gdf, **{k: v for k, v in kwargs.items() if k != 'output_dir'})
 
-    # STEP 1: Generate all required 2D grids from various data sources
-    # These grids form the foundation for the 3D voxel model
-    
-    # Land cover classification grid (e.g., urban, forest, water, agriculture)
-    land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
-    
-    # Building footprints and height information
-    building_height_grid, building_min_height_grid, building_id_grid, building_gdf = get_building_height_grid(rectangle_vertices, meshsize, building_source, output_dir, building_gdf=building_gdf, **kwargs)
-    
-    # Save building data to file for later analysis or visualization
-    if not building_gdf.empty:
-        save_path = f"{output_dir}/building.gpkg"
-        building_gdf.to_file(save_path, driver='GPKG')
-    
-    # STEP 2: Handle canopy height data
-    # Either use static values or fetch from satellite sources
-    if canopy_height_source == "Static":
-        # Create uniform canopy height for all tree-covered areas (top grid)
-        canopy_height_grid = np.zeros_like(land_cover_grid, dtype=float)
-        static_tree_height = kwargs.get("static_tree_height", 10.0)
-        # Determine tree class indices based on source-specific class names
-        _classes = get_land_cover_classes(land_cover_source)
-        _class_to_int = {name: i for i, name in enumerate(_classes.values())}
-        _tree_labels = ["Tree", "Trees", "Tree Canopy"]
-        _tree_indices = [_class_to_int[label] for label in _tree_labels if label in _class_to_int]
-        tree_mask = np.isin(land_cover_grid, _tree_indices) if _tree_indices else np.zeros_like(land_cover_grid, dtype=bool)
-        canopy_height_grid[tree_mask] = static_tree_height
-
-        # Derive bottom from trunk_height_ratio
-        trunk_height_ratio = kwargs.get("trunk_height_ratio")
-        if trunk_height_ratio is None:
-            trunk_height_ratio = 11.76 / 19.98
-        canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
-    else:
-        # Fetch canopy top/bottom from source
-        canopy_height_grid, canopy_bottom_height_grid = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
-    
-    # STEP 3: Handle digital elevation model (terrain)
-    if terrain_gdf is not None:
-        # Build DEM directly from provided terrain GeoDataFrame (e.g., precomputed from CityGML)
-        dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
-    else:
-        if dem_source == "Flat":
-            # Create flat terrain for simplified modeling
-            dem_grid = np.zeros_like(land_cover_grid)
-        else:
-            # Fetch terrain elevation from various sources
-            dem_grid = get_dem_grid(rectangle_vertices, meshsize, dem_source, output_dir, **kwargs)
-
-    # STEP 4: Apply optional data filtering and cleaning
-    
-    # Filter out low vegetation that may be noise in the data
-    min_canopy_height = kwargs.get("min_canopy_height")
-    if min_canopy_height is not None:
-        canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0        
-        if 'canopy_bottom_height_grid' in locals():
-            canopy_bottom_height_grid[canopy_height_grid == 0] = 0
-
-    # Remove objects near the boundary to avoid edge effects
-    # This is useful when the area of interest is part of a larger urban area
-    remove_perimeter_object = kwargs.get("remove_perimeter_object")
-    if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
-        print("apply perimeter removal")
-        # Calculate perimeter width based on grid dimensions
-        w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
-        h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
-        
-        # Clear canopy heights in perimeter areas
-        canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
-        if 'canopy_bottom_height_grid' in locals():
-            canopy_bottom_height_grid[:w_peri, :] = canopy_bottom_height_grid[-w_peri:, :] = canopy_bottom_height_grid[:, :h_peri] = canopy_bottom_height_grid[:, -h_peri:] = 0
-
-        # Identify buildings that intersect with perimeter areas
-        ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
-        ids2 = np.unique(building_id_grid[-w_peri:, :][building_id_grid[-w_peri:, :] > 0])
-        ids3 = np.unique(building_id_grid[:, :h_peri][building_id_grid[:, :h_peri] > 0])
-        ids4 = np.unique(building_id_grid[:, -h_peri:][building_id_grid[:, -h_peri:] > 0])
-        remove_ids = np.concatenate((ids1, ids2, ids3, ids4))
-        
-        # Remove identified buildings from all grids
-        for remove_id in remove_ids:
-            positions = np.where(building_id_grid == remove_id)
-            building_height_grid[positions] = 0
-            building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))]
-
-        # Visualize grids after optional perimeter removal
-        grid_vis = kwargs.get("gridvis", True)
-        if grid_vis:
-            # Building height grid visualization (zeros hidden)
-            building_height_grid_nan = building_height_grid.copy()
-            building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-            visualize_numerical_grid(
-                np.flipud(building_height_grid_nan),
-                meshsize,
-                "building height (m)",
-                cmap='viridis',
-                label='Value'
-            )
-
-            # Canopy height grid visualization (zeros hidden)
-            canopy_height_grid_nan = canopy_height_grid.copy()
-            canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-            visualize_numerical_grid(
-                np.flipud(canopy_height_grid_nan),
-                meshsize,
-                "Tree canopy height (m)",
-                cmap='Greens',
-                label='Tree canopy height (m)'
-            )
-
-    # STEP 5: Generate optional 2D visualizations on interactive maps
-    mapvis = kwargs.get("mapvis")
-    if mapvis:
-        # Create map-based visualizations of all data layers
-        # These help users understand the input data before 3D modeling
-        
-        # Visualize land cover using the new function
-        visualize_landcover_grid_on_basemap(
-            land_cover_grid, 
-            rectangle_vertices, 
-            meshsize, 
-            source=land_cover_source,
-            alpha=0.7,
-            figsize=(12, 8),
-            basemap='CartoDB light',
-            show_edge=False
-        )
-        
-        # Visualize building heights using the new function
-        visualize_numerical_grid_on_basemap(
-            building_height_grid,
-            rectangle_vertices,
-            meshsize,
-            value_name="Building Heights (m)",
-            cmap='viridis',
-            alpha=0.7,
-            figsize=(12, 8),
-            basemap='CartoDB light',
-            show_edge=False
-        )
-        
-        # Visualize canopy heights using the new function
-        visualize_numerical_grid_on_basemap(
-            canopy_height_grid,
-            rectangle_vertices,
-            meshsize,
-            value_name="Canopy Heights (m)",
-            cmap='Greens',
-            alpha=0.7,
-            figsize=(12, 8),
-            basemap='CartoDB light',
-            show_edge=False
-        )
-        
-        # Visualize DEM using the new function
-        visualize_numerical_grid_on_basemap(
-            dem_grid,
-            rectangle_vertices,
-            meshsize,
-            value_name="Terrain Elevation (m)",
-            cmap='terrain',
-            alpha=0.7,
-            figsize=(12, 8),
-            basemap='CartoDB light',
-            show_edge=False
-        )
-
-    # STEP 6: Generate the final 3D voxel model
-    # This combines all 2D grids into a comprehensive 3D representation
-    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source, canopy_bottom_height_grid)
-
-    # STEP 7: Generate optional 3D visualization
-    # voxelvis = kwargs.get("voxelvis")
-    # if voxelvis:
-    #     # Create a taller grid for better visualization
-    #     # Fixed height ensures consistent camera positioning
-    #     new_height = int(550/meshsize+0.5)     
-    #     voxcity_grid_vis = np.zeros((voxcity_grid.shape[0], voxcity_grid.shape[1], new_height))
-    #     voxcity_grid_vis[:, :, :voxcity_grid.shape[2]] = voxcity_grid
-    #     voxcity_grid_vis[-1, -1, -1] = -99  # Add marker to fix camera location and angle of view
-    #     visualize_3d_voxel(voxcity_grid_vis, voxel_size=meshsize, save_path=kwargs["voxelvis_img_save_path"])
-
-    # STEP 8: Save all generated data for future use
-    save_voxcity = kwargs.get("save_voxctiy_data", True)
-    if save_voxcity:
+    # Optional legacy save
+    if kwargs.get("save_voxctiy_data", True):
         save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
-        save_voxcity_data(save_path, voxcity_grid, building_height_grid, building_min_height_grid, 
-                         building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
-                         building_gdf, meshsize, rectangle_vertices)
-    
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, building_gdf
+        save_voxcity_data(save_path, city.voxels.classes, city.buildings.heights, city.buildings.min_heights,
+                          city.buildings.ids, city.extras.get("canopy_top"), city.land_cover.classes, city.dem.elevation,
+                          city.extras.get("building_gdf"), meshsize, rectangle_vertices)
+
+    return city
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
-    """Main function to generate a complete voxel city model.
+    """Main function to generate a complete VoxCity model from CityGML.
 
     Args:
         rectangle_vertices: List of coordinates defining the area of interest
@@ -981,15 +996,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         vertically for display only.
 
     Returns:
-        tuple containing:
-            - voxcity_grid: 3D voxel grid of the complete city model
-            - building_height_grid: 2D grid of building heights
-            - building_min_height_grid: 2D grid of minimum building heights
-            - building_id_grid: 2D grid of building IDs
-            - canopy_height_grid: 2D grid of tree canopy heights
-            - land_cover_grid: 2D grid of land cover classifications
-            - dem_grid: 2D grid of ground elevation
-            - building_geojson: GeoJSON of building footprints and metadata
+        VoxCity: structured city model with voxel grid, 2D grids, and metadata.
     """
     # Create output directory if it doesn't exist
     output_dir = kwargs.get("output_dir", "output")
@@ -1248,18 +1255,44 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
                 label='Tree canopy height (m)'
             )
 
-    # Generate 3D voxel grid
-    voxcity_grid = create_3d_voxel(building_height_grid, building_min_height_grid, building_id_grid, land_cover_grid, dem_grid, canopy_height_grid, meshsize, land_cover_source, canopy_bottom_height_grid)
+    # Generate 3D voxel grid via Voxelizer
+    voxelizer = Voxelizer(
+        voxel_size=meshsize,
+        land_cover_source=land_cover_source,
+        trunk_height_ratio=kwargs.get("trunk_height_ratio"),
+    )
+    voxcity_grid = voxelizer.generate_combined(
+        building_height_grid_ori=building_height_grid,
+        building_min_height_grid_ori=building_min_height_grid,
+        building_id_grid_ori=building_id_grid,
+        land_cover_grid_ori=land_cover_grid,
+        dem_grid_ori=dem_grid,
+        tree_grid_ori=canopy_height_grid,
+        canopy_bottom_height_grid_ori=locals().get("canopy_bottom_height_grid"),
+    )
 
     # Save all data if a save path is provided
+    pipeline = VoxCityPipeline(meshsize=meshsize, rectangle_vertices=rectangle_vertices)
+    city = pipeline.assemble_voxcity(
+        voxcity_grid=voxcity_grid,
+        building_height_grid=building_height_grid,
+        building_min_height_grid=building_min_height_grid,
+        building_id_grid=building_id_grid,
+        land_cover_grid=land_cover_grid,
+        dem_grid=dem_grid,
+        canopy_height_top=canopy_height_grid,
+        canopy_height_bottom=locals().get("canopy_bottom_height_grid"),
+        extras={"building_gdf": building_gdf},
+    )
+
     save_voxcity = kwargs.get("save_voxctiy_data", True)
     if save_voxcity:
         save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
-        save_voxcity_data(save_path, voxcity_grid, building_height_grid, building_min_height_grid, 
-                         building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
+        save_voxcity_data(save_path, city.voxels.classes, city.buildings.heights, city.buildings.min_heights,
+                         city.buildings.ids, city.extras.get("canopy_top"), city.land_cover.classes, city.dem.elevation,
                          building_gdf, meshsize, rectangle_vertices)
-    
-    return voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, filtered_buildings
+
+    return city
 
 def replace_nan_in_nested(arr, replace_value=10.0):
     """
@@ -1385,3 +1418,54 @@ def load_voxcity_data(input_path):
         data_dict['meshsize'],
         data_dict['rectangle_vertices']
     )
+
+
+def load_voxcity(input_path) -> VoxCity:
+    """Load a saved VoxCity dataset and return a VoxCity object.
+
+    This is a higher-level alternative to ``load_voxcity_data`` that assembles
+    the structured ``VoxCity`` model from the saved pickle, so callers don't need
+    to unpack many arrays.
+
+    Args:
+        input_path (str): Path to the saved pickle created by ``save_voxcity_data`` or ``get_voxcity``.
+
+    Returns:
+        VoxCity: Structured model with voxel grid, 2D grids, metadata and extras.
+    """
+    import pickle
+
+    with open(input_path, 'rb') as f:
+        d = pickle.load(f)
+
+    # Derive bounds from rectangle vertices
+    rv = d.get('rectangle_vertices') or []
+    if rv:
+        xs = [p[0] for p in rv]
+        ys = [p[1] for p in rv]
+        bounds = (min(xs), min(ys), max(xs), max(ys))
+    else:
+        # Fallback bounds from grid shape and meshsize if vertices are missing
+        ny, nx = d['land_cover_grid'].shape
+        ms = float(d['meshsize'])
+        bounds = (0.0, 0.0, nx * ms, ny * ms)
+
+    meta = GridMetadata(crs='EPSG:4326', bounds=bounds, meshsize=float(d['meshsize']))
+
+    voxels = VoxelGrid(classes=d['voxcity_grid'], meta=meta)
+    buildings = BuildingGrid(
+        heights=d['building_height_grid'],
+        min_heights=d['building_min_height_grid'],
+        ids=d['building_id_grid'],
+        meta=meta,
+    )
+    land = LandCoverGrid(classes=d['land_cover_grid'], meta=meta)
+    dem = DemGrid(elevation=d['dem_grid'], meta=meta)
+
+    extras = {
+        'rectangle_vertices': d.get('rectangle_vertices'),
+        'building_gdf': d.get('building_gdf'),
+        'canopy_top': d.get('canopy_height_grid'),
+    }
+
+    return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, extras=extras)

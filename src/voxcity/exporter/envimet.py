@@ -30,6 +30,7 @@ import datetime
 from ..geoprocessor.grid import apply_operation, translate_array, group_and_label_cells, process_grid
 from ..geoprocessor.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
+from ..models import VoxCity
 
 def array_to_string(arr):
     """Convert a 2D numpy array to a string representation with comma-separated values.
@@ -517,6 +518,31 @@ def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_gri
     file_basename = kwargs.get("file_basename", 'voxcity')
     output_file_path = os.path.join(output_dir, f"{file_basename}.INX")
     save_file(xml_content, output_file_path)
+
+
+class EnvimetExporter:
+    """Exporter adapter to write a VoxCity model to ENVI-met INX format."""
+
+    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
+        if not isinstance(obj, VoxCity):
+            raise TypeError("EnvimetExporter expects a VoxCity instance")
+        city: VoxCity = obj
+        rect = city.extras.get("rectangle_vertices")
+        land_cover_source = city.extras.get("land_cover_source", "Standard")
+        export_inx(
+            city.buildings.heights,
+            city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int),
+            city.extras.get("canopy_top", np.zeros_like(city.land_cover.classes, dtype=float)),
+            city.land_cover.classes,
+            city.dem.elevation,
+            city.voxels.meta.meshsize,
+            land_cover_source,
+            rect if rect is not None else [(0.0, 0.0)] * 4,
+            output_directory=output_directory,
+            file_basename=base_filename,
+            **kwargs,
+        )
+        return os.path.join(output_directory, f"{base_filename}.INX")
 
 def generate_edb_file(**kwargs):
     """Generate ENVI-met database file for 3D plants.

@@ -23,7 +23,7 @@ import numpy as np
 from pyvox.models import Vox
 from pyvox.writer import VoxWriter
 import os
-from ..utils.visualization import get_voxel_color_map
+from ..visualizer import get_voxel_color_map
 
 def convert_colormap_and_array(original_map, original_array):
     """
@@ -277,7 +277,7 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
         base_filename (str, optional): Base name for the output files.
             Defaults to 'chunk'. Used when model is split into multiple files.
         voxel_color_map (dict, optional): Dictionary mapping indices to RGB color values.
-            If None, uses default color map from utils.visualization.
+            If None, uses default color map from visualizer.
             Each value should be a list of [R,G,B] values (0-255).
     
     Note:
@@ -295,3 +295,32 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
     # Export the model and print confirmation
     value_mapping, palette = export_large_voxel_model(converted_array, converted_voxel_color_map, output_dir, base_filename=base_filename)
     print(f"\tvox files was successfully exported in {output_dir}")
+
+
+class MagicaVoxelExporter:
+    """Exporter adapter to write VoxCity voxels as MagicaVoxel .vox chunks.
+
+    Accepts either a VoxCity instance (uses `voxels.classes`) or a raw 3D numpy array.
+    """
+
+    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
+        import numpy as _np
+        os.makedirs(output_directory, exist_ok=True)
+        try:
+            from ..models import VoxCity as _VoxCity
+            if isinstance(obj, _VoxCity):
+                export_magicavoxel_vox(
+                    obj.voxels.classes,
+                    output_directory,
+                    base_filename,
+                    voxel_color_map=kwargs.get("voxel_color_map"),
+                )
+                return output_directory
+        except Exception:
+            pass
+
+        if isinstance(obj, _np.ndarray) and obj.ndim == 3:
+            export_magicavoxel_vox(obj, output_directory, base_filename, voxel_color_map=kwargs.get("voxel_color_map"))
+            return output_directory
+
+        raise TypeError("MagicaVoxelExporter.export expects VoxCity or a 3D numpy array")

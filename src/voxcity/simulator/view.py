@@ -2289,3 +2289,26 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
             print(f"Error exporting mesh: {e}")
 
     return building_mesh, voxel_data_modified
+
+
+class ViewSimulation:
+    """Object-oriented wrapper for view-related simulations (VI, SVF, surface view)."""
+
+    def __init__(self, city_or_voxels, meshsize: float | None = None) -> None:
+        if hasattr(city_or_voxels, 'voxels'):
+            self.voxel_data = city_or_voxels.voxels.classes
+            self.meshsize = city_or_voxels.voxels.meta.meshsize
+        else:
+            if meshsize is None:
+                raise ValueError("meshsize must be provided when passing raw voxel array")
+            self.voxel_data = city_or_voxels
+            self.meshsize = float(meshsize)
+
+    def view_index(self, **kwargs):
+        return get_view_index(self.voxel_data, self.meshsize, **kwargs)
+
+    def sky_view_factor(self, **kwargs):
+        return get_sky_view_factor_map(self.voxel_data, self.meshsize, **kwargs)
+
+    def surface_view_factor(self, **kwargs):
+        return get_surface_view_factor(self.voxel_data, self.meshsize, **kwargs)

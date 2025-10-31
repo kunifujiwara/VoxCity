@@ -39,6 +39,7 @@ from astral.sun import elevation, azimuth
 from .view import trace_ray_generic, compute_vi_map_generic, get_sky_view_factor_map, get_surface_view_factor
 from ..utils.weather import get_nearest_epw_from_climate_onebuilding, read_epw_for_solar_simulation
 from ..exporter.obj import grid_to_obj, export_obj
+from ..models import VoxCity
 
 @njit(parallel=True)
 def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_point_height, hit_values, meshsize, tree_k, tree_lad, inclusion_mode):
@@ -2344,3 +2345,41 @@ def load_irradiance_mesh(input_file_path):
         irradiance_mesh = pickle.load(f)
     
     return irradiance_mesh
+
+
+class SolarSimulation:
+    """Object-oriented wrapper for solar simulations.
+
+    Keeps Numba-parallel kernels as module-level functions; orchestrates inputs/threads.
+    """
+
+    def __init__(self, city_or_voxels, meshsize: float | None = None) -> None:
+        if isinstance(city_or_voxels, VoxCity):
+            self.voxel_data = city_or_voxels.voxels.classes
+            self.meshsize = city_or_voxels.voxels.meta.meshsize
+        else:
+            if meshsize is None:
+                raise ValueError("meshsize must be provided when passing raw voxel array")
+            self.voxel_data = city_or_voxels
+            self.meshsize = float(meshsize)
+
+    def set_numba_threads(self, n: int) -> None:
+        try:
+            numba.set_num_threads(int(n))
+        except Exception:
+            pass
+
+    def direct_map(self, azimuth_degrees: float, elevation_degrees: float, dni: float, **kwargs):
+        return get_direct_solar_irradiance_map(self.voxel_data, self.meshsize, azimuth_degrees, elevation_degrees, dni, **kwargs)
+
+    def diffuse_map(self, dhi: float, **kwargs):
+        return get_diffuse_solar_irradiance_map(self.voxel_data, self.meshsize, diffuse_irradiance=dhi, **kwargs)
+
+    def global_map(self, azimuth_degrees: float, elevation_degrees: float, dni: float, dhi: float, **kwargs):
+        return get_global_solar_irradiance_map(self.voxel_data, self.meshsize, azimuth_degrees, elevation_degrees, dni, dhi, **kwargs)
+
+    def global_timeseries(self, df, lon: float, lat: float, tz_name: str, **kwargs):
+        return get_cumulative_global_solar_irradiance(self.voxel_data, self.meshsize, df, lon, lat, tz_name, **kwargs)
+
+    def global_from_epw(self, epw_path: str, lon: float, lat: float, tz_name: str, **kwargs):
+        return get_global_solar_irradiance_using_epw(self.voxel_data, self.meshsize, epw_path, lon, lat, tz_name, **kwargs)

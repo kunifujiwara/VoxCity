@@ -38,7 +38,7 @@ from numba import njit, prange
 import matplotlib.pyplot as plt
 import trimesh
 import numpy as np
-from ..utils.visualization import get_voxel_color_map
+from ..visualizer import get_voxel_color_map
 
 def convert_colormap_indices(original_map):
     """
@@ -1415,3 +1415,58 @@ def export_netcdf_to_obj(
         print(f"Scalar Iso MTL: {mtl_tm}")
 
     return {"vox_obj": obj_vox, "vox_mtl": mtl_vox, "tm_obj": obj_tm, "tm_mtl": mtl_tm}
+
+
+class OBJExporter:
+    """Exporter that writes mesh collections or trimesh dicts to OBJ/MTL.
+
+    Accepts either a MeshCollection (voxcity.models) or dict[str, trimesh.Trimesh].
+    """
+
+    def export(self, obj, output_directory: str, base_filename: str, **kwargs):
+        os.makedirs(output_directory, exist_ok=True)
+        # VoxCity or MeshCollection path
+        try:
+            from ..models import MeshCollection, VoxCity
+            if isinstance(obj, VoxCity):
+                # Delegate to file-writing path using voxels
+                export_obj(
+                    array=obj.voxels.classes,
+                    output_dir=output_directory,
+                    file_name=base_filename,
+                    voxel_size=float(obj.voxels.meta.meshsize),
+                    voxel_color_map=kwargs.get("voxel_color_map"),
+                )
+                return os.path.join(output_directory, f"{base_filename}.obj")
+            is_collection = isinstance(obj, MeshCollection)
+        except Exception:
+            is_collection = False
+
+        if is_collection:
+            tm = {}
+            for key, mm in obj.items.items():
+                if getattr(mm, "vertices", None) is None or getattr(mm, "faces", None) is None:
+                    continue
+                if mm.vertices.size == 0 or mm.faces.size == 0:
+                    continue
+                tri = trimesh.Trimesh(vertices=mm.vertices, faces=mm.faces, process=False)
+                if getattr(mm, "colors", None) is not None:
+                    tri.visual.face_colors = mm.colors
+                tm[key] = tri
+            if not tm:
+                return None
+            combined = trimesh.util.concatenate(list(tm.values()))
+            out = os.path.join(output_directory, f"{base_filename}.obj")
+            combined.export(out)
+            return out
+
+        # Dict[str, trimesh.Trimesh] path
+        if isinstance(obj, dict) and all(hasattr(m, "vertices") for m in obj.values()):
+            if not obj:
+                return None
+            combined = trimesh.util.concatenate(list(obj.values()))
+            out = os.path.join(output_directory, f"{base_filename}.obj")
+            combined.export(out)
+            return out
+
+        raise TypeError("OBJExporter.export expects MeshCollection or dict[str, trimesh.Trimesh]")
