@@ -103,6 +103,7 @@ from .models import (
     LandCoverGrid,
     DemGrid,
     VoxelGrid,
+    CanopyGrid,
     VoxCity,
     PipelineConfig,
 )
@@ -150,14 +151,18 @@ class VoxCityPipeline:
         land = LandCoverGrid(classes=land_cover_grid, meta=meta)
         dem = DemGrid(elevation=dem_grid, meta=meta)
         voxels = VoxelGrid(classes=voxcity_grid, meta=meta)
+        canopy = CanopyGrid(top=canopy_height_top if canopy_height_top is not None else np.zeros_like(land_cover_grid, dtype=float),
+                            bottom=canopy_height_bottom,
+                            meta=meta)
         _extras = {
-            "canopy_top": canopy_height_top,
-            "canopy_bottom": canopy_height_bottom,
             "rectangle_vertices": self.rectangle_vertices,
+            # Legacy mirrors for backward compatibility
+            "canopy_top": canopy.top,
+            "canopy_bottom": canopy.bottom,
         }
         if extras:
             _extras.update(extras)
-        return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, extras=_extras)
+        return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=_extras)
 
     def run(self, cfg: PipelineConfig, building_gdf=None, terrain_gdf=None, **kwargs) -> VoxCity:
         os.makedirs(cfg.output_dir, exist_ok=True)
@@ -967,7 +972,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     if kwargs.get("save_voxctiy_data", True):
         save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
         save_voxcity_data(save_path, city.voxels.classes, city.buildings.heights, city.buildings.min_heights,
-                          city.buildings.ids, city.extras.get("canopy_top"), city.land_cover.classes, city.dem.elevation,
+                          city.buildings.ids, city.tree_canopy.top, city.land_cover.classes, city.dem.elevation,
                           city.extras.get("building_gdf"), meshsize, rectangle_vertices)
 
     return city
@@ -1461,11 +1466,11 @@ def load_voxcity(input_path) -> VoxCity:
     )
     land = LandCoverGrid(classes=d['land_cover_grid'], meta=meta)
     dem = DemGrid(elevation=d['dem_grid'], meta=meta)
+    canopy = CanopyGrid(top=d.get('canopy_height_grid'), bottom=None, meta=meta)
 
     extras = {
         'rectangle_vertices': d.get('rectangle_vertices'),
         'building_gdf': d.get('building_gdf'),
-        'canopy_top': d.get('canopy_height_grid'),
     }
 
-    return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, extras=extras)
+    return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=extras)

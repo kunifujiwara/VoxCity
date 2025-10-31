@@ -40,11 +40,19 @@ class VoxelGrid:
 
 
 @dataclass
+class CanopyGrid:
+    top: np.ndarray
+    meta: GridMetadata
+    bottom: Optional[np.ndarray] = None
+
+
+@dataclass
 class VoxCity:
     voxels: VoxelGrid
     buildings: BuildingGrid
     land_cover: LandCoverGrid
     dem: DemGrid
+    tree_canopy: CanopyGrid
     extras: Dict[str, Any] = field(default_factory=dict)
 
 

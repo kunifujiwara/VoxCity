@@ -532,7 +532,7 @@ class EnvimetExporter:
         export_inx(
             city.buildings.heights,
             city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int),
-            city.extras.get("canopy_top", np.zeros_like(city.land_cover.classes, dtype=float)),
+            city.tree_canopy.top if city.tree_canopy is not None else np.zeros_like(city.land_cover.classes, dtype=float),
             city.land_cover.classes,
             city.dem.elevation,
             city.voxels.meta.meshsize,
