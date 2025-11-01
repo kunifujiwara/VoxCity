@@ -706,7 +706,8 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     # This allows combining multiple sources for better coverage or accuracy
     building_complementary_source = kwargs.get("building_complementary_source") 
     building_complement_height = kwargs.get("building_complement_height")
-    overlapping_footprint = kwargs.get("overlapping_footprint")
+    # Default to 'auto' overlap handling if not specified
+    overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
     if (building_complementary_source is None) or (building_complementary_source=='None'):
         # Use only the primary data source

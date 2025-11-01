@@ -653,7 +653,7 @@ def create_building_height_grid_from_gdf_polygon(
     gdf,
     meshsize,
     rectangle_vertices,
-    overlapping_footprint=False,
+    overlapping_footprint="auto",
     gdf_comp=None,
     geotiff_path_comp=None,
     complement_building_footprints=None,
@@ -666,8 +666,10 @@ def create_building_height_grid_from_gdf_polygon(
         gdf (geopandas.GeoDataFrame): GeoDataFrame containing building information
         meshsize (float): Size of mesh cells
         rectangle_vertices (list): List of rectangle vertices defining the boundary
-        overlapping_footprint (bool): If True, use precise geometry-based processing for overlaps.
-                                    If False, use faster rasterio-based approach.
+        overlapping_footprint (bool | str):
+            - True: Use precise geometry-based processing for overlaps (geometry intersection)
+            - False: Use faster rasterio-based approach
+            - "auto": Choose method automatically based on estimated overlap density and building density
         gdf_comp (geopandas.GeoDataFrame, optional): Complementary GeoDataFrame
         geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
         complement_building_footprints (bool, optional): Whether to complement footprints
@@ -729,20 +731,57 @@ def create_building_height_grid_from_gdf_polygon(
     filtered_gdf = process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
     
     # --------------------------------------------------------------------------
-    # 2) BRANCH BASED ON OVERLAPPING_FOOTPRINT PARAMETER
+    # 2) DETERMINE MODE (AUTO/PRECISE/FAST) AND BRANCH
     # --------------------------------------------------------------------------
     
-    if overlapping_footprint:
-        # Use precise geometry-based approach for better overlap handling
+    # Normalize mode input
+    mode_value = overlapping_footprint
+    if isinstance(mode_value, str):
+        mode_value = mode_value.lower()
+    if mode_value is None:
+        mode_value = "auto"
+
+    use_precise = False
+    if mode_value in (True, False):
+        use_precise = bool(mode_value)
+    elif mode_value == "auto":
+        # Lightweight heuristic using bounding box overlaps and density
+        try:
+            n_total = len(filtered_gdf)
+            n_sample = min(n_total, 1000)
+            overlap_fraction = 0.0
+            if n_sample > 0:
+                # Build an R-tree on first n_sample bounding boxes
+                bboxes = [geom.bounds for geom in filtered_gdf.geometry.iloc[:n_sample]]
+                idx_tmp = index.Index()
+                for i_b, bbox in enumerate(bboxes):
+                    idx_tmp.insert(i_b, bbox)
+                overlaps = 0
+                for i_b, bbox in enumerate(bboxes):
+                    # >1 means at least one other potential overlap
+                    if len(list(idx_tmp.intersection(bbox))) > 1:
+                        overlaps += 1
+                overlap_fraction = overlaps / float(n_sample)
+            # Building density relative to grid cells
+            grid_cells = float(grid_size[0] * grid_size[1]) if (grid_size[0] > 0 and grid_size[1] > 0) else 1.0
+            density = (n_total / grid_cells)
+            # Decision rule: prefer precise when notable overlaps or high density
+            use_precise = (overlap_fraction >= 0.15) or (density >= 0.5)
+        except Exception:
+            # On any issue, fall back to fast for robustness
+            use_precise = False
+    else:
+        # Unknown value -> default to fast for safety
+        use_precise = False
+
+    if use_precise:
         return _process_with_geometry_intersection(
             filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, complement_height
         )
-    else:
-        # Use faster rasterio-based approach
-        return _process_with_rasterio(
-            filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, 
-            rectangle_vertices, complement_height
-        )
+    return _process_with_rasterio(
+        filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, 
+        rectangle_vertices, complement_height
+    )
 
 
 def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, complement_height):

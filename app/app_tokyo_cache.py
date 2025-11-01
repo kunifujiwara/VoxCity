@@ -1100,10 +1100,17 @@ with tab2:
                 max_value=100.0
             )
             
-            overlapping_footprint = st.checkbox(
-                "Use Overlapping Footprints", 
-                value=False
+            # Overlap handling mode
+            _overlap_mode_label = st.selectbox(
+                "Overlap handling",
+                ["Auto (recommended)", "Precise (geometry)", "Fast (raster)"],
+                index=0
             )
+            overlapping_footprint = {
+                "Auto (recommended)": "auto",
+                "Precise (geometry)": True,
+                "Fast (raster)": False,
+            }[_overlap_mode_label]
             
             dem_interpolation = st.checkbox(
                 "DEM Interpolation", 
