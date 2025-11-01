@@ -13,6 +13,15 @@ Orientation contract:
 - Visualization utilities may vertically flip arrays for display purposes only.
 - 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
 
+Orientation contract:
+- All 2D grids in this module use the canonical internal orientation "north_up":
+  row 0 is the northern/top row and the last row is the southern/bottom row.
+- Columns increase eastward: column 0 is the western/leftmost column and
+  indices increase toward the east/right.
+- Processing functions accept and return grids in north_up orientation.
+- Visualization utilities may vertically flip arrays for display purposes only.
+- 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
+
 The main functions are:
 - get_land_cover_grid: Creates a grid of land cover classifications
 - get_building_height_grid: Creates a grid of building heights (supports GeoDataFrame input)
@@ -60,6 +69,7 @@ from .downloader.oemj import save_oemj_as_geotiff
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
 from .downloader.citygml import load_buid_dem_veg_from_citygml
+from .downloader.gba import load_gdf_from_gba
 from .downloader.gba import load_gdf_from_gba
 
 # Google Earth Engine related imports - for satellite and elevation data
@@ -564,6 +574,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         columns increase eastward (col 0 = west/left). Downstream visualization may
         flip vertically for display, but processing remains north_up/eastward.
 
+    Orientation:
+        All inputs and the returned grid use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left). Downstream visualization may
+        flip vertically for display, but processing remains north_up/eastward.
+
     Returns:
         numpy.ndarray: Grid of land cover classifications as integer values
     """
@@ -604,6 +619,26 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         save_geotiff_dynamic_world_v1(roi, geotiff_path, dynamic_world_date)
     elif source == 'OpenEarthMapJapan':
         # Japan-specific land cover dataset
+        # Allow SSL/HTTP options to be passed through kwargs
+        ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
+        allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
+        allow_http_fallback = kwargs.get('allow_http_fallback', False)
+        timeout_s = kwargs.get('timeout', 30)
+
+        save_oemj_as_geotiff(
+            rectangle_vertices,
+            geotiff_path,
+            ssl_verify=ssl_verify,
+            allow_insecure_ssl=allow_insecure_ssl,
+            allow_http_fallback=allow_http_fallback,
+            timeout_s=timeout_s,
+        )
+        # Ensure the file was actually created before proceeding
+        if not os.path.exists(geotiff_path):
+            raise FileNotFoundError(
+                f"OEMJ download failed; expected GeoTIFF not found: {geotiff_path}. "
+                "You can try setting ssl_verify=False or allow_http_fallback=True in kwargs."
+            )   
         # Allow SSL/HTTP options to be passed through kwargs
         ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
         allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
@@ -679,6 +714,10 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         All inputs and outputs use north_up orientation (row 0 = north/top),
         columns increase eastward (col 0 = west/left).
 
+    Orientation:
+        All inputs and outputs use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
+
     Returns:
         tuple:
             - numpy.ndarray: Grid of building heights
@@ -725,6 +764,11 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         elif source == "Overture":
             # Open building dataset from Overture Maps Foundation
             gdf = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+        elif source in ("GBA", "Global Building Atlas"):
+            # Global Building Atlas LOD1 polygons (GeoParquet tiles)
+            clip_gba = kwargs.get("gba_clip", False)
+            gba_download_dir = kwargs.get("gba_download_dir")
+            gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif source in ("GBA", "Global Building Atlas"):
             # Global Building Atlas LOD1 polygons (GeoParquet tiles)
             clip_gba = kwargs.get("gba_clip", False)
@@ -782,6 +826,10 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
                 clip_gba = kwargs.get("gba_clip", False)
                 gba_download_dir = kwargs.get("gba_download_dir")
                 gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
+            elif building_complementary_source in ("GBA", "Global Building Atlas"):
+                clip_gba = kwargs.get("gba_clip", False)
+                gba_download_dir = kwargs.get("gba_download_dir")
+                gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
             elif building_complementary_source == "Local file":
                 _, extension = os.path.splitext(kwargs["building_complementary_path"])
                 if extension == ".gpkg":
@@ -818,6 +866,10 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
             - tree_gdf: GeoDataFrame of trees (optional when source='GeoDataFrame')
             - tree_gdf_path: Path to a local file (e.g., .gpkg) with trees when source='GeoDataFrame'
             - trunk_height_ratio: Fraction of top height used as canopy bottom for non-GDF sources
+
+    Orientation:
+        Inputs and returned grids use north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
 
     Orientation:
         Inputs and returned grids use north_up orientation (row 0 = north/top),
@@ -904,6 +956,10 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         Returned DEM grid uses north_up orientation (row 0 = north/top),
         columns increase eastward (col 0 = west/left).
 
+    Orientation:
+        Returned DEM grid uses north_up orientation (row 0 = north/top),
+        columns increase eastward (col 0 = west/left).
+
     Returns:
         numpy.ndarray: Grid of elevation values
     """
@@ -971,6 +1027,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         meshsize: Size of each grid cell in meters
         building_gdf: Optional GeoDataFrame with building footprint, height and other information
         terrain_gdf: Optional GeoDataFrame with terrain elements including an 'elevation' column
+        terrain_gdf: Optional GeoDataFrame with terrain elements including an 'elevation' column
         **kwargs: Additional keyword arguments including:
             - output_dir: Directory to save output files (default: 'output')
             - min_canopy_height: Minimum height threshold for tree canopy
@@ -979,6 +1036,11 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             - voxelvis: Whether to visualize 3D voxel model
             - voxelvis_img_save_path: Path to save 3D visualization
             - default_land_cover_class: Default class for land cover grid cells with no intersecting polygons (default: 'Developed space')
+
+    Orientation:
+        All intermediate and final 2D grids use north_up (row 0 = north/top) with
+        columns increasing eastward (col 0 = west/left). Visual previews may flip
+        vertically for display only.
 
     Orientation:
         All intermediate and final 2D grids use north_up (row 0 = north/top) with
@@ -1038,6 +1100,11 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         columns increasing eastward (col 0 = west/left). Visual previews may flip
         vertically for display only.
 
+    Orientation:
+        All intermediate and final 2D grids use north_up (row 0 = north/top) with
+        columns increasing eastward (col 0 = west/left). Visual previews may flip
+        vertically for display only.
+
     Returns:
         VoxCity: structured city model with voxel grid, 2D grids, and metadata.
     """
@@ -1054,7 +1121,22 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     ca_bundle = kwargs.pop('ca_bundle', None)
     timeout = kwargs.pop('timeout', 60)
 
+    # SSL/HTTP options for CityGML download (optional)
+    # Backward compatible: accept 'verify' but prefer 'ssl_verify'
+    ssl_verify = kwargs.pop('ssl_verify', kwargs.pop('verify', True))
+    ca_bundle = kwargs.pop('ca_bundle', None)
+    timeout = kwargs.pop('timeout', 60)
+
     # get all required gdfs    
+    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
+        url=url_citygml,
+        citygml_path=citygml_path,
+        base_dir=output_dir,
+        rectangle_vertices=rectangle_vertices,
+        ssl_verify=ssl_verify,
+        ca_bundle=ca_bundle,
+        timeout=timeout
+    )
     building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
         url=url_citygml,
         citygml_path=citygml_path,
@@ -1110,6 +1192,10 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
         elif building_complementary_source == 'Overture':
             gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+        elif building_complementary_source in ("GBA", "Global Building Atlas"):
+            clip_gba = kwargs.get("gba_clip", False)
+            gba_download_dir = kwargs.get("gba_download_dir")
+            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif building_complementary_source in ("GBA", "Global Building Atlas"):
             clip_gba = kwargs.get("gba_clip", False)
             gba_download_dir = kwargs.get("gba_download_dir")
