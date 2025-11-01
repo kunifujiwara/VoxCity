@@ -110,6 +110,14 @@ from .models import (
 from .visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
 
 
+# -----------------------------
+# Voxel class codes (semantics)
+# -----------------------------
+GROUND_CODE = -1
+TREE_CODE = -2
+BUILDING_CODE = -3
+
+
 class VoxCityPipeline:
     """OOP orchestrator to build a VoxCity model from configured sources.
 
@@ -341,6 +349,108 @@ class DemSourceFactory:
         return SourceDemStrategy(source)
 
 
+@jit(nopython=True, parallel=True)
+def _voxelize_kernel(
+    voxel_grid,
+    land_cover_grid,
+    dem_grid,
+    tree_grid,
+    canopy_bottom_grid,
+    has_canopy_bottom,
+    seg_starts,
+    seg_ends,
+    seg_offsets,
+    seg_counts,
+    trunk_height_ratio,
+    voxel_size,
+):
+    rows, cols = land_cover_grid.shape
+    for i in prange(rows):
+        for j in range(cols):
+            ground_level = int(dem_grid[i, j] / voxel_size + 0.5) + 1
+
+            # ground and land cover layer
+            if ground_level > 0:
+                voxel_grid[i, j, :ground_level] = GROUND_CODE
+                voxel_grid[i, j, ground_level - 1] = land_cover_grid[i, j]
+
+            # trees
+            tree_height = tree_grid[i, j]
+            if tree_height > 0.0:
+                if has_canopy_bottom:
+                    crown_base_height = canopy_bottom_grid[i, j]
+                else:
+                    crown_base_height = tree_height * trunk_height_ratio
+                crown_base_level = int(crown_base_height / voxel_size + 0.5)
+                crown_top_level = int(tree_height / voxel_size + 0.5)
+                if (crown_top_level == crown_base_level) and (crown_base_level > 0):
+                    crown_base_level -= 1
+                tree_start = ground_level + crown_base_level
+                tree_end = ground_level + crown_top_level
+                if tree_end > tree_start:
+                    voxel_grid[i, j, tree_start:tree_end] = TREE_CODE
+
+            # buildings (packed segments)
+            base = seg_offsets[i, j]
+            count = seg_counts[i, j]
+            for k in range(count):
+                s = seg_starts[base + k]
+                e = seg_ends[base + k]
+                start = ground_level + s
+                end = ground_level + e
+                if end > start:
+                    voxel_grid[i, j, start:end] = BUILDING_CODE
+
+
+def _flatten_building_segments(building_min_height_grid: np.ndarray, voxel_size: float):
+    """Pack per-cell building segments into flat arrays for JIT kernel.
+
+    Returns:
+        seg_starts (np.ndarray[int32]): concatenated start levels per segment
+        seg_ends   (np.ndarray[int32]): concatenated end levels per segment
+        offsets    (np.ndarray[int32]): starting index in seg_* for each cell
+        counts     (np.ndarray[int32]): number of segments for each cell
+    """
+    rows, cols = building_min_height_grid.shape
+    counts = np.zeros((rows, cols), dtype=np.int32)
+    # First pass: count segments per cell
+    for i in range(rows):
+        for j in range(cols):
+            cell = building_min_height_grid[i, j]
+            n = 0
+            if isinstance(cell, list):
+                n = len(cell)
+            counts[i, j] = np.int32(n)
+
+    # Prefix sum to compute offsets
+    offsets = np.zeros((rows, cols), dtype=np.int32)
+    total = 0
+    for i in range(rows):
+        for j in range(cols):
+            offsets[i, j] = total
+            total += int(counts[i, j])
+
+    seg_starts = np.zeros(total, dtype=np.int32)
+    seg_ends = np.zeros(total, dtype=np.int32)
+
+    # Second pass: fill flattened arrays
+    for i in range(rows):
+        for j in range(cols):
+            base = offsets[i, j]
+            n = counts[i, j]
+            if n == 0:
+                continue
+            cell = building_min_height_grid[i, j]
+            for k in range(int(n)):
+                # cell[k] expected like [min_h, max_h]
+                mh = cell[k][0]
+                mx = cell[k][1]
+                seg_starts[base + k] = int(mh / voxel_size + 0.5)
+                seg_ends[base + k] = int(mx / voxel_size + 0.5)
+
+    return seg_starts, seg_ends, offsets, counts
+
+
 class Voxelizer:
     """Encapsulates voxel generation from 2D grids.
 
@@ -418,13 +528,39 @@ class Voxelizer:
 
         trunk_height_ratio = float(kwargs.get("trunk_height_ratio", self.trunk_height_ratio))
 
+        # Accelerated path via numba if available
+        if NUMBA_AVAILABLE:
+            has_canopy = canopy_bottom_grid is not None
+            canopy_in = canopy_bottom_grid if has_canopy else np.zeros_like(tree_grid)
+            # pack building segments for JIT
+            seg_starts, seg_ends, seg_offsets, seg_counts = _flatten_building_segments(
+                building_min_height_grid, self.voxel_size
+            )
+            # Ensure numeric dtypes friendly to numba
+            _voxelize_kernel(
+                voxel_grid,
+                land_cover_grid.astype(np.int32, copy=False),
+                dem_grid.astype(np.float32, copy=False),
+                tree_grid.astype(np.float32, copy=False),
+                canopy_in.astype(np.float32, copy=False),
+                has_canopy,
+                seg_starts,
+                seg_ends,
+                seg_offsets,
+                seg_counts,
+                float(trunk_height_ratio),
+                float(self.voxel_size),
+            )
+            return voxel_grid
+
+        # Fallback pure-Python implementation
         for i in range(rows):
             for j in range(cols):
                 ground_level = int(dem_grid[i, j] / self.voxel_size + 0.5) + 1
                 tree_height = tree_grid[i, j]
                 land_cover = land_cover_grid[i, j]
 
-                voxel_grid[i, j, :ground_level] = -1
+                voxel_grid[i, j, :ground_level] = GROUND_CODE
                 voxel_grid[i, j, ground_level - 1] = land_cover
 
                 if tree_height > 0:
@@ -433,20 +569,17 @@ class Voxelizer:
                     else:
                         crown_base_height = (tree_height * trunk_height_ratio)
                     crown_base_height_level = int(crown_base_height / self.voxel_size + 0.5)
-                    crown_top_height = tree_height
-                    crown_top_height_level = int(crown_top_height / self.voxel_size + 0.5)
-
+                    crown_top_height_level = int(tree_height / self.voxel_size + 0.5)
                     if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level > 0):
                         crown_base_height_level -= 1
-
                     tree_start = ground_level + crown_base_height_level
                     tree_end = ground_level + crown_top_height_level
-                    voxel_grid[i, j, tree_start:tree_end] = -2
+                    voxel_grid[i, j, tree_start:tree_end] = TREE_CODE
 
                 for k in building_min_height_grid[i, j]:
                     building_min_height = int(k[0] / self.voxel_size + 0.5)
                     building_height = int(k[1] / self.voxel_size + 0.5)
-                    voxel_grid[i, j, ground_level + building_min_height:ground_level + building_height] = -3
+                    voxel_grid[i, j, ground_level + building_min_height:ground_level + building_height] = BUILDING_CODE
 
         return voxel_grid
 
@@ -706,6 +839,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     # This allows combining multiple sources for better coverage or accuracy
     building_complementary_source = kwargs.get("building_complementary_source") 
     building_complement_height = kwargs.get("building_complement_height")
+    # Default to 'auto' overlap handling if not specified
     overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
     if (building_complementary_source is None) or (building_complementary_source=='None'):
