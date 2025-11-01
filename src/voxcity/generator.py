@@ -1512,55 +1512,10 @@ def save_voxcity_data(output_path, voxcity_grid, building_height_grid, building_
     
     print(f"Voxcity data saved to {output_path}")
 
-def load_voxcity_data(input_path):
-    """Load voxcity data from a saved file.
-    
-    Args:
-        input_path: Path to the saved data file
-        
-    Returns:
-        tuple: All the voxcity data components including:
-            - voxcity_grid: 3D voxel grid of the complete city model
-            - building_height_grid: 2D grid of building heights
-            - building_min_height_grid: 2D grid of minimum building heights
-            - building_id_grid: 2D grid of building IDs
-            - canopy_height_grid: 2D grid of tree canopy heights
-            - land_cover_grid: 2D grid of land cover classifications
-            - dem_grid: 2D grid of ground elevation
-            - building_gdf: GeoDataFrame of building footprints and metadata
-            - meshsize: Size of each grid cell in meters
-            - rectangle_vertices: List of coordinates defining the area of interest
-    """
-    import pickle
-    
-    # Deserialize the data from the saved file
-    with open(input_path, 'rb') as f:
-        data_dict = pickle.load(f)
-    
-    print(f"Voxcity data loaded from {input_path}")
-    
-    # Return all components as a tuple in the same order as the main function
-    # This ensures compatibility with existing code that expects this structure
-    return (
-        data_dict['voxcity_grid'],
-        data_dict['building_height_grid'],
-        data_dict['building_min_height_grid'],
-        data_dict['building_id_grid'],
-        data_dict['canopy_height_grid'],
-        data_dict['land_cover_grid'],
-        data_dict['dem_grid'],
-        data_dict['building_gdf'],
-        data_dict['meshsize'],
-        data_dict['rectangle_vertices']
-    )
-
-
 def load_voxcity(input_path) -> VoxCity:
-    """Load a saved VoxCity dataset and return a VoxCity object.
+    """Load a saved VoxCity dataset and return a structured ``VoxCity`` object.
 
-    This is a higher-level alternative to ``load_voxcity_data`` that assembles
-    the structured ``VoxCity`` model from the saved pickle, so callers don't need
-    to unpack many arrays.
+    Assembles the model from the saved pickle so callers don't need to unpack arrays.
 
     Args:
         input_path (str): Path to the saved pickle created by ``save_voxcity_data`` or ``get_voxcity``.
