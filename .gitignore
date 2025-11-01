@@ -110,5 +110,5 @@ ENV/
 .idea/
 
 # Local demo outputs
-demo/output/
+demo/
 
