@@ -118,6 +118,13 @@ class VoxCityPipeline:
 
     def __init__(self, meshsize: float, rectangle_vertices, crs: str = "EPSG:4326") -> None:
         self.meshsize = float(meshsize)
+        if self.meshsize <= 0:
+            raise ValueError("meshsize must be > 0")
+        # Basic ROI validation: expect sequence of (x, y)
+        if (rectangle_vertices is None) or (not hasattr(rectangle_vertices, '__iter__')) or (
+            not all(isinstance(p, (list, tuple)) and len(p) == 2 for p in rectangle_vertices)
+        ):
+            raise ValueError("rectangle_vertices must be an iterable of (x, y) pairs")
         self.rectangle_vertices = rectangle_vertices
         self.crs = crs
 
@@ -187,9 +194,10 @@ class VoxCityPipeline:
             ids1 = np.unique(bid[:w_peri, :][bid[:w_peri, :] > 0]); ids2 = np.unique(bid[-w_peri:, :][bid[-w_peri:, :] > 0])
             ids3 = np.unique(bid[:, :h_peri][bid[:, :h_peri] > 0]); ids4 = np.unique(bid[:, -h_peri:][bid[:, -h_peri:] > 0])
             for rid in np.concatenate((ids1, ids2, ids3, ids4)):
-                pos = np.where(bid == rid)
-                bh[pos] = 0
-                bmin[pos] = [[] for _ in range(len(bmin[pos]))]
+                rows_idx, cols_idx = np.where(bid == rid)
+                for r, c in zip(rows_idx, cols_idx):
+                    bh[r, c] = 0
+                    bmin[r, c] = []
 
         # Build voxel grid using OOP Voxelizer
         voxelizer = Voxelizer(
@@ -363,6 +371,10 @@ class Voxelizer:
         self.trunk_height_ratio = float(trunk_height_ratio) if trunk_height_ratio is not None else (11.76 / 19.98)
         self.voxel_dtype = voxel_dtype
         self.max_voxel_ram_mb = max_voxel_ram_mb
+        if self.voxel_size <= 0:
+            raise ValueError("voxel_size must be > 0")
+        if not (0.0 <= self.trunk_height_ratio <= 1.0):
+            raise ValueError("trunk_height_ratio must be within [0, 1]")
 
     def _estimate_and_allocate(self, rows: int, cols: int, max_height: int) -> np.ndarray:
         try:
@@ -409,44 +421,69 @@ class Voxelizer:
         canopy_bottom_grid = None
         if canopy_bottom_height_grid_ori is not None:
             canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
+        # Enforce canopy bottom not exceeding top and non-negativity
+        tree_grid = np.maximum(tree_grid, 0)
+        if canopy_bottom_grid is not None:
+            canopy_bottom_grid = np.maximum(canopy_bottom_grid, 0)
+            canopy_bottom_grid = np.minimum(canopy_bottom_grid, tree_grid)
 
         assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
         rows, cols = building_height_grid.shape
         max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / self.voxel_size)) + 1
 
         voxel_grid = self._estimate_and_allocate(rows, cols, max_height)
+        depth = voxel_grid.shape[2]
 
         trunk_height_ratio = float(kwargs.get("trunk_height_ratio", self.trunk_height_ratio))
 
         for i in range(rows):
             for j in range(cols):
+                # Ground level (clamped to grid depth, at least 1)
                 ground_level = int(dem_grid[i, j] / self.voxel_size + 0.5) + 1
-                tree_height = tree_grid[i, j]
+                gl = min(max(ground_level, 1), depth)
+                tree_height = max(tree_grid[i, j], 0.0)
                 land_cover = land_cover_grid[i, j]
 
-                voxel_grid[i, j, :ground_level] = -1
-                voxel_grid[i, j, ground_level - 1] = land_cover
+                voxel_grid[i, j, :gl] = -1
+                voxel_grid[i, j, gl - 1] = land_cover
 
                 if tree_height > 0:
                     if canopy_bottom_grid is not None:
-                        crown_base_height = canopy_bottom_grid[i, j]
+                        crown_base_height = min(max(canopy_bottom_grid[i, j], 0.0), tree_height)
                     else:
-                        crown_base_height = (tree_height * trunk_height_ratio)
+                        crown_base_height = max(tree_height * trunk_height_ratio, 0.0)
                     crown_base_height_level = int(crown_base_height / self.voxel_size + 0.5)
-                    crown_top_height = tree_height
-                    crown_top_height_level = int(crown_top_height / self.voxel_size + 0.5)
+                    crown_top_height_level = int(tree_height / self.voxel_size + 0.5)
 
                     if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level > 0):
                         crown_base_height_level -= 1
 
-                    tree_start = ground_level + crown_base_height_level
-                    tree_end = ground_level + crown_top_height_level
-                    voxel_grid[i, j, tree_start:tree_end] = -2
+                    tree_start = gl + crown_base_height_level
+                    tree_end = gl + crown_top_height_level
+                    # Clamp to voxel grid depth
+                    tree_start = max(0, min(tree_start, depth))
+                    tree_end = max(0, min(tree_end, depth))
+                    if tree_end > tree_start:
+                        voxel_grid[i, j, tree_start:tree_end] = -2
 
-                for k in building_min_height_grid[i, j]:
-                    building_min_height = int(k[0] / self.voxel_size + 0.5)
-                    building_height = int(k[1] / self.voxel_size + 0.5)
-                    voxel_grid[i, j, ground_level + building_min_height:ground_level + building_height] = -3
+                # Buildings: fill per segment safely
+                cell_segments = building_min_height_grid[i, j]
+                for k in cell_segments:
+                    try:
+                        hmin = max(float(k[0]), 0.0)
+                        hmax = max(float(k[1]), 0.0)
+                    except Exception:
+                        continue
+                    if hmax <= hmin:
+                        continue
+                    lmin = int(hmin / self.voxel_size + 0.5)
+                    lmax = int(hmax / self.voxel_size + 0.5)
+                    start = gl + lmin
+                    end = gl + lmax
+                    start = max(0, min(start, depth))
+                    end = max(0, min(end, depth))
+                    if end > start:
+                        voxel_grid[i, j, start:end] = -3
 
         return voxel_grid
 

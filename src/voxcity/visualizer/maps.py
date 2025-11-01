@@ -179,3 +179,4 @@ def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, mesh
               rectangle_vertices, type, vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap)
 
 
+
