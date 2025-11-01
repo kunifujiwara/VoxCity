@@ -1051,10 +1051,6 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
     return dem_grid
 
-# Removed: legacy create_3d_voxel (use Voxelizer.generate_combined)
-
-# Removed: legacy create_3d_voxel_individuals (use Voxelizer.generate_components)
-
 def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
     """Main function to generate a complete VoxCity model.
 

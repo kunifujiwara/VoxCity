@@ -16,6 +16,7 @@ Orientation contract:
 
 import numpy as np
 import pandas as pd
+from typing import Tuple, List, Optional, Dict, Any
 import os
 from shapely.geometry import Polygon, Point, MultiPolygon, box, mapping
 from scipy.ndimage import label, generate_binary_structure
@@ -55,7 +56,7 @@ from ..downloader.gee import (
     save_geotiff_open_buildings_temporal
 )
 
-def apply_operation(arr, meshsize):
+def apply_operation(arr: np.ndarray, meshsize: float) -> np.ndarray:
     """
     Applies a sequence of operations to an array based on a mesh size to normalize and discretize values.
     
@@ -86,38 +87,21 @@ def apply_operation(arr, meshsize):
     # Scale back to original units
     return step3 * meshsize
 
-def translate_array(input_array, translation_dict):
+def translate_array(input_array: np.ndarray, translation_dict: Dict[Any, Any]) -> np.ndarray:
     """
-    Translates values in an array according to a dictionary mapping.
-    
-    This function creates a new array where each value from the input array
-    is replaced by its corresponding value from the translation dictionary.
-    Values not found in the dictionary are replaced with empty strings.
-    
-    Args:
-        input_array (numpy.ndarray): Array containing values to translate
-        translation_dict (dict): Dictionary mapping input values to output values
-        
-    Returns:
-        numpy.ndarray: Array with translated values, with same shape as input array
-        
-    Example:
-        >>> arr = np.array([[1, 2], [3, 4]])
-        >>> trans_dict = {1: 'A', 2: 'B', 3: 'C', 4: 'D'}
-        >>> result = translate_array(arr, trans_dict)
-        >>> # result = array([['A', 'B'], ['C', 'D']], dtype=object)
-    """
-    # Create empty array of same shape that can hold objects (e.g. strings)
-    translated_array = np.empty_like(input_array, dtype=object)
-    # Iterate through array and replace values using dictionary
-    for i in range(input_array.shape[0]):
-        for j in range(input_array.shape[1]):
-            value = input_array[i, j]
-            # Use dict.get() to handle missing keys, defaulting to empty string
-            translated_array[i, j] = translation_dict.get(value, '')
-    return translated_array
+    Translate values in an array using a dictionary mapping (vectorized).
 
-def group_and_label_cells(array):
+    Any value not found in the mapping is replaced with an empty string.
+    Returns an object-dtype ndarray preserving the input shape.
+    """
+    if not isinstance(input_array, np.ndarray):
+        input_array = np.asarray(input_array)
+
+    # Use np.vectorize over dict.get with default for missing keys
+    getter = np.vectorize(lambda v: translation_dict.get(v, ''), otypes=[object])
+    return getter(input_array)
+
+def group_and_label_cells(array: np.ndarray) -> np.ndarray:
     """
     Convert non-zero numbers in a 2D numpy array to sequential IDs starting from 1.
     
@@ -152,7 +136,7 @@ def group_and_label_cells(array):
     
     return result
 
-def process_grid_optimized(grid_bi, dem_grid):
+def process_grid_optimized(grid_bi: np.ndarray, dem_grid: np.ndarray) -> np.ndarray:
     """
     Optimized version that computes per-building averages without allocating
     huge arrays when building IDs are large and sparse.
@@ -187,7 +171,7 @@ def process_grid_optimized(grid_bi, dem_grid):
 
     return result - np.min(result)
 
-def process_grid(grid_bi, dem_grid):
+def process_grid(grid_bi: np.ndarray, dem_grid: np.ndarray) -> np.ndarray:
     """
     Safe version that tries optimization first, then falls back to original method.
     """
@@ -242,7 +226,13 @@ def process_grid(grid_bi, dem_grid):
     
     return result
 
-def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
+def calculate_grid_size(
+    side_1: np.ndarray,
+    side_2: np.ndarray,
+    u_vec: np.ndarray,
+    v_vec: np.ndarray,
+    meshsize: float
+) -> Tuple[Tuple[int, int], Tuple[float, float]]:
     """
     Calculate grid size and adjusted mesh size based on input parameters.
     
@@ -285,7 +275,13 @@ def calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize):
 
     return (grid_size_0, grid_size_1), (adjusted_mesh_size_0, adjusted_mesh_size_1)
 
-def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
+def create_coordinate_mesh(
+    origin: np.ndarray,
+    grid_size: Tuple[int, int],
+    adjusted_meshsize: Tuple[float, float],
+    u_vec: np.ndarray,
+    v_vec: np.ndarray
+) -> np.ndarray:
     """
     Create a coordinate mesh based on input parameters.
     
@@ -327,7 +323,14 @@ def create_coordinate_mesh(origin, grid_size, adjusted_meshsize, u_vec, v_vec):
 
     return cell_coords
 
-def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
+def create_cell_polygon(
+    origin: np.ndarray,
+    i: int,
+    j: int,
+    adjusted_meshsize: Tuple[float, float],
+    u_vec: np.ndarray,
+    v_vec: np.ndarray
+):
     """
     Create a polygon representing a grid cell.
     
@@ -364,7 +367,7 @@ def create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec):
     # Create polygon from corners in counter-clockwise order
     return Polygon([bottom_left, bottom_right, top_right, top_left])
 
-def tree_height_grid_from_land_cover(land_cover_grid_ori):
+def tree_height_grid_from_land_cover(land_cover_grid_ori: np.ndarray) -> np.ndarray:
     """
     Convert a land cover grid to a tree height grid.
     
@@ -410,7 +413,12 @@ def tree_height_grid_from_land_cover(land_cover_grid_ori):
 
     return tree_height_grid
 
-def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover_classes, polygon):
+def create_land_cover_grid_from_geotiff_polygon(
+    tiff_path: str,
+    mesh_size: float,
+    land_cover_classes: Dict[str, Any],
+    polygon: List[Tuple[float, float]]
+) -> np.ndarray:
     """
     Create a land cover grid from a GeoTIFF file within a polygon boundary.
     
@@ -478,7 +486,13 @@ def create_land_cover_grid_from_geotiff_polygon(tiff_path, mesh_size, land_cover
     # Flip grid vertically to match geographic orientation
     return np.flipud(grid)
     
-def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_vertices, default_class='Developed space'):
+def create_land_cover_grid_from_gdf_polygon(
+    gdf: gpd.GeoDataFrame,
+    meshsize: float,
+    source: str,
+    rectangle_vertices: List[Tuple[float, float]],
+    default_class: str = 'Developed space'
+) -> np.ndarray:
     """Create a grid of land cover classes from GeoDataFrame polygon data.
 
     Args:
@@ -588,7 +602,11 @@ def create_land_cover_grid_from_gdf_polygon(gdf, meshsize, source, rectangle_ver
                     continue 
     return grid
 
-def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
+def create_height_grid_from_geotiff_polygon(
+    tiff_path: str,
+    mesh_size: float,
+    polygon: List[Tuple[float, float]]
+) -> np.ndarray:
     """
     Create a height grid from a GeoTIFF file within a polygon boundary.
     
@@ -650,15 +668,15 @@ def create_height_grid_from_geotiff_polygon(tiff_path, mesh_size, polygon):
     return np.flipud(grid)
 
 def create_building_height_grid_from_gdf_polygon(
-    gdf,
-    meshsize,
-    rectangle_vertices,
-    overlapping_footprint="auto",
-    gdf_comp=None,
-    geotiff_path_comp=None,
-    complement_building_footprints=None,
-    complement_height=None
-):
+    gdf: gpd.GeoDataFrame,
+    meshsize: float,
+    rectangle_vertices: List[Tuple[float, float]],
+    overlapping_footprint: Any = "auto",
+    gdf_comp: Optional[gpd.GeoDataFrame] = None,
+    geotiff_path_comp: Optional[str] = None,
+    complement_building_footprints: Optional[bool] = None,
+    complement_height: Optional[float] = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, gpd.GeoDataFrame]:
     """
     Create a building height grid from GeoDataFrame data within a polygon boundary.
     

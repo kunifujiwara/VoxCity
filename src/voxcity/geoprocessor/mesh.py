@@ -47,9 +47,9 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     mesh_type : str, optional
         Type of mesh to create, controlling which faces are included:
         - None (default): create faces at boundaries between different classes
-        - 'building_solar': only create faces at boundaries between buildings (-3)
-                          and either void (0) or trees (-2). Useful for solar analysis
-                          where only exposed surfaces matter.
+        - 'building_solar' or 'open_air': only create faces at boundaries between
+                          buildings (-3) and either void (0) or trees (-2). Useful for
+                          solar analysis where only exposed surfaces matter.
 
     Returns
     -------
@@ -151,8 +151,8 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
                 else:
                     adj_value = voxel_array[adj_coord]
                     
-                    if mesh_type == 'open_air' and class_id == -3:
-                        # For building_solar, only create faces at boundaries with void (0) or trees (-2)
+                    if class_id == -3 and mesh_type in ('building_solar', 'open_air'):
+                        # Only create faces at boundaries with void (0) or trees (-2)
                         is_boundary = (adj_value == 0 or adj_value == -2)
                     else:
                         # Default behavior - create faces at any class change

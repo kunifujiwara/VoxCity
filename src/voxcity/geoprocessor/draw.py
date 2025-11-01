@@ -24,7 +24,7 @@ Dependencies:
 """
 
 import math
-from pyproj import Proj, transform
+from pyproj import Transformer
 from ipyleaflet import (
     Map, 
     DrawControl, 
@@ -82,12 +82,12 @@ def rotate_rectangle(m, rectangle_vertices, angle):
         print("Draw a rectangle first!")
         return
 
-    # Define projections - need to convert between coordinate systems for accurate rotation
-    wgs84 = Proj(init='epsg:4326')  # WGS84 lat-lon (standard GPS coordinates)
-    mercator = Proj(init='epsg:3857')  # Web Mercator (projection used by most web maps)
+    # Define transformers (modern pyproj API)
+    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    to_wgs84 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
     # Project vertices from WGS84 to Web Mercator for proper distance calculations
-    projected_vertices = [transform(wgs84, mercator, lon, lat) for lon, lat in rectangle_vertices]
+    projected_vertices = [to_merc.transform(lon, lat) for lon, lat in rectangle_vertices]
 
     # Calculate the centroid to use as rotation center
     centroid_x = sum(x for x, y in projected_vertices) / len(projected_vertices)
@@ -114,7 +114,7 @@ def rotate_rectangle(m, rectangle_vertices, angle):
         rotated_vertices.append((new_x, new_y))
 
     # Convert coordinates back to WGS84 (lon/lat)
-    new_vertices = [transform(mercator, wgs84, x, y) for x, y in rotated_vertices]
+    new_vertices = [to_wgs84.transform(x, y) for x, y in rotated_vertices]
 
     # Create and add new polygon layer to map
     polygon = LeafletPolygon(
