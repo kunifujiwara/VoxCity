@@ -13,15 +13,6 @@ Orientation contract:
 - Visualization utilities may vertically flip arrays for display purposes only.
 - 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
 
-Orientation contract:
-- All 2D grids in this module use the canonical internal orientation "north_up":
-  row 0 is the northern/top row and the last row is the southern/bottom row.
-- Columns increase eastward: column 0 is the western/leftmost column and
-  indices increase toward the east/right.
-- Processing functions accept and return grids in north_up orientation.
-- Visualization utilities may vertically flip arrays for display purposes only.
-- 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
-
 The main functions are:
 - get_land_cover_grid: Creates a grid of land cover classifications
 - get_building_height_grid: Creates a grid of building heights (supports GeoDataFrame input)
@@ -69,7 +60,6 @@ from .downloader.oemj import save_oemj_as_geotiff
 from .downloader.eubucco import load_gdf_from_eubucco
 from .downloader.overture import load_gdf_from_overture
 from .downloader.citygml import load_buid_dem_veg_from_citygml
-from .downloader.gba import load_gdf_from_gba
 from .downloader.gba import load_gdf_from_gba
 
 # Google Earth Engine related imports - for satellite and elevation data
@@ -128,13 +118,6 @@ class VoxCityPipeline:
 
     def __init__(self, meshsize: float, rectangle_vertices, crs: str = "EPSG:4326") -> None:
         self.meshsize = float(meshsize)
-        if self.meshsize <= 0:
-            raise ValueError("meshsize must be > 0")
-        # Basic ROI validation: expect sequence of (x, y)
-        if (rectangle_vertices is None) or (not hasattr(rectangle_vertices, '__iter__')) or (
-            not all(isinstance(p, (list, tuple)) and len(p) == 2 for p in rectangle_vertices)
-        ):
-            raise ValueError("rectangle_vertices must be an iterable of (x, y) pairs")
         self.rectangle_vertices = rectangle_vertices
         self.crs = crs
 
@@ -204,10 +187,9 @@ class VoxCityPipeline:
             ids1 = np.unique(bid[:w_peri, :][bid[:w_peri, :] > 0]); ids2 = np.unique(bid[-w_peri:, :][bid[-w_peri:, :] > 0])
             ids3 = np.unique(bid[:, :h_peri][bid[:, :h_peri] > 0]); ids4 = np.unique(bid[:, -h_peri:][bid[:, -h_peri:] > 0])
             for rid in np.concatenate((ids1, ids2, ids3, ids4)):
-                rows_idx, cols_idx = np.where(bid == rid)
-                for r, c in zip(rows_idx, cols_idx):
-                    bh[r, c] = 0
-                    bmin[r, c] = []
+                pos = np.where(bid == rid)
+                bh[pos] = 0
+                bmin[pos] = [[] for _ in range(len(bmin[pos]))]
 
         # Build voxel grid using OOP Voxelizer
         voxelizer = Voxelizer(
@@ -381,10 +363,6 @@ class Voxelizer:
         self.trunk_height_ratio = float(trunk_height_ratio) if trunk_height_ratio is not None else (11.76 / 19.98)
         self.voxel_dtype = voxel_dtype
         self.max_voxel_ram_mb = max_voxel_ram_mb
-        if self.voxel_size <= 0:
-            raise ValueError("voxel_size must be > 0")
-        if not (0.0 <= self.trunk_height_ratio <= 1.0):
-            raise ValueError("trunk_height_ratio must be within [0, 1]")
 
     def _estimate_and_allocate(self, rows: int, cols: int, max_height: int) -> np.ndarray:
         try:
@@ -431,69 +409,44 @@ class Voxelizer:
         canopy_bottom_grid = None
         if canopy_bottom_height_grid_ori is not None:
             canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
-        # Enforce canopy bottom not exceeding top and non-negativity
-        tree_grid = np.maximum(tree_grid, 0)
-        if canopy_bottom_grid is not None:
-            canopy_bottom_grid = np.maximum(canopy_bottom_grid, 0)
-            canopy_bottom_grid = np.minimum(canopy_bottom_grid, tree_grid)
 
         assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
         rows, cols = building_height_grid.shape
         max_height = int(np.ceil(np.max(building_height_grid + dem_grid + tree_grid) / self.voxel_size)) + 1
 
         voxel_grid = self._estimate_and_allocate(rows, cols, max_height)
-        depth = voxel_grid.shape[2]
 
         trunk_height_ratio = float(kwargs.get("trunk_height_ratio", self.trunk_height_ratio))
 
         for i in range(rows):
             for j in range(cols):
-                # Ground level (clamped to grid depth, at least 1)
                 ground_level = int(dem_grid[i, j] / self.voxel_size + 0.5) + 1
-                gl = min(max(ground_level, 1), depth)
-                tree_height = max(tree_grid[i, j], 0.0)
+                tree_height = tree_grid[i, j]
                 land_cover = land_cover_grid[i, j]
 
-                voxel_grid[i, j, :gl] = -1
-                voxel_grid[i, j, gl - 1] = land_cover
+                voxel_grid[i, j, :ground_level] = -1
+                voxel_grid[i, j, ground_level - 1] = land_cover
 
                 if tree_height > 0:
                     if canopy_bottom_grid is not None:
-                        crown_base_height = min(max(canopy_bottom_grid[i, j], 0.0), tree_height)
+                        crown_base_height = canopy_bottom_grid[i, j]
                     else:
-                        crown_base_height = max(tree_height * trunk_height_ratio, 0.0)
+                        crown_base_height = (tree_height * trunk_height_ratio)
                     crown_base_height_level = int(crown_base_height / self.voxel_size + 0.5)
-                    crown_top_height_level = int(tree_height / self.voxel_size + 0.5)
+                    crown_top_height = tree_height
+                    crown_top_height_level = int(crown_top_height / self.voxel_size + 0.5)
 
                     if (crown_top_height_level == crown_base_height_level) and (crown_base_height_level > 0):
                         crown_base_height_level -= 1
 
-                    tree_start = gl + crown_base_height_level
-                    tree_end = gl + crown_top_height_level
-                    # Clamp to voxel grid depth
-                    tree_start = max(0, min(tree_start, depth))
-                    tree_end = max(0, min(tree_end, depth))
-                    if tree_end > tree_start:
-                        voxel_grid[i, j, tree_start:tree_end] = -2
+                    tree_start = ground_level + crown_base_height_level
+                    tree_end = ground_level + crown_top_height_level
+                    voxel_grid[i, j, tree_start:tree_end] = -2
 
-                # Buildings: fill per segment safely
-                cell_segments = building_min_height_grid[i, j]
-                for k in cell_segments:
-                    try:
-                        hmin = max(float(k[0]), 0.0)
-                        hmax = max(float(k[1]), 0.0)
-                    except Exception:
-                        continue
-                    if hmax <= hmin:
-                        continue
-                    lmin = int(hmin / self.voxel_size + 0.5)
-                    lmax = int(hmax / self.voxel_size + 0.5)
-                    start = gl + lmin
-                    end = gl + lmax
-                    start = max(0, min(start, depth))
-                    end = max(0, min(end, depth))
-                    if end > start:
-                        voxel_grid[i, j, start:end] = -3
+                for k in building_min_height_grid[i, j]:
+                    building_min_height = int(k[0] / self.voxel_size + 0.5)
+                    building_height = int(k[1] / self.voxel_size + 0.5)
+                    voxel_grid[i, j, ground_level + building_min_height:ground_level + building_height] = -3
 
         return voxel_grid
 
@@ -574,11 +527,6 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         columns increase eastward (col 0 = west/left). Downstream visualization may
         flip vertically for display, but processing remains north_up/eastward.
 
-    Orientation:
-        All inputs and the returned grid use north_up orientation (row 0 = north/top),
-        columns increase eastward (col 0 = west/left). Downstream visualization may
-        flip vertically for display, but processing remains north_up/eastward.
-
     Returns:
         numpy.ndarray: Grid of land cover classifications as integer values
     """
@@ -619,26 +567,6 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
         save_geotiff_dynamic_world_v1(roi, geotiff_path, dynamic_world_date)
     elif source == 'OpenEarthMapJapan':
         # Japan-specific land cover dataset
-        # Allow SSL/HTTP options to be passed through kwargs
-        ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
-        allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
-        allow_http_fallback = kwargs.get('allow_http_fallback', False)
-        timeout_s = kwargs.get('timeout', 30)
-
-        save_oemj_as_geotiff(
-            rectangle_vertices,
-            geotiff_path,
-            ssl_verify=ssl_verify,
-            allow_insecure_ssl=allow_insecure_ssl,
-            allow_http_fallback=allow_http_fallback,
-            timeout_s=timeout_s,
-        )
-        # Ensure the file was actually created before proceeding
-        if not os.path.exists(geotiff_path):
-            raise FileNotFoundError(
-                f"OEMJ download failed; expected GeoTIFF not found: {geotiff_path}. "
-                "You can try setting ssl_verify=False or allow_http_fallback=True in kwargs."
-            )   
         # Allow SSL/HTTP options to be passed through kwargs
         ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
         allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
@@ -714,10 +642,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         All inputs and outputs use north_up orientation (row 0 = north/top),
         columns increase eastward (col 0 = west/left).
 
-    Orientation:
-        All inputs and outputs use north_up orientation (row 0 = north/top),
-        columns increase eastward (col 0 = west/left).
-
     Returns:
         tuple:
             - numpy.ndarray: Grid of building heights
@@ -769,11 +693,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             clip_gba = kwargs.get("gba_clip", False)
             gba_download_dir = kwargs.get("gba_download_dir")
             gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
-        elif source in ("GBA", "Global Building Atlas"):
-            # Global Building Atlas LOD1 polygons (GeoParquet tiles)
-            clip_gba = kwargs.get("gba_clip", False)
-            gba_download_dir = kwargs.get("gba_download_dir")
-            gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif source == "Local file":
             # Handle user-provided local building data files
             _, extension = os.path.splitext(kwargs["building_path"])
@@ -787,7 +706,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     # This allows combining multiple sources for better coverage or accuracy
     building_complementary_source = kwargs.get("building_complementary_source") 
     building_complement_height = kwargs.get("building_complement_height")
-    # Default to 'auto' overlap handling if not specified
     overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
     if (building_complementary_source is None) or (building_complementary_source=='None'):
@@ -822,10 +740,6 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             #     gdf_comp = load_gdf_from_openmaptiles(rectangle_vertices, kwargs["maptiler_API_key"])
             elif building_complementary_source == "Overture":
                 gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
-            elif building_complementary_source in ("GBA", "Global Building Atlas"):
-                clip_gba = kwargs.get("gba_clip", False)
-                gba_download_dir = kwargs.get("gba_download_dir")
-                gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
             elif building_complementary_source in ("GBA", "Global Building Atlas"):
                 clip_gba = kwargs.get("gba_clip", False)
                 gba_download_dir = kwargs.get("gba_download_dir")
@@ -866,10 +780,6 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
             - tree_gdf: GeoDataFrame of trees (optional when source='GeoDataFrame')
             - tree_gdf_path: Path to a local file (e.g., .gpkg) with trees when source='GeoDataFrame'
             - trunk_height_ratio: Fraction of top height used as canopy bottom for non-GDF sources
-
-    Orientation:
-        Inputs and returned grids use north_up orientation (row 0 = north/top),
-        columns increase eastward (col 0 = west/left).
 
     Orientation:
         Inputs and returned grids use north_up orientation (row 0 = north/top),
@@ -956,10 +866,6 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         Returned DEM grid uses north_up orientation (row 0 = north/top),
         columns increase eastward (col 0 = west/left).
 
-    Orientation:
-        Returned DEM grid uses north_up orientation (row 0 = north/top),
-        columns increase eastward (col 0 = west/left).
-
     Returns:
         numpy.ndarray: Grid of elevation values
     """
@@ -1027,7 +933,6 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         meshsize: Size of each grid cell in meters
         building_gdf: Optional GeoDataFrame with building footprint, height and other information
         terrain_gdf: Optional GeoDataFrame with terrain elements including an 'elevation' column
-        terrain_gdf: Optional GeoDataFrame with terrain elements including an 'elevation' column
         **kwargs: Additional keyword arguments including:
             - output_dir: Directory to save output files (default: 'output')
             - min_canopy_height: Minimum height threshold for tree canopy
@@ -1036,11 +941,6 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
             - voxelvis: Whether to visualize 3D voxel model
             - voxelvis_img_save_path: Path to save 3D visualization
             - default_land_cover_class: Default class for land cover grid cells with no intersecting polygons (default: 'Developed space')
-
-    Orientation:
-        All intermediate and final 2D grids use north_up (row 0 = north/top) with
-        columns increasing eastward (col 0 = west/left). Visual previews may flip
-        vertically for display only.
 
     Orientation:
         All intermediate and final 2D grids use north_up (row 0 = north/top) with
@@ -1100,11 +1000,6 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         columns increasing eastward (col 0 = west/left). Visual previews may flip
         vertically for display only.
 
-    Orientation:
-        All intermediate and final 2D grids use north_up (row 0 = north/top) with
-        columns increasing eastward (col 0 = west/left). Visual previews may flip
-        vertically for display only.
-
     Returns:
         VoxCity: structured city model with voxel grid, 2D grids, and metadata.
     """
@@ -1121,22 +1016,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     ca_bundle = kwargs.pop('ca_bundle', None)
     timeout = kwargs.pop('timeout', 60)
 
-    # SSL/HTTP options for CityGML download (optional)
-    # Backward compatible: accept 'verify' but prefer 'ssl_verify'
-    ssl_verify = kwargs.pop('ssl_verify', kwargs.pop('verify', True))
-    ca_bundle = kwargs.pop('ca_bundle', None)
-    timeout = kwargs.pop('timeout', 60)
-
     # get all required gdfs    
-    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
-        url=url_citygml,
-        citygml_path=citygml_path,
-        base_dir=output_dir,
-        rectangle_vertices=rectangle_vertices,
-        ssl_verify=ssl_verify,
-        ca_bundle=ca_bundle,
-        timeout=timeout
-    )
     building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
         url=url_citygml,
         citygml_path=citygml_path,
@@ -1192,10 +1072,6 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
         elif building_complementary_source == 'Overture':
             gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
-        elif building_complementary_source in ("GBA", "Global Building Atlas"):
-            clip_gba = kwargs.get("gba_clip", False)
-            gba_download_dir = kwargs.get("gba_download_dir")
-            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
         elif building_complementary_source in ("GBA", "Global Building Atlas"):
             clip_gba = kwargs.get("gba_clip", False)
             gba_download_dir = kwargs.get("gba_download_dir")

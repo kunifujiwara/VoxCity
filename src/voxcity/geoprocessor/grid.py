@@ -666,10 +666,10 @@ def create_building_height_grid_from_gdf_polygon(
         gdf (geopandas.GeoDataFrame): GeoDataFrame containing building information
         meshsize (float): Size of mesh cells
         rectangle_vertices (list): List of rectangle vertices defining the boundary
-        overlapping_footprint (bool | str):
-            - True: Use precise geometry-based processing for overlaps (geometry intersection)
-            - False: Use faster rasterio-based approach
-            - "auto": Choose method automatically based on estimated overlap density and building density
+        overlapping_footprint (bool | str): Controls overlap handling strategy.
+            - True: use precise geometry-based processing (slower, more accurate)
+            - False: use faster rasterio-based approach (faster)
+            - "auto" (default): heuristically choose based on overlap density and scene size
         gdf_comp (geopandas.GeoDataFrame, optional): Complementary GeoDataFrame
         geotiff_path_comp (str, optional): Path to complementary GeoTIFF file
         complement_building_footprints (bool, optional): Whether to complement footprints
@@ -731,55 +731,118 @@ def create_building_height_grid_from_gdf_polygon(
     filtered_gdf = process_building_footprints_by_overlap(filtered_gdf, overlap_threshold=0.5)
     
     # --------------------------------------------------------------------------
-    # 2) DETERMINE MODE (AUTO/PRECISE/FAST) AND BRANCH
+    # 2) DECIDE OVERLAP HANDLING MODE (AUTO/TRUE/FALSE)
     # --------------------------------------------------------------------------
     
-    # Normalize mode input
-    mode_value = overlapping_footprint
-    if isinstance(mode_value, str):
-        mode_value = mode_value.lower()
-    if mode_value is None:
-        mode_value = "auto"
-
-    use_precise = False
-    if mode_value in (True, False):
-        use_precise = bool(mode_value)
-    elif mode_value == "auto":
-        # Lightweight heuristic using bounding box overlaps and density
-        try:
-            n_total = len(filtered_gdf)
-            n_sample = min(n_total, 1000)
-            overlap_fraction = 0.0
-            if n_sample > 0:
-                # Build an R-tree on first n_sample bounding boxes
-                bboxes = [geom.bounds for geom in filtered_gdf.geometry.iloc[:n_sample]]
-                idx_tmp = index.Index()
-                for i_b, bbox in enumerate(bboxes):
-                    idx_tmp.insert(i_b, bbox)
-                overlaps = 0
-                for i_b, bbox in enumerate(bboxes):
-                    # >1 means at least one other potential overlap
-                    if len(list(idx_tmp.intersection(bbox))) > 1:
-                        overlaps += 1
-                overlap_fraction = overlaps / float(n_sample)
-            # Building density relative to grid cells
-            grid_cells = float(grid_size[0] * grid_size[1]) if (grid_size[0] > 0 and grid_size[1] > 0) else 1.0
-            density = (n_total / grid_cells)
-            # Decision rule: prefer precise when notable overlaps or high density
-            use_precise = (overlap_fraction >= 0.15) or (density >= 0.5)
-        except Exception:
-            # On any issue, fall back to fast for robustness
-            use_precise = False
+    mode = overlapping_footprint
+    if mode is None:
+        mode = "auto"
+    if isinstance(mode, str):
+        mode_norm = mode.strip().lower()
     else:
-        # Unknown value -> default to fast for safety
+        mode_norm = mode
+    
+    def _decide_auto_mode(gdf_in) -> bool:
+        """
+        Heuristic: return True to use precise geometry intersection when overlaps are common
+        or the scene density suggests meaningful footprint conflicts; otherwise False.
+        """
+        try:
+            n_buildings = len(gdf_in)
+            if n_buildings == 0:
+                return False
+            # Density proxy: buildings per cell
+            num_cells = max(1, int(grid_size[0]) * int(grid_size[1]))
+            density = float(n_buildings) / float(num_cells)
+            
+            # Sample up to 800 buildings for overlap sampling
+            sample_n = min(800, n_buildings)
+            # Build simple R-tree over bounding boxes
+            idx_rt = index.Index()
+            geoms = []
+            areas = []
+            for i, geom in enumerate(gdf_in.geometry):
+                g = geom
+                if not getattr(g, "is_valid", True):
+                    try:
+                        g = g.buffer(0)
+                    except Exception:
+                        pass
+                geoms.append(g)
+                try:
+                    areas.append(g.area)
+                except Exception:
+                    areas.append(0.0)
+                try:
+                    idx_rt.insert(i, g.bounds)
+                except Exception:
+                    # Skip invalid bounds
+                    pass
+            with_overlap = 0
+            step = max(1, n_buildings // sample_n)
+            checked = 0
+            for i in range(0, n_buildings, step):
+                if checked >= sample_n:
+                    break
+                gi = geoms[i]
+                ai = areas[i] if i < len(areas) else 0.0
+                if gi is None:
+                    continue
+                try:
+                    potentials = list(idx_rt.intersection(gi.bounds))
+                except Exception:
+                    potentials = []
+                overlapped = False
+                for j in potentials:
+                    if j == i or j >= len(geoms):
+                        continue
+                    gj = geoms[j]
+                    if gj is None:
+                        continue
+                    try:
+                        if gi.intersects(gj):
+                            inter = gi.intersection(gj)
+                            inter_area = getattr(inter, "area", 0.0)
+                            if inter_area > 0.0:
+                                aj = areas[j] if j < len(areas) else 0.0
+                                ref_area = max(1e-9, min(ai, aj) if ai > 0 and aj > 0 else (ai if ai > 0 else aj))
+                                # Significant if >20% of the smaller polygon overlaps
+                                if (inter_area / ref_area) >= 0.2:
+                                    overlapped = True
+                                    break
+                    except Exception:
+                        continue
+                if overlapped:
+                    with_overlap += 1
+                checked += 1
+            overlap_ratio = (with_overlap / checked) if checked > 0 else 0.0
+            
+            # Decision rule: favor precise if overlaps are common or moderately common in dense scenes
+            if overlap_ratio >= 0.15:
+                return True
+            if overlap_ratio >= 0.08 and density > 0.15:
+                return True
+            # For very small scenes, use precise if any notable overlaps
+            if n_buildings <= 200 and overlap_ratio >= 0.05:
+                return True
+            return False
+        except Exception:
+            # Safe fallback: use raster (fast)
+            return False
+    
+    if mode_norm == "auto":
+        use_precise = _decide_auto_mode(filtered_gdf)
+    elif mode_norm is True:
+        use_precise = True
+    else:
         use_precise = False
-
+    
     if use_precise:
         return _process_with_geometry_intersection(
             filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, complement_height
         )
     return _process_with_rasterio(
-        filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, 
+        filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec,
         rectangle_vertices, complement_height
     )
 

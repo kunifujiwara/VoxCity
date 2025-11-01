@@ -684,17 +684,22 @@ with tab2:
                 help="Default height for buildings when height data is missing"
             )
             
-            # Overlap handling mode
-            _overlap_mode_label = st.selectbox(
-                "Overlap handling",
-                ["Auto (recommended)", "Precise (geometry)", "Fast (raster)"],
-                index=0
+            overlap_mode_label = st.selectbox(
+                "Overlap Handling",
+                [
+                    "Auto (recommended)",
+                    "Precise (slower, geometry)",
+                    "Fast (raster)"
+                ],
+                index=0,
+                help="Auto chooses between precise geometry-based and faster raster-based processing based on overlap density."
             )
-            overlapping_footprint = {
-                "Auto (recommended)": "auto",
-                "Precise (geometry)": True,
-                "Fast (raster)": False,
-            }[_overlap_mode_label]
+            if overlap_mode_label.startswith("Auto"):
+                overlapping_footprint = "auto"
+            elif overlap_mode_label.startswith("Precise"):
+                overlapping_footprint = True
+            else:
+                overlapping_footprint = False
             
             dem_interpolation = st.checkbox(
                 "DEM Interpolation", 
