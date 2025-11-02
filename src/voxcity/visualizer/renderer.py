@@ -530,3 +530,67 @@ class PyVistaRenderer:
                                        projection_type=projection_type, distance_factor=distance_factor)
 
 
+
+def visualize_voxcity(
+    city: VoxCity,
+    mode: str = "interactive",
+    *,
+    # Common options
+    voxel_color_map: "str|dict" = "default",
+    classes=None,
+    title: str | None = None,
+    # Interactive (Plotly) options
+    opacity: float = 1.0,
+    max_dimension: int = 160,
+    downsample: int | None = None,
+    width: int = 1000,
+    height: int = 800,
+    show: bool = True,
+    return_fig: bool = False,
+    # Static (PyVista) options
+    output_directory: str = "output",
+    projection_type: str = "perspective",
+    distance_factor: float = 1.0,
+):
+    """
+    Visualize a VoxCity object.
+
+    - mode="interactive": display an interactive 3D view using Plotly.
+      Returns a plotly Figure when return_fig=True, otherwise None.
+    - mode="static": render and save multiple PNG views using PyVista.
+      Returns a list of (view_name, filepath) tuples.
+    """
+    if not isinstance(mode, str):
+        raise ValueError("mode must be a string: 'interactive' or 'static'")
+
+    mode_l = mode.lower().strip()
+    if mode_l == "interactive":
+        meshsize = getattr(city.voxels.meta, "meshsize", None)
+        voxel_array = getattr(city.voxels, "classes", None)
+        return visualize_voxcity_plotly(
+            voxel_array=voxel_array,
+            meshsize=meshsize,
+            classes=classes,
+            voxel_color_map=voxel_color_map,
+            opacity=opacity,
+            max_dimension=max_dimension,
+            downsample=downsample,
+            title=title,
+            width=width,
+            height=height,
+            show=show,
+            return_fig=return_fig,
+        )
+
+    if mode_l == "static":
+        renderer = PyVistaRenderer()
+        return renderer.render_city(
+            city,
+            projection_type=projection_type,
+            distance_factor=distance_factor,
+            output_directory=output_directory,
+            voxel_color_map=voxel_color_map,
+        )
+
+    raise ValueError("Unknown mode. Use 'interactive' or 'static'.")
+
