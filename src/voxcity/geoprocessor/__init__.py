@@ -1,10 +1,10 @@
-from . import draw, grid, utils, network, polygon, mesh
+from . import draw, utils, network, polygon, mesh, raster
 
 __all__ = [
     "draw",
-    "grid",
     "utils",
     "network",
     "polygon",
     "mesh",
+    "raster",
 ]

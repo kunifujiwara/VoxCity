@@ -78,7 +78,7 @@ from .downloader.gee import (
 )
 
 # Grid processing functions - for converting geodata to raster grids
-from .geoprocessor.grid import (
+from .geoprocessor.raster import (
     group_and_label_cells, 
     process_grid,
     create_land_cover_grid_from_geotiff_polygon,

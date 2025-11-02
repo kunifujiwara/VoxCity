@@ -1,6 +1,6 @@
 import numpy as np
 
-from voxcity.geoprocessor.grid import (
+from voxcity.geoprocessor.raster import (
     apply_operation,
     translate_array,
     group_and_label_cells,

@@ -8,7 +8,7 @@ import contextily as ctx
 from shapely.geometry import Polygon
 from pyproj import CRS
 
-from ..geoprocessor.grid import (
+from ..geoprocessor.raster import (
     calculate_grid_size,
     create_coordinate_mesh,
 )

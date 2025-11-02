@@ -27,7 +27,7 @@ import os
 import numpy as np
 import datetime
 
-from ..geoprocessor.grid import apply_operation, translate_array, group_and_label_cells, process_grid
+from ..geoprocessor.raster import apply_operation, translate_array, group_and_label_cells, process_grid
 from ..geoprocessor.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
 from ..models import VoxCity

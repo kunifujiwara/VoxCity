@@ -6,7 +6,7 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import contextily as ctx
 
-from ..geoprocessor.grid import grid_to_geodataframe
+from ..geoprocessor.raster import grid_to_geodataframe
 from ..utils.lc import get_land_cover_classes
 
 

@@ -15,7 +15,7 @@ import pyproj
 from pyproj import Transformer
 from joblib import Parallel, delayed
 
-from .grid import grid_to_geodataframe
+from .raster import grid_to_geodataframe
 
 def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     """

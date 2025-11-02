@@ -40,7 +40,7 @@ try:
     from voxcity.generator import get_voxcity_CityGML
     from voxcity.generator import get_voxcity
     from voxcity.generator import create_3d_voxel
-    from voxcity.geoprocessor.grid import create_dem_grid_from_gdf_polygon, create_height_grid_from_geotiff_polygon
+    from voxcity.geoprocessor.raster import create_dem_grid_from_gdf_polygon, create_height_grid_from_geotiff_polygon
     from voxcity.geoprocessor.draw import draw_rectangle_map_cityname, center_location_map_cityname
     from voxcity.simulator.solar import get_building_global_solar_irradiance_using_epw, get_global_solar_irradiance_using_epw
     from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map, mark_building_by_id
