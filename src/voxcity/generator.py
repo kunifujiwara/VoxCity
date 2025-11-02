@@ -94,7 +94,7 @@ from .geoprocessor.raster import (
 
 # Utility functions
 from .utils.lc import convert_land_cover, convert_land_cover_array, get_land_cover_classes
-from .geoprocessor.polygon import get_gdf_from_gpkg, save_geojson
+from .geoprocessor.io import get_gdf_from_gpkg, save_geojson
 
 # Visualization imports removed; use visualizer subpackage as needed
 from .models import (

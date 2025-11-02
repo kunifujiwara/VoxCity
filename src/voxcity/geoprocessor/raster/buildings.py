@@ -16,11 +16,12 @@ from ..utils import (
     normalize_to_one_meter,
     convert_format_lat_lon,
 )
-from ..polygon import (
-    filter_buildings,
+from ..heights import (
     extract_building_heights_from_geotiff,
     extract_building_heights_from_gdf,
     complement_building_heights_from_gdf,
+)
+from ..overlap import (
     process_building_footprints_by_overlap,
 )
 from ...downloader.gee import (

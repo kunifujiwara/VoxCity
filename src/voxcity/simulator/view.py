@@ -54,7 +54,7 @@ import time
 import trimesh
 import math
 
-from ..geoprocessor.polygon import find_building_containing_point, get_buildings_in_drawn_polygon
+from ..geoprocessor.selection import find_building_containing_point, get_buildings_in_drawn_polygon
 from ..geoprocessor.mesh import create_voxel_mesh
 from ..exporter.obj import grid_to_obj, export_obj
 
