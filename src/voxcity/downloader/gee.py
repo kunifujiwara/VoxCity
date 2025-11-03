@@ -217,7 +217,11 @@ def get_dem_image(roi_buffered, source):
     #     dem = collection.mosaic() 
 
     # elif source == 'FABDEM':
-    return dem.clip(roi_buffered)
+    # If we reach here without assigning `dem`, the source is unsupported
+    try:
+        return dem.clip(roi_buffered)
+    except UnboundLocalError:
+        raise ValueError(f"Unsupported or unimplemented DEM source: {source}")
 
 def save_geotiff_esa_land_cover(roi, geotiff_path):
     """Save ESA WorldCover land cover data as a colored GeoTIFF.

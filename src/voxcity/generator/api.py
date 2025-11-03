@@ -30,6 +30,36 @@ from ..visualizer.grids import visualize_numerical_grid
 
 def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
     output_dir = kwargs.get("output_dir", "output")
+    # Group incoming kwargs into structured options for consistency
+    land_cover_keys = {
+        # examples: source-specific options (placeholders kept broad for back-compat)
+        "land_cover_path", "land_cover_resample", "land_cover_classes",
+    }
+    building_keys = {
+        "overlapping_footprint", "gdf_comp", "geotiff_path_comp",
+        "complement_building_footprints", "complement_height", "floor_height",
+        "building_complementary_source", "building_complement_height",
+        "building_complementary_path", "gba_clip", "gba_download_dir",
+    }
+    canopy_keys = {
+        "min_canopy_height", "trunk_height_ratio", "static_tree_height",
+    }
+    dem_keys = {
+        "flat_dem",
+    }
+    visualize_keys = {"gridvis", "mapvis"}
+    io_keys = {"save_voxcity_data", "save_voxctiy_data", "save_data_path"}
+
+    land_cover_options = {k: v for k, v in kwargs.items() if k in land_cover_keys}
+    building_options = {k: v for k, v in kwargs.items() if k in building_keys}
+    canopy_options = {k: v for k, v in kwargs.items() if k in canopy_keys}
+    dem_options = {k: v for k, v in kwargs.items() if k in dem_keys}
+    # Auto-set flat DEM when dem_source is None/empty and user didn't specify
+    if (dem_source in (None, "", "None")) and ("flat_dem" not in dem_options):
+        dem_options["flat_dem"] = True
+    visualize_options = {k: v for k, v in kwargs.items() if k in visualize_keys}
+    io_options = {k: v for k, v in kwargs.items() if k in io_keys}
+
     cfg = PipelineConfig(
         rectangle_vertices=rectangle_vertices,
         meshsize=float(meshsize),
@@ -43,13 +73,19 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
         remove_perimeter_object=kwargs.get("remove_perimeter_object"),
         mapvis=bool(kwargs.get("mapvis", False)),
         gridvis=bool(kwargs.get("gridvis", True)),
+        land_cover_options=land_cover_options,
+        building_options=building_options,
+        canopy_options=canopy_options,
+        dem_options=dem_options,
+        io_options=io_options,
+        visualize_options=visualize_options,
     )
     city = VoxCityPipeline(meshsize=cfg.meshsize, rectangle_vertices=cfg.rectangle_vertices).run(cfg, building_gdf=building_gdf, terrain_gdf=terrain_gdf, **{k: v for k, v in kwargs.items() if k != 'output_dir'})
 
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
-    _save_flag = kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True))
+    _save_flag = io_options.get("save_voxcity_data", kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True)))
     if _save_flag:
-        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
+        save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl"))
         save_voxcity_data(
             save_path,
             city.voxels.classes,

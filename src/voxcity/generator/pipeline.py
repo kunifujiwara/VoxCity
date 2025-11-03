@@ -77,10 +77,25 @@ class VoxCityPipeline:
         canopy_strategy = CanopySourceFactory.create(cfg.canopy_height_source, cfg)
         dem_strategy = DemSourceFactory.create(cfg.dem_source)
 
-        land_cover_grid = land_strategy.build_grid(cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir, **kwargs)
-        bh, bmin, bid, building_gdf_out = build_strategy.build_grids(cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir, building_gdf=building_gdf, **kwargs)
-        canopy_top, canopy_bottom = canopy_strategy.build_grids(cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir, **kwargs)
-        dem = dem_strategy.build_grid(cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir, terrain_gdf=terrain_gdf, **kwargs)
+        # Prefer structured options from cfg; allow legacy kwargs for back-compat
+        land_cover_grid = land_strategy.build_grid(
+            cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+            **{**cfg.land_cover_options, **kwargs}
+        )
+        bh, bmin, bid, building_gdf_out = build_strategy.build_grids(
+            cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+            building_gdf=building_gdf,
+            **{**cfg.building_options, **kwargs}
+        )
+        canopy_top, canopy_bottom = canopy_strategy.build_grids(
+            cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+            **{**cfg.canopy_options, **kwargs}
+        )
+        dem = dem_strategy.build_grid(
+            cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+            terrain_gdf=terrain_gdf,
+            **{**cfg.dem_options, **kwargs}
+        )
 
         ro = cfg.remove_perimeter_object
         if (ro is not None) and (ro > 0):
@@ -226,13 +241,23 @@ class SourceDemStrategy(DemSourceStrategy):
         if terrain_gdf is not None:
             from ..geoprocessor.raster import create_dem_grid_from_gdf_polygon
             return create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
-        return get_dem_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+        try:
+            return get_dem_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+        except Exception as e:
+            # Fallback to flat DEM if source fails or unsupported
+            print(f"Warning: DEM source '{self.source}' failed ({e}). Falling back to flat DEM.")
+            return np.zeros_like(land_cover_grid)
 
 
 class DemSourceFactory:
     @staticmethod
     def create(source: str) -> DemSourceStrategy:
-        if source == "Flat":
+        # Normalize and auto-fallback: None/"none" -> Flat
+        try:
+            src_norm = (source or "").strip().lower()
+        except Exception:
+            src_norm = ""
+        if (not source) or (src_norm in {"flat", "none", "null"}):
             return FlatDemStrategy()
         return SourceDemStrategy(source)
 

@@ -70,6 +70,13 @@ class PipelineConfig:
     remove_perimeter_object: Optional[float] = None
     mapvis: bool = False
     gridvis: bool = True
+    # Structured options for strategies and I/O/visualization
+    land_cover_options: Dict[str, Any] = field(default_factory=dict)
+    building_options: Dict[str, Any] = field(default_factory=dict)
+    canopy_options: Dict[str, Any] = field(default_factory=dict)
+    dem_options: Dict[str, Any] = field(default_factory=dict)
+    io_options: Dict[str, Any] = field(default_factory=dict)
+    visualize_options: Dict[str, Any] = field(default_factory=dict)
 
 
 # -----------------------------
