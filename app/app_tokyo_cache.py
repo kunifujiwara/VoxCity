@@ -46,7 +46,8 @@ try:
     from voxcity.simulator.view import get_view_index, get_surface_view_factor, get_landmark_visibility_map, mark_building_by_id
     from voxcity.exporter.cityles import export_cityles
     from voxcity.exporter.obj import export_obj
-    from voxcity.utils.visualization import visualize_voxcity_plotly, visualize_building_sim_results, visualize_numerical_gdf_on_basemap, get_land_cover_classes
+    from voxcity.visualizer import visualize_voxcity_plotly, visualize_numerical_gdf_on_basemap
+    from voxcity.utils.lc import get_land_cover_classes
     from voxcity.geoprocessor.network import get_network_values
 except ImportError:
     st.error("VoxCity package not installed. Please install it using: pip install voxcity")

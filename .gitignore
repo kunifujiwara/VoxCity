@@ -25,7 +25,6 @@ wheels/
 .installed.cfg
 *.egg
 app/data/
-app/data/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
