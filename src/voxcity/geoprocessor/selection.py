@@ -8,32 +8,32 @@ from shapely.geometry import Polygon, Point, shape
 from shapely.errors import ShapelyError
 
 from .utils import validate_polygon_coordinates
+from ..utils.logging import get_logger
 
 
 def filter_buildings(geojson_data, plotting_box):
     """
     Filter building features that intersect with a given bounding box.
     """
+    logger = get_logger(__name__)
     filtered_features = []
 
     for feature in geojson_data:
         if not validate_polygon_coordinates(feature['geometry']):
-            print("Skipping feature with invalid geometry")
-            print(feature['geometry'])
+            logger.warning("Skipping feature with invalid geometry: %s", feature.get('geometry'))
             continue
 
         try:
             geom = shape(feature['geometry'])
             if not geom.is_valid:
-                print("Skipping invalid geometry")
-                print(geom)
+                logger.warning("Skipping invalid geometry: %s", geom)
                 continue
 
             if plotting_box.intersects(geom):
                 filtered_features.append(feature)
 
         except ShapelyError as e:
-            print(f"Skipping feature due to geometry error: {e}")
+            logger.warning("Skipping feature due to geometry error: %s", e)
 
     return filtered_features
 

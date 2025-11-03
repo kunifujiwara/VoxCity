@@ -59,6 +59,10 @@ warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarni
 # Global constants
 floor_height = 2.5  # Standard floor height in meters used for building height calculations
 
+# Package logging
+from ..utils.logging import get_logger
+logger = get_logger(__name__)
+
 # Build a compliant Nominatim user agent once and reuse it
 try:
     # Prefer package metadata if available
@@ -264,10 +268,10 @@ def transform_coords(transformer, lon, lat):
     try:
         x, y = transformer.transform(lon, lat)
         if np.isinf(x) or np.isinf(y):
-            print(f"Transformation resulted in inf values for coordinates: {lon}, {lat}")
+            logger.warning("Transformation resulted in inf values for coordinates: %s, %s", lon, lat)
         return x, y
     except Exception as e:
-        print(f"Error transforming coordinates {lon}, {lat}: {e}")
+        logger.error("Error transforming coordinates %s, %s: %s", lon, lat, e)
         return None, None
 
 def create_polygon(vertices):
@@ -402,7 +406,7 @@ def save_raster(input_path, output_path):
     """
     import shutil
     shutil.copy(input_path, output_path)
-    print(f"Copied original file to: {output_path}")
+    logger.info("Copied original file to: %s", output_path)
 
 def merge_geotiffs(geotiff_files, output_dir):
     """
@@ -449,11 +453,11 @@ def merge_geotiffs(geotiff_files, output_dir):
             with rasterio.open(merged_path, "w", **out_meta) as dest:
                 dest.write(mosaic)
 
-            print(f"Merged output saved to: {merged_path}")
+            logger.info("Merged output saved to: %s", merged_path)
         except Exception as e:
-            print(f"Error merging files: {e}")
+            logger.error("Error merging files: %s", e)
     else:
-        print("No valid files to merge.")
+        logger.info("No valid files to merge.")
 
     # Clean up by closing all opened files
     for src in src_files_to_mosaic:
@@ -511,10 +515,10 @@ def get_coordinates_from_cityname(place_name):
         else:
             return None
     except GeocoderInsufficientPrivileges:
-        print("Warning: Nominatim blocked the request (HTTP 403). Please set a proper user agent and avoid bulk requests.")
+        logger.warning("Nominatim blocked the request (HTTP 403). Please set a proper user agent and avoid bulk requests.")
         return None
     except (GeocoderTimedOut, GeocoderServiceError):
-        print(f"Error: Geocoding service timed out or encountered an error for {place_name}")
+        logger.error("Geocoding service timed out or encountered an error for %s", place_name)
         return None
 
 def get_city_country_name_from_rectangle(coordinates):
@@ -560,7 +564,7 @@ def get_city_country_name_from_rectangle(coordinates):
             country = address.get('country', '')
             return f"{city}/ {country}"
         else:
-            print("Location not found")
+            logger.info("Reverse geocoding location not found for %s", center_coord)
             return "Unknown Location/ Unknown Country"
     except GeocoderInsufficientPrivileges:
         # Fallback to offline reverse_geocoder at coarse resolution
@@ -572,10 +576,10 @@ def get_city_country_name_from_rectangle(coordinates):
                 return f"{name}/ {country}".strip()
         except Exception:
             pass
-        print("Warning: Nominatim blocked the request (HTTP 403). Falling back to offline coarse reverse geocoding.")
+        logger.warning("Nominatim blocked the request (HTTP 403). Falling back to offline coarse reverse geocoding.")
         return "Unknown Location/ Unknown Country"
     except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"Error retrieving location for {center_coord}: {e}")
+        logger.error("Error retrieving location for %s: %s", center_coord, e)
         return "Unknown Location/ Unknown Country"
 
 def get_timezone_info(rectangle_coords):
@@ -626,7 +630,7 @@ def get_timezone_info(rectangle_coords):
         return utc_offset, timezone_longitude_str
     else:
         # Return fallback values if timezone cannot be determined
-        print("Warning: Timezone not found for the given location, using UTC+00:00")
+        logger.warning("Timezone not found for the given location, using UTC+00:00")
         return "UTC+00:00", "0.00000"
 
 def validate_polygon_coordinates(geometry):
@@ -743,7 +747,7 @@ def create_building_polygons(filtered_buildings):
             
             # Skip invalid geometries
             if not polygon.is_valid:
-                print(f"Warning: Skipping invalid polygon geometry")
+                logger.warning("Skipping invalid polygon geometry")
                 continue
                 
             height = building['properties'].get('height')
@@ -786,7 +790,7 @@ def create_building_polygons(filtered_buildings):
             valid_count += 1
             
         except Exception as e:
-            print(f"Warning: Skipping invalid building geometry: {e}")
+            logger.warning("Skipping invalid building geometry: %s", e)
             continue
 
     return building_polygons, idx

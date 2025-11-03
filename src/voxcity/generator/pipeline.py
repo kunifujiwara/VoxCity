@@ -1,4 +1,5 @@
 import os
+from ..utils.logging import get_logger
 from typing import Optional
 import numpy as np
 
@@ -245,7 +246,8 @@ class SourceDemStrategy(DemSourceStrategy):
             return get_dem_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
         except Exception as e:
             # Fallback to flat DEM if source fails or unsupported
-            print(f"Warning: DEM source '{self.source}' failed ({e}). Falling back to flat DEM.")
+            logger = get_logger(__name__)
+            logger.warning("DEM source '%s' failed (%s). Falling back to flat DEM.", self.source, e)
             return np.zeros_like(land_cover_grid)
 
 
