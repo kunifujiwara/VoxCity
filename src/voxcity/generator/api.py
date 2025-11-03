@@ -26,7 +26,179 @@ from ..geoprocessor.raster import (
 from ..utils.lc import get_land_cover_classes
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_numerical_grid
+from ..utils.logging import get_logger
 
+
+_logger = get_logger(__name__)
+
+def _center_of_rectangle(rectangle_vertices):
+    """
+    Compute center (lon, lat) of a rectangle defined by vertices [(lon, lat), ...].
+    Accepts open or closed rings; uses simple average of vertices.
+    """
+    lons = [p[0] for p in rectangle_vertices]
+    lats = [p[1] for p in rectangle_vertices]
+    return (sum(lons) / len(lons), sum(lats) / len(lats))
+
+
+def auto_select_data_sources(rectangle_vertices):
+    """
+    Automatically choose data sources for buildings, land cover, canopy height, and DEM
+    based on the target area's location.
+
+    Rules (heuristic, partially inferred from latest availability):
+    - Buildings (base): 'OpenStreetMap'.
+    - Buildings (complementary):
+        * USA, Europe, Australia -> 'Microsoft Building Footprints'
+        * England -> 'England 1m DSM - DTM' (height from DSM-DTM)
+        * Netherlands -> 'Netherlands 0.5m DSM - DTM' (height from DSM-DTM)
+        * Africa, South Asia, SE Asia, Latin America & Caribbean -> 'Open Building 2.5D Temporal'
+        * Otherwise -> 'None'
+    - Land cover: USA -> 'Urbanwatch'; Japan -> 'OpenEarthMapJapan'; otherwise 'OpenStreetMap'.
+      (If OSM is insufficient, consider 'ESA WorldCover' manually.)
+    - Canopy height: 'High Resolution 1m Global Canopy Height Maps'.
+    - DEM: High-resolution where available (USA, England, Australia, France, Netherlands), else 'FABDEM'.
+
+    Returns a dict with keys: building_source, building_complementary_source,
+    land_cover_source, canopy_height_source, dem_source.
+    """
+    try:
+        from ..geoprocessor.utils import get_country_name
+    except Exception:
+        get_country_name = None
+
+    center_lon, center_lat = _center_of_rectangle(rectangle_vertices)
+
+    # Country detection (best-effort)
+    country = None
+    if get_country_name is not None:
+        try:
+            country = get_country_name(center_lon, center_lat)
+        except Exception:
+            country = None
+
+    # Region helpers
+    eu_countries = {
+        'Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia', 'Czech Republic',
+        'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Ireland',
+        'Italy', 'Latvia', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands', 'Poland',
+        'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden'
+    }
+    is_usa = (country == 'United States' or country == 'United States of America') or (-170 <= center_lon <= -65 and 20 <= center_lat <= 72)
+    is_canada = (country == 'Canada')
+    is_australia = (country == 'Australia')
+    is_france = (country == 'France')
+    is_england = (country == 'United Kingdom')  # Approximation: dataset covers England specifically
+    is_netherlands = (country == 'Netherlands')
+    is_japan = (country == 'Japan') or (127 <= center_lon <= 146 and 24 <= center_lat <= 46)
+    is_europe = (country in eu_countries) or (-75 <= center_lon <= 60 and 25 <= center_lat <= 85)
+
+    # Broad regions for OB 2.5D Temporal
+    in_africa = (-25 <= center_lon <= 80 and -55 <= center_lat <= 45)
+    in_south_asia = (50 <= center_lon <= 100 and 0 <= center_lat <= 35)
+    in_se_asia = (90 <= center_lon <= 150 and -10 <= center_lat <= 25)
+    in_latam_carib = (-110 <= center_lon <= -30 and -60 <= center_lat <= 30)
+
+    # Building base source
+    building_source = 'OpenStreetMap'
+
+    # Building complementary source
+    building_complementary_source = 'None'
+    if is_england:
+        building_complementary_source = 'England 1m DSM - DTM'
+    elif is_netherlands:
+        building_complementary_source = 'Netherlands 0.5m DSM - DTM'
+    elif is_usa or is_australia or is_europe:
+        building_complementary_source = 'Microsoft Building Footprints'
+    elif in_africa or in_south_asia or in_se_asia or in_latam_carib:
+        building_complementary_source = 'Open Building 2.5D Temporal'
+
+    # Land cover source
+    if is_usa:
+        land_cover_source = 'Urbanwatch'
+    elif is_japan:
+        land_cover_source = 'OpenEarthMapJapan'
+    else:
+        land_cover_source = 'OpenStreetMap'
+
+    # Canopy height source
+    canopy_height_source = 'High Resolution 1m Global Canopy Height Maps'
+
+    # DEM source
+    if is_usa:
+        dem_source = 'USGS 3DEP 1m'
+    elif is_england:
+        dem_source = 'England 1m DTM'
+    elif is_australia:
+        dem_source = 'AUSTRALIA 5M DEM'
+    elif is_france:
+        dem_source = 'DEM France 1m'
+    elif is_netherlands:
+        dem_source = 'Netherlands 0.5m DTM'
+    else:
+        dem_source = 'FABDEM'
+
+    return {
+        'building_source': building_source,
+        'building_complementary_source': building_complementary_source,
+        'land_cover_source': land_cover_source,
+        'canopy_height_source': canopy_height_source,
+        'dem_source': dem_source,
+    }
+
+
+def get_voxcity_auto(rectangle_vertices, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
+    """
+    Convenience wrapper that auto-selects sources from rectangle_vertices and
+    calls get_voxcity. Additional kwargs are forwarded as-is.
+    """
+    selection = auto_select_data_sources(rectangle_vertices)
+    building_source = selection['building_source']
+    land_cover_source = selection['land_cover_source']
+    canopy_height_source = selection['canopy_height_source']
+    dem_source = selection['dem_source']
+    # Ensure complementary source is respected
+    kwargs = dict(kwargs)
+    if 'building_complementary_source' not in kwargs:
+        kwargs['building_complementary_source'] = selection['building_complementary_source']
+    # Ensure missing building heights are complemented to 10 m
+    if 'building_complement_height' not in kwargs:
+        kwargs['building_complement_height'] = 10
+    # Log explicit selection for user visibility
+    try:
+        _logger.info(
+            "Selected data sources | Buildings(base)=%s, Buildings(comp)=%s, LandCover=%s, Canopy=%s, DEM=%s, ComplementHeight=%s",
+            building_source,
+            kwargs.get('building_complementary_source'),
+            land_cover_source,
+            canopy_height_source,
+            dem_source,
+            kwargs.get('building_complement_height'),
+        )
+    except Exception:
+        pass
+
+    city = get_voxcity(
+        rectangle_vertices,
+        building_source,
+        land_cover_source,
+        canopy_height_source,
+        dem_source,
+        meshsize,
+        building_gdf=building_gdf,
+        terrain_gdf=terrain_gdf,
+        **kwargs,
+    )
+
+    # Attach selected sources to extras for downstream consumers
+    try:
+        selection_payload = dict(selection)
+        selection_payload['building_complement_height'] = kwargs.get('building_complement_height')
+        city.extras['selected_sources'] = selection_payload
+    except Exception:
+        pass
+
+    return city
 
 def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
     output_dir = kwargs.get("output_dir", "output")

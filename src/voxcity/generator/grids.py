@@ -48,11 +48,22 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     os.makedirs(output_dir, exist_ok=True)
     geotiff_path = os.path.join(output_dir, "land_cover.tif")
 
+    # Track effective source to allow fallback behavior
+    effective_source = source
+
     if source == 'Urbanwatch':
         roi = get_roi(rectangle_vertices)
         collection_name = "projects/sat-io/open-datasets/HRLC/urban-watch-cities"
-        image = get_ee_image_collection(collection_name, roi)
-        save_geotiff(image, geotiff_path)
+        try:
+            image = get_ee_image_collection(collection_name, roi)
+            # If collection is empty, image operations may fail; guard with try/except
+            save_geotiff(image, geotiff_path)
+            if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
+                raise RuntimeError("Urbanwatch export produced no file")
+        except Exception as e:
+            print("Urbanwatch coverage not found for AOI; falling back to OpenStreetMap (reason:", str(e), ")")
+            effective_source = 'OpenStreetMap'
+            land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
     elif source == 'ESA WorldCover':
         roi = get_roi(rectangle_vertices)
         save_geotiff_esa_land_cover(roi, geotiff_path)
@@ -86,11 +97,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     elif source == 'OpenStreetMap':
         land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
 
-    land_cover_classes = get_land_cover_classes(source)
+    land_cover_classes = get_land_cover_classes(effective_source)
 
-    if source == 'OpenStreetMap':
+    if effective_source == 'OpenStreetMap':
         default_class = kwargs.get('default_land_cover_class', 'Developed space')
-        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, source, rectangle_vertices, default_class=default_class)
+        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, effective_source, rectangle_vertices, default_class=default_class)
     else:
         land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
 
@@ -110,7 +121,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         initialize_earth_engine()
 
     print("Creating Building Height grid\n ")
-    print(f"Data source: {source}")
+    print(f"Base data source: {source}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -141,6 +152,11 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             raise ValueError("When source is 'GeoDataFrame', building_gdf parameter must be provided")
 
     building_complementary_source = kwargs.get("building_complementary_source")
+    try:
+        comp_label = building_complementary_source if building_complementary_source not in (None, "") else "None"
+        print(f"Complementary data source: {comp_label}")
+    except Exception:
+        pass
     building_complement_height = kwargs.get("building_complement_height")
     overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
@@ -218,7 +234,6 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
         return canopy_top, canopy_bottom
 
-    print("Data source: High Resolution Canopy Height Maps by WRI and Meta")
     initialize_earth_engine()
 
     geotiff_path = os.path.join(output_dir, "canopy_height.tif")
