@@ -20,6 +20,7 @@ from ..geoprocessor.raster import (
     group_and_label_cells,
     process_grid,
 )
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ..utils.lc import convert_land_cover
 
 
@@ -172,16 +173,44 @@ class Voxelizer:
 
         land_cover_grid_converted = self._convert_land_cover(land_cover_grid_ori)
 
-        building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0))
-        building_min_height_grid = np.flipud(replace_nan_in_nested(building_min_height_grid_ori))
-        building_id_grid = np.flipud(building_id_grid_ori)
-        land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
-        dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
+        building_height_grid = ensure_orientation(
+            np.nan_to_num(building_height_grid_ori, nan=10.0),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
+        building_min_height_grid = ensure_orientation(
+            replace_nan_in_nested(building_min_height_grid_ori),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
+        building_id_grid = ensure_orientation(
+            building_id_grid_ori,
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
+        land_cover_grid = ensure_orientation(
+            land_cover_grid_converted.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        ) + 1
+        dem_grid = ensure_orientation(
+            dem_grid_ori.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        ) - np.min(dem_grid_ori)
         dem_grid = process_grid(building_id_grid, dem_grid)
-        tree_grid = np.flipud(tree_grid_ori.copy())
+        tree_grid = ensure_orientation(
+            tree_grid_ori.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
         canopy_bottom_grid = None
         if canopy_bottom_height_grid_ori is not None:
-            canopy_bottom_grid = np.flipud(canopy_bottom_height_grid_ori.copy())
+            canopy_bottom_grid = ensure_orientation(
+                canopy_bottom_height_grid_ori.copy(),
+                ORIENTATION_NORTH_UP,
+                ORIENTATION_SOUTH_UP,
+            )
 
         assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
         rows, cols = building_height_grid.shape
@@ -257,12 +286,34 @@ class Voxelizer:
         else:
             land_cover_grid_converted = land_cover_grid_ori
 
-        building_height_grid = np.flipud(building_height_grid_ori.copy())
-        land_cover_grid = np.flipud(land_cover_grid_converted.copy()) + 1
-        dem_grid = np.flipud(dem_grid_ori.copy()) - np.min(dem_grid_ori)
-        building_nr_grid = group_and_label_cells(np.flipud(building_height_grid_ori.copy()))
+        building_height_grid = ensure_orientation(
+            building_height_grid_ori.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
+        land_cover_grid = ensure_orientation(
+            land_cover_grid_converted.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        ) + 1
+        dem_grid = ensure_orientation(
+            dem_grid_ori.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        ) - np.min(dem_grid_ori)
+        building_nr_grid = group_and_label_cells(
+            ensure_orientation(
+                building_height_grid_ori.copy(),
+                ORIENTATION_NORTH_UP,
+                ORIENTATION_SOUTH_UP,
+            )
+        )
         dem_grid = process_grid(building_nr_grid, dem_grid)
-        tree_grid = np.flipud(tree_grid_ori.copy())
+        tree_grid = ensure_orientation(
+            tree_grid_ori.copy(),
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
 
         assert building_height_grid.shape == land_cover_grid.shape == dem_grid.shape == tree_grid.shape, "Input grids must have the same shape"
         rows, cols = building_height_grid.shape

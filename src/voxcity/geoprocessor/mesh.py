@@ -13,6 +13,7 @@ import trimesh
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
@@ -90,7 +91,11 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     voxel_coords = np.argwhere(voxel_array == class_id)
 
     if building_id_grid is not None:
-        building_id_grid_flipud = np.flipud(building_id_grid)
+        building_id_grid_flipud = ensure_orientation(
+            building_id_grid,
+            ORIENTATION_NORTH_UP,
+            ORIENTATION_SOUTH_UP,
+        )
 
     if len(voxel_coords) == 0:
         return None
@@ -287,9 +292,9 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
     - The mesh is positioned at dem_grid + z_offset to float above the terrain
     - Face colors are interpolated from the colormap based on sim_grid values
     """
-    # Flip arrays vertically
-    sim_grid_flipped = np.flipud(sim_grid)
-    dem_grid_flipped = np.flipud(dem_grid)
+    # Flip arrays vertically using orientation helper
+    sim_grid_flipped = ensure_orientation(sim_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    dem_grid_flipped = ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
 
     # Identify valid (non-NaN) values
     valid_mask = ~np.isnan(sim_grid_flipped)

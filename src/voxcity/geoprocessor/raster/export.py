@@ -2,6 +2,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import box
 from pyproj import CRS, Transformer
+from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
@@ -9,7 +10,7 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     Converts a 2D grid to a GeoDataFrame with cell polygons and values.
     Output CRS: EPSG:4326
     """
-    grid = np.flipud(grid_ori.copy())
+    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)
@@ -56,7 +57,7 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     import geopandas as gpd
     from shapely.geometry import Point
 
-    grid = np.flipud(grid_ori.copy())
+    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)

@@ -5,13 +5,19 @@ import numpy as np
 import trimesh
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+except ImportError:  # optional dependency
+    go = None  # type: ignore
 
 from ..models import VoxCity
 from .builder import MeshBuilder
 from .palette import get_voxel_color_map
 from ..geoprocessor.mesh import create_sim_surface_mesh
-import pyvista as pv
+try:
+    import pyvista as pv
+except ImportError:  # optional dependency
+    pv = None  # type: ignore
 
 
 def _rgb_tuple_to_plotly_color(rgb_tuple):
@@ -83,6 +89,9 @@ def visualize_voxcity_plotly(
     """
     Interactive 3D visualization using Plotly Mesh3d of voxel faces and optional overlays.
     """
+    # Validate optional dependency
+    if go is None:
+        raise ImportError("Plotly is required for interactive visualization. Install with: pip install plotly")
     # Validate/prepare voxels
     if voxel_array is None or getattr(voxel_array, 'ndim', 0) != 3:
         if building_sim_mesh is None and (ground_sim_grid is None or ground_dem_grid is None):
@@ -437,6 +446,8 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
     """
     Creates multiple rendered views of 3D city meshes from different camera angles.
     """
+    if pv is None:
+        raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
     pv_meshes = {}
     for class_id, mesh in meshes.items():
         if mesh is None or len(mesh.vertices) == 0 or len(mesh.faces) == 0:
@@ -516,6 +527,8 @@ class PyVistaRenderer:
 
     def render_city(self, city: VoxCity, projection_type: str = "perspective", distance_factor: float = 1.0,
                     output_directory: str = "output", voxel_color_map: "str|dict" = "default"):
+        if pv is None:
+            raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
         collection = MeshBuilder.from_voxel_grid(city.voxels, meshsize=city.voxels.meta.meshsize, voxel_color_map=voxel_color_map)
         trimesh_dict = {}
         for key, mm in collection.items.items():
