@@ -38,6 +38,13 @@ from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
 
 
+# Track last effective land cover source to help downstream components (e.g., voxelizer)
+_LAST_EFFECTIVE_LC_SOURCE = None
+
+def get_last_effective_land_cover_source():
+    return _LAST_EFFECTIVE_LC_SOURCE
+
+
 def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     print("Creating Land Use Land Cover grid\n ")
     print(f"Data source: {source}")
@@ -110,6 +117,10 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     grid_vis = kwargs.get("gridvis", True)
     if grid_vis:
         visualize_land_cover_grid(np.flipud(land_cover_grid_str), meshsize, color_map, land_cover_classes)
+
+    # Record effective source for downstream consumers
+    global _LAST_EFFECTIVE_LC_SOURCE
+    _LAST_EFFECTIVE_LC_SOURCE = effective_source
 
     land_cover_grid_int = convert_land_cover_array(land_cover_grid_str, land_cover_classes)
     return land_cover_grid_int

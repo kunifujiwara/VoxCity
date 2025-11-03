@@ -83,6 +83,12 @@ class VoxCityPipeline:
             cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
             **{**cfg.land_cover_options, **kwargs}
         )
+        # Detect effective land cover source (e.g., Urbanwatch -> OpenStreetMap fallback)
+        try:
+            from .grids import get_last_effective_land_cover_source
+            lc_src_effective = get_last_effective_land_cover_source() or cfg.land_cover_source
+        except Exception:
+            lc_src_effective = cfg.land_cover_source
         bh, bmin, bid, building_gdf_out = build_strategy.build_grids(
             cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
             building_gdf=building_gdf,
@@ -113,7 +119,7 @@ class VoxCityPipeline:
 
         voxelizer = Voxelizer(
             voxel_size=cfg.meshsize,
-            land_cover_source=cfg.land_cover_source,
+            land_cover_source=lc_src_effective,
             trunk_height_ratio=cfg.trunk_height_ratio,
             voxel_dtype=kwargs.get("voxel_dtype", np.int8),
             max_voxel_ram_mb=kwargs.get("max_voxel_ram_mb"),
@@ -138,7 +144,7 @@ class VoxCityPipeline:
             canopy_height_bottom=canopy_bottom,
             extras={
                 "building_gdf": building_gdf_out,
-                "land_cover_source": cfg.land_cover_source,
+                "land_cover_source": lc_src_effective,
                 "building_source": cfg.building_source,
                 "dem_source": cfg.dem_source,
             },
