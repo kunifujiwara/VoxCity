@@ -31,6 +31,47 @@ from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
 
+_SOURCE_URLS = {
+    # General
+    'OpenStreetMap': 'https://www.openstreetmap.org',
+    'Local file': None,
+    'None': None,
+    'Flat': None,
+    # Buildings
+    'Microsoft Building Footprints': 'https://github.com/microsoft/GlobalMLBuildingFootprints',
+    'Open Building 2.5D Temporal': 'https://sites.research.google/open-buildings/',
+    'EUBUCCO v0.1': 'https://eubucco.com/',
+    'Overture': 'https://overturemaps.org/',
+    'GBA': 'https://global-building-atlas.org/',
+    'Global Building Atlas': 'https://global-building-atlas.org/',
+    'England 1m DSM - DTM': 'https://environment.data.gov.uk/DefraDataDownload/',
+    'Netherlands 0.5m DSM - DTM': 'https://www.ahn.nl/',
+    # Land cover
+    'OpenEarthMapJapan': 'https://open-earth-map.org/',
+    'Urbanwatch': 'https://developers.google.com/earth-engine/datasets/catalog/projects_sat-io_open-datasets_HRLC_urban-watch-cities',
+    'ESA WorldCover': 'https://esa-worldcover.org/en',
+    'ESRI 10m Annual Land Cover': 'https://livingatlas.arcgis.com/landcover/',
+    'Dynamic World V1': 'https://dynamicworld.app/',
+    # Canopy height
+    'High Resolution 1m Global Canopy Height Maps': 'https://ai.meta.com/resources/canopy-height-maps/',
+    'ETH Global Sentinel-2 10m Canopy Height (2020)': 'https://doi.org/10.1038/s41597-021-01011-7',
+    'Static': None,
+    # DEM
+    'USGS 3DEP 1m': 'https://www.usgs.gov/3d-elevation-program',
+    'England 1m DTM': 'https://environment.data.gov.uk/DefraDataDownload/',
+    'DEM France 1m': 'https://geoservices.ign.fr/rgealti',
+    'DEM France 5m': 'https://geoservices.ign.fr/rgealti',
+    'AUSTRALIA 5M DEM': 'https://elevation.fsdf.org.au/',
+    'Netherlands 0.5m DTM': 'https://www.ahn.nl/',
+    'FABDEM': 'https://gee-community-catalog.org/projects/fabdem/',
+}
+
+def _url_for_source(name):
+    try:
+        return _SOURCE_URLS.get(name)
+    except Exception:
+        return None
+
 def _center_of_rectangle(rectangle_vertices):
     """
     Compute center (lon, lat) of a rectangle defined by vertices [(lon, lat), ...].
@@ -77,6 +118,17 @@ def auto_select_data_sources(rectangle_vertices):
         except Exception:
             country = None
 
+    # Report detected country (best-effort)
+    try:
+        _logger.info(
+            "Detected country for ROI center (%.4f, %.4f): %s",
+            center_lon,
+            center_lat,
+            country or "Unknown",
+        )
+    except Exception:
+        pass
+
     # Region helpers
     eu_countries = {
         'Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia', 'Czech Republic',
@@ -93,11 +145,53 @@ def auto_select_data_sources(rectangle_vertices):
     is_japan = (country == 'Japan') or (127 <= center_lon <= 146 and 24 <= center_lat <= 46)
     is_europe = (country in eu_countries) or (-75 <= center_lon <= 60 and 25 <= center_lat <= 85)
 
-    # Broad regions for OB 2.5D Temporal
-    in_africa = (-25 <= center_lon <= 80 and -55 <= center_lat <= 45)
-    in_south_asia = (50 <= center_lon <= 100 and 0 <= center_lat <= 35)
-    in_se_asia = (90 <= center_lon <= 150 and -10 <= center_lat <= 25)
-    in_latam_carib = (-110 <= center_lon <= -30 and -60 <= center_lat <= 30)
+    # Broad regions for OB 2.5D Temporal (prefer country membership; fallback to bbox if unknown)
+    africa_countries = {
+        'Algeria', 'Angola', 'Benin', 'Botswana', 'Burkina Faso', 'Burundi', 'Cabo Verde',
+        'Cameroon', 'Central African Republic', 'Chad', 'Comoros', 'Congo',
+        'Republic of the Congo', 'Democratic Republic of the Congo', 'Congo (DRC)',
+        'DR Congo', 'Cote dIvoire', "Côte d’Ivoire", 'Ivory Coast', 'Djibouti', 'Egypt',
+        'Equatorial Guinea', 'Eritrea', 'Eswatini', 'Ethiopia', 'Gabon', 'Gambia', 'Ghana',
+        'Guinea', 'Guinea-Bissau', 'Kenya', 'Lesotho', 'Liberia', 'Libya', 'Madagascar',
+        'Malawi', 'Mali', 'Mauritania', 'Mauritius', 'Morocco', 'Mozambique', 'Namibia',
+        'Niger', 'Nigeria', 'Rwanda', 'Sao Tome and Principe', 'Senegal', 'Seychelles',
+        'Sierra Leone', 'Somalia', 'South Africa', 'South Sudan', 'Sudan', 'Tanzania', 'Togo',
+        'Tunisia', 'Uganda', 'Zambia', 'Zimbabwe', 'Western Sahara'
+    }
+    south_asia_countries = {
+        'Afghanistan', 'Bangladesh', 'Bhutan', 'India', 'Maldives', 'Nepal', 'Pakistan', 'Sri Lanka'
+    }
+    se_asia_countries = {
+        'Brunei', 'Cambodia', 'Indonesia', 'Laos', 'Lao PDR', 'Malaysia', 'Myanmar',
+        'Philippines', 'Singapore', 'Thailand', 'Timor-Leste', 'Vietnam', 'Viet Nam'
+    }
+    latam_carib_countries = {
+        # Latin America (Mexico, Central, South America) + Caribbean
+        'Mexico',
+        'Belize', 'Costa Rica', 'El Salvador', 'Guatemala', 'Honduras', 'Nicaragua', 'Panama',
+        'Argentina', 'Bolivia', 'Brazil', 'Chile', 'Colombia', 'Ecuador', 'Guyana',
+        'Paraguay', 'Peru', 'Suriname', 'Uruguay', 'Venezuela',
+        'Antigua and Barbuda', 'Bahamas', 'Barbados', 'Cuba', 'Dominica', 'Dominican Republic',
+        'Grenada', 'Haiti', 'Jamaica', 'Saint Kitts and Nevis', 'Saint Lucia',
+        'Saint Vincent and the Grenadines', 'Trinidad and Tobago',
+    }
+
+    # Normalize some common aliases for matching
+    _alias = {
+        'United States of America': 'United States',
+        'Czech Republic': 'Czechia',
+        'Viet Nam': 'Vietnam',
+        'Lao PDR': 'Laos',
+        'Ivory Coast': "Côte d’Ivoire",
+        'Congo, Democratic Republic of the': 'Democratic Republic of the Congo',
+        'Congo, Republic of the': 'Republic of the Congo',
+    }
+    country_norm = _alias.get(country, country) if country else None
+
+    in_africa = (country_norm in africa_countries) if country_norm else (-25 <= center_lon <= 80 and -55 <= center_lat <= 45)
+    in_south_asia = (country_norm in south_asia_countries) if country_norm else (50 <= center_lon <= 100 and 0 <= center_lat <= 35)
+    in_se_asia = (country_norm in se_asia_countries) if country_norm else (90 <= center_lon <= 150 and -10 <= center_lat <= 25)
+    in_latam_carib = (country_norm in latam_carib_countries) if country_norm else (-110 <= center_lon <= -30 and -60 <= center_lat <= 30)
 
     # Building base source
     building_source = 'OpenStreetMap'
@@ -157,6 +251,32 @@ def get_voxcity_auto(rectangle_vertices, meshsize, building_gdf=None, terrain_gd
     land_cover_source = selection['land_cover_source']
     canopy_height_source = selection['canopy_height_source']
     dem_source = selection['dem_source']
+    # Detect Earth Engine availability; if unavailable, downgrade to EE-free sources
+    ee_available = True
+    try:
+        from ..downloader.gee import initialize_earth_engine
+        initialize_earth_engine()
+    except Exception:
+        ee_available = False
+
+    if not ee_available:
+        # Land cover: prefer OpenEarthMapJapan if already set; else OSM
+        if selection['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan'):
+            selection['land_cover_source'] = 'OpenStreetMap'
+        # Canopy: static
+        selection['canopy_height_source'] = 'Static'
+        # DEM: flat
+        selection['dem_source'] = 'Flat'
+        # Building complementary: avoid EE-dependent options
+        ee_dependent_comp = {
+            'Open Building 2.5D Temporal',
+            'England 1m DSM - DTM',
+            'Netherlands 0.5m DSM - DTM',
+        }
+        if selection.get('building_complementary_source') in ee_dependent_comp:
+            # Prefer MSBF where commonly available; else None
+            selection['building_complementary_source'] = 'Microsoft Building Footprints'
+
     # Ensure complementary source is respected
     kwargs = dict(kwargs)
     if 'building_complementary_source' not in kwargs:
@@ -164,17 +284,24 @@ def get_voxcity_auto(rectangle_vertices, meshsize, building_gdf=None, terrain_gd
     # Ensure missing building heights are complemented to 10 m
     if 'building_complement_height' not in kwargs:
         kwargs['building_complement_height'] = 10
-    # Log explicit selection for user visibility
+    # Default DEM interpolation to True unless explicitly provided
+    if 'dem_interpolation' not in kwargs:
+        kwargs['dem_interpolation'] = True
+    # Log explicit selection for user visibility (one line per source with URL)
     try:
-        _logger.info(
-            "Selected data sources | Buildings(base)=%s, Buildings(comp)=%s, LandCover=%s, Canopy=%s, DEM=%s, ComplementHeight=%s",
-            building_source,
-            kwargs.get('building_complementary_source'),
-            land_cover_source,
-            canopy_height_source,
-            dem_source,
-            kwargs.get('building_complement_height'),
-        )
+        _logger.info("Selected data sources:")
+        b_base_url = _url_for_source(building_source)
+        _logger.info("- Buildings(base)=%s%s", building_source, f" | {b_base_url}" if b_base_url else "")
+        b_comp = kwargs.get('building_complementary_source')
+        b_comp_url = _url_for_source(b_comp)
+        _logger.info("- Buildings(comp)=%s%s", b_comp, f" | {b_comp_url}" if b_comp_url else "")
+        lc_url = _url_for_source(land_cover_source)
+        _logger.info("- LandCover=%s%s", land_cover_source, f" | {lc_url}" if lc_url else "")
+        canopy_url = _url_for_source(canopy_height_source)
+        _logger.info("- Canopy=%s%s", canopy_height_source, f" | {canopy_url}" if canopy_url else "")
+        dem_url = _url_for_source(dem_source)
+        _logger.info("- DEM=%s%s", dem_source, f" | {dem_url}" if dem_url else "")
+        _logger.info("- ComplementHeight=%s", kwargs.get('building_complement_height'))
     except Exception:
         pass
 

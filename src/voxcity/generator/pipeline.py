@@ -96,11 +96,13 @@ class VoxCityPipeline:
         )
         canopy_top, canopy_bottom = canopy_strategy.build_grids(
             cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+            land_cover_source=lc_src_effective,
             **{**cfg.canopy_options, **kwargs}
         )
         dem = dem_strategy.build_grid(
             cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
             terrain_gdf=terrain_gdf,
+            land_cover_like=land_cover_grid,
             **{**cfg.dem_options, **kwargs}
         )
 
@@ -218,7 +220,15 @@ class SourceCanopyStrategy(CanopySourceStrategy):
         self.source = source
 
     def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
-        return get_canopy_height_grid(rectangle_vertices, meshsize, self.source, output_dir, **kwargs)
+        # Provide land_cover_like for graceful fallback sizing without EE
+        return get_canopy_height_grid(
+            rectangle_vertices,
+            meshsize,
+            self.source,
+            output_dir,
+            land_cover_like=land_cover_grid,
+            **kwargs,
+        )
 
 
 class CanopySourceFactory:

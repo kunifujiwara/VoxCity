@@ -50,7 +50,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwar
     print(f"Data source: {source}")
 
     if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
-        initialize_earth_engine()
+        try:
+            initialize_earth_engine()
+        except Exception as e:
+            print("Earth Engine unavailable (", str(e), ") — falling back to OpenStreetMap for land cover.")
+            source = 'OpenStreetMap'
 
     os.makedirs(output_dir, exist_ok=True)
     geotiff_path = os.path.join(output_dir, "land_cover.tif")
@@ -176,17 +180,25 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
             building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
     else:
         if building_complementary_source == "Open Building 2.5D Temporal":
-            roi = get_roi(rectangle_vertices)
-            os.makedirs(output_dir, exist_ok=True)
-            geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
-            save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
+            try:
+                roi = get_roi(rectangle_vertices)
+                os.makedirs(output_dir, exist_ok=True)
+                geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
+                save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
+                building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
+            except Exception as e:
+                print("Open Building 2.5D Temporal requires Earth Engine (", str(e), ") — proceeding without complementary raster.")
+                building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
-            roi = get_roi(rectangle_vertices)
-            os.makedirs(output_dir, exist_ok=True)
-            geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
-            save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
+            try:
+                roi = get_roi(rectangle_vertices)
+                os.makedirs(output_dir, exist_ok=True)
+                geotiff_path_comp = os.path.join(output_dir, "building_height.tif")
+                save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
+                building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
+            except Exception as e:
+                print("DSM-DTM complementary raster requires Earth Engine (", str(e), ") — proceeding without complementary raster.")
+                building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         else:
             if building_complementary_source == 'Microsoft Building Footprints':
                 gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices)
@@ -223,6 +235,41 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Explicit static path (no EE): use land cover mask with static height
+    if source == 'Static':
+        land_cover_grid = kwargs.get('land_cover_like')
+        if land_cover_grid is None:
+            # Minimal fallback if caller didn't provide land_cover_like
+            canopy_top = np.zeros((1, 1), dtype=float)
+            trunk_height_ratio = kwargs.get('trunk_height_ratio')
+            if trunk_height_ratio is None:
+                trunk_height_ratio = 11.76 / 19.98
+            canopy_bottom = canopy_top * float(trunk_height_ratio)
+            return canopy_top, canopy_bottom
+
+        from ..utils.lc import get_land_cover_classes
+        land_cover_source = kwargs.get('land_cover_source', 'OpenStreetMap')
+        classes_map = get_land_cover_classes(land_cover_source)
+        class_to_int = {name: i for i, name in enumerate(classes_map.values())}
+        tree_labels = ["Tree", "Trees", "Tree Canopy"]
+        tree_indices = [class_to_int[label] for label in tree_labels if label in class_to_int]
+
+        canopy_top = np.zeros_like(land_cover_grid, dtype=float)
+        static_tree_height = kwargs.get('static_tree_height', 10.0)
+        tree_mask = np.isin(land_cover_grid, tree_indices) if tree_indices else np.zeros_like(land_cover_grid, dtype=bool)
+        canopy_top[tree_mask] = static_tree_height
+
+        trunk_height_ratio = kwargs.get('trunk_height_ratio')
+        if trunk_height_ratio is None:
+            trunk_height_ratio = 11.76 / 19.98
+        canopy_bottom = canopy_top * float(trunk_height_ratio)
+
+        grid_vis = kwargs.get("gridvis", True)
+        if grid_vis:
+            vis = canopy_top.copy(); vis[vis == 0] = np.nan
+            visualize_numerical_grid(np.flipud(vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+        return canopy_top, canopy_bottom
+
     if source in ('GeoDataFrame', 'tree_gdf', 'Tree_GeoDataFrame', 'GDF'):
         tree_gdf = kwargs.get('tree_gdf')
         tree_gdf_path = kwargs.get('tree_gdf_path')
@@ -245,7 +292,12 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
         return canopy_top, canopy_bottom
 
-    initialize_earth_engine()
+    try:
+        initialize_earth_engine()
+    except Exception as e:
+        print("Earth Engine unavailable (", str(e), ") — falling back to Static canopy heights.")
+        # Re-enter with explicit Static logic using land cover mask
+        return get_canopy_height_grid(rectangle_vertices, meshsize, 'Static', output_dir, **kwargs)
 
     geotiff_path = os.path.join(output_dir, "canopy_height.tif")
 
@@ -282,7 +334,22 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     if source == "Local file":
         geotiff_path = kwargs["dem_path"]
     else:
-        initialize_earth_engine()
+        try:
+            initialize_earth_engine()
+        except Exception as e:
+            print("Earth Engine unavailable (", str(e), ") — falling back to flat DEM.")
+            dem_interpolation = kwargs.get("dem_interpolation")
+            # Return flat DEM (zeros) with same shape as would be produced after rasterization
+            # We defer to downstream to handle zeros appropriately.
+            # To avoid shape inference here, we'll build after default path below.
+            geotiff_path = None
+            # Bypass EE path and produce zeros later
+            dem_grid = np.zeros((1, 1), dtype=float)
+            # Build shape using land cover grid shape if provided via kwargs for robustness
+            lc_like = kwargs.get("land_cover_like")
+            if lc_like is not None:
+                dem_grid = np.zeros_like(lc_like)
+            return dem_grid
 
         geotiff_path = os.path.join(output_dir, "dem.tif")
 

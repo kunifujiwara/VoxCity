@@ -40,11 +40,12 @@ def _configure_root_once() -> None:
     handler = logging.StreamHandler()
     handler.setLevel(level)
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+        fmt="%(levelname)s | %(name)s | %(message)s",
     )
     handler.setFormatter(formatter)
     root.addHandler(handler)
+    # Prevent duplicate messages from propagating to the global root logger
+    root.propagate = False
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
