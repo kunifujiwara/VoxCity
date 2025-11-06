@@ -207,22 +207,22 @@ Data sources are automatically selected based on location:
 from voxcity.generator import get_voxcity
 
 # Auto mode: all data sources selected automatically based on location
-city = get_voxcity(
+voxcity = get_voxcity(
     rectangle_vertices,
     meshsize,
     **kwargs
 )
 
 # Access the generated grids and GeoDataFrame
-voxcity_grid = city.voxcity_grid
-building_height_grid = city.building_height_grid
-building_min_height_grid = city.building_min_height_grid
-building_id_grid = city.building_id_grid
-canopy_height_grid = city.canopy_height_top
-canopy_bottom_height_grid = city.canopy_height_bottom
-land_cover_grid = city.land_cover_grid
-dem_grid = city.dem_grid
-building_gdf = city.extras.get('building_gdf')
+voxcity_grid = voxcity.voxels.classes
+building_height_grid = voxcity.buildings.heights
+building_min_height_grid = voxcity.buildings.min_heights
+building_id_grid = voxcity.buildings.ids
+canopy_height_grid = voxcity.tree_canopy.top
+canopy_bottom_height_grid = voxcity.tree_canopy.bottom
+land_cover_grid = voxcity.land_cover.classes
+dem_grid = voxcity.dem.elevation
+building_gdf = voxcity.extras.get('building_gdf')
 ```
 
 #### Option 2: Custom Mode
@@ -230,7 +230,7 @@ Specify data sources explicitly:
 
 ```python
 # Custom mode: specify all data sources
-city = get_voxcity(
+voxcity = get_voxcity(
     rectangle_vertices,
     meshsize,
     building_source='OpenStreetMap',
@@ -246,7 +246,7 @@ Specify some sources, auto-select others:
 
 ```python
 # Hybrid mode: specify building source, auto-select others
-city = get_voxcity(
+voxcity = get_voxcity(
     rectangle_vertices,
     meshsize,
     building_source='Overture',  # Custom
@@ -342,13 +342,11 @@ from voxcity.simulator.solar import get_global_solar_irradiance_using_epw
 
 solar_kwargs = {
     "download_nearest_epw": True,  # Whether to automatically download nearest EPW weather file based on location from Climate.OneBuilding.Org
-    "rectangle_vertices": rectangle_vertices,  # Coordinates defining the area of interest for calculation
     # "epw_file_path": "./output/new.york-downtown.manhattan.heli_ny_usa_1.epw",  # Path to EnergyPlus Weather (EPW) file containing climate data. Set if you already have an EPW file.
     "calc_time": "01-01 12:00:00",  # Time for instantaneous calculation in format "MM-DD HH:MM:SS"
     "view_point_height": 1.5,  # Height of view point in meters for calculating solar access. Default: 1.5 m
     "tree_k": 0.6,    # Static extinction coefficient - controls how much sunlight is blocked by trees (higher = more blocking)
     "tree_lad": 1.0,    # Leaf area density of trees - density of leaves/branches that affect shading (higher = denser foliage)
-    "dem_grid": city.dem_grid,      # Digital elevation model grid for terrain heights
     "colormap": 'magma',       # Matplotlib colormap for visualization. Default: 'viridis'
     "obj_export": True,        # Whether to export results as 3D OBJ file
     "output_directory": 'output/test',  # Directory for saving output files
@@ -359,9 +357,8 @@ solar_kwargs = {
 }
 
 # Compute global solar irradiance map (direct + diffuse radiation)
-solar_grid = get_global_solar_irradiance_using_epw(    
-    city.voxcity_grid,                   # 3D voxel grid representing the urban environment
-    meshsize,                            # Size of each voxel in meters
+solar_grid = get_global_solar_irradiance_using_epw(
+    voxcity,                             # VoxCity object containing voxel data and metadata
     calc_type='instantaneous',           # Calculate instantaneous irradiance at specified time
     direct_normal_irradiance_scaling=1.0, # Scaling factor for direct solar radiation (1.0 = no scaling)
     diffuse_irradiance_scaling=1.0,      # Scaling factor for diffuse solar radiation (1.0 = no scaling)
@@ -374,9 +371,8 @@ solar_kwargs["end_time"] = "01-31 23:00:00" # End time for cumulative calculatio
 solar_kwargs["output_file_name"] = 'cumulative_solar_irradiance'  # Base filename for outputs (without extension)
 
 # Calculate cumulative solar irradiance over the specified time period
-cum_solar_grid = get_global_solar_irradiance_using_epw(    
-    city.voxcity_grid,                   # 3D voxel grid representing the urban environment
-    meshsize,                            # Size of each voxel in meters
+cum_solar_grid = get_global_solar_irradiance_using_epw(
+    voxcity,                             # VoxCity object containing voxel data and metadata
     calc_type='cumulative',              # Calculate cumulative irradiance over time period instead of instantaneous
     direct_normal_irradiance_scaling=1.0, # Scaling factor for direct solar radiation (1.0 = no scaling)
     diffuse_irradiance_scaling=1.0,      # Scaling factor for diffuse solar radiation (1.0 = no scaling)
@@ -398,7 +394,6 @@ from voxcity.simulator.view import get_view_index
 
 view_kwargs = {
     "view_point_height": 1.5,      # Height of observer viewpoint in meters
-    "dem_grid": city.dem_grid,     # Digital elevation model grid
     "colormap": "viridis",         # Colormap for visualization
     "obj_export": True,            # Whether to export as OBJ file
     "output_directory": "output",  # Directory to save output files
@@ -406,7 +401,7 @@ view_kwargs = {
 }
 
 # Compute Green View Index using mode='green'
-gvi_grid = get_view_index(city.voxcity_grid, meshsize, mode='green', **view_kwargs)
+gvi_grid = get_view_index(voxcity, mode='green', **view_kwargs)
 
 # Adjust parameters for Sky View Index
 view_kwargs["colormap"] = "BuPu_r"
@@ -414,7 +409,7 @@ view_kwargs["output_file_name"] = "svi"
 view_kwargs["elevation_min_degrees"] = 0 # Start ray-tracing from the horizon
 
 # Compute Sky View Index using mode='sky'
-svi_grid = get_view_index(city.voxcity_grid, meshsize, mode='sky', **view_kwargs)
+svi_grid = get_view_index(voxcity, mode='sky', **view_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" alt="View Index Maps Rendered in Rhino" width="800">
@@ -431,14 +426,12 @@ from voxcity.simulator.view import get_landmark_visibility_map
 # Dictionary of parameters for landmark visibility analysis
 landmark_kwargs = {
     "view_point_height": 1.5,                 # Height of observer viewpoint in meters
-    "rectangle_vertices": rectangle_vertices, # Vertices defining simulation domain boundary
-    "dem_grid": city.dem_grid,                # Digital elevation model grid
     "colormap": "cool",                       # Colormap for visualization
     "obj_export": True,                       # Whether to export as OBJ file
     "output_directory": "output",             # Directory to save output files
     "output_file_name": "landmark_visibility" # Base filename for outputs
 }
-landmark_vis_map = get_landmark_visibility_map(city.voxcity_grid, city.building_id_grid, city.extras.get('building_gdf'), meshsize, **landmark_kwargs)
+landmark_vis_map, _ = get_landmark_visibility_map(voxcity, voxcity.extras.get('building_gdf'), **landmark_kwargs)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/landmark.png" alt="Landmark Visibility Map Rendered in Rhino" width="500">

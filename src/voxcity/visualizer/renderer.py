@@ -526,18 +526,163 @@ class PyVistaRenderer:
     """Renderer that uses PyVista to produce multi-view images from meshes or VoxCity."""
 
     def render_city(self, city: VoxCity, projection_type: str = "perspective", distance_factor: float = 1.0,
-                    output_directory: str = "output", voxel_color_map: "str|dict" = "default"):
+                    output_directory: str = "output", voxel_color_map: "str|dict" = "default",
+                    building_sim_mesh=None, building_value_name: str = 'svf_values',
+                    building_colormap: str = 'viridis', building_vmin=None, building_vmax=None,
+                    building_nan_color: str = 'gray', building_opacity: float = 1.0,
+                    render_voxel_buildings: bool = False,
+                    ground_sim_grid=None, ground_dem_grid=None,
+                    ground_z_offset: float | None = None, ground_view_point_height: float | None = None,
+                    ground_colormap: str = 'viridis', ground_vmin=None, ground_vmax=None):
+        """
+        Render city to static images with optional simulation overlays.
+        
+        Parameters
+        ----------
+        city : VoxCity
+            VoxCity object to render
+        projection_type : str
+            "perspective" or "orthographic"
+        distance_factor : float
+            Camera distance multiplier
+        output_directory : str
+            Directory to save rendered images
+        voxel_color_map : str or dict
+            Color mapping for voxel classes
+        building_sim_mesh : trimesh.Trimesh, optional
+            Building mesh with simulation results
+        building_value_name : str
+            Metadata key for building values
+        building_colormap : str
+            Colormap for building values
+        building_vmin, building_vmax : float, optional
+            Color scale limits for buildings
+        building_nan_color : str
+            Color for NaN values
+        building_opacity : float
+            Building mesh opacity
+        render_voxel_buildings : bool
+            Whether to render voxel buildings when building_sim_mesh is provided
+        ground_sim_grid : np.ndarray, optional
+            Ground-level simulation grid
+        ground_dem_grid : np.ndarray, optional
+            DEM grid for ground surface positioning
+        ground_z_offset : float, optional
+            Height offset for ground surface
+        ground_view_point_height : float, optional
+            Alternative height parameter
+        ground_colormap : str
+            Colormap for ground values
+        ground_vmin, ground_vmax : float, optional
+            Color scale limits for ground
+        """
         if pv is None:
             raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
-        collection = MeshBuilder.from_voxel_grid(city.voxels, meshsize=city.voxels.meta.meshsize, voxel_color_map=voxel_color_map)
+        
+        meshsize = city.voxels.meta.meshsize
         trimesh_dict = {}
+        
+        # Build voxel meshes (always generate to show ground, trees, etc.)
+        collection = MeshBuilder.from_voxel_grid(city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map)
         for key, mm in collection.items.items():
             if mm.vertices.size == 0 or mm.faces.size == 0:
+                continue
+            # Skip building voxels if we have building_sim_mesh and don't want to render both
+            if not render_voxel_buildings and building_sim_mesh is not None and int(key) == -3:
                 continue
             tri = trimesh.Trimesh(vertices=mm.vertices, faces=mm.faces, process=False)
             if mm.colors is not None:
                 tri.visual.face_colors = mm.colors
             trimesh_dict[key] = tri
+        
+        # Add building simulation mesh overlay
+        if building_sim_mesh is not None and getattr(building_sim_mesh, 'vertices', None) is not None:
+            Vb = np.asarray(building_sim_mesh.vertices)
+            Fb = np.asarray(building_sim_mesh.faces)
+            
+            # Get simulation values from metadata
+            values = None
+            if hasattr(building_sim_mesh, 'metadata') and isinstance(building_sim_mesh.metadata, dict):
+                values = building_sim_mesh.metadata.get(building_value_name)
+            
+            if values is not None:
+                values = np.asarray(values)
+                
+                # Determine if values are per-face or per-vertex
+                face_vals = None
+                if len(values) == len(Fb):
+                    face_vals = values.astype(float)
+                elif len(values) == len(Vb):
+                    vals_v = values.astype(float)
+                    face_vals = np.nanmean(vals_v[Fb], axis=1)
+                
+                if face_vals is not None:
+                    # Apply colormap
+                    finite = np.isfinite(face_vals)
+                    vmin_b = building_vmin if building_vmin is not None else (float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0)
+                    vmax_b = building_vmax if building_vmax is not None else (float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0)
+                    norm_b = mcolors.Normalize(vmin=vmin_b, vmax=vmax_b)
+                    cmap_b = cm.get_cmap(building_colormap)
+                    
+                    colors_rgba = np.zeros((len(Fb), 4), dtype=np.uint8)
+                    if np.any(finite):
+                        colors_float = cmap_b(norm_b(face_vals[finite]))
+                        colors_rgba[finite] = (colors_float * 255).astype(np.uint8)
+                    
+                    # Handle NaN values
+                    nan_rgba = np.array(mcolors.to_rgba(building_nan_color))
+                    colors_rgba[~finite] = (nan_rgba * 255).astype(np.uint8)
+                    
+                    # Create trimesh with colors
+                    building_tri = trimesh.Trimesh(vertices=Vb, faces=Fb, process=False)
+                    building_tri.visual.face_colors = colors_rgba
+                    trimesh_dict['building_sim'] = building_tri
+            else:
+                # No values, just add the mesh with default color
+                building_tri = trimesh.Trimesh(vertices=Vb, faces=Fb, process=False)
+                trimesh_dict['building_sim'] = building_tri
+        
+        # Add ground simulation surface overlay
+        if ground_sim_grid is not None and ground_dem_grid is not None:
+            z_off = ground_z_offset if ground_z_offset is not None else ground_view_point_height
+            try:
+                z_off = float(z_off) if z_off is not None else 1.5
+            except Exception:
+                z_off = 1.5
+            
+            # Snap to grid
+            try:
+                z_off = (z_off // meshsize + 1.0) * meshsize
+            except Exception:
+                pass
+            
+            # Normalize DEM
+            try:
+                dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                dem_norm = dem_norm - np.nanmin(dem_norm)
+            except Exception:
+                dem_norm = ground_dem_grid
+            
+            # Determine color range
+            sim_vals = np.asarray(ground_sim_grid, dtype=float)
+            finite = np.isfinite(sim_vals)
+            vmin_g = ground_vmin if ground_vmin is not None else (float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0)
+            vmax_g = ground_vmax if ground_vmax is not None else (float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0)
+            
+            # Create ground simulation mesh
+            sim_mesh = create_sim_surface_mesh(
+                ground_sim_grid,
+                dem_norm,
+                meshsize=meshsize,
+                z_offset=z_off,
+                cmap_name=ground_colormap,
+                vmin=vmin_g,
+                vmax=vmax_g,
+            )
+            
+            if sim_mesh is not None and getattr(sim_mesh, 'vertices', None) is not None:
+                trimesh_dict['ground_sim'] = sim_mesh
+        
         os.makedirs(output_directory, exist_ok=True)
         return create_multi_view_scene(trimesh_dict, output_directory=output_directory,
                                        projection_type=projection_type, distance_factor=distance_factor)
@@ -564,21 +709,159 @@ def visualize_voxcity(
     output_directory: str = "output",
     projection_type: str = "perspective",
     distance_factor: float = 1.0,
+    # Building simulation overlay options
+    building_sim_mesh=None,
+    building_value_name: str = 'svf_values',
+    building_colormap: str = 'viridis',
+    building_vmin: float | None = None,
+    building_vmax: float | None = None,
+    building_nan_color: str = 'gray',
+    building_opacity: float = 1.0,
+    building_shaded: bool = False,
+    render_voxel_buildings: bool = False,
+    # Ground simulation surface overlay options
+    ground_sim_grid=None,
+    ground_dem_grid=None,
+    ground_z_offset: float | None = None,
+    ground_view_point_height: float | None = None,
+    ground_colormap: str = 'viridis',
+    ground_vmin: float | None = None,
+    ground_vmax: float | None = None,
+    sim_surface_opacity: float = 0.95,
+    ground_shaded: bool = False,
 ):
     """
-    Visualize a VoxCity object.
+    Visualize a VoxCity object with optional simulation result overlays.
 
-    - mode="interactive": display an interactive 3D view using Plotly.
-      Returns a plotly Figure when return_fig=True, otherwise None.
-    - mode="static": render and save multiple PNG views using PyVista.
-      Returns a list of (view_name, filepath) tuples.
+    Parameters
+    ----------
+    city : VoxCity
+        VoxCity object to visualize
+    mode : str, default="interactive"
+        Visualization mode: "interactive" (Plotly) or "static" (PyVista)
+    
+    Common Options
+    --------------
+    voxel_color_map : str or dict, default="default"
+        Color mapping for voxel classes
+    classes : list, optional
+        Specific voxel classes to render
+    title : str, optional
+        Plot title
+    
+    Interactive Mode Options (Plotly)
+    ----------------------------------
+    opacity : float, default=1.0
+        Voxel opacity (0-1)
+    max_dimension : int, default=160
+        Maximum grid dimension before downsampling
+    downsample : int, optional
+        Manual downsampling stride
+    width : int, default=1000
+        Plot width in pixels
+    height : int, default=800
+        Plot height in pixels
+    show : bool, default=True
+        Whether to display the plot
+    return_fig : bool, default=False
+        Whether to return the figure object
+    
+    Static Mode Options (PyVista)
+    ------------------------------
+    output_directory : str, default="output"
+        Directory for saving rendered images
+    projection_type : str, default="perspective"
+        Camera projection: "perspective" or "orthographic"
+    distance_factor : float, default=1.0
+        Camera distance multiplier
+    
+    Building Simulation Overlay Options
+    ------------------------------------
+    building_sim_mesh : trimesh.Trimesh, optional
+        Building mesh with simulation results in metadata.
+        Typically created by get_surface_view_factor() or get_building_solar_irradiance().
+    building_value_name : str, default='svf_values'
+        Metadata key to use for coloring (e.g., 'svf_values', 'global', 'direct', 'diffuse')
+    building_colormap : str, default='viridis'
+        Matplotlib colormap for building values
+    building_vmin : float, optional
+        Minimum value for color scale
+    building_vmax : float, optional
+        Maximum value for color scale
+    building_nan_color : str, default='gray'
+        Color for NaN/invalid values
+    building_opacity : float, default=1.0
+        Building mesh opacity (0-1)
+    building_shaded : bool, default=False
+        Whether to apply shading to building mesh
+    render_voxel_buildings : bool, default=False
+        Whether to render voxel buildings when building_sim_mesh is provided
+    
+    Ground Simulation Surface Overlay Options
+    ------------------------------------------
+    ground_sim_grid : np.ndarray, optional
+        2D array of ground-level simulation values (e.g., Green View Index, solar radiation).
+        Should have the same shape as the city's 2D grids.
+    ground_dem_grid : np.ndarray, optional
+        2D DEM array for positioning the ground simulation surface.
+        If None, uses city.dem.elevation when ground_sim_grid is provided.
+    ground_z_offset : float, optional
+        Height offset for ground simulation surface above DEM
+    ground_view_point_height : float, optional
+        Alternative parameter for ground surface height (used if ground_z_offset is None)
+    ground_colormap : str, default='viridis'
+        Matplotlib colormap for ground values
+    ground_vmin : float, optional
+        Minimum value for color scale
+    ground_vmax : float, optional
+        Maximum value for color scale
+    sim_surface_opacity : float, default=0.95
+        Ground simulation surface opacity (0-1)
+    ground_shaded : bool, default=False
+        Whether to apply shading to ground surface
+    
+    Returns
+    -------
+    For mode="interactive":
+        plotly.graph_objects.Figure or None
+        Returns Figure if return_fig=True, otherwise None
+    
+    For mode="static":
+        list of (view_name, filepath) tuples
+        List of rendered view names and their file paths
+    
+    Examples
+    --------
+    Basic visualization:
+    >>> visualize_voxcity(city, mode="interactive")
+    
+    With building solar irradiance results:
+    >>> building_mesh = get_building_solar_irradiance(city, ...)
+    >>> visualize_voxcity(city, mode="interactive",
+    ...                   building_sim_mesh=building_mesh,
+    ...                   building_value_name='global')
+    
+    With ground-level Green View Index:
+    >>> visualize_voxcity(city, mode="interactive",
+    ...                   ground_sim_grid=gvi_array,
+    ...                   ground_colormap='YlGn')
+    
+    Static rendering with simulation overlays:
+    >>> visualize_voxcity(city, mode="static",
+    ...                   building_sim_mesh=svf_mesh,
+    ...                   output_directory="renders")
     """
     if not isinstance(mode, str):
         raise ValueError("mode must be a string: 'interactive' or 'static'")
 
     mode_l = mode.lower().strip()
+    meshsize = getattr(city.voxels.meta, "meshsize", None)
+    
+    # Auto-fill ground_dem_grid from city if ground_sim_grid is provided but ground_dem_grid is not
+    if ground_sim_grid is not None and ground_dem_grid is None:
+        ground_dem_grid = getattr(city.dem, "elevation", None)
+    
     if mode_l == "interactive":
-        meshsize = getattr(city.voxels.meta, "meshsize", None)
         voxel_array = getattr(city.voxels, "classes", None)
         return visualize_voxcity_plotly(
             voxel_array=voxel_array,
@@ -593,6 +876,26 @@ def visualize_voxcity(
             height=height,
             show=show,
             return_fig=return_fig,
+            # Building simulation overlay
+            building_sim_mesh=building_sim_mesh,
+            building_value_name=building_value_name,
+            building_colormap=building_colormap,
+            building_vmin=building_vmin,
+            building_vmax=building_vmax,
+            building_nan_color=building_nan_color,
+            building_opacity=building_opacity,
+            building_shaded=building_shaded,
+            render_voxel_buildings=render_voxel_buildings,
+            # Ground simulation surface overlay
+            ground_sim_grid=ground_sim_grid,
+            ground_dem_grid=ground_dem_grid,
+            ground_z_offset=ground_z_offset,
+            ground_view_point_height=ground_view_point_height,
+            ground_colormap=ground_colormap,
+            ground_vmin=ground_vmin,
+            ground_vmax=ground_vmax,
+            sim_surface_opacity=sim_surface_opacity,
+            ground_shaded=ground_shaded,
         )
 
     if mode_l == "static":
@@ -603,6 +906,22 @@ def visualize_voxcity(
             distance_factor=distance_factor,
             output_directory=output_directory,
             voxel_color_map=voxel_color_map,
+            # Pass simulation overlay parameters
+            building_sim_mesh=building_sim_mesh,
+            building_value_name=building_value_name,
+            building_colormap=building_colormap,
+            building_vmin=building_vmin,
+            building_vmax=building_vmax,
+            building_nan_color=building_nan_color,
+            building_opacity=building_opacity,
+            render_voxel_buildings=render_voxel_buildings,
+            ground_sim_grid=ground_sim_grid,
+            ground_dem_grid=ground_dem_grid,
+            ground_z_offset=ground_z_offset,
+            ground_view_point_height=ground_view_point_height,
+            ground_colormap=ground_colormap,
+            ground_vmin=ground_vmin,
+            ground_vmax=ground_vmax,
         )
 
     raise ValueError("Unknown mode. Use 'interactive' or 'static'.")

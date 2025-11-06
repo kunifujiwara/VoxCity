@@ -40,6 +40,24 @@ def _notify_success(message: str) -> None:
     except Exception:
         st.success(message)
 
+# Helper to create VoxCity object from data dictionary
+def _data_to_voxcity(data):
+    """Reconstruct VoxCity object from session state data dictionary"""
+    from voxcity.models import GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid, VoxCity
+    ms = float(data['meshsize'])
+    rv = data['rectangle_vertices']
+    lons = [p[0] for p in rv]
+    lats = [p[1] for p in rv]
+    bounds = (min(lons), min(lats), max(lons), max(lats))
+    meta = GridMetadata(crs='EPSG:4326', bounds=bounds, meshsize=ms)
+    voxels = VoxelGrid(classes=data['voxcity_grid'], meta=meta)
+    buildings = BuildingGrid(heights=data['building_height_grid'], min_heights=data['building_min_height_grid'], ids=data['building_id_grid'], meta=meta)
+    land = LandCoverGrid(classes=data['land_cover_grid'], meta=meta)
+    dem = DemGrid(elevation=data['dem_grid'], meta=meta)
+    canopy = CanopyGrid(top=data['canopy_height_grid'], bottom=data.get('canopy_bottom_height_grid'), meta=meta)
+    extras = {"rectangle_vertices": rv, "building_gdf": data.get('building_gdf')}
+    return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=extras)
+
 # Helpers for downloadable exports
 def _zip_directory_to_bytes(dir_path: str) -> BytesIO:
     memory_file = BytesIO()
@@ -851,7 +869,6 @@ with tab_solar:
                     if analysis_target == "Ground Level":
                         solar_kwargs = {
                             "download_nearest_epw": download_epw,
-                            "rectangle_vertices": data['rectangle_vertices'],
                             "view_point_height": 1.5,
                             "tree_k": 0.6,
                             "tree_lad": 0.5,
@@ -881,9 +898,8 @@ with tab_solar:
                             solar_kwargs["end_time"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
                             calc_type = 'cumulative'
                         
-                        solar_grid = get_global_solar_irradiance_using_epw(
-                            data['voxcity_grid'],
-                            data['meshsize'],
+                        voxcity = _data_to_voxcity(data)
+                        solar_grid = get_global_solar_irradiance_using_epw(voxcity,
                             calc_type=calc_type,
                             direct_normal_irradiance_scaling=1.0,
                             diffuse_irradiance_scaling=1.0,
@@ -925,7 +941,6 @@ with tab_solar:
                     else:  # Building Surfaces
                         irradiance_kwargs = {
                             "download_nearest_epw": download_epw,
-                            "rectangle_vertices": data['rectangle_vertices'],
                             "building_id_grid": data['building_id_grid']
                         }
                         if epw_local_path:
@@ -946,9 +961,8 @@ with tab_solar:
                             irradiance_kwargs["period_start"] = f"{start_date.strftime('%m-%d')} {start_time.strftime('%H:%M:%S')}"
                             irradiance_kwargs["period_end"] = f"{end_date.strftime('%m-%d')} {end_time.strftime('%H:%M:%S')}"
                         
-                        irradiance = get_building_global_solar_irradiance_using_epw(
-                            data['voxcity_grid'],
-                            data['meshsize'],
+                        voxcity = _data_to_voxcity(data)
+                        irradiance = get_building_global_solar_irradiance_using_epw(voxcity,
                             **irradiance_kwargs
                         )
                         
@@ -1095,9 +1109,8 @@ with tab_view:
                                 st.error("Please select at least one class for the custom view.")
                                 view_grid = None
                             else:
-                                view_grid = get_view_index(
-                                    data['voxcity_grid'],
-                                    data['meshsize'],
+                                voxcity = _data_to_voxcity(data)
+                                view_grid = get_view_index(voxcity,
                                     mode=None,
                                     hit_values=tuple(selected_custom_values),
                                     inclusion_mode=inclusion_mode_custom,
@@ -1105,9 +1118,8 @@ with tab_view:
                                 )
                         else:
                             mode = 'green' if view_type == "Green View Index" else 'sky'
-                            view_grid = get_view_index(
-                                data['voxcity_grid'], 
-                                data['meshsize'], 
+                            voxcity = _data_to_voxcity(data)
+                            view_grid = get_view_index(voxcity, 
                                 mode=mode, 
                                 **view_kwargs
                             )
@@ -1158,9 +1170,8 @@ with tab_view:
                             else:
                                 target_values = (0,)   # sky
                                 inclusion_mode = False
-                            mesh = get_surface_view_factor(
-                                data['voxcity_grid'],
-                                data['meshsize'],
+                            voxcity = _data_to_voxcity(data)
+                            mesh = get_surface_view_factor(voxcity,
                                 target_values=target_values,
                                 inclusion_mode=inclusion_mode,
                                 building_id_grid=data.get('building_id_grid'),
@@ -1184,9 +1195,8 @@ with tab_view:
                             st.info("No building surfaces generated; showing ground-level overlay instead.")
                             # Fallback to ground view
                             mode = 'green' if view_type == "Green View Index" else 'sky'
-                            view_grid = get_view_index(
-                                data['voxcity_grid'], 
-                                data['meshsize'], 
+                            voxcity = _data_to_voxcity(data)
+                            view_grid = get_view_index(voxcity, 
                                 mode=mode, 
                                 view_point_height=view_point_height,
                                 dem_grid=data['dem_grid'],
@@ -1361,11 +1371,8 @@ with tab_landmark:
                     voxcity_marked = data['voxcity_grid'].copy()
                     if len(landmark_ids) == 0:
                         # Fall back to center building via existing helper
-                        vis_map, vox_marked_tmp = get_landmark_visibility_map(
-                            data['voxcity_grid'],
-                            data['building_id_grid'],
-                            data['building_gdf'],
-                            data['meshsize'],
+                        voxcity = _data_to_voxcity(data)
+                        vis_map, vox_marked_tmp = get_landmark_visibility_map(voxcity, data['building_gdf'],
                             rectangle_vertices=data['rectangle_vertices'],
                             output_directory=output_dir_lm,
                         )

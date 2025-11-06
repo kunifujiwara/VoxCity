@@ -494,7 +494,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
     _save_flag = io_options.get("save_voxcity_data", kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True)))
     if _save_flag:
-        save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl"))
+        save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity.pkl"))
         save_voxcity(save_path, city)
 
     return city
@@ -740,7 +740,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
     _save_flag = kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True))
     if _save_flag:
-        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
+        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity.pkl")
         save_voxcity(save_path, city)
 
     return city

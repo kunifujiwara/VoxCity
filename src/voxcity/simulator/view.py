@@ -734,7 +734,7 @@ def _precompute_observer_base_z(voxel_data):
     return out
 
 
-def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_mode=True, fast_path=True, **kwargs):
+def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fast_path=True, **kwargs):
     """Calculate and visualize a generic view index for a voxel city model.
 
     This is a high-level function that provides a flexible interface for computing
@@ -746,8 +746,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     - Optional OBJ export
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         mode (str): Predefined mode. Options: 'green', 'sky', or None.
             If 'green': GVI mode - measures visibility of vegetation
             If 'sky': SVI mode - measures visibility of open sky
@@ -777,6 +776,10 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     Returns:
         ndarray: 2D array of computed view index values.
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Handle predefined mode presets for common view indices
     if mode == 'green':
         # GVI defaults - detect vegetation and trees
@@ -799,8 +802,8 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     vmax = kwargs.get("vmax", 1.0)
     
     # Ray casting parameters for hemisphere sampling
-    N_azimuth = kwargs.get("N_azimuth", 60)
-    N_elevation = kwargs.get("N_elevation", 10)
+    N_azimuth = kwargs.get("N_azimuth", 120)
+    N_elevation = kwargs.get("N_elevation", 20)
     elevation_min_degrees = kwargs.get("elevation_min_degrees", -30)
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 30)
     ray_sampling = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
@@ -862,7 +865,7 @@ def get_view_index(voxel_data, meshsize, mode=None, hit_values=None, inclusion_m
     # Optional OBJ export for 3D visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(vi_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "view_index")
         num_colors = kwargs.get("num_colors", 10)
@@ -1155,7 +1158,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
 
     return np.flipud(visibility_map)
 
-def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf, meshsize, **kwargs):
+def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
     """Generate a visibility map for landmark buildings in a voxel city.
 
     Places observers at valid locations and checks visibility to any part of the
@@ -1163,17 +1166,16 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf
     buildings within a specified rectangle.
 
     Args:
-        voxcity_grid (ndarray): 3D array representing the voxel city
-        building_id_grid (ndarray): 3D array mapping voxels to building IDs
-        building_gdf (GeoDataFrame): GeoDataFrame containing building features
-        meshsize (float): Size of each voxel in meters
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
+        building_gdf (GeoDataFrame, optional): GeoDataFrame containing building features.
+            If None, extracts from voxcity.extras['building_gdf'].
         **kwargs: Additional keyword arguments
             view_point_height (float): Height of observer viewpoint in meters
             colormap (str): Matplotlib colormap name
             landmark_building_ids (list): List of building IDs to mark as landmarks
-            rectangle_vertices (list): List of (lat,lon) coordinates defining rectangle
+            landmark_polygon (list): List of drawn polygon coordinates to identify landmarks
+            rectangle_vertices (list, optional): List of (lat,lon) coordinates defining rectangle. If not provided, extracted from voxcity.extras
             obj_export (bool): Whether to export visibility map as OBJ file
-            dem_grid (ndarray): Digital elevation model grid for OBJ export
             output_directory (str): Directory for OBJ file output
             output_file_name (str): Base filename for OBJ output
             alpha (float): Alpha transparency value for OBJ export
@@ -1181,8 +1183,35 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf
             vmax (float): Maximum value for color mapping
 
     Returns:
-        ndarray: 2D array of visibility values for landmark buildings
+        tuple: (landmark_vis_map, voxcity_grid)
+            - landmark_vis_map: 2D array of visibility values for landmark buildings
+            - voxcity_grid: Modified voxel grid with landmarks marked
+
+    Examples:
+        Using VoxCity object directly (building_gdf extracted automatically):
+        >>> landmark_vis_map, voxcity_grid = get_landmark_visibility_map(
+        ...     voxcity,
+        ...     landmark_polygon=polygon_coords
+        ... )
+        
+        Explicit building_gdf:
+        >>> landmark_vis_map, voxcity_grid = get_landmark_visibility_map(
+        ...     voxcity,
+        ...     building_gdf=buildings,
+        ...     landmark_building_ids=[1, 2, 3]
+        ... )
     """
+    # Extract building_gdf from VoxCity object if not provided
+    if building_gdf is None:
+        building_gdf = voxcity.extras.get('building_gdf', None)
+        if building_gdf is None:
+            raise ValueError("building_gdf not provided and not found in voxcity.extras['building_gdf']")
+    
+    # Extract voxel data and meshsize from VoxCity object
+    voxcity_grid_ori = voxcity.voxels.classes
+    building_id_grid = voxcity.buildings.ids
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Convert observer height from meters to voxel units
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
@@ -1196,7 +1225,10 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf
         if landmark_polygon is not None:
             landmark_ids = get_buildings_in_drawn_polygon(building_gdf, landmark_polygon, operation='within')
         else:
+            # Extract rectangle_vertices from VoxCity object if not provided in kwargs
             rectangle_vertices = kwargs.get("rectangle_vertices", None)
+            if rectangle_vertices is None:
+                rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
             if rectangle_vertices is None:
                 print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
                 return None
@@ -1221,7 +1253,7 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf
     # Handle optional OBJ export
     obj_export = kwargs.get("obj_export")
     if obj_export == True:
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(landmark_vis_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(landmark_vis_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "landmark_visibility")        
         num_colors = 2
@@ -1248,7 +1280,7 @@ def get_landmark_visibility_map(voxcity_grid_ori, building_id_grid, building_gdf
 
     return landmark_vis_map, voxcity_grid
 
-def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
+def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
     """
     Compute and visualize the Sky View Factor (SVF) for each valid observer cell in the voxel grid.
 
@@ -1260,15 +1292,14 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     - Provides optional visualization and OBJ export
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         show_plot (bool): Whether to display the SVF visualization plot.
         **kwargs: Additional parameters including:
             view_point_height (float): Observer height in meters (default: 1.5)
             colormap (str): Matplotlib colormap name (default: 'BuPu_r')
             vmin, vmax (float): Color scale limits (default: 0.0, 1.0)
-            N_azimuth (int): Number of azimuth angles for ray sampling (default: 60)
-            N_elevation (int): Number of elevation angles for ray sampling (default: 10)
+            N_azimuth (int): Number of azimuth angles for ray sampling (default: 120)
+            N_elevation (int): Number of elevation angles for ray sampling (default: 20)
             elevation_min_degrees (float): Minimum elevation angle (default: 0)
             elevation_max_degrees (float): Maximum elevation angle (default: 90)
             tree_k (float): Tree extinction coefficient (default: 0.6)
@@ -1279,6 +1310,10 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
         ndarray: 2D array of SVF values at each valid observer location (x, y).
                  NaN values indicate invalid observer positions.
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Extract default parameters with sky-specific settings
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
@@ -1287,8 +1322,8 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     vmax = kwargs.get("vmax", 1.0)
     
     # Ray sampling parameters optimized for sky view factor
-    N_azimuth = kwargs.get("N_azimuth", 60)      # Full 360-degree azimuth sampling
-    N_elevation = kwargs.get("N_elevation", 10)   # Hemisphere elevation sampling
+    N_azimuth = kwargs.get("N_azimuth", 120)      # Full 360-degree azimuth sampling
+    N_elevation = kwargs.get("N_elevation", 20)   # Hemisphere elevation sampling
     elevation_min_degrees = kwargs.get("elevation_min_degrees", 0)   # Horizon
     elevation_max_degrees = kwargs.get("elevation_max_degrees", 90)  # Zenith
     ray_sampling = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
@@ -1330,7 +1365,7 @@ def get_sky_view_factor_map(voxel_data, meshsize, show_plot=False, **kwargs):
     # Optional OBJ export for 3D visualization
     obj_export = kwargs.get("obj_export", False)
     if obj_export:        
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(vi_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(vi_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "sky_view_factor")
         num_colors = kwargs.get("num_colors", 10)
@@ -1574,7 +1609,7 @@ def compute_view_factor_for_all_faces(
     
     return face_vf_values
 
-def get_surface_view_factor(voxel_data, meshsize, **kwargs):
+def get_surface_view_factor(voxcity, **kwargs):
     """
     Compute and optionally visualize view factors for surface meshes with respect to target voxel classes.
     
@@ -1588,8 +1623,7 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     for each face using hemisphere ray casting with proper geometric transformations.
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values representing the urban environment.
-        meshsize (float): Size of each voxel in meters for coordinate scaling.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         **kwargs: Extensive configuration options including:
             # Target specification:
             target_values (tuple[int]): Voxel classes to measure visibility to (default: (0,) for sky)
@@ -1597,11 +1631,10 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
             
             # Surface extraction:
             building_class_id (int): Voxel class to extract surfaces from (default: -3 for buildings)
-            building_id_grid (ndarray): Optional grid mapping voxels to building IDs
             
             # Ray sampling:
-            N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 60)
-            N_elevation (int): Number of elevation angles for hemisphere sampling (default: 10)
+            N_azimuth (int): Number of azimuth angles for hemisphere sampling (default: 120)
+            N_elevation (int): Number of elevation angles for hemisphere sampling (default: 20)
             
             # Tree transmittance (Beer-Lambert law):
             tree_k (float): Tree extinction coefficient (default: 0.6)
@@ -1625,15 +1658,15 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
                         
     Example Usage:
         # Sky View Factor for building surfaces
-        mesh = get_surface_view_factor(voxel_data, meshsize, 
+        mesh = get_surface_view_factor(voxcity, 
                                      target_values=(0,), inclusion_mode=False)
         
         # Tree View Factor for building surfaces  
-        mesh = get_surface_view_factor(voxel_data, meshsize,
+        mesh = get_surface_view_factor(voxcity,
                                      target_values=(-2,), inclusion_mode=True)
         
         # Custom view factor with OBJ export
-        mesh = get_surface_view_factor(voxel_data, meshsize,
+        mesh = get_surface_view_factor(voxcity,
                                      target_values=(-3,), inclusion_mode=True,
                                      obj_export=True, output_file_name="building_view_factor")
     """
@@ -1642,18 +1675,22 @@ def get_surface_view_factor(voxel_data, meshsize, **kwargs):
     import matplotlib.colors as mcolors
     import os
     
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    building_id_grid = voxcity.buildings.ids
+    
     # Extract configuration parameters with appropriate defaults
     value_name     = kwargs.get("value_name", 'view_factor_values')
     colormap       = kwargs.get("colormap", 'BuPu_r')
     vmin           = kwargs.get("vmin", 0.0)
     vmax           = kwargs.get("vmax", 1.0)
-    N_azimuth      = kwargs.get("N_azimuth", 60)
-    N_elevation    = kwargs.get("N_elevation", 10)
+    N_azimuth      = kwargs.get("N_azimuth", 120)
+    N_elevation    = kwargs.get("N_elevation", 20)
     ray_sampling   = kwargs.get("ray_sampling", "grid")  # 'grid' or 'fibonacci'
     N_rays         = kwargs.get("N_rays", N_azimuth * N_elevation)
     debug          = kwargs.get("debug", False)
     progress_report= kwargs.get("progress_report", False)
-    building_id_grid = kwargs.get("building_id_grid", None)
     
     # Tree transmittance parameters for Beer-Lambert law
     tree_k         = kwargs.get("tree_k", 0.6)
@@ -2169,10 +2206,53 @@ def _compute_faces_chunk(face_centers, face_normals, landmark_positions_vox,
 # ==========================
 # Main function
 # ==========================
-def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, meshsize, **kwargs):
+def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
+    """Calculate landmark visibility from building surfaces.
+    
+    This function computes how visible landmark buildings are from other building surfaces
+    in the voxel city. It creates a building mesh and calculates visibility values for each
+    face based on line-of-sight to the landmark buildings.
+    
+    Args:
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
+        building_gdf (GeoDataFrame, optional): GeoDataFrame containing building features.
+            If None, extracts from voxcity.extras['building_gdf'].
+        **kwargs: Additional keyword arguments
+            landmark_building_ids (list): List of building IDs to mark as landmarks
+            landmark_polygon (list): List of drawn polygon coordinates to identify landmarks
+            rectangle_vertices (list, optional): List of (lat,lon) coordinates defining rectangle
+            building_class_id (int): Voxel class ID for buildings (default: -3)
+            tree_k (float): Tree extinction coefficient (default: 0.6)
+            tree_lad (float): Leaf area density in m^-1 (default: 1.0)
+            colormap (str): Matplotlib colormap name (default: 'RdYlGn')
+            progress_report (bool): Whether to print progress information (default: False)
+    
+    Returns:
+        tuple: (building_mesh, landmark_ids)
+            - building_mesh: Trimesh object with landmark_visibility values in metadata
+            - landmark_ids: List of landmark building IDs used in the analysis
+    
+    Examples:
+        Using VoxCity object directly:
+        >>> mesh, ids = get_surface_landmark_visibility(
+        ...     voxcity,
+        ...     landmark_polygon=polygon_coords
+        ... )
+    """
     import matplotlib.pyplot as plt
     import os
 
+    # Extract building_gdf from VoxCity object if not provided
+    if building_gdf is None:
+        building_gdf = voxcity.extras.get('building_gdf', None)
+        if building_gdf is None:
+            raise ValueError("building_gdf not provided and not found in voxcity.extras['building_gdf']")
+
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    building_id_grid = voxcity.buildings.ids
+    meshsize = voxcity.voxels.meta.meshsize
+    
     progress_report = kwargs.get("progress_report", False)
 
     # --- Landmark selection logic (unchanged) ---
@@ -2182,7 +2262,10 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
         if landmark_polygon is not None:
             landmark_ids = get_buildings_in_drawn_polygon(building_gdf, landmark_polygon, operation='within')
         else:
+            # Extract rectangle_vertices from VoxCity object if not provided in kwargs
             rectangle_vertices = kwargs.get("rectangle_vertices", None)
+            if rectangle_vertices is None:
+                rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
             if rectangle_vertices is None:
                 print("Cannot set landmark buildings. You need to input either of rectangle_vertices or landmark_ids.")
                 return None, None
@@ -2289,26 +2372,3 @@ def get_surface_landmark_visibility(voxel_data, building_id_grid, building_gdf, 
             print(f"Error exporting mesh: {e}")
 
     return building_mesh, voxel_data_modified
-
-
-class ViewSimulation:
-    """Object-oriented wrapper for view-related simulations (VI, SVF, surface view)."""
-
-    def __init__(self, city_or_voxels, meshsize: float | None = None) -> None:
-        if hasattr(city_or_voxels, 'voxels'):
-            self.voxel_data = city_or_voxels.voxels.classes
-            self.meshsize = city_or_voxels.voxels.meta.meshsize
-        else:
-            if meshsize is None:
-                raise ValueError("meshsize must be provided when passing raw voxel array")
-            self.voxel_data = city_or_voxels
-            self.meshsize = float(meshsize)
-
-    def view_index(self, **kwargs):
-        return get_view_index(self.voxel_data, self.meshsize, **kwargs)
-
-    def sky_view_factor(self, **kwargs):
-        return get_sky_view_factor_map(self.voxel_data, self.meshsize, **kwargs)
-
-    def surface_view_factor(self, **kwargs):
-        return get_surface_view_factor(self.voxel_data, self.meshsize, **kwargs)

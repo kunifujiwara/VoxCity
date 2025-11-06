@@ -149,7 +149,7 @@ def compute_direct_solar_irradiance_map_binary(voxel_data, sun_direction, view_p
     # Flip map vertically to match visualization conventions (origin at bottom-left)
     return np.flipud(irradiance_map)
 
-def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, elevation_degrees, 
+def get_direct_solar_irradiance_map(voxcity: VoxCity, azimuth_degrees_ori, elevation_degrees, 
                                   direct_normal_irradiance, show_plot=False, **kwargs):
     """
     Compute direct solar irradiance map with tree transmittance.
@@ -175,8 +175,7 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
     4. Optionally visualizes and exports results in various formats
     
     Args:
-        voxel_data (ndarray): 3D array of voxel values representing the urban environment
-        meshsize (float): Size of each voxel in meters (spatial resolution)
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         azimuth_degrees_ori (float): Sun azimuth angle in degrees (0° = North, 90° = East)
         elevation_degrees (float): Sun elevation angle in degrees above horizon (0-90°)
         direct_normal_irradiance (float): Direct normal irradiance in W/m² (from weather data)
@@ -194,7 +193,6 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
             - obj_export (bool): Whether to export results as 3D OBJ file
             - output_directory (str): Directory for file exports
             - output_file_name (str): Base filename for exports
-            - dem_grid (ndarray): Digital elevation model for 3D export
             - num_colors (int): Number of discrete colors for OBJ export
             - alpha (float): Transparency value for 3D visualization
 
@@ -208,6 +206,10 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
         The azimuth is internally adjusted by 180° to match the coordinate system
         where the voxel grid's y-axis points in the opposite direction from geographic north.
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Extract parameters with defaults for observer and visualization settings
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
@@ -264,7 +266,7 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         # Get export parameters with defaults
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(direct_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(direct_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "direct_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
@@ -287,7 +289,7 @@ def get_direct_solar_irradiance_map(voxel_data, meshsize, azimuth_degrees_ori, e
 
     return direct_map
 
-def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.0, show_plot=False, **kwargs):
+def get_diffuse_solar_irradiance_map(voxcity: VoxCity, diffuse_irradiance=1.0, show_plot=False, **kwargs):
     """
     Compute diffuse solar irradiance map using the Sky View Factor (SVF) with tree transmittance.
 
@@ -314,8 +316,7 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
     3. Optionally visualizes and exports results for analysis
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values representing the urban environment
-        meshsize (float): Size of each voxel in meters (spatial resolution)
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         diffuse_irradiance (float): Diffuse horizontal irradiance in W/m² (from weather data)
                                   Default 1.0 for normalized calculations
         show_plot (bool): Whether to display visualization of results
@@ -332,7 +333,6 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
             - obj_export (bool): Whether to export results as 3D OBJ file
             - output_directory (str): Directory for file exports
             - output_file_name (str): Base filename for exports
-            - dem_grid (ndarray): Digital elevation model for 3D export
             - num_colors (int): Number of discrete colors for OBJ export  
             - alpha (float): Transparency value for 3D visualization
 
@@ -346,6 +346,9 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
         The SVF calculation internally handles tree transmittance effects, so trees
         contribute partial sky visibility rather than complete obstruction.
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
 
     # Extract parameters with defaults for observer and visualization settings
     view_point_height = kwargs.get("view_point_height", 1.5)
@@ -362,7 +365,7 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
 
     # Calculate Sky View Factor map accounting for all obstructions
     # SVF calculation now handles tree transmittance internally
-    SVF_map = get_sky_view_factor_map(voxel_data, meshsize, **svf_kwargs)
+    SVF_map = get_sky_view_factor_map(voxcity, **svf_kwargs)
     
     # Convert SVF to diffuse irradiance by scaling with weather data
     # Each location receives diffuse radiation proportional to its sky visibility
@@ -389,7 +392,7 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         # Get export parameters with defaults
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(diffuse_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(diffuse_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "diffuse_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
@@ -414,8 +417,7 @@ def get_diffuse_solar_irradiance_map(voxel_data, meshsize, diffuse_irradiance=1.
 
 
 def get_global_solar_irradiance_map(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     azimuth_degrees,
     elevation_degrees,
     direct_normal_irradiance,
@@ -448,8 +450,7 @@ def get_global_solar_irradiance_map(
     3. Combines maps and optionally visualizes/exports results for analysis
 
     Args:
-        voxel_data (ndarray): 3D voxel array representing the urban environment
-        meshsize (float): Voxel size in meters (spatial resolution)
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         azimuth_degrees (float): Sun azimuth angle in degrees (0° = North, 90° = East)
         elevation_degrees (float): Sun elevation angle in degrees above horizon (0-90°)
         direct_normal_irradiance (float): Direct normal irradiance in W/m² (from weather data)
@@ -468,7 +469,6 @@ def get_global_solar_irradiance_map(
             - obj_export (bool): Whether to export results as 3D OBJ file
             - output_directory (str): Directory for file exports
             - output_file_name (str): Base filename for exports
-            - dem_grid (ndarray): Digital elevation model for 3D export
             - num_colors (int): Number of discrete colors for OBJ export
             - alpha (float): Transparency value for 3D visualization
 
@@ -481,7 +481,9 @@ def get_global_solar_irradiance_map(
     Note:
         Global irradiance is the standard metric used for solar energy assessment
         and represents the maximum solar energy available at each location.
-    """    
+    """
+    # Extract voxel data and meshsize from VoxCity object
+    meshsize = voxcity.voxels.meta.meshsize
     
     # Extract visualization parameters
     colormap = kwargs.get("colormap", 'magma')
@@ -497,8 +499,7 @@ def get_global_solar_irradiance_map(
     # Compute direct irradiance component
     # Accounts for sun position, shadows, and tree transmittance
     direct_map = get_direct_solar_irradiance_map(
-        voxel_data,
-        meshsize,
+        voxcity,
         azimuth_degrees,
         elevation_degrees,
         direct_normal_irradiance,
@@ -508,8 +509,7 @@ def get_global_solar_irradiance_map(
     # Compute diffuse irradiance component  
     # Based on Sky View Factor and atmospheric scattering
     diffuse_map = get_diffuse_solar_irradiance_map(
-        voxel_data,
-        meshsize,
+        voxcity,
         diffuse_irradiance=diffuse_irradiance,
         **direct_diffuse_kwargs
     )
@@ -539,12 +539,11 @@ def get_global_solar_irradiance_map(
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         # Get export parameters with defaults
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(global_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(global_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "global_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
         alpha = kwargs.get("alpha", 1.0)
-        meshsize_param = kwargs.get("meshsize", meshsize)
         view_point_height = kwargs.get("view_point_height", 1.5)
         
         # Export as colored 3D mesh
@@ -553,7 +552,7 @@ def get_global_solar_irradiance_map(
             dem_grid,
             output_dir,
             output_file_name,
-            meshsize_param,
+            meshsize,
             view_point_height,
             colormap_name=colormap,
             num_colors=num_colors,
@@ -667,8 +666,7 @@ def _auto_time_batch_size(n_faces, total_steps, user_value=None):
     return max(1, total_steps // batches)
 
 def get_cumulative_global_solar_irradiance(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     df, lon, lat, tz,
     direct_normal_irradiance_scaling=1.0,
     diffuse_irradiance_scaling=1.0,
@@ -707,8 +705,7 @@ def get_cumulative_global_solar_irradiance(
     4. Handles tree transmittance and provides visualization/export options
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values representing the urban environment
-        meshsize (float): Size of each voxel in meters (spatial resolution)
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         df (DataFrame): EPW weather data with columns 'DNI', 'DHI' and datetime index
                        Must include complete meteorological dataset
         lon (float): Longitude in degrees for solar position calculations
@@ -738,7 +735,6 @@ def get_cumulative_global_solar_irradiance(
             - obj_export (bool): Whether to export results as 3D OBJ file
             - output_directory (str): Directory for file exports
             - output_file_name (str): Base filename for exports
-            - dem_grid (ndarray): Digital elevation model for 3D export
             - num_colors (int): Number of discrete colors for OBJ export
             - alpha (float): Transparency value for 3D visualization
 
@@ -753,6 +749,10 @@ def get_cumulative_global_solar_irradiance(
         component once and scaling it for each timestep, significantly reducing
         computation time for long-term analysis.
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Extract parameters with defaults for observer positioning and visualization
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
@@ -826,8 +826,7 @@ def get_cumulative_global_solar_irradiance(
     # Pre-compute base diffuse map once with unit irradiance
     # This map will be scaled by actual DHI values for each timestep
     base_diffuse_map = get_diffuse_solar_irradiance_map(
-        voxel_data,
-        meshsize,
+        voxcity,
         diffuse_irradiance=1.0,
         **diffuse_kwargs
     )
@@ -860,8 +859,7 @@ def get_cumulative_global_solar_irradiance(
 
         # Compute direct irradiance map with transmittance
         direct_map = get_direct_solar_irradiance_map(
-            voxel_data,
-            meshsize,
+            voxcity,
             azimuth_degrees,
             elevation_degrees,
             direct_normal_irradiance=DNI,
@@ -920,7 +918,7 @@ def get_cumulative_global_solar_irradiance(
         colormap = kwargs.get("colormap", "magma")
         vmin = kwargs.get("vmin", np.nanmin(cumulative_map))
         vmax = kwargs.get("vmax", np.nanmax(cumulative_map))
-        dem_grid = kwargs.get("dem_grid", np.zeros_like(cumulative_map))
+        dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(cumulative_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "cummurative_global_solar_irradiance")
         num_colors = kwargs.get("num_colors", 10)
@@ -942,8 +940,7 @@ def get_cumulative_global_solar_irradiance(
     return cumulative_map
 
 def get_global_solar_irradiance_using_epw(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     calc_type='instantaneous',
     direct_normal_irradiance_scaling=1.0,
     diffuse_irradiance_scaling=1.0,
@@ -959,15 +956,14 @@ def get_global_solar_irradiance_using_epw(
     4. Supports visualization and export options
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         calc_type (str): 'instantaneous' or 'cumulative'.
         direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
         diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
         **kwargs: Additional arguments including:
             - download_nearest_epw (bool): Whether to download nearest EPW file
             - epw_file_path (str): Path to EPW file
-            - rectangle_vertices (list): List of (lat,lon) coordinates for EPW download
+            - rectangle_vertices (list, optional): List of (lat,lon) coordinates for EPW download. If not provided, extracted from voxcity.extras
             - output_dir (str): Directory for EPW download
             - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
             - start_time (str): Start time for cumulative calculation
@@ -985,12 +981,19 @@ def get_global_solar_irradiance_using_epw(
     Returns:
         ndarray: 2D array of solar irradiance values (W/m²).
     """
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", 'magma')
 
     # Get EPW file
     download_nearest_epw = kwargs.get("download_nearest_epw", False)
+    # Extract rectangle_vertices from VoxCity object if not provided in kwargs
     rectangle_vertices = kwargs.get("rectangle_vertices", None)
+    if rectangle_vertices is None:
+        rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
     epw_file_path = kwargs.get("epw_file_path", None)
     if download_nearest_epw:
         if rectangle_vertices is None:
@@ -1059,8 +1062,7 @@ def get_global_solar_irradiance_using_epw(
         azimuth_degrees = solar_positions.iloc[0]['azimuth']
         elevation_degrees = solar_positions.iloc[0]['elevation']    
         solar_map = get_global_solar_irradiance_map(
-            voxel_data,                 # 3D voxel grid representing the urban environment
-            meshsize,                   # Size of each grid cell in meters
+            voxcity,                    # VoxCity object
             azimuth_degrees,            # Sun's azimuth angle
             elevation_degrees,          # Sun's elevation angle
             direct_normal_irradiance,   # Direct Normal Irradiance value
@@ -1077,8 +1079,7 @@ def get_global_solar_irradiance_using_epw(
         df_filtered = df[(df.index.hour >= start_hour) & (df.index.hour <= end_hour)]
         
         solar_map = get_cumulative_global_solar_irradiance(
-            voxel_data,
-            meshsize,
+            voxcity,
             df_filtered, lon, lat, tz,
             **kwargs
         )
@@ -1255,8 +1256,7 @@ def compute_solar_irradiance_for_all_faces(
 # 2) Modified get_building_solar_irradiance: main Python wrapper
 ##############################################################################
 def get_building_solar_irradiance(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     building_svf_mesh,
     azimuth_degrees,
     elevation_degrees,
@@ -1293,8 +1293,7 @@ def get_building_solar_irradiance(
     - Boundary handling: Automatic exclusion of domain boundary artifacts
     
     Args:
-        voxel_data (ndarray): 3D array of voxel values representing the urban environment
-        meshsize (float): Size of each voxel in meters (spatial resolution)
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         building_svf_mesh (trimesh.Trimesh): Building mesh with pre-calculated SVF values in metadata
                                            Must have 'svf' array in mesh.metadata
         azimuth_degrees (float): Sun azimuth angle in degrees (0=North, 90=East)
@@ -1323,6 +1322,10 @@ def get_building_solar_irradiance(
         Use get_surface_view_factor() to compute SVF before calling this function.
     """
     import time
+    
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
     
     # Extract tree transmittance parameters with defaults
     tree_k          = kwargs.get("tree_k", 0.6)
@@ -1692,8 +1695,7 @@ def compute_cumulative_solar_irradiance_faces_masked_timeseries(
 # 4) Modified get_cumulative_building_solar_irradiance
 ##############################################################################
 def get_cumulative_building_solar_irradiance(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     building_svf_mesh,
     weather_df,
     lon, lat, tz,
@@ -1704,8 +1706,7 @@ def get_cumulative_building_solar_irradiance(
     Uses the Numba-accelerated get_building_solar_irradiance for each time step.
     
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         building_svf_mesh (trimesh.Trimesh): Mesh with pre-calculated SVF in metadata.
         weather_df (DataFrame): Weather data with DNI (W/m²) and DHI (W/m²).
         lon (float): Longitude in degrees.
@@ -1719,6 +1720,10 @@ def get_cumulative_building_solar_irradiance(
     import pytz
     from datetime import datetime
     import numpy as np
+    
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
     
     period_start = kwargs.get("period_start", "01-01 00:00:00")
     period_end   = kwargs.get("period_end",   "12-31 23:59:59")
@@ -1896,8 +1901,7 @@ def get_cumulative_building_solar_irradiance(
 
             # Fallback to wrapper per-timestep
             irr_mesh = get_building_solar_irradiance(
-                voxel_data,
-                meshsize,
+                voxcity,
                 building_svf_mesh,
                 float(azimuth_deg_arr[idx]),
                 float(elev_deg_arr[idx]),
@@ -1957,8 +1961,7 @@ def get_cumulative_building_solar_irradiance(
     return cumulative_mesh
 
 def get_building_global_solar_irradiance_using_epw(
-    voxel_data,
-    meshsize,
+    voxcity: VoxCity,
     calc_type='instantaneous',
     direct_normal_irradiance_scaling=1.0,
     diffuse_irradiance_scaling=1.0,
@@ -1974,16 +1977,14 @@ def get_building_global_solar_irradiance_using_epw(
     4. Supports visualization and export options
 
     Args:
-        voxel_data (ndarray): 3D array of voxel values.
-        meshsize (float): Size of each voxel in meters.
-        building_svf_mesh (trimesh.Trimesh): Building mesh with pre-calculated SVF values in metadata.
+        voxcity (VoxCity): VoxCity object containing voxel data and metadata
         calc_type (str): 'instantaneous' or 'cumulative'.
         direct_normal_irradiance_scaling (float): Scaling factor for direct normal irradiance.
         diffuse_irradiance_scaling (float): Scaling factor for diffuse horizontal irradiance.
         **kwargs: Additional arguments including:
             - download_nearest_epw (bool): Whether to download nearest EPW file
             - epw_file_path (str): Path to EPW file
-            - rectangle_vertices (list): List of (lon,lat) coordinates for EPW download
+            - rectangle_vertices (list, optional): List of (lon,lat) coordinates for EPW download. If not provided, extracted from voxcity.extras
             - output_dir (str): Directory for EPW download
             - calc_time (str): Time for instantaneous calculation ('MM-DD HH:MM:SS')
             - period_start (str): Start time for cumulative calculation ('MM-DD HH:MM:SS')
@@ -2009,9 +2010,16 @@ def get_building_global_solar_irradiance_using_epw(
     import pytz
     from datetime import datetime
     
+    # Extract voxel data and meshsize from VoxCity object
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    
     # Get EPW file
     download_nearest_epw = kwargs.get("download_nearest_epw", False)
+    # Extract rectangle_vertices from VoxCity object if not provided in kwargs
     rectangle_vertices = kwargs.get("rectangle_vertices", None)
+    if rectangle_vertices is None:
+        rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
     epw_file_path = kwargs.get("epw_file_path", None)
     building_id_grid = kwargs.get("building_id_grid", None)
     building_svf_mesh = kwargs.get("building_svf_mesh", None)
@@ -2074,8 +2082,7 @@ def get_building_global_solar_irradiance_using_epw(
             if k in kwargs:
                 svf_kwargs[k] = kwargs[k]
         building_svf_mesh = get_surface_view_factor(
-            voxel_data,
-            meshsize,
+            voxcity,
             **svf_kwargs
         )
 
@@ -2165,8 +2172,7 @@ def get_building_global_solar_irradiance_using_epw(
             if 'progress_report' in _call_kwargs:
                 _call_kwargs.pop('progress_report')
             result_mesh = get_building_solar_irradiance(
-                voxel_data,
-                meshsize,
+                voxcity,
                 building_svf_mesh,
                 azimuth_degrees,
                 elevation_degrees,
@@ -2226,10 +2232,9 @@ def get_building_global_solar_irradiance_using_epw(
         if progress_report:
             print(f"Calculating cumulative irradiance from {period_start} to {period_end}...")
         result_mesh = get_cumulative_building_solar_irradiance(
-            voxel_data,
-            meshsize,
+            voxcity,
             building_svf_mesh,
-            df, lon, lat, tz,  # Pass only the required 7 positional arguments
+            df, lon, lat, tz,
             period_start=period_start,
             period_end=period_end,
             time_step_hours=time_step_hours,
@@ -2345,41 +2350,3 @@ def load_irradiance_mesh(input_file_path):
         irradiance_mesh = pickle.load(f)
     
     return irradiance_mesh
-
-
-class SolarSimulation:
-    """Object-oriented wrapper for solar simulations.
-
-    Keeps Numba-parallel kernels as module-level functions; orchestrates inputs/threads.
-    """
-
-    def __init__(self, city_or_voxels, meshsize: float | None = None) -> None:
-        if isinstance(city_or_voxels, VoxCity):
-            self.voxel_data = city_or_voxels.voxels.classes
-            self.meshsize = city_or_voxels.voxels.meta.meshsize
-        else:
-            if meshsize is None:
-                raise ValueError("meshsize must be provided when passing raw voxel array")
-            self.voxel_data = city_or_voxels
-            self.meshsize = float(meshsize)
-
-    def set_numba_threads(self, n: int) -> None:
-        try:
-            numba.set_num_threads(int(n))
-        except Exception:
-            pass
-
-    def direct_map(self, azimuth_degrees: float, elevation_degrees: float, dni: float, **kwargs):
-        return get_direct_solar_irradiance_map(self.voxel_data, self.meshsize, azimuth_degrees, elevation_degrees, dni, **kwargs)
-
-    def diffuse_map(self, dhi: float, **kwargs):
-        return get_diffuse_solar_irradiance_map(self.voxel_data, self.meshsize, diffuse_irradiance=dhi, **kwargs)
-
-    def global_map(self, azimuth_degrees: float, elevation_degrees: float, dni: float, dhi: float, **kwargs):
-        return get_global_solar_irradiance_map(self.voxel_data, self.meshsize, azimuth_degrees, elevation_degrees, dni, dhi, **kwargs)
-
-    def global_timeseries(self, df, lon: float, lat: float, tz_name: str, **kwargs):
-        return get_cumulative_global_solar_irradiance(self.voxel_data, self.meshsize, df, lon, lat, tz_name, **kwargs)
-
-    def global_from_epw(self, epw_path: str, lon: float, lat: float, tz_name: str, **kwargs):
-        return get_global_solar_irradiance_using_epw(self.voxel_data, self.meshsize, epw_path, lon, lat, tz_name, **kwargs)

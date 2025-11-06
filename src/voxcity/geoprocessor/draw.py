@@ -45,6 +45,14 @@ from IPython.display import display, clear_output
 
 from .utils import get_coordinates_from_cityname
 
+# Import VoxCity for type checking (avoid circular import with TYPE_CHECKING)
+try:
+    from typing import TYPE_CHECKING
+    if TYPE_CHECKING:
+        from ..models import VoxCity
+except ImportError:
+    pass
+
 def rotate_rectangle(m, rectangle_vertices, angle):
     """
     Project rectangle to Mercator, rotate, and re-project to lat-lon coordinates.
@@ -358,7 +366,7 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
     return m, rectangle_vertices
 
-def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=None, zoom=17):
+def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_vertices=None, zoom=17):
     """
     Displays building footprints and enables polygon drawing on an interactive map.
     
@@ -384,13 +392,18 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
        - Support for both building data and rectangle bounds
 
     Args:
+        city (VoxCity, optional): A VoxCity object from which to extract building_gdf 
+            and rectangle_vertices. If provided, these values will be used unless 
+            explicitly overridden by the building_gdf or rectangle_vertices parameters.
         building_gdf (GeoDataFrame, optional): A GeoDataFrame containing building footprints.
             Must have geometry column with Polygon type features.
             Geometries should be in [lon, lat] coordinate order.
-            If None, only the base map is displayed.
+            If None and city is provided, uses city.extras['building_gdf'].
+            If None and no city provided, only the base map is displayed.
         rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
             Used to set the initial map view extent.
             Takes precedence over building_gdf for determining map center.
+            If None and city is provided, uses city.extras['rectangle_vertices'].
         zoom (int): Initial zoom level for the map. Default=17.
             Range: 0 (most zoomed out) to 18 (most zoomed in).
             Default of 17 is optimized for building-level detail.
@@ -401,6 +414,16 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
             - drawn_polygons: List of dictionaries with 'id', 'vertices', and 'color' keys for all drawn polygons.
               Each polygon has a unique ID and color for easy identification.
 
+    Examples:
+        Using a VoxCity object:
+        >>> m, polygons = display_buildings_and_draw_polygon(city=my_city)
+        
+        Using explicit parameters:
+        >>> m, polygons = display_buildings_and_draw_polygon(building_gdf=buildings, rectangle_vertices=rect)
+        
+        Override specific parameters from VoxCity:
+        >>> m, polygons = display_buildings_and_draw_polygon(city=my_city, zoom=15)
+
     Note:
         - Building footprints are displayed in blue with 20% opacity
         - Only simple Polygon geometries are supported (no MultiPolygons)
@@ -410,6 +433,18 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
         - Each polygon gets a unique ID and different colors for easy identification
         - Use get_polygon_vertices() helper function to extract specific polygon data
     """
+    # ---------------------------------------------------------
+    # 0. Extract data from VoxCity object if provided
+    # ---------------------------------------------------------
+    if city is not None:
+        # Extract building_gdf if not explicitly provided
+        if building_gdf is None:
+            building_gdf = city.extras.get('building_gdf', None)
+        
+        # Extract rectangle_vertices if not explicitly provided
+        if rectangle_vertices is None:
+            rectangle_vertices = city.extras.get('rectangle_vertices', None)
+    
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
     # ---------------------------------------------------------
@@ -514,7 +549,7 @@ def display_buildings_and_draw_polygon(building_gdf=None, rectangle_vertices=Non
 
     return m, drawn_polygons
 
-def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
+def draw_additional_buildings(city=None, building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
     """
     Creates an interactive map for drawing building footprints with height input.
     
@@ -530,8 +565,12 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, r
     - Building is added to GeoDataFrame and displayed on map
     
     Args:
+        city (VoxCity, optional): A VoxCity object from which to extract building_gdf 
+            and rectangle_vertices. If provided, these values will be used unless 
+            explicitly overridden by the other parameters.
         building_gdf (GeoDataFrame, optional): Existing building footprints to display.
-            If None, creates a new empty GeoDataFrame.
+            If None and city is provided, uses city.extras['building_gdf'].
+            If None and no city provided, creates a new empty GeoDataFrame.
             Expected columns: ['id', 'height', 'min_height', 'geometry', 'building_id']
             - 'id': Integer ID from data sources (e.g., OSM building id)
             - 'height': Building height in meters (set by user input)
@@ -541,18 +580,29 @@ def draw_additional_buildings(building_gdf=None, initial_center=None, zoom=17, r
         initial_center (tuple, optional): Initial map center as (lon, lat).
             If None, centers on existing buildings or defaults to (-100, 40).
         zoom (int): Initial zoom level (default=17).
+        rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
+            If None and city is provided, uses city.extras['rectangle_vertices'].
     
     Returns:
         tuple: (map_object, updated_building_gdf)
             - map_object: ipyleaflet Map instance with drawing controls
             - updated_building_gdf: GeoDataFrame that automatically updates when buildings are added
     
-    Example:
-        >>> # Start with empty buildings
+    Examples:
+        Using a VoxCity object:
+        >>> m, buildings = draw_additional_buildings(city=my_city)
+        
+        Start with empty buildings:
         >>> m, buildings = draw_additional_buildings()
         >>> # Draw buildings on the map...
         >>> print(buildings)  # Will contain all drawn buildings
     """
+    # Extract data from VoxCity object if provided
+    if city is not None:
+        if building_gdf is None:
+            building_gdf = city.extras.get('building_gdf', None)
+        if rectangle_vertices is None:
+            rectangle_vertices = city.extras.get('rectangle_vertices', None)
     
     # Initialize or copy the building GeoDataFrame
     if building_gdf is None:
