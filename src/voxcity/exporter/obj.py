@@ -273,7 +273,7 @@ def mesh_faces(mask, layer_index, axis, positive_direction, normal_idx, voxel_si
 
             v += width
 
-def export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None):
+def export_obj(array, output_dir, file_name, voxel_size=None, voxel_color_map=None):
     """
     Export a voxel array to OBJ format with materials and proper face orientations.
     
@@ -282,14 +282,14 @@ def export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None):
     both OBJ and MTL files with all necessary components for rendering.
     
     Args:
-        array (ndarray): 3D numpy array containing voxel values.
+        array (ndarray | VoxCity): 3D numpy array of voxel values or a VoxCity instance.
             Non-zero values indicate voxel presence and material type.
         output_dir (str): Directory to save the OBJ and MTL files.
             Will be created if it doesn't exist.
         file_name (str): Base name for the output files.
             Will be used for both .obj and .mtl files.
-        voxel_size (float): Size of each voxel in meters.
-            Used to scale the model to real-world units.
+        voxel_size (float | None): Size of each voxel in meters. If a VoxCity is provided,
+            this is inferred from the object and this parameter is ignored.
         voxel_color_map (dict, optional): Dictionary mapping voxel values to RGB colors.
             If None, uses default color map. Colors should be RGB lists (0-255).
             
@@ -314,6 +314,15 @@ def export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None):
         - Transparency settings
         - Illumination model definitions
     """
+    # Accept VoxCity instance as first argument
+    try:
+        from ..models import VoxCity as _VoxCity
+        if isinstance(array, _VoxCity):
+            voxel_size = float(array.voxels.meta.meshsize)
+            array = array.voxels.classes
+    except Exception:
+        pass
+
     if voxel_color_map is None:
         voxel_color_map = get_voxel_color_map()
 

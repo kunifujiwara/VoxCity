@@ -64,3 +64,35 @@ def load_voxcity(input_path):
     return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=extras)
 
 
+
+def save_voxcity(output_path, city):
+    """Save a VoxCity instance to disk.
+
+    This is a simplified, object-centric alternative to save_voxcity_data.
+    """
+    import pickle
+    import os
+    from ..models import VoxCity as _VoxCity
+
+    if not isinstance(city, _VoxCity):
+        raise TypeError("save_voxcity expects a VoxCity instance")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    data_dict = {
+        'voxcity_grid': city.voxels.classes,
+        'building_height_grid': city.buildings.heights,
+        'building_min_height_grid': city.buildings.min_heights,
+        'building_id_grid': city.buildings.ids,
+        'canopy_height_grid': getattr(city.tree_canopy, 'top', None) if city.tree_canopy is not None else None,
+        'land_cover_grid': city.land_cover.classes,
+        'dem_grid': city.dem.elevation,
+        'building_gdf': city.extras.get('building_gdf'),
+        'meshsize': city.voxels.meta.meshsize,
+        'rectangle_vertices': city.extras.get('rectangle_vertices')
+    }
+
+    with open(output_path, 'wb') as f:
+        pickle.dump(data_dict, f)
+
+    print(f"Voxcity data saved to {output_path}")

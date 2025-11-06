@@ -1679,15 +1679,22 @@ with tab5:
                 with st.spinner("Exporting CityLES files..."):
                     try:
                         data = st.session_state.voxcity_data
+                        from voxcity.models import GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid, VoxCity
+                        ms = float(data['meshsize'])
+                        rv = data['rectangle_vertices']
+                        lons = [p[0] for p in rv]
+                        lats = [p[1] for p in rv]
+                        bounds = (min(lons), min(lats), max(lons), max(lats))
+                        meta = GridMetadata(crs='EPSG:4326', bounds=bounds, meshsize=ms)
+                        voxels = VoxelGrid(classes=data['voxcity_grid'], meta=meta)
+                        buildings = BuildingGrid(heights=data['building_height_grid'], min_heights=data['building_min_height_grid'], ids=data['building_id_grid'], meta=meta)
+                        land = LandCoverGrid(classes=data['land_cover_grid'], meta=meta)
+                        dem = DemGrid(elevation=data['dem_grid'], meta=meta)
+                        canopy = CanopyGrid(top=data['canopy_height_grid'], bottom=data.get('canopy_bottom_height_grid'), meta=meta)
+                        extras = {"rectangle_vertices": rv, "land_cover_source": land_cover_source}
+                        city = VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=extras)
                         export_cityles(
-                            data['building_height_grid'],
-                            data['building_id_grid'],
-                            data['canopy_height_grid'],
-                            data['land_cover_grid'],
-                            data['dem_grid'],
-                            data['meshsize'],
-                            land_cover_source,
-                            data['rectangle_vertices'],
+                            city,
                             output_directory=cityles_dir,
                             building_material=building_material,
                             tree_type=tree_type,

@@ -479,25 +479,18 @@ def save_file(content, output_file_path):
     with open(output_file_path, 'w', encoding='utf-8') as file:
         file.write(content)
 
-def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, rectangle_vertices, **kwargs):
+def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxcity', land_cover_source: str | None = None, **kwargs):
     """Export model data to ENVI-met INX file format.
     
     This is the main function for exporting voxel city data to ENVI-met format.
     It coordinates the entire export process from grid preparation to file saving.
     
     Args:
-        building_height_grid_ori (numpy.ndarray): Original building height grid
-        building_id_grid_ori (numpy.ndarray): Original building ID grid
-        canopy_height_grid_ori (numpy.ndarray): Original canopy height grid
-        land_cover_grid_ori (numpy.ndarray): Original land cover grid
-        dem_grid_ori (numpy.ndarray): Original DEM grid
-        meshsize (float): Size of mesh cells in meters
-        land_cover_source (str): Source of land cover data
-        rectangle_vertices (list): Vertices defining model area
-        **kwargs: Additional keyword arguments:
-            - output_directory (str): Directory to save output
-            - file_basename (str): Base filename for output
-            - Other args passed to create_xml_content()
+        city (VoxCity): VoxCity instance to export
+        output_directory (str): Directory to save output
+        file_basename (str): Base filename (without extension)
+        land_cover_source (str | None): Optional override for land cover source; defaults to city.extras
+        **kwargs: Additional keyword arguments passed to create_xml_content()
             
     Notes:
         - Creates output directory if it doesn't exist
@@ -505,17 +498,27 @@ def export_inx(building_height_grid_ori, building_id_grid_ori, canopy_height_gri
         - Generates complete INX file with all required data
         - Uses standardized file naming convention
     """
+    # Resolve inputs from VoxCity
+    meshsize = float(city.voxels.meta.meshsize)
+    rectangle_vertices = city.extras.get("rectangle_vertices") or [(0.0, 0.0)] * 4
+    lc_source = land_cover_source or city.extras.get("land_cover_source", "Standard")
+
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
-        building_height_grid_ori.copy(), building_id_grid_ori.copy(), canopy_height_grid_ori.copy(), land_cover_grid_ori.copy(), dem_grid_ori.copy(), meshsize, land_cover_source)    
+        city.buildings.heights.copy(),
+        (city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int)).copy(),
+        (city.tree_canopy.top if city.tree_canopy is not None else np.zeros_like(city.land_cover.classes, dtype=float)).copy(),
+        city.land_cover.classes.copy(),
+        city.dem.elevation.copy(),
+        meshsize,
+        lc_source)    
 
     # Create XML content
     xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize, rectangle_vertices, **kwargs)
 
     # Save the output
-    output_dir = kwargs.get("output_directory", 'output')
+    output_dir = output_directory or 'output'
     os.makedirs(output_dir, exist_ok=True)
-    file_basename = kwargs.get("file_basename", 'voxcity')
     output_file_path = os.path.join(output_dir, f"{file_basename}.INX")
     save_file(xml_content, output_file_path)
 
@@ -527,17 +530,8 @@ class EnvimetExporter:
         if not isinstance(obj, VoxCity):
             raise TypeError("EnvimetExporter expects a VoxCity instance")
         city: VoxCity = obj
-        rect = city.extras.get("rectangle_vertices")
-        land_cover_source = city.extras.get("land_cover_source", "Standard")
         export_inx(
-            city.buildings.heights,
-            city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int),
-            city.tree_canopy.top if city.tree_canopy is not None else np.zeros_like(city.land_cover.classes, dtype=float),
-            city.land_cover.classes,
-            city.dem.elevation,
-            city.voxels.meta.meshsize,
-            land_cover_source,
-            rect if rect is not None else [(0.0, 0.0)] * 4,
+            city,
             output_directory=output_directory,
             file_basename=base_filename,
             **kwargs,

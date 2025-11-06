@@ -65,7 +65,7 @@ def run_voxelcity_pipeline(
     # 4.1 Get voxel city data
     from voxcity.generator import get_voxcity
     t0 = t_start()
-    voxcity_grid, building_height_grid, building_min_height_grid, building_id_grid, canopy_height_grid, canopy_bottom_height_grid, land_cover_grid, dem_grid, building_gdf = get_voxcity(
+    city = get_voxcity(
         rectangle_vertices,
         building_source,
         land_cover_source,
@@ -80,7 +80,7 @@ def run_voxelcity_pipeline(
     from voxcity.utils.visualization import visualize_voxcity_multi_view
     t0 = t_start()
     # Avoid rendering heavy 3D views in CI to prevent VTK segfaults
-    visualize_voxcity_multi_view(voxcity_grid, meshsize, show_views=False)
+    visualize_voxcity_multi_view(city.voxels.classes, city.voxels.meta.meshsize, show_views=False)
     t_end("4.2 visualize_voxcity_multi_view", t0)
 
     # 5.1 ENVI-MET INX and EDB
@@ -99,15 +99,15 @@ def run_voxelcity_pipeline(
     os.makedirs(envimet_kwargs["output_directory"], exist_ok=True)
     t0 = t_start()
     export_inx(
-        building_height_grid,
-        building_id_grid,
-        canopy_height_grid,
-        land_cover_grid,
-        dem_grid,
-        meshsize,
-        land_cover_source,
-        rectangle_vertices,
-        **envimet_kwargs
+        city,
+        output_directory=envimet_kwargs["output_directory"],
+        file_basename=envimet_kwargs["file_basename"],
+        author_name=envimet_kwargs["author_name"],
+        model_description=envimet_kwargs["model_description"],
+        domain_building_max_height_ratio=envimet_kwargs["domain_building_max_height_ratio"],
+        useTelescoping_grid=envimet_kwargs["useTelescoping_grid"],
+        verticalStretch=envimet_kwargs["verticalStretch"],
+        min_grids_Z=envimet_kwargs["min_grids_Z"],
     )
     t_end("5.1 export_inx", t0)
 
@@ -120,7 +120,7 @@ def run_voxelcity_pipeline(
     mv_outdir = os.path.join(kwargs.get("output_dir", "output"), "magicavoxel")
     os.makedirs(mv_outdir, exist_ok=True)
     t0 = t_start()
-    export_magicavoxel_vox(voxcity_grid, mv_outdir)
+    export_magicavoxel_vox(city.voxels.classes, mv_outdir)
     t_end("5.2 export_magicavoxel_vox", t0)
 
     # 5.3 OBJ export
@@ -128,7 +128,7 @@ def run_voxelcity_pipeline(
     obj_outdir = os.path.join(kwargs.get("output_dir", "output"), "obj")
     os.makedirs(obj_outdir, exist_ok=True)
     t0 = t_start()
-    export_obj(voxcity_grid, obj_outdir, "voxcity", meshsize)
+    export_obj(city.voxels.classes, obj_outdir, "voxcity", city.voxels.meta.meshsize)
     t_end("5.3 export_obj", t0)
 
     # 5.4 CityLES export
@@ -142,22 +142,24 @@ def run_voxelcity_pipeline(
     os.makedirs(cityles_kwargs["output_directory"], exist_ok=True)
     t0 = t_start()
     export_cityles(
-        building_height_grid, building_id_grid, canopy_height_grid,
-        land_cover_grid, dem_grid, meshsize, land_cover_source,
-        rectangle_vertices, **cityles_kwargs
+        city,
+        output_directory=cityles_kwargs["output_directory"],
+        building_material=cityles_kwargs["building_material"],
+        tree_type=cityles_kwargs["tree_type"],
+        tree_base_ratio=cityles_kwargs["tree_base_ratio"],
     )
     t_end("5.4 export_cityles", t0)
 
     # Initialize results; simulations filled only if run_sim=True
     results = {
-        "voxcity_grid": voxcity_grid,
-        "building_height_grid": building_height_grid,
-        "building_min_height_grid": building_min_height_grid,
-        "building_id_grid": building_id_grid,
-        "canopy_height_grid": canopy_height_grid,
-        "land_cover_grid": land_cover_grid,
-        "dem_grid": dem_grid,
-        "building_gdf": building_gdf,
+        "voxcity_grid": city.voxels.classes,
+        "building_height_grid": city.buildings.heights,
+        "building_min_height_grid": city.buildings.min_heights,
+        "building_id_grid": city.buildings.ids,
+        "canopy_height_grid": (city.tree_canopy.top if city.tree_canopy is not None else None),
+        "land_cover_grid": city.land_cover.classes,
+        "dem_grid": city.dem.elevation,
+        "building_gdf": city.extras.get("building_gdf"),
         "step_times": step_times
     }
 
@@ -177,11 +179,11 @@ def run_voxelcity_pipeline(
             "download_nearest_epw": True,
             "rectangle_vertices": rectangle_vertices,
             "calc_time": "01-01 12:00:00",
-            "building_id_grid": building_id_grid
+            "building_id_grid": city.buildings.ids
         }
         t0 = t_start()
         instantaneous_irradiance = get_building_global_solar_irradiance_using_epw(
-            voxcity_grid, meshsize, **irradiance_kwargs
+            city.voxels.classes, city.voxels.meta.meshsize, **irradiance_kwargs
         )
         t_end("6.1.1 building_irradiance_instantaneous", t0)
         results["instantaneous_irradiance"] = instantaneous_irradiance

@@ -461,12 +461,15 @@ def export_lonlat(rectangle_vertices, grid_shape, output_path):
                 f.write(f"{i_1based} {j_1based} {lon:.7f} {lat:.8f}\n")
 
 
-def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
-                   land_cover_grid, dem_grid, meshsize, land_cover_source,
-                   rectangle_vertices, output_directory="output/cityles",
-                   building_material='default', tree_type='default',
-                   tree_base_ratio=0.3, canopy_bottom_height_grid=None,
-                   under_tree_class_name='Bareland', under_tree_cityles_code=None,
+def export_cityles(city: VoxCity,
+                   output_directory: str = "output/cityles",
+                   building_material: str = 'default',
+                   tree_type: str = 'default',
+                   tree_base_ratio: float = 0.3,
+                   canopy_bottom_height_grid=None,
+                   under_tree_class_name: str = 'Bareland',
+                   under_tree_cityles_code=None,
+                   land_cover_source: str | None = None,
                    **kwargs):
     """
     Export VoxCity data to CityLES format
@@ -508,6 +511,16 @@ def export_cityles(building_height_grid, building_id_grid, canopy_height_grid,
     output_path = create_cityles_directories(output_directory)
     
     print(f"Exporting CityLES files to: {output_path}")
+    # Resolve data from VoxCity
+    building_height_grid = city.buildings.heights
+    building_id_grid = city.buildings.ids if city.buildings.ids is not None else np.zeros_like(building_height_grid, dtype=int)
+    canopy_height_grid = city.tree_canopy.top if city.tree_canopy is not None else np.zeros_like(city.land_cover.classes, dtype=float)
+    land_cover_grid = city.land_cover.classes
+    dem_grid = city.dem.elevation
+    meshsize = float(city.voxels.meta.meshsize)
+    rectangle_vertices = city.extras.get("rectangle_vertices") or [(0.0, 0.0)] * 4
+    land_cover_source = land_cover_source or city.extras.get("land_cover_source", "Standard")
+
     print(f"Land cover source: {land_cover_source}")
     
     # Export individual files
@@ -578,20 +591,11 @@ class CityLesExporter:
         if not isinstance(obj, VoxCity):
             raise TypeError("CityLesExporter expects a VoxCity instance")
         city: VoxCity = obj
-        rect = city.extras.get("rectangle_vertices")
-        land_cover_source = city.extras.get("land_cover_source", "Standard")
         # CityLES writes multiple files; use output_directory/base_filename as folder/name
         out_dir = os.path.join(output_directory, base_filename)
         os.makedirs(out_dir, exist_ok=True)
         export_cityles(
-            city.buildings.heights,
-            city.buildings.ids if city.buildings.ids is not None else np.zeros_like(city.buildings.heights, dtype=int),
-            city.tree_canopy.top if city.tree_canopy is not None else np.zeros_like(city.land_cover.classes, dtype=float),
-            city.land_cover.classes,
-            city.dem.elevation,
-            city.voxels.meta.meshsize,
-            land_cover_source,
-            rect if rect is not None else [(0.0, 0.0)] * 4,
+            city,
             output_directory=out_dir,
             **kwargs,
         )

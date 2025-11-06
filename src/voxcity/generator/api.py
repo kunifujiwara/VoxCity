@@ -4,7 +4,7 @@ import numpy as np
 from ..models import PipelineConfig
 from .pipeline import VoxCityPipeline
 from .grids import get_land_cover_grid
-from .io import save_voxcity_data
+from .io import save_voxcity
 
 from ..downloader.citygml import load_buid_dem_veg_from_citygml
 from ..downloader.mbfp import get_mbfp_gdf
@@ -39,31 +39,32 @@ _SOURCE_URLS = {
     'Flat': None,
     # Buildings
     'Microsoft Building Footprints': 'https://github.com/microsoft/GlobalMLBuildingFootprints',
-    'Open Building 2.5D Temporal': 'https://sites.research.google/open-buildings/',
+    'Open Building 2.5D Temporal': 'https://sites.research.google/gr/open-buildings/temporal/',
     'EUBUCCO v0.1': 'https://eubucco.com/',
     'Overture': 'https://overturemaps.org/',
-    'GBA': 'https://global-building-atlas.org/',
-    'Global Building Atlas': 'https://global-building-atlas.org/',
-    'England 1m DSM - DTM': 'https://environment.data.gov.uk/DefraDataDownload/',
-    'Netherlands 0.5m DSM - DTM': 'https://www.ahn.nl/',
+    'GBA': 'https://gee-community-catalog.org/projects/gba/',
+    'Global Building Atlas': 'https://gee-community-catalog.org/projects/gba/',
+    'England 1m DSM - DTM': 'https://developers.google.com/earth-engine/datasets/catalog/UK_EA_ENGLAND_1M_TERRAIN_2022',
+    'Netherlands 0.5m DSM - DTM': 'https://developers.google.com/earth-engine/datasets/catalog/AHN_AHN4',
     # Land cover
-    'OpenEarthMapJapan': 'https://open-earth-map.org/',
-    'Urbanwatch': 'https://developers.google.com/earth-engine/datasets/catalog/projects_sat-io_open-datasets_HRLC_urban-watch-cities',
-    'ESA WorldCover': 'https://esa-worldcover.org/en',
-    'ESRI 10m Annual Land Cover': 'https://livingatlas.arcgis.com/landcover/',
-    'Dynamic World V1': 'https://dynamicworld.app/',
+    'OpenEarthMapJapan': 'https://www.open-earth-map.org/demo/Japan/leaflet.html',
+    'Urbanwatch': 'https://gee-community-catalog.org/projects/urban-watch/',
+    'ESA WorldCover': 'https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200',
+    'ESRI 10m Annual Land Cover': 'https://gee-community-catalog.org/projects/S2TSLULC/',
+    'Dynamic World V1': 'https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1',
     # Canopy height
-    'High Resolution 1m Global Canopy Height Maps': 'https://ai.meta.com/resources/canopy-height-maps/',
-    'ETH Global Sentinel-2 10m Canopy Height (2020)': 'https://doi.org/10.1038/s41597-021-01011-7',
+    'High Resolution 1m Global Canopy Height Maps': 'https://gee-community-catalog.org/projects/meta_trees/',
+    'ETH Global Sentinel-2 10m Canopy Height (2020)': 'https://gee-community-catalog.org/projects/canopy/',
     'Static': None,
     # DEM
-    'USGS 3DEP 1m': 'https://www.usgs.gov/3d-elevation-program',
-    'England 1m DTM': 'https://environment.data.gov.uk/DefraDataDownload/',
-    'DEM France 1m': 'https://geoservices.ign.fr/rgealti',
-    'DEM France 5m': 'https://geoservices.ign.fr/rgealti',
-    'AUSTRALIA 5M DEM': 'https://elevation.fsdf.org.au/',
-    'Netherlands 0.5m DTM': 'https://www.ahn.nl/',
+    'USGS 3DEP 1m': 'https://developers.google.com/earth-engine/datasets/catalog/USGS_3DEP_1m',
+    'England 1m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/UK_EA_ENGLAND_1M_TERRAIN_2022',
+    'DEM France 1m': 'https://developers.google.com/earth-engine/datasets/catalog/IGN_RGE_ALTI_1M_2_0',
+    'DEM France 5m': 'https://gee-community-catalog.org/projects/france5m/',
+    'AUSTRALIA 5M DEM': 'https://developers.google.com/earth-engine/datasets/catalog/AU_GA_AUSTRALIA_5M_DEM',
+    'Netherlands 0.5m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/AHN_AHN4',
     'FABDEM': 'https://gee-community-catalog.org/projects/fabdem/',
+    'DeltaDTM': 'https://gee-community-catalog.org/projects/delta_dtm/',
 }
 
 def _url_for_source(name):
@@ -327,7 +328,116 @@ def get_voxcity_auto(rectangle_vertices, meshsize, building_gdf=None, terrain_gd
 
     return city
 
-def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_height_source, dem_source, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
+def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_source=None, canopy_height_source=None, dem_source=None, building_complementary_source=None, building_gdf=None, terrain_gdf=None, **kwargs):
+    """
+    Generate a VoxCity model with automatic or custom data source selection.
+    
+    This function supports both auto mode and custom mode:
+    - Auto mode: When sources are not specified (None), they are automatically selected based on location
+    - Custom mode: When sources are explicitly specified, they are used as-is
+    - Hybrid mode: Specify some sources and auto-select others
+    
+    Args:
+        rectangle_vertices: List of (lon, lat) tuples defining the area of interest
+        meshsize: Grid resolution in meters (required)
+        building_source: Building base source (default: auto-selected based on location)
+        land_cover_source: Land cover source (default: auto-selected based on location)
+        canopy_height_source: Canopy height source (default: auto-selected based on location)
+        dem_source: Digital elevation model source (default: auto-selected based on location)
+        building_complementary_source: Building complementary source (default: auto-selected based on location)
+        building_gdf: Optional pre-loaded building GeoDataFrame
+        terrain_gdf: Optional pre-loaded terrain GeoDataFrame
+        **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O
+    
+    Returns:
+        VoxCity object containing the generated 3D city model
+    """
+    
+    # Check if building_complementary_source was provided via kwargs (for backward compatibility)
+    if building_complementary_source is None and 'building_complementary_source' in kwargs:
+        building_complementary_source = kwargs.pop('building_complementary_source')
+    
+    # Determine if we need to auto-select any sources
+    sources_to_select = []
+    if building_source is None:
+        sources_to_select.append('building_source')
+    if land_cover_source is None:
+        sources_to_select.append('land_cover_source')
+    if canopy_height_source is None:
+        sources_to_select.append('canopy_height_source')
+    if dem_source is None:
+        sources_to_select.append('dem_source')
+    if building_complementary_source is None:
+        sources_to_select.append('building_complementary_source')
+    
+    # Auto-select missing sources if needed
+    if sources_to_select:
+        _logger.info("Auto-selecting data sources for: %s", ", ".join(sources_to_select))
+        auto_sources = auto_select_data_sources(rectangle_vertices)
+        
+        # Check Earth Engine availability for auto-selected sources
+        ee_available = True
+        try:
+            from ..downloader.gee import initialize_earth_engine
+            initialize_earth_engine()
+        except Exception:
+            ee_available = False
+        
+        if not ee_available:
+            # Downgrade EE-dependent sources
+            if auto_sources['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan'):
+                auto_sources['land_cover_source'] = 'OpenStreetMap'
+            auto_sources['canopy_height_source'] = 'Static'
+            auto_sources['dem_source'] = 'Flat'
+            ee_dependent_comp = {
+                'Open Building 2.5D Temporal',
+                'England 1m DSM - DTM',
+                'Netherlands 0.5m DSM - DTM',
+            }
+            if auto_sources.get('building_complementary_source') in ee_dependent_comp:
+                auto_sources['building_complementary_source'] = 'Microsoft Building Footprints'
+        
+        # Apply auto-selected sources only where not specified
+        if building_source is None:
+            building_source = auto_sources['building_source']
+        if land_cover_source is None:
+            land_cover_source = auto_sources['land_cover_source']
+        if canopy_height_source is None:
+            canopy_height_source = auto_sources['canopy_height_source']
+        if dem_source is None:
+            dem_source = auto_sources['dem_source']
+        if building_complementary_source is None:
+            building_complementary_source = auto_sources.get('building_complementary_source', 'None')
+        
+        # Auto-set complement height if not provided
+        if 'building_complement_height' not in kwargs:
+            kwargs['building_complement_height'] = 10
+        
+        # Log selected sources
+        try:
+            _logger.info("Selected data sources:")
+            b_base_url = _url_for_source(building_source)
+            _logger.info("- Buildings(base)=%s%s", building_source, f" | {b_base_url}" if b_base_url else "")
+            b_comp_url = _url_for_source(building_complementary_source)
+            _logger.info("- Buildings(comp)=%s%s", building_complementary_source, f" | {b_comp_url}" if b_comp_url else "")
+            lc_url = _url_for_source(land_cover_source)
+            _logger.info("- LandCover=%s%s", land_cover_source, f" | {lc_url}" if lc_url else "")
+            canopy_url = _url_for_source(canopy_height_source)
+            _logger.info("- Canopy=%s%s", canopy_height_source, f" | {canopy_url}" if canopy_url else "")
+            dem_url = _url_for_source(dem_source)
+            _logger.info("- DEM=%s%s", dem_source, f" | {dem_url}" if dem_url else "")
+            _logger.info("- ComplementHeight=%s", kwargs.get('building_complement_height'))
+        except Exception:
+            pass
+    
+    # Ensure building_complementary_source is passed through kwargs
+    if building_complementary_source is not None:
+        kwargs['building_complementary_source'] = building_complementary_source
+    
+    # Default DEM interpolation to True unless explicitly provided
+    if 'dem_interpolation' not in kwargs:
+        kwargs['dem_interpolation'] = True
+    
     output_dir = kwargs.get("output_dir", "output")
     # Group incoming kwargs into structured options for consistency
     land_cover_keys = {
@@ -385,19 +495,7 @@ def get_voxcity(rectangle_vertices, building_source, land_cover_source, canopy_h
     _save_flag = io_options.get("save_voxcity_data", kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True)))
     if _save_flag:
         save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl"))
-        save_voxcity_data(
-            save_path,
-            city.voxels.classes,
-            city.buildings.heights,
-            city.buildings.min_heights,
-            city.buildings.ids,
-            city.tree_canopy.top,
-            city.land_cover.classes,
-            city.dem.elevation,
-            city.extras.get("building_gdf"),
-            meshsize,
-            rectangle_vertices,
-        )
+        save_voxcity(save_path, city)
 
     return city
 
@@ -643,19 +741,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     _save_flag = kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True))
     if _save_flag:
         save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity_data.pkl")
-        save_voxcity_data(
-            save_path,
-            city.voxels.classes,
-            city.buildings.heights,
-            city.buildings.min_heights,
-            city.buildings.ids,
-            city.extras.get("canopy_top"),
-            city.land_cover.classes,
-            city.dem.elevation,
-            building_gdf,
-            meshsize,
-            rectangle_vertices,
-        )
+        save_voxcity(save_path, city)
 
     return city
 

@@ -270,8 +270,8 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
     4. Progress reporting
     
     Args:
-        array (numpy.ndarray): 3D array containing voxel data.
-            Values should correspond to keys in voxel_color_map.
+        array (numpy.ndarray | VoxCity): 3D array containing voxel data or a VoxCity instance.
+            When a VoxCity is provided, its voxel classes are exported.
         output_dir (str): Directory to save the .vox files.
             Will be created if it doesn't exist.
         base_filename (str, optional): Base name for the output files.
@@ -285,6 +285,14 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
         - Color mapping is optimized and made sequential
         - Progress information is printed to stdout
     """
+    # Accept VoxCity instance as first argument
+    try:
+        from ..models import VoxCity as _VoxCity
+        if isinstance(array, _VoxCity):
+            array = array.voxels.classes
+    except Exception:
+        pass
+
     # Use default color map if none provided
     if voxel_color_map is None:
         voxel_color_map = get_voxel_color_map()

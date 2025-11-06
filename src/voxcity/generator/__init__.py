@@ -22,7 +22,7 @@ from .voxelizer import (
     BUILDING_CODE,
 )
 from .pipeline import VoxCityPipeline
-from .io import save_voxcity_data, load_voxcity
+from .io import save_voxcity, load_voxcity
 
 __all__ = [
     "get_voxcity",
@@ -36,7 +36,7 @@ __all__ = [
     "TREE_CODE",
     "BUILDING_CODE",
     "VoxCityPipeline",
-    "save_voxcity_data",
+    "save_voxcity",
     "load_voxcity",
 ]
 
