@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from astral import Observer
 from astral.sun import elevation, azimuth
-from ..view import trace_ray_generic
+from ..visibility.raytracing import trace_ray_generic
 
 # Geometry kernel: direct visibility with tree transmittance
 @njit(parallel=True)

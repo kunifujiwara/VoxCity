@@ -12,7 +12,7 @@ from ...utils.weather import (
 )
 from .radiation import get_global_solar_irradiance_map, get_building_solar_irradiance
 from .temporal import get_cumulative_global_solar_irradiance, get_cumulative_building_solar_irradiance
-from ..view import get_surface_view_factor
+from ..visibility import get_surface_view_factor
 
 
 def get_global_solar_irradiance_using_epw(

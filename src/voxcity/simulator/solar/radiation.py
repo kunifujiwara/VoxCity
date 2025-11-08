@@ -8,7 +8,8 @@ from numba import njit, prange
 
 from ...models import VoxCity
 from ...exporter.obj import grid_to_obj
-from ..view import get_sky_view_factor_map, trace_ray_generic
+from ..visibility import get_sky_view_factor_map
+from ..visibility.raytracing import trace_ray_generic
 from .geometry import compute_direct_solar_irradiance_map_binary
 
 
