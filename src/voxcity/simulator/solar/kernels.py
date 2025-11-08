@@ -1,15 +1,12 @@
 """
-Stage 1: Visibility & geometric analysis.
+Numba kernels and low-level computation utilities for solar simulation.
 """
 
 from numba import njit, prange
 import numpy as np
-import pandas as pd
-from astral import Observer
-from astral.sun import elevation, azimuth
-from ..visibility.raytracing import trace_ray_generic
+from ..common.raytracing import trace_ray_generic
 
-# Geometry kernel: direct visibility with tree transmittance
+
 @njit(parallel=True)
 def compute_direct_solar_irradiance_map_binary(
     voxel_data,
@@ -24,7 +21,6 @@ def compute_direct_solar_irradiance_map_binary(
     """
     Return 2D transmittance map (0..1, NaN invalid) for direct beam along sun_direction.
     """
-
     view_height_voxel = int(view_point_height / meshsize)
     nx, ny, nz = voxel_data.shape
     irradiance_map = np.full((nx, ny), np.nan, dtype=np.float64)
@@ -62,19 +58,5 @@ def compute_direct_solar_irradiance_map_binary(
             if not found_observer:
                 irradiance_map[x, y] = np.nan
     return np.flipud(irradiance_map)
-
-
-def get_solar_positions_astral(times, lon, lat):
-    """
-    Compute solar azimuth and elevation using Astral for given times and location.
-    """
-    observer = Observer(latitude=lat, longitude=lon)
-    df_pos = pd.DataFrame(index=times, columns=['azimuth', 'elevation'], dtype=float)
-    for t in times:
-        el = elevation(observer=observer, dateandtime=t)
-        az = azimuth(observer=observer, dateandtime=t)
-        df_pos.at[t, 'elevation'] = el
-        df_pos.at[t, 'azimuth'] = az
-    return df_pos
 
 

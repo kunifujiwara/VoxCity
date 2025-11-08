@@ -9,7 +9,7 @@ from .landmark import (
     get_landmark_visibility_map,
     get_surface_landmark_visibility,
 )
-from .geometry import (
+from ..common.geometry import (
     rotate_vector_axis_angle,
 )
 

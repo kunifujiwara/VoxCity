@@ -1,10 +1,10 @@
 import numpy as np
 
-from .geometry import (
+from ..common.geometry import (
     _generate_ray_directions_grid,
     _generate_ray_directions_fibonacci,
 )
-from .raytracing import (
+from ..common.raytracing import (
     compute_vi_map_generic,
     _prepare_masks_for_vi,
     _compute_vi_map_generic_fast,
@@ -161,7 +161,7 @@ def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
 
 # Surface view-factor (kept here for API; implementation uses local fast path if available)
 import math
-from .geometry import _build_face_basis, rotate_vector_axis_angle
+from ..common.geometry import _build_face_basis, rotate_vector_axis_angle
 from numba import njit, prange
 
 
@@ -365,7 +365,7 @@ def compute_view_factor_for_all_faces(face_centers, face_normals, hemisphere_dir
                 valid_dirs_arr[out_idx, 2] = dvec[2]
                 out_idx += 1
         ray_origin = (center / meshsize) + (normal / norm_n) * offset_vox
-        from .raytracing import compute_vi_generic  # local import for numba friendliness
+        from ..common.raytracing import compute_vi_generic  # local import for numba friendliness
         vf = compute_vi_generic(
             ray_origin,
             voxel_data,
@@ -488,7 +488,7 @@ This module re-exports selected public APIs:
 - landmark: landmark visibility utilities
 """
 
-from .raytracing import (
+from ..common.raytracing import (
     compute_vi_generic,
     compute_vi_map_generic,
 )

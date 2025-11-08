@@ -85,7 +85,7 @@ def get_global_solar_irradiance_using_epw(
         df_local.index = df_local.index.tz_localize(local_tz)
         df_utc = df_local.tz_convert(pytz.UTC)
 
-        from .geometry import get_solar_positions_astral
+        from .temporal import get_solar_positions_astral
 
         solar_positions = get_solar_positions_astral(df_utc.index, lon, lat)
         DNI = float(df_utc.iloc[0]["DNI"]) * direct_normal_irradiance_scaling
@@ -251,7 +251,7 @@ def get_building_global_solar_irradiance_using_epw(*args, **kwargs):
         df_local.index = df_local.index.tz_localize(local_tz)
         df_utc = df_local.tz_convert(pytz.UTC)
 
-        from .geometry import get_solar_positions_astral
+        from .temporal import get_solar_positions_astral
         solar_positions = get_solar_positions_astral(df_utc.index, lon, lat)
         DNI = float(df_utc.iloc[0]['DNI']) * direct_normal_irradiance_scaling
         DHI = float(df_utc.iloc[0]['DHI']) * diffuse_irradiance_scaling

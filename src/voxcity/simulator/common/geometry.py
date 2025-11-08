@@ -95,3 +95,4 @@ def _build_face_basis(normal):
     v = np.array((vx, vy, vz))
     return u, v, n
 
+

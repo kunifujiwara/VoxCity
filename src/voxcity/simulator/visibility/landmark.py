@@ -201,7 +201,7 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
 
 # Surface landmark visibility (fast, chunked)
 import math
-from .raytracing import _trace_ray
+from ..common.raytracing import _trace_ray
 
 
 def _prepare_voxel_classes(voxel_data, landmark_value=-30):

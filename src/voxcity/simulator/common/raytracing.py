@@ -447,3 +447,4 @@ def _trace_ray(vox_is_tree, vox_is_opaque, origin, target, att, att_cutoff):
             else:
                 t_max_z += t_delta_z; k += step_z
 
+

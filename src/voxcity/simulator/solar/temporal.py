@@ -11,7 +11,6 @@ import numba
 
 from ...models import VoxCity
 from ...exporter.obj import grid_to_obj
-from .geometry import get_solar_positions_astral
 from .radiation import (
     get_direct_solar_irradiance_map,
     get_diffuse_solar_irradiance_map,
@@ -19,6 +18,24 @@ from .radiation import (
     get_building_solar_irradiance,
 )
 
+
+def get_solar_positions_astral(times, lon, lat):
+    """
+    Compute solar azimuth and elevation for given times and location using Astral.
+    Returns a DataFrame indexed by times with columns ['azimuth', 'elevation'] (degrees).
+    """
+    import pandas as pd
+    from astral import Observer
+    from astral.sun import elevation, azimuth
+
+    observer = Observer(latitude=lat, longitude=lon)
+    df_pos = pd.DataFrame(index=times, columns=['azimuth', 'elevation'], dtype=float)
+    for t in times:
+        el = elevation(observer=observer, dateandtime=t)
+        az = azimuth(observer=observer, dateandtime=t)
+        df_pos.at[t, 'elevation'] = el
+        df_pos.at[t, 'azimuth'] = az
+    return df_pos
 
 def _configure_num_threads(desired_threads=None, progress=False):
     try:

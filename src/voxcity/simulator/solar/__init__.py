@@ -3,15 +3,17 @@ Solar Irradiance Simulation Package
 
 Public API exports for the refactored solar simulator. The implementation
 is decomposed into focused stages:
-1) geometry.py   - Visibility and geometric analysis
+1) kernels.py    - Low-level kernels for visibility/irradiance
 2) radiation.py  - Physics: convert geometry to irradiance
-3) temporal.py   - Time-series integration and scheduling
+3) temporal.py   - Time-series integration and solar position
 4) integration.py- High-level workflows and I/O
 """
 
-# Stage 1: Geometry
-from .geometry import (  # noqa: F401
+# Stage 1: Kernels / Solar position
+from .kernels import (  # noqa: F401
     compute_direct_solar_irradiance_map_binary,
+)
+from .temporal import (  # noqa: F401
     get_solar_positions_astral,
 )
 

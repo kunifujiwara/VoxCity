@@ -21,7 +21,7 @@ from .visibility.landmark import (
     get_landmark_visibility_map,
     get_surface_landmark_visibility,
 )
-from .visibility.geometry import rotate_vector_axis_angle
+from .common.geometry import rotate_vector_axis_angle
 
 __all__ = [
     "get_view_index",
