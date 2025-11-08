@@ -242,92 +242,6 @@ def auto_select_data_sources(rectangle_vertices):
     }
 
 
-def get_voxcity_auto(rectangle_vertices, meshsize, building_gdf=None, terrain_gdf=None, **kwargs):
-    """
-    Convenience wrapper that auto-selects sources from rectangle_vertices and
-    calls get_voxcity. Additional kwargs are forwarded as-is.
-    """
-    selection = auto_select_data_sources(rectangle_vertices)
-    building_source = selection['building_source']
-    land_cover_source = selection['land_cover_source']
-    canopy_height_source = selection['canopy_height_source']
-    dem_source = selection['dem_source']
-    # Detect Earth Engine availability; if unavailable, downgrade to EE-free sources
-    ee_available = True
-    try:
-        from ..downloader.gee import initialize_earth_engine
-        initialize_earth_engine()
-    except Exception:
-        ee_available = False
-
-    if not ee_available:
-        # Land cover: prefer OpenEarthMapJapan if already set; else OSM
-        if selection['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan'):
-            selection['land_cover_source'] = 'OpenStreetMap'
-        # Canopy: static
-        selection['canopy_height_source'] = 'Static'
-        # DEM: flat
-        selection['dem_source'] = 'Flat'
-        # Building complementary: avoid EE-dependent options
-        ee_dependent_comp = {
-            'Open Building 2.5D Temporal',
-            'England 1m DSM - DTM',
-            'Netherlands 0.5m DSM - DTM',
-        }
-        if selection.get('building_complementary_source') in ee_dependent_comp:
-            # Prefer MSBF where commonly available; else None
-            selection['building_complementary_source'] = 'Microsoft Building Footprints'
-
-    # Ensure complementary source is respected
-    kwargs = dict(kwargs)
-    if 'building_complementary_source' not in kwargs:
-        kwargs['building_complementary_source'] = selection['building_complementary_source']
-    # Ensure missing building heights are complemented to 10 m
-    if 'building_complement_height' not in kwargs:
-        kwargs['building_complement_height'] = 10
-    # Default DEM interpolation to True unless explicitly provided
-    if 'dem_interpolation' not in kwargs:
-        kwargs['dem_interpolation'] = True
-    # Log explicit selection for user visibility (one line per source with URL)
-    try:
-        _logger.info("Selected data sources:")
-        b_base_url = _url_for_source(building_source)
-        _logger.info("- Buildings(base)=%s%s", building_source, f" | {b_base_url}" if b_base_url else "")
-        b_comp = kwargs.get('building_complementary_source')
-        b_comp_url = _url_for_source(b_comp)
-        _logger.info("- Buildings(comp)=%s%s", b_comp, f" | {b_comp_url}" if b_comp_url else "")
-        lc_url = _url_for_source(land_cover_source)
-        _logger.info("- LandCover=%s%s", land_cover_source, f" | {lc_url}" if lc_url else "")
-        canopy_url = _url_for_source(canopy_height_source)
-        _logger.info("- Canopy=%s%s", canopy_height_source, f" | {canopy_url}" if canopy_url else "")
-        dem_url = _url_for_source(dem_source)
-        _logger.info("- DEM=%s%s", dem_source, f" | {dem_url}" if dem_url else "")
-        _logger.info("- ComplementHeight=%s", kwargs.get('building_complement_height'))
-    except Exception:
-        pass
-
-    city = get_voxcity(
-        rectangle_vertices,
-        building_source,
-        land_cover_source,
-        canopy_height_source,
-        dem_source,
-        meshsize,
-        building_gdf=building_gdf,
-        terrain_gdf=terrain_gdf,
-        **kwargs,
-    )
-
-    # Attach selected sources to extras for downstream consumers
-    try:
-        selection_payload = dict(selection)
-        selection_payload['building_complement_height'] = kwargs.get('building_complement_height')
-        city.extras['selected_sources'] = selection_payload
-    except Exception:
-        pass
-
-    return city
-
 def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_source=None, canopy_height_source=None, dem_source=None, building_complementary_source=None, building_gdf=None, terrain_gdf=None, **kwargs):
     """
     Generate a VoxCity model with automatic or custom data source selection.
@@ -496,6 +410,19 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     if _save_flag:
         save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity.pkl"))
         save_voxcity(save_path, city)
+
+    # Attach selected sources (final resolved) to extras for downstream consumers
+    try:
+        city.extras['selected_sources'] = {
+            'building_source': building_source,
+            'building_complementary_source': building_complementary_source or 'None',
+            'land_cover_source': land_cover_source,
+            'canopy_height_source': canopy_height_source,
+            'dem_source': dem_source,
+            'building_complement_height': kwargs.get('building_complement_height'),
+        }
+    except Exception:
+        pass
 
     return city
 

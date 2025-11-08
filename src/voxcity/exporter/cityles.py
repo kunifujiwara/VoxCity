@@ -371,7 +371,7 @@ def export_dem(dem_grid, output_path):
                 f.write(f"{i_1based} {j_1based} {elevation:.1f}\n")
 
 
-def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type='default', building_height_grid=None, canopy_bottom_height_grid=None):
+def export_vmap(canopy_height_grid, output_path, trunk_height_ratio=0.3, tree_type='default', building_height_grid=None, canopy_bottom_height_grid=None):
     """
     Export vmap.txt file for CityLES
     
@@ -381,7 +381,7 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
         2D array of canopy heights
     output_path : Path
         Output directory path
-    tree_base_ratio : float
+    trunk_height_ratio : float
         Ratio of tree base height to total canopy height
     tree_type : str
         Tree type for mapping
@@ -415,7 +415,7 @@ def export_vmap(canopy_height_grid, output_path, tree_base_ratio=0.3, tree_type=
                 if canopy_bottom_height_grid is not None:
                     lower_height = float(np.clip(canopy_bottom_height_grid[j, i], 0.0, total_height))
                 else:
-                    lower_height = total_height * tree_base_ratio
+                    lower_height = total_height * trunk_height_ratio
                 upper_height = total_height
                 # Format: i j lower_height upper_height tree_type
                 f.write(f"{i_1based} {j_1based} {lower_height:.1f} {upper_height:.1f} {tree_code}\n")
@@ -465,7 +465,7 @@ def export_cityles(city: VoxCity,
                    output_directory: str = "output/cityles",
                    building_material: str = 'default',
                    tree_type: str = 'default',
-                   tree_base_ratio: float = 0.3,
+                   trunk_height_ratio: float = 0.3,
                    canopy_bottom_height_grid=None,
                    under_tree_class_name: str = 'Bareland',
                    under_tree_cityles_code=None,
@@ -498,7 +498,7 @@ def export_cityles(city: VoxCity,
         Building material type for mapping
     tree_type : str
         Tree type for mapping
-    tree_base_ratio : float
+    trunk_height_ratio : float
         Ratio of tree base height to total canopy height
     **kwargs : dict
         Additional parameters (for compatibility)
@@ -548,7 +548,7 @@ def export_cityles(city: VoxCity,
     export_dem(dem_grid, output_path)
     
     print("\nExporting vmap.txt...")
-    export_vmap(canopy_height_grid, output_path, tree_base_ratio, tree_type, building_height_grid=building_height_grid, canopy_bottom_height_grid=canopy_bottom_height_grid)
+    export_vmap(canopy_height_grid, output_path, trunk_height_ratio, tree_type, building_height_grid=building_height_grid, canopy_bottom_height_grid=canopy_bottom_height_grid)
     
     print("\nExporting lonlat.txt...")
     export_lonlat(rectangle_vertices, building_height_grid.shape, output_path)

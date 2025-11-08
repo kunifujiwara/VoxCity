@@ -8,7 +8,7 @@ Orientation contract:
 - 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
 """
 
-from .api import get_voxcity, get_voxcity_CityGML
+from .api import get_voxcity, get_voxcity_CityGML, auto_select_data_sources
 from .grids import (
     get_land_cover_grid,
     get_building_height_grid,
@@ -26,6 +26,7 @@ from .io import save_voxcity, load_voxcity
 
 __all__ = [
     "get_voxcity",
+    "auto_select_data_sources",
     "get_voxcity_CityGML",
     "get_land_cover_grid",
     "get_building_height_grid",

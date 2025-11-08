@@ -31,8 +31,16 @@ def load_voxcity(input_path):
     from ..models import GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid, VoxCity
 
     with open(input_path, 'rb') as f:
-        d = pickle.load(f)
+        obj = pickle.load(f)
 
+    # New format: the entire VoxCity object (optionally wrapped)
+    if isinstance(obj, VoxCity):
+        return obj
+    if isinstance(obj, dict) and obj.get('__format__') == 'voxcity.v2' and isinstance(obj.get('voxcity'), VoxCity):
+        return obj['voxcity']
+
+    # Legacy dict format fallback
+    d = obj
     rv = d.get('rectangle_vertices') or []
     if rv:
         xs = [p[0] for p in rv]
@@ -66,10 +74,7 @@ def load_voxcity(input_path):
 
 
 def save_voxcity(output_path, city):
-    """Save a VoxCity instance to disk.
-
-    This is a simplified, object-centric alternative to save_voxcity_data.
-    """
+    """Save a VoxCity instance to disk, preserving the entire object."""
     import pickle
     import os
     from ..models import VoxCity as _VoxCity
@@ -79,20 +84,11 @@ def save_voxcity(output_path, city):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    data_dict = {
-        'voxcity_grid': city.voxels.classes,
-        'building_height_grid': city.buildings.heights,
-        'building_min_height_grid': city.buildings.min_heights,
-        'building_id_grid': city.buildings.ids,
-        'canopy_height_grid': getattr(city.tree_canopy, 'top', None) if city.tree_canopy is not None else None,
-        'land_cover_grid': city.land_cover.classes,
-        'dem_grid': city.dem.elevation,
-        'building_gdf': city.extras.get('building_gdf'),
-        'meshsize': city.voxels.meta.meshsize,
-        'rectangle_vertices': city.extras.get('rectangle_vertices')
-    }
-
     with open(output_path, 'wb') as f:
-        pickle.dump(data_dict, f)
+        payload = {
+            '__format__': 'voxcity.v2',
+            'voxcity': city,
+        }
+        pickle.dump(payload, f)
 
     print(f"Voxcity data saved to {output_path}")
