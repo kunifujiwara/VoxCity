@@ -99,8 +99,9 @@ def vectorized_edge_values(G, polygons_gdf, value_col='value'):
 
 def get_network_values(
     grid,
-    rectangle_vertices,
-    meshsize,
+    rectangle_vertices=None,
+    meshsize=None,
+    voxcity=None,
     value_name='value',
     **kwargs
 ):
@@ -115,10 +116,13 @@ def get_network_values(
     ----------
     grid : array-like or geopandas.GeoDataFrame
         Either a grid array of values or a pre-built GeoDataFrame with polygons and values.
-    rectangle_vertices : list of tuples
+    rectangle_vertices : list of tuples, optional
         List of (lon, lat) coordinates defining the bounding rectangle in EPSG:4326.
-    meshsize : float
-        Size of each grid cell (used only if grid is array-like).
+        Optional if `voxcity` is provided.
+    meshsize : float, optional
+        Size of each grid cell (used only if grid is array-like). Optional if `voxcity` is provided.
+    voxcity : VoxCity, optional
+        VoxCity object from which `rectangle_vertices` and `meshsize` will be derived if not supplied.
     value_name : str, default='value'
         Name to use for the edge attribute storing computed values.
     **kwargs : dict
@@ -161,6 +165,31 @@ def get_network_values(
         'save_path': None
     }
     settings = {**defaults, **kwargs}
+
+    # Derive geometry parameters from VoxCity if supplied (inline to avoid extra helper)
+    if voxcity is not None:
+        derived_rv = None
+        derived_meshsize = None
+        # Try extras['rectangle_vertices'] when available
+        if hasattr(voxcity, "extras") and isinstance(voxcity.extras, dict):
+            derived_rv = voxcity.extras.get("rectangle_vertices")
+        # Pull meshsize and bounds from voxels.meta
+        voxels = getattr(voxcity, "voxels", None)
+        meta = getattr(voxels, "meta", None) if voxels is not None else None
+        if meta is not None:
+            derived_meshsize = getattr(meta, "meshsize", None)
+            if derived_rv is None:
+                bounds = getattr(meta, "bounds", None)
+                if bounds is not None:
+                    west, south, east, north = bounds
+                    derived_rv = [(west, south), (west, north), (east, north), (east, south)]
+        if rectangle_vertices is None:
+            rectangle_vertices = derived_rv
+        if meshsize is None:
+            meshsize = derived_meshsize
+
+    if rectangle_vertices is None:
+        raise ValueError("rectangle_vertices must be provided, either directly or via `voxcity`.")
 
     # Build polygons GDF if needed
     polygons_gdf = (grid if isinstance(grid, gpd.GeoDataFrame) 
