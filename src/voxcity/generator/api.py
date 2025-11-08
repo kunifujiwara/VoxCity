@@ -326,23 +326,6 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         # Auto-set complement height if not provided
         if 'building_complement_height' not in kwargs:
             kwargs['building_complement_height'] = 10
-        
-        # Log selected sources
-        try:
-            _logger.info("Selected data sources:")
-            b_base_url = _url_for_source(building_source)
-            _logger.info("- Buildings(base)=%s%s", building_source, f" | {b_base_url}" if b_base_url else "")
-            b_comp_url = _url_for_source(building_complementary_source)
-            _logger.info("- Buildings(comp)=%s%s", building_complementary_source, f" | {b_comp_url}" if b_comp_url else "")
-            lc_url = _url_for_source(land_cover_source)
-            _logger.info("- LandCover=%s%s", land_cover_source, f" | {lc_url}" if lc_url else "")
-            canopy_url = _url_for_source(canopy_height_source)
-            _logger.info("- Canopy=%s%s", canopy_height_source, f" | {canopy_url}" if canopy_url else "")
-            dem_url = _url_for_source(dem_source)
-            _logger.info("- DEM=%s%s", dem_source, f" | {dem_url}" if dem_url else "")
-            _logger.info("- ComplementHeight=%s", kwargs.get('building_complement_height'))
-        except Exception:
-            pass
     
     # Ensure building_complementary_source is passed through kwargs
     if building_complementary_source is not None:
@@ -351,6 +334,27 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     # Default DEM interpolation to True unless explicitly provided
     if 'dem_interpolation' not in kwargs:
         kwargs['dem_interpolation'] = True
+    
+    # Ensure default complement height even if all sources are user-specified
+    if 'building_complement_height' not in kwargs:
+        kwargs['building_complement_height'] = 10
+    
+    # Log selected data sources (always)
+    try:
+        _logger.info("Selected data sources:")
+        b_base_url = _url_for_source(building_source)
+        _logger.info("- Buildings(base)=%s%s", building_source, f" | {b_base_url}" if b_base_url else "")
+        b_comp_url = _url_for_source(building_complementary_source)
+        _logger.info("- Buildings(comp)=%s%s", building_complementary_source, f" | {b_comp_url}" if b_comp_url else "")
+        lc_url = _url_for_source(land_cover_source)
+        _logger.info("- LandCover=%s%s", land_cover_source, f" | {lc_url}" if lc_url else "")
+        canopy_url = _url_for_source(canopy_height_source)
+        _logger.info("- Canopy=%s%s", canopy_height_source, f" | {canopy_url}" if canopy_url else "")
+        dem_url = _url_for_source(dem_source)
+        _logger.info("- DEM=%s%s", dem_source, f" | {dem_url}" if dem_url else "")
+        _logger.info("- ComplementHeight=%s", kwargs.get('building_complement_height'))
+    except Exception:
+        pass
     
     output_dir = kwargs.get("output_dir", "output")
     # Group incoming kwargs into structured options for consistency

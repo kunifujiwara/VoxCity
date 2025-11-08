@@ -212,17 +212,6 @@ voxcity = get_voxcity(
     meshsize,
     **kwargs
 )
-
-# Access the generated grids and GeoDataFrame
-voxcity_grid = voxcity.voxels.classes
-building_height_grid = voxcity.buildings.heights
-building_min_height_grid = voxcity.buildings.min_heights
-building_id_grid = voxcity.buildings.ids
-canopy_height_grid = voxcity.tree_canopy.top
-canopy_bottom_height_grid = voxcity.tree_canopy.bottom
-land_cover_grid = voxcity.land_cover.classes
-dem_grid = voxcity.dem.elevation
-building_gdf = voxcity.extras.get('building_gdf')
 ```
 
 #### Option 2: Custom Mode
@@ -268,22 +257,36 @@ voxcity = get_voxcity(
 from voxcity.exporter.envimet import export_inx, generate_edb_file
 
 envimet_kwargs = {
-    "output_directory": "output",                     # Directory where output files will be saved
-    "author_name": "your name",                       # Name of the model author
-    "model_description": "generated with voxcity",  # Description text for the model
-    "domain_building_max_height_ratio": 2,            # Maximum ratio between domain height and tallest building height
-    "useTelescoping_grid": True,                      # Enable telescoping grid for better computational efficiency
-    "verticalStretch": 20,                            # Vertical grid stretching factor (%)
-    "min_grids_Z": 20,                                # Minimum number of vertical grid cells
-    "lad": 1.0                                        # Leaf Area Density (m2/m3) for vegetation modeling 
+    "output_directory": "output",            # Directory where output files will be saved
+    "file_basename": "voxcity",              # Base name (without extension) for INX
+    "author_name": "your name",              # Name of the model author
+    "model_description": "generated with voxcity",  # Description for the model
+    "domain_building_max_height_ratio": 2,   # Max ratio between domain height and tallest building
+    "useTelescoping_grid": True,             # Enable telescoping grid
+    "verticalStretch": 20,                   # Vertical grid stretching factor (%)
+    "min_grids_Z": 20,                       # Minimum number of vertical grid cells
+    "lad": 1.0                               # Leaf Area Density (m2/m3) for EDB generation
 }
 
-# If using auto mode, you can check selected sources in logs
-# For custom mode, use your specified land_cover_source
-land_cover_source = 'OpenStreetMap'  # Specify if needed for export
+# Optional: specify land cover source used for export (otherwise taken from voxcity.extras when available)
+land_cover_source = 'OpenStreetMap'
 
-export_inx(city.building_height_grid, city.building_id_grid, city.canopy_height_top, city.land_cover_grid, city.dem_grid, meshsize, land_cover_source, rectangle_vertices, **envimet_kwargs)
-generate_edb_file(**envimet_kwargs)
+# Export INX by passing the VoxCity object directly
+export_inx(
+    voxcity,
+    output_directory=envimet_kwargs["output_directory"],
+    file_basename=envimet_kwargs["file_basename"],
+    land_cover_source=land_cover_source,
+    author_name=envimet_kwargs["author_name"],
+    model_description=envimet_kwargs["model_description"],
+    domain_building_max_height_ratio=envimet_kwargs["domain_building_max_height_ratio"],
+    useTelescoping_grid=envimet_kwargs["useTelescoping_grid"],
+    verticalStretch=envimet_kwargs["verticalStretch"],
+    min_grids_Z=envimet_kwargs["min_grids_Z"],
+)
+
+# Generate plant database (EDB) for vegetation
+generate_edb_file(lad=envimet_kwargs["lad"])
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/envimet.png" alt="Generated 3D City Model on Envi-MET GUI" width="600">
@@ -299,8 +302,8 @@ from voxcity.exporter.obj import export_obj
 
 output_directory = "output"  # Directory where output files will be saved
 output_file_name = "voxcity" # Base name for the output OBJ file
-# export_obj signature: export_obj(array, output_dir, file_name, voxel_size, voxel_color_map=None)
-export_obj(city.voxcity_grid, output_directory, output_file_name, meshsize)
+# Pass the VoxCity object directly (voxel size inferred)
+export_obj(voxcity, output_directory, output_file_name)
 ```
 The generated OBJ files can be opened and rendered in the following 3D visualization software:
 
@@ -324,7 +327,8 @@ from voxcity.exporter.magicavoxel import export_magicavoxel_vox
 
 output_path = "output"
 base_filename = "voxcity"
-export_magicavoxel_vox(city.voxcity_grid, output_path, base_filename=base_filename)
+# Pass the VoxCity object directly
+export_magicavoxel_vox(voxcity, output_path, base_filename=base_filename)
 ```
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" alt="Generated 3D City Model on MagicaVoxel GUI" width="600">
