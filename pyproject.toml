@@ -58,6 +58,7 @@ lxml = "*"
 scikit-learn = "*"
 xarray = "*"
 netCDF4 = "*"
+nbformat = "*"
 
 [tool.poetry.group.dev.dependencies]
 coverage = "*"

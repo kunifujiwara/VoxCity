@@ -442,12 +442,14 @@ def visualize_voxcity_plotly(
     return None
 
 
-def create_multi_view_scene(meshes, output_directory="output", projection_type="perspective", distance_factor=1.0):
+def create_multi_view_scene(meshes, output_directory="output", projection_type="perspective", distance_factor=1.0,
+                            image_size: "tuple[int, int] | None" = None):
     """
     Creates multiple rendered views of 3D city meshes from different camera angles.
     """
     if pv is None:
         raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
+    # NOTE: image_size is now supported via Plotter.window_size when invoked from renderer
     pv_meshes = {}
     for class_id, mesh in meshes.items():
         if mesh is None or len(mesh.vertices) == 0 or len(mesh.faces) == 0:
@@ -505,7 +507,7 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
 
     images = []
     for view_name, camera_pos in camera_positions.items():
-        plotter = pv.Plotter(off_screen=True)
+        plotter = pv.Plotter(off_screen=True, window_size=image_size if image_size is not None else None)
         if projection_type.lower() == "orthographic":
             plotter.enable_parallel_projection()
             plotter.camera.parallel_scale = diagonal * 0.4 * distance_factor
@@ -522,11 +524,146 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
     return images
 
 
+def create_rotation_view_scene(
+    meshes,
+    output_directory: str = "output",
+    projection_type: str = "perspective",
+    distance_factor: float = 1.0,
+    frames_per_segment: int = 60,
+    close_loop: bool = False,
+    file_prefix: str = "city_rotation",
+    image_size: "tuple[int, int] | None" = None,
+):
+    """
+    Creates a sequence of rendered frames forming a smooth isometric rotation that
+    passes through: iso_front_right -> iso_front_left -> iso_back_left -> iso_back_right.
+
+    Parameters
+    ----------
+    meshes : dict[Any, trimesh.Trimesh]
+        Dictionary of trimesh meshes keyed by class/label.
+    output_directory : str
+        Directory to save frames.
+    projection_type : str
+        "perspective" or "orthographic".
+    distance_factor : float
+        Camera distance multiplier.
+    frames_per_segment : int
+        Number of frames between each consecutive isometric anchor.
+    close_loop : bool
+        If True, also generates frames to return from iso_back_right to iso_front_right.
+    file_prefix : str
+        Prefix for saved frame filenames.
+
+    Returns
+    -------
+    list[str]
+        List of saved frame file paths in order.
+    """
+    if pv is None:
+        raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
+
+    os.makedirs(output_directory, exist_ok=True)
+
+    # Prepare PyVista meshes
+    pv_meshes = {}
+    for class_id, mesh in meshes.items():
+        if mesh is None or len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+            continue
+        faces = np.hstack([[3, *face] for face in mesh.faces])
+        pv_mesh = pv.PolyData(mesh.vertices, faces)
+        colors = getattr(mesh.visual, 'face_colors', None)
+        if colors is not None:
+            colors = np.asarray(colors)
+            if colors.size and colors.max() > 1:
+                colors = colors / 255.0
+            pv_mesh.cell_data['colors'] = colors
+        pv_meshes[class_id] = pv_mesh
+
+    # Compute scene bounds
+    min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
+    max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+    for mesh in meshes.values():
+        if mesh is None or len(mesh.vertices) == 0:
+            continue
+        v = mesh.vertices
+        min_xyz = np.minimum(min_xyz, v.min(axis=0))
+        max_xyz = np.maximum(max_xyz, v.max(axis=0))
+    bbox = np.vstack([min_xyz, max_xyz])
+
+    center = (bbox[1] + bbox[0]) / 2
+    diagonal = np.linalg.norm(bbox[1] - bbox[0])
+
+    # Camera distance
+    if projection_type.lower() == "orthographic":
+        distance = diagonal * 5
+    else:
+        distance = diagonal * 1.8 * distance_factor
+
+    # Define isometric anchor directions and derive constant elevation
+    # Anchors correspond to azimuths: 45°, 135°, 225°, 315°
+    anchor_azimuths = [np.pi / 4, 3 * np.pi / 4, 5 * np.pi / 4, 7 * np.pi / 4]
+    if close_loop:
+        anchor_azimuths.append(anchor_azimuths[0] + 2 * np.pi)
+
+    # Use the canonical iso direction (1,1,0.7) to compute elevation angle
+    iso_dir = np.array([1.0, 1.0, 0.7], dtype=float)
+    iso_dir = iso_dir / np.linalg.norm(iso_dir)
+    horiz_len = np.sqrt(iso_dir[0] ** 2 + iso_dir[1] ** 2)
+    elevation = np.arctan2(iso_dir[2], horiz_len)  # radians
+    cos_elev = np.cos(elevation)
+    sin_elev = np.sin(elevation)
+
+    # Generate frames along segments between anchors
+    filenames = []
+    frame_idx = 0
+    num_segments = len(anchor_azimuths) - 1
+    for i in range(num_segments):
+        a0 = anchor_azimuths[i]
+        a1 = anchor_azimuths[i + 1]
+        for k in range(frames_per_segment):
+            t = k / float(frames_per_segment)
+            az = (1.0 - t) * a0 + t * a1
+            direction = np.array([
+                cos_elev * np.cos(az),
+                cos_elev * np.sin(az),
+                sin_elev
+            ], dtype=float)
+            direction = direction / np.linalg.norm(direction)
+            camera_pos = center + direction * distance
+            camera_tuple = [camera_pos, center, (0, 0, 1)]
+
+            plotter = pv.Plotter(off_screen=True, window_size=image_size if image_size is not None else None)
+            if projection_type.lower() == "orthographic":
+                plotter.enable_parallel_projection()
+                plotter.camera.parallel_scale = diagonal * 0.4 * distance_factor
+            elif projection_type.lower() != "perspective":
+                print(f"Warning: Unknown projection_type '{projection_type}'. Using perspective projection.")
+
+            for _, pv_mesh in pv_meshes.items():
+                has_colors = 'colors' in pv_mesh.cell_data
+                plotter.add_mesh(pv_mesh, rgb=True, scalars='colors' if has_colors else None)
+
+            plotter.camera_position = camera_tuple
+            filename = os.path.join(output_directory, f"{file_prefix}_{frame_idx:04d}.png")
+            plotter.screenshot(filename)
+            filenames.append(filename)
+            plotter.close()
+            frame_idx += 1
+
+    return filenames
+
 class PyVistaRenderer:
     """Renderer that uses PyVista to produce multi-view images from meshes or VoxCity."""
 
     def render_city(self, city: VoxCity, projection_type: str = "perspective", distance_factor: float = 1.0,
                     output_directory: str = "output", voxel_color_map: "str|dict" = "default",
+                    *,  # static rendering specific toggles
+                    rotation: bool = False,
+                    rotation_frames_per_segment: int = 60,
+                    rotation_close_loop: bool = False,
+                    rotation_file_prefix: str = "city_rotation",
+                    image_size: "tuple[int, int] | None" = None,
                     building_sim_mesh=None, building_value_name: str = 'svf_values',
                     building_colormap: str = 'viridis', building_vmin=None, building_vmax=None,
                     building_nan_color: str = 'gray', building_opacity: float = 1.0,
@@ -549,6 +686,16 @@ class PyVistaRenderer:
             Directory to save rendered images
         voxel_color_map : str or dict
             Color mapping for voxel classes
+        rotation : bool
+            If True, generate rotating isometric frames instead of multi-view snapshots.
+        rotation_frames_per_segment : int
+            Number of frames between each isometric anchor when rotation=True.
+        rotation_close_loop : bool
+            If True, returns smoothly to the starting anchor when rotation=True.
+        rotation_file_prefix : str
+            Filename prefix for rotation frames when rotation=True.
+        image_size : (int, int) or None
+            Static rendering output image size (width, height). If None, uses default.
         building_sim_mesh : trimesh.Trimesh, optional
             Building mesh with simulation results
         building_value_name : str
@@ -684,8 +831,25 @@ class PyVistaRenderer:
                 trimesh_dict['ground_sim'] = sim_mesh
         
         os.makedirs(output_directory, exist_ok=True)
-        return create_multi_view_scene(trimesh_dict, output_directory=output_directory,
-                                       projection_type=projection_type, distance_factor=distance_factor)
+        if rotation:
+            return create_rotation_view_scene(
+                trimesh_dict,
+                output_directory=output_directory,
+                projection_type=projection_type,
+                distance_factor=distance_factor,
+                frames_per_segment=rotation_frames_per_segment,
+                close_loop=rotation_close_loop,
+                file_prefix=rotation_file_prefix,
+                image_size=image_size,
+            )
+        else:
+            return create_multi_view_scene(
+                trimesh_dict,
+                output_directory=output_directory,
+                projection_type=projection_type,
+                distance_factor=distance_factor,
+                image_size=image_size,
+            )
 
 
 
@@ -701,14 +865,17 @@ def visualize_voxcity(
     opacity: float = 1.0,
     max_dimension: int = 160,
     downsample: int | None = None,
-    width: int = 1000,
-    height: int = 800,
     show: bool = True,
     return_fig: bool = False,
     # Static (PyVista) options
     output_directory: str = "output",
     projection_type: str = "perspective",
     distance_factor: float = 1.0,
+    rotation: bool = False,
+    rotation_frames_per_segment: int = 60,
+    rotation_close_loop: bool = False,
+    rotation_file_prefix: str = "city_rotation",
+    image_size: "tuple[int, int] | None" = None,
     # Building simulation overlay options
     building_sim_mesh=None,
     building_value_name: str = 'svf_values',
@@ -748,6 +915,10 @@ def visualize_voxcity(
         Specific voxel classes to render
     title : str, optional
         Plot title
+    image_size : (int, int) or None, default=None
+        Unified image size (width, height) applied across modes.
+        - Interactive: overrides width/height below when provided.
+        - Static (including rotation): sets PyVista window size for screenshots.
     
     Interactive Mode Options (Plotly)
     ----------------------------------
@@ -757,10 +928,6 @@ def visualize_voxcity(
         Maximum grid dimension before downsampling
     downsample : int, optional
         Manual downsampling stride
-    width : int, default=1000
-        Plot width in pixels
-    height : int, default=800
-        Plot height in pixels
     show : bool, default=True
         Whether to display the plot
     return_fig : bool, default=False
@@ -774,6 +941,16 @@ def visualize_voxcity(
         Camera projection: "perspective" or "orthographic"
     distance_factor : float, default=1.0
         Camera distance multiplier
+    rotation : bool, default=False
+        If True, generate rotating isometric frames instead of multi-view snapshots
+    rotation_frames_per_segment : int, default=60
+        Frames between each isometric anchor when rotation=True
+    rotation_close_loop : bool, default=False
+        If True, continue frames to return to start when rotation=True
+    rotation_file_prefix : str, default="city_rotation"
+        Filename prefix for rotation frames when rotation=True
+    image_size : (int, int) or None, default=None
+        Static rendering output image size (width, height). If None, uses default.
     
     Building Simulation Overlay Options
     ------------------------------------
@@ -863,6 +1040,13 @@ def visualize_voxcity(
     
     if mode_l == "interactive":
         voxel_array = getattr(city.voxels, "classes", None)
+        # Build kwargs to optionally pass width/height when image_size is provided
+        size_kwargs = {}
+        if image_size is not None:
+            try:
+                size_kwargs = {"width": int(image_size[0]), "height": int(image_size[1])}
+            except Exception:
+                size_kwargs = {}
         return visualize_voxcity_plotly(
             voxel_array=voxel_array,
             meshsize=meshsize,
@@ -872,10 +1056,9 @@ def visualize_voxcity(
             max_dimension=max_dimension,
             downsample=downsample,
             title=title,
-            width=width,
-            height=height,
             show=show,
             return_fig=return_fig,
+            **size_kwargs,
             # Building simulation overlay
             building_sim_mesh=building_sim_mesh,
             building_value_name=building_value_name,
@@ -906,6 +1089,11 @@ def visualize_voxcity(
             distance_factor=distance_factor,
             output_directory=output_directory,
             voxel_color_map=voxel_color_map,
+            rotation=rotation,
+            rotation_frames_per_segment=rotation_frames_per_segment,
+            rotation_close_loop=rotation_close_loop,
+            rotation_file_prefix=rotation_file_prefix,
+            image_size=image_size,
             # Pass simulation overlay parameters
             building_sim_mesh=building_sim_mesh,
             building_value_name=building_value_name,
