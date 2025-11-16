@@ -261,7 +261,11 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         building_complementary_source: Building complementary source (default: auto-selected based on location)
         building_gdf: Optional pre-loaded building GeoDataFrame
         terrain_gdf: Optional pre-loaded terrain GeoDataFrame
-        **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O
+        **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O.
+                  I/O options include:
+                  - output_dir: Directory for intermediate/downloaded data (default: "output")
+                  - save_path: Full file path to save the VoxCity object (overrides output_dir default)
+                  - save_voxcity_data / save_voxctiy_data: bool flag to enable saving (default: True)
     
     Returns:
         VoxCity object containing the generated 3D city model
@@ -375,7 +379,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         "flat_dem",
     }
     visualize_keys = {"gridvis", "mapvis"}
-    io_keys = {"save_voxcity_data", "save_voxctiy_data", "save_data_path"}
+    io_keys = {"save_voxcity_data", "save_voxctiy_data", "save_data_path", "save_path"}
 
     land_cover_options = {k: v for k, v in kwargs.items() if k in land_cover_keys}
     building_options = {k: v for k, v in kwargs.items() if k in building_keys}
@@ -409,10 +413,44 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     )
     city = VoxCityPipeline(meshsize=cfg.meshsize, rectangle_vertices=cfg.rectangle_vertices).run(cfg, building_gdf=building_gdf, terrain_gdf=terrain_gdf, **{k: v for k, v in kwargs.items() if k != 'output_dir'})
 
+    # Optional shape normalization (pad/crop) to a target (x, y, z)
+    target_voxel_shape = kwargs.get("target_voxel_shape", None)
+    if target_voxel_shape is not None:
+        try:
+            from ..utils.shape import normalize_voxcity_shape  # late import to avoid cycles
+            align_xy = kwargs.get("pad_align_xy", "center")
+            allow_crop_xy = bool(kwargs.get("allow_crop_xy", True))
+            allow_crop_z = bool(kwargs.get("allow_crop_z", False))
+            pad_values = kwargs.get("pad_values", None)
+            city = normalize_voxcity_shape(
+                city,
+                tuple(target_voxel_shape),
+                align_xy=align_xy,
+                pad_values=pad_values,
+                allow_crop_xy=allow_crop_xy,
+                allow_crop_z=allow_crop_z,
+            )
+            try:
+                _logger.info("Applied target voxel shape %s -> final voxel shape %s", tuple(target_voxel_shape), tuple(city.voxels.classes.shape))
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                _logger.warning("Shape normalization skipped due to error: %s", str(e))
+            except Exception:
+                pass
+
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
     _save_flag = io_options.get("save_voxcity_data", kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True)))
     if _save_flag:
-        save_path = io_options.get("save_data_path", kwargs.get("save_data_path", f"{output_dir}/voxcity.pkl"))
+        # Prefer explicit save_path if provided; fall back to legacy save_data_path; else default
+        save_path = (
+            io_options.get("save_path")
+            or kwargs.get("save_path")
+            or io_options.get("save_data_path")
+            or kwargs.get("save_data_path")
+            or f"{output_dir}/voxcity.pkl"
+        )
         save_voxcity(save_path, city)
 
     # Attach selected sources (final resolved) to extras for downstream consumers
@@ -671,7 +709,11 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
     _save_flag = kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True))
     if _save_flag:
-        save_path = kwargs.get("save_data_path", f"{output_dir}/voxcity.pkl")
+        save_path = (
+            kwargs.get("save_path")
+            or kwargs.get("save_data_path")
+            or f"{output_dir}/voxcity.pkl"
+        )
         save_voxcity(save_path, city)
 
     return city

@@ -443,7 +443,7 @@ def visualize_voxcity_plotly(
 
 
 def create_multi_view_scene(meshes, output_directory="output", projection_type="perspective", distance_factor=1.0,
-                            image_size: "tuple[int, int] | None" = None):
+                           image_size: "tuple[int, int] | None" = None, fixed_bounds: "tuple[tuple[float,float,float], tuple[float,float,float]] | None" = None):
     """
     Creates multiple rendered views of 3D city meshes from different camera angles.
     """
@@ -464,15 +464,27 @@ def create_multi_view_scene(meshes, output_directory="output", projection_type="
             pv_mesh.cell_data['colors'] = colors
         pv_meshes[class_id] = pv_mesh
 
-    min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
-    max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
-    for mesh in meshes.values():
-        if mesh is None or len(mesh.vertices) == 0:
-            continue
-        v = mesh.vertices
-        min_xyz = np.minimum(min_xyz, v.min(axis=0))
-        max_xyz = np.maximum(max_xyz, v.max(axis=0))
-    bbox = np.vstack([min_xyz, max_xyz])
+    if fixed_bounds is not None:
+        try:
+            fb = np.asarray(fixed_bounds, dtype=float)
+            if fb.shape == (2, 3):
+                bbox = fb
+            else:
+                raise ValueError
+        except Exception:
+            # Fallback to computed bounds if provided value is invalid
+            fixed_bounds = None
+
+    if fixed_bounds is None:
+        min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
+        max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+        for mesh in meshes.values():
+            if mesh is None or len(mesh.vertices) == 0:
+                continue
+            v = mesh.vertices
+            min_xyz = np.minimum(min_xyz, v.min(axis=0))
+            max_xyz = np.maximum(max_xyz, v.max(axis=0))
+        bbox = np.vstack([min_xyz, max_xyz])
 
     center = (bbox[1] + bbox[0]) / 2
     diagonal = np.linalg.norm(bbox[1] - bbox[0])
@@ -533,6 +545,7 @@ def create_rotation_view_scene(
     close_loop: bool = False,
     file_prefix: str = "city_rotation",
     image_size: "tuple[int, int] | None" = None,
+    fixed_bounds: "tuple[tuple[float,float,float], tuple[float,float,float]] | None" = None,
 ):
     """
     Creates a sequence of rendered frames forming a smooth isometric rotation that
@@ -581,15 +594,26 @@ def create_rotation_view_scene(
         pv_meshes[class_id] = pv_mesh
 
     # Compute scene bounds
-    min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
-    max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
-    for mesh in meshes.values():
-        if mesh is None or len(mesh.vertices) == 0:
-            continue
-        v = mesh.vertices
-        min_xyz = np.minimum(min_xyz, v.min(axis=0))
-        max_xyz = np.maximum(max_xyz, v.max(axis=0))
-    bbox = np.vstack([min_xyz, max_xyz])
+    if fixed_bounds is not None:
+        try:
+            fb = np.asarray(fixed_bounds, dtype=float)
+            if fb.shape == (2, 3):
+                bbox = fb
+            else:
+                raise ValueError
+        except Exception:
+            fixed_bounds = None
+
+    if fixed_bounds is None:
+        min_xyz = np.array([np.inf, np.inf, np.inf], dtype=float)
+        max_xyz = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
+        for mesh in meshes.values():
+            if mesh is None or len(mesh.vertices) == 0:
+                continue
+            v = mesh.vertices
+            min_xyz = np.minimum(min_xyz, v.min(axis=0))
+            max_xyz = np.maximum(max_xyz, v.max(axis=0))
+        bbox = np.vstack([min_xyz, max_xyz])
 
     center = (bbox[1] + bbox[0]) / 2
     diagonal = np.linalg.norm(bbox[1] - bbox[0])
@@ -664,6 +688,7 @@ class PyVistaRenderer:
                     rotation_close_loop: bool = False,
                     rotation_file_prefix: str = "city_rotation",
                     image_size: "tuple[int, int] | None" = None,
+                    fixed_scene_bounds_real: "tuple[tuple[float,float,float], tuple[float,float,float]] | None" = None,
                     building_sim_mesh=None, building_value_name: str = 'svf_values',
                     building_colormap: str = 'viridis', building_vmin=None, building_vmax=None,
                     building_nan_color: str = 'gray', building_opacity: float = 1.0,
@@ -841,6 +866,7 @@ class PyVistaRenderer:
                 close_loop=rotation_close_loop,
                 file_prefix=rotation_file_prefix,
                 image_size=image_size,
+                fixed_bounds=fixed_scene_bounds_real,
             )
         else:
             return create_multi_view_scene(
@@ -849,6 +875,7 @@ class PyVistaRenderer:
                 projection_type=projection_type,
                 distance_factor=distance_factor,
                 image_size=image_size,
+                fixed_bounds=fixed_scene_bounds_real,
             )
 
 
@@ -876,6 +903,7 @@ def visualize_voxcity(
     rotation_close_loop: bool = False,
     rotation_file_prefix: str = "city_rotation",
     image_size: "tuple[int, int] | None" = None,
+    fixed_scene_bounds_real: "tuple[tuple[float,float,float], tuple[float,float,float]] | None" = None,
     # Building simulation overlay options
     building_sim_mesh=None,
     building_value_name: str = 'svf_values',
@@ -1094,6 +1122,7 @@ def visualize_voxcity(
             rotation_close_loop=rotation_close_loop,
             rotation_file_prefix=rotation_file_prefix,
             image_size=image_size,
+            fixed_scene_bounds_real=fixed_scene_bounds_real,
             # Pass simulation overlay parameters
             building_sim_mesh=building_sim_mesh,
             building_value_name=building_value_name,
