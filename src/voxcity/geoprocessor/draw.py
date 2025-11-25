@@ -26,21 +26,32 @@ Dependencies:
 import math
 from pyproj import Transformer
 from ipyleaflet import (
-    Map, 
-    DrawControl, 
-    Rectangle, 
+    Map,
+    DrawControl,
+    Rectangle,
     Polygon as LeafletPolygon,
     Polyline,
     WidgetControl,
     Circle,
     basemaps,
     basemap_to_tiles,
-    TileLayer
+    TileLayer,
 )
 from geopy import distance
 import shapely.geometry as geom
 import geopandas as gpd
-from ipywidgets import VBox, HBox, Button, FloatText, Label, Output, HTML, Checkbox, ToggleButton
+from ipywidgets import (
+    VBox,
+    HBox,
+    Button,
+    FloatText,
+    Label,
+    Output,
+    HTML,
+    Checkbox,
+    ToggleButton,
+    Layout,
+)
 import pandas as pd
 from IPython.display import display, clear_output
 
@@ -550,600 +561,403 @@ def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_v
 
     return m, drawn_polygons
 
-def draw_additional_buildings(city=None, building_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
+
+
+def draw_additional_buildings(
+    city=None,
+    building_gdf=None,
+    initial_center=None,
+    zoom=17,
+    rectangle_vertices=None,
+):
     """
-    Creates an interactive map for drawing building footprints with height input.
-    
-    This function provides an interface for users to:
-    1. Draw free-form polygons on an interactive map
-    2. Optionally enable a guided rectangle mode (corner → width → height clicks)
-    3. Set building height values through a UI widget
-    4. Add new buildings to the existing building_gdf
-    
-    The workflow is:
-    - User draws a polygon on the map (or uses rectangle mode for aligned rectangles)
-    - Height input widget appears
-    - User enters height and clicks "Add Building"
-    - Building is added to GeoDataFrame and displayed on map
+    Interactive map editor: Draw rectangles, freehand polygons, and DELETE existing buildings.
     
     Args:
-        city (VoxCity, optional): A VoxCity object from which to extract building_gdf 
-            and rectangle_vertices. If provided, these values will be used unless 
-            explicitly overridden by the other parameters.
-        building_gdf (GeoDataFrame, optional): Existing building footprints to display.
-            If None and city is provided, uses city.extras['building_gdf'].
-            If None and no city provided, creates a new empty GeoDataFrame.
-            Expected columns: ['id', 'height', 'min_height', 'geometry', 'building_id']
-            - 'id': Integer ID from data sources (e.g., OSM building id)
-            - 'height': Building height in meters (set by user input)
-            - 'min_height': Minimum height in meters (defaults to 0.0)
-            - 'geometry': Building footprint polygon
-            - 'building_id': Unique building identifier
-        initial_center (tuple, optional): Initial map center as (lon, lat).
-            If None, centers on existing buildings or defaults to (-100, 40).
-        zoom (int): Initial zoom level (default=17).
-        rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
-            If None and city is provided, uses city.extras['rectangle_vertices'].
-    
-    Returns:
-        tuple: (map_object, updated_building_gdf)
-            - map_object: ipyleaflet Map instance with drawing controls
-            - updated_building_gdf: GeoDataFrame that automatically updates when buildings are added
-    
-    Examples:
-        Using a VoxCity object:
-        >>> m, buildings = draw_additional_buildings(city=my_city)
-        
-        Start with empty buildings:
-        >>> m, buildings = draw_additional_buildings()
-        >>> # Draw buildings on the map...
-        >>> print(buildings)  # Will contain all drawn buildings
+        initial_center (tuple): (Longitude, Latitude) - Standard GeoJSON order.
     """
-    # Extract data from VoxCity object if provided
+    # --- Data Initialization ---
     if city is not None:
         if building_gdf is None:
-            building_gdf = city.extras.get('building_gdf', None)
+            building_gdf = city.extras.get("building_gdf", None)
         if rectangle_vertices is None:
-            rectangle_vertices = city.extras.get('rectangle_vertices', None)
+            rectangle_vertices = city.extras.get("rectangle_vertices", None)
     
-    # Initialize or copy the building GeoDataFrame
     if building_gdf is None:
-        # Create empty GeoDataFrame with required columns
         updated_gdf = gpd.GeoDataFrame(
-            columns=['id', 'height', 'min_height', 'geometry', 'building_id'],
-            crs='EPSG:4326'
+            columns=["id", "height", "min_height", "geometry", "building_id"],
+            crs="EPSG:4326",
         )
     else:
-        # Make a copy to avoid modifying the original
         updated_gdf = building_gdf.copy()
-        # Ensure all required columns exist
-        if 'height' not in updated_gdf.columns:
-            updated_gdf['height'] = 10.0  # Default height
-        if 'min_height' not in updated_gdf.columns:
-            updated_gdf['min_height'] = 0.0  # Default min_height
-        if 'building_id' not in updated_gdf.columns:
-            updated_gdf['building_id'] = range(len(updated_gdf))
-        if 'id' not in updated_gdf.columns:
-            updated_gdf['id'] = range(len(updated_gdf))
+        updated_gdf = updated_gdf.reset_index(drop=True)
+        defaults = {"height": 10.0, "min_height": 0.0, "building_id": 0, "id": 0}
+        for col, val in defaults.items():
+            if col not in updated_gdf.columns:
+                updated_gdf[col] = (
+                    val if col not in ["building_id", "id"] else range(len(updated_gdf))
+                )
     
-    # Determine map center
+    # --- Map Setup (Corrected for Lon, Lat input) ---
     if initial_center is not None:
+        # User provides (Lon, Lat) per GeoJSON standard
         center_lon, center_lat = initial_center
-    elif updated_gdf is not None and len(updated_gdf) > 0:
-        bounds = updated_gdf.total_bounds
-        min_lon, min_lat, max_lon, max_lat = bounds
-        center_lon = (min_lon + max_lon) / 2
-        center_lat = (min_lat + max_lat) / 2
-    elif rectangle_vertices is not None:
-        center_lon, center_lat = (rectangle_vertices[0][0] + rectangle_vertices[2][0]) / 2, (rectangle_vertices[0][1] + rectangle_vertices[2][1]) / 2
+    elif not updated_gdf.empty:
+        # GDF bounds are (minx, miny, maxx, maxy) -> (Lon, Lat, Lon, Lat)
+        b = updated_gdf.total_bounds
+        center_lon, center_lat = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
     else:
         center_lon, center_lat = -100.0, 40.0
     
-    # Create the map
+    # ipyleaflet expects (Lat, Lon), so we flip it here
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
-    # Remember original map style so we can temporarily change cursor in rectangle mode.
-    # Avoid calling built-in dict() here so we don't depend on it not being shadowed.
-    _default_style = getattr(m, "default_style", None)
-    if isinstance(_default_style, dict):
-        original_map_style = _default_style.copy()
-    else:
-        original_map_style = None
     
-    # Display existing buildings
-    building_layers = {}
+    # --- UI Setup ---
+    style_html = HTML(
+        """
+    <style>
+        .vox-panel { font-family: 'Segoe UI', sans-serif; }
+        .vox-header { font-size: 16px; font-weight: 600; color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 5px; }
+        .vox-status { padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; font-weight: 500; }
+        .vox-status-info { background-color: #e3f2fd; color: #0d47a1; border-left: 4px solid #0d47a1; }
+        .vox-status-success { background-color: #e8f5e9; color: #1b5e20; border-left: 4px solid #1b5e20; }
+        .vox-status-warn { background-color: #fff3e0; color: #e65100; border-left: 4px solid #e65100; }
+        .vox-status-danger { background-color: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+    </style>
+    """
+    )
+
+    rect_btn = ToggleButton(
+        value=False,
+        description="📐 Rectangle",
+        icon="square-o",
+        layout=Layout(flex="1"),
+        tooltip="Draw Rectangle",
+    )
+    del_btn = ToggleButton(
+        value=False,
+        description="Remove",
+        icon="trash",
+        button_style="danger",
+        layout=Layout(flex="1"),
+        tooltip="Delete Buildings",
+    )
+    h_in = FloatText(
+        value=10.0,
+        description="H (m):",
+        layout=Layout(width="48%"),
+        style={"description_width": "40px"},
+    )
+    mh_in = FloatText(
+        value=0.0,
+        description="Min:",
+        layout=Layout(width="48%"),
+        style={"description_width": "40px"},
+    )
+    add_btn = Button(
+        description="Add",
+        button_style="success",
+        icon="plus",
+        disabled=True,
+        layout=Layout(flex="1"),
+    )
+    clr_btn = Button(
+        description="Clear",
+        button_style="warning",
+        icon="eraser",
+        disabled=True,
+        layout=Layout(width="80px", margin="0 0 0 5px"),
+    )
+    status_bar = HTML(
+        value="<div class='vox-panel vox-status vox-status-info'>Ready.</div>"
+    )
+
+    tool_row = HBox([rect_btn, del_btn], layout=Layout(margin="5px 0px"))
+    input_row = HBox([h_in, mh_in])
+    action_row = HBox([add_btn, clr_btn])
+
+    panel = VBox(
+        [
+            style_html,
+            HTML(
+                "<div class='vox-panel'><div class='vox-header'>🏙️ Building Editor</div></div>"
+            ),
+            tool_row,
+            input_row,
+            action_row,
+            status_bar,
+        ],
+        layout=Layout(
+            width="300px",
+            padding="10px",
+            background_color="white",
+            border_radius="8px",
+            box_shadow="0px 4px 10px rgba(0,0,0,0.1)",
+        ),
+    )
+    
+    m.add_control(WidgetControl(widget=panel, position="topright"))
+
+    # --- Global State & Transformers ---
+    state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None}
+    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    to_geo = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    _style_attr = getattr(m, "default_style", {})
+    original_style = _style_attr.copy() if isinstance(_style_attr, dict) else {"cursor": "grab"}
+
+    # --- Helper Functions ---
+    def set_status(msg, type="info"):
+        status_bar.value = (
+            f"<div class='vox-panel vox-status vox-status-{type}'>{msg}</div>"
+        )
+
+    def add_polygon_to_map(poly_geom, gdf_index, height):
+        coords = list(poly_geom.exterior.coords)
+        leaflet_poly = LeafletPolygon(
+            locations=[(c[1], c[0]) for c in coords[:-1]],  # Flip (Lon, Lat) -> (Lat, Lon) for Leaflet
+            color="#2196F3",
+            fill_color="#2196F3",
+            fill_opacity=0.4,
+            weight=1,
+            popup=HTML(f"<b>ID:</b> {gdf_index}<br><b>H:</b> {height}m"),
+        )
+
+        def on_poly_click(**kwargs):
+            if del_btn.value:
+                m.remove_layer(leaflet_poly)
+                try:
+                    updated_gdf.drop(index=gdf_index, inplace=True)
+                    set_status(f"Building {gdf_index} removed.", "danger")
+                except KeyError:
+                    pass
+
+        leaflet_poly.on_click(on_poly_click)
+        m.add_layer(leaflet_poly)
+
+    # --- Render Existing ---
     for idx, row in updated_gdf.iterrows():
         if isinstance(row.geometry, geom.Polygon):
-            coords = list(row.geometry.exterior.coords)
-            lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
-            
-            height = row.get('height', 10.0)
-            min_height = row.get('min_height', 0.0)
-            building_id = row.get('building_id', idx)
-            bldg_id = row.get('id', idx)
-            bldg_layer = LeafletPolygon(
-                locations=lat_lon_coords,
-                color="blue",
-                fill_color="blue",
-                fill_opacity=0.3,
-                weight=2,
-                popup=HTML(f"<b>Building ID:</b> {building_id}<br>"
-                          f"<b>ID:</b> {bldg_id}<br>"
-                          f"<b>Height:</b> {height}m<br>"
-                          f"<b>Min Height:</b> {min_height}m")
-            )
-            m.add_layer(bldg_layer)
-            building_layers[idx] = bldg_layer
-    
-    # Create UI widgets
-    rectangle_mode_button = ToggleButton(
-        value=False,
-        description='Rectangle mode (3-click)',
-        button_style='info',
-        tooltip='Enable guided rectangle drawing with three clicks'
-    )
-    rectangle_status = HTML("<div><b>Rectangle mode:</b> off</div>")
-    rectangle_help = HTML(
-        "<div style='font-size:12px;'>"
-        "Click 1) first corner 2) second corner to set width 3) a point across to set height."
-        "</div>"
-    )
-    height_input = FloatText(
-        value=10.0,
-        description='Height (m):',
-        disabled=False,
-        style={'description_width': 'initial'}
-    )
-    min_height_input = FloatText(
-        value=0.0,
-        description='Min height (m):',
-        disabled=False,
-        style={'description_width': 'initial'}
-    )
-    
-    add_button = Button(
-        description='Add Building',
-        button_style='success',
-        disabled=True
-    )
-    
-    clear_button = Button(
-        description='Clear Drawing',
-        button_style='warning',
-        disabled=True
-    )
-    
-    status_output = Output()
-    hover_info = HTML("")
-    
-    # Create control panel
-    control_panel = VBox([
-        HTML("<h3>Draw Building Tool</h3>"),
-        HTML(
-            "<p>1. Draw a polygon or use rectangle mode below<br>"
-            "2. Set height and min height<br>"
-            "3. Click 'Add Building'</p>"
-        ),
-        rectangle_mode_button,
-        rectangle_status,
-        rectangle_help,
-        height_input,
-        min_height_input,
-        HBox([add_button, clear_button]),
-        status_output
-    ])
-    
-    # Add control panel to map
-    widget_control = WidgetControl(widget=control_panel, position='topright')
-    m.add_control(widget_control)
-    
-    # Store the current drawn polygon
-    current_polygon = {'vertices': [], 'layer': None}
-    rectangle_clicks = []
-    rectangle_preview_layer = {'layer': None}
-    rectangle_temp_layers = []
-    mercator_transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-    inverse_transformer = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
-    MIN_EDGE_LEN_METERS = 0.5
+            add_polygon_to_map(row.geometry, idx, row.get("height", 0))
 
-    def update_rectangle_status(message=None, error=False):
-        """Update status text shown under the rectangle mode toggle."""
-        if message is None:
-            if not rectangle_mode_button.value:
-                message = "off"
-            elif len(rectangle_clicks) == 0:
-                message = "Click first corner"
-            elif len(rectangle_clicks) == 1:
-                message = "Click second corner to set width"
-            else:
-                message = "Click opposite side to set height"
-        color = "#d9534f" if error else "#333333"
-        rectangle_status.value = (
-            "<div><b>Rectangle mode:</b> "
-            f"<span style='color:{color};'>{message}</span></div>"
-        )
+    # --- Logic ---
+    def on_mode_change(change):
+        if change["owner"] is rect_btn and change["new"]:
+            del_btn.value = False
+            draw_control.clear()
+            m.default_style = {"cursor": "crosshair"}
+            set_status("Rect Mode: Click 1st corner.", "info")
+        elif change["owner"] is del_btn and change["new"]:
+            rect_btn.value = False
+            clear_all(None)
+            m.default_style = {"cursor": "no-drop"}
+            set_status("DELETE MODE: Click blue buildings to remove.", "danger")
+        elif not rect_btn.value and not del_btn.value:
+            m.default_style = original_style
+            set_status("Ready.", "info")
 
-    def remove_rectangle_preview():
-        """Remove the temporary rectangle overlay if it exists."""
-        layer = rectangle_preview_layer.get('layer')
-        if layer is not None:
+    rect_btn.observe(on_mode_change, names="value")
+    del_btn.observe(on_mode_change, names="value")
+
+    def clear_preview():
+        if state["preview"]:
             try:
-                m.remove_layer(layer)
+                m.remove_layer(state["preview"])
             except Exception:
                 pass
-            rectangle_preview_layer['layer'] = None
-
-    def clear_temp_layers():
-        """Remove temporary point/segment overlays."""
-        while rectangle_temp_layers:
-            layer = rectangle_temp_layers.pop()
+            state["preview"] = None
+    
+    def clear_temps():
+        while state["temp_layers"]:
             try:
-                m.remove_layer(layer)
+                m.remove_layer(state["temp_layers"].pop())
             except Exception:
                 pass
 
-    def add_temp_point(lon, lat):
-        """Draw a small marker for a captured corner."""
-        point_layer = Circle(
-            location=(lat, lon),
-            radius=3,
-            color="red",
-            fill_color="red",
-            fill_opacity=0.9
-        )
-        rectangle_temp_layers.append(point_layer)
-        m.add_layer(point_layer)
-
-    def add_temp_segment(p1, p2):
-        """Draw a helper line between two captured corners."""
-        (lon1, lat1), (lon2, lat2) = p1, p2
-        segment = Polyline(
-            locations=[(lat1, lon1), (lat2, lon2)],
-            color="red",
-            weight=3,
-            opacity=0.7
-        )
-        rectangle_temp_layers.append(segment)
-        m.add_layer(segment)
-
-    def refresh_temp_layers():
-        """Rebuild helper markers/lines based on collected clicks."""
-        clear_temp_layers()
-        for lon, lat in rectangle_clicks:
-            add_temp_point(lon, lat)
-        if len(rectangle_clicks) >= 2:
-            add_temp_segment(rectangle_clicks[0], rectangle_clicks[1])
-
-    def set_rectangle_preview(vertices):
-        """Persist rectangle vertices and render preview polygon (committed rectangle)."""
-        remove_rectangle_preview()
-        current_polygon['vertices'] = vertices
-        if not vertices:
-            return
-        lat_lon_coords = [(lat, lon) for lon, lat in vertices]
-        if lat_lon_coords and lat_lon_coords[0] != lat_lon_coords[-1]:
-            lat_lon_coords = lat_lon_coords + [lat_lon_coords[0]]
-        preview_layer = LeafletPolygon(
-            locations=lat_lon_coords,
-            color="red",
-            fill_color="red",
-            fill_opacity=0.15,
-            weight=2
-        )
-        rectangle_preview_layer['layer'] = preview_layer
-        m.add_layer(preview_layer)
-        add_button.disabled = False
-        clear_button.disabled = False
-
-    def build_rectangle_from_clicks(points):
-        """Return rectangle vertices [(lon,lat), ...] based on three clicks."""
-        if len(points) < 3:
-            return None, "Need three clicks to build rectangle"
-        (lon1, lat1), (lon2, lat2), (lon3, lat3) = points[:3]
-        x1, y1 = mercator_transformer.transform(lon1, lat1)
-        x2, y2 = mercator_transformer.transform(lon2, lat2)
-        x3, y3 = mercator_transformer.transform(lon3, lat3)
-        wx, wy = x2 - x1, y2 - y1
-        width_len = math.hypot(wx, wy)
-        if width_len < MIN_EDGE_LEN_METERS:
-            return None, "Width is too small. Adjust the second corner."
-        unit_wx, unit_wy = wx / width_len, wy / width_len
-        unit_perp_x, unit_perp_y = -unit_wy, unit_wx
-        vx, vy = x3 - x1, y3 - y1
-        height_len = vx * unit_perp_x + vy * unit_perp_y
-        if abs(height_len) < MIN_EDGE_LEN_METERS:
-            return None, "Height is too small. Click further away from the edge."
-        height_vec_x = unit_perp_x * height_len
-        height_vec_y = unit_perp_y * height_len
-        p1 = (x1, y1)
-        p2 = (x2, y2)
-        p3 = (x2 + height_vec_x, y2 + height_vec_y)
-        p4 = (x1 + height_vec_x, y1 + height_vec_y)
-        vertices = [
-            inverse_transformer.transform(*p1),
-            inverse_transformer.transform(*p2),
-            inverse_transformer.transform(*p3),
-            inverse_transformer.transform(*p4)
-        ]
-        return vertices, None
-
-    def validate_width():
-        """Ensure the first two rectangle clicks create a valid edge."""
-        if len(rectangle_clicks) < 2:
-            return True
-        (lon1, lat1), (lon2, lat2) = rectangle_clicks[:2]
-        x1, y1 = mercator_transformer.transform(lon1, lat1)
-        x2, y2 = mercator_transformer.transform(lon2, lat2)
-        width_len = math.hypot(x2 - x1, y2 - y1)
-        return width_len >= MIN_EDGE_LEN_METERS
-
-    update_rectangle_status("off")
-    
-    # Drawing control
-    draw_control = DrawControl(
-        polygon={
-            "shapeOptions": {
-                "color": "red",
-                "fillColor": "red",
-                "fillOpacity": 0.3,
-                "weight": 3
-            }
-        },
-        rectangle={},
-        circle={},
-        circlemarker={},
-        polyline={},
-        marker={}
-    )
-    
-    def handle_draw(self, action, geo_json):
-        """Handle polygon drawing events"""
-        rectangle_clicks.clear()
-        remove_rectangle_preview()
-        clear_temp_layers()
-        update_rectangle_status()
-        with status_output:
-            clear_output()
-            
-        if action == 'created' and geo_json['geometry']['type'] == 'Polygon':
-            # Store vertices
-            coordinates = geo_json['geometry']['coordinates'][0]
-            current_polygon['vertices'] = [(coord[0], coord[1]) for coord in coordinates[:-1]]
-            
-            # Enable buttons
-            add_button.disabled = False
-            clear_button.disabled = False
-            
-            with status_output:
-                print(f"Polygon drawn with {len(current_polygon['vertices'])} vertices")
-                print("Set height and click 'Add Building'")
-    
-    def handle_rectangle_toggle(change):
-        """Reset rectangle builder state when toggled."""
-        if change.get('name') != 'value':
-            return
-        rectangle_clicks.clear()
-        clear_temp_layers()
-        if not change['new']:
-            update_rectangle_status("off")
-            # Restore original cursor when leaving rectangle mode
-            try:
-                if isinstance(original_map_style, dict):
-                    m.default_style = original_map_style.copy()
-            except Exception:
-                pass
-        else:
-            update_rectangle_status("Click first corner")
-            # Use a precise cursor while guiding rectangle creation
-            try:
-                if isinstance(original_map_style, dict):
-                    new_style = original_map_style.copy()
-                    new_style['cursor'] = 'crosshair'
-                else:
-                    new_style = {'cursor': 'crosshair'}
-                m.default_style = new_style
-            except Exception:
-                pass
-
-    rectangle_mode_button.observe(handle_rectangle_toggle, names='value')
-
-    def process_rectangle_click(point):
-        """Consume guided rectangle clicks and create preview polygons."""
-        lon, lat = point
-        if len(rectangle_clicks) == 0:
-            remove_rectangle_preview()
-            clear_temp_layers()
-            current_polygon['vertices'] = []
-            add_button.disabled = True
-            clear_button.disabled = True
-        rectangle_clicks.append((lon, lat))
-        refresh_temp_layers()
-        clicks = len(rectangle_clicks)
-        if clicks == 1:
-            update_rectangle_status("First corner captured. Click the second to set width.")
-            return
-        if clicks == 2:
-            if not validate_width():
-                rectangle_clicks.pop()
-                refresh_temp_layers()
-                update_rectangle_status("Corners too close. Click a wider second corner.", error=True)
-                return
-            update_rectangle_status("Width locked. Click the opposite side to set height.")
-            return
-        rectangle_vertices, error = build_rectangle_from_clicks(rectangle_clicks[:3])
-        if error:
-            rectangle_clicks.pop()
-            refresh_temp_layers()
-            update_rectangle_status(error, error=True)
-            return
-        clear_temp_layers()
-        set_rectangle_preview(rectangle_vertices)
-        update_rectangle_status(
-            "Rectangle ready. Adjust height if needed and click 'Add Building'."
-        )
-        rectangle_clicks.clear()
-
-    def update_hover_preview(cursor_point):
-        """Update tentative line/rectangle preview as the cursor moves."""
-        if not rectangle_mode_button.value:
-            return
-        if not rectangle_clicks:
-            return
-
-        lon_c, lat_c = cursor_point
-        # One click: show line from first point to cursor
-        if len(rectangle_clicks) == 1:
-            remove_rectangle_preview()
-            (lon1, lat1) = rectangle_clicks[0]
-            hover_segment = Polyline(
-                locations=[(lat1, lon1), (lat_c, lon_c)],
-                color="red",
-                weight=3,
-                opacity=0.8
-            )
-            rectangle_preview_layer['layer'] = hover_segment
-            m.add_layer(hover_segment)
-            return
-
-        # Two clicks: show full tentative rectangle using cursor as opposite side
-        if len(rectangle_clicks) >= 2:
-            p1, p2 = rectangle_clicks[0], rectangle_clicks[1]
-            rectangle_vertices, error = build_rectangle_from_clicks([p1, p2, (lon_c, lat_c)])
-            if error or not rectangle_vertices:
-                remove_rectangle_preview()
-                return
-            remove_rectangle_preview()
-            lat_lon_coords = [(lat, lon) for lon, lat in rectangle_vertices]
-            if lat_lon_coords and lat_lon_coords[0] != lat_lon_coords[-1]:
-                lat_lon_coords = lat_lon_coords + [lat_lon_coords[0]]
-            hover_rect = LeafletPolygon(
-                locations=lat_lon_coords,
+    def refresh_markers():
+        clear_temps()
+        for lon, lat in state["clicks"]:
+            pt = Circle(
+                location=(lat, lon),
+                radius=2,
                 color="red",
                 fill_color="red",
-                fill_opacity=0.1,
-                weight=2
+                fill_opacity=1.0,
             )
-            rectangle_preview_layer['layer'] = hover_rect
-            m.add_layer(hover_rect)
+            m.add_layer(pt)
+            state["temp_layers"].append(pt)
+        if len(state["clicks"]) >= 2:
+            (l1, la1), (l2, la2) = state["clicks"][0], state["clicks"][1]
+            line = Polyline(
+                locations=[(la1, l1), (la2, l2)],
+                color="red",
+                weight=3,
+            )
+            m.add_layer(line)
+            state["temp_layers"].append(line)
+
+    def build_rect(points):
+        (lon1, lat1), (lon2, lat2), (lon3, lat3) = points[:3]
+        x1, y1 = to_merc.transform(lon1, lat1)
+        x2, y2 = to_merc.transform(lon2, lat2)
+        x3, y3 = to_merc.transform(lon3, lat3)
+        wx, wy = x2 - x1, y2 - y1
+        if math.hypot(wx, wy) < 0.5:
+            return None, "Width too small"
+        ux, uy = wx / math.hypot(wx, wy), wy / math.hypot(wx, wy)
+        px, py = -uy, ux
+        vx, vy = x3 - x1, y3 - y1
+        h_len = vx * px + vy * py
+        if abs(h_len) < 0.5:
+            return None, "Height too small"
+        hx, hy = px * h_len, py * h_len
+        corners_merc = [
+            (x1, y1),
+            (x2, y2),
+            (x2 + hx, y2 + hy),
+            (x1 + hx, y1 + hy),
+        ]
+        return [to_geo.transform(*p) for p in corners_merc], None
 
     def handle_map_interaction(**kwargs):
-        """Capture map clicks and mouse move for rectangle mode."""
-        event_type = kwargs.get('type')
-        if event_type == 'click':
-            if kwargs.get('button') not in (None, 'left'):
+        if not rect_btn.value:
+            return
+
+        if kwargs.get("type") == "click":
+            coords = kwargs.get("coordinates")
+            if not coords:
                 return
-            if not rectangle_mode_button.value:
+            lat, lon = coords
+            state["clicks"].append((lon, lat))
+            refresh_markers()
+            
+            count = len(state["clicks"])
+            if count == 1:
+                set_status("Click 2nd corner (width).", "info")
+            elif count == 2:
+                (l1, la1), (l2, la2) = state["clicks"]
+                x1, y1 = to_merc.transform(l1, la1)
+                x2, y2 = to_merc.transform(l2, la2)
+                if math.hypot(x2 - x1, y2 - y1) < 0.5:
+                    state["clicks"].pop()
+                    refresh_markers()
+                    set_status("Too narrow! Click further.", "danger")
+                else:
+                    set_status("Click opposite side (height).", "info")
+            elif count == 3:
+                verts, err = build_rect(state["clicks"])
+                if err:
+                    state["clicks"].pop()
+                    set_status(err, "danger")
+                else:
+                    clear_preview()
+                    clear_temps()
+                    state["poly"] = verts
+                    poly_locs = [(lat, lon) for lon, lat in verts]
+                    preview = LeafletPolygon(
+                        locations=poly_locs,
+                        color="#4CAF50",
+                        fill_color="#4CAF50",
+                        fill_opacity=0.3,
+                    )
+                    state["preview"] = preview
+                    m.add_layer(preview)
+                    add_btn.disabled = False
+                    clr_btn.disabled = False
+                    state["clicks"] = []
+                    rect_btn.value = False
+                    set_status("Rectangle ready. Click 'Add'.", "success")
+
+        elif kwargs.get("type") == "mousemove":
+            coords = kwargs.get("coordinates")
+            if not coords:
                 return
-            coordinates = kwargs.get('coordinates')
-            if not coordinates or len(coordinates) != 2:
-                return
-            lat, lon = coordinates
-            process_rectangle_click((lon, lat))
-        elif event_type == 'mousemove':
-            if not rectangle_mode_button.value:
-                return
-            coordinates = kwargs.get('coordinates')
-            if not coordinates or len(coordinates) != 2:
-                return
-            lat, lon = coordinates
-            update_hover_preview((lon, lat))
+            lat_c, lon_c = coords
+            if len(state["clicks"]) == 1:
+                clear_preview()
+                (lon1, lat1) = state["clicks"][0]
+                line = Polyline(
+                    locations=[(lat1, lon1), (lat_c, lon_c)],
+                    color="#FF5722",
+                    weight=2,
+                    dash_array="5, 5",
+                )
+                state["preview"] = line
+                m.add_layer(line)
+            elif len(state["clicks"]) == 2:
+                tentative_clicks = state["clicks"] + [(lon_c, lat_c)]
+                verts, err = build_rect(tentative_clicks)
+                clear_preview()
+                if not err:
+                    poly_locs = [(lat, lon) for lon, lat in verts]
+                    poly = LeafletPolygon(
+                        locations=poly_locs,
+                        color="#FF5722",
+                        weight=2,
+                        fill_color="#FF5722",
+                        fill_opacity=0.1,
+                        dash_array="5, 5",
+                    )
+                    state["preview"] = poly
+                    m.add_layer(poly)
 
     m.on_interaction(handle_map_interaction)
 
-    def add_building_click(b):
-        """Handle add building button click"""
-        # Use nonlocal to modify the outer scope variable
-        nonlocal updated_gdf
-        
-        with status_output:
-            clear_output()
-            
-            if current_polygon['vertices']:
-                # Create polygon geometry
-                polygon = geom.Polygon(current_polygon['vertices'])
-                
-                # Get next building ID and ID values (ensure uniqueness)
-                if len(updated_gdf) > 0:
-                    next_building_id = int(updated_gdf['building_id'].max() + 1)
-                    next_id = int(updated_gdf['id'].max() + 1)
-                else:
-                    next_building_id = 1
-                    next_id = 1
-                
-                # Create new row data
-                new_row_data = {
-                    'geometry': polygon,
-                    'height': float(height_input.value),
-                    'min_height': float(min_height_input.value),
-                    'building_id': next_building_id,
-                    'id': next_id
-                }
-                
-                # Add any additional columns
-                for col in updated_gdf.columns:
-                    if col not in new_row_data:
-                        new_row_data[col] = None
-                
-                # Append the new building in-place
-                new_index = len(updated_gdf)
-                updated_gdf.loc[new_index] = new_row_data
-                
-                # Add to map
-                coords = list(polygon.exterior.coords)
-                lat_lon_coords = [(c[1], c[0]) for c in coords[:-1]]
-                
-                new_layer = LeafletPolygon(
-                    locations=lat_lon_coords,
-                    color="blue",
-                    fill_color="blue",
-                    fill_opacity=0.3,
-                    weight=2,
-                    popup=HTML(f"<b>Building ID:</b> {next_building_id}<br>"
-                              f"<b>ID:</b> {next_id}<br>"
-                              f"<b>Height:</b> {height_input.value}m<br>"
-                              f"<b>Min Height:</b> {min_height_input.value}m")
-                )
-                m.add_layer(new_layer)
-                
-                # Clear drawing
-                draw_control.clear()
-                remove_rectangle_preview()
-                clear_temp_layers()
-                current_polygon['vertices'] = []
-                add_button.disabled = True
-                clear_button.disabled = True
-                update_rectangle_status()
-                
-                print(f"Building {next_building_id} added successfully!")
-                print(f"ID: {next_id}, Height: {height_input.value}m, Min Height: {min_height_input.value}m")
-                print(f"Total buildings: {len(updated_gdf)}")
-    
-    def clear_drawing_click(b):
-        """Handle clear drawing button click"""
-        with status_output:
-            clear_output()
-            draw_control.clear()
-            remove_rectangle_preview()
-            rectangle_clicks.clear()
-            clear_temp_layers()
-            current_polygon['vertices'] = []
-            add_button.disabled = True
-            clear_button.disabled = True
-            update_rectangle_status()
-            print("Drawing cleared")
-    
-    # Connect event handlers
-    draw_control.on_draw(handle_draw)
-    add_button.on_click(add_building_click)
-    clear_button.on_click(clear_drawing_click)
-    
-    # Add draw control to map
+    def handle_freehand(self, action, geo_json):
+        rect_btn.value = False
+        del_btn.value = False
+        state["clicks"] = []
+        clear_preview()
+        clear_temps()
+        if action == "created" and geo_json["geometry"]["type"] == "Polygon":
+            coords = geo_json["geometry"]["coordinates"][0]
+            state["poly"] = [(c[0], c[1]) for c in coords[:-1]]
+            add_btn.disabled = False
+            clr_btn.disabled = False
+            set_status("Freehand polygon captured.", "success")
+
+    draw_control = DrawControl(
+        polygon={"shapeOptions": {"color": "#FF5722"}},
+        rectangle={},
+        circle={},
+        polyline={},
+        marker={},
+    )
+    draw_control.on_draw(handle_freehand)
     m.add_control(draw_control)
-    
-    # Display initial status
-    with status_output:
-        print(f"Total buildings loaded: {len(updated_gdf)}")
-        print("Draw a polygon to add a new building")
-    
+
+    def add_geom(b):
+        if not state["poly"]:
+            return
+        try:
+            poly = geom.Polygon(state["poly"])
+            new_idx = (updated_gdf.index.max() + 1) if not updated_gdf.empty else 1
+            updated_gdf.loc[new_idx] = {
+                "geometry": poly,
+                "height": h_in.value,
+                "min_height": mh_in.value,
+                "building_id": new_idx,
+                "id": new_idx,
+            }
+            add_polygon_to_map(poly, new_idx, h_in.value)
+            clear_all(None)
+            set_status(f"Building {new_idx} added!", "success")
+        except Exception as e:
+            set_status(str(e), "danger")
+
+    def clear_all(b):
+        draw_control.clear()
+        clear_preview()
+        clear_temps()
+        state["clicks"] = []
+        state["poly"] = []
+        add_btn.disabled = True
+        clr_btn.disabled = True
+        if b:
+            set_status("Cleared.", "warn")
+
+    add_btn.on_click(add_geom)
+    clr_btn.on_click(clear_all)
+
     return m, updated_gdf
 
 
@@ -1200,7 +1014,12 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
         >>> # Draw buildings on the displayed map
         >>> print(buildings)  # Automatically contains all drawn buildings
     """
-    m, gdf = draw_additional_buildings(building_gdf, initial_center, zoom, rectangle_vertices)
+    m, gdf = draw_additional_buildings(
+        building_gdf=building_gdf,
+        initial_center=initial_center,
+        zoom=zoom,
+        rectangle_vertices=rectangle_vertices,
+    )
     display(m)
     return gdf
 
