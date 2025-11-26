@@ -617,45 +617,46 @@ def draw_additional_buildings(
         """
     <style>
         .vox-panel { font-family: 'Segoe UI', sans-serif; }
-        .vox-header { font-size: 16px; font-weight: 600; color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 5px; }
-        .vox-status { padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; font-weight: 500; }
-        .vox-status-info { background-color: #e3f2fd; color: #0d47a1; border-left: 4px solid #0d47a1; }
-        .vox-status-success { background-color: #e8f5e9; color: #1b5e20; border-left: 4px solid #1b5e20; }
-        .vox-status-warn { background-color: #fff3e0; color: #e65100; border-left: 4px solid #e65100; }
-        .vox-status-danger { background-color: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+        .vox-header { font-size: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 4px; margin-bottom: 2px; }
+        .vox-section { font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 2px 0; }
+        .vox-section-add { color: #2e7d32; }
+        .vox-section-remove { color: #c62828; }
+        .vox-status { padding: 6px 8px; border-radius: 3px; font-size: 11px; margin-top: 6px; font-weight: 500; line-height: 1.3; }
+        .vox-status-info { background-color: #e3f2fd; color: #0d47a1; border-left: 3px solid #0d47a1; }
+        .vox-status-success { background-color: #e8f5e9; color: #1b5e20; border-left: 3px solid #1b5e20; }
+        .vox-status-warn { background-color: #fff3e0; color: #e65100; border-left: 3px solid #e65100; }
+        .vox-status-danger { background-color: #ffebee; color: #c62828; border-left: 3px solid #c62828; }
+        .vox-divider { height: 1px; background: #e0e0e0; margin: 6px 0; }
     </style>
     """
     )
 
+    # --- ADD BUILDINGS Section ---
+    add_section_label = HTML("<div class='vox-panel vox-section vox-section-add'>➕ ADD</div>")
+    
     rect_btn = ToggleButton(
         value=False,
         description="📐 Rectangle",
-        icon="square-o",
-        layout=Layout(flex="1"),
-        tooltip="Draw Rectangle",
+        icon="",
+        layout=Layout(width="100px"),
+        tooltip="Click 3 corners on map to draw rectangle",
     )
-    del_btn = ToggleButton(
-        value=False,
-        description="Remove",
-        icon="trash",
-        button_style="danger",
-        layout=Layout(flex="1"),
-        tooltip="Delete Buildings",
-    )
+    freehand_btn = HTML("<span style='font-size:10px; color:#666; margin-left:5px;'>or 🖊️ left toolbar</span>")
+    
     h_in = FloatText(
         value=10.0,
-        description="H (m):",
-        layout=Layout(width="48%"),
-        style={"description_width": "40px"},
+        description="Height:",
+        layout=Layout(width="120px"),
+        style={"description_width": "45px"},
     )
     mh_in = FloatText(
         value=0.0,
-        description="Min:",
-        layout=Layout(width="48%"),
-        style={"description_width": "40px"},
+        description="Base:",
+        layout=Layout(width="100px"),
+        style={"description_width": "35px"},
     )
     add_btn = Button(
-        description="Add",
+        description="Add Building",
         button_style="success",
         icon="plus",
         disabled=True,
@@ -666,44 +667,75 @@ def draw_additional_buildings(
         button_style="warning",
         icon="eraser",
         disabled=True,
-        layout=Layout(width="80px", margin="0 0 0 5px"),
-    )
-    status_bar = HTML(
-        value="<div class='vox-panel vox-status vox-status-info'>Ready.</div>"
+        layout=Layout(width="70px"),
+        tooltip="Clear drawing",
     )
 
-    tool_row = HBox([rect_btn, del_btn], layout=Layout(margin="5px 0px"))
-    input_row = HBox([h_in, mh_in])
-    action_row = HBox([add_btn, clr_btn])
+    # --- REMOVE BUILDINGS Section ---
+    divider = HTML("<div class='vox-divider'></div>")
+    remove_section_label = HTML("<div class='vox-panel vox-section vox-section-remove'>🗑️ REMOVE</div>")
+    
+    del_btn = ToggleButton(
+        value=False,
+        description="👆 Click",
+        icon="",
+        button_style="danger",
+        layout=Layout(width="80px"),
+        tooltip="Click on buildings to remove",
+    )
+    poly_del_btn = ToggleButton(
+        value=False,
+        description="⬡ Area",
+        icon="",
+        button_style="danger",
+        layout=Layout(width="75px"),
+        tooltip="Draw polygon to remove buildings inside",
+    )
+
+    # --- Status Bar ---
+    status_bar = HTML(
+        value="<div class='vox-panel vox-status vox-status-info'>Ready. Select a tool above.</div>"
+    )
+
+    # Layout rows - compact
+    add_tools_row = HBox([rect_btn, freehand_btn], layout=Layout(margin="1px 0"))
+    input_row = HBox([h_in, mh_in], layout=Layout(margin="2px 0"))
+    action_row = HBox([add_btn, clr_btn], layout=Layout(margin="2px 0"))
+    remove_tools_row = HBox([del_btn, poly_del_btn], layout=Layout(margin="1px 0"))
 
     panel = VBox(
         [
             style_html,
-            HTML(
-                "<div class='vox-panel'><div class='vox-header'>🏙️ Building Editor</div></div>"
-            ),
-            tool_row,
+            HTML("<div class='vox-panel'><div class='vox-header'>🏙️ Building Editor</div></div>"),
+            add_section_label,
+            add_tools_row,
             input_row,
             action_row,
+            divider,
+            remove_section_label,
+            remove_tools_row,
             status_bar,
         ],
         layout=Layout(
-            width="300px",
-            padding="10px",
+            width="280px",
+            padding="8px",
             background_color="white",
-            border_radius="8px",
-            box_shadow="0px 4px 10px rgba(0,0,0,0.1)",
+            border_radius="6px",
+            box_shadow="0px 2px 8px rgba(0,0,0,0.12)",
         ),
     )
     
     m.add_control(WidgetControl(widget=panel, position="topright"))
 
     # --- Global State & Transformers ---
-    state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None}
+    state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None, "removal_poly": None, "removal_preview": None}
     to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     to_geo = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
     _style_attr = getattr(m, "default_style", {})
     original_style = _style_attr.copy() if isinstance(_style_attr, dict) else {"cursor": "grab"}
+    
+    # Track building layers for polygon removal mode
+    building_layers = {}
 
     # --- Helper Functions ---
     def set_status(msg, type="info"):
@@ -725,38 +757,63 @@ def draw_additional_buildings(
         def on_poly_click(**kwargs):
             if del_btn.value:
                 m.remove_layer(leaflet_poly)
+                if gdf_index in building_layers:
+                    del building_layers[gdf_index]
                 try:
                     updated_gdf.drop(index=gdf_index, inplace=True)
-                    set_status(f"Building {gdf_index} removed.", "danger")
+                    set_status(f"🗑️ Removed #{gdf_index}. Click more or deselect.", "danger")
                 except KeyError:
                     pass
 
         leaflet_poly.on_click(on_poly_click)
         m.add_layer(leaflet_poly)
+        building_layers[gdf_index] = leaflet_poly
 
     # --- Render Existing ---
     for idx, row in updated_gdf.iterrows():
         if isinstance(row.geometry, geom.Polygon):
             add_polygon_to_map(row.geometry, idx, row.get("height", 0))
 
+    def clear_removal_preview():
+        if state["removal_preview"]:
+            try:
+                m.remove_layer(state["removal_preview"])
+            except Exception:
+                pass
+            state["removal_preview"] = None
+        state["removal_poly"] = None
+
     # --- Logic ---
     def on_mode_change(change):
         if change["owner"] is rect_btn and change["new"]:
             del_btn.value = False
+            poly_del_btn.value = False
             draw_control.clear()
+            clear_removal_preview()
             m.default_style = {"cursor": "crosshair"}
-            set_status("Rect Mode: Click 1st corner.", "info")
+            set_status("📐 <b>Step 1/3:</b> Click first corner", "info")
         elif change["owner"] is del_btn and change["new"]:
             rect_btn.value = False
+            poly_del_btn.value = False
             clear_all(None)
+            clear_removal_preview()
             m.default_style = {"cursor": "no-drop"}
-            set_status("DELETE MODE: Click blue buildings to remove.", "danger")
-        elif not rect_btn.value and not del_btn.value:
+            set_status("👆 Click on buildings to delete", "danger")
+        elif change["owner"] is poly_del_btn and change["new"]:
+            rect_btn.value = False
+            del_btn.value = False
+            clear_all(None)
+            clear_removal_preview()
+            m.default_style = {"cursor": "crosshair"}
+            set_status("⬡ Use polygon tool (◇) on left", "danger")
+        elif not rect_btn.value and not del_btn.value and not poly_del_btn.value:
             m.default_style = original_style
-            set_status("Ready.", "info")
+            clear_removal_preview()
+            set_status("Ready. Select a tool above.", "info")
 
     rect_btn.observe(on_mode_change, names="value")
     del_btn.observe(on_mode_change, names="value")
+    poly_del_btn.observe(on_mode_change, names="value")
 
     def clear_preview():
         if state["preview"]:
@@ -832,7 +889,7 @@ def draw_additional_buildings(
             
             count = len(state["clicks"])
             if count == 1:
-                set_status("Click 2nd corner (width).", "info")
+                set_status("📐 <b>Step 2/3:</b> Click second corner", "info")
             elif count == 2:
                 (l1, la1), (l2, la2) = state["clicks"]
                 x1, y1 = to_merc.transform(l1, la1)
@@ -840,14 +897,14 @@ def draw_additional_buildings(
                 if math.hypot(x2 - x1, y2 - y1) < 0.5:
                     state["clicks"].pop()
                     refresh_markers()
-                    set_status("Too narrow! Click further.", "danger")
+                    set_status("⚠️ Too close! Click further away", "warn")
                 else:
-                    set_status("Click opposite side (height).", "info")
+                    set_status("📐 <b>Step 3/3:</b> Click opposite side", "info")
             elif count == 3:
                 verts, err = build_rect(state["clicks"])
                 if err:
                     state["clicks"].pop()
-                    set_status(err, "danger")
+                    set_status(f"⚠️ {err} - try again", "warn")
                 else:
                     clear_preview()
                     clear_temps()
@@ -865,7 +922,7 @@ def draw_additional_buildings(
                     clr_btn.disabled = False
                     state["clicks"] = []
                     rect_btn.value = False
-                    set_status("Rectangle ready. Click 'Add'.", "success")
+                    set_status("✅ Shape ready! Set height → <b>Add</b>", "success")
 
         elif kwargs.get("type") == "mousemove":
             coords = kwargs.get("coordinates")
@@ -903,24 +960,83 @@ def draw_additional_buildings(
     m.on_interaction(handle_map_interaction)
 
     def handle_freehand(self, action, geo_json):
-        rect_btn.value = False
-        del_btn.value = False
-        state["clicks"] = []
-        clear_preview()
-        clear_temps()
         if action == "created" and geo_json["geometry"]["type"] == "Polygon":
             coords = geo_json["geometry"]["coordinates"][0]
-            state["poly"] = [(c[0], c[1]) for c in coords[:-1]]
-            add_btn.disabled = False
-            clr_btn.disabled = False
-            set_status("Freehand polygon captured.", "success")
+            polygon_coords = [(c[0], c[1]) for c in coords[:-1]]
+            
+            # Check if we're in polygon removal mode
+            if poly_del_btn.value:
+                # Create the removal polygon and find buildings to remove
+                removal_polygon = geom.Polygon(polygon_coords)
+                state["removal_poly"] = removal_polygon
+                
+                # Find all buildings within or intersecting the drawn polygon
+                buildings_to_remove = []
+                for idx, row in updated_gdf.iterrows():
+                    if isinstance(row.geometry, geom.Polygon):
+                        if removal_polygon.contains(row.geometry) or removal_polygon.intersects(row.geometry):
+                            buildings_to_remove.append(idx)
+                
+                if buildings_to_remove:
+                    # Highlight buildings that will be removed
+                    clear_removal_preview()
+                    
+                    # Create a preview polygon showing the selection area
+                    preview_locs = [(lat, lon) for lon, lat in polygon_coords]
+                    preview = LeafletPolygon(
+                        locations=preview_locs,
+                        color="#FF0000",
+                        fill_color="#FF0000",
+                        fill_opacity=0.2,
+                        weight=2,
+                        dash_array="5, 5",
+                    )
+                    state["removal_preview"] = preview
+                    m.add_layer(preview)
+                    
+                    # Remove the buildings
+                    removed_count = 0
+                    for idx in buildings_to_remove:
+                        if idx in building_layers:
+                            try:
+                                m.remove_layer(building_layers[idx])
+                                del building_layers[idx]
+                            except Exception:
+                                pass
+                        try:
+                            updated_gdf.drop(index=idx, inplace=True)
+                            removed_count += 1
+                        except KeyError:
+                            pass
+                    
+                    draw_control.clear()
+                    clear_removal_preview()
+                    poly_del_btn.value = False  # Exit poly delete mode after removal
+                    m.default_style = original_style
+                    set_status(f"🗑️ Removed {removed_count} building(s)", "success")
+                else:
+                    draw_control.clear()
+                    set_status("⚠️ No buildings in area", "warn")
+            else:
+                # Normal mode - adding a freehand polygon as building
+                rect_btn.value = False
+                del_btn.value = False
+                poly_del_btn.value = False
+                state["clicks"] = []
+                clear_preview()
+                clear_temps()
+                state["poly"] = polygon_coords
+                add_btn.disabled = False
+                clr_btn.disabled = False
+                set_status("✅ Shape ready! Set height → <b>Add</b>", "success")
 
     draw_control = DrawControl(
-        polygon={"shapeOptions": {"color": "#FF5722"}},
+        polygon={"shapeOptions": {"color": "#FF5722", "fillColor": "#FF5722", "fillOpacity": 0.2}},
         rectangle={},
         circle={},
         polyline={},
         marker={},
+        circlemarker={},
     )
     draw_control.on_draw(handle_freehand)
     m.add_control(draw_control)
@@ -940,9 +1056,9 @@ def draw_additional_buildings(
             }
             add_polygon_to_map(poly, new_idx, h_in.value)
             clear_all(None)
-            set_status(f"Building {new_idx} added!", "success")
+            set_status(f"🏢 Added! H={h_in.value}m (ID:{new_idx})", "success")
         except Exception as e:
-            set_status(str(e), "danger")
+            set_status(f"❌ Error: {str(e)[:30]}", "danger")
 
     def clear_all(b):
         draw_control.clear()
@@ -953,7 +1069,7 @@ def draw_additional_buildings(
         add_btn.disabled = True
         clr_btn.disabled = True
         if b:
-            set_status("Cleared.", "warn")
+            set_status("Cleared. Draw new shape.", "warn")
 
     add_btn.on_click(add_geom)
     clr_btn.on_click(clear_all)
