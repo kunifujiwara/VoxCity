@@ -198,6 +198,9 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
         if pd.isna(min_height):
             min_height = 0
         is_inner = row.get('is_inner', False)
+        # Fix: Handle NaN values for is_inner (NaN is truthy, causing buildings to be skipped)
+        if pd.isna(is_inner):
+            is_inner = False
         feature_id = row.get('id', idx_b)
         if not polygon.is_valid:
             try:
@@ -311,7 +314,11 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
         mask = (filtered_gdf['height'] == 0) | (filtered_gdf['height'].isna())
         filtered_gdf.loc[mask, 'height'] = complement_height
 
-    filtered_gdf['min_height'] = 0
+    # Preserve existing min_height values; only set default for missing/NaN
+    if 'min_height' not in filtered_gdf.columns:
+        filtered_gdf['min_height'] = 0
+    else:
+        filtered_gdf['min_height'] = filtered_gdf['min_height'].fillna(0)
     if 'is_inner' not in filtered_gdf.columns:
         filtered_gdf['is_inner'] = False
     else:

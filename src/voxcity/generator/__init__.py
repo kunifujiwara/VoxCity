@@ -23,6 +23,7 @@ from .voxelizer import (
 )
 from .pipeline import VoxCityPipeline
 from .io import save_voxcity, load_voxcity
+from .update import update_voxcity, regenerate_voxels
 
 __all__ = [
     "get_voxcity",
@@ -39,6 +40,8 @@ __all__ = [
     "VoxCityPipeline",
     "save_voxcity",
     "load_voxcity",
+    "update_voxcity",
+    "regenerate_voxels",
 ]
 
 
