@@ -30,6 +30,8 @@ def update_voxcity(
     canopy_top: Optional[np.ndarray] = None,
     canopy_bottom: Optional[np.ndarray] = None,
     building_gdf=None,
+    tree_gdf=None,
+    tree_gdf_mode: str = "replace",
     land_cover_source: Optional[str] = None,
     trunk_height_ratio: Optional[float] = None,
     voxel_dtype=None,
@@ -87,6 +89,20 @@ def update_voxcity(
         using create_building_height_grid_from_gdf_polygon. The GeoDataFrame
         is also stored in city.extras['building_gdf'].
 
+    tree_gdf : GeoDataFrame, optional
+        Updated tree GeoDataFrame. If provided without tree canopy data
+        (tree_canopy, canopy_top, canopy_bottom), the function will
+        automatically generate the canopy grids from the GeoDataFrame
+        using create_canopy_grids_from_tree_gdf. The GeoDataFrame must
+        contain 'top_height', 'bottom_height', 'crown_diameter', and
+        'geometry' columns. The GeoDataFrame is stored in city.extras['tree_gdf'].
+
+    tree_gdf_mode : str, default "replace"
+        How to combine tree_gdf with existing canopy data. Options:
+        - "replace": Replace the existing canopy grids with new ones from tree_gdf.
+        - "add": Merge the tree_gdf grids with existing canopy grids by taking
+          the maximum height at each cell (preserves existing trees).
+
     land_cover_source : str, optional
         The land cover source name for proper voxelization. If not provided,
         attempts to use the source from city.extras or defaults to 'OpenStreetMap'.
@@ -132,6 +148,14 @@ def update_voxcity(
     Update buildings from GeoDataFrame (automatic grid generation):
 
     >>> updated = update_voxcity(city, building_gdf=updated_building_gdf)
+
+    Update trees from GeoDataFrame (replace existing canopy):
+
+    >>> updated = update_voxcity(city, tree_gdf=updated_tree_gdf)
+
+    Add trees from GeoDataFrame to existing canopy:
+
+    >>> updated = update_voxcity(city, tree_gdf=new_tree_gdf, tree_gdf_mode="add")
     """
     # Resolve metadata from existing city
     meta = city.buildings.meta
@@ -156,6 +180,47 @@ def update_voxcity(
                 rectangle_vertices,
             )
         )
+
+    # --- Auto-generate canopy grids from tree GeoDataFrame if provided ---
+    if tree_gdf is not None and tree_canopy is None and canopy_top is None:
+        # Validate tree_gdf_mode
+        if tree_gdf_mode not in ("replace", "add"):
+            raise ValueError(
+                f"Invalid tree_gdf_mode '{tree_gdf_mode}'. Must be 'replace' or 'add'."
+            )
+        
+        # Auto-generate canopy grids from the tree GeoDataFrame
+        from ..geoprocessor.raster import create_canopy_grids_from_tree_gdf
+        
+        rectangle_vertices = city.extras.get("rectangle_vertices")
+        if rectangle_vertices is None:
+            raise ValueError(
+                "Cannot auto-generate canopy grids: 'rectangle_vertices' not found in city.extras. "
+                "Provide canopy_top and canopy_bottom explicitly."
+            )
+        
+        new_canopy_top, new_canopy_bottom = create_canopy_grids_from_tree_gdf(
+            tree_gdf,
+            meshsize,
+            rectangle_vertices,
+        )
+        
+        if tree_gdf_mode == "add":
+            # Merge with existing canopy by taking maximum values
+            existing_top = city.tree_canopy.top
+            existing_bottom = city.tree_canopy.bottom
+            if existing_top is not None:
+                canopy_top = np.maximum(existing_top, new_canopy_top)
+            else:
+                canopy_top = new_canopy_top
+            if existing_bottom is not None:
+                canopy_bottom = np.maximum(existing_bottom, new_canopy_bottom)
+            else:
+                canopy_bottom = new_canopy_bottom
+        else:
+            # Replace mode: use new canopy grids directly
+            canopy_top = new_canopy_top
+            canopy_bottom = new_canopy_bottom
 
     # --- Resolve building data ---
     if buildings is not None:
@@ -228,6 +293,8 @@ def update_voxcity(
     new_extras = dict(city.extras)
     if building_gdf is not None:
         new_extras["building_gdf"] = building_gdf
+    if tree_gdf is not None:
+        new_extras["tree_gdf"] = tree_gdf
     new_extras["canopy_top"] = final_canopy_top
     new_extras["canopy_bottom"] = final_canopy_bottom
 

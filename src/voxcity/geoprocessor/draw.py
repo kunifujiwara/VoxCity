@@ -378,7 +378,7 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
 
     return m, rectangle_vertices
 
-def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_vertices=None, zoom=17):
+def display_buildings_and_draw_polygon(voxcity=None, building_gdf=None, rectangle_vertices=None, zoom=17):
     """
     Displays building footprints and enables polygon drawing on an interactive map.
     
@@ -404,18 +404,18 @@ def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_v
        - Support for both building data and rectangle bounds
 
     Args:
-        city (VoxCity, optional): A VoxCity object from which to extract building_gdf 
+        voxcity (VoxCity, optional): A VoxCity object from which to extract building_gdf 
             and rectangle_vertices. If provided, these values will be used unless 
             explicitly overridden by the building_gdf or rectangle_vertices parameters.
         building_gdf (GeoDataFrame, optional): A GeoDataFrame containing building footprints.
             Must have geometry column with Polygon type features.
             Geometries should be in [lon, lat] coordinate order.
-            If None and city is provided, uses city.extras['building_gdf'].
-            If None and no city provided, only the base map is displayed.
+            If None and voxcity is provided, uses voxcity.extras['building_gdf'].
+            If None and no voxcity provided, only the base map is displayed.
         rectangle_vertices (list, optional): List of [lon, lat] coordinates defining rectangle corners.
             Used to set the initial map view extent.
             Takes precedence over building_gdf for determining map center.
-            If None and city is provided, uses city.extras['rectangle_vertices'].
+            If None and voxcity is provided, uses voxcity.extras['rectangle_vertices'].
         zoom (int): Initial zoom level for the map. Default=17.
             Range: 0 (most zoomed out) to 18 (most zoomed in).
             Default of 17 is optimized for building-level detail.
@@ -428,13 +428,13 @@ def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_v
 
     Examples:
         Using a VoxCity object:
-        >>> m, polygons = display_buildings_and_draw_polygon(city=my_city)
+        >>> m, polygons = display_buildings_and_draw_polygon(voxcity=my_voxcity)
         
         Using explicit parameters:
         >>> m, polygons = display_buildings_and_draw_polygon(building_gdf=buildings, rectangle_vertices=rect)
         
         Override specific parameters from VoxCity:
-        >>> m, polygons = display_buildings_and_draw_polygon(city=my_city, zoom=15)
+        >>> m, polygons = display_buildings_and_draw_polygon(voxcity=my_voxcity, zoom=15)
 
     Note:
         - Building footprints are displayed in blue with 20% opacity
@@ -448,14 +448,14 @@ def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_v
     # ---------------------------------------------------------
     # 0. Extract data from VoxCity object if provided
     # ---------------------------------------------------------
-    if city is not None:
+    if voxcity is not None:
         # Extract building_gdf if not explicitly provided
         if building_gdf is None:
-            building_gdf = city.extras.get('building_gdf', None)
+            building_gdf = voxcity.extras.get('building_gdf', None)
         
         # Extract rectangle_vertices if not explicitly provided
         if rectangle_vertices is None:
-            rectangle_vertices = city.extras.get('rectangle_vertices', None)
+            rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
     
     # ---------------------------------------------------------
     # 1. Determine a suitable map center via bounding box logic
@@ -564,7 +564,7 @@ def display_buildings_and_draw_polygon(city=None, building_gdf=None, rectangle_v
 
 
 def draw_additional_buildings(
-    city=None,
+    voxcity=None,
     building_gdf=None,
     initial_center=None,
     zoom=17,
@@ -577,11 +577,11 @@ def draw_additional_buildings(
         initial_center (tuple): (Longitude, Latitude) - Standard GeoJSON order.
     """
     # --- Data Initialization ---
-    if city is not None:
+    if voxcity is not None:
         if building_gdf is None:
-            building_gdf = city.extras.get("building_gdf", None)
+            building_gdf = voxcity.extras.get("building_gdf", None)
         if rectangle_vertices is None:
-            rectangle_vertices = city.extras.get("rectangle_vertices", None)
+            rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
     
     if building_gdf is None:
         updated_gdf = gpd.GeoDataFrame(
@@ -1140,7 +1140,7 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
     return gdf
 
 
-def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
+def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     """
     Creates an interactive map to add trees by clicking and setting parameters.
     
@@ -1150,15 +1150,32 @@ def draw_additional_trees(tree_gdf=None, initial_center=None, zoom=17, rectangle
     - Update parameters at any time to change subsequent trees
     
     Args:
-        tree_gdf (GeoDataFrame, optional): Existing trees to display.
-            Expected columns: ['tree_id', 'top_height', 'bottom_height', 'crown_diameter', 'geometry']
+        voxcity (VoxCity, optional): A VoxCity object from which to extract tree_gdf 
+            and rectangle_vertices. If provided, tree_gdf is extracted from 
+            voxcity.extras['tree_gdf'] and rectangle_vertices from 
+            voxcity.extras['rectangle_vertices'].
         initial_center (tuple, optional): (lon, lat) for initial map center.
         zoom (int): Initial zoom level. Default=17.
-        rectangle_vertices (list, optional): If provided, used to set center like buildings.
     
     Returns:
         tuple: (map_object, updated_tree_gdf)
+    
+    Examples:
+        Using a VoxCity object:
+        >>> m, tree_gdf = draw_additional_trees(voxcity=my_voxcity)
+        
+        Using with custom center and zoom:
+        >>> m, tree_gdf = draw_additional_trees(voxcity=my_voxcity, initial_center=(-73.98, 40.75), zoom=18)
     """
+    # ---------------------------------------------------------
+    # Extract data from VoxCity object if provided
+    # ---------------------------------------------------------
+    tree_gdf = None
+    rectangle_vertices = None
+    if voxcity is not None:
+        tree_gdf = voxcity.extras.get('tree_gdf', None)
+        rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
+    
     # Initialize or copy the tree GeoDataFrame
     if tree_gdf is None:
         updated_trees = gpd.GeoDataFrame(
