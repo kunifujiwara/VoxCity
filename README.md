@@ -75,6 +75,55 @@
   - **View Index Simulations**: Compute sky view index (SVI) and green view index (GVI) from a specified viewpoint.
   - **Landmark Visibility Maps**: Assess the visibility of selected landmarks within the voxelized environment.
 
+## Class Definitions
+
+VoxCity uses standardized class definitions for voxel grids and land cover data.
+
+### Voxel Semantic Codes
+
+The 3D voxel grid uses integer codes to represent different urban elements:
+
+| Code | Description |
+|------|-------------|
+| -3 | Building volume |
+| -2 | Tree canopy (vegetation) |
+| -1 | Ground/Subsurface |
+| ≥1 | Land cover class at ground surface |
+
+### Standard Land Cover Classes (1-based indices)
+
+VoxCity standardizes land cover to a 1-based indexing system (1-14) for consistency across different data sources:
+
+| Index | Class Name |
+|-------|------------|
+| 1 | Bareland |
+| 2 | Rangeland |
+| 3 | Shrub |
+| 4 | Agriculture land |
+| 5 | Tree |
+| 6 | Moss and lichen |
+| 7 | Wet land |
+| 8 | Mangrove |
+| 9 | Water |
+| 10 | Snow and ice |
+| 11 | Developed space |
+| 12 | Road |
+| 13 | Building |
+| 14 | No Data |
+
+You can also access these definitions programmatically:
+
+```python
+from voxcity.utils import print_class_definitions, print_voxel_codes, print_land_cover_classes
+
+# Print all class definitions
+print_class_definitions()
+
+# Or print separately
+print_voxel_codes()
+print_land_cover_classes()
+```
+
 ## Installation
 
 Make sure you have Python 3.12 installed. Install voxcity with:

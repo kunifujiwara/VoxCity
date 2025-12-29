@@ -33,7 +33,7 @@ from ..geoprocessor.raster import (
     create_canopy_grids_from_tree_gdf,
 )
 
-from ..utils.lc import convert_land_cover_array, get_land_cover_classes
+from ..utils.lc import convert_land_cover_array, get_land_cover_classes, get_source_class_descriptions
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
 
@@ -45,9 +45,11 @@ def get_last_effective_land_cover_source():
     return _LAST_EFFECTIVE_LC_SOURCE
 
 
-def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
+def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_class_info=True, **kwargs):
     print("Creating Land Use Land Cover grid\n ")
     print(f"Data source: {source}")
+    if print_class_info:
+        print(get_source_class_descriptions(source))
 
     if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
         try:

@@ -22,6 +22,7 @@ from ..geoprocessor.raster import (
 )
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ..utils.lc import convert_land_cover
+from ..utils.classes import VOXEL_CODE_DESCRIPTIONS, LAND_COVER_DESCRIPTIONS
 
 
 # -----------------------------
@@ -170,6 +171,11 @@ class Voxelizer:
         **kwargs,
     ) -> np.ndarray:
         print("Generating 3D voxel data")
+        
+        # Print class definitions if requested
+        if kwargs.get("print_class_info", True):
+            print(VOXEL_CODE_DESCRIPTIONS)
+            print(LAND_COVER_DESCRIPTIONS)
 
         land_cover_grid_converted = self._convert_land_cover(land_cover_grid_ori)
 
@@ -278,8 +284,12 @@ class Voxelizer:
         dem_grid_ori: np.ndarray,
         tree_grid_ori: np.ndarray,
         layered_interval: Optional[int] = None,
+        print_class_info: bool = True,
     ):
         print("Generating 3D voxel data")
+        if print_class_info:
+            print(VOXEL_CODE_DESCRIPTIONS)
+            print(LAND_COVER_DESCRIPTIONS)
 
         if self.land_cover_source == 'OpenStreetMap':
             # OpenStreetMap uses Standard classification, just shift to 1-based

@@ -162,6 +162,42 @@ def get_land_cover_classes(source):
         }
     return land_cover_classes
 
+
+def get_source_class_descriptions(source):
+    """
+    Get a formatted string describing land cover classes for a specific source.
+    
+    Args:
+        source (str): Name of the land cover data source.
+        
+    Returns:
+        str: Formatted string describing the source's land cover classes.
+    """
+    land_cover_classes = get_land_cover_classes(source)
+    # Get unique class names (values from the dict)
+    class_names = list(dict.fromkeys(land_cover_classes.values()))
+    
+    lines = [f"\n{source} Land Cover Classes (source-specific, 0-based indices):"]
+    lines.append("-" * 55)
+    for idx, name in enumerate(class_names):
+        lines.append(f"  {idx:2d}: {name}")
+    lines.append("-" * 55)
+    
+    # Special note for OpenStreetMap/Standard which uses same class names
+    if source in ("OpenStreetMap", "Standard"):
+        lines.append("Note: OpenStreetMap uses VoxCity Standard class names.")
+        lines.append("      Indices shift from 0-based to 1-based during voxelization.")
+    else:
+        lines.append("Note: These source-specific classes will be converted to")
+        lines.append("      VoxCity Standard Classes (1-14) during voxelization.")
+    
+    lines.append("")
+    lines.append("Access 2D land cover grid from VoxCity object:")
+    lines.append("  land_cover_grid = voxcity.land_cover.classes")
+    lines.append("")
+    return "\n".join(lines)
+
+
 # Standard land cover classes with numeric indices (1-based for voxel representation)
 # land_cover_classes = {
 #     (128, 0, 0): 'Bareland',              1         
