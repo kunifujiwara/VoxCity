@@ -460,20 +460,16 @@ G, edge_gdf = get_network_values(
 </p>
 
 ## VoxCity Standard Land Cover Classes (used in voxel grids)
-1: Bareland           - Bare soil, rocks, desert
-2: Rangeland          - Grassland, pasture
-3: Shrub              - Shrubland, bushes
-4: Agriculture land   - Cropland, farmland
-5: Tree               - Forest, tree cover
-6: Moss and lichen    - Moss, lichen cover
-7: Wet land           - Wetland, marsh
-8: Mangrove           - Mangrove forest
-9: Water              - Water bodies
-10: Snow and ice       - Snow, ice, glaciers
-11: Developed space    - Urban areas, parking
-12: Road               - Roads, paved surfaces
-13: Building           - Building footprints
-14: No Data            - Missing or invalid data
+
+| Index | Class | Index | Class |
+|:-----:|-------|:-----:|-------|
+| 1 | Bareland | 8 | Mangrove |
+| 2 | Rangeland | 9 | Water |
+| 3 | Shrub | 10 | Snow and ice |
+| 4 | Agriculture land | 11 | Developed space |
+| 5 | Tree | 12 | Road |
+| 6 | Moss and lichen | 13 | Building |
+| 7 | Wet land | 14 | No Data |
 
 ## References of Data Sources
 
