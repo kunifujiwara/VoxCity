@@ -17,9 +17,12 @@ from .core import translate_array
 def tree_height_grid_from_land_cover(land_cover_grid_ori: np.ndarray) -> np.ndarray:
     """
     Convert a land cover grid to a tree height grid.
+    
+    Expects 1-based land cover indices where class 5 is Tree.
     """
-    land_cover_grid = np.flipud(land_cover_grid_ori) + 1
-    tree_translation_dict = {1: 0, 2: 0, 3: 0, 4: 10, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0}
+    land_cover_grid = np.flipud(land_cover_grid_ori)
+    # 1-based indices: 1=Bareland, 2=Rangeland, 3=Shrub, 4=Agriculture, 5=Tree, etc.
+    tree_translation_dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 10, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0}
     tree_height_grid = translate_array(np.flipud(land_cover_grid), tree_translation_dict).astype(int)
     return tree_height_grid
 

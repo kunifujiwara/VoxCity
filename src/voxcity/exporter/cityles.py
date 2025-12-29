@@ -18,22 +18,22 @@ from ..models import VoxCity
 
 
 # VoxCity standard land cover classes after conversion
-# Based on convert_land_cover function output
+# Based on convert_land_cover function output (1-based indices)
 VOXCITY_STANDARD_CLASSES = {
-    0: 'Bareland',
-    1: 'Rangeland',
-    2: 'Shrub',
-    3: 'Agriculture land',
-    4: 'Tree',
-    5: 'Moss and lichen',
-    6: 'Wet land',
-    7: 'Mangrove',
-    8: 'Water',
-    9: 'Snow and ice',
-    10: 'Developed space',
-    11: 'Road',
-    12: 'Building',
-    13: 'No Data'
+    1: 'Bareland',
+    2: 'Rangeland',
+    3: 'Shrub',
+    4: 'Agriculture land',
+    5: 'Tree',
+    6: 'Moss and lichen',
+    7: 'Wet land',
+    8: 'Mangrove',
+    9: 'Water',
+    10: 'Snow and ice',
+    11: 'Developed space',
+    12: 'Road',
+    13: 'Building',
+    14: 'No Data'
 }
 
 ## Source-specific class name to CityLES land use mappings

@@ -155,7 +155,7 @@ class Voxelizer:
 
     def _convert_land_cover(self, land_cover_grid_ori: np.ndarray) -> np.ndarray:
         if self.land_cover_source == 'OpenStreetMap':
-            return land_cover_grid_ori
+            return land_cover_grid_ori + 1  # Shift to 1-based indices
         return convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
 
     def generate_combined(
@@ -192,7 +192,7 @@ class Voxelizer:
             land_cover_grid_converted.copy(),
             ORIENTATION_NORTH_UP,
             ORIENTATION_SOUTH_UP,
-        ) + 1
+        )
         dem_grid = ensure_orientation(
             dem_grid_ori.copy(),
             ORIENTATION_NORTH_UP,
@@ -284,7 +284,7 @@ class Voxelizer:
         if self.land_cover_source != 'OpenEarthMapJapan':
             land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
         else:
-            land_cover_grid_converted = land_cover_grid_ori
+            land_cover_grid_converted = land_cover_grid_ori + 1  # Shift to 1-based indices
 
         building_height_grid = ensure_orientation(
             building_height_grid_ori.copy(),
@@ -295,7 +295,7 @@ class Voxelizer:
             land_cover_grid_converted.copy(),
             ORIENTATION_NORTH_UP,
             ORIENTATION_SOUTH_UP,
-        ) + 1
+        )
         dem_grid = ensure_orientation(
             dem_grid_ori.copy(),
             ORIENTATION_NORTH_UP,

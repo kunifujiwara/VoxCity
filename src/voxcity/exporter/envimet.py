@@ -138,11 +138,11 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
 
     # Convert land cover if needed based on source
     if (land_cover_source == 'OpenEarthMapJapan') or (land_cover_source == 'OpenStreetMap'):
-        land_cover_grid_converted = land_cover_grid_ori   
+        land_cover_grid_converted = land_cover_grid_ori + 1  # Shift to 1-based for unconverted sources
     else:
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)        
 
-    land_cover_grid = np.flipud(land_cover_grid_converted).copy() + 1
+    land_cover_grid = np.flipud(land_cover_grid_converted).copy()
 
     # Dictionary mapping land cover types to vegetation codes
     veg_translation_dict = {

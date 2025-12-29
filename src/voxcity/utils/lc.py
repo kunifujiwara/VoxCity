@@ -34,21 +34,22 @@ def rgb_distance(color1, color2):
     return np.sqrt(np.sum((np.array(color1) - np.array(color2))**2))  
 
 
-# Legacy land cover classes mapping - kept for reference
+# Standard land cover classes mapping (1-based indices for voxel representation)
 # land_cover_classes = {
-#     (128, 0, 0): 'Bareland',              0         
-#     (0, 255, 36): 'Rangeland',            1
-#     (97, 140, 86): 'Shrub',               2
-#     (75, 181, 73): 'Agriculture land',    3
-#     (34, 97, 38): 'Tree',                 4
-#     (77, 118, 99): 'Wet land',            5
-#     (22, 61, 51): 'Mangrove',             6
-#     (0, 69, 255): 'Water',                7
-#     (205, 215, 224): 'Snow and ice',      8
-#     (148, 148, 148): 'Developed space',   9
-#     (255, 255, 255): 'Road',              10
-#     (222, 31, 7): 'Building',             11
-#     (128, 0, 0): 'No Data',               12
+#     (128, 0, 0): 'Bareland',              1         
+#     (0, 255, 36): 'Rangeland',            2
+#     (97, 140, 86): 'Shrub',               3
+#     (75, 181, 73): 'Agriculture land',    4
+#     (34, 97, 38): 'Tree',                 5
+#     (255, 255, 0): 'Moss and lichen',     6
+#     (77, 118, 99): 'Wet land',            7
+#     (22, 61, 51): 'Mangrove',             8
+#     (0, 69, 255): 'Water',                9
+#     (205, 215, 224): 'Snow and ice',      10
+#     (148, 148, 148): 'Developed space',   11
+#     (255, 255, 255): 'Road',              12
+#     (222, 31, 7): 'Building',             13
+#     (128, 0, 0): 'No Data',               14
 # }
 
 def get_land_cover_classes(source):
@@ -161,22 +162,22 @@ def get_land_cover_classes(source):
         }
     return land_cover_classes
 
-# Legacy land cover classes with numeric indices - kept for reference
+# Standard land cover classes with numeric indices (1-based for voxel representation)
 # land_cover_classes = {
-#     (128, 0, 0): 'Bareland',              0         
-#     (0, 255, 36): 'Rangeland',            1
-#     (97, 140, 86): 'Shrub',               2
-#     (75, 181, 73): 'Agriculture land',    3
-#     (34, 97, 38): 'Tree',                 4
-#     (34, 97, 38): 'Moss and lichen',      5
-#     (77, 118, 99): 'Wet land',            6
-#     (22, 61, 51): 'Mangrove',             7
-#     (0, 69, 255): 'Water',                8
-#     (205, 215, 224): 'Snow and ice',      9
-#     (148, 148, 148): 'Developed space',   10
-#     (255, 255, 255): 'Road',              11
-#     (222, 31, 7): 'Building',             12
-#     (128, 0, 0): 'No Data',               13
+#     (128, 0, 0): 'Bareland',              1         
+#     (0, 255, 36): 'Rangeland',            2
+#     (97, 140, 86): 'Shrub',               3
+#     (75, 181, 73): 'Agriculture land',    4
+#     (34, 97, 38): 'Tree',                 5
+#     (255, 255, 0): 'Moss and lichen',     6
+#     (77, 118, 99): 'Wet land',            7
+#     (22, 61, 51): 'Mangrove',             8
+#     (0, 69, 255): 'Water',                9
+#     (205, 215, 224): 'Snow and ice',      10
+#     (148, 148, 148): 'Developed space',   11
+#     (255, 255, 255): 'Road',              12
+#     (222, 31, 7): 'Building',             13
+#     (128, 0, 0): 'No Data',               14
 # }
 
 
@@ -185,21 +186,23 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
     """
     Optimized version using direct numpy array indexing instead of np.vectorize.
     This is 10-100x faster than the original.
+    
+    Returns 1-based class indices (1-14) for consistency with voxel representations.
     """
-    # Define mappings
+    # Define mappings (1-based indices: 1=Bareland, 2=Rangeland, ..., 14=No Data)
     if land_cover_source == 'Urbanwatch':
-        mapping = {0: 12, 1: 11, 2: 10, 3: 4, 4: 1, 5: 3, 6: 8, 7: 0, 8: 13, 9: 8}
+        mapping = {0: 13, 1: 12, 2: 11, 3: 5, 4: 2, 5: 4, 6: 9, 7: 1, 8: 14, 9: 9}
     elif land_cover_source == 'ESA WorldCover':
-        mapping = {0: 4, 1: 2, 2: 1, 3: 3, 4: 10, 5: 0, 6: 9, 7: 8, 8: 6, 9: 7, 10: 5}
+        mapping = {0: 5, 1: 3, 2: 2, 3: 4, 4: 11, 5: 1, 6: 10, 7: 9, 8: 7, 9: 8, 10: 6}
     elif land_cover_source == "ESRI 10m Annual Land Cover":
-        mapping = {0: 13, 1: 8, 2: 4, 3: 1, 4: 6, 5: 3, 6: 2, 7: 10, 8: 0, 9: 9, 10: 13}
+        mapping = {0: 14, 1: 9, 2: 5, 3: 2, 4: 7, 5: 4, 6: 3, 7: 11, 8: 1, 9: 10, 10: 14}
     elif land_cover_source == "Dynamic World V1":
-        mapping = {0: 8, 1: 4, 2: 1, 3: 6, 4: 3, 5: 2, 6: 10, 7: 0, 8: 9}    
+        mapping = {0: 9, 1: 5, 2: 2, 3: 7, 4: 4, 5: 3, 6: 11, 7: 1, 8: 10}    
     elif land_cover_source == "OpenEarthMapJapan":
-        mapping = {0: 0, 1: 1, 2: 10, 3: 11, 4: 4, 5: 8, 6: 3, 7: 12}
+        mapping = {0: 1, 1: 2, 2: 11, 3: 12, 4: 5, 5: 9, 6: 4, 7: 13}
     else:
-        # If unknown source, return as-is
-        return input_array.copy()
+        # If unknown source, return as-is with +1 offset for consistency
+        return input_array.copy() + 1
     
     # Create a full mapping array for all possible values (0-255 for uint8)
     max_val = max(max(mapping.keys()), input_array.max()) + 1

@@ -17,12 +17,12 @@ def test_lc_rgb_distance_and_classes():
 
 
 def test_lc_convert_land_cover_basic():
-    # Urbanwatch simple mapping check
+    # Urbanwatch simple mapping check (1-based indices)
     arr = np.array([[0, 1, 2]], dtype=np.uint8)
     converted = convert_land_cover(arr, land_cover_source="Urbanwatch")
-    # Mapping: 0->12, 1->11, 2->10
+    # Mapping: 0->13, 1->12, 2->11 (1-based: Building, Road, Developed space)
     assert converted.dtype == arr.dtype
-    assert converted.tolist() == [[12, 11, 10]]
+    assert converted.tolist() == [[13, 12, 11]]
 
 
 def test_material_dict_and_modulo_numbers():
