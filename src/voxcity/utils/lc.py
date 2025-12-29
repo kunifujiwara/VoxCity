@@ -377,12 +377,14 @@ def convert_land_cover_array(input_array, land_cover_classes):
         land_cover_classes (dict): Dictionary mapping RGB tuples to class names
         
     Returns:
-        numpy.ndarray: Array with integer indices corresponding to land cover classes
+        numpy.ndarray: Array with 0-based integer indices corresponding to land cover classes
         
     Note:
         Classes not found in the mapping are assigned index -1
+        Indices are 0-based as source-specific indices. Use convert_land_cover() to 
+        remap to standard 1-based indices for voxel representation.
     """
-    # Create a mapping of class names to integers
+    # Create a mapping of class names to integers (0-based, source-specific order)
     class_to_int = {name: i for i, name in enumerate(land_cover_classes.values())}
 
     # Create a vectorized function to map string values to integers

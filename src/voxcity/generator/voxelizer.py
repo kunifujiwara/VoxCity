@@ -281,10 +281,12 @@ class Voxelizer:
     ):
         print("Generating 3D voxel data")
 
-        if self.land_cover_source != 'OpenEarthMapJapan':
-            land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
+        if self.land_cover_source == 'OpenStreetMap':
+            # OpenStreetMap uses Standard classification, just shift to 1-based
+            land_cover_grid_converted = land_cover_grid_ori + 1
         else:
-            land_cover_grid_converted = land_cover_grid_ori + 1  # Shift to 1-based indices
+            # All other sources need remapping to standard indices
+            land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=self.land_cover_source)
 
         building_height_grid = ensure_orientation(
             building_height_grid_ori.copy(),

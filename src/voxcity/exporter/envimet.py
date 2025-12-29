@@ -137,21 +137,26 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
     building_height_grid = apply_operation(building_height_grid, meshsize)
 
     # Convert land cover if needed based on source
-    if (land_cover_source == 'OpenEarthMapJapan') or (land_cover_source == 'OpenStreetMap'):
-        land_cover_grid_converted = land_cover_grid_ori + 1  # Shift to 1-based for unconverted sources
+    if land_cover_source == 'OpenStreetMap':
+        # OpenStreetMap uses Standard classification, just shift to 1-based
+        land_cover_grid_converted = land_cover_grid_ori + 1
     else:
+        # All other sources need remapping to standard indices
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)        
 
     land_cover_grid = np.flipud(land_cover_grid_converted).copy()
 
     # Dictionary mapping land cover types to vegetation codes
+    # Standard 1-based indices: 1=Bareland, 2=Rangeland, 3=Shrub, 4=Agriculture, 5=Tree, 
+    #                          6=Moss/lichen, 7=Wetland, 8=Mangrove, 9=Water, 10=Snow,
+    #                          11=Developed, 12=Road, 13=Building, 14=NoData
     veg_translation_dict = {
         1: '',  # Bareland
         2: '0200XX',  # Rangeland
         3: '0200H1',  # Shrub
-        4: '0200XX',  # Moss and lichen
-        5: '0200XX',  # Agriculture land
-        6: '',  # Tree
+        4: '0200XX',  # Agriculture land
+        5: '',  # Tree (handled separately as 3D vegetation)
+        6: '0200XX',  # Moss and lichen
         7: '0200XX',  # Wet land
         8: ''  # Mangroves
     }
@@ -162,9 +167,9 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         1: '000000',  # Bareland
         2: '000000',  # Rangeland
         3: '000000',  # Shrub
-        4: '000000',  # Moss and lichen
-        5: '000000',  # Agriculture land
-        6: '000000',  # Tree
+        4: '000000',  # Agriculture land
+        5: '000000',  # Tree
+        6: '000000',  # Moss and lichen
         7: '0200WW',  # Wet land
         8: '0200WW',  # Mangroves
         9: '0200WW',  # Water
