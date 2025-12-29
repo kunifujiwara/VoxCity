@@ -17,6 +17,14 @@ from .radiation import (
     compute_cumulative_solar_irradiance_faces_masked_timeseries,
     get_building_solar_irradiance,
 )
+from .sky import (
+    generate_tregenza_patches,
+    generate_reinhart_patches,
+    generate_uniform_grid_patches,
+    generate_fibonacci_patches,
+    bin_sun_positions_to_patches,
+    get_tregenza_patch_index_fast,
+)
 
 
 def get_solar_positions_astral(times, lon, lat):
@@ -75,6 +83,133 @@ def _auto_time_batch_size(n_faces, total_steps, user_value=None):
     return max(1, total_steps // batches)
 
 
+# =============================================================================
+# Sky Patch Optimization for Cumulative Solar Irradiance
+# =============================================================================
+
+def _aggregate_weather_to_sky_patches(
+    azimuth_arr,
+    elevation_arr,
+    dni_arr,
+    dhi_arr,
+    time_step_hours=1.0,
+    sky_discretization="tregenza",
+    **kwargs
+):
+    """
+    Aggregate weather data (DNI, DHI) into sky patches for efficient cumulative calculation.
+    
+    Instead of computing for each hourly sun position (potentially 8760 per year),
+    this aggregates DNI into sky patches and sums DHI. Ray tracing is then performed
+    once per patch instead of per timestep.
+    
+    Parameters
+    ----------
+    azimuth_arr : np.ndarray
+        Solar azimuth values in degrees.
+    elevation_arr : np.ndarray
+        Solar elevation values in degrees.
+    dni_arr : np.ndarray
+        Direct Normal Irradiance (W/m²) for each timestep.
+    dhi_arr : np.ndarray
+        Diffuse Horizontal Irradiance (W/m²) for each timestep.
+    time_step_hours : float
+        Duration of each timestep in hours.
+    sky_discretization : str
+        Method: "tregenza", "reinhart", "uniform", "fibonacci".
+    **kwargs : dict
+        Additional parameters (e.g., mf for Reinhart).
+    
+    Returns
+    -------
+    dict
+        Contains:
+        - 'patch_directions': Unit vectors for each patch (N, 3)
+        - 'patch_cumulative_dni': Cumulative DNI×hours per patch (Wh/m²)
+        - 'patch_solid_angles': Solid angle of each patch (steradians)
+        - 'patch_hours': Number of hours sun was in each patch
+        - 'total_cumulative_dhi': Total DHI×hours sum (Wh/m²)
+        - 'n_patches': Number of patches
+        - 'n_original_timesteps': Original number of timesteps
+    """
+    # Generate sky patches based on method
+    if sky_discretization.lower() == "tregenza":
+        patches, directions, solid_angles = generate_tregenza_patches()
+    elif sky_discretization.lower() == "reinhart":
+        mf = kwargs.get("reinhart_mf", kwargs.get("mf", 4))
+        patches, directions, solid_angles = generate_reinhart_patches(mf=mf)
+    elif sky_discretization.lower() == "uniform":
+        n_az = kwargs.get("sky_n_azimuth", kwargs.get("n_azimuth", 36))
+        n_el = kwargs.get("sky_n_elevation", kwargs.get("n_elevation", 9))
+        patches, directions, solid_angles = generate_uniform_grid_patches(n_az, n_el)
+    elif sky_discretization.lower() == "fibonacci":
+        n_patches = kwargs.get("sky_n_patches", kwargs.get("n_patches", 145))
+        patches, directions, solid_angles = generate_fibonacci_patches(n_patches=n_patches)
+    else:
+        raise ValueError(f"Unknown sky discretization method: {sky_discretization}")
+    
+    n_patches = len(patches)
+    cumulative_dni = np.zeros(n_patches, dtype=np.float64)
+    hours_count = np.zeros(n_patches, dtype=np.int32)
+    total_cumulative_dhi = 0.0
+    n_timesteps = len(azimuth_arr)
+    
+    # Bin each sun position to a patch
+    for i in range(n_timesteps):
+        elev = elevation_arr[i]
+        dhi = dhi_arr[i]
+        
+        # DHI accumulates regardless of sun position (sky-based diffuse)
+        if dhi > 0:
+            total_cumulative_dhi += dhi * time_step_hours
+        
+        # DNI only when sun is above horizon
+        if elev <= 0:
+            continue
+        
+        az = azimuth_arr[i]
+        dni = dni_arr[i]
+        
+        if dni <= 0:
+            continue
+        
+        # Find nearest patch
+        if sky_discretization.lower() == "tregenza":
+            patch_idx = int(get_tregenza_patch_index_fast(float(az), float(elev)))
+        else:
+            # For other methods, find nearest patch by direction
+            elev_rad = np.deg2rad(elev)
+            az_rad = np.deg2rad(az)
+            sun_dir = np.array([
+                np.cos(elev_rad) * np.cos(az_rad),
+                np.cos(elev_rad) * np.sin(az_rad),
+                np.sin(elev_rad)
+            ])
+            dots = np.sum(directions * sun_dir, axis=1)
+            patch_idx = int(np.argmax(dots))
+        
+        if patch_idx >= 0 and patch_idx < n_patches:
+            cumulative_dni[patch_idx] += dni * time_step_hours
+            hours_count[patch_idx] += 1
+    
+    # Filter to patches that actually have sun exposure
+    active_mask = cumulative_dni > 0
+    
+    return {
+        'patches': patches,
+        'patch_directions': directions,
+        'patch_cumulative_dni': cumulative_dni,
+        'patch_solid_angles': solid_angles,
+        'patch_hours': hours_count,
+        'active_mask': active_mask,
+        'n_active_patches': int(np.sum(active_mask)),
+        'total_cumulative_dhi': total_cumulative_dhi,
+        'n_patches': n_patches,
+        'n_original_timesteps': n_timesteps,
+        'method': sky_discretization,
+    }
+
+
 def get_cumulative_global_solar_irradiance(
     voxcity: VoxCity,
     df,
@@ -88,6 +223,40 @@ def get_cumulative_global_solar_irradiance(
     """
     Integrate global horizontal irradiance over a period using EPW data.
     Returns W/m²·hour accumulation on the ground plane.
+    
+    Parameters
+    ----------
+    voxcity : VoxCity
+        The VoxCity model.
+    df : pd.DataFrame
+        Weather data with 'DNI' and 'DHI' columns.
+    lon, lat : float
+        Longitude and latitude for solar position calculation.
+    tz : float
+        Timezone offset in hours.
+    direct_normal_irradiance_scaling : float
+        Scaling factor for DNI.
+    diffuse_irradiance_scaling : float
+        Scaling factor for DHI.
+    **kwargs : dict
+        Additional options:
+        - use_sky_patches : bool (default False)
+            If True, use sky patch aggregation for efficiency.
+            DNI is aggregated into sky patches and ray tracing is done
+            once per patch instead of per timestep.
+        - sky_discretization : str (default "tregenza")
+            Sky discretization method: "tregenza", "reinhart", "uniform", "fibonacci"
+        - reinhart_mf : int (default 4)
+            Multiplication factor for Reinhart subdivision.
+        - sky_n_patches : int (default 145)
+            Number of patches for Fibonacci method.
+        - progress_report : bool
+            Print progress information.
+    
+    Returns
+    -------
+    np.ndarray
+        Cumulative global solar irradiance map (Wh/m²).
     """
     view_point_height = kwargs.get("view_point_height", 1.5)
     colormap = kwargs.get("colormap", "magma")
@@ -95,6 +264,8 @@ def get_cumulative_global_solar_irradiance(
     end_time = kwargs.get("end_time", "01-01 20:00:00")
     desired_threads = kwargs.get("numba_num_threads", None)
     progress_report = kwargs.get("progress_report", False)
+    use_sky_patches = kwargs.get("use_sky_patches", False)
+    sky_discretization = kwargs.get("sky_discretization", "tregenza")
     _configure_num_threads(desired_threads, progress=progress_report)
 
     if df.empty:
@@ -134,6 +305,7 @@ def get_cumulative_global_solar_irradiance(
 
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
 
+    # Compute base diffuse map (SVF-based) - used in both methods
     diffuse_kwargs = kwargs.copy()
     diffuse_kwargs.update({'show_plot': False, 'obj_export': False})
     base_diffuse_map = get_diffuse_solar_irradiance_map(
@@ -149,37 +321,102 @@ def get_cumulative_global_solar_irradiance(
     direct_kwargs = kwargs.copy()
     direct_kwargs.update({'show_plot': False, 'view_point_height': view_point_height, 'obj_export': False})
 
-    for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
-        DNI = float(row['DNI']) * direct_normal_irradiance_scaling
-        DHI = float(row['DHI']) * diffuse_irradiance_scaling
-
-        solpos = solar_positions.loc[time_utc]
-        azimuth_degrees = float(solpos['azimuth'])
-        elevation_degrees = float(solpos['elevation'])
-
-        direct_map = get_direct_solar_irradiance_map(
-            voxcity,
-            azimuth_degrees,
-            elevation_degrees,
-            direct_normal_irradiance=DNI,
-            **direct_kwargs,
+    # =========================================================================
+    # Sky Patch Optimization Path
+    # =========================================================================
+    if use_sky_patches:
+        # Extract arrays for aggregation
+        azimuth_arr = solar_positions['azimuth'].to_numpy()
+        elevation_arr = solar_positions['elevation'].to_numpy()
+        dni_arr = df_period_utc['DNI'].to_numpy() * direct_normal_irradiance_scaling
+        dhi_arr = df_period_utc['DHI'].to_numpy() * diffuse_irradiance_scaling
+        time_step_hours = kwargs.get("time_step_hours", 1.0)
+        
+        # Aggregate weather data into sky patches
+        # Filter kwargs to avoid duplicate parameters
+        sky_kwargs = {k: v for k, v in kwargs.items() 
+                      if k not in ('sky_discretization', 'time_step_hours')}
+        patch_data = _aggregate_weather_to_sky_patches(
+            azimuth_arr, elevation_arr, dni_arr, dhi_arr,
+            time_step_hours=time_step_hours,
+            sky_discretization=sky_discretization,
+            **sky_kwargs
         )
+        
+        if progress_report:
+            print(f"Sky patch optimization: {patch_data['n_original_timesteps']} timesteps → "
+                  f"{patch_data['n_active_patches']} active patches ({patch_data['method']})")
+            print(f"  Total cumulative DHI: {patch_data['total_cumulative_dhi']:.1f} Wh/m²")
+        
+        # Diffuse component: SVF × total cumulative DHI
+        cumulative_diffuse = base_diffuse_map * patch_data['total_cumulative_dhi']
+        cumulative_map += np.nan_to_num(cumulative_diffuse, nan=0.0)
+        mask_map &= ~np.isnan(cumulative_diffuse)
+        
+        # Direct component: loop over active patches only
+        active_indices = np.where(patch_data['active_mask'])[0]
+        patches = patch_data['patches']
+        patch_cumulative_dni = patch_data['patch_cumulative_dni']
+        
+        for i, patch_idx in enumerate(active_indices):
+            az_deg = patches[patch_idx, 0]
+            el_deg = patches[patch_idx, 1]
+            cumulative_dni_patch = patch_cumulative_dni[patch_idx]
+            
+            # Compute direct transmittance map for this patch direction
+            # Using DNI=1.0 to get transmittance, then multiply by cumulative DNI
+            direct_map = get_direct_solar_irradiance_map(
+                voxcity,
+                az_deg,
+                el_deg,
+                direct_normal_irradiance=1.0,  # Get transmittance
+                **direct_kwargs,
+            )
+            
+            # Accumulate: transmittance × cumulative DNI for this patch
+            patch_contribution = direct_map * cumulative_dni_patch
+            mask_map &= ~np.isnan(patch_contribution)
+            cumulative_map += np.nan_to_num(patch_contribution, nan=0.0)
+            
+            if progress_report and ((i + 1) % max(1, len(active_indices) // 10) == 0 or i == len(active_indices) - 1):
+                pct = (i + 1) * 100.0 / len(active_indices)
+                print(f"  Patch {i+1}/{len(active_indices)} ({pct:.1f}%)")
+    
+    # =========================================================================
+    # Original Per-Timestep Path
+    # =========================================================================
+    else:
+        for idx, (time_utc, row) in enumerate(df_period_utc.iterrows()):
+            DNI = float(row['DNI']) * direct_normal_irradiance_scaling
+            DHI = float(row['DHI']) * diffuse_irradiance_scaling
 
-        diffuse_map = base_diffuse_map * DHI
-        global_map = direct_map + diffuse_map
-        mask_map &= ~np.isnan(global_map)
-        cumulative_map += np.nan_to_num(global_map, nan=0.0)
+            solpos = solar_positions.loc[time_utc]
+            azimuth_degrees = float(solpos['azimuth'])
+            elevation_degrees = float(solpos['elevation'])
 
-        if kwargs.get("show_each_timestep", False):
-            vmin = kwargs.get("vmin", 0.0)
-            vmax = kwargs.get("vmax", max(direct_normal_irradiance_scaling, diffuse_irradiance_scaling) * 1000)
-            cmap = plt.cm.get_cmap(kwargs.get("colormap", "viridis")).copy()
-            cmap.set_bad(color="lightgray")
-            plt.figure(figsize=(10, 8))
-            plt.imshow(global_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
-            plt.axis("off")
-            plt.colorbar(label="Global Solar Irradiance (W/m²)")
-            plt.show()
+            direct_map = get_direct_solar_irradiance_map(
+                voxcity,
+                azimuth_degrees,
+                elevation_degrees,
+                direct_normal_irradiance=DNI,
+                **direct_kwargs,
+            )
+
+            diffuse_map = base_diffuse_map * DHI
+            global_map = direct_map + diffuse_map
+            mask_map &= ~np.isnan(global_map)
+            cumulative_map += np.nan_to_num(global_map, nan=0.0)
+
+            if kwargs.get("show_each_timestep", False):
+                vmin = kwargs.get("vmin", 0.0)
+                vmax = kwargs.get("vmax", max(direct_normal_irradiance_scaling, diffuse_irradiance_scaling) * 1000)
+                cmap = plt.cm.get_cmap(kwargs.get("colormap", "viridis")).copy()
+                cmap.set_bad(color="lightgray")
+                plt.figure(figsize=(10, 8))
+                plt.imshow(global_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+                plt.axis("off")
+                plt.colorbar(label="Global Solar Irradiance (W/m²)")
+                plt.show()
 
     cumulative_map[~mask_map] = np.nan
 
@@ -231,6 +468,37 @@ def get_cumulative_building_solar_irradiance(
 ):
     """
     Cumulative Wh/m² on building faces over a period from weather dataframe.
+    
+    Parameters
+    ----------
+    voxcity : VoxCity
+        The VoxCity model.
+    building_svf_mesh : trimesh.Trimesh
+        Building mesh with SVF in metadata.
+    weather_df : pd.DataFrame
+        Weather data with 'DNI' and 'DHI' columns.
+    lon, lat : float
+        Longitude and latitude.
+    tz : float
+        Timezone offset in hours.
+    **kwargs : dict
+        Additional options:
+        - use_sky_patches : bool (default False)
+            If True, use sky patch aggregation for efficiency.
+            Reduces computation from N timesteps to M patches (M << N).
+        - sky_discretization : str (default "tregenza")
+            Method: "tregenza", "reinhart", "uniform", "fibonacci"
+        - reinhart_mf : int (default 4)
+            Multiplication factor for Reinhart subdivision.
+        - fast_path : bool (default True)
+            Use optimized Numba kernels.
+        - progress_report : bool
+            Print progress information.
+    
+    Returns
+    -------
+    trimesh.Trimesh
+        Mesh with cumulative irradiance in metadata (direct, diffuse, global in Wh/m²).
     """
     import numpy as _np
 
@@ -241,6 +509,8 @@ def get_cumulative_building_solar_irradiance(
     diffuse_irradiance_scaling = float(kwargs.get("diffuse_irradiance_scaling", 1.0))
     progress_report = kwargs.get("progress_report", False)
     fast_path = kwargs.get("fast_path", True)
+    use_sky_patches = kwargs.get("use_sky_patches", False)
+    sky_discretization = kwargs.get("sky_discretization", "tregenza")
 
     try:
         start_dt = datetime.strptime(period_start, "%m-%d %H:%M:%S")
@@ -336,7 +606,95 @@ def get_cumulative_building_solar_irradiance(
     x_min, y_min, z_min = grid_bounds_real[0, 0], grid_bounds_real[0, 1], grid_bounds_real[0, 2]
     x_max, y_max, z_max = grid_bounds_real[1, 0], grid_bounds_real[1, 1], grid_bounds_real[1, 2]
 
-    if fast_path:
+    # =========================================================================
+    # Sky Patch Optimization Path for Building Faces
+    # =========================================================================
+    if use_sky_patches:
+        # Aggregate weather data into sky patches
+        # Filter kwargs to avoid duplicate parameters
+        sky_kwargs = {k: v for k, v in kwargs.items() 
+                      if k not in ('sky_discretization', 'time_step_hours')}
+        patch_data = _aggregate_weather_to_sky_patches(
+            azimuth_deg_arr, elev_deg_arr, DNI_arr, DHI_arr,
+            time_step_hours=time_step_hours,
+            sky_discretization=sky_discretization,
+            **sky_kwargs
+        )
+        
+        if progress_report:
+            print(f"Sky patch optimization: {patch_data['n_original_timesteps']} timesteps → "
+                  f"{patch_data['n_active_patches']} active patches ({patch_data['method']})")
+            print(f"  Faces: {n_faces:,}, Total cumulative DHI: {patch_data['total_cumulative_dhi']:.1f} Wh/m²")
+        
+        # Diffuse component: SVF × total cumulative DHI
+        # (DHI is sky-hemisphere based, so sum over all timesteps)
+        face_cum_diffuse = face_svf64 * patch_data['total_cumulative_dhi']
+        
+        # Direct component: loop over active patches
+        active_indices = _np.where(patch_data['active_mask'])[0]
+        patches = patch_data['patches']
+        patch_cumulative_dni = patch_data['patch_cumulative_dni']
+        
+        # Prepare masks for fast path
+        precomputed_masks = kwargs.get("precomputed_masks", None)
+        if precomputed_masks is not None:
+            vox_is_tree = precomputed_masks.get("vox_is_tree", (voxel_data == -2))
+            vox_is_opaque = precomputed_masks.get("vox_is_opaque", (voxel_data != 0) & (voxel_data != -2))
+            att = float(precomputed_masks.get("att", _np.exp(-tree_k * tree_lad * meshsize)))
+        else:
+            vox_is_tree = (voxel_data == -2)
+            vox_is_opaque = (voxel_data != 0) & (~vox_is_tree)
+            att = float(_np.exp(-tree_k * tree_lad * meshsize))
+        
+        from .radiation import compute_solar_irradiance_for_all_faces_masked
+        
+        for i, patch_idx in enumerate(active_indices):
+            az_deg = float(patches[patch_idx, 0])
+            el_deg = float(patches[patch_idx, 1])
+            cumulative_dni_patch = float(patch_cumulative_dni[patch_idx])
+            
+            # Convert patch direction to sun vector
+            az_rad = _np.deg2rad(180.0 - az_deg)
+            el_rad = _np.deg2rad(el_deg)
+            sun_dx = _np.cos(el_rad) * _np.cos(az_rad)
+            sun_dy = _np.cos(el_rad) * _np.sin(az_rad)
+            sun_dz = _np.sin(el_rad)
+            sun_direction = _np.array([sun_dx, sun_dy, sun_dz], dtype=_np.float64)
+            
+            # Compute direct irradiance for this patch direction (using DNI=1 for transmittance)
+            patch_direct, _, _ = compute_solar_irradiance_for_all_faces_masked(
+                face_centers64,
+                face_normals64,
+                face_svf64,
+                sun_direction,
+                1.0,  # DNI = 1 to get cos(incidence) × transmittance
+                0.0,  # No diffuse here
+                vox_is_tree,
+                vox_is_opaque,
+                float(meshsize),
+                att,
+                float(x_min), float(y_min), float(z_min),
+                float(x_max), float(y_max), float(z_max),
+                float(boundary_epsilon)
+            )
+            
+            # Accumulate: transmittance factor × cumulative DNI for this patch
+            face_cum_direct += _np.nan_to_num(patch_direct, nan=0.0) * cumulative_dni_patch
+            
+            if progress_report and ((i + 1) % max(1, len(active_indices) // 10) == 0 or i == len(active_indices) - 1):
+                pct = (i + 1) * 100.0 / len(active_indices)
+                print(f"  Patch {i+1}/{len(active_indices)} ({pct:.1f}%)")
+        
+        # Combine direct and diffuse
+        face_cum_global = face_cum_direct + face_cum_diffuse
+        
+        # Apply boundary mask from SVF
+        boundary_mask = _np.isnan(face_svf64)
+    
+    # =========================================================================
+    # Original Fast Path (Per-Timestep with Batching)
+    # =========================================================================
+    elif fast_path:
         precomputed_masks = kwargs.get("precomputed_masks", None)
         if precomputed_masks is not None:
             vox_is_tree = precomputed_masks.get("vox_is_tree", (voxel_data == -2))
