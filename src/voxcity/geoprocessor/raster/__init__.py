@@ -19,6 +19,7 @@ from .core import (
     calculate_grid_size,
     create_coordinate_mesh,
     create_cell_polygon,
+    compute_grid_shape,
 )
 
 from .landcover import (
@@ -58,6 +59,7 @@ __all__ = [
     "calculate_grid_size",
     "create_coordinate_mesh",
     "create_cell_polygon",
+    "compute_grid_shape",
     # landcover
     "tree_height_grid_from_land_cover",
     "create_land_cover_grid_from_geotiff_polygon",

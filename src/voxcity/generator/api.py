@@ -262,6 +262,8 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         building_gdf: Optional pre-loaded building GeoDataFrame
         terrain_gdf: Optional pre-loaded terrain GeoDataFrame
         **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O.
+                  Performance options include:
+                  - parallel_download: bool, if True downloads run concurrently (default: False)
                   I/O options include:
                   - output_dir: Directory for intermediate/downloaded data (default: "output")
                   - save_path: Full file path to save the VoxCity object (overrides output_dir default)
@@ -391,6 +393,9 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     visualize_options = {k: v for k, v in kwargs.items() if k in visualize_keys}
     io_options = {k: v for k, v in kwargs.items() if k in io_keys}
 
+    # Parallel download mode
+    parallel_download = kwargs.get("parallel_download", False)
+
     cfg = PipelineConfig(
         rectangle_vertices=rectangle_vertices,
         meshsize=float(meshsize),
@@ -404,6 +409,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         remove_perimeter_object=kwargs.get("remove_perimeter_object"),
         mapvis=bool(kwargs.get("mapvis", False)),
         gridvis=bool(kwargs.get("gridvis", True)),
+        parallel_download=parallel_download,
         land_cover_options=land_cover_options,
         building_options=building_options,
         canopy_options=canopy_options,

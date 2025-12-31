@@ -340,17 +340,10 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
             initialize_earth_engine()
         except Exception as e:
             print("Earth Engine unavailable (", str(e), ") — falling back to flat DEM.")
-            dem_interpolation = kwargs.get("dem_interpolation")
-            # Return flat DEM (zeros) with same shape as would be produced after rasterization
-            # We defer to downstream to handle zeros appropriately.
-            # To avoid shape inference here, we'll build after default path below.
-            geotiff_path = None
-            # Bypass EE path and produce zeros later
-            dem_grid = np.zeros((1, 1), dtype=float)
-            # Build shape using land cover grid shape if provided via kwargs for robustness
-            lc_like = kwargs.get("land_cover_like")
-            if lc_like is not None:
-                dem_grid = np.zeros_like(lc_like)
+            # Compute grid shape directly from rectangle_vertices and meshsize
+            from ..geoprocessor.raster.core import compute_grid_shape
+            grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
+            dem_grid = np.zeros(grid_shape, dtype=float)
             return dem_grid
 
         geotiff_path = os.path.join(output_dir, "dem.tif")

@@ -2,6 +2,8 @@ import numpy as np
 from typing import Tuple, Dict, Any
 from shapely.geometry import Polygon
 
+from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
+
 
 def apply_operation(arr: np.ndarray, meshsize: float) -> np.ndarray:
     """
@@ -144,6 +146,35 @@ def create_cell_polygon(
     top_right = origin + (i + 1) * adjusted_meshsize[0] * u_vec + (j + 1) * adjusted_meshsize[1] * v_vec
     top_left = origin + i * adjusted_meshsize[0] * u_vec + (j + 1) * adjusted_meshsize[1] * v_vec
     return Polygon([bottom_left, bottom_right, top_right, top_left])
+
+
+def compute_grid_shape(rectangle_vertices, meshsize: float) -> Tuple[int, int]:
+    """
+    Compute the grid dimensions (rows, cols) for a given rectangle and mesh size.
+    
+    This is useful when you need to know the output grid shape without
+    actually creating the grid (e.g., for pre-allocating arrays or fallback shapes).
+    
+    Args:
+        rectangle_vertices: List of 4 vertices [(lon, lat), ...] defining the rectangle.
+        meshsize: Grid cell size in meters.
+        
+    Returns:
+        Tuple of (grid_size_0, grid_size_1) representing grid dimensions.
+    """
+    geod = initialize_geod()
+    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
+    
+    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
+    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
+    
+    side_1 = np.array(vertex_1) - np.array(vertex_0)
+    side_2 = np.array(vertex_3) - np.array(vertex_0)
+    u_vec = normalize_to_one_meter(side_1, dist_side_1)
+    v_vec = normalize_to_one_meter(side_2, dist_side_2)
+    
+    grid_size, _ = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    return grid_size
 
 
 

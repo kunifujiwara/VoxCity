@@ -1,6 +1,7 @@
 import os
 from ..utils.logging import get_logger
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 
 from ..models import (
@@ -78,33 +79,70 @@ class VoxCityPipeline:
         canopy_strategy = CanopySourceFactory.create(cfg.canopy_height_source, cfg)
         dem_strategy = DemSourceFactory.create(cfg.dem_source)
 
-        # Prefer structured options from cfg; allow legacy kwargs for back-compat
-        land_cover_grid = land_strategy.build_grid(
-            cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
-            **{**cfg.land_cover_options, **kwargs}
-        )
-        # Detect effective land cover source (e.g., Urbanwatch -> OpenStreetMap fallback)
-        try:
-            from .grids import get_last_effective_land_cover_source
-            lc_src_effective = get_last_effective_land_cover_source() or cfg.land_cover_source
-        except Exception:
-            lc_src_effective = cfg.land_cover_source
-        bh, bmin, bid, building_gdf_out = build_strategy.build_grids(
-            cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
-            building_gdf=building_gdf,
-            **{**cfg.building_options, **kwargs}
-        )
-        canopy_top, canopy_bottom = canopy_strategy.build_grids(
-            cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
-            land_cover_source=lc_src_effective,
-            **{**cfg.canopy_options, **kwargs}
-        )
-        dem = dem_strategy.build_grid(
-            cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
-            terrain_gdf=terrain_gdf,
-            land_cover_like=land_cover_grid,
-            **{**cfg.dem_options, **kwargs}
-        )
+        # Check if parallel download is enabled
+        parallel_download = getattr(cfg, 'parallel_download', False)
+
+        if parallel_download and cfg.canopy_height_source != "Static":
+            # All 4 downloads are independent - run in parallel
+            land_cover_grid, bh, bmin, bid, building_gdf_out, canopy_top, canopy_bottom, dem, lc_src_effective = \
+                self._run_parallel_downloads(
+                    cfg, land_strategy, build_strategy, canopy_strategy, dem_strategy,
+                    building_gdf, terrain_gdf, kwargs
+                )
+            # Run visualizations after parallel downloads complete (if gridvis enabled)
+            if kwargs.get('gridvis', cfg.gridvis):
+                self._visualize_grids_after_parallel(
+                    land_cover_grid, bh, canopy_top, dem, 
+                    lc_src_effective, cfg.meshsize
+                )
+        elif parallel_download and cfg.canopy_height_source == "Static":
+            # Static canopy needs land_cover_grid for tree mask
+            # Run land_cover + building + dem in parallel, then canopy sequentially
+            land_cover_grid, bh, bmin, bid, building_gdf_out, dem, lc_src_effective = \
+                self._run_parallel_downloads_static_canopy(
+                    cfg, land_strategy, build_strategy, dem_strategy,
+                    building_gdf, terrain_gdf, kwargs
+                )
+            # Visualize land_cover, building, dem after parallel (if gridvis enabled)
+            if kwargs.get('gridvis', cfg.gridvis):
+                self._visualize_grids_after_parallel(
+                    land_cover_grid, bh, None, dem,
+                    lc_src_effective, cfg.meshsize
+                )
+            # Now run canopy with land_cover_grid available (this will visualize itself)
+            canopy_top, canopy_bottom = canopy_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+                land_cover_source=lc_src_effective,
+                **{**cfg.canopy_options, **kwargs}
+            )
+        else:
+            # Sequential mode (original behavior)
+            land_cover_grid = land_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                **{**cfg.land_cover_options, **kwargs}
+            )
+            # Detect effective land cover source (e.g., Urbanwatch -> OpenStreetMap fallback)
+            try:
+                from .grids import get_last_effective_land_cover_source
+                lc_src_effective = get_last_effective_land_cover_source() or cfg.land_cover_source
+            except Exception:
+                lc_src_effective = cfg.land_cover_source
+            bh, bmin, bid, building_gdf_out = build_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                building_gdf=building_gdf,
+                **{**cfg.building_options, **kwargs}
+            )
+            canopy_top, canopy_bottom = canopy_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+                land_cover_source=lc_src_effective,
+                **{**cfg.canopy_options, **kwargs}
+            )
+            dem = dem_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+                terrain_gdf=terrain_gdf,
+                land_cover_like=land_cover_grid,
+                **{**cfg.dem_options, **kwargs}
+            )
 
         ro = cfg.remove_perimeter_object
         if (ro is not None) and (ro > 0):
@@ -151,6 +189,205 @@ class VoxCityPipeline:
                 "dem_source": cfg.dem_source,
             },
         )
+
+    def _visualize_grids_after_parallel(
+        self, land_cover_grid, building_height_grid, canopy_top, dem_grid,
+        land_cover_source, meshsize
+    ):
+        """
+        Run grid visualizations after parallel downloads complete.
+        This ensures matplotlib calls happen sequentially on the main thread.
+        """
+        from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
+        from ..utils.lc import get_land_cover_classes
+        
+        # Visualize land cover (convert int grid back to string for visualization)
+        try:
+            land_cover_classes = get_land_cover_classes(land_cover_source)
+            # Create reverse mapping: int -> string class name
+            int_to_class = {i: name for i, name in enumerate(land_cover_classes.values())}
+            # Convert integer grid to string grid for visualization
+            land_cover_grid_str = np.empty(land_cover_grid.shape, dtype=object)
+            for i, name in int_to_class.items():
+                land_cover_grid_str[land_cover_grid == i] = name
+            color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
+            visualize_land_cover_grid(np.flipud(land_cover_grid_str), meshsize, color_map, land_cover_classes)
+        except Exception as e:
+            get_logger(__name__).warning("Land cover visualization failed: %s", e)
+        
+        # Visualize building height
+        try:
+            building_height_grid_nan = building_height_grid.copy().astype(float)
+            building_height_grid_nan[building_height_grid_nan == 0] = np.nan
+            visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
+        except Exception as e:
+            get_logger(__name__).warning("Building height visualization failed: %s", e)
+        
+        # Visualize canopy height (if provided)
+        if canopy_top is not None:
+            try:
+                canopy_height_grid_nan = canopy_top.copy()
+                canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
+                visualize_numerical_grid(np.flipud(canopy_height_grid_nan), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+            except Exception as e:
+                get_logger(__name__).warning("Canopy height visualization failed: %s", e)
+        
+        # Visualize DEM
+        try:
+            visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+        except Exception as e:
+            get_logger(__name__).warning("DEM visualization failed: %s", e)
+
+    def _run_parallel_downloads(
+        self, cfg, land_strategy, build_strategy, canopy_strategy, dem_strategy,
+        building_gdf, terrain_gdf, kwargs
+    ):
+        """
+        Run all 4 downloads (land_cover, building, canopy, dem) in parallel.
+        Used when canopy source is NOT 'Static' (no land_cover dependency).
+        """
+        logger = get_logger(__name__)
+        logger.info("Running downloads in parallel mode (4 concurrent downloads)")
+        
+        results = {}
+        
+        # Disable gridvis in parallel mode (matplotlib is not thread-safe)
+        # We'll visualize after all downloads complete if needed
+        parallel_kwargs = {**kwargs, 'gridvis': False}
+        lc_opts = {**cfg.land_cover_options, 'gridvis': False}
+        bld_opts = {**cfg.building_options, 'gridvis': False}
+        canopy_opts = {**cfg.canopy_options, 'gridvis': False}
+        dem_opts = {**cfg.dem_options, 'gridvis': False}
+        
+        def download_land_cover():
+            grid = land_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                **{**lc_opts, **parallel_kwargs}
+            )
+            # Get effective source after download
+            try:
+                from .grids import get_last_effective_land_cover_source
+                effective = get_last_effective_land_cover_source() or cfg.land_cover_source
+            except Exception:
+                effective = cfg.land_cover_source
+            return ('land_cover', (grid, effective))
+        
+        def download_building():
+            bh, bmin, bid, gdf_out = build_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                building_gdf=building_gdf,
+                **{**bld_opts, **parallel_kwargs}
+            )
+            return ('building', (bh, bmin, bid, gdf_out))
+        
+        def download_canopy():
+            # For non-static canopy, we don't need land_cover_grid
+            # Pass None or empty array as placeholder - the strategy will download from GEE
+            placeholder_grid = np.zeros((1, 1), dtype=float)
+            top, bottom = canopy_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, placeholder_grid, cfg.output_dir,
+                land_cover_source=cfg.land_cover_source,
+                **{**canopy_opts, **parallel_kwargs}
+            )
+            return ('canopy', (top, bottom))
+        
+        def download_dem():
+            # DEM no longer depends on land_cover_like for shape
+            dem = dem_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, None, cfg.output_dir,
+                terrain_gdf=terrain_gdf,
+                **{**dem_opts, **parallel_kwargs}
+            )
+            return ('dem', dem)
+        
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(download_land_cover),
+                executor.submit(download_building),
+                executor.submit(download_canopy),
+                executor.submit(download_dem),
+            ]
+            for future in as_completed(futures):
+                try:
+                    key, value = future.result()
+                    results[key] = value
+                except Exception as e:
+                    logger.error("Parallel download failed: %s", e)
+                    raise
+        
+        land_cover_grid, lc_src_effective = results['land_cover']
+        bh, bmin, bid, building_gdf_out = results['building']
+        canopy_top, canopy_bottom = results['canopy']
+        dem = results['dem']
+        
+        return land_cover_grid, bh, bmin, bid, building_gdf_out, canopy_top, canopy_bottom, dem, lc_src_effective
+
+    def _run_parallel_downloads_static_canopy(
+        self, cfg, land_strategy, build_strategy, dem_strategy,
+        building_gdf, terrain_gdf, kwargs
+    ):
+        """
+        Run land_cover, building, and dem downloads in parallel.
+        Canopy (Static mode) will be run sequentially after, as it needs land_cover_grid.
+        """
+        logger = get_logger(__name__)
+        logger.info("Running downloads in parallel mode (3 concurrent downloads, Static canopy deferred)")
+        
+        results = {}
+        
+        # Disable gridvis in parallel mode (matplotlib is not thread-safe)
+        parallel_kwargs = {**kwargs, 'gridvis': False}
+        lc_opts = {**cfg.land_cover_options, 'gridvis': False}
+        bld_opts = {**cfg.building_options, 'gridvis': False}
+        dem_opts = {**cfg.dem_options, 'gridvis': False}
+        
+        def download_land_cover():
+            grid = land_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                **{**lc_opts, **parallel_kwargs}
+            )
+            try:
+                from .grids import get_last_effective_land_cover_source
+                effective = get_last_effective_land_cover_source() or cfg.land_cover_source
+            except Exception:
+                effective = cfg.land_cover_source
+            return ('land_cover', (grid, effective))
+        
+        def download_building():
+            bh, bmin, bid, gdf_out = build_strategy.build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, cfg.output_dir,
+                building_gdf=building_gdf,
+                **{**bld_opts, **parallel_kwargs}
+            )
+            return ('building', (bh, bmin, bid, gdf_out))
+        
+        def download_dem():
+            dem = dem_strategy.build_grid(
+                cfg.rectangle_vertices, cfg.meshsize, None, cfg.output_dir,
+                terrain_gdf=terrain_gdf,
+                **{**dem_opts, **parallel_kwargs}
+            )
+            return ('dem', dem)
+        
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(download_land_cover),
+                executor.submit(download_building),
+                executor.submit(download_dem),
+            ]
+            for future in as_completed(futures):
+                try:
+                    key, value = future.result()
+                    results[key] = value
+                except Exception as e:
+                    logger.error("Parallel download failed: %s", e)
+                    raise
+        
+        land_cover_grid, lc_src_effective = results['land_cover']
+        bh, bmin, bid, building_gdf_out = results['building']
+        dem = results['dem']
+        
+        return land_cover_grid, bh, bmin, bid, building_gdf_out, dem, lc_src_effective
 
 
 class LandCoverSourceStrategy:  # ABC simplified to avoid dependency in split
@@ -246,6 +483,11 @@ class DemSourceStrategy:  # ABC simplified
 
 class FlatDemStrategy(DemSourceStrategy):
     def build_grid(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
+        # Compute shape from rectangle_vertices if land_cover_grid is None
+        if land_cover_grid is None:
+            from ..geoprocessor.raster.core import compute_grid_shape
+            grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
+            return np.zeros(grid_shape, dtype=float)
         return np.zeros_like(land_cover_grid)
 
 
@@ -264,6 +506,11 @@ class SourceDemStrategy(DemSourceStrategy):
             # Fallback to flat DEM if source fails or unsupported
             logger = get_logger(__name__)
             logger.warning("DEM source '%s' failed (%s). Falling back to flat DEM.", self.source, e)
+            # Compute shape from rectangle_vertices if land_cover_grid is None
+            if land_cover_grid is None:
+                from ..geoprocessor.raster.core import compute_grid_shape
+                grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
+                return np.zeros(grid_shape, dtype=float)
             return np.zeros_like(land_cover_grid)
 
 
