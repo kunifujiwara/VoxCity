@@ -246,18 +246,34 @@ class VoxCityPipeline:
         Run all 4 downloads (land_cover, building, canopy, dem) in parallel.
         Used when canopy source is NOT 'Static' (no land_cover dependency).
         """
+        import logging
         logger = get_logger(__name__)
-        logger.info("Running downloads in parallel mode (4 concurrent downloads)")
+        
+        # Print clean header for parallel mode
+        print("\n" + "="*60)
+        print("Downloading data in parallel mode (4 concurrent downloads)")
+        print("="*60)
+        print(f"  • Land Cover:  {cfg.land_cover_source}")
+        print(f"  • Building:    {cfg.building_source}")
+        print(f"  • Canopy:      {cfg.canopy_height_source}")
+        print(f"  • DEM:         {cfg.dem_source}")
+        print("-"*60)
+        print("Downloading... (this may take a moment)")
         
         results = {}
         
-        # Disable gridvis in parallel mode (matplotlib is not thread-safe)
-        # We'll visualize after all downloads complete if needed
-        parallel_kwargs = {**kwargs, 'gridvis': False}
-        lc_opts = {**cfg.land_cover_options, 'gridvis': False}
-        bld_opts = {**cfg.building_options, 'gridvis': False}
-        canopy_opts = {**cfg.canopy_options, 'gridvis': False}
-        dem_opts = {**cfg.dem_options, 'gridvis': False}
+        # Disable gridvis and verbose prints in parallel mode
+        # Also suppress httpx INFO logs during parallel downloads
+        parallel_kwargs = {**kwargs, 'gridvis': False, 'print_class_info': False, 'quiet': True}
+        lc_opts = {**cfg.land_cover_options, 'gridvis': False, 'print_class_info': False, 'quiet': True}
+        bld_opts = {**cfg.building_options, 'gridvis': False, 'quiet': True}
+        canopy_opts = {**cfg.canopy_options, 'gridvis': False, 'quiet': True}
+        dem_opts = {**cfg.dem_options, 'gridvis': False, 'quiet': True}
+        
+        # Suppress httpx verbose logging during parallel downloads
+        httpx_logger = logging.getLogger("httpx")
+        original_httpx_level = httpx_logger.level
+        httpx_logger.setLevel(logging.WARNING)
         
         def download_land_cover():
             grid = land_strategy.build_grid(
@@ -307,13 +323,24 @@ class VoxCityPipeline:
                 executor.submit(download_canopy),
                 executor.submit(download_dem),
             ]
+            completed_count = 0
             for future in as_completed(futures):
                 try:
                     key, value = future.result()
                     results[key] = value
+                    completed_count += 1
+                    print(f"  ✓ {key.replace('_', ' ').title()} complete ({completed_count}/4)")
                 except Exception as e:
                     logger.error("Parallel download failed: %s", e)
+                    httpx_logger.setLevel(original_httpx_level)  # Restore before raising
                     raise
+        
+        # Restore httpx logging level
+        httpx_logger.setLevel(original_httpx_level)
+        
+        print("-"*60)
+        print("All downloads complete!")
+        print("="*60 + "\n")
         
         land_cover_grid, lc_src_effective = results['land_cover']
         bh, bmin, bid, building_gdf_out = results['building']
@@ -330,16 +357,32 @@ class VoxCityPipeline:
         Run land_cover, building, and dem downloads in parallel.
         Canopy (Static mode) will be run sequentially after, as it needs land_cover_grid.
         """
+        import logging
         logger = get_logger(__name__)
-        logger.info("Running downloads in parallel mode (3 concurrent downloads, Static canopy deferred)")
+        
+        # Print clean header for parallel mode
+        print("\n" + "="*60)
+        print("Downloading data in parallel mode (3 concurrent + 1 deferred)")
+        print("="*60)
+        print(f"  • Land Cover:  {cfg.land_cover_source}")
+        print(f"  • Building:    {cfg.building_source}")
+        print(f"  • DEM:         {cfg.dem_source}")
+        print(f"  • Canopy:      {cfg.canopy_height_source} (deferred)")
+        print("-"*60)
+        print("Downloading... (this may take a moment)")
         
         results = {}
         
-        # Disable gridvis in parallel mode (matplotlib is not thread-safe)
-        parallel_kwargs = {**kwargs, 'gridvis': False}
-        lc_opts = {**cfg.land_cover_options, 'gridvis': False}
-        bld_opts = {**cfg.building_options, 'gridvis': False}
-        dem_opts = {**cfg.dem_options, 'gridvis': False}
+        # Disable gridvis and verbose prints in parallel mode
+        parallel_kwargs = {**kwargs, 'gridvis': False, 'print_class_info': False, 'quiet': True}
+        lc_opts = {**cfg.land_cover_options, 'gridvis': False, 'print_class_info': False, 'quiet': True}
+        bld_opts = {**cfg.building_options, 'gridvis': False, 'quiet': True}
+        dem_opts = {**cfg.dem_options, 'gridvis': False, 'quiet': True}
+        
+        # Suppress httpx verbose logging during parallel downloads
+        httpx_logger = logging.getLogger("httpx")
+        original_httpx_level = httpx_logger.level
+        httpx_logger.setLevel(logging.WARNING)
         
         def download_land_cover():
             grid = land_strategy.build_grid(
@@ -375,13 +418,23 @@ class VoxCityPipeline:
                 executor.submit(download_building),
                 executor.submit(download_dem),
             ]
+            completed_count = 0
             for future in as_completed(futures):
                 try:
                     key, value = future.result()
                     results[key] = value
+                    completed_count += 1
+                    print(f"  ✓ {key.replace('_', ' ').title()} complete ({completed_count}/3)")
                 except Exception as e:
                     logger.error("Parallel download failed: %s", e)
+                    httpx_logger.setLevel(original_httpx_level)
                     raise
+        
+        # Restore httpx logging level
+        httpx_logger.setLevel(original_httpx_level)
+        
+        print("-"*60)
+        print("Parallel downloads complete! Processing canopy...")
         
         land_cover_grid, lc_src_effective = results['land_cover']
         bh, bmin, bid, building_gdf_out = results['building']

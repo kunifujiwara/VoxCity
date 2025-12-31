@@ -67,11 +67,11 @@ def run_voxelcity_pipeline(
     t0 = t_start()
     city = get_voxcity(
         rectangle_vertices,
-        building_source,
-        land_cover_source,
-        canopy_height_source,
-        dem_source,
         meshsize,
+        building_source=building_source,
+        land_cover_source=land_cover_source,
+        canopy_height_source=canopy_height_source,
+        dem_source=dem_source,
         **kwargs
     )
     t_end("4.1 get_voxcity", t0)
