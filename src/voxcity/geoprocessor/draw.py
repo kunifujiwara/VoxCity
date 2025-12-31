@@ -337,23 +337,29 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
             print(f"Point drawn at Longitude: {lon}, Latitude: {lat}")
             
             # Calculate corner points using geopy's distance calculator
-            # Each point is calculated as a destination from center point using bearing
+            # First calculate north/south latitudes from center
             north = distance.distance(meters=north_south_length/2).destination((lat, lon), bearing=0)
             south = distance.distance(meters=north_south_length/2).destination((lat, lon), bearing=180)
-            east = distance.distance(meters=east_west_length/2).destination((lat, lon), bearing=90)
-            west = distance.distance(meters=east_west_length/2).destination((lat, lon), bearing=270)
+            
+            # Calculate east/west at the SOUTH latitude to ensure correct grid dimensions
+            # The grid size calculation uses the SW corner (vertex_0) as reference,
+            # measuring E-W distance along the south edge. By calculating east/west
+            # at the south latitude, we ensure the E-W distance matches the requested length.
+            east_at_south = distance.distance(meters=east_west_length/2).destination((south.latitude, lon), bearing=90)
+            west_at_south = distance.distance(meters=east_west_length/2).destination((south.latitude, lon), bearing=270)
 
             # Create rectangle vertices in counter-clockwise order (lon,lat)
+            # Using the east/west longitudes calculated at south latitude for all corners
             rectangle_vertices.extend([
-                (west.longitude, south.latitude),
-                (west.longitude, north.latitude),
-                (east.longitude, north.latitude),
-                (east.longitude, south.latitude)                
+                (west_at_south.longitude, south.latitude),
+                (west_at_south.longitude, north.latitude),
+                (east_at_south.longitude, north.latitude),
+                (east_at_south.longitude, south.latitude)                
             ])
 
             # Create and add new rectangle to map (ipyleaflet expects lat,lon)
             rectangle = Rectangle(
-                bounds=[(north.latitude, west.longitude), (south.latitude, east.longitude)],
+                bounds=[(north.latitude, west_at_south.longitude), (south.latitude, east_at_south.longitude)],
                 color="red",
                 fill_color="red",
                 fill_opacity=0.2
