@@ -65,6 +65,15 @@ mypy = "*"
 pytest = "*"
 ruff = "*"
 
+[tool.poetry.extras]
+gpu = ["taichi"]
+
+[tool.poetry.group.gpu]
+optional = true
+
+[tool.poetry.group.gpu.dependencies]
+taichi = "*"
+
 [tool.poetry.urls]
 bugs = "https://github.com/kunifujiwara/voxcity/issues"
 changelog = "https://github.com/kunifujiwara/voxcity/blob/master/changelog.md"

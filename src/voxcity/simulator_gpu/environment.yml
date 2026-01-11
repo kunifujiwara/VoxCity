@@ -1,0 +1,11 @@
+name: voxcity_gpu
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - gdal
+  - timezonefinder
+  - pip
+  - pip:
+    - voxcity[gpu]
