@@ -7,6 +7,7 @@ is called before any Taichi fields or kernels are used.
 
 import taichi as ti
 import os
+import warnings
 from typing import Optional
 
 # Track initialization state
@@ -18,6 +19,7 @@ def init_taichi(
     default_fp: type = ti.f32,
     default_ip: type = ti.i32,
     debug: bool = False,
+    suppress_fp16_warnings: bool = True,
     **kwargs
 ) -> bool:
     """
@@ -37,6 +39,9 @@ def init_taichi(
         default_fp: Default floating point type (ti.f32 or ti.f64)
         default_ip: Default integer type (ti.i32 or ti.i64)
         debug: Enable debug mode for better error messages
+        suppress_fp16_warnings: Suppress Taichi's fp16 precision loss warnings
+            (default: True). These warnings occur when using fp16 intermediate
+            buffers for memory bandwidth optimization.
         **kwargs: Additional arguments passed to ti.init()
         
     Returns:
@@ -46,6 +51,26 @@ def init_taichi(
     
     if _TAICHI_INITIALIZED:
         return False
+    
+    # Suppress fp16 precision warnings if requested
+    # These occur when assigning f32 values to f16 fields, which is intentional
+    # for memory bandwidth optimization in intermediate buffers
+    if suppress_fp16_warnings:
+        # Filter Taichi's precision loss warnings via Python warnings module
+        warnings.filterwarnings(
+            'ignore',
+            message='.*Assign a value with precision.*',
+            category=UserWarning
+        )
+        warnings.filterwarnings(
+            'ignore',
+            message='.*Atomic add may lose precision.*',
+            category=UserWarning
+        )
+        # Also set Taichi log level to ERROR to suppress warnings from Taichi's internal logging
+        # This is needed because Taichi uses its own logging system for some warnings
+        if 'log_level' not in kwargs:
+            kwargs['log_level'] = ti.ERROR
     
     # Determine architecture
     if arch is None:

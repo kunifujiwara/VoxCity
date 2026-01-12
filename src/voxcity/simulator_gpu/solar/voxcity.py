@@ -388,15 +388,20 @@ def _get_or_create_building_radiation_model(
     ny_vc, nx_vc, nz = voxel_data.shape
     
     # Check if cache is valid
+    # A cached model with reflections (n_reflection_steps > 0) can be reused for non-reflection calls
+    # But a cached model without reflections cannot be used for reflection calls
     cache_valid = False
     if _building_radiation_model_cache is not None:
         cache = _building_radiation_model_cache
         if (cache.voxcity_shape == voxel_data.shape and
-            cache.meshsize == meshsize and
-            cache.n_reflection_steps == n_reflection_steps):
-            cache_valid = True
-            if progress_report:
-                print("Using cached Building RadiationModel (SVF/CSF already computed)")
+            cache.meshsize == meshsize):
+            # Cache is valid if:
+            # 1. We don't need reflections (n_reflection_steps=0), OR
+            # 2. Cached model has reflections enabled (can handle any n_reflection_steps)
+            if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
+                cache_valid = True
+                if progress_report:
+                    print("Using cached Building RadiationModel (SVF/CSF already computed)")
     
     if cache_valid:
         return (_building_radiation_model_cache.model,
@@ -455,15 +460,20 @@ def _get_or_create_building_radiation_model(
     domain.set_lad_from_array(lad_np)
     _update_topo_from_solid(domain)
     
+    # When n_reflection_steps=0, disable surface reflections to skip expensive SVF matrix computation
+    surface_reflections = n_reflection_steps > 0
+    
     config = RadiationConfig(
         n_reflection_steps=n_reflection_steps,
         n_azimuth=40,
-        n_elevation=10
+        n_elevation=10,
+        surface_reflections=surface_reflections,  # Disable when no reflections needed
+        cache_svf_matrix=surface_reflections,     # Skip SVF matrix when reflections disabled
     )
     
     model = RadiationModel(domain, config)
     
-    # Compute SVF (expensive!)
+    # Compute SVF (expensive! but only for sky view, not surface-to-surface when disabled)
     if progress_report:
         print("Computing Sky View Factors...")
     model.compute_svf()
@@ -1452,7 +1462,7 @@ def get_cumulative_global_solar_irradiance(
         
         if progress_report:
             bin_time = time.perf_counter() - t0
-            print(f"Sky patch optimization: {n_timesteps} timesteps → {n_active} active patches ({sky_discretization})")
+            print(f"Sky patch optimization: {n_timesteps} timesteps -> {n_active} active patches ({sky_discretization})")
             print(f"  Sun position binning: {bin_time:.3f}s")
             print(f"  Total cumulative DHI: {total_cumulative_dhi:.1f} Wh/m²")
             if with_reflections:
@@ -1653,6 +1663,11 @@ def get_building_solar_irradiance(
     building_class_id = kwargs.pop('building_class_id', -3)
     n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
     colormap = kwargs.pop('colormap', 'magma')
+    with_reflections = kwargs.pop('with_reflections', True)  # Default True for building surfaces
+    
+    # If with_reflections=False, set n_reflection_steps=0 to skip expensive SVF matrix computation
+    if not with_reflections:
+        n_reflection_steps = 0
     
     # Get cached or create new RadiationModel (SVF/CSF computed only once)
     model, is_building_surf = _get_or_create_building_radiation_model(
@@ -2077,7 +2092,7 @@ def get_cumulative_building_solar_irradiance(
         n_active = int(np.sum(active_mask))
         
         if progress_report:
-            print(f"  Sky patch optimization: {n_timesteps} timesteps → {n_active} active patches ({sky_discretization})")
+            print(f"  Sky patch optimization: {n_timesteps} timesteps -> {n_active} active patches ({sky_discretization})")
             print(f"  Total cumulative DHI: {total_cumulative_dhi:.1f} Wh/m²")
         
         # First pass: compute diffuse component using SVF (if available) or a single call
@@ -2337,22 +2352,29 @@ def get_building_global_solar_irradiance_using_epw(
     if df.empty:
         raise ValueError("No data in EPW file.")
     
-    # Compute or get building SVF mesh
+    # Create building mesh for output (just geometry, no SVF computation)
+    # The RadiationModel computes SVF internally for voxel surfaces, so we don't need
+    # the expensive get_surface_view_factor() call. We just need the mesh geometry.
     if building_svf_mesh is None:
-        if progress_report:
-            print("Computing Sky View Factor for building surfaces...")
-        # Import the visibility module to compute SVF
         try:
-            from ..visibility import get_surface_view_factor
-            building_svf_mesh = get_surface_view_factor(
-                voxcity,
-                mode='sky',
-                progress_report=progress_report,
-                **kwargs
+            from voxcity.geoprocessor.mesh import create_voxel_mesh
+            building_class_id = kwargs.get('building_class_id', -3)
+            voxel_data = voxcity.voxels.classes
+            meshsize = voxcity.voxels.meta.meshsize
+            building_id_grid = voxcity.buildings.ids
+            
+            building_svf_mesh = create_voxel_mesh(
+                voxel_data,
+                building_class_id,
+                meshsize,
+                building_id_grid=building_id_grid,
+                mesh_type='open_air'
             )
+            if progress_report:
+                n_faces = len(building_svf_mesh.faces) if building_svf_mesh is not None else 0
+                print(f"Created building mesh with {n_faces} faces")
         except ImportError:
-            # Fallback: compute without pre-computed SVF
-            pass
+            pass  # Will fail later with "Building mesh has no faces" error
     
     if calc_type == 'instantaneous':
         calc_time = kwargs.get('calc_time', '01-01 12:00:00')

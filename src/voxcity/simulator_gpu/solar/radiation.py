@@ -390,7 +390,7 @@ class RadiationModel:
             self._svf_computed = True
             return
         
-        print("Computing Sky View Factors...")
+        print("Computing per-surface Sky View Factors (for diffuse sky radiation)...")
         
         if self.domain.lad is not None:
             self.svf_calc.compute_svf_with_canopy(
@@ -415,7 +415,7 @@ class RadiationModel:
             self._copy_svf()
         
         self._svf_computed = True
-        print("SVF computation complete.")
+        print("Per-surface SVF complete.")
         
         # Pre-compute SVF matrix for efficient multi-timestep reflections
         if self.config.cache_svf_matrix and self.config.surface_reflections:
@@ -425,17 +425,18 @@ class RadiationModel:
             if self.config.canopy_radiation and self.domain.lad is not None:
                 self.compute_csf_matrix()
         
-        # Pre-compute CSF sky for efficient multi-timestep canopy absorption
-        # CSF sky is geometry-dependent only and doesn't change with sun position
-        if self.config.canopy_radiation and self.domain.lad is not None:
-            print("Pre-computing CSF sky (geometry-dependent, computed once)...")
-            self.csf_calc.compute_csf_sky_cached(
-                self.domain.is_solid,
-                self.domain.lad,
-                self.config.n_azimuth,
-                self.config.n_elevation
-            )
-            print("CSF sky computation complete.")
+            # Pre-compute CSF sky for efficient multi-timestep canopy absorption
+            # CSF sky is geometry-dependent only and doesn't change with sun position
+            # Only needed when reflections are enabled (for canopy-surface interactions)
+            if self.config.canopy_radiation and self.domain.lad is not None:
+                print("Pre-computing CSF sky (geometry-dependent, computed once)...")
+                self.csf_calc.compute_csf_sky_cached(
+                    self.domain.is_solid,
+                    self.domain.lad,
+                    self.config.n_azimuth,
+                    self.config.n_elevation
+                )
+                print("CSF sky computation complete.")
     
     @ti.kernel
     def _set_svf_one(self):
@@ -688,25 +689,28 @@ class RadiationModel:
     @ti.kernel
     def _init_flux_arrays(self):
         """Initialize all flux arrays to zero."""
+        # Use ti.cast for fp16 fields to avoid precision loss warnings
+        zero_f16 = ti.cast(0.0, ti.f16)
         for i in range(self.n_surfaces):
-            self._surfins[i] = 0.0
-            self._surfinl[i] = 0.0
-            self._surfoutsl[i] = 0.0
-            self._surfoutll[i] = 0.0
+            self._surfins[i] = zero_f16
+            self._surfinl[i] = zero_f16
+            self._surfoutsl[i] = zero_f16
+            self._surfoutll[i] = zero_f16
             self._surfinsw[i] = 0.0
             self._surfinlw[i] = 0.0
             self._surfoutsw[i] = 0.0
             self._surfoutlw[i] = 0.0
             self._surfinswdir[i] = 0.0
             self._surfinswdif[i] = 0.0
-            self._surfinswpc[i] = 0.0  # From plant canopy
+            self._surfinswpc[i] = zero_f16  # From plant canopy
     
     @ti.kernel
     def _init_canopy_arrays(self):
         """Initialize canopy radiation arrays to zero."""
+        zero_f16 = ti.cast(0.0, ti.f16)
         for i, j, k in ti.ndrange(self.domain.nx, self.domain.ny, self.domain.nz):
-            self._pcbinswref[i, j, k] = 0.0
-            self._pcbinswc2c[i, j, k] = 0.0
+            self._pcbinswref[i, j, k] = zero_f16
+            self._pcbinswc2c[i, j, k] = zero_f16
             self._pcbinswc2c_total[i, j, k] = 0.0
     
     @ti.kernel
@@ -796,8 +800,8 @@ class RadiationModel:
             self._surfinswdir[i] = sw_in_dir
             self._surfinswdif[i] = sw_in_dif
             
-            # Initial incoming for reflection loop
-            self._surfins[i] = sw_in_dir + sw_in_dif
+            # Initial incoming for reflection loop (cast to fp16)
+            self._surfins[i] = ti.cast(sw_in_dir + sw_in_dif, ti.f16)
             
             # Accumulate to totals
             self._surfinsw[i] = self._surfins[i]
@@ -811,7 +815,7 @@ class RadiationModel:
         """
         for i in range(self.n_surfaces):
             albedo = self.surfaces.albedo[i]
-            self._surfoutsl[i] = albedo * self._surfins[i]
+            self._surfoutsl[i] = ti.cast(albedo * self._surfins[i], ti.f16)
     
     @ti.kernel
     def _compute_outgoing_and_accumulate(self):
@@ -824,7 +828,7 @@ class RadiationModel:
         for i in range(self.n_surfaces):
             albedo = self.surfaces.albedo[i]
             outgoing = albedo * self._surfins[i]
-            self._surfoutsl[i] = outgoing
+            self._surfoutsl[i] = ti.cast(outgoing, ti.f16)
             self._surfoutsw[i] += outgoing
     
     @ti.kernel
@@ -870,7 +874,7 @@ class RadiationModel:
             
             # Skip if surface sees only sky
             if urban_vf_i < 0.01:
-                self._surfins[i] = 0.0
+                self._surfins[i] = ti.cast(0.0, ti.f16)
                 continue
             
             # Accumulate contributions from all emitting surfaces
@@ -924,7 +928,7 @@ class RadiationModel:
                     total_incoming += outgoing_j * view_factor
             
             # Scale by urban view factor (what fraction of hemisphere sees urban surfaces)
-            self._surfins[i] = total_incoming * urban_vf_i
+            self._surfins[i] = ti.cast(total_incoming * urban_vf_i, ti.f16)
     
     @ti.kernel
     def _distribute_reflected_radiation_with_canopy(
