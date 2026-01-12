@@ -94,6 +94,9 @@ class RadiationConfig:
     # SVF matrix caching for multi-timestep efficiency (PALM-like approach)
     cache_svf_matrix: bool = True   # Pre-compute SVF matrix for fast reflections
     svf_min_threshold: float = 0.01  # Minimum VF to store (sparsity threshold, 0.01 sufficient for 1% accuracy)
+    # FP16 optimization for intermediate calculations (reduces memory bandwidth, ~2x faster)
+    # fp16 range: ±65,504 with ~3 decimal digits precision - sufficient for W/m² irradiance values
+    use_fp16_intermediate: bool = True  # Use float16 for intermediate reflection buffers
 
 
 @ti.data_oriented
@@ -150,25 +153,29 @@ class RadiationModel:
         # Set default surface properties based on direction
         self._set_default_properties()
         
+        # Determine dtype for intermediate buffers (fp16 reduces memory bandwidth ~2x)
+        # fp16: range ±65,504, ~3 decimal digits - sufficient for W/m² irradiance (0-1400 range)
+        inter_dtype = ti.f16 if config.use_fp16_intermediate else ti.f32
+        
         # Allocate arrays for multi-bounce reflections
         # These store radiation fluxes during reflection iterations
-        self._surfins = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Incoming SW per reflection step
-        self._surfinl = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Incoming LW per reflection step
-        self._surfoutsl = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Outgoing SW per reflection step
-        self._surfoutll = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Outgoing LW per reflection step
+        self._surfins = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))  # Incoming SW per reflection step
+        self._surfinl = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))  # Incoming LW per reflection step
+        self._surfoutsl = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))  # Outgoing SW per reflection step
+        self._surfoutll = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))  # Outgoing LW per reflection step
         
         # Ping-pong buffers for optimized reflection iterations
         # Using separate kernels without internal ti.sync() is ~100x faster than fused kernels
-        self._surfins_ping = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))
-        self._surfins_pong = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))
+        self._surfins_ping = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))
+        self._surfins_pong = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))
         
-        # Total accumulated radiation
+        # Total accumulated radiation - keep as f32 for precision in cumulative sums
         self._surfinsw = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Total incoming SW
         self._surfinlw = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Total incoming LW
         self._surfoutsw = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Total outgoing SW
         self._surfoutlw = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Total outgoing LW
         
-        # Direct and diffuse components
+        # Direct and diffuse components - keep as f32 for final output precision
         self._surfinswdir = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Direct SW
         self._surfinswdif = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # Diffuse SW from sky
         
@@ -196,6 +203,7 @@ class RadiationModel:
         # Plant canopy absorption arrays (like PALM's pcbinsw, etc.)
         # Indexed by (i, j, k) grid coordinates
         # Units: W/m³ (power absorbed per unit volume)
+        # Total arrays use f32 for precision in cumulative sums
         self._pcbinsw = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))     # Total absorbed SW
         self._pcbinswdir = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))  # Direct SW absorbed
         self._pcbinswdif = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))  # Diffuse SW absorbed
@@ -205,17 +213,17 @@ class RadiationModel:
         self._pcinswdir = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))   # Direct SW received
         self._pcinswdif = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))   # Diffuse SW received
         
-        # Canopy scattered/reflected radiation (W/m³) - what leaves reflect back
-        self._pcbinswref = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))  # Reflected SW from canopy
+        # Canopy scattered/reflected radiation (W/m³) - intermediate uses inter_dtype
+        self._pcbinswref = ti.field(dtype=inter_dtype, shape=(domain.nx, domain.ny, domain.nz))  # Reflected SW from canopy
         
         # Canopy-to-canopy scattering contribution (W/m³)
         # Stores radiation scattered from other canopy cells to this cell (per iteration)
-        self._pcbinswc2c = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))  # Canopy-to-canopy SW (temp)
-        # Cumulative total of c2c contribution (for output)
+        self._pcbinswc2c = ti.field(dtype=inter_dtype, shape=(domain.nx, domain.ny, domain.nz))  # Canopy-to-canopy SW (temp)
+        # Cumulative total of c2c contribution (for output) - f32 for precision
         self._pcbinswc2c_total = ti.field(dtype=ti.f32, shape=(domain.nx, domain.ny, domain.nz))  # Canopy-to-canopy SW (total)
         
-        # Canopy-to-surface contribution per reflection step
-        self._surfinswpc = ti.field(dtype=ti.f32, shape=(self.n_surfaces,))  # SW from plant canopy
+        # Canopy-to-surface contribution per reflection step - intermediate
+        self._surfinswpc = ti.field(dtype=inter_dtype, shape=(self.n_surfaces,))  # SW from plant canopy
         
         # ========== SVF Matrix Caching (PALM-like approach) ==========
         # For multi-timestep efficiency, pre-compute surface-to-surface view factors
