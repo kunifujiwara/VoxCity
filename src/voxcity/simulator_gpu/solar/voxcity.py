@@ -344,6 +344,15 @@ class _CachedBuildingRadiationModel:
     n_reflection_steps: int  # Number of reflection steps used
     is_building_surf: np.ndarray  # Boolean mask for building surfaces
     building_svf_mesh: object  # Building mesh (can be None)
+    # Performance optimization: pre-computed mesh face to surface mapping
+    bldg_indices: Optional[np.ndarray] = None  # Indices of building surfaces
+    mesh_to_surface_idx: Optional[np.ndarray] = None  # Direct mapping: mesh face -> surface index
+    # Cached mesh geometry to avoid recomputing each call
+    mesh_face_centers: Optional[np.ndarray] = None  # Pre-computed triangles_center
+    mesh_face_normals: Optional[np.ndarray] = None  # Pre-computed face_normals
+    boundary_mask: Optional[np.ndarray] = None  # Pre-computed boundary vertical face mask
+    # Cached building mesh (expensive to create, ~2.4s)
+    cached_building_mesh: object = None  # Pre-computed building mesh from create_voxel_mesh
 
 
 # Module-level cache for Building RadiationModel  
@@ -474,6 +483,9 @@ def _get_or_create_building_radiation_model(
     if progress_report:
         print(f"Building RadiationModel cached. Building surfaces: {np.sum(is_building_surf)}/{n_surfaces}")
     
+    # Pre-compute bldg_indices for caching
+    bldg_indices = np.where(is_building_surf)[0]
+    
     # Cache the model
     _building_radiation_model_cache = _CachedBuildingRadiationModel(
         model=model,
@@ -481,7 +493,9 @@ def _get_or_create_building_radiation_model(
         meshsize=meshsize,
         n_reflection_steps=n_reflection_steps,
         is_building_surf=is_building_surf,
-        building_svf_mesh=None
+        building_svf_mesh=None,
+        bldg_indices=bldg_indices,
+        mesh_to_surface_idx=None  # Will be computed on first use with a specific mesh
     )
     
     return model, is_building_surf
@@ -1639,37 +1653,48 @@ def get_building_solar_irradiance(
     )
     
     # Extract surface irradiance from palm_solar model
+    # Note: Use to_numpy() without slicing - slicing is VERY slow on Taichi arrays
+    # The mesh_to_surface_idx will handle extracting only the values we need
     n_surfaces = model.surfaces.count
-    sw_in_direct_all = model.surfaces.sw_in_direct.to_numpy()[:n_surfaces]
-    sw_in_diffuse_all = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]
+    sw_in_direct_all = model.surfaces.sw_in_direct.to_numpy()
+    sw_in_diffuse_all = model.surfaces.sw_in_diffuse.to_numpy()
 
     if hasattr(model.surfaces, 'sw_in_reflected'):
-        sw_in_reflected_all = model.surfaces.sw_in_reflected.to_numpy()[:n_surfaces]
+        sw_in_reflected_all = model.surfaces.sw_in_reflected.to_numpy()
     else:
         sw_in_reflected_all = np.zeros_like(sw_in_direct_all)
 
     total_sw_all = sw_in_direct_all + sw_in_diffuse_all + sw_in_reflected_all
 
-    # Get surface centers and positions
-    surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]
-    surf_positions_all = model.surfaces.position.to_numpy()[:n_surfaces]
-
-    bldg_indices = np.where(is_building_surf)[0]
+    # Get building indices from cache (avoids np.where every time)
+    bldg_indices = _building_radiation_model_cache.bldg_indices if _building_radiation_model_cache else np.where(is_building_surf)[0]
     if progress_report:
         print(f"  palm_solar surfaces: {n_surfaces}, building surfaces: {len(bldg_indices)}")
 
-    # Use provided building_svf_mesh or create new mesh
+    # Get or create building mesh - use cached mesh if available (expensive: ~2.4s)
+    cache = _building_radiation_model_cache
     if building_svf_mesh is not None:
-        building_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
+        # Use provided mesh directly (no copy needed - we only update metadata)
+        building_mesh = building_svf_mesh
         # Extract SVF from mesh metadata if available
         if hasattr(building_mesh, 'metadata') and 'svf' in building_mesh.metadata:
             face_svf = building_mesh.metadata['svf']
         else:
             face_svf = None
+        # Cache mesh geometry on first use (avoids recomputing triangles_center/face_normals)
+        if cache is not None and cache.mesh_face_centers is None:
+            cache.mesh_face_centers = building_mesh.triangles_center.copy()
+            cache.mesh_face_normals = building_mesh.face_normals.copy()
+    elif cache is not None and cache.cached_building_mesh is not None:
+        # Use cached mesh (avoids expensive ~2.4s mesh creation each call)
+        building_mesh = cache.cached_building_mesh
+        face_svf = None
     else:
-        # Create mesh for building surfaces
+        # Create mesh for building surfaces (expensive, ~2.4s)
         try:
             from voxcity.geoprocessor.mesh import create_voxel_mesh
+            if progress_report:
+                print("  Creating building mesh (first call, will be cached)...")
             building_mesh = create_voxel_mesh(
                 voxel_data,
                 building_class_id,
@@ -1680,6 +1705,11 @@ def get_building_solar_irradiance(
             if building_mesh is None or len(building_mesh.faces) == 0:
                 print("No building surfaces found.")
                 return None
+            # Cache the mesh for future calls
+            if cache is not None:
+                cache.cached_building_mesh = building_mesh
+                if progress_report:
+                    print(f"  Cached building mesh with {len(building_mesh.faces)} faces")
         except ImportError:
             print("VoxCity geoprocessor.mesh required for mesh creation")
             return None
@@ -1687,50 +1717,69 @@ def get_building_solar_irradiance(
 
     n_mesh_faces = len(building_mesh.faces)
 
-    # Map palm_solar building surface values to building mesh faces via spatial nearest-neighbor.
-    # Build KDTree from building surface centers.
+    # Map palm_solar building surface values to building mesh faces.
+    # Use cached mapping if available (avoids expensive KDTree query every call)
     if len(bldg_indices) > 0:
-        from scipy.spatial import cKDTree
-        bldg_centers = surf_centers_all[bldg_indices]  # (n_bldg, 3) in world coords
-
-        # Building mesh face centers (trimesh uses vertex positions directly)
-        mesh_face_centers = building_mesh.triangles_center  # (n_mesh_faces, 3)
-
-        # Debug: print coordinate ranges to detect mismatch
-        if progress_report:
-            print(f"  palm_solar bldg centers: x=[{bldg_centers[:,0].min():.1f}, {bldg_centers[:,0].max():.1f}], "
-                  f"y=[{bldg_centers[:,1].min():.1f}, {bldg_centers[:,1].max():.1f}], "
-                  f"z=[{bldg_centers[:,2].min():.1f}, {bldg_centers[:,2].max():.1f}]")
-            print(f"  mesh face centers: x=[{mesh_face_centers[:,0].min():.1f}, {mesh_face_centers[:,0].max():.1f}], "
-                  f"y=[{mesh_face_centers[:,1].min():.1f}, {mesh_face_centers[:,1].max():.1f}], "
-                  f"z=[{mesh_face_centers[:,2].min():.1f}, {mesh_face_centers[:,2].max():.1f}]")
-
-        # VoxCity mesh uses [row, col, z] = [i, j, k] in its coordinate system where:
-        #   x_mesh = j * meshsize, y_mesh = i * meshsize, z_mesh = k * meshsize
-        # 
-        # palm_solar now uses the same convention (we fixed domain creation to match):
-        #   x_palm = (i + 0.5) * dx, y_palm = (j + 0.5) * dy, z_palm = (k + 0.5) * dz
-        # 
-        # With our fix, palm_solar centers should directly align with mesh centers.
-        # No transformation needed anymore.
-        
-        bldg_centers_transformed = bldg_centers  # No swap needed
-
-        if progress_report:
-            print(f"  bldg centers for matching: x=[{bldg_centers_transformed[:,0].min():.1f}, {bldg_centers_transformed[:,0].max():.1f}], "
-                  f"y=[{bldg_centers_transformed[:,1].min():.1f}, {bldg_centers_transformed[:,1].max():.1f}]")
-
-        tree = cKDTree(bldg_centers_transformed)
-        distances, nearest_idx = tree.query(mesh_face_centers, k=1)
-
-        if progress_report:
-            print(f"  KDTree match distances: min={distances.min():.2f}, mean={distances.mean():.2f}, max={distances.max():.2f}")
-
-        # Map irradiance arrays
-        sw_in_direct = sw_in_direct_all[bldg_indices][nearest_idx]
-        sw_in_diffuse = sw_in_diffuse_all[bldg_indices][nearest_idx]
-        sw_in_reflected = sw_in_reflected_all[bldg_indices][nearest_idx]
-        total_sw = total_sw_all[bldg_indices][nearest_idx]
+        # Check if we have cached mesh_to_surface_idx mapping
+        if (cache is not None and 
+            cache.mesh_to_surface_idx is not None and 
+            len(cache.mesh_to_surface_idx) == n_mesh_faces):
+            # Use cached direct mapping: mesh face -> surface index
+            mesh_to_surface_idx = cache.mesh_to_surface_idx
+            
+            # Fast vectorized indexing using pre-computed mapping
+            sw_in_direct = sw_in_direct_all[mesh_to_surface_idx]
+            sw_in_diffuse = sw_in_diffuse_all[mesh_to_surface_idx]
+            sw_in_reflected = sw_in_reflected_all[mesh_to_surface_idx]
+            total_sw = total_sw_all[mesh_to_surface_idx]
+        else:
+            # Need to compute mapping (first call with this mesh)
+            from scipy.spatial import cKDTree
+            
+            # Get surface centers (only needed for KDTree building)
+            surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]
+            bldg_centers = surf_centers_all[bldg_indices]
+            
+            # Use cached geometry if available, otherwise compute from mesh
+            if cache is not None and cache.mesh_face_centers is not None:
+                mesh_face_centers = cache.mesh_face_centers
+            else:
+                mesh_face_centers = building_mesh.triangles_center
+                if cache is not None:
+                    cache.mesh_face_centers = mesh_face_centers.copy()
+                    cache.mesh_face_normals = building_mesh.face_normals.copy()
+            
+            if progress_report:
+                print(f"  Computing mesh-to-surface mapping (first call)...")
+                print(f"  palm_solar bldg centers: x=[{bldg_centers[:,0].min():.1f}, {bldg_centers[:,0].max():.1f}], "
+                      f"y=[{bldg_centers[:,1].min():.1f}, {bldg_centers[:,1].max():.1f}], "
+                      f"z=[{bldg_centers[:,2].min():.1f}, {bldg_centers[:,2].max():.1f}]")
+                print(f"  mesh face centers: x=[{mesh_face_centers[:,0].min():.1f}, {mesh_face_centers[:,0].max():.1f}], "
+                      f"y=[{mesh_face_centers[:,1].min():.1f}, {mesh_face_centers[:,1].max():.1f}], "
+                      f"z=[{mesh_face_centers[:,2].min():.1f}, {mesh_face_centers[:,2].max():.1f}]")
+            
+            tree = cKDTree(bldg_centers)
+            distances, nearest_idx = tree.query(mesh_face_centers, k=1)
+            
+            if progress_report:
+                print(f"  KDTree match distances: min={distances.min():.2f}, mean={distances.mean():.2f}, max={distances.max():.2f}")
+            
+            # Create direct mapping: mesh face -> surface index
+            # This combines bldg_indices[nearest_idx] into a single array
+            mesh_to_surface_idx = bldg_indices[nearest_idx]
+            
+            # Cache the mapping for subsequent calls
+            if cache is not None:
+                cache.mesh_to_surface_idx = mesh_to_surface_idx
+                cache.bldg_indices = bldg_indices
+                if progress_report:
+                    print(f"  Cached mesh-to-surface mapping for {n_mesh_faces} faces")
+            
+            # Map irradiance arrays
+            sw_in_direct = sw_in_direct_all[mesh_to_surface_idx]
+            sw_in_diffuse = sw_in_diffuse_all[mesh_to_surface_idx]
+            sw_in_reflected = sw_in_reflected_all[mesh_to_surface_idx]
+            total_sw = total_sw_all[mesh_to_surface_idx]
     else:
         # Fallback: no building surfaces in palm_solar model (edge case)
         sw_in_direct = np.zeros(n_mesh_faces, dtype=np.float32)
@@ -1740,43 +1789,53 @@ def get_building_solar_irradiance(
 
     # -------------------------------------------------------------------------
     # Set vertical faces on domain perimeter to NaN (matching VoxCity behavior)
+    # Use cached boundary mask if available to avoid expensive mesh ops
     # -------------------------------------------------------------------------
-    # Compute domain bounds in world coordinates
-    # VoxCity voxel_data has shape (ny_vc, nx_vc, nz) = (num_rows, num_cols, num_z)
-    # Mesh coordinates: x = col * meshsize, y = row * meshsize
-    # So: x_max = num_cols * meshsize = nx_vc * meshsize
-    #     y_max = num_rows * meshsize = ny_vc * meshsize
-    ny_vc, nx_vc, nz = voxel_data.shape
-    grid_bounds_real = np.array([
-        [0.0, 0.0, 0.0],
-        [nx_vc * meshsize, ny_vc * meshsize, nz * meshsize]
-    ], dtype=np.float64)
-    boundary_epsilon = meshsize * 0.05
+    cache = _building_radiation_model_cache
+    if cache is not None and cache.boundary_mask is not None and len(cache.boundary_mask) == n_mesh_faces:
+        # Use cached boundary mask
+        is_boundary_vertical = cache.boundary_mask
+    else:
+        # Compute and cache boundary mask (first call)
+        ny_vc, nx_vc, nz = voxel_data.shape
+        grid_bounds_real = np.array([
+            [0.0, 0.0, 0.0],
+            [nx_vc * meshsize, ny_vc * meshsize, nz * meshsize]
+        ], dtype=np.float64)
+        boundary_epsilon = meshsize * 0.05
 
-    mesh_face_centers = building_mesh.triangles_center
-    mesh_face_normals = building_mesh.face_normals
+        # Use cached geometry if available, otherwise compute and cache
+        if cache is not None and cache.mesh_face_centers is not None:
+            mesh_face_centers = cache.mesh_face_centers
+            mesh_face_normals = cache.mesh_face_normals
+        else:
+            mesh_face_centers = building_mesh.triangles_center
+            mesh_face_normals = building_mesh.face_normals
+            # Cache geometry for future calls
+            if cache is not None:
+                cache.mesh_face_centers = mesh_face_centers
+                cache.mesh_face_normals = mesh_face_normals
 
-    # Detect vertical faces (normal z-component near zero)
-    is_vertical = np.abs(mesh_face_normals[:, 2]) < 0.01
+        # Detect vertical faces (normal z-component near zero)
+        is_vertical = np.abs(mesh_face_normals[:, 2]) < 0.01
 
-    # Detect faces on domain boundary
-    on_x_min = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[0, 0]) < boundary_epsilon
-    on_y_min = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[0, 1]) < boundary_epsilon
-    on_x_max = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[1, 0]) < boundary_epsilon
-    on_y_max = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[1, 1]) < boundary_epsilon
+        # Detect faces on domain boundary
+        on_x_min = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[0, 0]) < boundary_epsilon
+        on_y_min = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[0, 1]) < boundary_epsilon
+        on_x_max = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[1, 0]) < boundary_epsilon
+        on_y_max = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[1, 1]) < boundary_epsilon
 
-    is_boundary_vertical = is_vertical & (on_x_min | on_y_min | on_x_max | on_y_max)
+        is_boundary_vertical = is_vertical & (on_x_min | on_y_min | on_x_max | on_y_max)
+        
+        # Cache the boundary mask
+        if cache is not None:
+            cache.boundary_mask = is_boundary_vertical
 
-    # Set boundary vertical faces to NaN
-    sw_in_direct = sw_in_direct.astype(np.float64)
-    sw_in_diffuse = sw_in_diffuse.astype(np.float64)
-    sw_in_reflected = sw_in_reflected.astype(np.float64)
-    total_sw = total_sw.astype(np.float64)
-
-    sw_in_direct[is_boundary_vertical] = np.nan
-    sw_in_diffuse[is_boundary_vertical] = np.nan
-    sw_in_reflected[is_boundary_vertical] = np.nan
-    total_sw[is_boundary_vertical] = np.nan
+    # Set boundary vertical faces to NaN using np.where (avoids expensive astype conversion)
+    sw_in_direct = np.where(is_boundary_vertical, np.nan, sw_in_direct)
+    sw_in_diffuse = np.where(is_boundary_vertical, np.nan, sw_in_diffuse)
+    sw_in_reflected = np.where(is_boundary_vertical, np.nan, sw_in_reflected)
+    total_sw = np.where(is_boundary_vertical, np.nan, total_sw)
 
     if progress_report:
         n_boundary = np.sum(is_boundary_vertical)

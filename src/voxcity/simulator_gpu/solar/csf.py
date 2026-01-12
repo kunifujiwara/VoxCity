@@ -188,6 +188,11 @@ class CSFCalculator:
         # Grid volume (m³) for normalization
         self.grid_volume = self.dx * self.dy * self.dz
         self.grid_volume_inverse = 1.0 / self.grid_volume
+        
+        # CSF sky caching flag - csf_sky is geometry-dependent and only needs to compute once
+        self._csf_sky_cached = False
+        self._csf_sky_n_azim = 0
+        self._csf_sky_n_elev = 0
     
     def allocate_surface_csf(self, n_surfaces: int):
         """
@@ -561,7 +566,7 @@ class CSFCalculator:
         Compute diffuse sky canopy absorption using PALM's method.
         
         This computes:
-        1. CSF from sky (if not already computed)
+        1. CSF from sky (if not already cached - geometry-dependent, computed once)
         2. Diffuse absorption using pcbinswdif = csf_sky * diffuse_flux * grid_volume_inverse
         
         Args:
@@ -576,10 +581,51 @@ class CSFCalculator:
         n_elev = n_elevation if n_elevation is not None else self.n_elevation
         
         # Compute CSF from sky (this is isurfs = -1 in PALM)
-        self.compute_csf_sky(is_solid, lad, n_azim, n_elev)
+        # Use cached version if available (csf_sky is geometry-dependent only)
+        self.compute_csf_sky_cached(is_solid, lad, n_azim, n_elev)
         
         # Compute diffuse absorption
         self._compute_pcbinswdif_palm(lad, diffuse_flux, pcbinswdif)
+    
+    def compute_csf_sky_cached(
+        self,
+        is_solid,
+        lad,
+        n_azim: int,
+        n_elev: int
+    ):
+        """
+        Compute CSF from sky with caching.
+        
+        CSF sky is purely geometry-dependent (LAD + is_solid) and does not change
+        with sun position. This wrapper caches the result after first computation.
+        
+        Args:
+            is_solid: 3D solid field
+            lad: 3D LAD field
+            n_azim: Number of azimuthal divisions
+            n_elev: Number of elevation divisions
+        """
+        # Check if already cached with same parameters
+        if (self._csf_sky_cached and 
+            self._csf_sky_n_azim == n_azim and 
+            self._csf_sky_n_elev == n_elev):
+            # Already computed, skip expensive ray tracing
+            return
+        
+        # Compute CSF from sky (expensive ray tracing)
+        self.compute_csf_sky(is_solid, lad, n_azim, n_elev)
+        
+        # Mark as cached
+        self._csf_sky_cached = True
+        self._csf_sky_n_azim = n_azim
+        self._csf_sky_n_elev = n_elev
+    
+    def invalidate_csf_sky_cache(self):
+        """Invalidate the CSF sky cache (call if geometry changes)."""
+        self._csf_sky_cached = False
+        self._csf_sky_n_azim = 0
+        self._csf_sky_n_elev = 0
 
     @ti.kernel
     def compute_csf_sky(

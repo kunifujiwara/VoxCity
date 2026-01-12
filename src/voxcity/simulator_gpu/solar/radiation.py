@@ -376,6 +376,18 @@ class RadiationModel:
             # Also compute CSF matrix if canopy is present
             if self.config.canopy_radiation and self.domain.lad is not None:
                 self.compute_csf_matrix()
+        
+        # Pre-compute CSF sky for efficient multi-timestep canopy absorption
+        # CSF sky is geometry-dependent only and doesn't change with sun position
+        if self.config.canopy_radiation and self.domain.lad is not None:
+            print("Pre-computing CSF sky (geometry-dependent, computed once)...")
+            self.csf_calc.compute_csf_sky_cached(
+                self.domain.is_solid,
+                self.domain.lad,
+                self.config.n_azimuth,
+                self.config.n_elevation
+            )
+            print("CSF sky computation complete.")
     
     @ti.kernel
     def _set_svf_one(self):
