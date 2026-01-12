@@ -115,6 +115,12 @@ class _CachedRadiationModel:
     voxcity_shape: Tuple[int, int, int]  # Shape of voxel data for cache validation
     meshsize: float  # Meshsize for cache validation
     n_reflection_steps: int  # Number of reflection steps used
+    # Performance optimization: pre-computed surface-to-grid mapping
+    grid_indices: Optional[np.ndarray] = None  # (N, 2) array of (i, j) grid coords for valid ground surfaces
+    surface_indices: Optional[np.ndarray] = None  # (N,) array of surface indices matching grid_indices
+    # Cached numpy arrays (positions/directions don't change)
+    positions_np: Optional[np.ndarray] = None  # Cached positions array
+    directions_np: Optional[np.ndarray] = None  # Cached directions array
 
 
 # Module-level cache for RadiationModel
@@ -261,18 +267,45 @@ def _get_or_create_radiation_model(
                 if ground_k[ii, jj] < 0 or k < ground_k[ii, jj]:
                     ground_k[ii, jj] = int(k)
     
-    # Cache the model
+    # Pre-compute surface-to-grid mapping for fast vectorized extraction
+    # This maps which surface indices correspond to which grid cells
+    if progress_report:
+        print("Pre-computing surface-to-grid mapping...")
+    surface_to_grid_map = {}  # (i, j) -> surface_idx
+    for idx in range(n_surfaces):
+        direction = directions[idx]
+        if direction == IUP:
+            pi = int(positions[idx, 0])
+            pj = int(positions[idx, 1])
+            pk = int(positions[idx, 2])
+            if 0 <= pi < ni and 0 <= pj < nj:
+                if valid_ground[pi, pj] and pk == ground_k[pi, pj]:
+                    surface_to_grid_map[(pi, pj)] = idx
+    
+    # Convert to arrays for vectorized access
+    if surface_to_grid_map:
+        grid_indices = np.array(list(surface_to_grid_map.keys()), dtype=np.int32)
+        surface_indices = np.array(list(surface_to_grid_map.values()), dtype=np.int32)
+    else:
+        grid_indices = np.empty((0, 2), dtype=np.int32)
+        surface_indices = np.empty((0,), dtype=np.int32)
+    
+    # Cache the model with pre-computed mappings
     _radiation_model_cache = _CachedRadiationModel(
         model=model,
         valid_ground=valid_ground,
         ground_k=ground_k,
         voxcity_shape=voxel_data.shape,
         meshsize=meshsize,
-        n_reflection_steps=n_reflection_steps
+        n_reflection_steps=n_reflection_steps,
+        grid_indices=grid_indices,
+        surface_indices=surface_indices,
+        positions_np=positions,
+        directions_np=directions
     )
     
     if progress_report:
-        print(f"RadiationModel cached. Valid ground cells: {np.sum(valid_ground)}")
+        print(f"RadiationModel cached. Valid ground cells: {np.sum(valid_ground)}, mapped surfaces: {len(surface_indices)}")
     
     return model, valid_ground, ground_k
 
@@ -843,32 +876,51 @@ def _compute_ground_irradiance_with_reflections(
         sw_diffuse=diffuse_irradiance
     )
     
-    # Extract surface irradiance
+    # Extract surface irradiance using cached mapping for vectorized extraction
+    # This is much faster than iterating through all surfaces
     n_surfaces = model.surfaces.count
-    positions = model.surfaces.position.to_numpy()[:n_surfaces]
-    directions = model.surfaces.direction.to_numpy()[:n_surfaces]
-    sw_in_direct = model.surfaces.sw_in_direct.to_numpy()[:n_surfaces]
-    sw_in_diffuse = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]
     
-    # Map to ground-level 2D arrays
+    # Initialize output arrays
     direct_map = np.full((ni, nj), np.nan, dtype=np.float32)
     diffuse_map = np.full((ni, nj), np.nan, dtype=np.float32)
     reflected_map = np.zeros((ni, nj), dtype=np.float32)
     
-    # Map surfaces at ground level using pre-computed ground_k
-    for idx in range(n_surfaces):
-        pos_i, pos_j, k = positions[idx]
-        direction = directions[idx]
+    # Use pre-computed surface-to-grid mapping if available (from cache)
+    if (_radiation_model_cache is not None and 
+        _radiation_model_cache.grid_indices is not None and 
+        len(_radiation_model_cache.grid_indices) > 0):
         
-        if direction == IUP:
-            ii, jj = int(pos_i), int(pos_j)
-            if 0 <= ii < ni and 0 <= jj < nj:
-                if not valid_ground[ii, jj]:
-                    continue
-                if int(k) == ground_k[ii, jj]:
-                    if np.isnan(direct_map[ii, jj]):
-                        direct_map[ii, jj] = sw_in_direct[idx]
-                        diffuse_map[ii, jj] = sw_in_diffuse[idx]
+        grid_indices = _radiation_model_cache.grid_indices
+        surface_indices = _radiation_model_cache.surface_indices
+        
+        # Extract only the irradiance values we need (vectorized)
+        sw_in_direct = model.surfaces.sw_in_direct.to_numpy()
+        sw_in_diffuse = model.surfaces.sw_in_diffuse.to_numpy()
+        
+        # Vectorized assignment using pre-computed indices
+        direct_map[grid_indices[:, 0], grid_indices[:, 1]] = sw_in_direct[surface_indices]
+        diffuse_map[grid_indices[:, 0], grid_indices[:, 1]] = sw_in_diffuse[surface_indices]
+    else:
+        # Fallback to original loop if no cached mapping
+        from .domain import IUP
+        positions = model.surfaces.position.to_numpy()[:n_surfaces]
+        directions = model.surfaces.direction.to_numpy()[:n_surfaces]
+        sw_in_direct = model.surfaces.sw_in_direct.to_numpy()[:n_surfaces]
+        sw_in_diffuse = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]
+        
+        for idx in range(n_surfaces):
+            pos_i, pos_j, k = positions[idx]
+            direction = directions[idx]
+            
+            if direction == IUP:
+                ii, jj = int(pos_i), int(pos_j)
+                if 0 <= ii < ni and 0 <= jj < nj:
+                    if not valid_ground[ii, jj]:
+                        continue
+                    if int(k) == ground_k[ii, jj]:
+                        if np.isnan(direct_map[ii, jj]):
+                            direct_map[ii, jj] = sw_in_direct[idx]
+                            diffuse_map[ii, jj] = sw_in_diffuse[idx]
     
     # Flip to match VoxCity coordinate system
     direct_map = np.flipud(direct_map)
