@@ -9,6 +9,14 @@ Compatibility goal:
     by flattening a VoxCity-like public namespace (view/visibility/solar/utils).
 """
 
+import os
+
+# Disable Numba caching to prevent stale cache issues when module paths change.
+# This avoids "ModuleNotFoundError: No module named 'simulator_gpu'" errors
+# that can occur when Numba tries to load cached functions with old module paths.
+os.environ.setdefault("NUMBA_CACHE_DIR", "")  # Disable disk caching
+os.environ.setdefault("NUMBA_DISABLE_JIT", "0")  # Keep JIT enabled for performance
+
 # Import Taichi initialization utilities first
 from .init_taichi import (  # noqa: F401
     init_taichi,
@@ -56,5 +64,52 @@ from .core import (  # noqa: F401
     SOLAR_CONSTANT, EXT_COEF,
 )
 from .domain import Domain, IUP, IDOWN, INORTH, ISOUTH, IEAST, IWEST  # noqa: F401
+
+
+def clear_numba_cache():
+    """Clear Numba's compiled function cache to resolve stale cache issues.
+    
+    Call this function if you encounter errors like:
+        ModuleNotFoundError: No module named 'simulator_gpu'
+    
+    After calling this function, restart your Python kernel/interpreter.
+    """
+    import shutil
+    import glob
+    from pathlib import Path
+    
+    cleared = []
+    
+    # Clear .nbc and .nbi files in the package directory
+    package_dir = Path(__file__).parent
+    for pattern in ["**/*.nbc", "**/*.nbi"]:
+        for cache_file in package_dir.glob(pattern):
+            try:
+                cache_file.unlink()
+                cleared.append(str(cache_file))
+            except Exception:
+                pass
+    
+    # Clear __pycache__ directories
+    for pycache in package_dir.glob("**/__pycache__"):
+        try:
+            shutil.rmtree(pycache)
+            cleared.append(str(pycache))
+        except Exception:
+            pass
+    
+    # Try to clear user's .numba_cache if it exists
+    home = Path.home()
+    numba_cache = home / ".numba_cache"
+    if numba_cache.exists():
+        try:
+            shutil.rmtree(numba_cache)
+            cleared.append(str(numba_cache))
+        except Exception:
+            pass
+    
+    print(f"Cleared {len(cleared)} cache items. Please restart your Python kernel.")
+    return cleared
+
 
 __version__ = "0.1.0"

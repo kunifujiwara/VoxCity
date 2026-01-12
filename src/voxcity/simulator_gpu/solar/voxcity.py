@@ -98,6 +98,355 @@ class VoxCityDomainResult:
     domain: Domain
     surface_land_cover: Optional[np.ndarray] = None  # Land cover code per surface
     surface_material_type: Optional[np.ndarray] = None  # 0=ground, 1=wall, 2=roof
+
+
+# =============================================================================
+# RadiationModel Caching for Cumulative Calculations
+# =============================================================================
+# The SVF and CSF matrices are geometry-dependent and expensive to compute.
+# We cache the RadiationModel so it can be reused across multiple solar positions.
+
+@dataclass
+class _CachedRadiationModel:
+    """Cached RadiationModel with associated metadata."""
+    model: object  # RadiationModel instance
+    valid_ground: np.ndarray  # Valid ground mask
+    ground_k: np.ndarray  # Ground level k indices
+    voxcity_shape: Tuple[int, int, int]  # Shape of voxel data for cache validation
+    meshsize: float  # Meshsize for cache validation
+    n_reflection_steps: int  # Number of reflection steps used
+
+
+# Module-level cache for RadiationModel
+_radiation_model_cache: Optional[_CachedRadiationModel] = None
+
+
+def _get_or_create_radiation_model(
+    voxcity,
+    n_reflection_steps: int = 2,
+    progress_report: bool = False,
+    **kwargs
+) -> Tuple[object, np.ndarray, np.ndarray]:
+    """
+    Get cached RadiationModel or create a new one if cache is invalid.
+    
+    The SVF and CSF matrices are O(n²) to compute and only depend on geometry,
+    not solar position. This function caches the model for reuse.
+    
+    Args:
+        voxcity: VoxCity object
+        n_reflection_steps: Number of reflection bounces
+        progress_report: Print progress messages
+        **kwargs: Additional RadiationConfig parameters
+        
+    Returns:
+        Tuple of (RadiationModel, valid_ground array, ground_k array)
+    """
+    global _radiation_model_cache
+    
+    from .radiation import RadiationModel, RadiationConfig
+    from .domain import IUP
+    
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ni, nj, nk = voxel_data.shape
+    
+    # Check if cache is valid
+    cache_valid = False
+    if _radiation_model_cache is not None:
+        cache = _radiation_model_cache
+        if (cache.voxcity_shape == voxel_data.shape and
+            cache.meshsize == meshsize and
+            cache.n_reflection_steps == n_reflection_steps):
+            cache_valid = True
+            if progress_report:
+                print("Using cached RadiationModel (SVF/CSF already computed)")
+    
+    if cache_valid:
+        return (_radiation_model_cache.model, 
+                _radiation_model_cache.valid_ground, 
+                _radiation_model_cache.ground_k)
+    
+    # Need to create new model
+    if progress_report:
+        print("Creating new RadiationModel (computing SVF/CSF matrices)...")
+    
+    # Get location
+    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
+    if rectangle_vertices is not None:
+        lons = [v[0] for v in rectangle_vertices]
+        lats = [v[1] for v in rectangle_vertices]
+        origin_lat = np.mean(lats)
+        origin_lon = np.mean(lons)
+    else:
+        origin_lat = 1.35
+        origin_lon = 103.82
+    
+    # Create domain
+    domain = Domain(
+        nx=ni, ny=nj, nz=nk,
+        dx=meshsize, dy=meshsize, dz=meshsize,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon
+    )
+    
+    # Convert VoxCity voxel data to domain arrays
+    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
+    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    default_lad = kwargs.get('default_lad', 1.0)
+    
+    valid_ground = np.zeros((ni, nj), dtype=bool)
+    
+    for i in range(ni):
+        for j in range(nj):
+            for k in range(nk):
+                voxel_val = voxel_data[i, j, k]
+                
+                if voxel_val == VOXCITY_BUILDING_CODE:
+                    is_solid_np[i, j, k] = 1
+                elif voxel_val == VOXCITY_GROUND_CODE:
+                    is_solid_np[i, j, k] = 1
+                elif voxel_val == VOXCITY_TREE_CODE:
+                    lad_np[i, j, k] = default_lad
+                elif voxel_val > 0:
+                    is_solid_np[i, j, k] = 1
+            
+            # Determine valid ground cells
+            for k in range(1, nk):
+                curr_val = voxel_data[i, j, k]
+                below_val = voxel_data[i, j, k - 1]
+                if curr_val in (0, VOXCITY_TREE_CODE) and below_val not in (0, VOXCITY_TREE_CODE):
+                    if below_val in (7, 8, 9) or below_val < 0:
+                        valid_ground[i, j] = False
+                    else:
+                        valid_ground[i, j] = True
+                    break
+    
+    # Set domain arrays
+    _set_solid_array(domain, is_solid_np)
+    domain.set_lad_from_array(lad_np)
+    _update_topo_from_solid(domain)
+    
+    # Create RadiationModel
+    config = RadiationConfig(
+        n_reflection_steps=n_reflection_steps,
+        n_azimuth=kwargs.get('n_azimuth', 40),
+        n_elevation=kwargs.get('n_elevation', 10)
+    )
+    
+    model = RadiationModel(domain, config)
+    
+    # Compute SVF (this is the expensive part)
+    if progress_report:
+        print("Computing Sky View Factors...")
+    model.compute_svf()
+    
+    # Pre-compute ground_k for surface mapping
+    n_surfaces = model.surfaces.count
+    positions = model.surfaces.position.to_numpy()[:n_surfaces]
+    directions = model.surfaces.direction.to_numpy()[:n_surfaces]
+    
+    ground_k = np.full((ni, nj), -1, dtype=np.int32)
+    for idx in range(n_surfaces):
+        pos_i, pos_j, k = positions[idx]
+        direction = directions[idx]
+        if direction == IUP:
+            ii, jj = int(pos_i), int(pos_j)
+            if 0 <= ii < ni and 0 <= jj < nj:
+                if not valid_ground[ii, jj]:
+                    continue
+                if ground_k[ii, jj] < 0 or k < ground_k[ii, jj]:
+                    ground_k[ii, jj] = int(k)
+    
+    # Cache the model
+    _radiation_model_cache = _CachedRadiationModel(
+        model=model,
+        valid_ground=valid_ground,
+        ground_k=ground_k,
+        voxcity_shape=voxel_data.shape,
+        meshsize=meshsize,
+        n_reflection_steps=n_reflection_steps
+    )
+    
+    if progress_report:
+        print(f"RadiationModel cached. Valid ground cells: {np.sum(valid_ground)}")
+    
+    return model, valid_ground, ground_k
+
+
+def clear_radiation_model_cache():
+    """Clear the cached RadiationModel to free memory or force recomputation."""
+    global _radiation_model_cache
+    _radiation_model_cache = None
+
+
+# =============================================================================
+# Building RadiationModel Caching
+# =============================================================================
+# Separate cache for building solar irradiance calculations
+
+@dataclass
+class _CachedBuildingRadiationModel:
+    """Cached RadiationModel for building surface calculations."""
+    model: object  # RadiationModel instance
+    voxcity_shape: Tuple[int, int, int]  # Shape of voxel data for cache validation
+    meshsize: float  # Meshsize for cache validation
+    n_reflection_steps: int  # Number of reflection steps used
+    is_building_surf: np.ndarray  # Boolean mask for building surfaces
+    building_svf_mesh: object  # Building mesh (can be None)
+
+
+# Module-level cache for Building RadiationModel  
+_building_radiation_model_cache: Optional[_CachedBuildingRadiationModel] = None
+
+
+def _get_or_create_building_radiation_model(
+    voxcity,
+    n_reflection_steps: int = 2,
+    progress_report: bool = False,
+    building_class_id: int = -3,
+    **kwargs
+) -> Tuple[object, np.ndarray]:
+    """
+    Get cached RadiationModel for building surfaces or create a new one.
+    
+    Args:
+        voxcity: VoxCity object
+        n_reflection_steps: Number of reflection bounces
+        progress_report: Print progress messages
+        building_class_id: Building voxel class code
+        **kwargs: Additional RadiationConfig parameters
+        
+    Returns:
+        Tuple of (RadiationModel, is_building_surf boolean array)
+    """
+    global _building_radiation_model_cache
+    
+    from .radiation import RadiationModel, RadiationConfig
+    
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ny_vc, nx_vc, nz = voxel_data.shape
+    
+    # Check if cache is valid
+    cache_valid = False
+    if _building_radiation_model_cache is not None:
+        cache = _building_radiation_model_cache
+        if (cache.voxcity_shape == voxel_data.shape and
+            cache.meshsize == meshsize and
+            cache.n_reflection_steps == n_reflection_steps):
+            cache_valid = True
+            if progress_report:
+                print("Using cached Building RadiationModel (SVF/CSF already computed)")
+    
+    if cache_valid:
+        return (_building_radiation_model_cache.model,
+                _building_radiation_model_cache.is_building_surf)
+    
+    # Need to create new model
+    if progress_report:
+        print("Creating new Building RadiationModel (computing SVF/CSF matrices)...")
+    
+    # Get location
+    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
+    if rectangle_vertices is not None:
+        lons = [v[0] for v in rectangle_vertices]
+        lats = [v[1] for v in rectangle_vertices]
+        origin_lat = np.mean(lats)
+        origin_lon = np.mean(lons)
+    else:
+        origin_lat = 1.35
+        origin_lon = 103.82
+    
+    # Create domain - consistent with ground-level model
+    # VoxCity uses [row, col, z] = [i, j, k] convention
+    # We create domain with nx=ny_vc, ny=nx_vc to match the palm_solar convention
+    # but keep the same indexing as the ground model for consistency
+    ni, nj, nk = ny_vc, nx_vc, nz  # Rename for clarity (matches ground model naming)
+    
+    domain = Domain(
+        nx=ni, ny=nj, nz=nk,
+        dx=meshsize, dy=meshsize, dz=meshsize,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon
+    )
+    
+    # Convert VoxCity voxel data to domain arrays
+    # Use the same convention as ground-level model: direct indexing without swap
+    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
+    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    default_lad = kwargs.get('default_lad', 2.0)
+    
+    for i in range(ni):
+        for j in range(nj):
+            for z in range(nk):
+                voxel_val = voxel_data[i, j, z]
+                
+                if voxel_val == VOXCITY_BUILDING_CODE:
+                    is_solid_np[i, j, z] = 1
+                elif voxel_val == VOXCITY_GROUND_CODE:
+                    is_solid_np[i, j, z] = 1
+                elif voxel_val == VOXCITY_TREE_CODE:
+                    lad_np[i, j, z] = default_lad
+                elif voxel_val > 0:
+                    is_solid_np[i, j, z] = 1
+    
+    # Set domain arrays
+    _set_solid_array(domain, is_solid_np)
+    domain.set_lad_from_array(lad_np)
+    _update_topo_from_solid(domain)
+    
+    config = RadiationConfig(
+        n_reflection_steps=n_reflection_steps,
+        n_azimuth=40,
+        n_elevation=10
+    )
+    
+    model = RadiationModel(domain, config)
+    
+    # Compute SVF (expensive!)
+    if progress_report:
+        print("Computing Sky View Factors...")
+    model.compute_svf()
+    
+    # Pre-compute building surface mask
+    n_surfaces = model.surfaces.count
+    surf_positions_all = model.surfaces.position.to_numpy()[:n_surfaces]
+    
+    is_building_surf = np.zeros(n_surfaces, dtype=bool)
+    for s_idx in range(n_surfaces):
+        i_idx, j_idx, z_idx = surf_positions_all[s_idx]
+        i, j, z = int(i_idx), int(j_idx), int(z_idx)
+        if 0 <= i < ni and 0 <= j < nj and 0 <= z < nk:
+            if voxel_data[i, j, z] == building_class_id:
+                is_building_surf[s_idx] = True
+    
+    if progress_report:
+        print(f"Building RadiationModel cached. Building surfaces: {np.sum(is_building_surf)}/{n_surfaces}")
+    
+    # Cache the model
+    _building_radiation_model_cache = _CachedBuildingRadiationModel(
+        model=model,
+        voxcity_shape=voxel_data.shape,
+        meshsize=meshsize,
+        n_reflection_steps=n_reflection_steps,
+        is_building_surf=is_building_surf,
+        building_svf_mesh=None
+    )
+    
+    return model, is_building_surf
+
+
+def clear_building_radiation_model_cache():
+    """Clear the cached Building RadiationModel to free memory."""
+    global _building_radiation_model_cache
+    _building_radiation_model_cache = None
+
+
+def clear_all_radiation_caches():
+    """Clear all cached RadiationModels to free GPU memory."""
+    clear_radiation_model_cache()
+    clear_building_radiation_model_cache()
     land_cover_albedo: Optional[LandCoverAlbedo] = None
 
 
@@ -420,8 +769,8 @@ def _compute_ground_irradiance_with_reflections(
     """
     Compute ground-level irradiance using full RadiationModel with reflections.
     
-    Uses the RadiationModel to compute direct and diffuse (with reflections) components
-    at ground level (upward-facing horizontal surfaces).
+    Uses a cached RadiationModel to avoid recomputing SVF/CSF matrices for each
+    solar position. The geometry-dependent matrices are computed once and reused.
     
     Note: The diffuse component includes sky diffuse + multi-bounce surface reflections + 
     canopy scattering, as computed by the RadiationModel.
@@ -440,92 +789,24 @@ def _compute_ground_irradiance_with_reflections(
     Returns:
         Tuple of (direct_map, diffuse_map, reflected_map) as 2D numpy arrays
     """
-    from .radiation import RadiationModel, RadiationConfig
     from .domain import IUP
     
     voxel_data = voxcity.voxels.classes
-    meshsize = voxcity.voxels.meta.meshsize
-    # VoxCity uses [i, j, k] indexing - keep this convention for consistency
-    # with simple raytracing (no coordinate swap)
     ni, nj, nk = voxel_data.shape
     
-    # Get location
-    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
-    if rectangle_vertices is not None:
-        lons = [v[0] for v in rectangle_vertices]
-        lats = [v[1] for v in rectangle_vertices]
-        origin_lat = np.mean(lats)
-        origin_lon = np.mean(lons)
-    else:
-        origin_lat = 1.35
-        origin_lon = 103.82
+    # Remove parameters that we pass explicitly to avoid duplicates
+    filtered_kwargs = {k: v for k, v in kwargs.items() 
+                       if k not in ('n_reflection_steps', 'progress_report', 'view_point_height')}
     
-    # Create domain with same shape as VoxCity data (no coordinate swap)
-    # This matches the simple raytracing approach
-    domain = Domain(
-        nx=ni, ny=nj, nz=nk,
-        dx=meshsize, dy=meshsize, dz=meshsize,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon
-    )
-    
-    # Convert VoxCity voxel data to domain arrays
-    # Keep the same indexing as VoxCity (no coordinate swap)
-    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
-    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
-    # Use same default LAD as simple raytracing for consistency
-    default_lad = kwargs.get('default_lad', 1.0)  # Match simple raytracing default
-    tree_k = kwargs.get('tree_k', 0.6)  # Extinction coefficient
-    
-    # Track valid ground cells following VoxCity logic:
-    # Valid = observer in air (0 or -2), and voxel below is positive land cover code
-    #         (not -1, not water codes 7/8/9, not negative)
-    # This matches the logic in VoxCity's compute_direct_solar_irradiance_map_binary
-    valid_ground = np.zeros((ni, nj), dtype=bool)
-    
-    for i in range(ni):
-        for j in range(nj):
-            for k in range(nk):
-                voxel_val = voxel_data[i, j, k]
-                
-                if voxel_val == VOXCITY_BUILDING_CODE:  # -3
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_GROUND_CODE:  # -1
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_TREE_CODE:  # -2
-                    lad_np[i, j, k] = default_lad
-                elif voxel_val > 0:
-                    # Positive values are land cover codes on ground
-                    is_solid_np[i, j, k] = 1
-            
-            # Determine if this column has a valid ground cell
-            # Following VoxCity logic: find first air (0 or -2) above non-air
-            for k in range(1, nk):
-                curr_val = voxel_data[i, j, k]
-                below_val = voxel_data[i, j, k - 1]
-                # Observer in air (0) or tree (-2), below is not air/tree
-                if curr_val in (0, VOXCITY_TREE_CODE) and below_val not in (0, VOXCITY_TREE_CODE):
-                    # Check if below is valid: NOT water (7,8,9) and NOT negative
-                    if below_val in (7, 8, 9) or below_val < 0:
-                        valid_ground[i, j] = False
-                    else:
-                        valid_ground[i, j] = True
-                    break
-    
-    # Set domain arrays using helper functions
-    _set_solid_array(domain, is_solid_np)
-    domain.set_lad_from_array(lad_np)
-    _update_topo_from_solid(domain)
-    
-    config = RadiationConfig(
+    # Get or create cached RadiationModel (SVF/CSF only computed once)
+    model, valid_ground, ground_k = _get_or_create_radiation_model(
+        voxcity,
         n_reflection_steps=n_reflection_steps,
-        n_azimuth=kwargs.get('n_azimuth', 40),
-        n_elevation=kwargs.get('n_elevation', 10)
+        progress_report=progress_report,
+        **filtered_kwargs
     )
     
-    model = RadiationModel(domain, config)
-    
-    # Set solar position
+    # Set solar position for this timestep
     azimuth_degrees = 180 - azimuth_degrees_ori
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
@@ -539,50 +820,25 @@ def _compute_ground_irradiance_with_reflections(
     model.solar_calc.cos_zenith[None] = np.sin(elevation_radians)  # cos(zenith) = sin(elevation)
     model.solar_calc.sun_up[None] = 1 if elevation_degrees > 0 else 0
     
-    # Compute SVF and radiation
-    if progress_report:
-        print("Computing Sky View Factors...")
-    model.compute_svf()
-    
-    if progress_report:
-        print("Computing shortwave radiation with reflections...")
+    # Compute shortwave radiation (uses cached SVF/CSF matrices)
     model.compute_shortwave_radiation(
         sw_direct=direct_normal_irradiance,
         sw_diffuse=diffuse_irradiance
     )
     
     # Extract surface irradiance
-    # Note: sw_in_diffuse includes sky diffuse + surface reflections + canopy scattering
     n_surfaces = model.surfaces.count
     positions = model.surfaces.position.to_numpy()[:n_surfaces]
     directions = model.surfaces.direction.to_numpy()[:n_surfaces]
     sw_in_direct = model.surfaces.sw_in_direct.to_numpy()[:n_surfaces]
-    sw_in_diffuse = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]  # Includes reflections
+    sw_in_diffuse = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]
     
     # Map to ground-level 2D arrays
-    # Output shape matches VoxCity input shape: (ni, nj)
     direct_map = np.full((ni, nj), np.nan, dtype=np.float32)
     diffuse_map = np.full((ni, nj), np.nan, dtype=np.float32)
-    # Reflected is already included in diffuse, but we return zeros for API compatibility
     reflected_map = np.zeros((ni, nj), dtype=np.float32)
     
-    # Find ground-level upward-facing surfaces
-    # positions are [x, y, z] which maps to [i, j, k] since we didn't swap coordinates
-    # Only consider valid ground cells (matching VoxCity logic)
-    ground_k = np.full((ni, nj), -1, dtype=np.int32)
-    for idx in range(n_surfaces):
-        pos_i, pos_j, k = positions[idx]
-        direction = directions[idx]
-        if direction == IUP:
-            ii, jj = int(pos_i), int(pos_j)
-            if 0 <= ii < ni and 0 <= jj < nj:
-                # Only consider cells that are valid ground according to VoxCity logic
-                if not valid_ground[ii, jj]:
-                    continue
-                if ground_k[ii, jj] < 0 or k < ground_k[ii, jj]:
-                    ground_k[ii, jj] = int(k)
-    
-    # Now map surfaces at ground level
+    # Map surfaces at ground level using pre-computed ground_k
     for idx in range(n_surfaces):
         pos_i, pos_j, k = positions[idx]
         direction = directions[idx]
@@ -590,20 +846,14 @@ def _compute_ground_irradiance_with_reflections(
         if direction == IUP:
             ii, jj = int(pos_i), int(pos_j)
             if 0 <= ii < ni and 0 <= jj < nj:
-                # Only use valid ground cells
                 if not valid_ground[ii, jj]:
                     continue
-                # Only use the lowest up-facing surface at each location
                 if int(k) == ground_k[ii, jj]:
                     if np.isnan(direct_map[ii, jj]):
                         direct_map[ii, jj] = sw_in_direct[idx]
                         diffuse_map[ii, jj] = sw_in_diffuse[idx]
     
-    if progress_report:
-        print(f"  Valid ground cells (VoxCity logic): {np.sum(valid_ground)}")
-        print(f"  Ground cells found in RadiationModel: {np.sum(~np.isnan(direct_map))}")
-    
-    # Flip to match VoxCity coordinate system (same as simple raytracing)
+    # Flip to match VoxCity coordinate system
     direct_map = np.flipud(direct_map)
     diffuse_map = np.flipud(diffuse_map)
     reflected_map = np.flipud(reflected_map)
@@ -975,13 +1225,15 @@ def get_cumulative_global_solar_irradiance(
     from datetime import datetime
     import pytz
     
-    view_point_height = kwargs.get('view_point_height', 1.5)
-    colormap = kwargs.get('colormap', 'magma')
-    start_time = kwargs.get('start_time', '01-01 05:00:00')
-    end_time = kwargs.get('end_time', '01-01 20:00:00')
-    progress_report = kwargs.get('progress_report', False)
-    use_sky_patches = kwargs.get('use_sky_patches', True)
-    sky_discretization = kwargs.get('sky_discretization', 'tregenza')
+    # Extract parameters that we pass explicitly (use pop to avoid duplicate kwargs)
+    kwargs = kwargs.copy()  # Don't modify the original
+    view_point_height = kwargs.pop('view_point_height', 1.5)
+    colormap = kwargs.pop('colormap', 'magma')
+    start_time = kwargs.pop('start_time', '01-01 05:00:00')
+    end_time = kwargs.pop('end_time', '01-01 20:00:00')
+    progress_report = kwargs.pop('progress_report', False)
+    use_sky_patches = kwargs.pop('use_sky_patches', True)
+    sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     
     if df.empty:
         raise ValueError("No data in EPW dataframe.")
@@ -1245,6 +1497,8 @@ def get_building_solar_irradiance(
     This function matches the signature of voxcity.simulator.solar.get_building_solar_irradiance
     using Taichi GPU acceleration with multi-bounce reflections.
     
+    Uses cached RadiationModel to avoid recomputing SVF/CSF matrices for each timestep.
+    
     Args:
         voxcity: VoxCity object
         building_svf_mesh: Pre-computed mesh with SVF values (optional, for VoxCity API compatibility)
@@ -1275,77 +1529,28 @@ def get_building_solar_irradiance(
         elevation_degrees = azimuth_degrees_ori
         azimuth_degrees_ori = building_svf_mesh
         building_svf_mesh = None
-    from .radiation import RadiationModel, RadiationConfig
-    from .solar import SolarCalculator
     
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     building_id_grid = voxcity.buildings.ids
-    # VoxCity uses [row, col, z] = [i, j, k] where shape is (ny, nx, nz)
     ny_vc, nx_vc, nz = voxel_data.shape
     
-    progress_report = kwargs.get('progress_report', False)
-    building_class_id = kwargs.get('building_class_id', -3)
-    n_reflection_steps = kwargs.get('n_reflection_steps', 2)
-    colormap = kwargs.get('colormap', 'magma')
+    # Extract parameters that we pass explicitly (to avoid duplicate kwargs error)
+    progress_report = kwargs.pop('progress_report', False)
+    building_class_id = kwargs.pop('building_class_id', -3)
+    n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
+    colormap = kwargs.pop('colormap', 'magma')
     
-    # Get location
-    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
-    if rectangle_vertices is not None:
-        lons = [v[0] for v in rectangle_vertices]
-        lats = [v[1] for v in rectangle_vertices]
-        origin_lat = np.mean(lats)
-        origin_lon = np.mean(lons)
-    else:
-        origin_lat = 1.35
-        origin_lon = 103.82
-    
-    # Create domain - palm_solar uses [x, y, z] convention
-    domain = Domain(
-        nx=nx_vc, ny=ny_vc, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon
-    )
-    
-    # Convert VoxCity voxel data to domain arrays
-    # VoxCity [row, col, z] -> palm_solar [x, y, z] = [col, row, z]
-    is_solid_np = np.zeros((nx_vc, ny_vc, nz), dtype=np.int32)
-    lad_np = np.zeros((nx_vc, ny_vc, nz), dtype=np.float32)
-    default_lad = kwargs.get('default_lad', 2.0)
-    
-    for row in range(ny_vc):
-        for col in range(nx_vc):
-            x_idx = col
-            y_idx = row
-            for z in range(nz):
-                voxel_val = voxel_data[row, col, z]
-                
-                if voxel_val == VOXCITY_BUILDING_CODE:
-                    is_solid_np[x_idx, y_idx, z] = 1
-                elif voxel_val == VOXCITY_GROUND_CODE:
-                    is_solid_np[x_idx, y_idx, z] = 1
-                elif voxel_val == VOXCITY_TREE_CODE:
-                    lad_np[x_idx, y_idx, z] = default_lad
-                elif voxel_val > 0:
-                    # Positive values are land cover codes on ground
-                    is_solid_np[x_idx, y_idx, z] = 1
-    
-    # Set domain arrays using helper functions
-    _set_solid_array(domain, is_solid_np)
-    domain.set_lad_from_array(lad_np)
-    _update_topo_from_solid(domain)
-    
-    config = RadiationConfig(
+    # Get cached or create new RadiationModel (SVF/CSF computed only once)
+    model, is_building_surf = _get_or_create_building_radiation_model(
+        voxcity,
         n_reflection_steps=n_reflection_steps,
-        n_azimuth=40,
-        n_elevation=10
+        progress_report=progress_report,
+        building_class_id=building_class_id,
+        **kwargs
     )
     
-    model = RadiationModel(domain, config)
-    
-    # Set solar position
-    # Convert VoxCity azimuth convention
+    # Set solar position for this timestep
     azimuth_degrees = 180 - azimuth_degrees_ori
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
@@ -1356,28 +1561,20 @@ def get_building_solar_irradiance(
     
     # Set sun direction and cos_zenith directly on the SolarCalculator fields
     model.solar_calc.sun_direction[None] = (sun_dir_x, sun_dir_y, sun_dir_z)
-    model.solar_calc.cos_zenith[None] = np.sin(elevation_radians)  # cos(zenith) = sin(elevation)
+    model.solar_calc.cos_zenith[None] = np.sin(elevation_radians)
     model.solar_calc.sun_up[None] = 1 if elevation_degrees > 0 else 0
     
-    # Compute SVF and radiation
-    if progress_report:
-        print("Computing Sky View Factors...")
-    model.compute_svf()
-    
-    if progress_report:
-        print("Computing shortwave radiation...")
+    # Compute shortwave radiation (uses cached SVF/CSF matrices)
     model.compute_shortwave_radiation(
         sw_direct=direct_normal_irradiance,
         sw_diffuse=diffuse_irradiance
     )
     
-    # Extract surface irradiance from palm_solar model (all surfaces: buildings + ground + etc.)
+    # Extract surface irradiance from palm_solar model
     n_surfaces = model.surfaces.count
     sw_in_direct_all = model.surfaces.sw_in_direct.to_numpy()[:n_surfaces]
     sw_in_diffuse_all = model.surfaces.sw_in_diffuse.to_numpy()[:n_surfaces]
 
-    # Some implementations store reflections inside sw_in_diffuse (and do not
-    # expose a separate sw_in_reflected field).
     if hasattr(model.surfaces, 'sw_in_reflected'):
         sw_in_reflected_all = model.surfaces.sw_in_reflected.to_numpy()[:n_surfaces]
     else:
@@ -1385,20 +1582,9 @@ def get_building_solar_irradiance(
 
     total_sw_all = sw_in_direct_all + sw_in_diffuse_all + sw_in_reflected_all
 
-    # Get surface centers (world coords) and positions (grid indices)
-    surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]  # shape (n_surfaces, 3)
-    surf_positions_all = model.surfaces.position.to_numpy()[:n_surfaces]  # shape (n_surfaces, 3) grid (i,j,k)
-
-    # Filter to only building surfaces by checking voxel class at each surface position.
-    # Remember: palm_solar uses [x, y, z] = [col, row, z]; VoxCity uses [row, col, z].
-    is_building_surf = np.zeros(n_surfaces, dtype=bool)
-    for s_idx in range(n_surfaces):
-        x_idx, y_idx, z_idx = surf_positions_all[s_idx]  # palm_solar grid
-        row, col = int(y_idx), int(x_idx)  # back to VoxCity indexing
-        z = int(z_idx)
-        if 0 <= row < ny_vc and 0 <= col < nx_vc and 0 <= z < nz:
-            if voxel_data[row, col, z] == building_class_id:
-                is_building_surf[s_idx] = True
+    # Get surface centers and positions
+    surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]
+    surf_positions_all = model.surfaces.position.to_numpy()[:n_surfaces]
 
     bldg_indices = np.where(is_building_surf)[0]
     if progress_report:
@@ -1452,24 +1638,18 @@ def get_building_solar_irradiance(
                   f"z=[{mesh_face_centers[:,2].min():.1f}, {mesh_face_centers[:,2].max():.1f}]")
 
         # VoxCity mesh uses [row, col, z] = [i, j, k] in its coordinate system where:
-        #   x_mesh = col * meshsize, y_mesh = row * meshsize, z_mesh = k * meshsize
-        # palm_solar uses [x, y, z] = [col, row, z] (we transposed when building domain):
-        #   x_palm = (col + 0.5) * dx, y_palm = (row + 0.5) * dy, z_palm = (k + 0.5) * dz
+        #   x_mesh = j * meshsize, y_mesh = i * meshsize, z_mesh = k * meshsize
         # 
-        # The mesh coordinates should align if both use meshsize and same origin.
-        # However, VoxCity mesh may have different axis ordering. Let's check and swap if needed.
-        #
-        # From the debug output we can see if axes are swapped. For now, try swapping x<->y
-        # in palm_solar centers to match VoxCity mesh convention.
+        # palm_solar now uses the same convention (we fixed domain creation to match):
+        #   x_palm = (i + 0.5) * dx, y_palm = (j + 0.5) * dy, z_palm = (k + 0.5) * dz
+        # 
+        # With our fix, palm_solar centers should directly align with mesh centers.
+        # No transformation needed anymore.
         
-        # Transform palm_solar centers: palm_solar (x=col, y=row, z) -> mesh (x=row, y=col, z)
-        # i.e., swap x and y
-        bldg_centers_transformed = bldg_centers.copy()
-        bldg_centers_transformed[:, 0] = bldg_centers[:, 1]  # mesh x = palm_solar y
-        bldg_centers_transformed[:, 1] = bldg_centers[:, 0]  # mesh y = palm_solar x
+        bldg_centers_transformed = bldg_centers  # No swap needed
 
         if progress_report:
-            print(f"  transformed bldg centers: x=[{bldg_centers_transformed[:,0].min():.1f}, {bldg_centers_transformed[:,0].max():.1f}], "
+            print(f"  bldg centers for matching: x=[{bldg_centers_transformed[:,0].min():.1f}, {bldg_centers_transformed[:,0].max():.1f}], "
                   f"y=[{bldg_centers_transformed[:,1].min():.1f}, {bldg_centers_transformed[:,1].max():.1f}]")
 
         tree = cKDTree(bldg_centers_transformed)
@@ -1494,10 +1674,14 @@ def get_building_solar_irradiance(
     # Set vertical faces on domain perimeter to NaN (matching VoxCity behavior)
     # -------------------------------------------------------------------------
     # Compute domain bounds in world coordinates
+    # VoxCity voxel_data has shape (ny_vc, nx_vc, nz) = (num_rows, num_cols, num_z)
+    # Mesh coordinates: x = col * meshsize, y = row * meshsize
+    # So: x_max = num_cols * meshsize = nx_vc * meshsize
+    #     y_max = num_rows * meshsize = ny_vc * meshsize
     ny_vc, nx_vc, nz = voxel_data.shape
     grid_bounds_real = np.array([
         [0.0, 0.0, 0.0],
-        [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
+        [nx_vc * meshsize, ny_vc * meshsize, nz * meshsize]
     ], dtype=np.float64)
     boundary_epsilon = meshsize * 0.05
 
@@ -1601,11 +1785,13 @@ def get_cumulative_building_solar_irradiance(
     from datetime import datetime
     import pytz
     
-    period_start = kwargs.get('period_start', '01-01 00:00:00')
-    period_end = kwargs.get('period_end', '12-31 23:59:59')
-    time_step_hours = float(kwargs.get('time_step_hours', 1.0))
-    progress_report = kwargs.get('progress_report', False)
-    use_sky_patches = kwargs.get('use_sky_patches', True)
+    # Extract parameters that we pass explicitly (use pop to avoid duplicate kwargs)
+    kwargs = dict(kwargs)  # Copy to avoid modifying original
+    period_start = kwargs.pop('period_start', '01-01 00:00:00')
+    period_end = kwargs.pop('period_end', '12-31 23:59:59')
+    time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
+    progress_report = kwargs.pop('progress_report', False)
+    use_sky_patches = kwargs.pop('use_sky_patches', True)
     
     if weather_df.empty:
         raise ValueError("No data in weather dataframe.")

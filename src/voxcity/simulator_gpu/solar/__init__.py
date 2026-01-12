@@ -94,6 +94,10 @@ from .voxcity import (
     load_irradiance_mesh,
     # Temporal utilities
     get_solar_positions_astral,
+    # Cache management
+    clear_radiation_model_cache,
+    clear_building_radiation_model_cache,
+    clear_all_radiation_caches,
 )
 
 __version__ = "0.1.0"
@@ -165,6 +169,10 @@ __all__ = [
     'get_building_global_solar_irradiance_using_epw',
     'save_irradiance_mesh',
     'load_irradiance_mesh',
+    # Cache management
+    'clear_radiation_model_cache',
+    'clear_building_radiation_model_cache',
+    'clear_all_radiation_caches',
     # Temporal utilities (VoxCity API compatible)
     'get_solar_positions_astral',
 ]
