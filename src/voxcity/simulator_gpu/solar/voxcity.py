@@ -120,6 +120,9 @@ class _CachedRadiationModel:
 # Module-level cache for RadiationModel
 _radiation_model_cache: Optional[_CachedRadiationModel] = None
 
+# Module-level cache for GPU ray tracer (forward declaration, actual class defined later)
+_gpu_ray_tracer_cache = None
+
 
 def _get_or_create_radiation_model(
     voxcity,
@@ -278,6 +281,20 @@ def clear_radiation_model_cache():
     """Clear the cached RadiationModel to free memory or force recomputation."""
     global _radiation_model_cache
     _radiation_model_cache = None
+
+
+def clear_gpu_ray_tracer_cache():
+    """Clear the cached GPU ray tracer fields to free memory or force recomputation."""
+    global _gpu_ray_tracer_cache
+    _gpu_ray_tracer_cache = None
+
+
+def clear_all_caches():
+    """Clear all GPU caches (RadiationModel, Building RadiationModel, GPU ray tracer)."""
+    global _radiation_model_cache, _building_radiation_model_cache, _gpu_ray_tracer_cache
+    _radiation_model_cache = None
+    _building_radiation_model_cache = None
+    _gpu_ray_tracer_cache = None
 
 
 # =============================================================================
@@ -1447,8 +1464,7 @@ def get_cumulative_global_solar_irradiance(
                     azimuth_degrees,
                     elevation_degrees_val,
                     direct_normal_irradiance=DNI,
-                    with_reflections=False,
-                    **direct_kwargs
+                    **direct_kwargs  # with_reflections already in direct_kwargs
                 )
                 
                 diffuse_contrib = base_diffuse_map * DHI
@@ -2434,29 +2450,184 @@ def load_irradiance_mesh(filepath: str):
 # Internal Helper Functions
 # =============================================================================
 
-def _compute_direct_transmittance_map_gpu(
-    voxel_data: np.ndarray,
-    sun_direction: Tuple[float, float, float],
-    view_point_height: float,
-    meshsize: float,
-    tree_k: float = 0.6,
-    tree_lad: float = 1.0
-) -> np.ndarray:
-    """
-    Compute direct solar transmittance map using GPU ray tracing.
+# Module-level cache for GPU ray tracer fields
+@dataclass
+class _CachedGPURayTracer:
+    """Cached Taichi fields for GPU ray tracing."""
+    is_solid_field: object  # ti.field
+    lad_field: object  # ti.field
+    transmittance_field: object  # ti.field
+    topo_top_field: object  # ti.field
+    trace_rays_kernel: object  # compiled kernel
+    voxel_shape: Tuple[int, int, int]
+    meshsize: float
+    voxel_data_id: int = 0  # id() of last voxel_data array to detect changes
+
+
+_gpu_ray_tracer_cache: Optional[_CachedGPURayTracer] = None
+
+# Module-level cached kernel for topo computation
+_cached_topo_kernel = None
+
+
+def _get_cached_topo_kernel():
+    """Get or create cached topography kernel."""
+    global _cached_topo_kernel
+    if _cached_topo_kernel is not None:
+        return _cached_topo_kernel
     
-    Returns a 2D array where each cell contains the transmittance (0-1)
-    for direct sunlight from the given direction.
-    """
     import taichi as ti
     from ..init_taichi import ensure_initialized
+    ensure_initialized()
     
-    # Ensure Taichi is initialized before creating fields
+    @ti.kernel
+    def _topo_kernel(
+        is_solid_f: ti.template(),
+        topo_f: ti.template(),
+        grid_nz: ti.i32
+    ):
+        for i, j in topo_f:
+            max_k = -1
+            for k in range(grid_nz):
+                if is_solid_f[i, j, k] == 1:
+                    max_k = k
+            topo_f[i, j] = max_k
+    
+    _cached_topo_kernel = _topo_kernel
+    return _cached_topo_kernel
+
+
+def _compute_topo_gpu(is_solid_field, topo_top_field, nz: int):
+    """Compute topography (highest solid voxel) using GPU."""
+    kernel = _get_cached_topo_kernel()
+    kernel(is_solid_field, topo_top_field, nz)
+
+
+# Module-level cached kernel for ray tracing
+_cached_trace_rays_kernel = None
+
+
+def _get_cached_trace_rays_kernel():
+    """Get or create cached ray tracing kernel."""
+    global _cached_trace_rays_kernel
+    if _cached_trace_rays_kernel is not None:
+        return _cached_trace_rays_kernel
+    
+    import taichi as ti
+    from ..init_taichi import ensure_initialized
+    ensure_initialized()
+    
+    @ti.kernel
+    def trace_rays_kernel(
+        is_solid_f: ti.template(),
+        lad_f: ti.template(),
+        topo_f: ti.template(),
+        trans_f: ti.template(),
+        sun_x: ti.f32, sun_y: ti.f32, sun_z: ti.f32,
+        vhk: ti.i32, ext: ti.f32,
+        dx: ti.f32, step: ti.f32, max_dist: ti.f32,
+        grid_nx: ti.i32, grid_ny: ti.i32, grid_nz: ti.i32
+    ):
+        for i, j in trans_f:
+            ground_k = topo_f[i, j]
+            start_k = ground_k + vhk
+            if start_k < 0:
+                start_k = 0
+            if start_k >= grid_nz:
+                start_k = grid_nz - 1
+            
+            while start_k < grid_nz - 1 and is_solid_f[i, j, start_k] == 1:
+                start_k += 1
+            
+            if is_solid_f[i, j, start_k] == 1:
+                trans_f[i, j] = 0.0
+            else:
+                ox = (float(i) + 0.5) * dx
+                oy = (float(j) + 0.5) * dx
+                oz = (float(start_k) + 0.5) * dx
+                
+                trans = 1.0
+                t = step
+                
+                while t < max_dist and trans > 0.001:
+                    px = ox + sun_x * t
+                    py = oy + sun_y * t
+                    pz = oz + sun_z * t
+                    
+                    gi = int(px / dx)
+                    gj = int(py / dx)
+                    gk = int(pz / dx)
+                    
+                    if gi < 0 or gi >= grid_nx or gj < 0 or gj >= grid_ny:
+                        break
+                    if gk < 0 or gk >= grid_nz:
+                        break
+                    
+                    if is_solid_f[gi, gj, gk] == 1:
+                        trans = 0.0
+                        break
+                    
+                    lad_val = lad_f[gi, gj, gk]
+                    if lad_val > 0.0:
+                        trans *= ti.exp(-ext * lad_val * step)
+                    
+                    t += step
+                
+                trans_f[i, j] = trans
+    
+    _cached_trace_rays_kernel = trace_rays_kernel
+    return _cached_trace_rays_kernel
+
+
+def _get_or_create_gpu_ray_tracer(
+    voxel_data: np.ndarray,
+    meshsize: float,
+    tree_lad: float = 1.0
+) -> _CachedGPURayTracer:
+    """
+    Get cached GPU ray tracer or create new one if cache is invalid.
+    
+    The Taichi fields and kernels are expensive to create, so we cache them.
+    """
+    global _gpu_ray_tracer_cache
+    
+    import taichi as ti
+    from ..init_taichi import ensure_initialized
     ensure_initialized()
     
     nx, ny, nz = voxel_data.shape
     
-    # Prepare voxel data for GPU
+    # Check if cache is valid
+    if _gpu_ray_tracer_cache is not None:
+        cache = _gpu_ray_tracer_cache
+        if cache.voxel_shape == (nx, ny, nz) and cache.meshsize == meshsize:
+            # Check if voxel data has changed (same array object = same data)
+            if cache.voxel_data_id == id(voxel_data):
+                # Data hasn't changed, reuse cached fields directly
+                return cache
+            
+            # Data changed, need to re-upload (but keep fields)
+            is_solid = np.zeros((nx, ny, nz), dtype=np.int32)
+            lad_array = np.zeros((nx, ny, nz), dtype=np.float32)
+            
+            for i in range(nx):
+                for j in range(ny):
+                    for k in range(nz):
+                        val = voxel_data[i, j, k]
+                        if val == VOXCITY_BUILDING_CODE or val == VOXCITY_GROUND_CODE or val > 0:
+                            is_solid[i, j, k] = 1
+                        elif val == VOXCITY_TREE_CODE:
+                            lad_array[i, j, k] = tree_lad
+            
+            cache.is_solid_field.from_numpy(is_solid)
+            cache.lad_field.from_numpy(lad_array)
+            cache.voxel_data_id = id(voxel_data)
+            
+            # Recompute topo
+            _compute_topo_gpu(cache.is_solid_field, cache.topo_top_field, nz)
+            return cache
+    
+    # Need to create new cache
     is_solid = np.zeros((nx, ny, nz), dtype=np.int32)
     lad_array = np.zeros((nx, ny, nz), dtype=np.float32)
     
@@ -2478,105 +2649,68 @@ def _compute_direct_transmittance_map_gpu(
     is_solid_field.from_numpy(is_solid)
     lad_field.from_numpy(lad_array)
     
-    # Compute topography (highest solid voxel in each column)
-    @ti.kernel
-    def compute_topo():
-        for i, j in topo_top_field:
-            max_k = -1  # Start at -1 to handle columns with no solid
-            for k in range(nz):
-                if is_solid_field[i, j, k] == 1:
-                    max_k = k
-            topo_top_field[i, j] = max_k
+    # Compute topography using cached kernel
+    _compute_topo_gpu(is_solid_field, topo_top_field, nz)
     
-    compute_topo()
+    # Get cached ray tracing kernel
+    trace_rays_kernel = _get_cached_trace_rays_kernel()
     
-    # Ray trace for each grid cell - trace towards sun to check for occlusions
+    # Cache it
+    _gpu_ray_tracer_cache = _CachedGPURayTracer(
+        is_solid_field=is_solid_field,
+        lad_field=lad_field,
+        transmittance_field=transmittance_field,
+        topo_top_field=topo_top_field,
+        trace_rays_kernel=trace_rays_kernel,
+        voxel_shape=(nx, ny, nz),
+        meshsize=meshsize,
+        voxel_data_id=id(voxel_data)
+    )
+    
+    return _gpu_ray_tracer_cache
+
+
+def _compute_direct_transmittance_map_gpu(
+    voxel_data: np.ndarray,
+    sun_direction: Tuple[float, float, float],
+    view_point_height: float,
+    meshsize: float,
+    tree_k: float = 0.6,
+    tree_lad: float = 1.0
+) -> np.ndarray:
+    """
+    Compute direct solar transmittance map using GPU ray tracing.
+    
+    Returns a 2D array where each cell contains the transmittance (0-1)
+    for direct sunlight from the given direction.
+    
+    Uses cached Taichi fields to avoid expensive re-creation.
+    """
+    nx, ny, nz = voxel_data.shape
+    
+    # Get or create cached ray tracer
+    cache = _get_or_create_gpu_ray_tracer(voxel_data, meshsize, tree_lad)
+    
+    # Run ray tracing with current sun direction
     sun_dir_x = float(sun_direction[0])
     sun_dir_y = float(sun_direction[1])
     sun_dir_z = float(sun_direction[2])
-    dx = dy = dz = meshsize
     view_height_k = max(1, int(view_point_height / meshsize))
-    ext_coef = tree_k
-    
-    @ti.kernel
-    def trace_rays(
-        sun_x: ti.f32, sun_y: ti.f32, sun_z: ti.f32,
-        vhk: ti.i32, ext: ti.f32, 
-        step: ti.f32, max_dist: ti.f32
-    ):
-        for i, j in transmittance_field:
-            # Start position: just ABOVE the ground (in the air above solid)
-            ground_k = topo_top_field[i, j]
-            
-            # Start above the solid ground
-            start_k = ground_k + vhk
-            if start_k < 0:
-                start_k = 0
-            if start_k >= nz:
-                start_k = nz - 1
-            
-            # Make sure we're starting in air (not solid)
-            while start_k < nz - 1 and is_solid_field[i, j, start_k] == 1:
-                start_k += 1
-            
-            # If still in solid, no sunlight reaches here
-            if is_solid_field[i, j, start_k] == 1:
-                transmittance_field[i, j] = 0.0
-            else:
-                # Convert to world coordinates (center of voxel)
-                ox = (float(i) + 0.5) * dx
-                oy = (float(j) + 0.5) * dy
-                oz = (float(start_k) + 0.5) * dz
-                
-                # Ray direction (towards sun) - this is the direction we trace
-                rx = sun_x
-                ry = sun_y
-                rz = sun_z
-                
-                # DDA ray marching - trace towards sun
-                trans = 1.0
-                t = step  # Start at one step to avoid self-hit
-                
-                while t < max_dist and trans > 0.001:
-                    px = ox + rx * t
-                    py = oy + ry * t
-                    pz = oz + rz * t
-                    
-                    # Convert to grid indices
-                    gi = int(px / dx)
-                    gj = int(py / dy)
-                    gk = int(pz / dz)
-                    
-                    # Check bounds - if we exit domain, ray is clear
-                    if gi < 0 or gi >= nx or gj < 0 or gj >= ny:
-                        break
-                    if gk < 0 or gk >= nz:
-                        break
-                    
-                    # Check solid hit - complete occlusion
-                    if is_solid_field[gi, gj, gk] == 1:
-                        trans = 0.0
-                        break
-                    
-                    # Check vegetation attenuation (Beer-Lambert)
-                    lad_val = lad_field[gi, gj, gk]
-                    if lad_val > 0.0:
-                        trans *= ti.exp(-ext * lad_val * step)
-                    
-                    t += step
-                
-                transmittance_field[i, j] = trans
-    
     step_size = meshsize * 0.5
     max_trace_dist = float(max(nx, ny, nz) * meshsize * 2)
     
-    trace_rays(
+    cache.trace_rays_kernel(
+        cache.is_solid_field,
+        cache.lad_field,
+        cache.topo_top_field,
+        cache.transmittance_field,
         sun_dir_x, sun_dir_y, sun_dir_z,
-        view_height_k, ext_coef,
-        step_size, max_trace_dist
+        view_height_k, tree_k,
+        meshsize, step_size, max_trace_dist,
+        nx, ny, nz  # Grid dimensions as parameters
     )
     
-    return transmittance_field.to_numpy()
+    return cache.transmittance_field.to_numpy()
 
 
 def _get_solar_positions_astral(times, lon: float, lat: float):
