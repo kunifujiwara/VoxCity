@@ -1,6 +1,6 @@
 """VoxCity-style `radiation` module (toplevel) for compatibility."""
 
-from .solar.voxcity import (
+from .solar.integration import (
     get_direct_solar_irradiance_map,
     get_diffuse_solar_irradiance_map,
     get_global_solar_irradiance_map,

@@ -53,7 +53,7 @@ from .geometry import (
     rotate_vector_axis_angle,
 )
 
-from .voxcity import (
+from .integration import (
     # VoxCity API-compatible functions (main interface)
     get_view_index,
     get_sky_view_factor_map,

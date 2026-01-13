@@ -1138,7 +1138,7 @@ def get_diffuse_solar_irradiance_map(
     else:
         # Use simple SVF-based computation (faster but no reflections)
         # Import the visibility SVF function
-        from ..visibility.voxcity import get_sky_view_factor_map as get_svf_map
+        from ..visibility.integration import get_sky_view_factor_map as get_svf_map
         
         # Get SVF map using GPU-accelerated visibility module
         svf_kwargs = kwargs.copy()

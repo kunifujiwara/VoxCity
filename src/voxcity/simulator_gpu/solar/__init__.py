@@ -71,7 +71,7 @@ from .sky import (
 )
 
 # VoxCity integration
-from .voxcity import (
+from .integration import (
     load_voxcity,
     convert_voxcity_to_domain,
     apply_voxcity_albedo,

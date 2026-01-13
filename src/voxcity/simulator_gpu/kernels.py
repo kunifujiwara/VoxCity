@@ -32,7 +32,7 @@ def compute_direct_solar_irradiance_map_binary(
           are not currently used in the GPU path.
         - Output is flipped with `np.flipud`, matching VoxCity.
     """
-    from .solar.voxcity import _compute_direct_transmittance_map_gpu
+    from .solar.integration import _compute_direct_transmittance_map_gpu
 
     sd = np.array(sun_direction, dtype=np.float64)
     L = float(np.sqrt((sd * sd).sum()))
