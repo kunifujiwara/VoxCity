@@ -173,7 +173,8 @@ def visualize_voxcity_plotly(
                     a = np.pad(a, ((0, px), (0, py), (0, pz)), constant_values=False)
                 nxp, nyp, nzp = a.shape
                 a = a.reshape(nxp // sx, sx, nyp // sy, sy, nzp // sz, sz)
-                a = a.max(axis=1).max(axis=2).max(axis=4)
+                # Max over pooling dims (1, 3, 5) - must do all at once or adjust indices after each reduction
+                a = a.max(axis=(1, 3, 5))
                 return a
             occluder = _bool_max_pool_3d((voxel_array != 0), stride)
         else:
