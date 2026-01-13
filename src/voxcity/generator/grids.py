@@ -73,7 +73,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         try:
             image = get_ee_image_collection(collection_name, roi)
             # If collection is empty, image operations may fail; guard with try/except
-            save_geotiff(image, geotiff_path)
+            save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
             if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
                 raise RuntimeError("Urbanwatch export produced no file")
         except Exception as e:
@@ -326,7 +326,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     else:
         raise ValueError(f"Unsupported canopy source: {source}")
 
-    save_geotiff(image, geotiff_path, resolution=meshsize)
+    save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
     trunk_height_ratio = kwargs.get("trunk_height_ratio")
