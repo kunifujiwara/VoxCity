@@ -38,7 +38,7 @@ def create_height_grid_from_geotiff_polygon(
         xs, ys = new_affine * (cols, rows)
         xs_flat, ys_flat = xs.flatten(), ys.flatten()
 
-        row, col = src.index(xs_flat, ys_flat)
+        row, col = rasterio.transform.rowcol(src.transform, xs_flat, ys_flat)
         row, col = np.array(row), np.array(col)
 
         valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
