@@ -118,7 +118,11 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
 
     if effective_source == 'OpenStreetMap':
         default_class = kwargs.get('default_land_cover_class', 'Developed space')
-        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(land_cover_gdf, meshsize, effective_source, rectangle_vertices, default_class=default_class)
+        detect_ocean = kwargs.get('detect_ocean', True)  # Default True for OSM
+        land_cover_grid_str = create_land_cover_grid_from_gdf_polygon(
+            land_cover_gdf, meshsize, effective_source, rectangle_vertices, 
+            default_class=default_class, detect_ocean=detect_ocean
+        )
     else:
         land_cover_grid_str = create_land_cover_grid_from_geotiff_polygon(geotiff_path, meshsize, land_cover_classes, rectangle_vertices)
 

@@ -79,12 +79,30 @@ def create_land_cover_grid_from_gdf_polygon(
     meshsize: float,
     source: str,
     rectangle_vertices: List[Tuple[float, float]],
-    default_class: str = 'Developed space'
+    default_class: str = 'Developed space',
+    detect_ocean: bool = True,
+    land_polygon = "NOT_PROVIDED"
 ) -> np.ndarray:
     """
     Create a grid of land cover classes from GeoDataFrame polygon data.
     
     Uses vectorized rasterization for ~100x speedup over cell-by-cell intersection.
+    
+    Args:
+        gdf: GeoDataFrame with land cover polygons and 'class' column
+        meshsize: Grid cell size in meters
+        source: Land cover data source name (e.g., 'OpenStreetMap')
+        rectangle_vertices: List of (lon, lat) tuples defining the area
+        default_class: Default class for cells not covered by any polygon
+        detect_ocean: If True, use OSM land polygons to detect ocean areas.
+                     Areas outside land polygons will be classified as 'Water'
+                     instead of the default class.
+        land_polygon: Optional pre-computed land polygon from OSM coastlines.
+                     If provided (including None), this is used directly.
+                     If "NOT_PROVIDED", coastlines will be queried when detect_ocean=True.
+    
+    Returns:
+        2D numpy array of land cover class names
     """
     import numpy as np
     import geopandas as gpd
@@ -197,8 +215,68 @@ def create_land_cover_grid_from_gdf_polygon(
     for code, cls_name in code_to_class.items():
         grid[grid_int == code] = cls_name
 
+    # Apply ocean detection BEFORE flipping if requested
+    # This uses land polygons from OSM coastlines to classify ocean areas
+    if detect_ocean:
+        try:
+            from ...downloader.ocean import get_land_polygon_for_area, get_ocean_class_for_source
+            
+            ocean_class = get_ocean_class_for_source(source)
+            
+            # Use provided land_polygon or query from coastlines if not provided
+            if land_polygon == "NOT_PROVIDED":
+                land_polygon = get_land_polygon_for_area(rectangle_vertices, use_cache=False)
+            
+            if land_polygon is not None:
+                # Rasterize land polygon - cells inside are land, outside are ocean
+                land_mask = np.zeros((rows, cols), dtype=np.uint8)
+                
+                try:
+                    if land_polygon.geom_type == 'Polygon':
+                        land_geometries = [(land_polygon, 1)]
+                    else:  # MultiPolygon
+                        land_geometries = [(geom, 1) for geom in land_polygon.geoms]
+                    
+                    features.rasterize(
+                        shapes=land_geometries,
+                        out=land_mask,
+                        transform=transform,
+                        all_touched=False
+                    )
+                    
+                    # Apply ocean class to cells that are:
+                    # 1. Outside land polygon (land_mask == 0)
+                    # 2. Currently classified as the default class
+                    ocean_cells = (land_mask == 0) & (grid == default_class)
+                    ocean_count = np.sum(ocean_cells)
+                    
+                    if ocean_count > 0:
+                        grid[ocean_cells] = ocean_class
+                        pct = 100 * ocean_count / grid.size
+                        print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}'")
+                        
+                except Exception as e:
+                    print(f"  Warning: Ocean rasterization failed: {e}")
+            else:
+                # No coastlines - check if area is all ocean or all land
+                from ...downloader.ocean import check_if_area_is_ocean_via_land_features
+                is_ocean = check_if_area_is_ocean_via_land_features(rectangle_vertices)
+                if is_ocean:
+                    # Convert all default class cells to water
+                    ocean_cells = (grid == default_class)
+                    ocean_count = np.sum(ocean_cells)
+                    if ocean_count > 0:
+                        grid[ocean_cells] = ocean_class
+                        pct = 100 * ocean_count / grid.size
+                        print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}' (open ocean)")
+                        
+        except Exception as e:
+            print(f"  Warning: Ocean detection failed: {e}")
+
     # Flip to match expected orientation (north-up)
-    return np.flipud(grid)
+    grid = np.flipud(grid)
+    
+    return grid
 
 
 
