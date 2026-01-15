@@ -238,6 +238,63 @@ class Domain:
         self._set_lad_kernel(lad_array)
         self._update_plant_top()
     
+    def set_from_voxel_data(self, voxel_data: np.ndarray, tree_code: int = -2, solid_codes: Optional[list] = None):
+        """
+        Set domain from a 3D voxel data array.
+        
+        Args:
+            voxel_data: 3D numpy array with voxel class codes
+            tree_code: Class code for trees (default -2)
+            solid_codes: List of codes that are solid (default: all non-zero except tree_code)
+        """
+        if solid_codes is None:
+            # All non-zero codes except tree are solid
+            solid_codes = []
+        
+        self._set_from_voxel_data_kernel(voxel_data, tree_code)
+    
+    @ti.kernel
+    def _set_from_voxel_data_kernel(self, voxel_data: ti.types.ndarray(), tree_code: ti.i32):
+        for i, j, k in ti.ndrange(self.nx, self.ny, self.nz):
+            val = voxel_data[i, j, k]
+            if val == tree_code:
+                self.is_tree[i, j, k] = 1
+                self.is_solid[i, j, k] = 0
+            elif val != 0:
+                self.is_solid[i, j, k] = 1
+                self.is_tree[i, j, k] = 0
+            else:
+                self.is_solid[i, j, k] = 0
+                self.is_tree[i, j, k] = 0
+    
+    def add_tree_box(
+        self,
+        x_range: Tuple[int, int],
+        y_range: Tuple[int, int],
+        z_range: Tuple[int, int],
+        lad_value: float = 1.0
+    ):
+        """
+        Add a box-shaped tree canopy region to the domain.
+        
+        This is a simpler alternative to add_tree() for rectangular tree regions.
+        
+        Args:
+            x_range, y_range, z_range: Grid index ranges (start, end)
+            lad_value: Leaf Area Density value (m^2/m^3)
+        """
+        self._add_tree_box_kernel(x_range[0], x_range[1], y_range[0], y_range[1], 
+                                   z_range[0], z_range[1], lad_value)
+        self._update_plant_top()
+    
+    @ti.kernel
+    def _add_tree_box_kernel(self, i_min: ti.i32, i_max: ti.i32, j_min: ti.i32, 
+                              j_max: ti.i32, k_min: ti.i32, k_max: ti.i32, lad: ti.f32):
+        for i, j, k in ti.ndrange((i_min, i_max), (j_min, j_max), (k_min, k_max)):
+            if 0 <= i < self.nx and 0 <= j < self.ny and 0 <= k < self.nz:
+                self.is_tree[i, j, k] = 1
+                self.lad[i, j, k] = lad
+
     @ti.kernel
     def _set_lad_kernel(self, lad_array: ti.types.ndarray()):
         for i, j, k in self.lad:

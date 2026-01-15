@@ -467,6 +467,159 @@ def ray_canopy_absorption(
 
 
 @ti.func
+def ray_point_to_point_transmissivity(
+    pos_from: Vector3,
+    pos_to: Vector3,
+    lad: ti.template(),
+    is_solid: ti.template(),
+    nx: ti.i32,
+    ny: ti.i32,
+    nz: ti.i32,
+    dx: ti.f32,
+    dy: ti.f32,
+    dz: ti.f32,
+    ext_coef: ti.f32
+):
+    """
+    Compute transmissivity of radiation between two points through canopy.
+    
+    This is used for surface-to-surface reflections where reflected radiation
+    must pass through any intervening vegetation.
+    
+    Args:
+        pos_from: Start position (emitting surface center)
+        pos_to: End position (receiving surface center)
+        lad: 3D field of Leaf Area Density
+        is_solid: 3D field of solid cells (buildings/terrain)
+        nx, ny, nz: Grid dimensions
+        dx, dy, dz: Cell sizes
+        ext_coef: Extinction coefficient
+    
+    Returns:
+        Tuple of (transmissivity, blocked_by_solid)
+        - transmissivity: 0-1 fraction of radiation that gets through
+        - blocked_by_solid: 1 if ray hits a solid cell, 0 otherwise
+    """
+    # Compute ray direction and distance
+    diff = pos_to - pos_from
+    dist = diff.norm()
+    
+    transmissivity = 1.0
+    blocked = 0
+    
+    # Only trace if distance is significant
+    if dist >= 0.01:
+        ray_dir = diff / dist
+        
+        # Starting voxel
+        pos = pos_from + ray_dir * 0.01  # Slight offset to avoid self-intersection
+        
+        ix = ti.cast(ti.floor(pos[0] / dx), ti.i32)
+        iy = ti.cast(ti.floor(pos[1] / dy), ti.i32)
+        iz = ti.cast(ti.floor(pos[2] / dz), ti.i32)
+        
+        # Clamp to valid range
+        ix = ti.max(0, ti.min(nx - 1, ix))
+        iy = ti.max(0, ti.min(ny - 1, iy))
+        iz = ti.max(0, ti.min(nz - 1, iz))
+        
+        # Step directions
+        step_x = 1 if ray_dir[0] >= 0 else -1
+        step_y = 1 if ray_dir[1] >= 0 else -1
+        step_z = 1 if ray_dir[2] >= 0 else -1
+        
+        # Initialize DDA variables
+        t_max_x = 1e30
+        t_max_y = 1e30
+        t_max_z = 1e30
+        t_delta_x = 1e30
+        t_delta_y = 1e30
+        t_delta_z = 1e30
+        
+        t = 0.01  # Start offset
+        
+        if ti.abs(ray_dir[0]) > 1e-10:
+            if step_x > 0:
+                t_max_x = ((ix + 1) * dx - pos_from[0]) / ray_dir[0]
+            else:
+                t_max_x = (ix * dx - pos_from[0]) / ray_dir[0]
+            t_delta_x = ti.abs(dx / ray_dir[0])
+        
+        if ti.abs(ray_dir[1]) > 1e-10:
+            if step_y > 0:
+                t_max_y = ((iy + 1) * dy - pos_from[1]) / ray_dir[1]
+            else:
+                t_max_y = (iy * dy - pos_from[1]) / ray_dir[1]
+            t_delta_y = ti.abs(dy / ray_dir[1])
+        
+        if ti.abs(ray_dir[2]) > 1e-10:
+            if step_z > 0:
+                t_max_z = ((iz + 1) * dz - pos_from[2]) / ray_dir[2]
+            else:
+                t_max_z = (iz * dz - pos_from[2]) / ray_dir[2]
+            t_delta_z = ti.abs(dz / ray_dir[2])
+        
+        t_prev = t
+        max_steps = nx + ny + nz
+        done = 0
+        
+        for _ in range(max_steps):
+            if done == 1:
+                continue  # Skip remaining iterations
+            
+            if ix < 0 or ix >= nx or iy < 0 or iy >= ny or iz < 0 or iz >= nz:
+                done = 1
+                continue
+            if t > dist:  # Reached target
+                done = 1
+                continue
+            
+            # Check for solid obstruction (but skip first and last cell as they're the surfaces)
+            if is_solid[ix, iy, iz] == 1 and t > 0.1 and t < dist - 0.1:
+                blocked = 1
+                transmissivity = 0.0
+                done = 1
+                continue
+            
+            # Get step distance
+            t_next = t_max_x
+            if t_max_y < t_next:
+                t_next = t_max_y
+            if t_max_z < t_next:
+                t_next = t_max_z
+            
+            # Limit to target distance
+            t_next = ti.min(t_next, dist)
+            
+            # Path length through this cell
+            path_len = t_next - t_prev
+            
+            # Accumulate absorption from LAD
+            cell_lad = lad[ix, iy, iz]
+            if cell_lad > 0.0:
+                # Beer-Lambert: T = exp(-ext_coef * LAD * path)
+                transmissivity *= ti.exp(-ext_coef * cell_lad * path_len)
+            
+            t_prev = t_next
+            
+            # Step to next voxel
+            if t_max_x < t_max_y and t_max_x < t_max_z:
+                t = t_max_x
+                ix += step_x
+                t_max_x += t_delta_x
+            elif t_max_y < t_max_z:
+                t = t_max_y
+                iy += step_y
+                t_max_y += t_delta_y
+            else:
+                t = t_max_z
+                iz += step_z
+                t_max_z += t_delta_z
+    
+    return transmissivity, blocked
+
+
+@ti.func
 def ray_trace_to_target(
     origin: Vector3,
     target: Vector3,

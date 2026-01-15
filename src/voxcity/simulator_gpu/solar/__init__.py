@@ -29,7 +29,17 @@ from .solar import (
     discretize_sky_directions
 )
 
-from .raytracing import RayTracer
+from .raytracing import (
+    RayTracer,
+    ray_aabb_intersect,
+    ray_voxel_first_hit,
+    ray_canopy_absorption,
+    ray_voxel_transmissivity,
+    ray_trace_to_target,
+    ray_point_to_point_transmissivity,
+    sample_hemisphere_direction,
+    hemisphere_solid_angle,
+)
 
 from .svf import SVFCalculator
 
@@ -115,6 +125,14 @@ __all__ = [
     'discretize_sky_directions',
     # Ray tracing
     'RayTracer',
+    'ray_aabb_intersect',
+    'ray_voxel_first_hit',
+    'ray_canopy_absorption',
+    'ray_voxel_transmissivity',
+    'ray_trace_to_target',
+    'ray_point_to_point_transmissivity',
+    'sample_hemisphere_direction',
+    'hemisphere_solid_angle',
     # SVF
     'SVFCalculator',
     # CSF
