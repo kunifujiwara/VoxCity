@@ -316,6 +316,123 @@ def clear_radiation_model_cache():
     _radiation_model_cache = None
 
 
+def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
+    """
+    Compute ground surface k-level for each (i,j) cell from voxel data.
+    
+    This finds the terrain top - the highest k where the cell below the first air
+    cell is solid ground (not building). This is used for terrain-following
+    height extraction in volumetric calculations.
+    
+    Args:
+        voxel_data: 3D array of voxel class codes
+        
+    Returns:
+        2D array of ground k-levels (ni, nj). -1 means no valid ground found.
+    """
+    ni, nj, nk = voxel_data.shape
+    ground_k = np.full((ni, nj), -1, dtype=np.int32)
+    
+    for i in range(ni):
+        for j in range(nj):
+            # Find the first transition from non-air to air (or air/tree) going up
+            for k in range(1, nk):
+                curr_val = voxel_data[i, j, k]
+                below_val = voxel_data[i, j, k - 1]
+                
+                # Current is air (0) or tree (1), below is not air/tree
+                if curr_val in (0, 1) and below_val not in (0, 1):
+                    # Skip if below is building (-3) or water/special (7, 8, 9)
+                    if below_val == -3 or below_val in (7, 8, 9):
+                        continue
+                    # Ground surface is at k (first air cell above ground)
+                    ground_k[i, j] = k
+                    break
+            else:
+                # No transition found - check if bottom is ground-like
+                if voxel_data[i, j, 0] not in (0, 1, -3):
+                    ground_k[i, j] = 1  # Default to k=1 if ground at bottom
+    
+    return ground_k
+
+
+def _extract_terrain_following_slice(
+    flux_3d: np.ndarray,
+    ground_k: np.ndarray,
+    height_offset_k: int,
+    is_solid: np.ndarray
+) -> np.ndarray:
+    """
+    Extract a terrain-following 2D slice from a 3D flux field.
+    
+    For each (i,j), extracts the value at ground_k[i,j] + height_offset_k.
+    Cells that are solid at the extraction point, have no valid ground,
+    or are above the domain are marked as NaN.
+    
+    Args:
+        flux_3d: 3D array of flux values (ni, nj, nk)
+        ground_k: 2D array of ground k-levels (ni, nj), -1 means no valid ground
+        height_offset_k: Number of cells above ground to extract
+        is_solid: 3D array marking solid cells (ni, nj, nk)
+        
+    Returns:
+        2D array of extracted values (ni, nj) with NaN for invalid cells
+    """
+    ni, nj, nk = flux_3d.shape
+    result = np.full((ni, nj), np.nan, dtype=np.float64)
+    
+    for i in range(ni):
+        for j in range(nj):
+            gk = ground_k[i, j]
+            if gk < 0:
+                continue
+            k_extract = gk + height_offset_k
+            if k_extract >= nk:
+                continue
+            if is_solid[i, j, k_extract] == 1:
+                continue
+            result[i, j] = flux_3d[i, j, k_extract]
+    
+    return result
+
+
+def _accumulate_terrain_following_slice(
+    cumulative_map: np.ndarray,
+    flux_3d: np.ndarray,
+    ground_k: np.ndarray,
+    height_offset_k: int,
+    is_solid: np.ndarray,
+    weight: float = 1.0
+) -> None:
+    """
+    Accumulate terrain-following values from a 3D flux field into a 2D map (in-place).
+    
+    For each (i,j), adds flux_3d[i,j,k_extract] * weight to cumulative_map[i,j]
+    where k_extract = ground_k[i,j] + height_offset_k.
+    
+    Args:
+        cumulative_map: 2D array to accumulate into (ni, nj), modified in-place
+        flux_3d: 3D array of flux values (ni, nj, nk)
+        ground_k: 2D array of ground k-levels (ni, nj), -1 means no valid ground
+        height_offset_k: Number of cells above ground to extract
+        is_solid: 3D array marking solid cells (ni, nj, nk)
+        weight: Multiplier for values before accumulating (e.g., time_step_hours)
+    """
+    ni, nj, nk = flux_3d.shape
+    
+    for i in range(ni):
+        for j in range(nj):
+            gk = ground_k[i, j]
+            if gk < 0:
+                continue
+            k_extract = gk + height_offset_k
+            if k_extract >= nk:
+                continue
+            if is_solid[i, j, k_extract] == 1:
+                continue
+            cumulative_map[i, j] += flux_3d[i, j, k_extract] * weight
+
+
 def clear_gpu_ray_tracer_cache():
     """Clear the cached GPU ray tracer fields to free memory or force recomputation."""
     global _gpu_ray_tracer_cache
@@ -2449,6 +2566,887 @@ def get_building_global_solar_irradiance_using_epw(
         raise ValueError(f"Unknown calc_type: {calc_type}. Use 'instantaneous' or 'cumulative'.")
 
 
+# =============================================================================
+# Volumetric Solar Irradiance Functions
+# =============================================================================
+# Module-level cache for VolumetricFluxCalculator
+_volumetric_flux_cache: Optional[Dict] = None
+
+
+def clear_volumetric_flux_cache():
+    """Clear the cached VolumetricFluxCalculator to free memory or force recomputation."""
+    global _volumetric_flux_cache
+    _volumetric_flux_cache = None
+
+
+def _get_or_create_volumetric_calculator(
+    voxcity,
+    n_azimuth: int = 36,
+    n_zenith: int = 9,
+    progress_report: bool = False,
+    **kwargs
+):
+    """
+    Get cached VolumetricFluxCalculator or create a new one if cache is invalid.
+    
+    Args:
+        voxcity: VoxCity object
+        n_azimuth: Number of azimuthal directions
+        n_zenith: Number of zenith angle divisions
+        progress_report: Print progress messages
+        **kwargs: Additional parameters
+        
+    Returns:
+        Tuple of (VolumetricFluxCalculator, Domain)
+    """
+    global _volumetric_flux_cache
+    
+    from .volumetric import VolumetricFluxCalculator
+    from .domain import Domain
+    
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ni, nj, nk = voxel_data.shape
+    
+    # Check if cache is valid
+    cache_valid = False
+    if _volumetric_flux_cache is not None:
+        cache = _volumetric_flux_cache
+        if (cache.get('voxcity_shape') == voxel_data.shape and
+            cache.get('meshsize') == meshsize and
+            cache.get('n_azimuth') == n_azimuth):
+            cache_valid = True
+            if progress_report:
+                print("Using cached VolumetricFluxCalculator (SVF already computed)")
+    
+    if cache_valid:
+        return _volumetric_flux_cache['calculator'], _volumetric_flux_cache['domain']
+    
+    # Need to create new calculator
+    if progress_report:
+        print("Creating new VolumetricFluxCalculator...")
+    
+    # Get location
+    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
+    if rectangle_vertices is not None:
+        lons = [v[0] for v in rectangle_vertices]
+        lats = [v[1] for v in rectangle_vertices]
+        origin_lat = np.mean(lats)
+        origin_lon = np.mean(lons)
+    else:
+        origin_lat = 1.35
+        origin_lon = 103.82
+    
+    # Create domain
+    domain = Domain(
+        nx=ni, ny=nj, nz=nk,
+        dx=meshsize, dy=meshsize, dz=meshsize,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon
+    )
+    
+    # Convert VoxCity voxel data to domain arrays
+    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
+    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    default_lad = kwargs.get('default_lad', 1.0)
+    
+    for i in range(ni):
+        for j in range(nj):
+            for k in range(nk):
+                voxel_val = voxel_data[i, j, k]
+                
+                if voxel_val == VOXCITY_BUILDING_CODE:
+                    is_solid_np[i, j, k] = 1
+                elif voxel_val == VOXCITY_GROUND_CODE:
+                    is_solid_np[i, j, k] = 1
+                elif voxel_val == VOXCITY_TREE_CODE:
+                    lad_np[i, j, k] = default_lad
+                elif voxel_val > 0:
+                    is_solid_np[i, j, k] = 1
+    
+    # Set domain arrays
+    _set_solid_array(domain, is_solid_np)
+    domain.set_lad_from_array(lad_np)
+    _update_topo_from_solid(domain)
+    
+    # Create VolumetricFluxCalculator
+    calculator = VolumetricFluxCalculator(
+        domain,
+        n_azimuth=n_azimuth,
+        min_opaque_lad=kwargs.get('min_opaque_lad', 0.5)
+    )
+    
+    # Compute volumetric sky view factors (expensive, do once)
+    if progress_report:
+        print("Computing volumetric sky view factors...")
+    calculator.compute_skyvf_vol(n_zenith=n_zenith)
+    
+    # Cache the calculator
+    _volumetric_flux_cache = {
+        'calculator': calculator,
+        'domain': domain,
+        'voxcity_shape': voxel_data.shape,
+        'meshsize': meshsize,
+        'n_azimuth': n_azimuth
+    }
+    
+    if progress_report:
+        print(f"VolumetricFluxCalculator cached.")
+    
+    return calculator, domain
+
+
+def get_volumetric_solar_irradiance_map(
+    voxcity,
+    azimuth_degrees_ori: float,
+    elevation_degrees: float,
+    direct_normal_irradiance: float,
+    diffuse_irradiance: float,
+    volumetric_height: float = 1.5,
+    with_reflections: bool = False,
+    show_plot: bool = False,
+    **kwargs
+) -> np.ndarray:
+    """
+    GPU-accelerated volumetric solar irradiance map at a specified height.
+    
+    Computes the 3D radiation field at each grid cell and extracts a 2D horizontal
+    slice at the specified height. This is useful for:
+    - Mean Radiant Temperature (MRT) calculations
+    - Pedestrian thermal comfort analysis
+    - Light availability assessment
+    
+    Args:
+        voxcity: VoxCity object
+        azimuth_degrees_ori: Solar azimuth in degrees (0=North, clockwise)
+        elevation_degrees: Solar elevation in degrees above horizon
+        direct_normal_irradiance: DNI in W/m²
+        diffuse_irradiance: DHI in W/m²
+        volumetric_height: Height above ground for irradiance extraction (meters)
+        with_reflections: If True, include reflected radiation from surfaces.
+            If False (default), only direct + diffuse sky radiation.
+        show_plot: Whether to display a matplotlib plot
+        **kwargs: Additional parameters:
+            - n_azimuth (int): Number of azimuthal directions for SVF (default: 36)
+            - n_zenith (int): Number of zenith angles for SVF (default: 9)
+            - progress_report (bool): Print progress (default: False)
+            - colormap (str): Colormap for plot (default: 'magma')
+            - vmin, vmax (float): Colormap bounds
+            - n_reflection_steps (int): Reflection bounces when with_reflections=True (default: 2)
+    
+    Returns:
+        2D numpy array of volumetric irradiance at the specified height (W/m²)
+    """
+    import math
+    
+    kwargs = kwargs.copy()  # Don't modify caller's kwargs
+    progress_report = kwargs.pop('progress_report', False)
+    n_azimuth = kwargs.pop('n_azimuth', 36)
+    n_zenith = kwargs.pop('n_zenith', 9)
+    
+    # Get or create cached calculator
+    calculator, domain = _get_or_create_volumetric_calculator(
+        voxcity,
+        n_azimuth=n_azimuth,
+        n_zenith=n_zenith,
+        progress_report=progress_report,
+        **kwargs
+    )
+    
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ni, nj, nk = voxel_data.shape
+    
+    # Convert solar angles to direction vector
+    # Match the coordinate system used in ground-level functions:
+    # azimuth_degrees_ori: 0=North, 90=East (clockwise from North)
+    # Transform to model coordinates: 180 - azimuth_degrees_ori
+    azimuth_degrees = 180 - azimuth_degrees_ori
+    azimuth_rad = math.radians(azimuth_degrees)
+    elevation_rad = math.radians(elevation_degrees)
+    
+    cos_elev = math.cos(elevation_rad)
+    sin_elev = math.sin(elevation_rad)
+    
+    # Direction toward sun (matching ground-level function convention)
+    sun_dir_x = cos_elev * math.cos(azimuth_rad)
+    sun_dir_y = cos_elev * math.sin(azimuth_rad)
+    sun_dir_z = sin_elev
+    sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
+    
+    cos_zenith = sin_elev  # cos(zenith) = sin(elevation)
+    
+    # Compute volumetric flux
+    if with_reflections:
+        # Use full reflection model
+        if progress_report:
+            print("Computing volumetric flux with reflections...")
+        
+        # Get radiation model for surface reflections
+        n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
+        model, valid_ground, ground_k = _get_or_create_radiation_model(
+            voxcity,
+            n_reflection_steps=n_reflection_steps,
+            progress_report=progress_report,
+            **kwargs
+        )
+        
+        # Manually set solar position on the model's solar_calc
+        model.solar_calc.cos_zenith[None] = cos_zenith
+        model.solar_calc.sun_direction[None] = [sun_direction[0], sun_direction[1], sun_direction[2]]
+        model.solar_calc.sun_up[None] = 1 if cos_zenith > 0 else 0
+        
+        # Compute shortwave radiation with the set solar position
+        model.compute_shortwave_radiation(
+            sw_direct=direct_normal_irradiance,
+            sw_diffuse=diffuse_irradiance
+        )
+        
+        # Get surface outgoing radiation
+        n_surfaces = model.surfaces.count
+        surf_outgoing = model.surfaces.sw_out.to_numpy()[:n_surfaces]
+        
+        # Compute volumetric flux including reflections
+        # Use cached C2S-VF matrix if available, otherwise compute dynamically
+        if calculator.c2s_matrix_cached:
+            calculator.compute_swflux_vol_with_reflections_cached(
+                sw_direct=direct_normal_irradiance,
+                sw_diffuse=diffuse_irradiance,
+                cos_zenith=cos_zenith,
+                sun_direction=sun_direction,
+                surf_outgoing=surf_outgoing,
+                lad=domain.lad
+            )
+        else:
+            calculator.compute_swflux_vol_with_reflections(
+                sw_direct=direct_normal_irradiance,
+                sw_diffuse=diffuse_irradiance,
+                cos_zenith=cos_zenith,
+                sun_direction=sun_direction,
+                surfaces=model.surfaces,
+                surf_outgoing=surf_outgoing,
+                lad=domain.lad
+            )
+    else:
+        # Simple direct + diffuse only
+        if progress_report:
+            print("Computing volumetric flux (direct + diffuse)...")
+        
+        calculator.compute_swflux_vol(
+            sw_direct=direct_normal_irradiance,
+            sw_diffuse=diffuse_irradiance,
+            cos_zenith=cos_zenith,
+            sun_direction=sun_direction,
+            lad=domain.lad
+        )
+        
+        # Compute ground_k for terrain-following extraction
+        ground_k = _compute_ground_k_from_voxels(voxel_data)
+    
+    # Extract terrain-following horizontal slice at specified height above ground
+    # For each (i,j), extract at ground_k[i,j] + height_offset_k
+    height_offset_k = max(1, int(round(volumetric_height / meshsize)))
+    if progress_report:
+        print(f"Extracting volumetric irradiance at {volumetric_height}m above terrain (offset={height_offset_k} cells)")
+    
+    # Get full 3D volumetric flux and is_solid arrays
+    swflux_3d = calculator.get_swflux_vol()
+    is_solid = domain.is_solid.to_numpy()
+    
+    # Create output array
+    volumetric_map = np.full((ni, nj), np.nan, dtype=np.float64)
+    
+    # Extract terrain-following values
+    for i in range(ni):
+        for j in range(nj):
+            gk = ground_k[i, j]
+            if gk < 0:
+                # No valid ground - keep NaN
+                continue
+            k_extract = gk + height_offset_k
+            if k_extract >= nk:
+                # Above domain - keep NaN
+                continue
+            # Check if extraction point is in a solid cell
+            if is_solid[i, j, k_extract] == 1:
+                # Inside solid (building) - keep NaN
+                continue
+            volumetric_map[i, j] = swflux_3d[i, j, k_extract]
+    
+    # Flip to match VoxCity coordinate system
+    volumetric_map = np.flipud(volumetric_map)
+    
+    if show_plot:
+        colormap = kwargs.get('colormap', 'magma')
+        vmin = kwargs.get('vmin', 0.0)
+        vmax = kwargs.get('vmax', max(float(np.nanmax(volumetric_map)), 1.0))
+        try:
+            import matplotlib.pyplot as plt
+            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap.set_bad(color='lightgray')
+            plt.figure(figsize=(10, 8))
+            plt.imshow(volumetric_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+            plt.colorbar(label=f'Volumetric Solar Irradiance at {volumetric_height}m (W/m²)')
+            plt.title(f'Volumetric Irradiance (reflections={"on" if with_reflections else "off"})')
+            plt.axis('off')
+            plt.show()
+        except ImportError:
+            pass
+    
+    return volumetric_map
+
+
+def get_cumulative_volumetric_solar_irradiance(
+    voxcity,
+    df,
+    lon: float,
+    lat: float,
+    tz: float,
+    direct_normal_irradiance_scaling: float = 1.0,
+    diffuse_irradiance_scaling: float = 1.0,
+    volumetric_height: float = 1.5,
+    with_reflections: bool = False,
+    show_plot: bool = False,
+    **kwargs
+) -> np.ndarray:
+    """
+    GPU-accelerated cumulative volumetric solar irradiance over a period.
+    
+    Integrates the 3D radiation field over time and extracts a 2D horizontal
+    slice at the specified height.
+    
+    Args:
+        voxcity: VoxCity object
+        df: pandas DataFrame with 'DNI' and 'DHI' columns, datetime-indexed
+        lon: Longitude in degrees
+        lat: Latitude in degrees
+        tz: Timezone offset in hours
+        direct_normal_irradiance_scaling: Scaling factor for DNI
+        diffuse_irradiance_scaling: Scaling factor for DHI
+        volumetric_height: Height above ground for irradiance extraction (meters)
+        with_reflections: If True, include reflected radiation from buildings,
+            ground, and tree canopy surfaces. If False (default), only direct
+            + diffuse sky radiation.
+        show_plot: Whether to display a matplotlib plot
+        **kwargs: Additional parameters:
+            - start_time (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 05:00:00')
+            - end_time (str): End time 'MM-DD HH:MM:SS' (default: '01-01 20:00:00')
+            - use_sky_patches (bool): Use sky patch optimization (default: True)
+            - sky_discretization (str): 'tregenza', 'reinhart', 'uniform', 'fibonacci'
+            - progress_report (bool): Print progress (default: False)
+            - n_reflection_steps (int): Reflection bounces when with_reflections=True (default: 2)
+    
+    Returns:
+        2D numpy array of cumulative volumetric irradiance at the specified height (Wh/m²)
+    """
+    import time
+    from datetime import datetime
+    import pytz
+    import math
+    
+    # Extract parameters
+    kwargs = kwargs.copy()
+    progress_report = kwargs.pop('progress_report', False)
+    start_time = kwargs.pop('start_time', '01-01 05:00:00')
+    end_time = kwargs.pop('end_time', '01-01 20:00:00')
+    use_sky_patches = kwargs.pop('use_sky_patches', True)
+    sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
+    n_azimuth = kwargs.pop('n_azimuth', 36)
+    n_zenith = kwargs.pop('n_zenith', 9)
+    
+    if df.empty:
+        raise ValueError("No data in EPW dataframe.")
+    
+    # Parse time range
+    try:
+        start_dt = datetime.strptime(start_time, '%m-%d %H:%M:%S')
+        end_dt = datetime.strptime(end_time, '%m-%d %H:%M:%S')
+    except ValueError as ve:
+        raise ValueError("start_time and end_time must be in format 'MM-DD HH:MM:SS'") from ve
+    
+    # Filter dataframe to period
+    df = df.copy()
+    df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
+    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+    start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
+    end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
+    
+    if start_hour <= end_hour:
+        df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
+    else:
+        df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    if df_period.empty:
+        raise ValueError("No EPW data in the specified period.")
+    
+    # Localize and convert to UTC
+    offset_minutes = int(tz * 60)
+    local_tz = pytz.FixedOffset(offset_minutes)
+    df_period_local = df_period.copy()
+    df_period_local.index = df_period_local.index.tz_localize(local_tz)
+    df_period_utc = df_period_local.tz_convert(pytz.UTC)
+    
+    # Get solar positions
+    solar_positions = _get_solar_positions_astral(df_period_utc.index, lon, lat)
+    
+    # Get or create cached calculator
+    calculator, domain = _get_or_create_volumetric_calculator(
+        voxcity,
+        n_azimuth=n_azimuth,
+        n_zenith=n_zenith,
+        progress_report=progress_report,
+        **kwargs
+    )
+    
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ni, nj, nk = voxel_data.shape
+    
+    # Compute terrain-following extraction parameters
+    height_offset_k = max(1, int(round(volumetric_height / meshsize)))
+    if progress_report:
+        print(f"Extracting volumetric irradiance at {volumetric_height}m above terrain (offset={height_offset_k} cells)")
+    
+    # Get is_solid array for masking
+    is_solid = domain.is_solid.to_numpy()
+    
+    # Initialize cumulative map (will be NaN-masked at the end)
+    cumulative_map = np.zeros((ni, nj), dtype=np.float64)
+    time_step_hours = kwargs.get('time_step_hours', 1.0)
+    
+    # Get radiation model for reflections if needed
+    model = None
+    ground_k = None
+    if with_reflections:
+        n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
+        model, valid_ground, ground_k = _get_or_create_radiation_model(
+            voxcity,
+            n_reflection_steps=n_reflection_steps,
+            progress_report=progress_report,
+            **kwargs
+        )
+        
+        # Note: C2S-VF matrix caching is disabled for large domains because
+        # the matrix itself is too large (N_cells * N_surfaces can be > 1 trillion).
+        # Instead, we use per-timestep computation with a distance cutoff which
+        # is much more memory efficient.
+    else:
+        # Compute ground_k for terrain-following extraction
+        ground_k = _compute_ground_k_from_voxels(voxel_data)
+    
+    # Extract arrays
+    azimuth_arr = solar_positions['azimuth'].to_numpy()
+    elevation_arr = solar_positions['elevation'].to_numpy()
+    dni_arr = df_period_utc['DNI'].to_numpy() * direct_normal_irradiance_scaling
+    dhi_arr = df_period_utc['DHI'].to_numpy() * diffuse_irradiance_scaling
+    
+    n_timesteps = len(azimuth_arr)
+    
+    if progress_report:
+        print(f"Computing cumulative volumetric irradiance for {n_timesteps} timesteps...")
+        print(f"  Height: {volumetric_height}m, Reflections: {'on' if with_reflections else 'off'}")
+    
+    t0 = time.perf_counter() if progress_report else 0
+    
+    if use_sky_patches:
+        # Use sky patch aggregation for efficiency
+        from .sky import (
+            generate_tregenza_patches,
+            generate_reinhart_patches,
+            generate_uniform_grid_patches,
+            generate_fibonacci_patches,
+            get_tregenza_patch_index
+        )
+        
+        # Generate sky patches
+        if sky_discretization.lower() == 'tregenza':
+            patches, directions, solid_angles = generate_tregenza_patches()
+        elif sky_discretization.lower() == 'reinhart':
+            mf = kwargs.get('reinhart_mf', kwargs.get('mf', 4))
+            patches, directions, solid_angles = generate_reinhart_patches(mf=mf)
+        elif sky_discretization.lower() == 'uniform':
+            n_az = kwargs.get('sky_n_azimuth', 36)
+            n_el = kwargs.get('sky_n_elevation', 9)
+            patches, directions, solid_angles = generate_uniform_grid_patches(n_az, n_el)
+        elif sky_discretization.lower() == 'fibonacci':
+            n_patches = kwargs.get('sky_n_patches', 145)
+            patches, directions, solid_angles = generate_fibonacci_patches(n_patches=n_patches)
+        else:
+            raise ValueError(f"Unknown sky discretization method: {sky_discretization}")
+        
+        n_patches = len(patches)
+        cumulative_dni = np.zeros(n_patches, dtype=np.float64)
+        total_dhi = 0.0
+        
+        # Bin sun positions to patches
+        for i in range(n_timesteps):
+            elev = elevation_arr[i]
+            if elev <= 0:
+                continue
+            
+            az = azimuth_arr[i]
+            dni = dni_arr[i]
+            dhi = dhi_arr[i]
+            
+            if dni > 0:
+                patch_idx = get_tregenza_patch_index(az, elev)
+                if 0 <= patch_idx < n_patches:
+                    cumulative_dni[patch_idx] += dni * time_step_hours
+            
+            if dhi > 0:
+                total_dhi += dhi * time_step_hours
+        
+        # Process each patch with accumulated DNI
+        patches_with_dni = np.where(cumulative_dni > 0)[0]
+        
+        if progress_report:
+            print(f"  Processing {len(patches_with_dni)} sky patches with accumulated DNI...")
+        
+        for idx, patch_idx in enumerate(patches_with_dni):
+            patch_dni = cumulative_dni[patch_idx]
+            patch_dir = directions[patch_idx]
+            
+            # Convert patch direction to azimuth/elevation
+            patch_azimuth_ori = math.degrees(math.atan2(patch_dir[0], patch_dir[1]))
+            if patch_azimuth_ori < 0:
+                patch_azimuth_ori += 360
+            patch_elevation = math.degrees(math.asin(patch_dir[2]))
+            
+            # Apply same coordinate transform as ground-level functions
+            patch_azimuth = 180 - patch_azimuth_ori
+            azimuth_rad = math.radians(patch_azimuth)
+            elevation_rad = math.radians(patch_elevation)
+            cos_elev = math.cos(elevation_rad)
+            sin_elev = math.sin(elevation_rad)
+            
+            cos_zenith = sin_elev
+            sun_dir_x = cos_elev * math.cos(azimuth_rad)
+            sun_dir_y = cos_elev * math.sin(azimuth_rad)
+            sun_dir_z = sin_elev
+            sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
+            
+            if with_reflections and model is not None:
+                # Set solar position on the model
+                model.solar_calc.cos_zenith[None] = cos_zenith
+                model.solar_calc.sun_direction[None] = [sun_direction[0], sun_direction[1], sun_direction[2]]
+                model.solar_calc.sun_up[None] = 1 if cos_zenith > 0 else 0
+                
+                # Compute surface irradiance with reflections (uses cached SVF matrix)
+                model.compute_shortwave_radiation(
+                    sw_direct=patch_dni / time_step_hours,  # Instantaneous for reflection calc
+                    sw_diffuse=0.0  # DHI handled separately
+                )
+                
+                n_surfaces = model.surfaces.count
+                surf_outgoing = model.surfaces.sw_out.to_numpy()[:n_surfaces]
+                
+                # Use non-cached volumetric reflection computation with distance cutoff
+                calculator.compute_swflux_vol_with_reflections(
+                    sw_direct=patch_dni / time_step_hours,
+                    sw_diffuse=0.0,
+                    cos_zenith=cos_zenith,
+                    sun_direction=sun_direction,
+                    surfaces=model.surfaces,
+                    surf_outgoing=surf_outgoing,
+                    lad=domain.lad
+                )
+            else:
+                calculator.compute_swflux_vol(
+                    sw_direct=patch_dni / time_step_hours,
+                    sw_diffuse=0.0,
+                    cos_zenith=cos_zenith,
+                    sun_direction=sun_direction,
+                    lad=domain.lad
+                )
+            
+            # Accumulate using terrain-following extraction
+            swflux_3d = calculator.get_swflux_vol()
+            _accumulate_terrain_following_slice(
+                cumulative_map, swflux_3d, ground_k, height_offset_k, is_solid,
+                weight=time_step_hours
+            )
+            
+            if progress_report and (idx + 1) % 10 == 0:
+                elapsed = time.perf_counter() - t0
+                print(f"    Processed {idx + 1}/{len(patches_with_dni)} patches ({elapsed:.1f}s)")
+        
+        # Add diffuse contribution (use SVF-based diffuse with terrain-following extraction)
+        if total_dhi > 0:
+            svf_vol = calculator.get_skyvf_vol()
+            _accumulate_terrain_following_slice(
+                cumulative_map, svf_vol, ground_k, height_offset_k, is_solid,
+                weight=total_dhi
+            )
+    
+    else:
+        # Process each timestep individually
+        for i in range(n_timesteps):
+            elev = elevation_arr[i]
+            if elev <= 0:
+                continue
+            
+            az = azimuth_arr[i]
+            dni = dni_arr[i]
+            dhi = dhi_arr[i]
+            
+            if dni <= 0 and dhi <= 0:
+                continue
+            
+            # Convert to direction vector
+            # Match the coordinate system used in ground-level functions
+            azimuth_degrees = 180 - az
+            azimuth_rad = math.radians(azimuth_degrees)
+            elevation_rad = math.radians(elev)
+            cos_elev = math.cos(elevation_rad)
+            sin_elev = math.sin(elevation_rad)
+            
+            sun_dir_x = cos_elev * math.cos(azimuth_rad)
+            sun_dir_y = cos_elev * math.sin(azimuth_rad)
+            sun_dir_z = sin_elev
+            sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
+            cos_zenith = sin_elev
+            
+            if with_reflections and model is not None:
+                # Set solar position on the model
+                model.solar_calc.cos_zenith[None] = cos_zenith
+                model.solar_calc.sun_direction[None] = [sun_direction[0], sun_direction[1], sun_direction[2]]
+                model.solar_calc.sun_up[None] = 1 if cos_zenith > 0 else 0
+                
+                model.compute_shortwave_radiation(
+                    sw_direct=dni,
+                    sw_diffuse=dhi
+                )
+                
+                n_surfaces = model.surfaces.count
+                surf_outgoing = model.surfaces.sw_out.to_numpy()[:n_surfaces]
+                
+                # Use non-cached volumetric reflection computation with distance cutoff
+                calculator.compute_swflux_vol_with_reflections(
+                    sw_direct=dni,
+                    sw_diffuse=dhi,
+                    cos_zenith=cos_zenith,
+                    sun_direction=sun_direction,
+                    surfaces=model.surfaces,
+                    surf_outgoing=surf_outgoing,
+                    lad=domain.lad
+                )
+            else:
+                calculator.compute_swflux_vol(
+                    sw_direct=dni,
+                    sw_diffuse=dhi,
+                    cos_zenith=cos_zenith,
+                    sun_direction=sun_direction,
+                    lad=domain.lad
+                )
+            
+            # Accumulate using terrain-following extraction
+            swflux_3d = calculator.get_swflux_vol()
+            _accumulate_terrain_following_slice(
+                cumulative_map, swflux_3d, ground_k, height_offset_k, is_solid,
+                weight=time_step_hours
+            )
+            
+            if progress_report and (i + 1) % 100 == 0:
+                elapsed = time.perf_counter() - t0
+                print(f"  Processed {i + 1}/{n_timesteps} timesteps ({elapsed:.1f}s)")
+    
+    if progress_report:
+        elapsed = time.perf_counter() - t0
+        print(f"Cumulative volumetric irradiance complete in {elapsed:.2f}s")
+    
+    # Apply terrain-following NaN mask for cells without valid ground
+    for i in range(ni):
+        for j in range(nj):
+            gk = ground_k[i, j]
+            if gk < 0:
+                cumulative_map[i, j] = np.nan
+                continue
+            k_extract = gk + height_offset_k
+            if k_extract >= nk:
+                cumulative_map[i, j] = np.nan
+                continue
+            if is_solid[i, j, k_extract] == 1:
+                cumulative_map[i, j] = np.nan
+    
+    # Flip to match VoxCity coordinate system
+    cumulative_map = np.flipud(cumulative_map)
+    
+    if show_plot:
+        colormap = kwargs.get('colormap', 'magma')
+        vmin = kwargs.get('vmin', 0.0)
+        vmax = kwargs.get('vmax', max(float(np.nanmax(cumulative_map)), 1.0))
+        try:
+            import matplotlib.pyplot as plt
+            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap.set_bad(color='lightgray')
+            plt.figure(figsize=(10, 8))
+            plt.imshow(cumulative_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+            plt.colorbar(label=f'Cumulative Volumetric Irradiance at {volumetric_height}m (Wh/m²)')
+            plt.title(f'Cumulative Volumetric Irradiance (reflections={"on" if with_reflections else "off"})')
+            plt.axis('off')
+            plt.show()
+        except ImportError:
+            pass
+    
+    return cumulative_map
+
+
+def get_volumetric_solar_irradiance_using_epw(
+    voxcity,
+    calc_type: str = 'instantaneous',
+    direct_normal_irradiance_scaling: float = 1.0,
+    diffuse_irradiance_scaling: float = 1.0,
+    volumetric_height: float = 1.5,
+    with_reflections: bool = False,
+    show_plot: bool = False,
+    **kwargs
+) -> np.ndarray:
+    """
+    GPU-accelerated volumetric solar irradiance from EPW file.
+    
+    Computes 3D radiation fields and extracts a 2D horizontal slice at the 
+    specified height above ground. This is useful for:
+    - Mean Radiant Temperature (MRT) calculations
+    - Pedestrian thermal comfort analysis
+    - Light availability assessment
+    
+    Args:
+        voxcity: VoxCity object
+        calc_type: 'instantaneous' or 'cumulative'
+        direct_normal_irradiance_scaling: Scaling factor for DNI
+        diffuse_irradiance_scaling: Scaling factor for DHI
+        volumetric_height: Height above ground for irradiance extraction (meters)
+        with_reflections: If True, include reflected radiation from buildings,
+            ground, and tree canopy surfaces. If False (default), only direct
+            + diffuse sky radiation.
+        show_plot: Whether to display a matplotlib plot
+        **kwargs: Additional parameters including:
+            - epw_file_path (str): Path to EPW file
+            - download_nearest_epw (bool): Download nearest EPW (default: False)
+            - calc_time (str): For instantaneous: 'MM-DD HH:MM:SS'
+            - start_time, end_time (str): For cumulative: 'MM-DD HH:MM:SS'
+            - rectangle_vertices: Location vertices (for EPW download)
+            - n_reflection_steps (int): Reflection bounces when with_reflections=True (default: 2)
+    
+    Returns:
+        2D numpy array of volumetric irradiance at the specified height (W/m² or Wh/m²)
+    """
+    from datetime import datetime
+    import pytz
+    
+    # Get EPW file
+    epw_file_path = kwargs.get('epw_file_path', None)
+    download_nearest_epw = kwargs.get('download_nearest_epw', False)
+    
+    rectangle_vertices = kwargs.get('rectangle_vertices', None)
+    if rectangle_vertices is None:
+        extras = getattr(voxcity, 'extras', None)
+        if isinstance(extras, dict):
+            rectangle_vertices = extras.get('rectangle_vertices', None)
+    
+    if download_nearest_epw:
+        if rectangle_vertices is None:
+            raise ValueError("rectangle_vertices required to download nearest EPW file")
+        
+        try:
+            from voxcity.utils.weather import get_nearest_epw_from_climate_onebuilding
+            lons = [coord[0] for coord in rectangle_vertices]
+            lats = [coord[1] for coord in rectangle_vertices]
+            center_lon = (min(lons) + max(lons)) / 2
+            center_lat = (min(lats) + max(lats)) / 2
+            output_dir = kwargs.get('output_dir', 'output')
+            max_distance = kwargs.get('max_distance', 100)
+            
+            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
+                longitude=center_lon,
+                latitude=center_lat,
+                output_dir=output_dir,
+                max_distance=max_distance,
+                extract_zip=True,
+                load_data=True
+            )
+        except ImportError:
+            raise ImportError("VoxCity weather utilities required for EPW download")
+    
+    if not epw_file_path:
+        raise ValueError("epw_file_path must be provided when download_nearest_epw is False")
+    
+    # Read EPW
+    try:
+        from voxcity.utils.weather import read_epw_for_solar_simulation
+        df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
+    except ImportError:
+        from .epw import read_epw_header, read_epw_solar_data
+        location = read_epw_header(epw_file_path)
+        df = read_epw_solar_data(epw_file_path)
+        lon, lat, tz = location.longitude, location.latitude, location.timezone
+    
+    if df.empty:
+        raise ValueError("No data in EPW file.")
+    
+    if calc_type == 'instantaneous':
+        calc_time = kwargs.get('calc_time', '01-01 12:00:00')
+        try:
+            calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%SS')
+        except ValueError:
+            try:
+                calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%S')
+            except ValueError:
+                raise ValueError("calc_time must be in format 'MM-DD HH:MM:SS'")
+        
+        df_period = df[
+            (df.index.month == calc_dt.month) &
+            (df.index.day == calc_dt.day) &
+            (df.index.hour == calc_dt.hour)
+        ]
+        if df_period.empty:
+            raise ValueError("No EPW data at the specified time.")
+        
+        # Get solar position
+        offset_minutes = int(tz * 60)
+        local_tz = pytz.FixedOffset(offset_minutes)
+        df_local = df_period.copy()
+        df_local.index = df_local.index.tz_localize(local_tz)
+        df_utc = df_local.tz_convert(pytz.UTC)
+        
+        solar_positions = _get_solar_positions_astral(df_utc.index, lon, lat)
+        DNI = float(df_utc.iloc[0]['DNI']) * direct_normal_irradiance_scaling
+        DHI = float(df_utc.iloc[0]['DHI']) * diffuse_irradiance_scaling
+        azimuth_degrees = float(solar_positions.iloc[0]['azimuth'])
+        elevation_degrees = float(solar_positions.iloc[0]['elevation'])
+        
+        return get_volumetric_solar_irradiance_map(
+            voxcity,
+            azimuth_degrees,
+            elevation_degrees,
+            DNI,
+            DHI,
+            volumetric_height=volumetric_height,
+            with_reflections=with_reflections,
+            show_plot=show_plot,
+            **kwargs
+        )
+    
+    elif calc_type == 'cumulative':
+        return get_cumulative_volumetric_solar_irradiance(
+            voxcity,
+            df,
+            lon,
+            lat,
+            tz,
+            direct_normal_irradiance_scaling=direct_normal_irradiance_scaling,
+            diffuse_irradiance_scaling=diffuse_irradiance_scaling,
+            volumetric_height=volumetric_height,
+            with_reflections=with_reflections,
+            show_plot=show_plot,
+            **kwargs
+        )
+    
+    else:
+        raise ValueError(f"Unknown calc_type: {calc_type}. Use 'instantaneous' or 'cumulative'.")
+
+
 def get_global_solar_irradiance_using_epw(
     voxcity,
     calc_type: str = 'instantaneous',
@@ -2465,7 +3463,7 @@ def get_global_solar_irradiance_using_epw(
     
     Args:
         voxcity: VoxCity object
-        calc_type: 'instantaneous' or 'cumulative'
+        calc_type: 'instantaneous', 'cumulative', or 'volumetric'
         direct_normal_irradiance_scaling: Scaling factor for DNI
         diffuse_irradiance_scaling: Scaling factor for DHI
         show_plot: Whether to display a matplotlib plot
@@ -2473,8 +3471,10 @@ def get_global_solar_irradiance_using_epw(
             - epw_file_path (str): Path to EPW file
             - download_nearest_epw (bool): Download nearest EPW (default: False)
             - calc_time (str): For instantaneous: 'MM-DD HH:MM:SS'
-            - start_time, end_time (str): For cumulative: 'MM-DD HH:MM:SS'
+            - start_time, end_time (str): For cumulative/volumetric: 'MM-DD HH:MM:SS'
             - rectangle_vertices: Location vertices (for EPW download)
+            - volumetric_height (float): Height for volumetric mode (default: 1.5)
+            - with_reflections (bool): Include reflections for volumetric mode (default: False)
     
     Returns:
         2D numpy array of irradiance (W/m² or Wh/m²)
@@ -2584,8 +3584,72 @@ def get_global_solar_irradiance_using_epw(
             **kwargs
         )
     
+    elif calc_type == 'volumetric':
+        # Volumetric mode: compute 3D radiation field at specified height
+        volumetric_height = kwargs.pop('volumetric_height', kwargs.pop('view_point_height', 1.5))
+        with_reflections = kwargs.pop('with_reflections', False)
+        
+        # Determine if instantaneous or cumulative based on provided time parameters
+        calc_time = kwargs.get('calc_time', None)
+        start_time = kwargs.get('start_time', None)
+        end_time = kwargs.get('end_time', None)
+        
+        if calc_time is not None and start_time is None and end_time is None:
+            # Instantaneous volumetric
+            try:
+                calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%S')
+            except ValueError:
+                raise ValueError("calc_time must be in format 'MM-DD HH:MM:SS'")
+            
+            df_period = df[
+                (df.index.month == calc_dt.month) &
+                (df.index.day == calc_dt.day) &
+                (df.index.hour == calc_dt.hour)
+            ]
+            if df_period.empty:
+                raise ValueError("No EPW data at the specified time.")
+            
+            offset_minutes = int(tz * 60)
+            local_tz = pytz.FixedOffset(offset_minutes)
+            df_local = df_period.copy()
+            df_local.index = df_local.index.tz_localize(local_tz)
+            df_utc = df_local.tz_convert(pytz.UTC)
+            
+            solar_positions = _get_solar_positions_astral(df_utc.index, lon, lat)
+            DNI = float(df_utc.iloc[0]['DNI']) * direct_normal_irradiance_scaling
+            DHI = float(df_utc.iloc[0]['DHI']) * diffuse_irradiance_scaling
+            azimuth_degrees = float(solar_positions.iloc[0]['azimuth'])
+            elevation_degrees = float(solar_positions.iloc[0]['elevation'])
+            
+            return get_volumetric_solar_irradiance_map(
+                voxcity,
+                azimuth_degrees,
+                elevation_degrees,
+                DNI,
+                DHI,
+                volumetric_height=volumetric_height,
+                with_reflections=with_reflections,
+                show_plot=show_plot,
+                **kwargs
+            )
+        else:
+            # Cumulative volumetric
+            return get_cumulative_volumetric_solar_irradiance(
+                voxcity,
+                df,
+                lon,
+                lat,
+                tz,
+                direct_normal_irradiance_scaling=direct_normal_irradiance_scaling,
+                diffuse_irradiance_scaling=diffuse_irradiance_scaling,
+                volumetric_height=volumetric_height,
+                with_reflections=with_reflections,
+                show_plot=show_plot,
+                **kwargs
+            )
+    
     else:
-        raise ValueError(f"Unknown calc_type: {calc_type}. Use 'instantaneous' or 'cumulative'.")
+        raise ValueError(f"Unknown calc_type: {calc_type}. Use 'instantaneous', 'cumulative', or 'volumetric'.")
 
 
 def save_irradiance_mesh(mesh, filepath: str) -> None:

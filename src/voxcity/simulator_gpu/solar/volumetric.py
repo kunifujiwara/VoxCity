@@ -117,6 +117,38 @@ class VolumetricFluxCalculator:
         
         # Flag for computed state
         self._skyvf_computed = False
+        
+        # ========== Cell-to-Surface View Factor (C2S-VF) Matrix Caching ==========
+        # Pre-compute which surfaces each voxel cell can see and their view factors.
+        # This makes reflected flux computation O(nnz) instead of O(N_cells * N_surfaces).
+        # 
+        # Stored in sparse COO format:
+        # - c2s_cell_idx[i]: Linear cell index (i * ny * nz + j * nz + k)
+        # - c2s_surf_idx[i]: Surface index
+        # - c2s_vf[i]: View factor (includes geometry + transmissivity)
+        #
+        # For multi-timestep simulations with reflections, call compute_c2s_matrix()
+        # once to pre-compute, then use fast compute_reflected_flux_vol_cached().
+        
+        self._c2s_matrix_cached = False
+        self._c2s_nnz = 0
+        
+        # Estimate max non-zeros: assume each cell sees ~50 surfaces on average
+        # For a 200x200x50 domain = 2M cells * 50 = 100M entries max
+        # Cap at reasonable memory limit (~1.6GB for the 4 arrays)
+        n_cells = self.nx * self.ny * self.nz
+        estimated_entries = min(n_cells * 50, 100_000_000)
+        self._max_c2s_entries = estimated_entries
+        
+        # Sparse COO arrays for C2S-VF matrix (allocated on demand)
+        self._c2s_cell_idx = None
+        self._c2s_surf_idx = None
+        self._c2s_vf = None
+        self._c2s_count = None
+        
+        # Pre-allocated surface outgoing field for efficient repeated calls
+        self._surf_out_field = None
+        self._surf_out_max_size = 0
     
     @ti.kernel
     def _init_azimuth_directions(self):
@@ -946,6 +978,9 @@ class VolumetricFluxCalculator:
         For each grid cell, integrates reflected radiation from all visible
         surfaces weighted by view factor and transmissivity.
         
+        Uses a max distance cutoff for performance - view factor drops as 1/d²,
+        so distant surfaces contribute negligibly.
+        
         Args:
             n_surfaces: Number of surface elements
             surf_center: Surface center positions (n_surfaces, 3)
@@ -959,6 +994,10 @@ class VolumetricFluxCalculator:
         # For a sphere at each grid cell, reflected flux is:
         # flux = Σ (surfout * area * transmissivity * cos_angle) / (4 * π * dist²)
         # The factor 0.25 accounts for sphere geometry (projected area / surface area)
+        
+        # Maximum distance for reflections (meters). Beyond this, VF is negligible.
+        # At 30m with 1m² area, VF contribution is ~1/(π*900) ≈ 0.035%
+        max_dist_sq = 900.0  # 30m max distance
         
         for i, j, k in ti.ndrange(self.nx, self.ny, self.nz):
             # Skip solid cells
@@ -980,18 +1019,20 @@ class VolumetricFluxCalculator:
                     surf_x = surf_center[surf_idx][0]
                     surf_y = surf_center[surf_idx][1]
                     surf_z = surf_center[surf_idx][2]
-                    surf_nx = surf_normal[surf_idx][0]
-                    surf_ny = surf_normal[surf_idx][1]
-                    surf_nz = surf_normal[surf_idx][2]
-                    area = surf_area[surf_idx]
                     
-                    # Distance to surface
+                    # Distance to surface - early exit for distant surfaces
                     dx = cell_x - surf_x
                     dy = cell_y - surf_y
                     dz = cell_z - surf_z
                     dist_sq = dx*dx + dy*dy + dz*dz
                     
-                    if dist_sq > 0.01:  # Avoid numerical issues
+                    # Skip if beyond max distance or too close
+                    if dist_sq > 0.01 and dist_sq < max_dist_sq:
+                        surf_nx = surf_normal[surf_idx][0]
+                        surf_ny = surf_normal[surf_idx][1]
+                        surf_nz = surf_normal[surf_idx][2]
+                        area = surf_area[surf_idx]
+                        
                         dist = ti.sqrt(dist_sq)
                         
                         # Direction from surface to cell (normalized)
@@ -1030,6 +1071,10 @@ class VolumetricFluxCalculator:
         This propagates reflected radiation from surfaces into the 3D volume.
         Should be called after surface reflection calculations are complete.
         
+        NOTE: This is O(N_cells * N_surfaces) and can be slow for large domains.
+        For repeated calls, use compute_c2s_matrix() once followed by
+        compute_reflected_flux_vol_cached() for O(nnz) computation.
+        
         Args:
             surfaces: Surfaces object with geometry (center, normal, area)
             surf_outgoing: Array of surface outgoing radiation (W/m²)
@@ -1038,16 +1083,18 @@ class VolumetricFluxCalculator:
         n_surfaces = surfaces.n_surfaces[None]
         
         if n_surfaces == 0:
-            print("Warning: No surfaces defined, skipping reflected flux calculation")
             return
         
-        # Create temporary taichi field for outgoing radiation
-        surf_out_field = ti.field(dtype=ti.f32, shape=(n_surfaces,))
-        surf_out_field.from_numpy(surf_outgoing[:n_surfaces].astype(np.float32))
+        # Re-use pre-allocated field if available, otherwise create temporary
+        if self._surf_out_field is not None and self._surf_out_max_size >= n_surfaces:
+            self._surf_out_field.from_numpy(surf_outgoing[:n_surfaces].astype(np.float32))
+            surf_out_field = self._surf_out_field
+        else:
+            # Create temporary taichi field for outgoing radiation
+            surf_out_field = ti.field(dtype=ti.f32, shape=(n_surfaces,))
+            surf_out_field.from_numpy(surf_outgoing[:n_surfaces].astype(np.float32))
         
         has_lad = 1 if self.domain.lad is not None else 0
-        
-        print(f"Computing volumetric reflected flux from {n_surfaces} surfaces...")
         
         if has_lad:
             self._compute_reflected_flux_kernel(
@@ -1071,8 +1118,6 @@ class VolumetricFluxCalculator:
                 self.domain.lad,
                 0
             )
-        
-        print("Volumetric reflected flux computation complete.")
     
     @ti.kernel
     def _add_reflected_to_total(self):
@@ -1149,3 +1194,272 @@ class VolumetricFluxCalculator:
             'reflected': self.swflux_reflected_vol.to_numpy(),
             'skyvf': self.skyvf_vol.to_numpy()
         }
+
+    # =========================================================================
+    # Cell-to-Surface View Factor (C2S-VF) Matrix Caching
+    # =========================================================================
+    # These methods pre-compute which surfaces each voxel cell can see,
+    # making repeated reflected flux calculations O(nnz) instead of O(N*M).
+    
+    def compute_c2s_matrix(
+        self,
+        surfaces,
+        is_solid,
+        lad=None,
+        min_vf_threshold: float = 1e-6,
+        progress_report: bool = False
+    ):
+        """
+        Pre-compute Cell-to-Surface View Factor matrix for fast reflections.
+        
+        This is O(N_cells * N_surfaces) but only needs to be done once for
+        fixed geometry. Subsequent calls to compute_reflected_flux_vol_cached()
+        become O(nnz) instead of O(N*M).
+        
+        Call this before running multi-timestep simulations with reflections.
+        
+        Args:
+            surfaces: Surfaces object with center, normal, area fields
+            is_solid: 3D solid obstacle field
+            lad: Optional LAD field for vegetation attenuation
+            min_vf_threshold: Minimum view factor to store (sparsity threshold)
+            progress_report: Print progress messages
+        """
+        if self._c2s_matrix_cached:
+            if progress_report:
+                print("C2S-VF matrix already cached, skipping recomputation.")
+            return
+        
+        n_surfaces = surfaces.n_surfaces[None]
+        n_cells = self.nx * self.ny * self.nz
+        
+        if progress_report:
+            print(f"Pre-computing C2S-VF matrix: {n_cells:,} cells × {n_surfaces:,} surfaces")
+            print("  This is O(N*M) but only runs once for fixed geometry.")
+        
+        # Allocate sparse COO arrays if not already done
+        if self._c2s_cell_idx is None:
+            self._c2s_cell_idx = ti.field(dtype=ti.i32, shape=(self._max_c2s_entries,))
+            self._c2s_surf_idx = ti.field(dtype=ti.i32, shape=(self._max_c2s_entries,))
+            self._c2s_vf = ti.field(dtype=ti.f32, shape=(self._max_c2s_entries,))
+            self._c2s_count = ti.field(dtype=ti.i32, shape=())
+        
+        has_lad = 1 if lad is not None else 0
+        
+        # Compute the matrix
+        self._c2s_count[None] = 0
+        self._compute_c2s_matrix_kernel(
+            n_surfaces,
+            surfaces.center,
+            surfaces.normal,
+            surfaces.area,
+            is_solid,
+            lad if lad is not None else self.domain.lad,  # Fallback to domain LAD
+            has_lad,
+            min_vf_threshold
+        )
+        
+        computed_nnz = int(self._c2s_count[None])
+        if computed_nnz > self._max_c2s_entries:
+            print(f"Warning: C2S-VF matrix truncated! {computed_nnz:,} > {self._max_c2s_entries:,}")
+            print("  Consider increasing _max_c2s_entries.")
+            self._c2s_nnz = self._max_c2s_entries
+        else:
+            self._c2s_nnz = computed_nnz
+        
+        self._c2s_matrix_cached = True
+        
+        sparsity_pct = self._c2s_nnz / (n_cells * n_surfaces) * 100 if n_surfaces > 0 else 0
+        if progress_report:
+            print(f"  C2S-VF matrix computed: {self._c2s_nnz:,} non-zero entries")
+            print(f"  Sparsity: {sparsity_pct:.4f}% of full matrix")
+            speedup = (n_cells * n_surfaces) / max(1, self._c2s_nnz)
+            print(f"  Speedup factor: ~{speedup:.0f}x per timestep")
+    
+    @ti.kernel
+    def _compute_c2s_matrix_kernel(
+        self,
+        n_surfaces: ti.i32,
+        surf_center: ti.template(),
+        surf_normal: ti.template(),
+        surf_area: ti.template(),
+        is_solid: ti.template(),
+        lad: ti.template(),
+        has_lad: ti.i32,
+        min_threshold: ti.f32
+    ):
+        """
+        Compute C2S-VF matrix entries.
+        
+        For each (cell, surface) pair, compute the view factor including
+        geometry and transmissivity. Store if above threshold.
+        """
+        for i, j, k in ti.ndrange(self.nx, self.ny, self.nz):
+            # Skip solid cells
+            if is_solid[i, j, k] == 1:
+                continue
+            
+            cell_idx = i * (self.ny * self.nz) + j * self.nz + k
+            cell_x = (ti.cast(i, ti.f32) + 0.5) * self.dx
+            cell_y = (ti.cast(j, ti.f32) + 0.5) * self.dy
+            cell_z = (ti.cast(k, ti.f32) + 0.5) * self.dz
+            
+            for surf_idx in range(n_surfaces):
+                surf_x = surf_center[surf_idx][0]
+                surf_y = surf_center[surf_idx][1]
+                surf_z = surf_center[surf_idx][2]
+                surf_nx = surf_normal[surf_idx][0]
+                surf_ny = surf_normal[surf_idx][1]
+                surf_nz = surf_normal[surf_idx][2]
+                area = surf_area[surf_idx]
+                
+                # Distance to surface
+                dx = cell_x - surf_x
+                dy = cell_y - surf_y
+                dz = cell_z - surf_z
+                dist_sq = dx*dx + dy*dy + dz*dz
+                
+                if dist_sq > 0.01:  # Avoid numerical issues
+                    dist = ti.sqrt(dist_sq)
+                    
+                    # Direction from surface to cell (normalized)
+                    dir_x = dx / dist
+                    dir_y = dy / dist
+                    dir_z = dz / dist
+                    
+                    # Cosine of angle between normal and direction
+                    cos_angle = dir_x * surf_nx + dir_y * surf_ny + dir_z * surf_nz
+                    
+                    if cos_angle > 0.0:  # Surface faces the cell
+                        # Get transmissivity
+                        trans = self._trace_transmissivity_to_surface(
+                            i, j, k, surf_x, surf_y, surf_z,
+                            surf_nx, surf_ny, surf_nz,
+                            is_solid, lad, has_lad
+                        )
+                        
+                        if trans > 0.0:
+                            # View factor: (A * cos_θ) / (π * d²) * 0.25 for sphere
+                            vf = area * cos_angle / (PI * dist_sq) * trans * 0.25
+                            
+                            if vf > min_threshold:
+                                idx = ti.atomic_add(self._c2s_count[None], 1)
+                                if idx < self._max_c2s_entries:
+                                    self._c2s_cell_idx[idx] = cell_idx
+                                    self._c2s_surf_idx[idx] = surf_idx
+                                    self._c2s_vf[idx] = vf
+    
+    def compute_reflected_flux_vol_cached(
+        self,
+        surf_outgoing: np.ndarray,
+        progress_report: bool = False
+    ):
+        """
+        Compute volumetric reflected flux using cached C2S-VF matrix.
+        
+        This is O(nnz) instead of O(N_cells * N_surfaces), providing
+        massive speedup for repeated calls with different surface radiation.
+        
+        Must call compute_c2s_matrix() first.
+        
+        Args:
+            surf_outgoing: Array of surface outgoing radiation (W/m²)
+            progress_report: Print progress messages
+        """
+        if not self._c2s_matrix_cached:
+            raise RuntimeError("C2S-VF matrix not computed. Call compute_c2s_matrix() first.")
+        
+        n_surfaces = len(surf_outgoing)
+        
+        # Allocate or resize surface outgoing field if needed
+        if self._surf_out_field is None or self._surf_out_max_size < n_surfaces:
+            self._surf_out_field = ti.field(dtype=ti.f32, shape=(n_surfaces,))
+            self._surf_out_max_size = n_surfaces
+        
+        # Copy outgoing radiation to Taichi field
+        self._surf_out_field.from_numpy(surf_outgoing.astype(np.float32))
+        
+        # Clear reflected flux field
+        self._clear_reflected_flux()
+        
+        # Use sparse matrix-vector multiply
+        self._apply_c2s_matrix_kernel(self._c2s_nnz)
+        
+        if progress_report:
+            print(f"Computed volumetric reflected flux using cached C2S-VF ({self._c2s_nnz:,} entries)")
+    
+    @ti.kernel
+    def _apply_c2s_matrix_kernel(self, c2s_nnz: ti.i32):
+        """
+        Apply C2S-VF matrix to compute reflected flux.
+        
+        flux[cell] = Σ (vf[cell, surf] * outgoing[surf])
+        
+        Uses atomic operations for parallel accumulation.
+        """
+        for idx in range(c2s_nnz):
+            cell_idx = self._c2s_cell_idx[idx]
+            surf_idx = self._c2s_surf_idx[idx]
+            vf = self._c2s_vf[idx]
+            
+            outgoing = self._surf_out_field[surf_idx]
+            
+            if outgoing > 0.1:  # Threshold for negligible contributions
+                # Reconstruct 3D indices from linear index
+                # cell_idx = i * (ny * nz) + j * nz + k
+                tmp = cell_idx
+                k = tmp % self.nz
+                tmp //= self.nz
+                j = tmp % self.ny
+                i = tmp // self.ny
+                
+                ti.atomic_add(self.swflux_reflected_vol[i, j, k], outgoing * vf)
+    
+    def invalidate_c2s_cache(self):
+        """
+        Invalidate the cached C2S-VF matrix.
+        
+        Call this if geometry (buildings, terrain, vegetation) changes.
+        """
+        self._c2s_matrix_cached = False
+        self._c2s_nnz = 0
+    
+    @property
+    def c2s_matrix_cached(self) -> bool:
+        """Check if C2S-VF matrix is currently cached."""
+        return self._c2s_matrix_cached
+    
+    @property
+    def c2s_matrix_entries(self) -> int:
+        """Get number of non-zero entries in cached C2S-VF matrix."""
+        return self._c2s_nnz
+    
+    def compute_swflux_vol_with_reflections_cached(
+        self,
+        sw_direct: float,
+        sw_diffuse: float,
+        cos_zenith: float,
+        sun_direction: Tuple[float, float, float],
+        surf_outgoing: np.ndarray,
+        lad=None
+    ):
+        """
+        Compute volumetric shortwave flux with reflections using cached matrix.
+        
+        This is the fast path for multi-timestep simulations. Must call
+        compute_c2s_matrix() once before using this method.
+        
+        Args:
+            sw_direct: Direct normal irradiance (W/m²)
+            sw_diffuse: Diffuse horizontal irradiance (W/m²)
+            cos_zenith: Cosine of solar zenith angle
+            sun_direction: Unit vector toward sun (x, y, z)
+            surf_outgoing: Surface outgoing radiation array (W/m²)
+            lad: Optional LAD field for canopy attenuation
+        """
+        # Compute direct + diffuse
+        self.compute_swflux_vol(sw_direct, sw_diffuse, cos_zenith, sun_direction, lad)
+        
+        # Compute reflected using cached matrix
+        self.compute_reflected_flux_vol_cached(surf_outgoing)
+        self._add_reflected_to_total()

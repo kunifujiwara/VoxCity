@@ -100,6 +100,11 @@ from .integration import (
     get_cumulative_building_solar_irradiance,
     get_global_solar_irradiance_using_epw,
     get_building_global_solar_irradiance_using_epw,
+    # Volumetric solar irradiance functions
+    get_volumetric_solar_irradiance_map,
+    get_cumulative_volumetric_solar_irradiance,
+    get_volumetric_solar_irradiance_using_epw,
+    clear_volumetric_flux_cache,
     save_irradiance_mesh,
     load_irradiance_mesh,
     # Temporal utilities
@@ -108,6 +113,7 @@ from .integration import (
     clear_radiation_model_cache,
     clear_building_radiation_model_cache,
     clear_all_radiation_caches,
+    clear_all_caches,
 )
 
 __version__ = "0.1.0"
@@ -185,6 +191,11 @@ __all__ = [
     'get_cumulative_building_solar_irradiance',
     'get_global_solar_irradiance_using_epw',
     'get_building_global_solar_irradiance_using_epw',
+    # Volumetric solar irradiance functions
+    'get_volumetric_solar_irradiance_map',
+    'get_cumulative_volumetric_solar_irradiance',
+    'get_volumetric_solar_irradiance_using_epw',
+    'clear_volumetric_flux_cache',
     'save_irradiance_mesh',
     'load_irradiance_mesh',
     # Cache management
