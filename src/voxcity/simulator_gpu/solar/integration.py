@@ -3449,10 +3449,12 @@ def get_volumetric_solar_irradiance_using_epw(
 
 def get_global_solar_irradiance_using_epw(
     voxcity,
-    calc_type: str = 'instantaneous',
+    temporal_mode: str = 'instantaneous',
+    spatial_mode: str = 'horizontal',
     direct_normal_irradiance_scaling: float = 1.0,
     diffuse_irradiance_scaling: float = 1.0,
     show_plot: bool = False,
+    calc_type: str = None,  # Deprecated, for backward compatibility
     **kwargs
 ) -> np.ndarray:
     """
@@ -3463,24 +3465,88 @@ def get_global_solar_irradiance_using_epw(
     
     Args:
         voxcity: VoxCity object
-        calc_type: 'instantaneous', 'cumulative', or 'volumetric'
+        temporal_mode: Time integration mode:
+            - 'instantaneous': Single time point (requires calc_time)
+            - 'cumulative': Integrate over time range (requires start_time, end_time)
+        spatial_mode: Spatial computation mode:
+            - 'horizontal': 2D ground-level irradiance at view_point_height
+            - 'volumetric': 3D radiation field extracted at volumetric_height above terrain
         direct_normal_irradiance_scaling: Scaling factor for DNI
         diffuse_irradiance_scaling: Scaling factor for DHI
         show_plot: Whether to display a matplotlib plot
+        calc_type: DEPRECATED. Use temporal_mode and spatial_mode instead.
+            Legacy values 'instantaneous', 'cumulative', 'volumetric' are still supported.
         **kwargs: Additional parameters including:
             - epw_file_path (str): Path to EPW file
             - download_nearest_epw (bool): Download nearest EPW (default: False)
             - calc_time (str): For instantaneous: 'MM-DD HH:MM:SS'
-            - start_time, end_time (str): For cumulative/volumetric: 'MM-DD HH:MM:SS'
+            - start_time, end_time (str): For cumulative: 'MM-DD HH:MM:SS'
             - rectangle_vertices: Location vertices (for EPW download)
+            - view_point_height (float): Height for horizontal mode (default: 1.5)
             - volumetric_height (float): Height for volumetric mode (default: 1.5)
-            - with_reflections (bool): Include reflections for volumetric mode (default: False)
+            - with_reflections (bool): Include reflections (default: False)
+            - n_reflection_steps (int): Reflection bounces (default: 2)
     
     Returns:
-        2D numpy array of irradiance (W/m² or Wh/m²)
+        2D numpy array of irradiance (W/m² for instantaneous, Wh/m² for cumulative)
+    
+    Examples:
+        # Instantaneous ground-level irradiance
+        grid = get_global_solar_irradiance_using_epw(
+            voxcity,
+            temporal_mode='instantaneous',
+            spatial_mode='horizontal',
+            calc_time='08-03 10:00:00',
+            epw_file_path='weather.epw'
+        )
+        
+        # Cumulative volumetric irradiance with reflections
+        grid = get_global_solar_irradiance_using_epw(
+            voxcity,
+            temporal_mode='cumulative',
+            spatial_mode='volumetric',
+            start_time='01-01 09:00:00',
+            end_time='01-31 19:00:00',
+            volumetric_height=1.5,
+            with_reflections=True,
+            epw_file_path='weather.epw'
+        )
     """
     from datetime import datetime
     import pytz
+    import warnings
+    
+    # Handle backward compatibility with calc_type parameter
+    if calc_type is not None:
+        warnings.warn(
+            "calc_type parameter is deprecated. Use temporal_mode and spatial_mode instead. "
+            "Example: temporal_mode='cumulative', spatial_mode='volumetric'",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        if calc_type == 'instantaneous':
+            temporal_mode = 'instantaneous'
+            spatial_mode = 'horizontal'
+        elif calc_type == 'cumulative':
+            temporal_mode = 'cumulative'
+            spatial_mode = 'horizontal'
+        elif calc_type == 'volumetric':
+            # Legacy volumetric: determine temporal mode from time parameters
+            spatial_mode = 'volumetric'
+            calc_time = kwargs.get('calc_time', None)
+            start_time = kwargs.get('start_time', None)
+            if calc_time is not None and start_time is None:
+                temporal_mode = 'instantaneous'
+            else:
+                temporal_mode = 'cumulative'
+        else:
+            raise ValueError(f"Unknown calc_type: {calc_type}. Use temporal_mode/spatial_mode instead.")
+    
+    # Validate parameters
+    if temporal_mode not in ('instantaneous', 'cumulative'):
+        raise ValueError(f"temporal_mode must be 'instantaneous' or 'cumulative', got '{temporal_mode}'")
+    if spatial_mode not in ('horizontal', 'volumetric'):
+        raise ValueError(f"spatial_mode must be 'horizontal' or 'volumetric', got '{spatial_mode}'")
     
     # Get EPW file
     epw_file_path = kwargs.get('epw_file_path', None)
@@ -3533,69 +3599,66 @@ def get_global_solar_irradiance_using_epw(
     if df.empty:
         raise ValueError("No data in EPW file.")
     
-    if calc_type == 'instantaneous':
-        calc_time = kwargs.get('calc_time', '01-01 12:00:00')
-        try:
-            calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%S')
-        except ValueError:
-            raise ValueError("calc_time must be in format 'MM-DD HH:MM:SS'")
+    # Route to appropriate function based on temporal_mode × spatial_mode
+    if spatial_mode == 'horizontal':
+        # Ground-level horizontal irradiance
+        if temporal_mode == 'instantaneous':
+            calc_time = kwargs.get('calc_time', '01-01 12:00:00')
+            try:
+                calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%S')
+            except ValueError:
+                raise ValueError("calc_time must be in format 'MM-DD HH:MM:SS'")
+            
+            df_period = df[
+                (df.index.month == calc_dt.month) &
+                (df.index.day == calc_dt.day) &
+                (df.index.hour == calc_dt.hour)
+            ]
+            if df_period.empty:
+                raise ValueError("No EPW data at the specified time.")
+            
+            offset_minutes = int(tz * 60)
+            local_tz = pytz.FixedOffset(offset_minutes)
+            df_local = df_period.copy()
+            df_local.index = df_local.index.tz_localize(local_tz)
+            df_utc = df_local.tz_convert(pytz.UTC)
+            
+            solar_positions = _get_solar_positions_astral(df_utc.index, lon, lat)
+            DNI = float(df_utc.iloc[0]['DNI']) * direct_normal_irradiance_scaling
+            DHI = float(df_utc.iloc[0]['DHI']) * diffuse_irradiance_scaling
+            azimuth_degrees = float(solar_positions.iloc[0]['azimuth'])
+            elevation_degrees = float(solar_positions.iloc[0]['elevation'])
+            
+            return get_global_solar_irradiance_map(
+                voxcity,
+                azimuth_degrees,
+                elevation_degrees,
+                DNI,
+                DHI,
+                show_plot=show_plot,
+                **kwargs
+            )
         
-        df_period = df[
-            (df.index.month == calc_dt.month) &
-            (df.index.day == calc_dt.day) &
-            (df.index.hour == calc_dt.hour)
-        ]
-        if df_period.empty:
-            raise ValueError("No EPW data at the specified time.")
-        
-        # Get solar position
-        offset_minutes = int(tz * 60)
-        local_tz = pytz.FixedOffset(offset_minutes)
-        df_local = df_period.copy()
-        df_local.index = df_local.index.tz_localize(local_tz)
-        df_utc = df_local.tz_convert(pytz.UTC)
-        
-        solar_positions = _get_solar_positions_astral(df_utc.index, lon, lat)
-        DNI = float(df_utc.iloc[0]['DNI']) * direct_normal_irradiance_scaling
-        DHI = float(df_utc.iloc[0]['DHI']) * diffuse_irradiance_scaling
-        azimuth_degrees = float(solar_positions.iloc[0]['azimuth'])
-        elevation_degrees = float(solar_positions.iloc[0]['elevation'])
-        
-        return get_global_solar_irradiance_map(
-            voxcity,
-            azimuth_degrees,
-            elevation_degrees,
-            DNI,
-            DHI,
-            show_plot=show_plot,
-            **kwargs
-        )
+        else:  # cumulative
+            return get_cumulative_global_solar_irradiance(
+                voxcity,
+                df,
+                lon,
+                lat,
+                tz,
+                direct_normal_irradiance_scaling=direct_normal_irradiance_scaling,
+                diffuse_irradiance_scaling=diffuse_irradiance_scaling,
+                show_plot=show_plot,
+                **kwargs
+            )
     
-    elif calc_type == 'cumulative':
-        return get_cumulative_global_solar_irradiance(
-            voxcity,
-            df,
-            lon,
-            lat,
-            tz,
-            direct_normal_irradiance_scaling=direct_normal_irradiance_scaling,
-            diffuse_irradiance_scaling=diffuse_irradiance_scaling,
-            show_plot=show_plot,
-            **kwargs
-        )
-    
-    elif calc_type == 'volumetric':
-        # Volumetric mode: compute 3D radiation field at specified height
+    else:  # volumetric
+        # 3D volumetric radiation field
         volumetric_height = kwargs.pop('volumetric_height', kwargs.pop('view_point_height', 1.5))
         with_reflections = kwargs.pop('with_reflections', False)
         
-        # Determine if instantaneous or cumulative based on provided time parameters
-        calc_time = kwargs.get('calc_time', None)
-        start_time = kwargs.get('start_time', None)
-        end_time = kwargs.get('end_time', None)
-        
-        if calc_time is not None and start_time is None and end_time is None:
-            # Instantaneous volumetric
+        if temporal_mode == 'instantaneous':
+            calc_time = kwargs.get('calc_time', '01-01 12:00:00')
             try:
                 calc_dt = datetime.strptime(calc_time, '%m-%d %H:%M:%S')
             except ValueError:
@@ -3632,8 +3695,8 @@ def get_global_solar_irradiance_using_epw(
                 show_plot=show_plot,
                 **kwargs
             )
-        else:
-            # Cumulative volumetric
+        
+        else:  # cumulative
             return get_cumulative_volumetric_solar_irradiance(
                 voxcity,
                 df,
@@ -3647,9 +3710,6 @@ def get_global_solar_irradiance_using_epw(
                 show_plot=show_plot,
                 **kwargs
             )
-    
-    else:
-        raise ValueError(f"Unknown calc_type: {calc_type}. Use 'instantaneous', 'cumulative', or 'volumetric'.")
 
 
 def save_irradiance_mesh(mesh, filepath: str) -> None:
