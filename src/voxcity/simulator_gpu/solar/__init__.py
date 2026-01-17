@@ -80,6 +80,15 @@ from .sky import (
     TREGENZA_BAND_BOUNDARIES,
 )
 
+# Computation mask utilities
+from .mask import (
+    create_computation_mask,
+    draw_computation_mask,
+    get_mask_from_drawing,
+    visualize_computation_mask,
+    get_mask_info,
+)
+
 # VoxCity integration
 from .integration import (
     load_voxcity,
@@ -172,6 +181,12 @@ __all__ = [
     'visualize_sky_patches',
     'TREGENZA_BANDS',
     'TREGENZA_BAND_BOUNDARIES',
+    # Computation mask utilities
+    'create_computation_mask',
+    'draw_computation_mask',
+    'get_mask_from_drawing',
+    'visualize_computation_mask',
+    'get_mask_info',
     # VoxCity integration
     'load_voxcity',
     'convert_voxcity_to_domain',

@@ -64,3 +64,16 @@ from .integration import (  # noqa: F401
     save_irradiance_mesh,
     load_irradiance_mesh,
 )
+
+# Computation mask utilities (re-export from simulator_gpu for convenience)
+try:
+    from voxcity.simulator_gpu.solar.mask import (  # noqa: F401
+        create_computation_mask,
+        draw_computation_mask,
+        get_mask_from_drawing,
+        visualize_computation_mask,
+        get_mask_info,
+    )
+except ImportError:
+    # simulator_gpu may not be installed
+    pass

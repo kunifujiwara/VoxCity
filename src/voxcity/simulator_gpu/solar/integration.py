@@ -324,6 +324,10 @@ def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
     cell is solid ground (not building). This is used for terrain-following
     height extraction in volumetric calculations.
     
+    Water areas (voxel classes 7, 8, 9) and building/underground cells (negative codes)
+    are excluded and marked as -1. This uses the same logic as the with_reflections=True
+    path in _get_or_create_radiation_model for consistency.
+    
     Args:
         voxel_data: 3D array of voxel class codes
         
@@ -333,25 +337,30 @@ def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
     ni, nj, nk = voxel_data.shape
     ground_k = np.full((ni, nj), -1, dtype=np.int32)
     
+    # Water/special surface class codes to exclude
+    WATER_CLASSES = (7, 8, 9)
+    
+    # Use same logic as with_reflections=True path for consistency
     for i in range(ni):
         for j in range(nj):
+            col = voxel_data[i, j, :]
+            
             # Find the first transition from non-air to air (or air/tree) going up
             for k in range(1, nk):
-                curr_val = voxel_data[i, j, k]
-                below_val = voxel_data[i, j, k - 1]
+                curr_val = col[k]
+                below_val = col[k - 1]
                 
                 # Current is air (0) or tree (1), below is not air/tree
                 if curr_val in (0, 1) and below_val not in (0, 1):
-                    # Skip if below is building (-3) or water/special (7, 8, 9)
-                    if below_val == -3 or below_val in (7, 8, 9):
-                        continue
-                    # Ground surface is at k (first air cell above ground)
-                    ground_k[i, j] = k
+                    # Same logic as with_reflections=True:
+                    # Invalid if below is water (7,8,9) or negative (buildings, ground under building)
+                    if below_val in WATER_CLASSES or below_val < 0:
+                        # No valid ground - leave as -1
+                        pass
+                    else:
+                        # Valid ground surface at k (first air cell above ground)
+                        ground_k[i, j] = k
                     break
-            else:
-                # No transition found - check if bottom is ground-like
-                if voxel_data[i, j, 0] not in (0, 1, -3):
-                    ground_k[i, j] = 1  # Default to k=1 if ground at bottom
     
     return ground_k
 
@@ -1316,6 +1325,7 @@ def get_global_solar_irradiance_map(
             reflections. If False (default), use simple ray-tracing/SVF for 
             faster but less accurate results.
         **kwargs: Additional parameters (see get_direct_solar_irradiance_map)
+            - computation_mask (np.ndarray): Optional 2D boolean mask for sub-area computation
             - n_reflection_steps (int): Number of reflection bounces when 
                 with_reflections=True (default: 2)
             - progress_report (bool): Print progress (default: False)
@@ -1323,6 +1333,9 @@ def get_global_solar_irradiance_map(
     Returns:
         2D numpy array of global horizontal irradiance (W/m²)
     """
+    # Extract computation_mask from kwargs
+    computation_mask = kwargs.pop('computation_mask', None)
+    
     if with_reflections:
         # Use full RadiationModel with reflections (single call for all components)
         direct_map, diffuse_map, reflected_map = _compute_ground_irradiance_with_reflections(
@@ -1385,6 +1398,18 @@ def get_global_solar_irradiance_map(
             **kwargs
         )
     
+    # Apply computation mask if provided
+    if computation_mask is not None:
+        # Ensure mask shape matches output shape (note: output is flipped)
+        if computation_mask.shape == global_map.shape:
+            global_map = np.where(np.flipud(computation_mask), global_map, np.nan)
+        elif computation_mask.T.shape == global_map.shape:
+            global_map = np.where(np.flipud(computation_mask.T), global_map, np.nan)
+        else:
+            # Try to match without flip
+            if computation_mask.shape == global_map.shape:
+                global_map = np.where(computation_mask, global_map, np.nan)
+    
     return global_map
 
 
@@ -1425,6 +1450,7 @@ def get_cumulative_global_solar_irradiance(
             reflections for each timestep/patch. If False (default), use simple 
             ray-tracing/SVF for faster computation.
         **kwargs: Additional parameters including:
+            - computation_mask (np.ndarray): Optional 2D boolean mask for sub-area computation
             - start_time (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 05:00:00')
             - end_time (str): End time 'MM-DD HH:MM:SS' (default: '01-01 20:00:00')
             - view_point_height (float): Observer height (default: 1.5)
@@ -1444,6 +1470,7 @@ def get_cumulative_global_solar_irradiance(
     
     # Extract parameters that we pass explicitly (use pop to avoid duplicate kwargs)
     kwargs = kwargs.copy()  # Don't modify the original
+    computation_mask = kwargs.pop('computation_mask', None)
     view_point_height = kwargs.pop('view_point_height', 1.5)
     colormap = kwargs.pop('colormap', 'magma')
     start_time = kwargs.pop('start_time', '01-01 05:00:00')
@@ -1703,6 +1730,14 @@ def get_cumulative_global_solar_irradiance(
     
     # Apply mask for plotting
     cumulative_map = np.where(mask_map, cumulative_map, np.nan)
+    
+    # Apply computation mask if provided
+    if computation_mask is not None:
+        # Handle different shape orientations
+        if computation_mask.shape == cumulative_map.shape:
+            cumulative_map = np.where(np.flipud(computation_mask), cumulative_map, np.nan)
+        elif computation_mask.T.shape == cumulative_map.shape:
+            cumulative_map = np.where(np.flipud(computation_mask.T), cumulative_map, np.nan)
     
     if show_plot:
         vmax = kwargs.get('vmax', float(np.nanmax(cumulative_map)) if not np.all(np.isnan(cumulative_map)) else 1.0)
@@ -3455,6 +3490,7 @@ def get_global_solar_irradiance_using_epw(
     diffuse_irradiance_scaling: float = 1.0,
     show_plot: bool = False,
     calc_type: str = None,  # Deprecated, for backward compatibility
+    computation_mask: np.ndarray = None,
     **kwargs
 ) -> np.ndarray:
     """
@@ -3476,6 +3512,10 @@ def get_global_solar_irradiance_using_epw(
         show_plot: Whether to display a matplotlib plot
         calc_type: DEPRECATED. Use temporal_mode and spatial_mode instead.
             Legacy values 'instantaneous', 'cumulative', 'volumetric' are still supported.
+        computation_mask: Optional 2D boolean numpy array of shape (nx, ny).
+            If provided, only cells where mask is True will be computed.
+            Cells where mask is False will be set to NaN in the output.
+            Use create_computation_mask() to create masks easily.
         **kwargs: Additional parameters including:
             - epw_file_path (str): Path to EPW file
             - download_nearest_epw (bool): Download nearest EPW (default: False)
@@ -3598,6 +3638,10 @@ def get_global_solar_irradiance_using_epw(
     
     if df.empty:
         raise ValueError("No data in EPW file.")
+    
+    # Add computation_mask to kwargs for passing to underlying functions
+    if computation_mask is not None:
+        kwargs['computation_mask'] = computation_mask
     
     # Route to appropriate function based on temporal_mode × spatial_mode
     if spatial_mode == 'horizontal':
