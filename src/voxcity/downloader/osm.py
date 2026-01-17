@@ -1118,3 +1118,217 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     # Create GeoDataFrame
     gdf = gpd.GeoDataFrame(properties, geometry=geometries, crs="EPSG:4326")
     return gdf
+
+
+def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_trunk_height=4.0,
+                            default_crown_diameter=None, default_crown_ratio=0.6):
+    """Download and process individual tree data from OpenStreetMap.
+    
+    This function downloads tree point data from OpenStreetMap and creates a GeoDataFrame
+    compatible with VoxCity's tree canopy processing. It extracts height and crown diameter
+    information from OSM tags when available, or uses default values when not specified.
+    
+    OSM tags used for tree properties:
+        - height, est_height: Tree height in meters
+        - diameter_crown: Crown diameter in meters
+        - circumference: Trunk circumference (used to estimate crown if diameter_crown missing)
+        - genus, species: Tree species information (stored as properties)
+        - leaf_type: broadleaved/needleleaved (stored as property)
+        - leaf_cycle: deciduous/evergreen (stored as property)
+    
+    Crown diameter estimation priority:
+        1. Use diameter_crown tag if available
+        2. Estimate from circumference tag (trunk circumference × 15 / π)
+        3. Use default_crown_diameter if specified
+        4. Estimate from tree height (height × default_crown_ratio)
+    
+    Args:
+        rectangle_vertices (list): List of (lon, lat) coordinates defining the bounding box.
+            Should be 4 vertices forming a rectangle.
+        default_top_height (float): Default tree top height in meters when not specified in OSM.
+            Defaults to 10.0 meters.
+        default_trunk_height (float): Default trunk height (height to bottom of canopy) in meters.
+            This is the height where the canopy starts. Defaults to 4.0 meters.
+        default_crown_diameter (float, optional): Default crown diameter in meters. If None,
+            crown diameter is estimated from tree height using default_crown_ratio.
+        default_crown_ratio (float): Ratio of crown diameter to tree height, used when
+            crown diameter cannot be determined from OSM tags and default_crown_diameter is None.
+            Defaults to 0.6 (e.g., a 10m tall tree would have a 6m crown diameter).
+            
+    Returns:
+        geopandas.GeoDataFrame: GeoDataFrame containing tree points with columns:
+            - geometry: Point geometry (lon, lat)
+            - tree_id: Unique identifier for each tree
+            - top_height: Height to the top of the tree canopy in meters
+            - bottom_height: Height to the bottom of the canopy (trunk height) in meters
+            - crown_diameter: Diameter of the tree crown in meters
+            - genus: Tree genus if available
+            - species: Tree species if available
+            - leaf_type: Leaf type (broadleaved/needleleaved) if available
+            - leaf_cycle: Leaf cycle (deciduous/evergreen) if available
+            - osm_id: Original OSM node ID
+            
+    Example:
+        >>> vertices = [(-73.99, 40.75), (-73.98, 40.75), (-73.98, 40.76), (-73.99, 40.76)]
+        >>> # Use default values
+        >>> tree_gdf = load_tree_gdf_from_osm(vertices)
+        >>> # Customize defaults: 15m tall trees, 5m trunk, 8m crown
+        >>> tree_gdf = load_tree_gdf_from_osm(vertices, default_top_height=15.0, 
+        ...                                   default_trunk_height=5.0, default_crown_diameter=8.0)
+        
+    Note:
+        - Only individual trees (natural=tree) are downloaded, not tree rows or forests
+        - Crown diameter estimation from trunk circumference uses an empirical ratio
+        - The function uses multiple Overpass API endpoints for reliability
+    """
+    # Create a bounding box from the rectangle vertices
+    min_lon = min(v[0] for v in rectangle_vertices)
+    max_lon = max(v[0] for v in rectangle_vertices)
+    min_lat = min(v[1] for v in rectangle_vertices)
+    max_lat = max(v[1] for v in rectangle_vertices)
+    
+    # Overpass API endpoints (fallbacks)
+    overpass_endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter",
+    ]
+    
+    # Overpass query to get individual trees
+    overpass_query = f"""
+    [out:json];
+    (
+      node["natural"="tree"]({min_lat},{min_lon},{max_lat},{max_lon});
+    );
+    out body;
+    """
+    
+    # Send the request to the Overpass API with fallbacks
+    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
+    data = None
+    last_error = None
+    
+    for overpass_url in overpass_endpoints:
+        try:
+            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=30)
+            if response.status_code != 200:
+                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
+                continue
+            content_type = response.headers.get("Content-Type", "")
+            if "json" not in content_type.lower():
+                try:
+                    data = response.json()
+                except Exception as e:
+                    last_error = e
+                    continue
+            else:
+                data = response.json()
+            if not isinstance(data, dict) or "elements" not in data:
+                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
+                data = None
+                continue
+            break
+        except Exception as e:
+            last_error = e
+            continue
+    
+    if data is None:
+        raise RuntimeError(f"Failed to fetch OSM tree data from Overpass endpoints. Last error: {last_error}")
+    
+    # Process tree elements
+    trees = []
+    tree_id = 1
+    
+    for element in data['elements']:
+        if element['type'] != 'node':
+            continue
+            
+        tags = element.get('tags', {})
+        
+        # Extract coordinates
+        lon = element['lon']
+        lat = element['lat']
+        
+        # Extract height from OSM tags
+        height = None
+        for height_key in ['height', 'est_height']:
+            if height_key in tags:
+                try:
+                    height_str = tags[height_key]
+                    # Handle units (e.g., "10 m", "10m", "10")
+                    height_str = height_str.replace('m', '').replace('M', '').strip()
+                    height = float(height_str)
+                    break
+                except (ValueError, AttributeError):
+                    continue
+        
+        if height is None:
+            height = default_top_height
+        
+        # Extract crown diameter from OSM tags
+        crown_diameter = None
+        if 'diameter_crown' in tags:
+            try:
+                crown_str = tags['diameter_crown']
+                crown_str = crown_str.replace('m', '').replace('M', '').strip()
+                crown_diameter = float(crown_str)
+            except (ValueError, AttributeError):
+                pass
+        
+        # If no crown diameter, try to estimate from trunk circumference
+        if crown_diameter is None and 'circumference' in tags:
+            try:
+                circ_str = tags['circumference']
+                circ_str = circ_str.replace('m', '').replace('M', '').strip()
+                circumference = float(circ_str)
+                # Empirical relationship: crown diameter ≈ 10-20x trunk diameter
+                # Trunk diameter = circumference / π
+                trunk_diameter = circumference / 3.14159
+                crown_diameter = trunk_diameter * 15  # Mid-range multiplier
+            except (ValueError, AttributeError):
+                pass
+        
+        # If still no crown diameter, use default or estimate from height
+        if crown_diameter is None:
+            if default_crown_diameter is not None:
+                crown_diameter = default_crown_diameter
+            else:
+                crown_diameter = height * default_crown_ratio
+        
+        # Set bottom height (trunk height / canopy start height)
+        bottom_height = default_trunk_height
+        # Ensure bottom_height doesn't exceed top_height
+        if bottom_height >= height:
+            bottom_height = height * 0.4  # Fallback to 40% of height
+        
+        # Extract additional properties
+        genus = tags.get('genus', None)
+        species = tags.get('species', None)
+        leaf_type = tags.get('leaf_type', None)
+        leaf_cycle = tags.get('leaf_cycle', None)
+        
+        trees.append({
+            'tree_id': tree_id,
+            'top_height': height,
+            'bottom_height': bottom_height,
+            'crown_diameter': crown_diameter,
+            'genus': genus,
+            'species': species,
+            'leaf_type': leaf_type,
+            'leaf_cycle': leaf_cycle,
+            'osm_id': element['id'],
+            'geometry': Point(lon, lat)
+        })
+        tree_id += 1
+    
+    # Create GeoDataFrame
+    if not trees:
+        # Return empty GeoDataFrame with correct columns
+        return gpd.GeoDataFrame(
+            columns=['tree_id', 'top_height', 'bottom_height', 'crown_diameter', 
+                     'genus', 'species', 'leaf_type', 'leaf_cycle', 'osm_id', 'geometry'],
+            crs="EPSG:4326"
+        )
+    
+    gdf = gpd.GeoDataFrame(trees, crs="EPSG:4326")
+    return gdf
