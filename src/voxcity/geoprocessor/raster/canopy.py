@@ -154,7 +154,22 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
 def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
     """
     Create canopy top and bottom height grids from a tree GeoDataFrame.
-    Returns (canopy_height_grid, canopy_bottom_height_grid).
+    
+    Supports both Point geometries (individual trees with ellipsoid crowns) and
+    Polygon geometries (forest/wood areas with flat canopy).
+    
+    Args:
+        tree_gdf: GeoDataFrame with columns:
+            - geometry: Point or Polygon/MultiPolygon
+            - top_height: Height to canopy top (meters)
+            - bottom_height: Height to canopy bottom (meters)
+            - crown_diameter: Crown diameter (meters, used for Point geometries)
+            - geometry_type (optional): 'point' or 'polygon' to distinguish geometry types
+        meshsize: Grid cell size in meters
+        rectangle_vertices: List of (lon, lat) tuples defining the area
+        
+    Returns:
+        tuple: (canopy_height_grid, canopy_bottom_height_grid)
     """
     if tree_gdf is None or len(tree_gdf) == 0:
         return np.array([]), np.array([])
@@ -197,7 +212,101 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
     except np.linalg.LinAlgError:
         transform_inv = np.linalg.pinv(transform_mat)
 
-    for _, row in tree_gdf.iterrows():
+    # Separate point trees and polygon trees
+    has_geometry_type = 'geometry_type' in tree_gdf.columns
+    
+    # Process polygon geometries first (they form the base layer)
+    if has_geometry_type:
+        polygon_gdf = tree_gdf[tree_gdf['geometry_type'] == 'polygon']
+    else:
+        # Detect polygon geometries by geometry type
+        polygon_mask = tree_gdf.geometry.apply(
+            lambda g: g is not None and g.geom_type in ['Polygon', 'MultiPolygon']
+        )
+        polygon_gdf = tree_gdf[polygon_mask]
+    
+    if len(polygon_gdf) > 0:
+        # Rasterize polygon geometries
+        # Note: We need to match the coordinate system used by individual trees
+        # The grid uses origin = rectangle_vertices[0] (typically SW corner)
+        # with i increasing along side_1 and j increasing along side_2
+        from rasterio import features
+        from affine import Affine
+        
+        # Get bounding box
+        min_lon = min(coord[0] for coord in rectangle_vertices)
+        max_lon = max(coord[0] for coord in rectangle_vertices)
+        min_lat = min(coord[1] for coord in rectangle_vertices)
+        max_lat = max(coord[1] for coord in rectangle_vertices)
+        
+        # Create affine transform (top-left origin for rasterio convention)
+        # Rasterio produces a north-up grid (row 0 = north/max_lat)
+        pixel_width = (max_lon - min_lon) / ny  # ny = columns (x direction)
+        pixel_height = (max_lat - min_lat) / nx  # nx = rows (y direction)
+        raster_transform = Affine(pixel_width, 0, min_lon, 0, -pixel_height, max_lat)
+        
+        # Rasterize each polygon with its height values
+        for _, row in polygon_gdf.iterrows():
+            geom = row['geometry']
+            if geom is None or geom.is_empty:
+                continue
+            
+            top_h = float(row.get('top_height', 0.0) or 0.0)
+            bot_h = float(row.get('bottom_height', 0.0) or 0.0)
+            
+            if top_h <= 0:
+                continue
+            if bot_h < 0:
+                bot_h = 0.0
+            if bot_h > top_h:
+                top_h, bot_h = bot_h, top_h
+            
+            try:
+                # Create a mask for this polygon
+                if geom.geom_type == 'Polygon':
+                    shapes = [(geom, 1)]
+                else:  # MultiPolygon
+                    shapes = [(g, 1) for g in geom.geoms]
+                
+                mask = np.zeros((nx, ny), dtype=np.uint8)
+                features.rasterize(
+                    shapes=shapes,
+                    out=mask,
+                    transform=raster_transform,
+                    all_touched=False
+                )
+                
+                # CRITICAL: Flip the mask vertically to match the grid coordinate system
+                # Rasterio produces north-up (row 0 = north), but the grid uses
+                # origin at rectangle_vertices[0] (typically SW, so row 0 = south)
+                mask = np.flipud(mask)
+                
+                # Apply heights where mask is set (using maximum to preserve higher trees)
+                polygon_cells = mask == 1
+                canopy_top = np.where(
+                    polygon_cells & (top_h > canopy_top),
+                    top_h,
+                    canopy_top
+                )
+                canopy_bottom = np.where(
+                    polygon_cells & (canopy_top > 0) & ((canopy_bottom == 0) | (bot_h > canopy_bottom)),
+                    bot_h,
+                    canopy_bottom
+                )
+            except Exception:
+                # Skip this polygon if rasterization fails
+                continue
+
+    # Process point geometries (individual trees with ellipsoid crowns)
+    if has_geometry_type:
+        point_gdf = tree_gdf[tree_gdf['geometry_type'] == 'point']
+    else:
+        point_mask = tree_gdf.geometry.apply(
+            lambda g: g is not None and g.geom_type == 'Point'
+        )
+        point_gdf = tree_gdf[point_mask]
+
+    for _, row in point_gdf.iterrows():
         geom = row['geometry']
         if geom is None or not hasattr(geom, 'x'):
             continue

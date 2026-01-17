@@ -1121,12 +1121,19 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
 
 
 def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_trunk_height=4.0,
-                            default_crown_diameter=None, default_crown_ratio=0.6):
-    """Download and process individual tree data from OpenStreetMap.
+                            default_crown_diameter=None, default_crown_ratio=0.6,
+                            include_polygons=True):
+    """Download and process individual tree data and tree land cover polygons from OpenStreetMap.
     
-    This function downloads tree point data from OpenStreetMap and creates a GeoDataFrame
-    compatible with VoxCity's tree canopy processing. It extracts height and crown diameter
-    information from OSM tags when available, or uses default values when not specified.
+    This function downloads tree point data (natural=tree) and optionally tree land cover
+    polygons (natural=wood, landuse=forest, natural=tree_row) from OpenStreetMap and creates
+    a GeoDataFrame compatible with VoxCity's tree canopy processing.
+    
+    For individual trees, it extracts height and crown diameter information from OSM tags
+    when available, or uses default values when not specified.
+    
+    For tree polygons (forests, woods), it assigns default height values and the polygon
+    geometry is preserved for rasterization during canopy grid creation.
     
     OSM tags used for tree properties:
         - height, est_height: Tree height in meters
@@ -1136,7 +1143,7 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
         - leaf_type: broadleaved/needleleaved (stored as property)
         - leaf_cycle: deciduous/evergreen (stored as property)
     
-    Crown diameter estimation priority:
+    Crown diameter estimation priority (for point trees only):
         1. Use diameter_crown tag if available
         2. Estimate from circumference tag (trunk circumference × 15 / π)
         3. Use default_crown_diameter if specified
@@ -1151,33 +1158,42 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
             This is the height where the canopy starts. Defaults to 4.0 meters.
         default_crown_diameter (float, optional): Default crown diameter in meters. If None,
             crown diameter is estimated from tree height using default_crown_ratio.
+            Only used for Point geometries.
         default_crown_ratio (float): Ratio of crown diameter to tree height, used when
             crown diameter cannot be determined from OSM tags and default_crown_diameter is None.
             Defaults to 0.6 (e.g., a 10m tall tree would have a 6m crown diameter).
+        include_polygons (bool): If True, also download tree land cover polygons (forests,
+            woods, tree_rows). Defaults to True. Set to False to only get individual trees.
             
     Returns:
-        geopandas.GeoDataFrame: GeoDataFrame containing tree points with columns:
-            - geometry: Point geometry (lon, lat)
-            - tree_id: Unique identifier for each tree
+        geopandas.GeoDataFrame: GeoDataFrame containing tree features with columns:
+            - geometry: Point or Polygon geometry (lon, lat)
+            - geometry_type: 'point' for individual trees, 'polygon' for forest/wood areas
+            - tree_id: Unique identifier for each feature
             - top_height: Height to the top of the tree canopy in meters
             - bottom_height: Height to the bottom of the canopy (trunk height) in meters
-            - crown_diameter: Diameter of the tree crown in meters
+            - crown_diameter: Diameter of the tree crown in meters (0 for polygons)
             - genus: Tree genus if available
             - species: Tree species if available
             - leaf_type: Leaf type (broadleaved/needleleaved) if available
             - leaf_cycle: Leaf cycle (deciduous/evergreen) if available
-            - osm_id: Original OSM node ID
+            - osm_id: Original OSM element ID
+            - osm_type: OSM element type ('node', 'way', 'relation')
             
     Example:
         >>> vertices = [(-73.99, 40.75), (-73.98, 40.75), (-73.98, 40.76), (-73.99, 40.76)]
-        >>> # Use default values
+        >>> # Get both individual trees and forest polygons
         >>> tree_gdf = load_tree_gdf_from_osm(vertices)
-        >>> # Customize defaults: 15m tall trees, 5m trunk, 8m crown
+        >>> # Get only individual trees
+        >>> tree_gdf = load_tree_gdf_from_osm(vertices, include_polygons=False)
+        >>> # Customize defaults: 15m tall trees, 5m trunk
         >>> tree_gdf = load_tree_gdf_from_osm(vertices, default_top_height=15.0, 
-        ...                                   default_trunk_height=5.0, default_crown_diameter=8.0)
+        ...                                   default_trunk_height=5.0)
         
     Note:
-        - Only individual trees (natural=tree) are downloaded, not tree rows or forests
+        - Individual trees have Point geometry with crown_diameter for ellipsoid rendering
+        - Tree polygons have Polygon geometry and are rasterized as flat canopy areas
+        - Tree polygon types: natural=wood, landuse=forest, natural=tree_row
         - Crown diameter estimation from trunk circumference uses an empirical ratio
         - The function uses multiple Overpass API endpoints for reliability
     """
@@ -1194,14 +1210,32 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
         "https://overpass.openstreetmap.ru/api/interpreter",
     ]
     
-    # Overpass query to get individual trees
-    overpass_query = f"""
-    [out:json];
-    (
-      node["natural"="tree"]({min_lat},{min_lon},{max_lat},{max_lon});
-    );
-    out body;
-    """
+    # Build Overpass query - always get individual trees, optionally get polygons
+    if include_polygons:
+        # Query for individual trees AND tree land cover polygons
+        overpass_query = f"""
+        [out:json];
+        (
+          node["natural"="tree"]({min_lat},{min_lon},{max_lat},{max_lon});
+          way["natural"="wood"]({min_lat},{min_lon},{max_lat},{max_lon});
+          way["landuse"="forest"]({min_lat},{min_lon},{max_lat},{max_lon});
+          way["natural"="tree_row"]({min_lat},{min_lon},{max_lat},{max_lon});
+          relation["natural"="wood"]({min_lat},{min_lon},{max_lat},{max_lon});
+          relation["landuse"="forest"]({min_lat},{min_lon},{max_lat},{max_lon});
+        );
+        out body;
+        >;
+        out skel qt;
+        """
+    else:
+        # Query for individual trees only
+        overpass_query = f"""
+        [out:json];
+        (
+          node["natural"="tree"]({min_lat},{min_lon},{max_lat},{max_lon});
+        );
+        out body;
+        """
     
     # Send the request to the Overpass API with fallbacks
     headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
@@ -1210,7 +1244,7 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
     
     for overpass_url in overpass_endpoints:
         try:
-            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=30)
+            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=60)
             if response.status_code != 200:
                 last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
                 continue
@@ -1235,35 +1269,56 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
     if data is None:
         raise RuntimeError(f"Failed to fetch OSM tree data from Overpass endpoints. Last error: {last_error}")
     
+    # Build index of nodes and ways for polygon reconstruction
+    nodes = {}
+    ways = {}
+    for element in data['elements']:
+        if element['type'] == 'node':
+            nodes[element['id']] = (element.get('lon'), element.get('lat'))
+        elif element['type'] == 'way':
+            ways[element['id']] = element
+    
     # Process tree elements
     trees = []
     tree_id = 1
     
-    for element in data['elements']:
-        if element['type'] != 'node':
-            continue
-            
-        tags = element.get('tags', {})
-        
-        # Extract coordinates
-        lon = element['lon']
-        lat = element['lat']
-        
-        # Extract height from OSM tags
-        height = None
+    def extract_height_from_tags(tags, default_height):
+        """Extract height from OSM tags."""
         for height_key in ['height', 'est_height']:
             if height_key in tags:
                 try:
                     height_str = tags[height_key]
-                    # Handle units (e.g., "10 m", "10m", "10")
                     height_str = height_str.replace('m', '').replace('M', '').strip()
-                    height = float(height_str)
-                    break
+                    return float(height_str)
                 except (ValueError, AttributeError):
                     continue
+        return default_height
+    
+    def extract_species_info(tags):
+        """Extract species information from OSM tags."""
+        return {
+            'genus': tags.get('genus', None),
+            'species': tags.get('species', None),
+            'leaf_type': tags.get('leaf_type', None),
+            'leaf_cycle': tags.get('leaf_cycle', None),
+        }
+    
+    # Process individual tree nodes
+    for element in data['elements']:
+        if element['type'] != 'node':
+            continue
         
-        if height is None:
-            height = default_top_height
+        tags = element.get('tags', {})
+        # Skip nodes that are not trees (they might be way nodes)
+        if tags.get('natural') != 'tree':
+            continue
+            
+        lon = element.get('lon')
+        lat = element.get('lat')
+        if lon is None or lat is None:
+            continue
+        
+        height = extract_height_from_tags(tags, default_top_height)
         
         # Extract crown diameter from OSM tags
         crown_diameter = None
@@ -1281,10 +1336,8 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
                 circ_str = tags['circumference']
                 circ_str = circ_str.replace('m', '').replace('M', '').strip()
                 circumference = float(circ_str)
-                # Empirical relationship: crown diameter ≈ 10-20x trunk diameter
-                # Trunk diameter = circumference / π
                 trunk_diameter = circumference / 3.14159
-                crown_diameter = trunk_diameter * 15  # Mid-range multiplier
+                crown_diameter = trunk_diameter * 15
             except (ValueError, AttributeError):
                 pass
         
@@ -1295,40 +1348,197 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
             else:
                 crown_diameter = height * default_crown_ratio
         
-        # Set bottom height (trunk height / canopy start height)
+        # Set bottom height
         bottom_height = default_trunk_height
-        # Ensure bottom_height doesn't exceed top_height
         if bottom_height >= height:
-            bottom_height = height * 0.4  # Fallback to 40% of height
+            bottom_height = height * 0.4
         
-        # Extract additional properties
-        genus = tags.get('genus', None)
-        species = tags.get('species', None)
-        leaf_type = tags.get('leaf_type', None)
-        leaf_cycle = tags.get('leaf_cycle', None)
+        species_info = extract_species_info(tags)
         
         trees.append({
             'tree_id': tree_id,
+            'geometry_type': 'point',
             'top_height': height,
             'bottom_height': bottom_height,
             'crown_diameter': crown_diameter,
-            'genus': genus,
-            'species': species,
-            'leaf_type': leaf_type,
-            'leaf_cycle': leaf_cycle,
+            'genus': species_info['genus'],
+            'species': species_info['species'],
+            'leaf_type': species_info['leaf_type'],
+            'leaf_cycle': species_info['leaf_cycle'],
             'osm_id': element['id'],
+            'osm_type': 'node',
             'geometry': Point(lon, lat)
         })
         tree_id += 1
+    
+    # Process tree polygon features (ways and relations) if requested
+    if include_polygons:
+        for element in data['elements']:
+            if element['type'] == 'way':
+                tags = element.get('tags', {})
+                # Check if this is a tree-related polygon
+                is_tree_polygon = (
+                    tags.get('natural') in ['wood', 'tree_row'] or
+                    tags.get('landuse') == 'forest'
+                )
+                if not is_tree_polygon:
+                    continue
+                
+                # Reconstruct polygon from way nodes
+                node_ids = element.get('nodes', [])
+                coords = []
+                for node_id in node_ids:
+                    if node_id in nodes:
+                        coord = nodes[node_id]
+                        if coord[0] is not None and coord[1] is not None:
+                            coords.append(coord)
+                
+                # Need at least 4 points for a valid polygon (closed ring)
+                if len(coords) < 4:
+                    continue
+                
+                # Ensure the polygon is closed
+                if coords[0] != coords[-1]:
+                    coords.append(coords[0])
+                
+                try:
+                    polygon_geom = Polygon(coords)
+                    if not polygon_geom.is_valid:
+                        polygon_geom = polygon_geom.buffer(0)
+                    if polygon_geom.is_empty or not polygon_geom.is_valid:
+                        continue
+                except Exception:
+                    continue
+                
+                height = extract_height_from_tags(tags, default_top_height)
+                bottom_height = default_trunk_height
+                if bottom_height >= height:
+                    bottom_height = height * 0.4
+                
+                species_info = extract_species_info(tags)
+                
+                trees.append({
+                    'tree_id': tree_id,
+                    'geometry_type': 'polygon',
+                    'top_height': height,
+                    'bottom_height': bottom_height,
+                    'crown_diameter': 0,  # Not applicable for polygons
+                    'genus': species_info['genus'],
+                    'species': species_info['species'],
+                    'leaf_type': species_info['leaf_type'],
+                    'leaf_cycle': species_info['leaf_cycle'],
+                    'osm_id': element['id'],
+                    'osm_type': 'way',
+                    'geometry': polygon_geom
+                })
+                tree_id += 1
+            
+            elif element['type'] == 'relation':
+                tags = element.get('tags', {})
+                # Check if this is a tree-related relation
+                is_tree_polygon = (
+                    tags.get('natural') in ['wood', 'tree_row'] or
+                    tags.get('landuse') == 'forest'
+                )
+                if not is_tree_polygon:
+                    continue
+                
+                # Process relation members to create polygon(s)
+                members = element.get('members', [])
+                outer_ways = []
+                inner_ways = []
+                
+                for member in members:
+                    if member.get('type') == 'way':
+                        way_id = member.get('ref')
+                        role = member.get('role', 'outer')
+                        if way_id in ways:
+                            way_coords = []
+                            for node_id in ways[way_id].get('nodes', []):
+                                if node_id in nodes:
+                                    coord = nodes[node_id]
+                                    if coord[0] is not None and coord[1] is not None:
+                                        way_coords.append(coord)
+                            if way_coords:
+                                if role == 'inner':
+                                    inner_ways.append(way_coords)
+                                else:
+                                    outer_ways.append(way_coords)
+                
+                # Try to create polygon from outer rings
+                if not outer_ways:
+                    continue
+                
+                try:
+                    # For simplicity, create MultiPolygon from outer rings
+                    # (proper ring merging would require more complex logic)
+                    polygons = []
+                    for outer_coords in outer_ways:
+                        if len(outer_coords) >= 4:
+                            if outer_coords[0] != outer_coords[-1]:
+                                outer_coords.append(outer_coords[0])
+                            try:
+                                poly = Polygon(outer_coords)
+                                if not poly.is_valid:
+                                    poly = poly.buffer(0)
+                                if poly.is_valid and not poly.is_empty:
+                                    polygons.append(poly)
+                            except Exception:
+                                continue
+                    
+                    if not polygons:
+                        continue
+                    
+                    # Merge all polygons into one (or use MultiPolygon)
+                    if len(polygons) == 1:
+                        relation_geom = polygons[0]
+                    else:
+                        from shapely.ops import unary_union
+                        relation_geom = unary_union(polygons)
+                    
+                    if relation_geom.is_empty:
+                        continue
+                        
+                except Exception:
+                    continue
+                
+                height = extract_height_from_tags(tags, default_top_height)
+                bottom_height = default_trunk_height
+                if bottom_height >= height:
+                    bottom_height = height * 0.4
+                
+                species_info = extract_species_info(tags)
+                
+                trees.append({
+                    'tree_id': tree_id,
+                    'geometry_type': 'polygon',
+                    'top_height': height,
+                    'bottom_height': bottom_height,
+                    'crown_diameter': 0,  # Not applicable for polygons
+                    'genus': species_info['genus'],
+                    'species': species_info['species'],
+                    'leaf_type': species_info['leaf_type'],
+                    'leaf_cycle': species_info['leaf_cycle'],
+                    'osm_id': element['id'],
+                    'osm_type': 'relation',
+                    'geometry': relation_geom
+                })
+                tree_id += 1
     
     # Create GeoDataFrame
     if not trees:
         # Return empty GeoDataFrame with correct columns
         return gpd.GeoDataFrame(
-            columns=['tree_id', 'top_height', 'bottom_height', 'crown_diameter', 
-                     'genus', 'species', 'leaf_type', 'leaf_cycle', 'osm_id', 'geometry'],
+            columns=['tree_id', 'geometry_type', 'top_height', 'bottom_height', 'crown_diameter', 
+                     'genus', 'species', 'leaf_type', 'leaf_cycle', 'osm_id', 'osm_type', 'geometry'],
             crs="EPSG:4326"
         )
     
     gdf = gpd.GeoDataFrame(trees, crs="EPSG:4326")
+    
+    # Report counts
+    point_count = len(gdf[gdf['geometry_type'] == 'point'])
+    polygon_count = len(gdf[gdf['geometry_type'] == 'polygon'])
+    print(f"  Downloaded {point_count} individual trees and {polygon_count} tree polygons from OSM")
+    
     return gdf

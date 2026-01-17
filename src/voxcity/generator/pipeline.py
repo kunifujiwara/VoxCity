@@ -173,6 +173,20 @@ class VoxCityPipeline:
             tree_grid_ori=canopy_top,
             canopy_bottom_height_grid_ori=canopy_bottom,
         )
+        
+        # Build extras dict
+        extras_dict = {
+            "building_gdf": building_gdf_out,
+            "land_cover_source": lc_src_effective,
+            "building_source": cfg.building_source,
+            "dem_source": cfg.dem_source,
+            "canopy_height_source": cfg.canopy_height_source,
+        }
+        
+        # Include tree_gdf if the canopy strategy created one (e.g., OSM source)
+        if hasattr(canopy_strategy, 'tree_gdf') and canopy_strategy.tree_gdf is not None:
+            extras_dict["tree_gdf"] = canopy_strategy.tree_gdf
+        
         return self.assemble_voxcity(
             voxcity_grid=vox,
             building_height_grid=bh,
@@ -182,12 +196,7 @@ class VoxCityPipeline:
             dem_grid=dem,
             canopy_height_top=canopy_top,
             canopy_height_bottom=canopy_bottom,
-            extras={
-                "building_gdf": building_gdf_out,
-                "land_cover_source": lc_src_effective,
-                "building_source": cfg.building_source,
-                "dem_source": cfg.dem_source,
-            },
+            extras=extras_dict,
         )
 
     def _visualize_grids_after_parallel(
@@ -508,6 +517,7 @@ class StaticCanopyStrategy(CanopySourceStrategy):
 class SourceCanopyStrategy(CanopySourceStrategy):
     def __init__(self, source: str) -> None:
         self.source = source
+        self.tree_gdf = None  # Store tree_gdf if created
 
     def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
         # Provide land_cover_like for graceful fallback sizing without EE
@@ -521,11 +531,67 @@ class SourceCanopyStrategy(CanopySourceStrategy):
         )
 
 
+class OSMCanopyStrategy(CanopySourceStrategy):
+    """Canopy strategy that downloads individual tree data from OpenStreetMap."""
+    
+    def __init__(self, cfg: PipelineConfig) -> None:
+        self.cfg = cfg
+        self.tree_gdf = None  # Will store the downloaded tree GeoDataFrame
+    
+    def build_grids(self, rectangle_vertices, meshsize: float, land_cover_grid: np.ndarray, output_dir: str, **kwargs):
+        from ..downloader.osm import load_tree_gdf_from_osm
+        from ..geoprocessor.raster import create_canopy_grids_from_tree_gdf
+        
+        # Get OSM tree parameters from canopy_options or use defaults
+        default_top_height = kwargs.get('default_top_height', 10.0)
+        default_trunk_height = kwargs.get('default_trunk_height', 4.0)
+        default_crown_diameter = kwargs.get('default_crown_diameter', None)
+        default_crown_ratio = kwargs.get('default_crown_ratio', 0.6)
+        
+        # Download tree data from OpenStreetMap
+        print("Downloading tree data from OpenStreetMap...")
+        self.tree_gdf = load_tree_gdf_from_osm(
+            rectangle_vertices,
+            default_top_height=default_top_height,
+            default_trunk_height=default_trunk_height,
+            default_crown_diameter=default_crown_diameter,
+            default_crown_ratio=default_crown_ratio,
+        )
+        print(f"  Downloaded {len(self.tree_gdf)} trees from OSM")
+        
+        # Create canopy height grids from tree_gdf
+        if len(self.tree_gdf) == 0:
+            # Return empty grids if no trees found
+            if land_cover_grid is not None:
+                return np.zeros_like(land_cover_grid, dtype=float), np.zeros_like(land_cover_grid, dtype=float)
+            else:
+                from ..geoprocessor.raster.core import compute_grid_shape
+                grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
+                return np.zeros(grid_shape, dtype=float), np.zeros(grid_shape, dtype=float)
+        
+        canopy_top, canopy_bottom = create_canopy_grids_from_tree_gdf(
+            self.tree_gdf, meshsize, rectangle_vertices
+        )
+        print(f"  Created canopy grids: {canopy_top.shape}")
+        
+        # Visualize canopy height grid (consistent with other sources)
+        grid_vis = kwargs.get("gridvis", True)
+        if grid_vis:
+            from ..visualizer.grids import visualize_numerical_grid
+            canopy_vis = canopy_top.copy()
+            canopy_vis[canopy_vis == 0] = np.nan
+            visualize_numerical_grid(np.flipud(canopy_vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+        
+        return canopy_top, canopy_bottom
+
+
 class CanopySourceFactory:
     @staticmethod
     def create(source: str, cfg: PipelineConfig) -> CanopySourceStrategy:
         if source == "Static":
             return StaticCanopyStrategy(cfg)
+        if source == "OpenStreetMap":
+            return OSMCanopyStrategy(cfg)
         return SourceCanopyStrategy(source)
 
 
