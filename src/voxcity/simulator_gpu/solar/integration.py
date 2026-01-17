@@ -3216,11 +3216,6 @@ def get_cumulative_volumetric_solar_irradiance(
             progress_report=progress_report,
             **kwargs
         )
-        
-        # Note: C2S-VF matrix caching is disabled for large domains because
-        # the matrix itself is too large (N_cells * N_surfaces can be > 1 trillion).
-        # Instead, we use per-timestep computation with a distance cutoff which
-        # is much more memory efficient.
     else:
         # Compute ground_k for terrain-following extraction
         ground_k = _compute_ground_k_from_voxels(voxel_data)
@@ -3232,6 +3227,20 @@ def get_cumulative_volumetric_solar_irradiance(
         height_offset_k=height_offset_k,
         is_solid=is_solid
     )
+    
+    # OPTIMIZATION: Pre-compute Terrain-to-Surface VF matrix for cached reflections
+    # This makes reflection computation O(nnz) instead of O(N_cells * N_surfaces)
+    # for each sky patch, providing massive speedup for cumulative calculations.
+    if with_reflections and model is not None:
+        t2s_start = time.perf_counter() if progress_report else 0
+        calculator.compute_t2s_matrix(
+            surfaces=model.surfaces,
+            min_vf_threshold=1e-6,
+            progress_report=progress_report
+        )
+        if progress_report:
+            t2s_elapsed = time.perf_counter() - t2s_start
+            print(f"  T2S matrix pre-computation: {t2s_elapsed:.2f}s")
     
     # Extract arrays
     azimuth_arr = solar_positions['azimuth'].to_numpy()
@@ -3349,12 +3358,9 @@ def get_cumulative_volumetric_solar_irradiance(
                     lad=domain.lad
                 )
                 
-                # OPTIMIZED: Compute reflections ONLY at terrain-following level
-                # This is ~61x faster than full volumetric reflection computation
-                calculator.compute_reflected_flux_terrain_following(
-                    surfaces=model.surfaces,
-                    surf_outgoing=surf_outgoing
-                )
+                # OPTIMIZED: Compute reflections using pre-computed T2S-VF matrix
+                # This is O(nnz) instead of O(N_terrain_cells * N_surfaces) per patch
+                calculator.compute_reflected_flux_terrain_cached(surf_outgoing=surf_outgoing)
                 
                 # Add reflections to swflux_vol at extraction level
                 calculator._add_reflected_to_total()
@@ -3430,11 +3436,9 @@ def get_cumulative_volumetric_solar_irradiance(
                     lad=domain.lad
                 )
                 
-                # OPTIMIZED: Compute reflections ONLY at terrain-following level
-                calculator.compute_reflected_flux_terrain_following(
-                    surfaces=model.surfaces,
-                    surf_outgoing=surf_outgoing
-                )
+                # OPTIMIZED: Compute reflections using pre-computed T2S-VF matrix
+                # This is O(nnz) instead of O(N_terrain_cells * N_surfaces) per timestep
+                calculator.compute_reflected_flux_terrain_cached(surf_outgoing=surf_outgoing)
                 
                 # Add reflections to swflux_vol at extraction level
                 calculator._add_reflected_to_total()

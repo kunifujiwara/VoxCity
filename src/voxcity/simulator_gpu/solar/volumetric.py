@@ -166,6 +166,38 @@ class VolumetricFluxCalculator:
         
         # Whether cumulative accumulation is initialized
         self._cumulative_initialized = False
+        
+        # ========== Terrain-Following Cell-to-Surface VF (T2S-VF) Matrix Caching ==========
+        # Pre-compute view factors from terrain-following evaluation cells to surfaces.
+        # This is for O(nx*ny) cells only (at volumetric_height above ground), not full 3D.
+        #
+        # Stored in sparse COO format:
+        # - t2s_ij_idx[i]: 2D cell index (i * ny + j)
+        # - t2s_surf_idx[i]: Surface index
+        # - t2s_vf[i]: View factor (includes geometry + transmissivity)
+        #
+        # For cumulative volumetric simulations with reflections:
+        # 1. Call init_cumulative_accumulation() to set ground_k and height_offset
+        # 2. Call compute_t2s_matrix() once to pre-compute view factors
+        # 3. Use compute_reflected_flux_terrain_cached() for fast O(nnz) reflections
+        
+        self._t2s_matrix_cached = False
+        self._t2s_nnz = 0
+        
+        # Estimate max non-zeros: each terrain cell might see ~200 surfaces on average
+        # For a 300x300 domain = 90K cells * 200 = 18M entries max
+        n_terrain_cells = self.nx * self.ny
+        estimated_t2s_entries = min(n_terrain_cells * 200, 50_000_000)  # Cap at 50M
+        self._max_t2s_entries = estimated_t2s_entries
+        
+        # Sparse COO arrays for T2S-VF matrix (allocated on demand)
+        self._t2s_ij_idx = None
+        self._t2s_surf_idx = None
+        self._t2s_vf = None
+        self._t2s_count = None
+        
+        # Parameters used for cached T2S matrix (for validation)
+        self._t2s_height_offset_k = -1
     
     @ti.kernel
     def _init_azimuth_directions(self):
@@ -1610,6 +1642,260 @@ class VolumetricFluxCalculator:
         # Compute reflected using cached matrix
         self.compute_reflected_flux_vol_cached(surf_outgoing)
         self._add_reflected_to_total()
+
+    # =========================================================================
+    # Terrain-Following Cell-to-Surface VF (T2S-VF) Matrix Caching
+    # =========================================================================
+    # These methods pre-compute view factors from terrain-following evaluation
+    # cells (at volumetric_height above ground) to surfaces.
+    # This makes cumulative volumetric reflections O(nnz) instead of O(N*M).
+    
+    def compute_t2s_matrix(
+        self,
+        surfaces,
+        min_vf_threshold: float = 1e-6,
+        progress_report: bool = False
+    ):
+        """
+        Pre-compute Terrain-to-Surface View Factor matrix for fast reflections.
+        
+        This computes view factors only for cells at the terrain-following
+        extraction height (O(nx*ny) cells), not the full 3D volume.
+        
+        Requires init_cumulative_accumulation() to be called first to set
+        ground_k and height_offset_k.
+        
+        Args:
+            surfaces: Surfaces object with center, normal, area fields
+            min_vf_threshold: Minimum view factor to store (sparsity threshold)
+            progress_report: Print progress messages
+        """
+        if not self._cumulative_initialized:
+            raise RuntimeError("Must call init_cumulative_accumulation() first.")
+        
+        # Check if we already have a valid cache for this height offset
+        if (self._t2s_matrix_cached and 
+            self._t2s_height_offset_k == self._height_offset_k):
+            if progress_report:
+                print(f"T2S-VF matrix already cached for height_offset={self._height_offset_k}, skipping.")
+            return
+        
+        n_surfaces = surfaces.n_surfaces[None]
+        n_terrain_cells = self.nx * self.ny
+        
+        if progress_report:
+            print(f"Pre-computing T2S-VF matrix: {n_terrain_cells:,} terrain cells × {n_surfaces:,} surfaces")
+            print(f"  Height offset: {self._height_offset_k} cells above ground")
+        
+        # Allocate sparse COO arrays if not already done
+        if self._t2s_ij_idx is None:
+            self._t2s_ij_idx = ti.field(dtype=ti.i32, shape=(self._max_t2s_entries,))
+            self._t2s_surf_idx = ti.field(dtype=ti.i32, shape=(self._max_t2s_entries,))
+            self._t2s_vf = ti.field(dtype=ti.f32, shape=(self._max_t2s_entries,))
+            self._t2s_count = ti.field(dtype=ti.i32, shape=())
+        
+        has_lad = 1 if self.domain.lad is not None else 0
+        
+        # Clear count and compute the matrix
+        self._t2s_count[None] = 0
+        self._compute_t2s_matrix_kernel(
+            n_surfaces,
+            surfaces.center,
+            surfaces.normal,
+            surfaces.area,
+            self.domain.is_solid,
+            self.domain.lad,
+            has_lad,
+            self._height_offset_k,
+            min_vf_threshold
+        )
+        
+        computed_nnz = int(self._t2s_count[None])
+        if computed_nnz > self._max_t2s_entries:
+            print(f"Warning: T2S-VF matrix truncated! {computed_nnz:,} > {self._max_t2s_entries:,}")
+            print("  Consider increasing _max_t2s_entries.")
+            self._t2s_nnz = self._max_t2s_entries
+        else:
+            self._t2s_nnz = computed_nnz
+        
+        self._t2s_matrix_cached = True
+        self._t2s_height_offset_k = self._height_offset_k
+        
+        sparsity_pct = self._t2s_nnz / (n_terrain_cells * n_surfaces) * 100 if n_surfaces > 0 else 0
+        memory_mb = self._t2s_nnz * 12 / 1e6  # 12 bytes per entry (2 int32 + 1 float32)
+        if progress_report:
+            print(f"  T2S-VF matrix computed: {self._t2s_nnz:,} non-zero entries ({memory_mb:.1f} MB)")
+            print(f"  Sparsity: {sparsity_pct:.4f}% of full matrix")
+            speedup = (n_terrain_cells * n_surfaces) / max(1, self._t2s_nnz)
+            print(f"  Speedup factor: ~{speedup:.0f}x per sky patch")
+    
+    @ti.kernel
+    def _compute_t2s_matrix_kernel(
+        self,
+        n_surfaces: ti.i32,
+        surf_center: ti.template(),
+        surf_normal: ti.template(),
+        surf_area: ti.template(),
+        is_solid: ti.template(),
+        lad: ti.template(),
+        has_lad: ti.i32,
+        height_offset: ti.i32,
+        min_threshold: ti.f32
+    ):
+        """
+        Compute T2S-VF matrix entries for terrain-following cells only.
+        
+        For each terrain cell at (i, j, ground_k[i,j] + height_offset),
+        compute view factors to all visible surfaces.
+        """
+        max_dist_sq = 900.0  # 30m max distance (same as terrain kernel)
+        
+        for i, j in ti.ndrange(self.nx, self.ny):
+            gk = self._ground_k[i, j]
+            if gk < 0:
+                continue  # No valid ground
+            
+            k = gk + height_offset
+            if k < 0 or k >= self.nz:
+                continue
+            
+            # Skip solid cells
+            if is_solid[i, j, k] == 1:
+                continue
+            
+            ij_idx = i * self.ny + j
+            cell_x = (ti.cast(i, ti.f32) + 0.5) * self.dx
+            cell_y = (ti.cast(j, ti.f32) + 0.5) * self.dy
+            cell_z = (ti.cast(k, ti.f32) + 0.5) * self.dz
+            
+            for surf_idx in range(n_surfaces):
+                surf_x = surf_center[surf_idx][0]
+                surf_y = surf_center[surf_idx][1]
+                surf_z = surf_center[surf_idx][2]
+                surf_nx = surf_normal[surf_idx][0]
+                surf_ny = surf_normal[surf_idx][1]
+                surf_nz = surf_normal[surf_idx][2]
+                area = surf_area[surf_idx]
+                
+                # Distance to surface
+                dx = cell_x - surf_x
+                dy = cell_y - surf_y
+                dz = cell_z - surf_z
+                dist_sq = dx*dx + dy*dy + dz*dz
+                
+                if dist_sq > 0.01 and dist_sq < max_dist_sq:
+                    dist = ti.sqrt(dist_sq)
+                    
+                    # Direction from surface to cell (normalized)
+                    dir_x = dx / dist
+                    dir_y = dy / dist
+                    dir_z = dz / dist
+                    
+                    # Cosine of angle between normal and direction
+                    cos_angle = dir_x * surf_nx + dir_y * surf_ny + dir_z * surf_nz
+                    
+                    if cos_angle > 0.0:  # Surface faces the cell
+                        # Get transmissivity
+                        trans = self._trace_transmissivity_to_surface(
+                            i, j, k, surf_x, surf_y, surf_z,
+                            surf_nx, surf_ny, surf_nz,
+                            is_solid, lad, has_lad
+                        )
+                        
+                        if trans > 0.0:
+                            # View factor: (A * cos_θ) / (π * d²) * 0.25 for sphere
+                            vf = area * cos_angle / (PI * dist_sq) * trans * 0.25
+                            
+                            if vf > min_threshold:
+                                idx = ti.atomic_add(self._t2s_count[None], 1)
+                                if idx < self._max_t2s_entries:
+                                    self._t2s_ij_idx[idx] = ij_idx
+                                    self._t2s_surf_idx[idx] = surf_idx
+                                    self._t2s_vf[idx] = vf
+    
+    def compute_reflected_flux_terrain_cached(
+        self,
+        surf_outgoing: np.ndarray
+    ):
+        """
+        Compute reflected flux at terrain-following level using cached T2S matrix.
+        
+        This is O(nnz) instead of O(N_cells * N_surfaces), providing
+        massive speedup for cumulative simulations with multiple sky patches.
+        
+        Requires:
+        1. init_cumulative_accumulation() called first
+        2. compute_t2s_matrix() called to pre-compute view factors
+        
+        Args:
+            surf_outgoing: Array of surface outgoing radiation (W/m²)
+        """
+        if not self._t2s_matrix_cached:
+            raise RuntimeError("T2S-VF matrix not computed. Call compute_t2s_matrix() first.")
+        
+        n_surfaces = len(surf_outgoing)
+        
+        # Allocate or resize surface outgoing field if needed
+        if self._surf_out_field is None or self._surf_out_max_size < n_surfaces:
+            self._surf_out_field = ti.field(dtype=ti.f32, shape=(n_surfaces,))
+            self._surf_out_max_size = n_surfaces
+        
+        # Copy outgoing radiation to Taichi field
+        self._surf_out_field.from_numpy(surf_outgoing.astype(np.float32))
+        
+        # Clear reflected flux field
+        self._clear_reflected_flux()
+        
+        # Use sparse matrix-vector multiply
+        self._apply_t2s_matrix_kernel(self._t2s_nnz, self._height_offset_k)
+    
+    @ti.kernel
+    def _apply_t2s_matrix_kernel(self, t2s_nnz: ti.i32, height_offset: ti.i32):
+        """
+        Apply T2S-VF matrix to compute reflected flux at terrain level.
+        
+        flux[i,j,k_terrain] = Σ (vf[ij, surf] * outgoing[surf])
+        
+        Uses atomic operations for parallel accumulation.
+        """
+        for idx in range(t2s_nnz):
+            ij_idx = self._t2s_ij_idx[idx]
+            surf_idx = self._t2s_surf_idx[idx]
+            vf = self._t2s_vf[idx]
+            
+            outgoing = self._surf_out_field[surf_idx]
+            
+            if outgoing > 0.1:  # Threshold for negligible contributions
+                # Reconstruct indices from ij_idx
+                j = ij_idx % self.ny
+                i = ij_idx // self.ny
+                
+                # Get terrain-following k level
+                gk = self._ground_k[i, j]
+                if gk >= 0:
+                    k = gk + height_offset
+                    if k >= 0 and k < self.nz:
+                        ti.atomic_add(self.swflux_reflected_vol[i, j, k], outgoing * vf)
+    
+    def invalidate_t2s_cache(self):
+        """
+        Invalidate the cached T2S-VF matrix.
+        
+        Call this if geometry or volumetric_height changes.
+        """
+        self._t2s_matrix_cached = False
+        self._t2s_nnz = 0
+        self._t2s_height_offset_k = -1
+    
+    @property
+    def t2s_matrix_cached(self) -> bool:
+        """Check if T2S-VF matrix is currently cached."""
+        return self._t2s_matrix_cached
+    
+    @property
+    def t2s_matrix_entries(self) -> int:
+        """Get number of non-zero entries in cached T2S-VF matrix."""
+        return self._t2s_nnz
 
     # =========================================================================
     # Cumulative Terrain-Following Accumulation (GPU-Optimized)
