@@ -694,11 +694,42 @@ def clear_gpu_ray_tracer_cache():
 
 
 def clear_all_caches():
-    """Clear all GPU caches (RadiationModel, Building RadiationModel, GPU ray tracer)."""
-    global _radiation_model_cache, _building_radiation_model_cache, _gpu_ray_tracer_cache
+    """Clear all GPU caches (RadiationModel, Building RadiationModel, GPU ray tracer, Volumetric)."""
+    global _radiation_model_cache, _building_radiation_model_cache, _gpu_ray_tracer_cache, _volumetric_flux_cache
     _radiation_model_cache = None
     _building_radiation_model_cache = None
     _gpu_ray_tracer_cache = None
+    _volumetric_flux_cache = None
+
+
+def reset_solar_taichi_cache():
+    """
+    Reset Taichi runtime and clear all solar caches.
+    
+    Call this function when you encounter:
+    - CUDA_ERROR_OUT_OF_MEMORY errors
+    - TaichiRuntimeError: FieldsBuilder finalized
+    
+    After calling this, the next solar calculation will create fresh
+    Taichi fields.
+    """
+    global _radiation_model_cache, _building_radiation_model_cache, _gpu_ray_tracer_cache, _volumetric_flux_cache
+    _radiation_model_cache = None
+    _building_radiation_model_cache = None
+    _gpu_ray_tracer_cache = None
+    _volumetric_flux_cache = None
+    
+    import taichi as ti
+    try:
+        ti.reset()
+        # Reinitialize Taichi after reset
+        ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
+    except Exception:
+        try:
+            # Fallback to CPU if CUDA fails
+            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
+        except Exception:
+            pass  # Ignore if already initialized
 
 
 # =============================================================================

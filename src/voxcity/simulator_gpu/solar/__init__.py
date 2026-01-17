@@ -123,6 +123,7 @@ from .integration import (
     clear_building_radiation_model_cache,
     clear_all_radiation_caches,
     clear_all_caches,
+    reset_solar_taichi_cache,
 )
 
 __version__ = "0.1.0"
@@ -217,6 +218,8 @@ __all__ = [
     'clear_radiation_model_cache',
     'clear_building_radiation_model_cache',
     'clear_all_radiation_caches',
+    'clear_all_caches',
+    'reset_solar_taichi_cache',
     # Temporal utilities (VoxCity API compatible)
     'get_solar_positions_astral',
 ]

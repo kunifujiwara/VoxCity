@@ -42,6 +42,112 @@ VOXCITY_BUILDING_CODE = -3
 GREEN_VIEW_CODES = (-2, 2, 5, 6, 7, 8)  # Trees and vegetation classes
 
 
+# =============================================================================
+# Domain Caching for GPU Memory Management
+# =============================================================================
+# Taichi has limitations:
+# 1. Fields accumulate in GPU memory until ti.reset() is called
+# 2. Once FieldsBuilder is finalized, no new fields can be created
+# We cache Domain objects to reuse them when dimensions match.
+
+@dataclass
+class _CachedDomain:
+    """Cache for Domain object to avoid recreating Taichi fields."""
+    domain: Domain
+    shape: Tuple[int, int, int]
+    meshsize: float
+
+
+# Module-level cache for Domain
+_domain_cache: Optional[_CachedDomain] = None
+
+
+def _get_or_create_domain(
+    nx: int, ny: int, nz: int,
+    meshsize: float,
+    force_recreate: bool = False
+) -> Domain:
+    """
+    Get cached Domain or create a new one if cache is invalid.
+    
+    This avoids creating new Taichi fields when the domain dimensions match,
+    preventing GPU memory exhaustion and FieldsBuilder finalized errors.
+    
+    Args:
+        nx, ny, nz: Domain dimensions
+        meshsize: Voxel size in meters
+        force_recreate: Force creation of new domain (requires ti.reset() first)
+        
+    Returns:
+        Domain object
+    """
+    global _domain_cache
+    
+    shape = (nx, ny, nz)
+    
+    # Check if cache is valid
+    if not force_recreate and _domain_cache is not None:
+        if (_domain_cache.shape == shape and 
+            abs(_domain_cache.meshsize - meshsize) < 1e-6):
+            return _domain_cache.domain
+    
+    # Need to create new domain
+    # If we already have a cached domain with different dimensions,
+    # we need to reset Taichi to free the old fields
+    if _domain_cache is not None and _domain_cache.shape != shape:
+        import taichi as ti
+        try:
+            ti.reset()
+        except Exception:
+            pass  # Ignore reset errors
+    
+    domain = Domain(
+        nx=nx, ny=ny, nz=nz,
+        dx=meshsize, dy=meshsize, dz=meshsize
+    )
+    
+    _domain_cache = _CachedDomain(
+        domain=domain,
+        shape=shape,
+        meshsize=meshsize
+    )
+    
+    return domain
+
+
+def clear_visibility_cache():
+    """Clear the cached Domain to free GPU memory."""
+    global _domain_cache
+    _domain_cache = None
+
+
+def reset_visibility_taichi_cache():
+    """
+    Reset Taichi runtime and clear all visibility caches.
+    
+    Call this function when you encounter:
+    - CUDA_ERROR_OUT_OF_MEMORY errors
+    - TaichiRuntimeError: FieldsBuilder finalized
+    
+    After calling this, the next visibility calculation will create fresh
+    Taichi fields.
+    """
+    global _domain_cache
+    _domain_cache = None
+    
+    import taichi as ti
+    try:
+        ti.reset()
+        # Reinitialize Taichi after reset
+        ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
+    except Exception:
+        try:
+            # Fallback to CPU if CUDA fails
+            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
+        except Exception:
+            pass  # Ignore if already initialized
+
+
 def create_domain_from_voxcity(voxcity) -> Domain:
     """
     Create a Domain object from a VoxCity model.
@@ -56,10 +162,8 @@ def create_domain_from_voxcity(voxcity) -> Domain:
     nx, ny, nz = voxel_data.shape
     meshsize = voxcity.voxels.meta.meshsize
     
-    domain = Domain(
-        nx=nx, ny=ny, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize
-    )
+    # Get or create cached domain to avoid Taichi memory issues
+    domain = _get_or_create_domain(nx, ny, nz, meshsize)
     
     # Set domain from voxel data
     domain.set_from_voxel_data(voxel_data, tree_code=VOXCITY_TREE_CODE)
@@ -114,11 +218,8 @@ def get_view_index_gpu(
     meshsize = voxcity.voxels.meta.meshsize
     nx, ny, nz = voxel_data.shape
     
-    # Create domain
-    domain = Domain(
-        nx=nx, ny=ny, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize
-    )
+    # Get or create cached domain to avoid Taichi memory issues
+    domain = _get_or_create_domain(nx, ny, nz, meshsize)
     
     # Create calculator
     calc = ViewCalculator(
@@ -205,6 +306,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
     ray_sampling = kwargs.pop('ray_sampling', 'grid')
     tree_k = kwargs.pop('tree_k', 0.5)
     tree_lad = kwargs.pop('tree_lad', 1.0)
+    show_plot = kwargs.pop('show_plot', True)  # VoxCity default shows plot
     
     return get_view_index_gpu(
         voxcity,
@@ -220,7 +322,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
         n_rays=n_rays,
         tree_k=tree_k,
         tree_lad=tree_lad,
-        show_plot=True,  # VoxCity default shows plot
+        show_plot=show_plot,
         **kwargs
     )
 
@@ -353,11 +455,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     face_centers = building_mesh.triangles_center.astype(np.float32)
     face_normals = building_mesh.face_normals.astype(np.float32)
     
-    # Create domain and calculator
-    domain = Domain(
-        nx=nx, ny=ny, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize
-    )
+    # Get or create cached domain to avoid Taichi memory issues
+    domain = _get_or_create_domain(nx, ny, nz, meshsize)
     
     calc = SurfaceViewFactorCalculator(
         domain,
@@ -621,11 +720,8 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
     face_centers = building_mesh.triangles_center.astype(np.float32)
     face_normals = building_mesh.face_normals.astype(np.float32)
     
-    # Create domain and calculator
-    domain = Domain(
-        nx=nx, ny=ny, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize
-    )
+    # Get or create cached domain to avoid Taichi memory issues
+    domain = _get_or_create_domain(nx, ny, nz, meshsize)
     
     calc = SurfaceLandmarkVisibilityCalculator(domain)
     calc.set_landmarks_from_positions(landmark_positions)
@@ -767,11 +863,8 @@ def get_landmark_visibility_map_gpu(
         voxel_data, building_id_grid, landmark_building_ids, target_value
     )
     
-    # Create domain
-    domain = Domain(
-        nx=nx, ny=ny, nz=nz,
-        dx=meshsize, dy=meshsize, dz=meshsize
-    )
+    # Get or create cached domain to avoid Taichi memory issues
+    domain = _get_or_create_domain(nx, ny, nz, meshsize)
     
     # Create calculator
     calc = LandmarkVisibilityCalculator(domain)

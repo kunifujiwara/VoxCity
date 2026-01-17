@@ -67,6 +67,9 @@ from .integration import (
     # Utility functions
     create_domain_from_voxcity,
     mark_building_by_id,
+    # Cache management functions
+    clear_visibility_cache,
+    reset_visibility_taichi_cache,
     # Constants
     VOXCITY_GROUND_CODE,
     VOXCITY_TREE_CODE,
@@ -97,6 +100,9 @@ __all__ = [
     # Geometry helpers
     'generate_ray_directions_grid',
     'generate_ray_directions_fibonacci',
+    # Cache management
+    'clear_visibility_cache',
+    'reset_visibility_taichi_cache',
     # VoxCity integration (legacy, backward compatibility)
     'create_domain_from_voxcity',
     'get_view_index_gpu',
