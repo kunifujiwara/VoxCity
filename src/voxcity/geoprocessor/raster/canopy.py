@@ -245,7 +245,9 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
         pixel_height = (max_lat - min_lat) / nx  # nx = rows (y direction)
         raster_transform = Affine(pixel_width, 0, min_lon, 0, -pixel_height, max_lat)
         
-        # Rasterize each polygon with its height values
+        # OPTIMIZATION: Group polygons by height to batch rasterize
+        # This reduces the number of rasterization calls significantly
+        height_groups = {}
         for _, row in polygon_gdf.iterrows():
             geom = row['geometry']
             if geom is None or geom.is_empty:
@@ -261,12 +263,24 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
             if bot_h > top_h:
                 top_h, bot_h = bot_h, top_h
             
+            height_key = (top_h, bot_h)
+            if height_key not in height_groups:
+                height_groups[height_key] = []
+            
+            # Collect geometries for this height group
+            if geom.geom_type == 'Polygon':
+                height_groups[height_key].append(geom)
+            else:  # MultiPolygon
+                height_groups[height_key].extend(geom.geoms)
+        
+        # Batch rasterize each height group
+        for (top_h, bot_h), geometries in height_groups.items():
+            if not geometries:
+                continue
+            
             try:
-                # Create a mask for this polygon
-                if geom.geom_type == 'Polygon':
-                    shapes = [(geom, 1)]
-                else:  # MultiPolygon
-                    shapes = [(g, 1) for g in geom.geoms]
+                # Create shapes list with value 1 for all geometries in this group
+                shapes = [(geom, 1) for geom in geometries]
                 
                 mask = np.zeros((nx, ny), dtype=np.uint8)
                 features.rasterize(
@@ -294,7 +308,7 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                     canopy_bottom
                 )
             except Exception:
-                # Skip this polygon if rasterization fails
+                # Skip this height group if rasterization fails
                 continue
 
     # Process point geometries (individual trees with ellipsoid crowns)
@@ -306,58 +320,80 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
         )
         point_gdf = tree_gdf[point_mask]
 
-    for _, row in point_gdf.iterrows():
-        geom = row['geometry']
-        if geom is None or not hasattr(geom, 'x'):
-            continue
-        top_h = float(row.get('top_height', 0.0) or 0.0)
-        bot_h = float(row.get('bottom_height', 0.0) or 0.0)
-        dia = float(row.get('crown_diameter', 0.0) or 0.0)
-        if dia <= 0 or top_h <= 0:
-            continue
-        if bot_h < 0:
-            bot_h = 0.0
-        if bot_h > top_h:
-            top_h, bot_h = bot_h, top_h
-        R = dia / 2.0
-        a = max((top_h - bot_h) / 2.0, 0.0)
-        z0 = (top_h + bot_h) / 2.0
-        tree_lon = float(geom.x)
-        tree_lat = float(geom.y)
-        delta = np.array([tree_lon, tree_lat]) - origin
-        alpha_beta = transform_inv @ delta
-        alpha_m = alpha_beta[0]
-        beta_m = alpha_beta[1]
-        du_cells = int(R / adjusted_meshsize[0] + 2)
-        dv_cells = int(R / adjusted_meshsize[1] + 2)
-        i_center_idx = int(alpha_m / adjusted_meshsize[0])
-        j_center_idx = int(beta_m / adjusted_meshsize[1])
-        i_min = max(0, i_center_idx - du_cells)
-        i_max = min(nx - 1, i_center_idx + du_cells)
-        j_min = max(0, j_center_idx - dv_cells)
-        j_max = min(ny - 1, j_center_idx + dv_cells)
-        if i_min > i_max or j_min > j_max:
-            continue
-        ic = i_centers_m[i_min:i_max + 1][:, None]
-        jc = j_centers_m[j_min:j_max + 1][None, :]
-        di = ic - alpha_m
-        dj = jc - beta_m
-        r = np.sqrt(di * di + dj * dj)
-        within = r <= R
-        if not np.any(within):
-            continue
-        ratio = np.clip(r / max(R, 1e-9), 0.0, 1.0)
-        factor = np.sqrt(1.0 - ratio * ratio)
-        local_top = z0 + a * factor
-        local_bot = z0 - a * factor
-        local_top_masked = np.where(within, local_top, 0.0)
-        local_bot_masked = np.where(within, local_bot, 0.0)
-        canopy_top[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
-            canopy_top[i_min:i_max + 1, j_min:j_max + 1], local_top_masked
+    if len(point_gdf) > 0:
+        # OPTIMIZATION: Pre-extract all data as numpy arrays to avoid repeated attribute access
+        # Filter valid trees first
+        valid_mask = (
+            point_gdf.geometry.notna() & 
+            (point_gdf['crown_diameter'] > 0) & 
+            (point_gdf['top_height'] > 0)
         )
-        canopy_bottom[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
-            canopy_bottom[i_min:i_max + 1, j_min:j_max + 1], local_bot_masked
-        )
+        valid_gdf = point_gdf[valid_mask]
+        
+        if len(valid_gdf) > 0:
+            # Extract coordinates and attributes as arrays
+            coords = np.array([(g.x, g.y) for g in valid_gdf.geometry])
+            top_heights = valid_gdf['top_height'].fillna(0).values.astype(float)
+            bot_heights = valid_gdf['bottom_height'].fillna(0).values.astype(float)
+            diameters = valid_gdf['crown_diameter'].fillna(0).values.astype(float)
+            
+            # Fix bottom heights
+            bot_heights = np.clip(bot_heights, 0, None)
+            swap_mask = bot_heights > top_heights
+            top_heights[swap_mask], bot_heights[swap_mask] = bot_heights[swap_mask], top_heights[swap_mask]
+            
+            # Vectorized coordinate transformation for all trees at once
+            deltas = coords - origin  # Shape: (n_trees, 2)
+            alpha_beta = (transform_inv @ deltas.T).T  # Shape: (n_trees, 2)
+            alpha_m_all = alpha_beta[:, 0]
+            beta_m_all = alpha_beta[:, 1]
+            
+            # Process each tree (loop still needed due to variable bounding box sizes)
+            for idx in range(len(valid_gdf)):
+                top_h = top_heights[idx]
+                bot_h = bot_heights[idx]
+                dia = diameters[idx]
+                alpha_m = alpha_m_all[idx]
+                beta_m = beta_m_all[idx]
+                
+                R = dia / 2.0
+                a = max((top_h - bot_h) / 2.0, 0.0)
+                z0 = (top_h + bot_h) / 2.0
+                
+                du_cells = int(R / adjusted_meshsize[0] + 2)
+                dv_cells = int(R / adjusted_meshsize[1] + 2)
+                i_center_idx = int(alpha_m / adjusted_meshsize[0])
+                j_center_idx = int(beta_m / adjusted_meshsize[1])
+                i_min = max(0, i_center_idx - du_cells)
+                i_max = min(nx - 1, i_center_idx + du_cells)
+                j_min = max(0, j_center_idx - dv_cells)
+                j_max = min(ny - 1, j_center_idx + dv_cells)
+                
+                if i_min > i_max or j_min > j_max:
+                    continue
+                    
+                ic = i_centers_m[i_min:i_max + 1][:, None]
+                jc = j_centers_m[j_min:j_max + 1][None, :]
+                di = ic - alpha_m
+                dj = jc - beta_m
+                r = np.sqrt(di * di + dj * dj)
+                within = r <= R
+                
+                if not np.any(within):
+                    continue
+                    
+                ratio = np.clip(r / max(R, 1e-9), 0.0, 1.0)
+                factor = np.sqrt(1.0 - ratio * ratio)
+                local_top = z0 + a * factor
+                local_bot = z0 - a * factor
+                local_top_masked = np.where(within, local_top, 0.0)
+                local_bot_masked = np.where(within, local_bot, 0.0)
+                canopy_top[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
+                    canopy_top[i_min:i_max + 1, j_min:j_max + 1], local_top_masked
+                )
+                canopy_bottom[i_min:i_max + 1, j_min:j_max + 1] = np.maximum(
+                    canopy_bottom[i_min:i_max + 1, j_min:j_max + 1], local_bot_masked
+                )
 
     canopy_bottom = np.minimum(canopy_bottom, canopy_top)
     return canopy_top, canopy_bottom
