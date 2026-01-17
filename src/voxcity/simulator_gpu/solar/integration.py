@@ -2327,7 +2327,6 @@ def get_cumulative_building_solar_irradiance(
             - progress_report (bool): Print progress (default: False)
             - with_reflections (bool): Enable multi-bounce surface reflections (default: False).
                 Set to True for more accurate results but slower computation.
-            - fast_path (bool): Use optimized paths (default: True)
     
     Returns:
         Trimesh object with cumulative irradiance (Wh/m²) in metadata
