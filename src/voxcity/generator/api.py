@@ -56,6 +56,7 @@ _SOURCE_URLS = {
     'High Resolution 1m Global Canopy Height Maps': 'https://gee-community-catalog.org/projects/meta_trees/',
     'ETH Global Sentinel-2 10m Canopy Height (2020)': 'https://gee-community-catalog.org/projects/canopy/',
     'Static': None,
+    # Note: 'OpenStreetMap' for canopy uses the same URL as above (already defined)
     # DEM
     'USGS 3DEP 1m': 'https://developers.google.com/earth-engine/datasets/catalog/USGS_3DEP_1m',
     'England 1m DTM': 'https://developers.google.com/earth-engine/datasets/catalog/UK_EA_ENGLAND_1M_TERRAIN_2022',
@@ -304,11 +305,24 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             ee_available = False
         
         if not ee_available:
-            # Downgrade EE-dependent sources
+            # Downgrade EE-dependent sources to non-GEE alternatives
+            # Land cover: fallback to OpenStreetMap (unless already non-GEE)
             if auto_sources['land_cover_source'] not in ('OpenStreetMap', 'OpenEarthMapJapan'):
                 auto_sources['land_cover_source'] = 'OpenStreetMap'
-            auto_sources['canopy_height_source'] = 'Static'
+            
+            # Canopy height: region-dependent fallback
+            # - Japan: 'Static' (OpenEarthMapJapan land cover provides good tree coverage)
+            # - Other regions: 'OpenStreetMap' (provides actual tree locations and forest polygons)
+            is_japan_area = (auto_sources['land_cover_source'] == 'OpenEarthMapJapan')
+            if is_japan_area:
+                auto_sources['canopy_height_source'] = 'Static'
+            else:
+                auto_sources['canopy_height_source'] = 'OpenStreetMap'
+            
+            # DEM: fallback to Flat (no elevation data without GEE)
             auto_sources['dem_source'] = 'Flat'
+            
+            # Building complementary sources that require GEE
             ee_dependent_comp = {
                 'Open Building 2.5D Temporal',
                 'England 1m DSM - DTM',
