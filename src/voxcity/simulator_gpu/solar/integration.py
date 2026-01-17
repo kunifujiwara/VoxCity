@@ -2010,6 +2010,9 @@ def get_building_solar_irradiance(
             - n_reflection_steps (int): Number of reflection bounces when with_reflections=True (default: 2)
             - tree_k (float): Tree extinction coefficient (default: 0.6)
             - building_class_id (int): Building voxel class code (default: -3)
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Faces whose XY centroid falls outside the masked region are set to NaN.
+                Useful for focusing analysis on a sub-region of the domain.
             - progress_report (bool): Print progress (default: False)
             - colormap (str): Colormap name (default: 'magma')
             - obj_export (bool): Export mesh to OBJ (default: False)
@@ -2039,6 +2042,7 @@ def get_building_solar_irradiance(
     n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
     colormap = kwargs.pop('colormap', 'magma')
     with_reflections = kwargs.pop('with_reflections', False)  # Default False for speed; set True for multi-bounce reflections
+    computation_mask = kwargs.pop('computation_mask', None)  # 2D boolean mask for sub-area filtering
     
     # If with_reflections=False, set n_reflection_steps=0 to skip expensive SVF matrix computation
     if not with_reflections:
@@ -2262,6 +2266,53 @@ def get_building_solar_irradiance(
         n_boundary = np.sum(is_boundary_vertical)
         print(f"  Boundary vertical faces set to NaN: {n_boundary}/{n_mesh_faces} ({100*n_boundary/n_mesh_faces:.1f}%)")
 
+    # -------------------------------------------------------------------------
+    # Apply computation_mask: set faces outside masked XY region to NaN
+    # -------------------------------------------------------------------------
+    if computation_mask is not None:
+        # Get mesh face centers (use cached if available)
+        if cache is not None and cache.mesh_face_centers is not None:
+            mesh_face_centers = cache.mesh_face_centers
+        else:
+            mesh_face_centers = building_mesh.triangles_center
+        
+        # Convert face XY positions to grid indices
+        face_x = mesh_face_centers[:, 0]
+        face_y = mesh_face_centers[:, 1]
+        
+        # Map to grid indices (face coords are in real-world units: 0 to nx*meshsize)
+        grid_i = (face_y / meshsize).astype(int)  # y -> i (row)
+        grid_j = (face_x / meshsize).astype(int)  # x -> j (col)
+        
+        # Handle mask shape orientation
+        if computation_mask.shape == (ny_vc, nx_vc):
+            mask_shape = computation_mask.shape
+        elif computation_mask.T.shape == (ny_vc, nx_vc):
+            computation_mask = computation_mask.T
+            mask_shape = computation_mask.shape
+        else:
+            # Best effort: assume it matches voxel grid
+            mask_shape = computation_mask.shape
+        
+        # Clamp indices to valid range
+        grid_i = np.clip(grid_i, 0, mask_shape[0] - 1)
+        grid_j = np.clip(grid_j, 0, mask_shape[1] - 1)
+        
+        # Determine which faces are outside the mask
+        # Flip mask to match coordinate system (same as ground-level functions)
+        flipped_mask = np.flipud(computation_mask)
+        outside_mask = ~flipped_mask[grid_i, grid_j]
+        
+        # Set values outside mask to NaN
+        sw_in_direct = np.where(outside_mask, np.nan, sw_in_direct)
+        sw_in_diffuse = np.where(outside_mask, np.nan, sw_in_diffuse)
+        sw_in_reflected = np.where(outside_mask, np.nan, sw_in_reflected)
+        total_sw = np.where(outside_mask, np.nan, total_sw)
+        
+        if progress_report:
+            n_outside = np.sum(outside_mask)
+            print(f"  Faces outside computation_mask set to NaN: {n_outside}/{n_mesh_faces} ({100*n_outside/n_mesh_faces:.1f}%)")
+
     building_mesh.metadata = {
         'irradiance_direct': sw_in_direct,
         'irradiance_diffuse': sw_in_diffuse,
@@ -2324,6 +2375,8 @@ def get_cumulative_building_solar_irradiance(
             - time_step_hours (float): Time step in hours (default: 1.0)
             - use_sky_patches (bool): Use sky patch optimization (default: True)
             - sky_discretization (str): 'tregenza', 'reinhart', etc.
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Faces whose XY centroid falls outside the masked region are set to NaN.
             - progress_report (bool): Print progress (default: False)
             - with_reflections (bool): Enable multi-bounce surface reflections (default: False).
                 Set to True for more accurate results but slower computation.
@@ -2341,6 +2394,7 @@ def get_cumulative_building_solar_irradiance(
     time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
     progress_report = kwargs.pop('progress_report', False)
     use_sky_patches = kwargs.pop('use_sky_patches', False)  # Default False for accuracy, True for speed
+    computation_mask = kwargs.pop('computation_mask', None)  # 2D boolean mask for sub-area filtering
     
     if weather_df.empty:
         raise ValueError("No data in weather dataframe.")
@@ -2602,6 +2656,46 @@ def get_cumulative_building_solar_irradiance(
         n_boundary = np.sum(is_boundary_vertical)
         print(f"  Boundary vertical faces set to NaN: {n_boundary}/{n_faces} ({100*n_boundary/n_faces:.1f}%)")
 
+    # -------------------------------------------------------------------------
+    # Apply computation_mask: set faces outside masked XY region to NaN
+    # -------------------------------------------------------------------------
+    if computation_mask is not None:
+        # Convert face XY positions to grid indices
+        face_x = mesh_face_centers[:, 0]
+        face_y = mesh_face_centers[:, 1]
+        
+        # Map to grid indices (face coords are in real-world units: 0 to nx*meshsize)
+        grid_i = (face_y / meshsize).astype(int)  # y -> i (row)
+        grid_j = (face_x / meshsize).astype(int)  # x -> j (col)
+        
+        # Handle mask shape orientation
+        if computation_mask.shape == (ny_vc, nx_vc):
+            mask_shape = computation_mask.shape
+        elif computation_mask.T.shape == (ny_vc, nx_vc):
+            computation_mask = computation_mask.T
+            mask_shape = computation_mask.shape
+        else:
+            # Best effort: assume it matches voxel grid
+            mask_shape = computation_mask.shape
+        
+        # Clamp indices to valid range
+        grid_i = np.clip(grid_i, 0, mask_shape[0] - 1)
+        grid_j = np.clip(grid_j, 0, mask_shape[1] - 1)
+        
+        # Determine which faces are outside the mask
+        # Flip mask to match coordinate system (same as ground-level functions)
+        flipped_mask = np.flipud(computation_mask)
+        outside_mask = ~flipped_mask[grid_i, grid_j]
+        
+        # Set values outside mask to NaN
+        cumulative_direct[outside_mask] = np.nan
+        cumulative_diffuse[outside_mask] = np.nan
+        cumulative_global[outside_mask] = np.nan
+        
+        if progress_report:
+            n_outside = np.sum(outside_mask)
+            print(f"  Faces outside computation_mask set to NaN: {n_outside}/{n_faces} ({100*n_outside/n_faces:.1f}%)")
+
     # Store results in mesh metadata
     result_mesh.metadata = getattr(result_mesh, 'metadata', {})
     result_mesh.metadata['cumulative_direct'] = cumulative_direct
@@ -2663,6 +2757,9 @@ def get_building_global_solar_irradiance_using_epw(
             - calc_time (str): For instantaneous: 'MM-DD HH:MM:SS'
             - period_start, period_end (str): For cumulative: 'MM-DD HH:MM:SS'
             - rectangle_vertices: Location vertices
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Faces whose XY centroid falls outside the masked region are set to NaN.
+                Useful for analyzing specific buildings or sub-regions.
             - progress_report (bool): Print progress
             - with_reflections (bool): Enable multi-bounce surface reflections (default: False).
                 Set to True for more accurate results but slower computation.
@@ -2918,6 +3015,8 @@ def get_volumetric_solar_irradiance_map(
         **kwargs: Additional parameters:
             - n_azimuth (int): Number of azimuthal directions for SVF (default: 36)
             - n_zenith (int): Number of zenith angles for SVF (default: 9)
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Grid cells outside the masked region are set to NaN.
             - progress_report (bool): Print progress (default: False)
             - colormap (str): Colormap for plot (default: 'magma')
             - vmin, vmax (float): Colormap bounds
@@ -2932,6 +3031,7 @@ def get_volumetric_solar_irradiance_map(
     progress_report = kwargs.pop('progress_report', False)
     n_azimuth = kwargs.pop('n_azimuth', 36)
     n_zenith = kwargs.pop('n_zenith', 9)
+    computation_mask = kwargs.pop('computation_mask', None)
     
     # Get or create cached calculator
     calculator, domain = _get_or_create_volumetric_calculator(
@@ -3065,6 +3165,25 @@ def get_volumetric_solar_irradiance_map(
     # Flip to match VoxCity coordinate system
     volumetric_map = np.flipud(volumetric_map)
     
+    # Apply computation_mask if provided
+    if computation_mask is not None:
+        # Handle mask shape orientation
+        if computation_mask.shape == volumetric_map.shape:
+            flipped_mask = np.flipud(computation_mask)
+            volumetric_map = np.where(flipped_mask, volumetric_map, np.nan)
+        elif computation_mask.T.shape == volumetric_map.shape:
+            flipped_mask = np.flipud(computation_mask.T)
+            volumetric_map = np.where(flipped_mask, volumetric_map, np.nan)
+        else:
+            # Best effort - try direct application
+            if computation_mask.shape == volumetric_map.shape:
+                volumetric_map = np.where(computation_mask, volumetric_map, np.nan)
+        
+        if progress_report:
+            n_masked = np.sum(np.isnan(volumetric_map))
+            total = volumetric_map.size
+            print(f"  Cells outside computation_mask set to NaN: {n_masked}/{total} ({100*n_masked/total:.1f}%)")
+
     if show_plot:
         colormap = kwargs.get('colormap', 'magma')
         vmin = kwargs.get('vmin', 0.0)
@@ -3122,6 +3241,8 @@ def get_cumulative_volumetric_solar_irradiance(
             - end_time (str): End time 'MM-DD HH:MM:SS' (default: '01-01 20:00:00')
             - use_sky_patches (bool): Use sky patch optimization (default: True)
             - sky_discretization (str): 'tregenza', 'reinhart', 'uniform', 'fibonacci'
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Grid cells outside the masked region are set to NaN.
             - progress_report (bool): Print progress (default: False)
             - n_reflection_steps (int): Reflection bounces when with_reflections=True (default: 2)
     
@@ -3142,6 +3263,7 @@ def get_cumulative_volumetric_solar_irradiance(
     sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     n_azimuth = kwargs.pop('n_azimuth', 36)
     n_zenith = kwargs.pop('n_zenith', 9)
+    computation_mask = kwargs.pop('computation_mask', None)
     
     if df.empty:
         raise ValueError("No data in EPW dataframe.")
@@ -3467,6 +3589,25 @@ def get_cumulative_volumetric_solar_irradiance(
     # Flip to match VoxCity coordinate system
     cumulative_map = np.flipud(cumulative_map)
     
+    # Apply computation_mask if provided
+    if computation_mask is not None:
+        # Handle mask shape orientation
+        if computation_mask.shape == cumulative_map.shape:
+            flipped_mask = np.flipud(computation_mask)
+            cumulative_map = np.where(flipped_mask, cumulative_map, np.nan)
+        elif computation_mask.T.shape == cumulative_map.shape:
+            flipped_mask = np.flipud(computation_mask.T)
+            cumulative_map = np.where(flipped_mask, cumulative_map, np.nan)
+        else:
+            # Best effort - try direct application
+            if computation_mask.shape == cumulative_map.shape:
+                cumulative_map = np.where(computation_mask, cumulative_map, np.nan)
+        
+        if progress_report:
+            n_masked = np.sum(np.isnan(cumulative_map))
+            total = cumulative_map.size
+            print(f"  Cells outside computation_mask set to NaN: {n_masked}/{total} ({100*n_masked/total:.1f}%)")
+
     if show_plot:
         colormap = kwargs.get('colormap', 'magma')
         vmin = kwargs.get('vmin', 0.0)
@@ -3522,6 +3663,8 @@ def get_volumetric_solar_irradiance_using_epw(
             - calc_time (str): For instantaneous: 'MM-DD HH:MM:SS'
             - start_time, end_time (str): For cumulative: 'MM-DD HH:MM:SS'
             - rectangle_vertices: Location vertices (for EPW download)
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Grid cells outside the masked region are set to NaN.
             - n_reflection_steps (int): Reflection bounces when with_reflections=True (default: 2)
     
     Returns:
