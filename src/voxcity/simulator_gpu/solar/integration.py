@@ -33,6 +33,289 @@ VOXCITY_TREE_CODE = -2
 VOXCITY_BUILDING_CODE = -3
 
 
+# =============================================================================
+# Common Helper Functions (reduces code duplication)
+# =============================================================================
+
+def _get_location_from_voxcity(voxcity, default_lat: float = 1.35, default_lon: float = 103.82) -> Tuple[float, float]:
+    """
+    Extract latitude/longitude from VoxCity object or return defaults.
+    
+    Args:
+        voxcity: VoxCity object with extras containing rectangle_vertices
+        default_lat: Default latitude if not found (Singapore)
+        default_lon: Default longitude if not found (Singapore)
+        
+    Returns:
+        Tuple of (origin_lat, origin_lon)
+    """
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rectangle_vertices = extras.get('rectangle_vertices', None)
+    else:
+        rectangle_vertices = None
+    
+    if rectangle_vertices is not None and len(rectangle_vertices) > 0:
+        lons = [v[0] for v in rectangle_vertices]
+        lats = [v[1] for v in rectangle_vertices]
+        return np.mean(lats), np.mean(lons)
+    
+    return default_lat, default_lon
+
+
+def _convert_voxel_data_to_arrays(
+    voxel_data: np.ndarray,
+    default_lad: float = 1.0
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Convert VoxCity voxel codes to is_solid and LAD arrays using vectorized operations.
+    
+    This is 10-100x faster than triple-nested Python loops for large grids.
+    
+    Args:
+        voxel_data: 3D array of VoxCity voxel class codes
+        default_lad: Default Leaf Area Density for tree voxels (m²/m³)
+        
+    Returns:
+        Tuple of (is_solid, lad) numpy arrays with same shape as voxel_data
+    """
+    # Vectorized solid detection: buildings (-3), ground (-1), or positive land cover codes
+    is_solid = (
+        (voxel_data == VOXCITY_BUILDING_CODE) |
+        (voxel_data == VOXCITY_GROUND_CODE) |
+        (voxel_data > 0)
+    ).astype(np.int32)
+    
+    # Vectorized LAD assignment: only tree voxels (-2) have LAD
+    lad = np.where(voxel_data == VOXCITY_TREE_CODE, default_lad, 0.0).astype(np.float32)
+    
+    return is_solid, lad
+
+
+def _compute_valid_ground_vectorized(voxel_data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute valid ground mask and ground k-levels using vectorized operations.
+    
+    Valid ground cells are those where:
+    - The transition from solid to air/tree occurs
+    - The solid below is not water (7,8,9) or building/underground (negative codes)
+    
+    Args:
+        voxel_data: 3D array of VoxCity voxel class codes (ni, nj, nk)
+        
+    Returns:
+        Tuple of (valid_ground 2D bool array, ground_k 2D int array)
+        ground_k[i,j] = -1 means no valid ground found
+    """
+    ni, nj, nk = voxel_data.shape
+    
+    # Water/special class codes to exclude
+    WATER_CLASSES = {7, 8, 9}
+    AIR_OR_TREE = {0, VOXCITY_TREE_CODE}
+    
+    valid_ground = np.zeros((ni, nj), dtype=bool)
+    ground_k = np.full((ni, nj), -1, dtype=np.int32)
+    
+    # Vectorize over k: find first transition from solid to air/tree
+    # For each (i,j), scan upward to find the first air/tree cell above a solid cell
+    for k in range(1, nk):
+        # Current cell is air (0) or tree (-2)
+        curr_is_air_or_tree = (voxel_data[:, :, k] == 0) | (voxel_data[:, :, k] == VOXCITY_TREE_CODE)
+        
+        # Cell below is NOT air or tree (i.e., it's solid)
+        below_val = voxel_data[:, :, k - 1]
+        below_is_solid = (below_val != 0) & (below_val != VOXCITY_TREE_CODE)
+        
+        # This is a transition point
+        is_transition = curr_is_air_or_tree & below_is_solid
+        
+        # Only process cells that haven't been assigned yet
+        unassigned = (ground_k == -1)
+        new_transitions = is_transition & unassigned
+        
+        if not np.any(new_transitions):
+            continue
+        
+        # Check validity: below is not water (7,8,9) and not negative (building/underground)
+        below_is_water = (below_val == 7) | (below_val == 8) | (below_val == 9)
+        below_is_negative = (below_val < 0)
+        below_is_invalid = below_is_water | below_is_negative
+        
+        # Valid ground: transition point where below is valid
+        valid_new = new_transitions & ~below_is_invalid
+        invalid_new = new_transitions & below_is_invalid
+        
+        # Assign ground_k for valid transitions
+        ground_k[valid_new] = k
+        valid_ground[valid_new] = True
+        
+        # Mark invalid transitions so we don't process them again
+        # (set ground_k to -2 temporarily to distinguish from unassigned)
+        ground_k[invalid_new] = -2
+    
+    # Reset -2 markers back to -1 (no valid ground)
+    ground_k[ground_k == -2] = -1
+    
+    return valid_ground, ground_k
+
+
+def _filter_df_to_period(df, start_time: str, end_time: str, tz: float):
+    """
+    Filter weather DataFrame to specified time period and convert to UTC.
+    
+    Args:
+        df: pandas DataFrame with datetime index
+        start_time: Start time in format 'MM-DD HH:MM:SS'
+        end_time: End time in format 'MM-DD HH:MM:SS'
+        tz: Timezone offset in hours
+        
+    Returns:
+        Tuple of (df_period_utc, df with hour_of_year column)
+        
+    Raises:
+        ValueError: If time format is invalid or no data in period
+    """
+    from datetime import datetime
+    import pytz
+    
+    try:
+        start_dt = datetime.strptime(start_time, '%m-%d %H:%M:%S')
+        end_dt = datetime.strptime(end_time, '%m-%d %H:%M:%S')
+    except ValueError as ve:
+        raise ValueError("start_time and end_time must be in format 'MM-DD HH:MM:SS'") from ve
+    
+    # Add hour_of_year column
+    df = df.copy()
+    df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
+    
+    # Calculate start/end hours
+    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+    start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
+    end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
+    
+    # Filter to period
+    if start_hour <= end_hour:
+        df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
+    else:
+        df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    if df_period.empty:
+        raise ValueError("No weather data in the specified period.")
+    
+    # Localize and convert to UTC
+    offset_minutes = int(tz * 60)
+    local_tz = pytz.FixedOffset(offset_minutes)
+    df_period_local = df_period.copy()
+    df_period_local.index = df_period_local.index.tz_localize(local_tz)
+    df_period_utc = df_period_local.tz_convert(pytz.UTC)
+    
+    return df_period_utc
+
+
+def _load_epw_data(
+    epw_file_path: Optional[str] = None,
+    download_nearest_epw: bool = False,
+    voxcity = None,
+    **kwargs
+) -> Tuple:
+    """
+    Load EPW weather data, optionally downloading the nearest file.
+    
+    Args:
+        epw_file_path: Path to EPW file (required if download_nearest_epw=False)
+        download_nearest_epw: If True, download nearest EPW based on location
+        voxcity: VoxCity object (needed for location when downloading)
+        **kwargs: Additional parameters (output_dir, max_distance, rectangle_vertices)
+        
+    Returns:
+        Tuple of (df, lon, lat, tz) where df is the weather DataFrame
+        
+    Raises:
+        ValueError: If EPW file not provided and download_nearest_epw=False
+        ImportError: If required modules not available
+    """
+    rectangle_vertices = kwargs.get('rectangle_vertices', None)
+    if rectangle_vertices is None and voxcity is not None:
+        extras = getattr(voxcity, 'extras', None)
+        if isinstance(extras, dict):
+            rectangle_vertices = extras.get('rectangle_vertices', None)
+    
+    if download_nearest_epw:
+        if rectangle_vertices is None:
+            raise ValueError("rectangle_vertices required to download nearest EPW file")
+        
+        try:
+            from voxcity.utils.weather import get_nearest_epw_from_climate_onebuilding
+            lons = [coord[0] for coord in rectangle_vertices]
+            lats = [coord[1] for coord in rectangle_vertices]
+            center_lon = (min(lons) + max(lons)) / 2
+            center_lat = (min(lats) + max(lats)) / 2
+            output_dir = kwargs.get('output_dir', 'output')
+            max_distance = kwargs.get('max_distance', 100)
+            
+            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
+                longitude=center_lon,
+                latitude=center_lat,
+                output_dir=output_dir,
+                max_distance=max_distance,
+                extract_zip=True,
+                load_data=True
+            )
+        except ImportError:
+            raise ImportError("VoxCity weather utilities required for EPW download")
+    
+    if not epw_file_path:
+        raise ValueError("epw_file_path must be provided when download_nearest_epw is False")
+    
+    # Read EPW file
+    try:
+        from voxcity.utils.weather import read_epw_for_solar_simulation
+        df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
+    except ImportError:
+        # Fallback to our EPW reader
+        from .epw import read_epw_header, read_epw_solar_data
+        location = read_epw_header(epw_file_path)
+        df = read_epw_solar_data(epw_file_path)
+        lon, lat, tz = location.longitude, location.latitude, location.timezone
+    
+    if df.empty:
+        raise ValueError("No data in EPW file.")
+    
+    return df, lon, lat, tz
+
+
+def _compute_sun_direction(azimuth_degrees_ori: float, elevation_degrees: float) -> Tuple[float, float, float, float]:
+    """
+    Compute sun direction vector from azimuth and elevation angles.
+    
+    Args:
+        azimuth_degrees_ori: Solar azimuth in VoxCity convention (0=North, clockwise)
+        elevation_degrees: Solar elevation in degrees above horizon
+        
+    Returns:
+        Tuple of (sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith)
+    """
+    # Convert from VoxCity convention to model coordinates
+    azimuth_degrees = 180 - azimuth_degrees_ori
+    azimuth_radians = np.deg2rad(azimuth_degrees)
+    elevation_radians = np.deg2rad(elevation_degrees)
+    
+    cos_elev = np.cos(elevation_radians)
+    sin_elev = np.sin(elevation_radians)
+    
+    sun_dir_x = cos_elev * np.cos(azimuth_radians)
+    sun_dir_y = cos_elev * np.sin(azimuth_radians)
+    sun_dir_z = sin_elev
+    cos_zenith = sin_elev  # cos(zenith) = sin(elevation)
+    
+    return sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
+
 @dataclass
 class LandCoverAlbedo:
     """
@@ -180,16 +463,8 @@ def _get_or_create_radiation_model(
     if progress_report:
         print("Creating new RadiationModel (computing SVF/CSF matrices)...")
     
-    # Get location
-    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
-    if rectangle_vertices is not None:
-        lons = [v[0] for v in rectangle_vertices]
-        lats = [v[1] for v in rectangle_vertices]
-        origin_lat = np.mean(lats)
-        origin_lon = np.mean(lons)
-    else:
-        origin_lat = 1.35
-        origin_lon = 103.82
+    # Get location using helper function
+    origin_lat, origin_lon = _get_location_from_voxcity(voxcity)
     
     # Create domain
     domain = Domain(
@@ -199,37 +474,12 @@ def _get_or_create_radiation_model(
         origin_lon=origin_lon
     )
     
-    # Convert VoxCity voxel data to domain arrays
-    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
-    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    # Convert VoxCity voxel data to domain arrays using vectorized helper
     default_lad = kwargs.get('default_lad', 1.0)
+    is_solid_np, lad_np = _convert_voxel_data_to_arrays(voxel_data, default_lad)
     
-    valid_ground = np.zeros((ni, nj), dtype=bool)
-    
-    for i in range(ni):
-        for j in range(nj):
-            for k in range(nk):
-                voxel_val = voxel_data[i, j, k]
-                
-                if voxel_val == VOXCITY_BUILDING_CODE:
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_GROUND_CODE:
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_TREE_CODE:
-                    lad_np[i, j, k] = default_lad
-                elif voxel_val > 0:
-                    is_solid_np[i, j, k] = 1
-            
-            # Determine valid ground cells
-            for k in range(1, nk):
-                curr_val = voxel_data[i, j, k]
-                below_val = voxel_data[i, j, k - 1]
-                if curr_val in (0, VOXCITY_TREE_CODE) and below_val not in (0, VOXCITY_TREE_CODE):
-                    if below_val in (7, 8, 9) or below_val < 0:
-                        valid_ground[i, j] = False
-                    else:
-                        valid_ground[i, j] = True
-                    break
+    # Compute valid ground cells using vectorized helper
+    valid_ground, _ = _compute_valid_ground_vectorized(voxel_data)
     
     # Set domain arrays
     _set_solid_array(domain, is_solid_np)
@@ -334,34 +584,8 @@ def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
     Returns:
         2D array of ground k-levels (ni, nj). -1 means no valid ground found.
     """
-    ni, nj, nk = voxel_data.shape
-    ground_k = np.full((ni, nj), -1, dtype=np.int32)
-    
-    # Water/special surface class codes to exclude
-    WATER_CLASSES = (7, 8, 9)
-    
-    # Use same logic as with_reflections=True path for consistency
-    for i in range(ni):
-        for j in range(nj):
-            col = voxel_data[i, j, :]
-            
-            # Find the first transition from non-air to air (or air/tree) going up
-            for k in range(1, nk):
-                curr_val = col[k]
-                below_val = col[k - 1]
-                
-                # Current is air (0) or tree (1), below is not air/tree
-                if curr_val in (0, 1) and below_val not in (0, 1):
-                    # Same logic as with_reflections=True:
-                    # Invalid if below is water (7,8,9) or negative (buildings, ground under building)
-                    if below_val in WATER_CLASSES or below_val < 0:
-                        # No valid ground - leave as -1
-                        pass
-                    else:
-                        # Valid ground surface at k (first air cell above ground)
-                        ground_k[i, j] = k
-                    break
-    
+    # Use the vectorized helper for consistency
+    _, ground_k = _compute_valid_ground_vectorized(voxel_data)
     return ground_k
 
 
@@ -372,7 +596,7 @@ def _extract_terrain_following_slice(
     is_solid: np.ndarray
 ) -> np.ndarray:
     """
-    Extract a terrain-following 2D slice from a 3D flux field.
+    Extract a terrain-following 2D slice from a 3D flux field (vectorized).
     
     For each (i,j), extracts the value at ground_k[i,j] + height_offset_k.
     Cells that are solid at the extraction point, have no valid ground,
@@ -390,17 +614,27 @@ def _extract_terrain_following_slice(
     ni, nj, nk = flux_3d.shape
     result = np.full((ni, nj), np.nan, dtype=np.float64)
     
-    for i in range(ni):
-        for j in range(nj):
-            gk = ground_k[i, j]
-            if gk < 0:
-                continue
-            k_extract = gk + height_offset_k
-            if k_extract >= nk:
-                continue
-            if is_solid[i, j, k_extract] == 1:
-                continue
-            result[i, j] = flux_3d[i, j, k_extract]
+    # Calculate extraction k-levels
+    k_extract = ground_k + height_offset_k
+    
+    # Create valid mask: ground exists, within bounds, not solid
+    valid_ground = ground_k >= 0
+    within_bounds = k_extract < nk
+    valid_mask = valid_ground & within_bounds
+    
+    # Get indices for valid cells
+    ii, jj = np.where(valid_mask)
+    kk = k_extract[valid_mask]
+    
+    # Check solid cells at extraction points
+    not_solid = is_solid[ii, jj, kk] != 1
+    
+    # Extract values for non-solid cells
+    ii_valid = ii[not_solid]
+    jj_valid = jj[not_solid]
+    kk_valid = kk[not_solid]
+    
+    result[ii_valid, jj_valid] = flux_3d[ii_valid, jj_valid, kk_valid]
     
     return result
 
@@ -414,7 +648,7 @@ def _accumulate_terrain_following_slice(
     weight: float = 1.0
 ) -> None:
     """
-    Accumulate terrain-following values from a 3D flux field into a 2D map (in-place).
+    Accumulate terrain-following values from a 3D flux field into a 2D map (vectorized, in-place).
     
     For each (i,j), adds flux_3d[i,j,k_extract] * weight to cumulative_map[i,j]
     where k_extract = ground_k[i,j] + height_offset_k.
@@ -429,17 +663,28 @@ def _accumulate_terrain_following_slice(
     """
     ni, nj, nk = flux_3d.shape
     
-    for i in range(ni):
-        for j in range(nj):
-            gk = ground_k[i, j]
-            if gk < 0:
-                continue
-            k_extract = gk + height_offset_k
-            if k_extract >= nk:
-                continue
-            if is_solid[i, j, k_extract] == 1:
-                continue
-            cumulative_map[i, j] += flux_3d[i, j, k_extract] * weight
+    # Calculate extraction k-levels
+    k_extract = ground_k + height_offset_k
+    
+    # Create valid mask: ground exists, within bounds
+    valid_ground = ground_k >= 0
+    within_bounds = k_extract < nk
+    valid_mask = valid_ground & within_bounds
+    
+    # Get indices for valid cells
+    ii, jj = np.where(valid_mask)
+    kk = k_extract[valid_mask]
+    
+    # Check solid cells at extraction points
+    not_solid = is_solid[ii, jj, kk] != 1
+    
+    # Accumulate for non-solid cells
+    ii_valid = ii[not_solid]
+    jj_valid = jj[not_solid]
+    kk_valid = kk[not_solid]
+    
+    # Use np.add.at for proper in-place accumulation (handles duplicate indices)
+    np.add.at(cumulative_map, (ii_valid, jj_valid), flux_3d[ii_valid, jj_valid, kk_valid] * weight)
 
 
 def clear_gpu_ray_tracer_cache():
@@ -537,16 +782,8 @@ def _get_or_create_building_radiation_model(
     if progress_report:
         print("Creating new Building RadiationModel (computing SVF/CSF matrices)...")
     
-    # Get location
-    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
-    if rectangle_vertices is not None:
-        lons = [v[0] for v in rectangle_vertices]
-        lats = [v[1] for v in rectangle_vertices]
-        origin_lat = np.mean(lats)
-        origin_lon = np.mean(lons)
-    else:
-        origin_lat = 1.35
-        origin_lon = 103.82
+    # Get location using helper function
+    origin_lat, origin_lon = _get_location_from_voxcity(voxcity)
     
     # Create domain - consistent with ground-level model
     # VoxCity uses [row, col, z] = [i, j, k] convention
@@ -561,25 +798,9 @@ def _get_or_create_building_radiation_model(
         origin_lon=origin_lon
     )
     
-    # Convert VoxCity voxel data to domain arrays
-    # Use the same convention as ground-level model: direct indexing without swap
-    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
-    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    # Convert VoxCity voxel data to domain arrays using vectorized helper
     default_lad = kwargs.get('default_lad', 2.0)
-    
-    for i in range(ni):
-        for j in range(nj):
-            for z in range(nk):
-                voxel_val = voxel_data[i, j, z]
-                
-                if voxel_val == VOXCITY_BUILDING_CODE:
-                    is_solid_np[i, j, z] = 1
-                elif voxel_val == VOXCITY_GROUND_CODE:
-                    is_solid_np[i, j, z] = 1
-                elif voxel_val == VOXCITY_TREE_CODE:
-                    lad_np[i, j, z] = default_lad
-                elif voxel_val > 0:
-                    is_solid_np[i, j, z] = 1
+    is_solid_np, lad_np = _convert_voxel_data_to_arrays(voxel_data, default_lad)
     
     # Set domain arrays
     _set_solid_array(domain, is_solid_np)
@@ -2459,56 +2680,13 @@ def get_building_global_solar_irradiance_using_epw(
     kwargs = dict(kwargs)
     kwargs.pop('progress_report', None)
     
-    # Get EPW file
-    epw_file_path = kwargs.get('epw_file_path', None)
-    download_nearest_epw = kwargs.get('download_nearest_epw', False)
-    
-    rectangle_vertices = kwargs.get('rectangle_vertices', None)
-    if rectangle_vertices is None:
-        extras = getattr(voxcity, 'extras', None)
-        if isinstance(extras, dict):
-            rectangle_vertices = extras.get('rectangle_vertices', None)
-    
-    if download_nearest_epw:
-        if rectangle_vertices is None:
-            raise ValueError("rectangle_vertices required to download nearest EPW file")
-        
-        try:
-            from voxcity.utils.weather import get_nearest_epw_from_climate_onebuilding
-            lons = [coord[0] for coord in rectangle_vertices]
-            lats = [coord[1] for coord in rectangle_vertices]
-            center_lon = (min(lons) + max(lons)) / 2
-            center_lat = (min(lats) + max(lats)) / 2
-            output_dir = kwargs.get('output_dir', 'output')
-            max_distance = kwargs.get('max_distance', 100)
-            
-            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
-                longitude=center_lon,
-                latitude=center_lat,
-                output_dir=output_dir,
-                max_distance=max_distance,
-                extract_zip=True,
-                load_data=True
-            )
-        except ImportError:
-            raise ImportError("VoxCity weather utilities required for EPW download")
-    
-    if not epw_file_path:
-        raise ValueError("epw_file_path must be provided when download_nearest_epw is False")
-    
-    # Read EPW
-    try:
-        from voxcity.utils.weather import read_epw_for_solar_simulation
-        df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
-    except ImportError:
-        # Fallback to our EPW reader
-        from .epw import read_epw_header, read_epw_solar_data
-        location = read_epw_header(epw_file_path)
-        df = read_epw_solar_data(epw_file_path)
-        lon, lat, tz = location.longitude, location.latitude, location.timezone
-    
-    if df.empty:
-        raise ValueError("No data in EPW file.")
+    # Load EPW data using helper function
+    df, lon, lat, tz = _load_epw_data(
+        epw_file_path=kwargs.pop('epw_file_path', None),
+        download_nearest_epw=kwargs.pop('download_nearest_epw', False),
+        voxcity=voxcity,
+        **kwargs
+    )
     
     # Create building mesh for output (just geometry, no SVF computation)
     # The RadiationModel computes SVF internally for voxel surfaces, so we don't need
@@ -2661,16 +2839,8 @@ def _get_or_create_volumetric_calculator(
     if progress_report:
         print("Creating new VolumetricFluxCalculator...")
     
-    # Get location
-    rectangle_vertices = getattr(voxcity, 'extras', {}).get('rectangle_vertices', None)
-    if rectangle_vertices is not None:
-        lons = [v[0] for v in rectangle_vertices]
-        lats = [v[1] for v in rectangle_vertices]
-        origin_lat = np.mean(lats)
-        origin_lon = np.mean(lons)
-    else:
-        origin_lat = 1.35
-        origin_lon = 103.82
+    # Get location using helper function
+    origin_lat, origin_lon = _get_location_from_voxcity(voxcity)
     
     # Create domain
     domain = Domain(
@@ -2680,24 +2850,9 @@ def _get_or_create_volumetric_calculator(
         origin_lon=origin_lon
     )
     
-    # Convert VoxCity voxel data to domain arrays
-    is_solid_np = np.zeros((ni, nj, nk), dtype=np.int32)
-    lad_np = np.zeros((ni, nj, nk), dtype=np.float32)
+    # Convert VoxCity voxel data to domain arrays using vectorized helper
     default_lad = kwargs.get('default_lad', 1.0)
-    
-    for i in range(ni):
-        for j in range(nj):
-            for k in range(nk):
-                voxel_val = voxel_data[i, j, k]
-                
-                if voxel_val == VOXCITY_BUILDING_CODE:
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_GROUND_CODE:
-                    is_solid_np[i, j, k] = 1
-                elif voxel_val == VOXCITY_TREE_CODE:
-                    lad_np[i, j, k] = default_lad
-                elif voxel_val > 0:
-                    is_solid_np[i, j, k] = 1
+    is_solid_np, lad_np = _convert_voxel_data_to_arrays(voxel_data, default_lad)
     
     # Set domain arrays
     _set_solid_array(domain, is_solid_np)
@@ -3370,55 +3525,14 @@ def get_volumetric_solar_irradiance_using_epw(
     from datetime import datetime
     import pytz
     
-    # Get EPW file
-    epw_file_path = kwargs.get('epw_file_path', None)
-    download_nearest_epw = kwargs.get('download_nearest_epw', False)
-    
-    rectangle_vertices = kwargs.get('rectangle_vertices', None)
-    if rectangle_vertices is None:
-        extras = getattr(voxcity, 'extras', None)
-        if isinstance(extras, dict):
-            rectangle_vertices = extras.get('rectangle_vertices', None)
-    
-    if download_nearest_epw:
-        if rectangle_vertices is None:
-            raise ValueError("rectangle_vertices required to download nearest EPW file")
-        
-        try:
-            from voxcity.utils.weather import get_nearest_epw_from_climate_onebuilding
-            lons = [coord[0] for coord in rectangle_vertices]
-            lats = [coord[1] for coord in rectangle_vertices]
-            center_lon = (min(lons) + max(lons)) / 2
-            center_lat = (min(lats) + max(lats)) / 2
-            output_dir = kwargs.get('output_dir', 'output')
-            max_distance = kwargs.get('max_distance', 100)
-            
-            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
-                longitude=center_lon,
-                latitude=center_lat,
-                output_dir=output_dir,
-                max_distance=max_distance,
-                extract_zip=True,
-                load_data=True
-            )
-        except ImportError:
-            raise ImportError("VoxCity weather utilities required for EPW download")
-    
-    if not epw_file_path:
-        raise ValueError("epw_file_path must be provided when download_nearest_epw is False")
-    
-    # Read EPW
-    try:
-        from voxcity.utils.weather import read_epw_for_solar_simulation
-        df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
-    except ImportError:
-        from .epw import read_epw_header, read_epw_solar_data
-        location = read_epw_header(epw_file_path)
-        df = read_epw_solar_data(epw_file_path)
-        lon, lat, tz = location.longitude, location.latitude, location.timezone
-    
-    if df.empty:
-        raise ValueError("No data in EPW file.")
+    # Load EPW data using helper function
+    kwargs_copy = dict(kwargs)
+    df, lon, lat, tz = _load_epw_data(
+        epw_file_path=kwargs_copy.pop('epw_file_path', None),
+        download_nearest_epw=kwargs_copy.pop('download_nearest_epw', False),
+        voxcity=voxcity,
+        **kwargs_copy
+    )
     
     if calc_type == 'instantaneous':
         calc_time = kwargs.get('calc_time', '01-01 12:00:00')
@@ -3588,56 +3702,14 @@ def get_global_solar_irradiance_using_epw(
     if spatial_mode not in ('horizontal', 'volumetric'):
         raise ValueError(f"spatial_mode must be 'horizontal' or 'volumetric', got '{spatial_mode}'")
     
-    # Get EPW file
-    epw_file_path = kwargs.get('epw_file_path', None)
-    download_nearest_epw = kwargs.get('download_nearest_epw', False)
-    
-    rectangle_vertices = kwargs.get('rectangle_vertices', None)
-    if rectangle_vertices is None:
-        extras = getattr(voxcity, 'extras', None)
-        if isinstance(extras, dict):
-            rectangle_vertices = extras.get('rectangle_vertices', None)
-    
-    if download_nearest_epw:
-        if rectangle_vertices is None:
-            raise ValueError("rectangle_vertices required to download nearest EPW file")
-        
-        try:
-            from voxcity.utils.weather import get_nearest_epw_from_climate_onebuilding
-            lons = [coord[0] for coord in rectangle_vertices]
-            lats = [coord[1] for coord in rectangle_vertices]
-            center_lon = (min(lons) + max(lons)) / 2
-            center_lat = (min(lats) + max(lats)) / 2
-            output_dir = kwargs.get('output_dir', 'output')
-            max_distance = kwargs.get('max_distance', 100)
-            
-            epw_file_path, weather_data, metadata = get_nearest_epw_from_climate_onebuilding(
-                longitude=center_lon,
-                latitude=center_lat,
-                output_dir=output_dir,
-                max_distance=max_distance,
-                extract_zip=True,
-                load_data=True
-            )
-        except ImportError:
-            raise ImportError("VoxCity weather utilities required for EPW download")
-    
-    if not epw_file_path:
-        raise ValueError("epw_file_path must be provided when download_nearest_epw is False")
-    
-    # Read EPW
-    try:
-        from voxcity.utils.weather import read_epw_for_solar_simulation
-        df, lon, lat, tz, elevation_m = read_epw_for_solar_simulation(epw_file_path)
-    except ImportError:
-        # Fallback to our EPW reader
-        from .epw import read_epw_header, read_epw_solar_data
-        location = read_epw_header(epw_file_path)
-        df = read_epw_solar_data(epw_file_path)
-        lon, lat, tz = location.longitude, location.latitude, location.timezone
-    
-    if df.empty:
-        raise ValueError("No data in EPW file.")
+    # Load EPW data using helper function
+    kwargs_copy = dict(kwargs)
+    df, lon, lat, tz = _load_epw_data(
+        epw_file_path=kwargs_copy.pop('epw_file_path', None),
+        download_nearest_epw=kwargs_copy.pop('download_nearest_epw', False),
+        voxcity=voxcity,
+        **kwargs_copy
+    )
     
     # Add computation_mask to kwargs for passing to underlying functions
     if computation_mask is not None:
@@ -3945,17 +4017,8 @@ def _get_or_create_gpu_ray_tracer(
                 return cache
             
             # Data changed, need to re-upload (but keep fields)
-            is_solid = np.zeros((nx, ny, nz), dtype=np.int32)
-            lad_array = np.zeros((nx, ny, nz), dtype=np.float32)
-            
-            for i in range(nx):
-                for j in range(ny):
-                    for k in range(nz):
-                        val = voxel_data[i, j, k]
-                        if val == VOXCITY_BUILDING_CODE or val == VOXCITY_GROUND_CODE or val > 0:
-                            is_solid[i, j, k] = 1
-                        elif val == VOXCITY_TREE_CODE:
-                            lad_array[i, j, k] = tree_lad
+            # Use vectorized helper
+            is_solid, lad_array = _convert_voxel_data_to_arrays(voxel_data, tree_lad)
             
             cache.is_solid_field.from_numpy(is_solid)
             cache.lad_field.from_numpy(lad_array)
@@ -3965,18 +4028,8 @@ def _get_or_create_gpu_ray_tracer(
             _compute_topo_gpu(cache.is_solid_field, cache.topo_top_field, nz)
             return cache
     
-    # Need to create new cache
-    is_solid = np.zeros((nx, ny, nz), dtype=np.int32)
-    lad_array = np.zeros((nx, ny, nz), dtype=np.float32)
-    
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                val = voxel_data[i, j, k]
-                if val == VOXCITY_BUILDING_CODE or val == VOXCITY_GROUND_CODE or val > 0:
-                    is_solid[i, j, k] = 1
-                elif val == VOXCITY_TREE_CODE:
-                    lad_array[i, j, k] = tree_lad
+    # Need to create new cache - use vectorized helper
+    is_solid, lad_array = _convert_voxel_data_to_arrays(voxel_data, tree_lad)
     
     # Create Taichi fields
     is_solid_field = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
