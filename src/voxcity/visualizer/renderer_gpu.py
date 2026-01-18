@@ -47,77 +47,121 @@ except ImportError:
 
 
 # ============================================================================
-# BVH Node for Triangle Meshes (CPU - no Taichi dependency)
+# Fast BVH Construction (Iterative, Vectorized)
 # ============================================================================
 
-class BVHNodeCPU:
-    """CPU-side BVH node for construction."""
-    def __init__(self, triangles: List[int], all_vertices: np.ndarray, 
-                 all_indices: np.ndarray, parent=None):
-        self.parent = parent
-        self.left = None
-        self.right = None
-        self.triangle_id = -1  # -1 means internal node
-        self.box_min = np.array([np.inf, np.inf, np.inf])
-        self.box_max = np.array([-np.inf, -np.inf, -np.inf])
-        self.id = 0
+def build_bvh_fast(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build BVH using fast iterative construction with vectorized operations.
+    
+    Returns arrays for GPU consumption:
+    - bvh_triangle_id: triangle ID at each node (-1 for internal)
+    - bvh_left_id: left child ID (-1 for none)
+    - bvh_right_id: right child ID (-1 for none)
+    - bvh_next_id: next node in traversal (-1 for none)
+    - bvh_min: bounding box min (N, 3)
+    - bvh_max: bounding box max (N, 3)
+    """
+    n_tris = len(indices)
+    if n_tris == 0:
+        return (np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.zeros((1, 3), dtype=np.float32),
+                np.zeros((1, 3), dtype=np.float32))
+    
+    # Precompute all triangle bounding boxes and centers (vectorized)
+    v0 = vertices[indices[:, 0]]
+    v1 = vertices[indices[:, 1]]
+    v2 = vertices[indices[:, 2]]
+    
+    tri_min = np.minimum(v0, np.minimum(v1, v2))
+    tri_max = np.maximum(v0, np.maximum(v1, v2))
+    tri_centers = (v0 + v1 + v2) / 3.0
+    
+    # Maximum BVH nodes = 2 * n_tris - 1
+    max_nodes = 2 * n_tris
+    
+    # Allocate arrays
+    bvh_tri_id = np.full(max_nodes, -1, dtype=np.int32)
+    bvh_left = np.full(max_nodes, -1, dtype=np.int32)
+    bvh_right = np.full(max_nodes, -1, dtype=np.int32)
+    bvh_parent = np.full(max_nodes, -1, dtype=np.int32)
+    bvh_min = np.zeros((max_nodes, 3), dtype=np.float32)
+    bvh_max = np.zeros((max_nodes, 3), dtype=np.float32)
+    
+    # Stack for iterative construction: (node_id, triangle_indices, parent_id, is_left_child)
+    stack = [(0, np.arange(n_tris, dtype=np.int32), -1, True)]
+    next_node_id = 1
+    
+    while stack:
+        node_id, tri_ids, parent_id, is_left = stack.pop()
         
-        if len(triangles) == 0:
-            return
-            
-        # Compute bounding box for all triangles
-        for tri_id in triangles:
-            v0 = all_vertices[all_indices[tri_id, 0]]
-            v1 = all_vertices[all_indices[tri_id, 1]]
-            v2 = all_vertices[all_indices[tri_id, 2]]
-            self.box_min = np.minimum(self.box_min, np.minimum(v0, np.minimum(v1, v2)))
-            self.box_max = np.maximum(self.box_max, np.maximum(v0, np.maximum(v1, v2)))
+        if parent_id >= 0:
+            bvh_parent[node_id] = parent_id
+            if is_left:
+                bvh_left[parent_id] = node_id
+            else:
+                bvh_right[parent_id] = node_id
         
-        if len(triangles) == 1:
+        if len(tri_ids) == 1:
             # Leaf node
-            self.triangle_id = triangles[0]
+            tid = tri_ids[0]
+            bvh_tri_id[node_id] = tid
+            bvh_min[node_id] = tri_min[tid]
+            bvh_max[node_id] = tri_max[tid]
         else:
-            # Internal node - split along longest axis
-            centers = []
-            for tri_id in triangles:
-                v0 = all_vertices[all_indices[tri_id, 0]]
-                v1 = all_vertices[all_indices[tri_id, 1]]
-                v2 = all_vertices[all_indices[tri_id, 2]]
-                centers.append((v0 + v1 + v2) / 3.0)
-            centers = np.array(centers)
+            # Internal node
+            # Compute bounds
+            bvh_min[node_id] = tri_min[tri_ids].min(axis=0)
+            bvh_max[node_id] = tri_max[tri_ids].max(axis=0)
             
+            # Find split axis (longest span)
+            centers = tri_centers[tri_ids]
             span = centers.max(axis=0) - centers.min(axis=0)
             axis = np.argmax(span)
             
-            # Sort triangles by center along axis
-            sorted_indices = np.argsort(centers[:, axis])
-            sorted_triangles = [triangles[i] for i in sorted_indices]
+            # Sort and split
+            sort_idx = np.argsort(centers[:, axis])
+            sorted_tris = tri_ids[sort_idx]
+            mid = len(sorted_tris) // 2
             
-            mid = len(sorted_triangles) // 2
-            self.left = BVHNodeCPU(sorted_triangles[:mid], all_vertices, all_indices, self)
-            self.right = BVHNodeCPU(sorted_triangles[mid:], all_vertices, all_indices, self)
+            left_tris = sorted_tris[:mid]
+            right_tris = sorted_tris[mid:]
+            
+            left_id = next_node_id
+            right_id = next_node_id + 1
+            next_node_id += 2
+            
+            # Push children (right first so left is processed first)
+            stack.append((right_id, right_tris, node_id, False))
+            stack.append((left_id, left_tris, node_id, True))
     
-    @property
-    def next_node(self):
-        """Get the next node in traversal order."""
-        node = self
+    # Trim to actual size
+    actual_nodes = next_node_id
+    bvh_tri_id = bvh_tri_id[:actual_nodes]
+    bvh_left = bvh_left[:actual_nodes]
+    bvh_right = bvh_right[:actual_nodes]
+    bvh_parent = bvh_parent[:actual_nodes]
+    bvh_min = bvh_min[:actual_nodes]
+    bvh_max = bvh_max[:actual_nodes]
+    
+    # Compute next_id for BVH traversal
+    bvh_next = np.full(actual_nodes, -1, dtype=np.int32)
+    for i in range(actual_nodes):
+        # Find next node in traversal
+        node = i
         while True:
-            if node.parent is not None and node.parent.right is not node:
-                return node.parent.right
-            elif node.parent is None:
-                return None
-            else:
-                node = node.parent
-        return None
+            parent = bvh_parent[node]
+            if parent == -1:
+                break
+            if bvh_left[parent] == node and bvh_right[parent] != -1:
+                bvh_next[i] = bvh_right[parent]
+                break
+            node = parent
     
-    def count_nodes(self) -> int:
-        """Count total nodes in subtree."""
-        count = 1
-        if self.left:
-            count += self.left.count_nodes()
-        if self.right:
-            count += self.right.count_nodes()
-        return count
+    return bvh_tri_id, bvh_left, bvh_right, bvh_next, bvh_min, bvh_max
 
 
 # ============================================================================
@@ -274,15 +318,13 @@ if _HAS_TAICHI:
                 default_ior = np.full(self.n_triangles, 1.33, dtype=np.float32)
                 self.face_ior.from_numpy(default_ior)
             
-            # Build BVH on CPU
-            triangle_ids = list(range(self.n_triangles))
-            self.root = BVHNodeCPU(triangle_ids, vertices, indices)
+            # Build BVH using fast iterative method
+            (bvh_tri_id, bvh_left, bvh_right, bvh_next, 
+             bvh_min_arr, bvh_max_arr) = build_bvh_fast(vertices, indices)
             
-            # Flatten BVH to GPU arrays
-            total_nodes = self.root.count_nodes() if self.root else 0
-            if total_nodes == 0:
-                total_nodes = 1
+            total_nodes = len(bvh_tri_id)
             
+            # Create Taichi fields for BVH
             self.bvh_triangle_id = ti.field(ti.i32, shape=total_nodes)
             self.bvh_left_id = ti.field(ti.i32, shape=total_nodes)
             self.bvh_right_id = ti.field(ti.i32, shape=total_nodes)
@@ -290,48 +332,15 @@ if _HAS_TAICHI:
             self.bvh_min = ti.Vector.field(3, dtype=ti.f32, shape=total_nodes)
             self.bvh_max = ti.Vector.field(3, dtype=ti.f32, shape=total_nodes)
             
+            # Copy to Taichi fields
+            self.bvh_triangle_id.from_numpy(bvh_tri_id)
+            self.bvh_left_id.from_numpy(bvh_left)
+            self.bvh_right_id.from_numpy(bvh_right)
+            self.bvh_next_id.from_numpy(bvh_next)
+            self.bvh_min.from_numpy(bvh_min_arr)
+            self.bvh_max.from_numpy(bvh_max_arr)
+            
             self.bvh_root = 0
-            self._flatten_bvh()
-        
-        def _flatten_bvh(self):
-            """Flatten BVH tree to arrays for GPU traversal."""
-            if self.root is None:
-                return
-                
-            # Assign IDs with pre-order traversal
-            node_id = [0]
-            
-            def assign_ids(node):
-                if node is None:
-                    return
-                node.id = node_id[0]
-                node_id[0] += 1
-                if node.left:
-                    assign_ids(node.left)
-                if node.right:
-                    assign_ids(node.right)
-            
-            assign_ids(self.root)
-            
-            # Save to arrays
-            def save_node(node):
-                if node is None:
-                    return
-                idx = node.id
-                self.bvh_triangle_id[idx] = node.triangle_id
-                self.bvh_left_id[idx] = node.left.id if node.left else -1
-                self.bvh_right_id[idx] = node.right.id if node.right else -1
-                next_node = node.next_node
-                self.bvh_next_id[idx] = next_node.id if next_node else -1
-                self.bvh_min[idx] = node.box_min.tolist()
-                self.bvh_max[idx] = node.box_max.tolist()
-                
-                if node.left:
-                    save_node(node.left)
-                if node.right:
-                    save_node(node.right)
-            
-            save_node(self.root)
         
         @ti.func
         def hit_aabb(self, bvh_id, ray_origin, ray_direction, t_min, t_max):
@@ -607,6 +616,9 @@ if _HAS_TAICHI:
             self.pixels = ti.Vector.field(3, dtype=ti.f32, shape=(width, height))
             self.sample_count = ti.field(dtype=ti.i32, shape=(width, height))
             
+            # Samples per batch for efficient rendering
+            self.samples_per_batch = ti.field(dtype=ti.i32, shape=())
+            
             # Scene components (set during rendering)
             self.bvh: Optional[TriangleBVH] = None
             self.camera: Optional[GPUCamera] = None
@@ -686,21 +698,23 @@ if _HAS_TAICHI:
         
         @ti.kernel
         def _render_pass(self):
-            """Execute one render pass over all pixels."""
+            """Execute render pass with multiple samples per pixel for efficiency."""
+            samples_this_pass = self.samples_per_batch[None]
             for x, y in self.pixels:
-                if self.sample_count[x, y] < self.samples_per_pixel:
-                    # Generate ray with jitter for anti-aliasing
-                    u = (x + ti.random()) / (self.width - 1)
-                    v = (y + ti.random()) / (self.height - 1)
-                    
-                    ray_origin, ray_direction = self.camera.get_ray(u, v)
-                    
-                    # Trace ray
-                    color = self._trace_ray(ray_origin, ray_direction, self.max_depth)
-                    
-                    # Accumulate color
-                    self.pixels[x, y] += color
-                    self.sample_count[x, y] += 1
+                for s in range(samples_this_pass):
+                    if self.sample_count[x, y] < self.samples_per_pixel:
+                        # Generate ray with jitter for anti-aliasing
+                        u = (x + ti.random()) / (self.width - 1)
+                        v = (y + ti.random()) / (self.height - 1)
+                        
+                        ray_origin, ray_direction = self.camera.get_ray(u, v)
+                        
+                        # Trace ray
+                        color = self._trace_ray(ray_origin, ray_direction, self.max_depth)
+                        
+                        # Accumulate color
+                        self.pixels[x, y] += color
+                        self.sample_count[x, y] += 1
         
         @ti.func
         def _scatter_lambert(self, ray_dir, hit_point, normal, color):
@@ -759,6 +773,7 @@ if _HAS_TAICHI:
             - Lambert (diffuse) surfaces: random hemisphere scattering
             - Metal (specular) surfaces: reflection with optional roughness
             - Dielectric (glass/water) surfaces: refraction with Fresnel
+            - Russian Roulette for early termination of low-contribution paths
             """
             color = ti.Vector([0.0, 0.0, 0.0])
             throughput = ti.Vector([1.0, 1.0, 1.0])
@@ -767,6 +782,15 @@ if _HAS_TAICHI:
             ray_direction = direction
             
             for bounce in range(depth):
+                # Russian Roulette for early termination (after first 2 bounces)
+                if bounce > 2:
+                    max_component = ti.max(throughput[0], ti.max(throughput[1], throughput[2]))
+                    if max_component < 0.1:
+                        # Terminate with probability based on throughput
+                        if ti.random() > max_component:
+                            break
+                        # Boost surviving rays to maintain unbiased estimate
+                        throughput *= 1.0 / max_component
                 hit, t, normal, tri_id = self.bvh.hit_all(ray_origin, ray_direction, 0.001, 1e10)
                 
                 if hit:
@@ -862,10 +886,18 @@ if _HAS_TAICHI:
             
             self._clear_pixels()
             
-            for sample in range(self.samples_per_pixel):
+            # Batch samples to reduce Python-Taichi kernel call overhead
+            # Higher batch = fewer kernel calls but less responsive progress
+            samples_per_batch = min(8, self.samples_per_pixel)
+            num_batches = (self.samples_per_pixel + samples_per_batch - 1) // samples_per_batch
+            
+            for batch in range(num_batches):
+                remaining = self.samples_per_pixel - batch * samples_per_batch
+                this_batch = min(samples_per_batch, remaining)
+                self.samples_per_batch[None] = this_batch
                 self._render_pass()
                 if show_progress:
-                    progress = (sample + 1) / self.samples_per_pixel * 100
+                    progress = min(100.0, (batch + 1) / num_batches * 100)
                     print(f"\rRendering: {progress:.1f}%", end="", flush=True)
             
             if show_progress:
