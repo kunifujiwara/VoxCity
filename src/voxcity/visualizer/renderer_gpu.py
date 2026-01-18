@@ -1,0 +1,1346 @@
+"""
+GPU-accelerated renderer using Taichi for ray tracing.
+
+This module provides GPU-accelerated rendering functionality for VoxCity
+visualization, using Taichi for parallel ray tracing on GPU.
+
+Based on ray-tracing-one-weekend-taichi implementation, extended for
+triangle mesh support.
+"""
+from __future__ import annotations
+
+import os
+import math
+import numpy as np
+from typing import Optional, Tuple, Dict, Any, List
+
+from ..models import VoxCity, MeshCollection
+from .builder import MeshBuilder
+from .palette import get_voxel_color_map
+
+
+# ============================================================================
+# Taichi Import and Initialization
+# ============================================================================
+
+_HAS_TAICHI = False
+_ti = None
+
+try:
+    import taichi as ti
+    _ti = ti
+    # Initialize Taichi immediately so decorators work
+    try:
+        ti.init(arch=ti.gpu)
+    except Exception:
+        try:
+            ti.init(arch=ti.cpu)
+        except Exception:
+            pass
+    _HAS_TAICHI = True
+except ImportError:
+    pass
+
+
+# ============================================================================
+# BVH Node for Triangle Meshes (CPU - no Taichi dependency)
+# ============================================================================
+
+class BVHNodeCPU:
+    """CPU-side BVH node for construction."""
+    def __init__(self, triangles: List[int], all_vertices: np.ndarray, 
+                 all_indices: np.ndarray, parent=None):
+        self.parent = parent
+        self.left = None
+        self.right = None
+        self.triangle_id = -1  # -1 means internal node
+        self.box_min = np.array([np.inf, np.inf, np.inf])
+        self.box_max = np.array([-np.inf, -np.inf, -np.inf])
+        self.id = 0
+        
+        if len(triangles) == 0:
+            return
+            
+        # Compute bounding box for all triangles
+        for tri_id in triangles:
+            v0 = all_vertices[all_indices[tri_id, 0]]
+            v1 = all_vertices[all_indices[tri_id, 1]]
+            v2 = all_vertices[all_indices[tri_id, 2]]
+            self.box_min = np.minimum(self.box_min, np.minimum(v0, np.minimum(v1, v2)))
+            self.box_max = np.maximum(self.box_max, np.maximum(v0, np.maximum(v1, v2)))
+        
+        if len(triangles) == 1:
+            # Leaf node
+            self.triangle_id = triangles[0]
+        else:
+            # Internal node - split along longest axis
+            centers = []
+            for tri_id in triangles:
+                v0 = all_vertices[all_indices[tri_id, 0]]
+                v1 = all_vertices[all_indices[tri_id, 1]]
+                v2 = all_vertices[all_indices[tri_id, 2]]
+                centers.append((v0 + v1 + v2) / 3.0)
+            centers = np.array(centers)
+            
+            span = centers.max(axis=0) - centers.min(axis=0)
+            axis = np.argmax(span)
+            
+            # Sort triangles by center along axis
+            sorted_indices = np.argsort(centers[:, axis])
+            sorted_triangles = [triangles[i] for i in sorted_indices]
+            
+            mid = len(sorted_triangles) // 2
+            self.left = BVHNodeCPU(sorted_triangles[:mid], all_vertices, all_indices, self)
+            self.right = BVHNodeCPU(sorted_triangles[mid:], all_vertices, all_indices, self)
+    
+    @property
+    def next_node(self):
+        """Get the next node in traversal order."""
+        node = self
+        while True:
+            if node.parent is not None and node.parent.right is not node:
+                return node.parent.right
+            elif node.parent is None:
+                return None
+            else:
+                node = node.parent
+        return None
+    
+    def count_nodes(self) -> int:
+        """Count total nodes in subtree."""
+        count = 1
+        if self.left:
+            count += self.left.count_nodes()
+        if self.right:
+            count += self.right.count_nodes()
+        return count
+
+
+# ============================================================================
+# Taichi-based GPU Components (only defined if Taichi is available)
+# ============================================================================
+
+if _HAS_TAICHI:
+    
+    # Vector/Color Types
+    Vector3 = ti.types.vector(3, ti.f32)
+    Color3 = ti.types.vector(3, ti.f32)
+
+    WHITE = Vector3([1.0, 1.0, 1.0])
+    BLUE = Vector3([0.5, 0.7, 1.0])
+    BLACK = Vector3([0.0, 0.0, 0.0])
+    GRAY = Vector3([0.5, 0.5, 0.5])
+
+    # NOTE: Taichi @ti.func decorated functions should NOT have Python type annotations.
+    # Taichi infers types at JIT compile time.
+
+    @ti.func
+    def random_in_unit_sphere():
+        """Generate a random point inside a unit sphere."""
+        theta = ti.random() * math.pi * 2.0
+        v = ti.random()
+        phi = ti.acos(2.0 * v - 1.0)
+        r = ti.random() ** (1.0 / 3.0)
+        return ti.Vector([
+            r * ti.sin(phi) * ti.cos(theta),
+            r * ti.sin(phi) * ti.sin(theta),
+            r * ti.cos(phi)
+        ])
+
+    @ti.func
+    def random_in_hemisphere(normal):
+        """Generate a random direction in the hemisphere defined by normal."""
+        vec = random_in_unit_sphere()
+        if vec.dot(normal) < 0:
+            vec = -vec
+        return vec
+
+    @ti.func
+    def random_in_unit_disk():
+        """Generate a random point in a unit disk (z=0)."""
+        theta = ti.random() * math.pi * 2.0
+        r = ti.random() ** 0.5
+        return ti.Vector([r * ti.cos(theta), r * ti.sin(theta), 0.0])
+
+    @ti.func
+    def reflect(v, n):
+        """Reflect vector v around normal n."""
+        return v - 2.0 * v.dot(n) * n
+
+    @ti.func
+    def refract(v, n, etai_over_etat):
+        """Refract vector v through surface with normal n using Snell's law."""
+        cos_theta = ti.min(-v.dot(n), 1.0)
+        r_out_perp = etai_over_etat * (v + cos_theta * n)
+        r_out_parallel = -ti.sqrt(ti.abs(1.0 - r_out_perp.norm_sqr())) * n
+        return r_out_perp + r_out_parallel
+
+    @ti.func
+    def reflectance(cosine, ref_idx):
+        """Schlick's approximation for Fresnel reflectance."""
+        r0 = ((1.0 - ref_idx) / (1.0 + ref_idx)) ** 2
+        return r0 + (1.0 - r0) * ((1.0 - cosine) ** 5)
+
+    @ti.func
+    def ray_at(origin, direction, t):
+        """Get point along ray at parameter t."""
+        return origin + direction * t
+    
+    # Material type constants
+    MAT_LAMBERT = 0    # Diffuse (Lambertian)
+    MAT_METAL = 1      # Specular reflection (metal)
+    MAT_DIELECTRIC = 2 # Glass/water with refraction
+
+
+    @ti.data_oriented
+    class TriangleBVH:
+        """GPU-accelerated BVH for triangle meshes using Taichi."""
+        
+        def __init__(self, vertices: np.ndarray, indices: np.ndarray, 
+                     colors: Optional[np.ndarray] = None,
+                     materials: Optional[np.ndarray] = None,
+                     roughness: Optional[np.ndarray] = None,
+                     ior: Optional[np.ndarray] = None):
+            """
+            Initialize BVH from triangle mesh.
+            
+            Parameters
+            ----------
+            vertices : np.ndarray
+                (N, 3) array of vertex positions
+            indices : np.ndarray
+                (M, 3) array of triangle vertex indices
+            colors : np.ndarray, optional
+                (M, 3) or (M, 4) array of per-face colors (0-255 range)
+            materials : np.ndarray, optional
+                (M,) array of material types per face (0=Lambert, 1=Metal, 2=Dielectric)
+            roughness : np.ndarray, optional
+                (M,) array of roughness values per face (0-1, used for Metal)
+            ior : np.ndarray, optional
+                (M,) array of index of refraction per face (used for Dielectric, default 1.5)
+            """
+            self.n_vertices = len(vertices)
+            self.n_triangles = len(indices)
+            
+            # Store vertices and indices in Taichi fields
+            self.vertices = ti.Vector.field(3, dtype=ti.f32, shape=self.n_vertices)
+            self.indices = ti.Vector.field(3, dtype=ti.i32, shape=self.n_triangles)
+            
+            # Store face colors (normalized to 0-1)
+            self.face_colors = ti.Vector.field(3, dtype=ti.f32, shape=self.n_triangles)
+            
+            # Store material properties per face
+            self.face_materials = ti.field(dtype=ti.i32, shape=self.n_triangles)
+            self.face_roughness = ti.field(dtype=ti.f32, shape=self.n_triangles)
+            self.face_ior = ti.field(dtype=ti.f32, shape=self.n_triangles)
+            
+            # Copy data to fields
+            self.vertices.from_numpy(vertices.astype(np.float32))
+            self.indices.from_numpy(indices.astype(np.int32))
+            
+            if colors is not None:
+                if colors.shape[1] == 4:
+                    colors = colors[:, :3]
+                colors_normalized = colors.astype(np.float32) / 255.0
+                self.face_colors.from_numpy(colors_normalized)
+            else:
+                # Default gray color
+                default_colors = np.full((self.n_triangles, 3), 0.7, dtype=np.float32)
+                self.face_colors.from_numpy(default_colors)
+            
+            # Set material properties
+            if materials is not None:
+                self.face_materials.from_numpy(materials.astype(np.int32))
+            else:
+                # Default to Lambert (diffuse)
+                default_mats = np.zeros(self.n_triangles, dtype=np.int32)
+                self.face_materials.from_numpy(default_mats)
+            
+            if roughness is not None:
+                self.face_roughness.from_numpy(roughness.astype(np.float32))
+            else:
+                # Default roughness for metals
+                default_rough = np.full(self.n_triangles, 0.1, dtype=np.float32)
+                self.face_roughness.from_numpy(default_rough)
+            
+            if ior is not None:
+                self.face_ior.from_numpy(ior.astype(np.float32))
+            else:
+                # Default IOR for glass/water (water ~1.33, glass ~1.5)
+                default_ior = np.full(self.n_triangles, 1.33, dtype=np.float32)
+                self.face_ior.from_numpy(default_ior)
+            
+            # Build BVH on CPU
+            triangle_ids = list(range(self.n_triangles))
+            self.root = BVHNodeCPU(triangle_ids, vertices, indices)
+            
+            # Flatten BVH to GPU arrays
+            total_nodes = self.root.count_nodes() if self.root else 0
+            if total_nodes == 0:
+                total_nodes = 1
+            
+            self.bvh_triangle_id = ti.field(ti.i32, shape=total_nodes)
+            self.bvh_left_id = ti.field(ti.i32, shape=total_nodes)
+            self.bvh_right_id = ti.field(ti.i32, shape=total_nodes)
+            self.bvh_next_id = ti.field(ti.i32, shape=total_nodes)
+            self.bvh_min = ti.Vector.field(3, dtype=ti.f32, shape=total_nodes)
+            self.bvh_max = ti.Vector.field(3, dtype=ti.f32, shape=total_nodes)
+            
+            self.bvh_root = 0
+            self._flatten_bvh()
+        
+        def _flatten_bvh(self):
+            """Flatten BVH tree to arrays for GPU traversal."""
+            if self.root is None:
+                return
+                
+            # Assign IDs with pre-order traversal
+            node_id = [0]
+            
+            def assign_ids(node):
+                if node is None:
+                    return
+                node.id = node_id[0]
+                node_id[0] += 1
+                if node.left:
+                    assign_ids(node.left)
+                if node.right:
+                    assign_ids(node.right)
+            
+            assign_ids(self.root)
+            
+            # Save to arrays
+            def save_node(node):
+                if node is None:
+                    return
+                idx = node.id
+                self.bvh_triangle_id[idx] = node.triangle_id
+                self.bvh_left_id[idx] = node.left.id if node.left else -1
+                self.bvh_right_id[idx] = node.right.id if node.right else -1
+                next_node = node.next_node
+                self.bvh_next_id[idx] = next_node.id if next_node else -1
+                self.bvh_min[idx] = node.box_min.tolist()
+                self.bvh_max[idx] = node.box_max.tolist()
+                
+                if node.left:
+                    save_node(node.left)
+                if node.right:
+                    save_node(node.right)
+            
+            save_node(self.root)
+        
+        @ti.func
+        def hit_aabb(self, bvh_id, ray_origin, ray_direction, t_min, t_max):
+            """Test ray-AABB intersection using slab method."""
+            intersect = 1
+            min_aabb = self.bvh_min[bvh_id]
+            max_aabb = self.bvh_max[bvh_id]
+            
+            for i in ti.static(range(3)):
+                if ray_direction[i] == 0:
+                    if ray_origin[i] < min_aabb[i] or ray_origin[i] > max_aabb[i]:
+                        intersect = 0
+                else:
+                    i1 = (min_aabb[i] - ray_origin[i]) / ray_direction[i]
+                    i2 = (max_aabb[i] - ray_origin[i]) / ray_direction[i]
+                    new_t_max = ti.max(i1, i2)
+                    new_t_min = ti.min(i1, i2)
+                    t_max = ti.min(new_t_max, t_max)
+                    t_min = ti.max(new_t_min, t_min)
+            
+            if t_min > t_max:
+                intersect = 0
+            return intersect
+        
+        @ti.func
+        def hit_triangle(self, tri_id, ray_origin, ray_direction, t_min, t_max):
+            """
+            Möller–Trumbore ray-triangle intersection.
+            Returns t value if hit, -1.0 if miss.
+            """
+            EPSILON = 1e-8
+            t_hit = -1.0
+            
+            idx = self.indices[tri_id]
+            v0 = self.vertices[idx[0]]
+            v1 = self.vertices[idx[1]]
+            v2 = self.vertices[idx[2]]
+            
+            edge1 = v1 - v0
+            edge2 = v2 - v0
+            h = ray_direction.cross(edge2)
+            a = edge1.dot(h)
+            
+            if ti.abs(a) > EPSILON:
+                f = 1.0 / a
+                s = ray_origin - v0
+                u = f * s.dot(h)
+                
+                if u >= 0.0 and u <= 1.0:
+                    q = s.cross(edge1)
+                    v = f * ray_direction.dot(q)
+                    
+                    if v >= 0.0 and u + v <= 1.0:
+                        t = f * edge2.dot(q)
+                        if t > t_min and t < t_max:
+                            t_hit = t
+            
+            return t_hit
+        
+        @ti.func
+        def get_triangle_normal(self, tri_id):
+            """Compute triangle normal."""
+            idx = self.indices[tri_id]
+            v0 = self.vertices[idx[0]]
+            v1 = self.vertices[idx[1]]
+            v2 = self.vertices[idx[2]]
+            edge1 = v1 - v0
+            edge2 = v2 - v0
+            normal = edge1.cross(edge2)
+            return normal.normalized()
+        
+        @ti.func
+        def hit_all(self, ray_origin, ray_direction, t_min, t_max):
+            """
+            Intersect ray against all triangles using BVH.
+            
+            Returns (hit, t, normal, triangle_id)
+            """
+            hit_anything = 0
+            closest_t = t_max
+            hit_normal = ti.Vector([0.0, 0.0, 1.0])
+            hit_tri_id = -1
+            
+            curr = self.bvh_root
+            
+            while curr != -1:
+                tri_id = self.bvh_triangle_id[curr]
+                left_id = self.bvh_left_id[curr]
+                right_id = self.bvh_right_id[curr]
+                next_id = self.bvh_next_id[curr]
+                
+                if tri_id != -1:
+                    # Leaf node - test triangle
+                    t = self.hit_triangle(tri_id, ray_origin, ray_direction, t_min, closest_t)
+                    if t > 0:
+                        hit_anything = 1
+                        closest_t = t
+                        hit_tri_id = tri_id
+                        hit_normal = self.get_triangle_normal(tri_id)
+                    curr = next_id
+                else:
+                    # Internal node - test AABB
+                    if self.hit_aabb(curr, ray_origin, ray_direction, t_min, closest_t):
+                        if left_id != -1:
+                            curr = left_id
+                        elif right_id != -1:
+                            curr = right_id
+                        else:
+                            curr = next_id
+                    else:
+                        curr = next_id
+            
+            # Ensure normal faces the ray
+            if hit_anything and ray_direction.dot(hit_normal) > 0:
+                hit_normal = -hit_normal
+            
+            return hit_anything, closest_t, hit_normal, hit_tri_id
+        
+        @ti.func
+        def get_face_color(self, tri_id):
+            """Get the color of a triangle face."""
+            return self.face_colors[tri_id]
+        
+        @ti.func
+        def get_face_material(self, tri_id):
+            """Get the material type of a triangle face."""
+            return self.face_materials[tri_id]
+        
+        @ti.func
+        def get_face_roughness(self, tri_id):
+            """Get the roughness of a triangle face."""
+            return self.face_roughness[tri_id]
+        
+        @ti.func
+        def get_face_ior(self, tri_id):
+            """Get the index of refraction of a triangle face."""
+            return self.face_ior[tri_id]
+
+
+    @ti.data_oriented
+    class GPUCamera:
+        """GPU-accelerated camera for ray generation."""
+        
+        def __init__(self, position: Tuple[float, float, float],
+                     look_at: Tuple[float, float, float],
+                     up: Tuple[float, float, float] = (0, 0, 1),
+                     fov: float = 45.0,
+                     aspect_ratio: float = 1.0,
+                     aperture: float = 0.0,
+                     focus_dist: float = 10.0):
+            """
+            Initialize camera.
+            
+            Parameters
+            ----------
+            position : tuple
+                Camera position (x, y, z)
+            look_at : tuple
+                Point the camera looks at
+            up : tuple
+                Up vector
+            fov : float
+                Vertical field of view in degrees
+            aspect_ratio : float
+                Width / height
+            aperture : float
+                Lens aperture for depth of field (0 = pinhole)
+            focus_dist : float
+                Focus distance
+            """
+            self.fov = float(fov)
+            self.aspect_ratio = float(aspect_ratio)
+            self.aperture = float(aperture)
+            self.focus_dist = float(focus_dist)
+            self._look_at = np.array(look_at, dtype=np.float32)
+            self._up = np.array(up, dtype=np.float32)
+            
+            # Taichi fields for camera state
+            self.origin = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.u = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.v = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.w = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.horizontal = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.vertical = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.lower_left_corner = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.lens_radius = ti.field(dtype=ti.f32, shape=())
+            
+            self._update_camera(np.array(position, dtype=np.float32))
+        
+        def _update_camera(self, position: np.ndarray):
+            """Update camera parameters."""
+            theta = math.radians(self.fov)
+            h = math.tan(theta / 2.0)
+            viewport_height = 2.0 * h
+            viewport_width = viewport_height * self.aspect_ratio
+            
+            position = np.array(position, dtype=np.float32)
+            look_at = self._look_at
+            up = self._up
+            
+            w = position - look_at
+            w = w / np.linalg.norm(w)
+            u = np.cross(up, w)
+            u = u / np.linalg.norm(u)
+            v = np.cross(w, u)
+            
+            horizontal = self.focus_dist * viewport_width * u
+            vertical = self.focus_dist * viewport_height * v
+            lower_left = position - horizontal / 2 - vertical / 2 - self.focus_dist * w
+            
+            self.origin[None] = position.tolist()
+            self.u[None] = u.tolist()
+            self.v[None] = v.tolist()
+            self.w[None] = w.tolist()
+            self.horizontal[None] = horizontal.tolist()
+            self.vertical[None] = vertical.tolist()
+            self.lower_left_corner[None] = lower_left.tolist()
+            self.lens_radius[None] = self.aperture / 2.0
+        
+        def set_position(self, position: Tuple[float, float, float]):
+            """Update camera position."""
+            self._update_camera(np.array(position, dtype=np.float32))
+        
+        def set_look_at(self, look_at: Tuple[float, float, float]):
+            """Update look-at point."""
+            self._look_at = np.array(look_at, dtype=np.float32)
+            # Re-update with current origin
+            origin = np.array([
+                self.origin[None][0],
+                self.origin[None][1],
+                self.origin[None][2]
+            ], dtype=np.float32)
+            self._update_camera(origin)
+        
+        @ti.func
+        def get_ray(self, s, t):
+            """Generate ray for normalized screen coordinates (s, t)."""
+            rd = self.lens_radius[None] * random_in_unit_disk()
+            offset = self.u[None] * rd.x + self.v[None] * rd.y
+            origin = self.origin[None] + offset
+            direction = (self.lower_left_corner[None] + 
+                         s * self.horizontal[None] + 
+                         t * self.vertical[None] - origin)
+            return origin, direction.normalized()
+
+
+    @ti.data_oriented
+    class TaichiRenderer:
+        """GPU-accelerated ray tracing renderer using Taichi."""
+        
+        def __init__(self, width: int = 800, height: int = 600,
+                     samples_per_pixel: int = 64, max_depth: int = 8):
+            """
+            Initialize the renderer.
+            
+            Parameters
+            ----------
+            width : int
+                Image width in pixels
+            height : int
+                Image height in pixels
+            samples_per_pixel : int
+                Number of samples per pixel for anti-aliasing
+            max_depth : int
+                Maximum ray bounce depth
+            """
+            self.width = width
+            self.height = height
+            self.samples_per_pixel = samples_per_pixel
+            self.max_depth = max_depth
+            
+            # Pixel buffer
+            self.pixels = ti.Vector.field(3, dtype=ti.f32, shape=(width, height))
+            self.sample_count = ti.field(dtype=ti.i32, shape=(width, height))
+            
+            # Scene components (set during rendering)
+            self.bvh: Optional[TriangleBVH] = None
+            self.camera: Optional[GPUCamera] = None
+            
+            # Lighting
+            self.light_dir = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.light_color = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.ambient_color = ti.Vector.field(3, dtype=ti.f32, shape=())
+            
+            # Default lighting
+            self.set_lighting(
+                direction=(0.5, 0.5, 1.0),
+                color=(1.0, 1.0, 1.0),
+                ambient=(0.3, 0.3, 0.35)
+            )
+        
+        def set_lighting(self, direction: Tuple[float, float, float] = (0.5, 0.5, 1.0),
+                         color: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+                         ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35)):
+            """Set scene lighting parameters."""
+            d = np.array(direction, dtype=np.float32)
+            d = d / np.linalg.norm(d)
+            self.light_dir[None] = d.tolist()
+            self.light_color[None] = color
+            self.ambient_color[None] = ambient
+        
+        def set_scene(self, vertices: np.ndarray, indices: np.ndarray,
+                      colors: Optional[np.ndarray] = None,
+                      materials: Optional[np.ndarray] = None,
+                      roughness: Optional[np.ndarray] = None,
+                      ior: Optional[np.ndarray] = None):
+            """
+            Set the scene geometry with optional material properties.
+            
+            Parameters
+            ----------
+            vertices : np.ndarray
+                (N, 3) array of vertex positions
+            indices : np.ndarray
+                (M, 3) array of triangle indices
+            colors : np.ndarray, optional
+                (M, 3) or (M, 4) array of face colors (0-255)
+            materials : np.ndarray, optional
+                (M,) array of material types per face:
+                - 0 (MAT_LAMBERT): Diffuse Lambertian
+                - 1 (MAT_METAL): Specular metal with roughness
+                - 2 (MAT_DIELECTRIC): Glass/water with refraction
+            roughness : np.ndarray, optional
+                (M,) array of roughness values (0-1) for Metal materials
+            ior : np.ndarray, optional
+                (M,) array of index of refraction for Dielectric materials
+            """
+            self.bvh = TriangleBVH(vertices, indices, colors, materials, roughness, ior)
+        
+        def set_camera(self, position: Tuple[float, float, float],
+                       look_at: Tuple[float, float, float],
+                       up: Tuple[float, float, float] = (0, 0, 1),
+                       fov: float = 45.0):
+            """Set camera parameters."""
+            aspect = self.width / self.height
+            self.camera = GPUCamera(position, look_at, up, fov, aspect)
+        
+        @ti.kernel
+        def _clear_pixels(self):
+            """Clear pixel buffer."""
+            for x, y in self.pixels:
+                self.pixels[x, y] = ti.Vector([0.0, 0.0, 0.0])
+                self.sample_count[x, y] = 0
+        
+        @ti.kernel
+        def _render_pass(self):
+            """Execute one render pass over all pixels."""
+            for x, y in self.pixels:
+                if self.sample_count[x, y] < self.samples_per_pixel:
+                    # Generate ray with jitter for anti-aliasing
+                    u = (x + ti.random()) / (self.width - 1)
+                    v = (y + ti.random()) / (self.height - 1)
+                    
+                    ray_origin, ray_direction = self.camera.get_ray(u, v)
+                    
+                    # Trace ray
+                    color = self._trace_ray(ray_origin, ray_direction, self.max_depth)
+                    
+                    # Accumulate color
+                    self.pixels[x, y] += color
+                    self.sample_count[x, y] += 1
+        
+        @ti.func
+        def _scatter_lambert(self, ray_dir, hit_point, normal, color):
+            """Scatter ray for Lambertian (diffuse) material."""
+            out_dir = normal + random_in_hemisphere(normal)
+            # Normalize to avoid degenerate directions
+            out_dir = out_dir.normalized()
+            out_origin = hit_point + normal * 0.001
+            attenuation = color
+            return True, out_origin, out_dir, attenuation
+        
+        @ti.func
+        def _scatter_metal(self, ray_dir, hit_point, normal, color, roughness):
+            """Scatter ray for Metal (specular) material."""
+            reflected = reflect(ray_dir.normalized(), normal)
+            out_dir = reflected + roughness * random_in_unit_sphere()
+            out_dir = out_dir.normalized()
+            out_origin = hit_point + normal * 0.001
+            attenuation = color
+            # Only reflect if going in same hemisphere as normal
+            reflected_valid = out_dir.dot(normal) > 0.0
+            return reflected_valid, out_origin, out_dir, attenuation
+        
+        @ti.func
+        def _scatter_dielectric(self, ray_dir, hit_point, normal, color, ior, front_facing):
+            """Scatter ray for Dielectric (glass/water) material with refraction."""
+            refraction_ratio = 1.0 / ior
+            if not front_facing:
+                refraction_ratio = ior
+            
+            unit_dir = ray_dir.normalized()
+            cos_theta = ti.min(-unit_dir.dot(normal), 1.0)
+            sin_theta = ti.sqrt(1.0 - cos_theta * cos_theta)
+            
+            # Determine if we refract or reflect (total internal reflection)
+            cannot_refract = refraction_ratio * sin_theta > 1.0
+            
+            out_dir = ti.Vector([0.0, 0.0, 0.0])
+            if cannot_refract or reflectance(cos_theta, refraction_ratio) > ti.random():
+                # Reflect
+                out_dir = reflect(unit_dir, normal)
+            else:
+                # Refract
+                out_dir = refract(unit_dir, normal, refraction_ratio)
+            
+            out_origin = hit_point + out_dir * 0.001
+            attenuation = color
+            return True, out_origin, out_dir.normalized(), attenuation
+        
+        @ti.func
+        def _trace_ray(self, origin, direction, depth):
+            """
+            Trace a ray and compute color using multi-bounce path tracing.
+            
+            This implements proper path tracing with:
+            - Lambert (diffuse) surfaces: random hemisphere scattering
+            - Metal (specular) surfaces: reflection with optional roughness
+            - Dielectric (glass/water) surfaces: refraction with Fresnel
+            """
+            color = ti.Vector([0.0, 0.0, 0.0])
+            throughput = ti.Vector([1.0, 1.0, 1.0])
+            
+            ray_origin = origin
+            ray_direction = direction
+            
+            for bounce in range(depth):
+                hit, t, normal, tri_id = self.bvh.hit_all(ray_origin, ray_direction, 0.001, 1e10)
+                
+                if hit:
+                    # Get surface properties
+                    surface_color = self.bvh.get_face_color(tri_id)
+                    mat_type = self.bvh.get_face_material(tri_id)
+                    roughness = self.bvh.get_face_roughness(tri_id)
+                    ior = self.bvh.get_face_ior(tri_id)
+                    
+                    # Compute hit point
+                    hit_point = ray_at(ray_origin, ray_direction, t)
+                    
+                    # Determine if we hit front face (for dielectric refraction)
+                    front_facing = ray_direction.dot(normal) < 0.0
+                    if not front_facing:
+                        normal = -normal
+                    
+                    # Add direct illumination (for diffuse and metallic surfaces)
+                    # Dielectrics typically don't have diffuse contribution
+                    if mat_type != MAT_DIELECTRIC:
+                        # Shadow ray
+                        shadow_origin = hit_point + normal * 0.001
+                        shadow_hit, _, _, _ = self.bvh.hit_all(
+                            shadow_origin, self.light_dir[None], 0.001, 1e10)
+                        
+                        # Diffuse lighting
+                        n_dot_l = ti.max(0.0, normal.dot(self.light_dir[None]))
+                        
+                        shading = self.ambient_color[None]
+                        if not shadow_hit:
+                            diffuse = n_dot_l * self.light_color[None]
+                            shading = self.ambient_color[None] + diffuse * 0.6
+                        
+                        # Only add direct lighting on first bounce to avoid over-brightening
+                        if bounce == 0:
+                            color += throughput * surface_color * shading * 0.5
+                    
+                    # Scatter the ray based on material type
+                    scattered = False
+                    out_origin = hit_point
+                    out_dir = ray_direction
+                    attenuation = ti.Vector([1.0, 1.0, 1.0])
+                    
+                    if mat_type == MAT_LAMBERT:
+                        scattered, out_origin, out_dir, attenuation = self._scatter_lambert(
+                            ray_direction, hit_point, normal, surface_color)
+                    elif mat_type == MAT_METAL:
+                        scattered, out_origin, out_dir, attenuation = self._scatter_metal(
+                            ray_direction, hit_point, normal, surface_color, roughness)
+                    else:  # MAT_DIELECTRIC
+                        scattered, out_origin, out_dir, attenuation = self._scatter_dielectric(
+                            ray_direction, hit_point, normal, surface_color, ior, front_facing)
+                    
+                    if scattered:
+                        throughput *= attenuation
+                        ray_origin = out_origin
+                        ray_direction = out_dir
+                    else:
+                        # Ray was absorbed
+                        break
+                else:
+                    # Background - sky gradient
+                    unit_dir = ray_direction.normalized()
+                    t_sky = 0.5 * (unit_dir[2] + 1.0)
+                    sky_color = (1.0 - t_sky) * ti.Vector([1.0, 1.0, 1.0]) + t_sky * ti.Vector([0.5, 0.7, 1.0])
+                    color += throughput * sky_color
+                    break
+            
+            return color
+        
+        @ti.kernel
+        def _finalize_pixels(self):
+            """Normalize accumulated pixel values."""
+            for x, y in self.pixels:
+                if self.sample_count[x, y] > 0:
+                    self.pixels[x, y] = self.pixels[x, y] / float(self.sample_count[x, y])
+                    # Gamma correction
+                    self.pixels[x, y] = ti.sqrt(self.pixels[x, y])
+        
+        def render(self, show_progress: bool = True) -> np.ndarray:
+            """
+            Render the scene.
+            
+            Returns
+            -------
+            np.ndarray
+                (height, width, 3) RGB image in 0-255 range
+            """
+            if self.bvh is None:
+                raise ValueError("No scene set. Call set_scene() first.")
+            if self.camera is None:
+                raise ValueError("No camera set. Call set_camera() first.")
+            
+            self._clear_pixels()
+            
+            for sample in range(self.samples_per_pixel):
+                self._render_pass()
+                if show_progress:
+                    progress = (sample + 1) / self.samples_per_pixel * 100
+                    print(f"\rRendering: {progress:.1f}%", end="", flush=True)
+            
+            if show_progress:
+                print("\rRendering: 100.0%")
+            
+            self._finalize_pixels()
+            
+            # Convert to numpy and format for image
+            img = self.pixels.to_numpy()
+            img = (img * 255).clip(0, 255).astype(np.uint8)
+            # Transpose to (H, W, 3) and flip vertically
+            img = np.transpose(img, (1, 0, 2))
+            img = np.flipud(img)
+            
+            return img
+        
+        def render_to_file(self, filepath: str, show_progress: bool = True):
+            """
+            Render and save to file.
+            
+            Parameters
+            ----------
+            filepath : str
+                Output file path (supports PNG, JPG, etc.)
+            """
+            img = self.render(show_progress)
+            
+            try:
+                from PIL import Image
+                Image.fromarray(img).save(filepath)
+            except ImportError:
+                try:
+                    import cv2
+                    img_bgr = img[:, :, ::-1]  # RGB to BGR
+                    cv2.imwrite(filepath, img_bgr)
+                except ImportError:
+                    import imageio
+                    imageio.imwrite(filepath, img)
+
+else:
+    # Placeholders when Taichi is not available
+    TriangleBVH = None
+    GPUCamera = None
+    TaichiRenderer = None
+
+
+# ============================================================================
+# High-Level Rendering Functions (no Taichi dependency at definition time)
+# ============================================================================
+
+# Classes that should use reflective/dielectric materials (water, glass, etc.)
+REFLECTIVE_CLASSES = {9}  # Water class
+
+# Classes that should use metallic materials (optional, for special effects)
+METALLIC_CLASSES = set()  # Can add building class or others if desired
+
+
+def merge_meshes(mesh_collection: MeshCollection) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Merge all meshes in a collection into single arrays with material assignments.
+    
+    Returns
+    -------
+    vertices : np.ndarray
+        (N, 3) combined vertices
+    indices : np.ndarray
+        (M, 3) combined triangle indices
+    colors : np.ndarray
+        (M, 3) combined face colors
+    materials : np.ndarray
+        (M,) material types per face (0=Lambert, 1=Metal, 2=Dielectric)
+    """
+    all_vertices = []
+    all_indices = []
+    all_colors = []
+    all_materials = []
+    vertex_offset = 0
+    
+    for name, mesh in mesh_collection:
+        if mesh.vertices is None or len(mesh.vertices) == 0:
+            continue
+        if mesh.faces is None or len(mesh.faces) == 0:
+            continue
+            
+        all_vertices.append(mesh.vertices)
+        all_indices.append(mesh.faces + vertex_offset)
+        
+        if mesh.colors is not None:
+            all_colors.append(mesh.colors[:, :3])
+        else:
+            # Default color
+            default = np.full((len(mesh.faces), 3), 180, dtype=np.uint8)
+            all_colors.append(default)
+        
+        # Determine material type based on class ID (mesh name)
+        try:
+            class_id = int(name)
+        except (ValueError, TypeError):
+            class_id = 0
+        
+        n_faces = len(mesh.faces)
+        if class_id in REFLECTIVE_CLASSES:
+            # Water/glass - use dielectric material
+            mat_type = 2  # MAT_DIELECTRIC
+        elif class_id in METALLIC_CLASSES:
+            # Metallic - use metal material
+            mat_type = 1  # MAT_METAL
+        else:
+            # Default to Lambertian (diffuse)
+            mat_type = 0  # MAT_LAMBERT
+        
+        all_materials.append(np.full(n_faces, mat_type, dtype=np.int32))
+        vertex_offset += len(mesh.vertices)
+    
+    if not all_vertices:
+        return (np.zeros((0, 3)), np.zeros((0, 3), dtype=np.int32), 
+                np.zeros((0, 3), dtype=np.uint8), np.zeros(0, dtype=np.int32))
+    
+    vertices = np.vstack(all_vertices).astype(np.float32)
+    indices = np.vstack(all_indices).astype(np.int32)
+    colors = np.vstack(all_colors).astype(np.uint8)
+    materials = np.concatenate(all_materials)
+    
+    return vertices, indices, colors, materials
+
+
+class GPURenderer:
+    """High-level GPU renderer for VoxCity objects."""
+    
+    def __init__(self, width: int = 800, height: int = 600,
+                 samples_per_pixel: int = 64, max_depth: int = 8,
+                 arch: str = 'gpu'):
+        """
+        Initialize the GPU renderer.
+        
+        Parameters
+        ----------
+        width : int
+            Output image width
+        height : int
+            Output image height
+        samples_per_pixel : int
+            Anti-aliasing quality (higher = better quality, slower)
+        max_depth : int
+            Ray bounce depth
+        arch : str
+            Compute architecture ('gpu', 'cpu', 'cuda', 'vulkan', 'metal')
+        """
+        if not _HAS_TAICHI:
+            raise ImportError("Taichi is required for GPU rendering. Install with: pip install taichi")
+        
+        self.taichi_renderer = TaichiRenderer(
+            width=width,
+            height=height,
+            samples_per_pixel=samples_per_pixel,
+            max_depth=max_depth
+        )
+        self.width = width
+        self.height = height
+    
+    def render_city(self, city: VoxCity,
+                    voxel_color_map: str | dict = "default",
+                    camera_position: Optional[Tuple[float, float, float]] = None,
+                    camera_look_at: Optional[Tuple[float, float, float]] = None,
+                    camera_up: Tuple[float, float, float] = (0, 0, 1),
+                    fov: float = 45.0,
+                    light_direction: Tuple[float, float, float] = (0.5, 0.5, 1.0),
+                    ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35),
+                    output_path: Optional[str] = None,
+                    show_progress: bool = True,
+                    building_sim_mesh=None,
+                    render_voxel_buildings: bool = False) -> np.ndarray:
+        """
+        Render a VoxCity to an image using GPU ray tracing.
+        
+        Parameters
+        ----------
+        city : VoxCity
+            The VoxCity object to render
+        voxel_color_map : str or dict
+            Color map for voxel classes
+        camera_position : tuple, optional
+            Camera position. Auto-computed if not specified.
+        camera_look_at : tuple, optional
+            Camera look-at point. Auto-computed if not specified.
+        camera_up : tuple
+            Camera up vector
+        fov : float
+            Field of view in degrees
+        light_direction : tuple
+            Light direction vector
+        ambient : tuple
+            Ambient light color
+        output_path : str, optional
+            If provided, save the rendered image to this path
+        show_progress : bool
+            Whether to show rendering progress
+        building_sim_mesh : trimesh, optional
+            Optional building simulation mesh overlay
+        render_voxel_buildings : bool
+            Whether to render voxel buildings when building_sim_mesh is provided
+            
+        Returns
+        -------
+        np.ndarray
+            Rendered image as (H, W, 3) RGB array
+        """
+        meshsize = city.voxels.meta.meshsize
+        
+        # Build mesh collection from voxels
+        collection = MeshBuilder.from_voxel_grid(
+            city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
+        )
+        
+        # Merge all meshes with material assignments
+        vertices, indices, colors, materials = merge_meshes(collection)
+        
+        # Add building sim mesh if provided
+        if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
+            bv = np.asarray(building_sim_mesh.vertices)
+            bf = np.asarray(building_sim_mesh.faces)
+            
+            # Get colors from building mesh
+            bc = getattr(building_sim_mesh.visual, 'face_colors', None)
+            if bc is None:
+                bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+            else:
+                bc = bc[:, :3]
+            
+            # Building meshes use default Lambert material
+            bm = np.zeros(len(bf), dtype=np.int32)
+            
+            # Append to existing arrays
+            vertex_offset = len(vertices)
+            vertices = np.vstack([vertices, bv]).astype(np.float32)
+            indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
+            colors = np.vstack([colors, bc]).astype(np.uint8)
+            materials = np.concatenate([materials, bm])
+        
+        if len(vertices) == 0:
+            raise ValueError("No geometry to render")
+        
+        # Set scene with materials
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        
+        # Compute scene bounds for auto camera
+        bounds_min = vertices.min(axis=0)
+        bounds_max = vertices.max(axis=0)
+        center = (bounds_min + bounds_max) / 2
+        diagonal = np.linalg.norm(bounds_max - bounds_min)
+        
+        # Auto camera position if not specified
+        if camera_position is None:
+            # Isometric-like view
+            offset = diagonal * 1.2
+            camera_position = (
+                center[0] + offset * 0.7,
+                center[1] + offset * 0.7,
+                center[2] + offset * 0.5
+            )
+        
+        if camera_look_at is None:
+            camera_look_at = tuple(center)
+        
+        # Set camera
+        self.taichi_renderer.set_camera(camera_position, camera_look_at, camera_up, fov)
+        
+        # Set lighting
+        self.taichi_renderer.set_lighting(light_direction, (1.0, 1.0, 1.0), ambient)
+        
+        # Render
+        if output_path:
+            self.taichi_renderer.render_to_file(output_path, show_progress)
+            img = self.taichi_renderer.pixels.to_numpy()
+            img = (img * 255).clip(0, 255).astype(np.uint8)
+            img = np.transpose(img, (1, 0, 2))
+            img = np.flipud(img)
+            return img
+        else:
+            return self.taichi_renderer.render(show_progress)
+    
+    def render_rotation(self, city: VoxCity,
+                        voxel_color_map: str | dict = "default",
+                        output_directory: str = "output",
+                        file_prefix: str = "city_rotation",
+                        num_frames: int = 60,
+                        camera_height_factor: float = 0.5,
+                        camera_distance_factor: float = 1.5,
+                        fov: float = 45.0,
+                        show_progress: bool = True) -> List[str]:
+        """
+        Render a rotating view of the city.
+        
+        Parameters
+        ----------
+        city : VoxCity
+            The VoxCity to render
+        voxel_color_map : str or dict
+            Color map for voxel classes
+        output_directory : str
+            Directory to save frames
+        file_prefix : str
+            Prefix for frame filenames
+        num_frames : int
+            Number of frames in rotation
+        camera_height_factor : float
+            Camera height relative to scene diagonal
+        camera_distance_factor : float
+            Camera distance relative to scene diagonal
+        fov : float
+            Field of view
+        show_progress : bool
+            Whether to show progress
+            
+        Returns
+        -------
+        List[str]
+            Paths to rendered frame files
+        """
+        os.makedirs(output_directory, exist_ok=True)
+        
+        meshsize = city.voxels.meta.meshsize
+        collection = MeshBuilder.from_voxel_grid(
+            city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
+        )
+        vertices, indices, colors, materials = merge_meshes(collection)
+        
+        if len(vertices) == 0:
+            raise ValueError("No geometry to render")
+        
+        # Set scene once with materials
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        
+        # Compute scene bounds
+        bounds_min = vertices.min(axis=0)
+        bounds_max = vertices.max(axis=0)
+        center = (bounds_min + bounds_max) / 2
+        diagonal = np.linalg.norm(bounds_max - bounds_min)
+        
+        camera_radius = diagonal * camera_distance_factor
+        camera_height = center[2] + diagonal * camera_height_factor
+        
+        filenames = []
+        
+        for frame in range(num_frames):
+            angle = 2.0 * math.pi * frame / num_frames
+            cam_x = center[0] + camera_radius * math.cos(angle)
+            cam_y = center[1] + camera_radius * math.sin(angle)
+            
+            self.taichi_renderer.set_camera(
+                (cam_x, cam_y, camera_height),
+                tuple(center),
+                (0, 0, 1),
+                fov
+            )
+            
+            filename = os.path.join(output_directory, f"{file_prefix}_{frame:04d}.png")
+            
+            if show_progress:
+                print(f"\rRendering frame {frame + 1}/{num_frames}", end="", flush=True)
+            
+            self.taichi_renderer.render_to_file(filename, show_progress=False)
+            filenames.append(filename)
+        
+        if show_progress:
+            print(f"\rRendered {num_frames} frames to {output_directory}")
+        
+        return filenames
+
+
+def visualize_voxcity_gpu(
+    city: VoxCity,
+    voxel_color_map: str | dict = "default",
+    width: int = 800,
+    height: int = 600,
+    samples_per_pixel: int = 64,
+    max_depth: int = 8,
+    camera_position: Optional[Tuple[float, float, float]] = None,
+    camera_look_at: Optional[Tuple[float, float, float]] = None,
+    fov: float = 45.0,
+    output_path: Optional[str] = None,
+    show_progress: bool = True,
+    arch: str = 'gpu',
+    # Rotation options
+    rotation: bool = False,
+    output_directory: str = "output",
+    rotation_frames: int = 60,
+    rotation_file_prefix: str = "city_rotation",
+    # Building overlay
+    building_sim_mesh=None,
+    render_voxel_buildings: bool = False,
+) -> np.ndarray | List[str]:
+    """
+    Visualize a VoxCity using GPU-accelerated ray tracing.
+    
+    This is the main entry point for GPU rendering, providing a simple
+    interface similar to visualize_voxcity() but with GPU acceleration.
+    
+    Parameters
+    ----------
+    city : VoxCity
+        The VoxCity object to visualize
+    voxel_color_map : str or dict
+        Color mapping for voxel classes
+    width : int
+        Output image width
+    height : int
+        Output image height
+    samples_per_pixel : int
+        Anti-aliasing quality (higher = better, slower)
+    max_depth : int
+        Ray bounce depth
+    camera_position : tuple, optional
+        Camera position (auto-computed if None)
+    camera_look_at : tuple, optional
+        Camera look-at point (auto-computed if None)
+    fov : float
+        Field of view in degrees
+    output_path : str, optional
+        Path to save the rendered image
+    show_progress : bool
+        Whether to show rendering progress
+    arch : str
+        Compute architecture ('gpu', 'cpu', 'cuda', 'vulkan', 'metal')
+    rotation : bool
+        If True, render rotating frames instead of single image
+    output_directory : str
+        Directory for rotation frames
+    rotation_frames : int
+        Number of frames for rotation
+    rotation_file_prefix : str
+        Filename prefix for rotation frames
+    building_sim_mesh : trimesh, optional
+        Building simulation mesh overlay
+    render_voxel_buildings : bool
+        Whether to show voxel buildings with sim mesh
+    
+    Returns
+    -------
+    np.ndarray or List[str]
+        If rotation=False: (H, W, 3) RGB image array
+        If rotation=True: List of frame file paths
+    
+    Examples
+    --------
+    Simple rendering:
+    >>> img = visualize_voxcity_gpu(city)
+    
+    Save to file:
+    >>> img = visualize_voxcity_gpu(city, output_path="render.png")
+    
+    High quality render:
+    >>> img = visualize_voxcity_gpu(city, samples_per_pixel=64, width=1920, height=1080)
+    
+    Rotation animation:
+    >>> frames = visualize_voxcity_gpu(city, rotation=True, rotation_frames=120)
+    """
+    if not _HAS_TAICHI:
+        raise ImportError("Taichi is required for GPU rendering. Install with: pip install taichi")
+    
+    renderer = GPURenderer(
+        width=width,
+        height=height,
+        samples_per_pixel=samples_per_pixel,
+        max_depth=max_depth,
+        arch=arch
+    )
+    
+    if rotation:
+        return renderer.render_rotation(
+            city,
+            voxel_color_map=voxel_color_map,
+            output_directory=output_directory,
+            file_prefix=rotation_file_prefix,
+            num_frames=rotation_frames,
+            fov=fov,
+            show_progress=show_progress
+        )
+    else:
+        return renderer.render_city(
+            city,
+            voxel_color_map=voxel_color_map,
+            camera_position=camera_position,
+            camera_look_at=camera_look_at,
+            fov=fov,
+            output_path=output_path,
+            show_progress=show_progress,
+            building_sim_mesh=building_sim_mesh,
+            render_voxel_buildings=render_voxel_buildings
+        )
