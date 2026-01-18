@@ -1082,7 +1082,7 @@ class GPURenderer:
                     camera_position: Optional[Tuple[float, float, float]] = None,
                     camera_look_at: Optional[Tuple[float, float, float]] = None,
                     camera_up: Tuple[float, float, float] = (0, 0, 1),
-                    fov: float = 45.0,
+                    fov: float = 30.0,
                     light_direction: Tuple[float, float, float] = (0.5, 0.5, 1.0),
                     ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35),
                     output_path: Optional[str] = None,
@@ -1337,11 +1337,12 @@ class GPURenderer:
             camera_position = (
                 center[0] + offset * 0.7,
                 center[1] + offset * 0.7,
-                center[2] + offset * 0.5
+                center[2] + offset * 0.35
             )
         
         if camera_look_at is None:
-            camera_look_at = tuple(center)
+            # Downward look-at to move the model further upward in frame
+            camera_look_at = (center[0], center[1], center[2] - diagonal * 0.10)
         
         # Set camera
         self.taichi_renderer.set_camera(camera_position, camera_look_at, camera_up, fov)
@@ -1365,9 +1366,9 @@ class GPURenderer:
                         output_directory: str = "output",
                         file_prefix: str = "city_rotation",
                         num_frames: int = 60,
-                        camera_height_factor: float = 0.5,
-                        camera_distance_factor: float = 1.5,
-                        fov: float = 45.0,
+                        camera_height_factor: float = 0.35,
+                        camera_distance_factor: float = 1.0,
+                        fov: float = 30.0,
                         show_progress: bool = True) -> List[str]:
         """
         Render a rotating view of the city.
@@ -1420,6 +1421,7 @@ class GPURenderer:
         
         camera_radius = diagonal * camera_distance_factor
         camera_height = center[2] + diagonal * camera_height_factor
+        look_at = (center[0], center[1], center[2] - diagonal * 0.10)
         
         filenames = []
         
@@ -1430,7 +1432,7 @@ class GPURenderer:
             
             self.taichi_renderer.set_camera(
                 (cam_x, cam_y, camera_height),
-                tuple(center),
+                look_at,
                 (0, 0, 1),
                 fov
             )
@@ -1458,7 +1460,7 @@ def visualize_voxcity_gpu(
     max_depth: int = 8,
     camera_position: Optional[Tuple[float, float, float]] = None,
     camera_look_at: Optional[Tuple[float, float, float]] = None,
-    fov: float = 45.0,
+    fov: float = 30.0,
     output_path: Optional[str] = None,
     show_progress: bool = True,
     arch: str = 'gpu',
