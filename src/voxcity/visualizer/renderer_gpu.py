@@ -822,11 +822,11 @@ if _HAS_TAICHI:
                         shading = self.ambient_color[None]
                         if not shadow_hit:
                             diffuse = n_dot_l * self.light_color[None]
-                            shading = self.ambient_color[None] + diffuse * 0.6
+                            shading = self.ambient_color[None] + diffuse * 0.8
                         
                         # Only add direct lighting on first bounce to avoid over-brightening
                         if bounce == 0:
-                            color += throughput * surface_color * shading * 0.5
+                            color += throughput * surface_color * shading * 0.8
                     
                     # Scatter the ray based on material type
                     scattered = False
