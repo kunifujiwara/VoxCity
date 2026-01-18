@@ -667,7 +667,15 @@ if _HAS_TAICHI:
                        fov: float = 45.0):
             """Set camera parameters."""
             aspect = self.width / self.height
-            self.camera = GPUCamera(position, look_at, up, fov, aspect)
+            if self.camera is None:
+                # First time - create camera
+                self.camera = GPUCamera(position, look_at, up, fov, aspect)
+            else:
+                # Update existing camera in-place (avoid recreating Taichi fields)
+                self.camera.fov = float(fov)
+                self.camera._look_at = np.array(look_at, dtype=np.float32)
+                self.camera._up = np.array(up, dtype=np.float32)
+                self.camera._update_camera(np.array(position, dtype=np.float32))
         
         @ti.kernel
         def _clear_pixels(self):
