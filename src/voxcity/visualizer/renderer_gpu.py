@@ -14,9 +14,13 @@ import math
 import numpy as np
 from typing import Optional, Tuple, Dict, Any, List
 
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+
 from ..models import VoxCity, MeshCollection
 from .builder import MeshBuilder
 from .palette import get_voxel_color_map
+from ..geoprocessor.mesh import create_sim_surface_mesh
 
 
 # ============================================================================
@@ -911,9 +915,17 @@ REFLECTIVE_CLASSES = {9}  # Water class
 METALLIC_CLASSES = set()  # Can add building class or others if desired
 
 
-def merge_meshes(mesh_collection: MeshCollection) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def merge_meshes(mesh_collection: MeshCollection, 
+                 exclude_classes: Optional[set] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Merge all meshes in a collection into single arrays with material assignments.
+    
+    Parameters
+    ----------
+    mesh_collection : MeshCollection
+        Collection of meshes to merge
+    exclude_classes : set, optional
+        Set of class IDs to exclude from merging (e.g., {-3} to skip buildings)
     
     Returns
     -------
@@ -932,11 +944,22 @@ def merge_meshes(mesh_collection: MeshCollection) -> Tuple[np.ndarray, np.ndarra
     all_materials = []
     vertex_offset = 0
     
+    if exclude_classes is None:
+        exclude_classes = set()
+    
     for name, mesh in mesh_collection:
         if mesh.vertices is None or len(mesh.vertices) == 0:
             continue
         if mesh.faces is None or len(mesh.faces) == 0:
             continue
+        
+        # Check if this class should be excluded
+        try:
+            class_id = int(name)
+            if class_id in exclude_classes:
+                continue
+        except (ValueError, TypeError):
+            pass
             
         all_vertices.append(mesh.vertices)
         all_indices.append(mesh.faces + vertex_offset)
@@ -1024,8 +1047,22 @@ class GPURenderer:
                     ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35),
                     output_path: Optional[str] = None,
                     show_progress: bool = True,
+                    # Building simulation overlay
                     building_sim_mesh=None,
-                    render_voxel_buildings: bool = False) -> np.ndarray:
+                    building_value_name: str = 'svf_values',
+                    building_colormap: str = 'viridis',
+                    building_vmin: Optional[float] = None,
+                    building_vmax: Optional[float] = None,
+                    building_nan_color: str = 'gray',
+                    render_voxel_buildings: bool = False,
+                    # Ground simulation surface overlay
+                    ground_sim_grid: Optional[np.ndarray] = None,
+                    ground_dem_grid: Optional[np.ndarray] = None,
+                    ground_z_offset: Optional[float] = None,
+                    ground_view_point_height: Optional[float] = None,
+                    ground_colormap: str = 'viridis',
+                    ground_vmin: Optional[float] = None,
+                    ground_vmax: Optional[float] = None) -> np.ndarray:
         """
         Render a VoxCity to an image using GPU ray tracing.
         
@@ -1052,9 +1089,33 @@ class GPURenderer:
         show_progress : bool
             Whether to show rendering progress
         building_sim_mesh : trimesh, optional
-            Optional building simulation mesh overlay
+            Building mesh with simulation results in metadata
+        building_value_name : str
+            Metadata key for building values (e.g., 'svf_values', 'global', 'direct')
+        building_colormap : str
+            Matplotlib colormap for building values
+        building_vmin : float, optional
+            Minimum value for building color scale
+        building_vmax : float, optional
+            Maximum value for building color scale
+        building_nan_color : str
+            Color for NaN/invalid building values
         render_voxel_buildings : bool
             Whether to render voxel buildings when building_sim_mesh is provided
+        ground_sim_grid : np.ndarray, optional
+            2D array of ground-level simulation values (e.g., GVI, solar)
+        ground_dem_grid : np.ndarray, optional
+            2D DEM array for ground surface positioning
+        ground_z_offset : float, optional
+            Height offset for ground surface above DEM
+        ground_view_point_height : float, optional
+            Alternative height parameter for ground surface
+        ground_colormap : str
+            Matplotlib colormap for ground values
+        ground_vmin : float, optional
+            Minimum value for ground color scale
+        ground_vmax : float, optional
+            Maximum value for ground color scale
             
         Returns
         -------
@@ -1063,35 +1124,159 @@ class GPURenderer:
         """
         meshsize = city.voxels.meta.meshsize
         
+        # Determine which classes to exclude from voxel rendering
+        exclude_classes = set()
+        if building_sim_mesh is not None and not render_voxel_buildings:
+            exclude_classes.add(-3)  # Exclude building voxels
+        
         # Build mesh collection from voxels
         collection = MeshBuilder.from_voxel_grid(
             city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
         )
         
         # Merge all meshes with material assignments
-        vertices, indices, colors, materials = merge_meshes(collection)
+        vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
         
         # Add building sim mesh if provided
         if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
             bv = np.asarray(building_sim_mesh.vertices)
             bf = np.asarray(building_sim_mesh.faces)
             
-            # Get colors from building mesh
-            bc = getattr(building_sim_mesh.visual, 'face_colors', None)
-            if bc is None:
-                bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+            # Get simulation values from metadata and apply colormap
+            values = None
+            if hasattr(building_sim_mesh, 'metadata') and isinstance(building_sim_mesh.metadata, dict):
+                values = building_sim_mesh.metadata.get(building_value_name)
+            
+            if values is not None:
+                values = np.asarray(values)
+                
+                # Determine if values are per-face or per-vertex
+                face_vals = None
+                if len(values) == len(bf):
+                    face_vals = values.astype(float)
+                elif len(values) == len(bv):
+                    vals_v = values.astype(float)
+                    face_vals = np.nanmean(vals_v[bf], axis=1)
+                
+                if face_vals is not None:
+                    # Apply colormap
+                    finite = np.isfinite(face_vals)
+                    vmin_b = building_vmin if building_vmin is not None else (float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0)
+                    vmax_b = building_vmax if building_vmax is not None else (float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0)
+                    norm_b = mcolors.Normalize(vmin=vmin_b, vmax=vmax_b)
+                    cmap_b = cm.get_cmap(building_colormap)
+                    
+                    bc = np.zeros((len(bf), 3), dtype=np.uint8)
+                    if np.any(finite):
+                        colors_float = cmap_b(norm_b(face_vals[finite]))
+                        bc[finite] = (colors_float[:, :3] * 255).astype(np.uint8)
+                    
+                    # Handle NaN values
+                    nan_rgba = np.array(mcolors.to_rgba(building_nan_color))
+                    bc[~finite] = (nan_rgba[:3] * 255).astype(np.uint8)
+                else:
+                    # Fallback to face colors
+                    bc = getattr(building_sim_mesh.visual, 'face_colors', None)
+                    if bc is None:
+                        bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+                    else:
+                        bc = np.asarray(bc)[:, :3]
             else:
-                bc = bc[:, :3]
+                # No values, use face colors from mesh
+                bc = getattr(building_sim_mesh.visual, 'face_colors', None)
+                if bc is None:
+                    bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+                else:
+                    bc = np.asarray(bc)[:, :3]
             
             # Building meshes use default Lambert material
             bm = np.zeros(len(bf), dtype=np.int32)
             
             # Append to existing arrays
-            vertex_offset = len(vertices)
-            vertices = np.vstack([vertices, bv]).astype(np.float32)
-            indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
-            colors = np.vstack([colors, bc]).astype(np.uint8)
-            materials = np.concatenate([materials, bm])
+            vertex_offset = len(vertices) if len(vertices) > 0 else 0
+            if len(vertices) > 0:
+                vertices = np.vstack([vertices, bv]).astype(np.float32)
+                indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
+                colors = np.vstack([colors, bc]).astype(np.uint8)
+                materials = np.concatenate([materials, bm])
+            else:
+                vertices = bv.astype(np.float32)
+                indices = bf.astype(np.int32)
+                colors = bc.astype(np.uint8)
+                materials = bm
+        
+        # Add ground simulation surface overlay
+        if ground_sim_grid is not None:
+            # Auto-fill DEM from city if not provided
+            if ground_dem_grid is None:
+                ground_dem_grid = getattr(city.dem, "elevation", None)
+            
+            if ground_dem_grid is not None:
+                # Determine z offset (height above ground level)
+                z_off = ground_z_offset if ground_z_offset is not None else ground_view_point_height
+                try:
+                    z_off = float(z_off) if z_off is not None else 1.5
+                except Exception:
+                    z_off = 1.5
+                
+                # Position at ground level (one meshsize up) plus view point height
+                # Ground level in voxel space is at Z=meshsize (top of first layer)
+                # We add the view_point_height to place the overlay at the simulation height
+                try:
+                    z_off = meshsize + z_off
+                except Exception:
+                    pass
+                
+                # Normalize DEM
+                try:
+                    dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                    dem_norm = dem_norm - np.nanmin(dem_norm)
+                except Exception:
+                    dem_norm = ground_dem_grid
+                
+                # Determine color range
+                sim_vals = np.asarray(ground_sim_grid, dtype=float)
+                finite = np.isfinite(sim_vals)
+                vmin_g = ground_vmin if ground_vmin is not None else (float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0)
+                vmax_g = ground_vmax if ground_vmax is not None else (float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0)
+                
+                # Create ground simulation mesh
+                sim_mesh = create_sim_surface_mesh(
+                    ground_sim_grid,
+                    dem_norm,
+                    meshsize=meshsize,
+                    z_offset=z_off,
+                    cmap_name=ground_colormap,
+                    vmin=vmin_g,
+                    vmax=vmax_g,
+                )
+                
+                if sim_mesh is not None and hasattr(sim_mesh, 'vertices') and len(sim_mesh.vertices) > 0:
+                    gv = np.asarray(sim_mesh.vertices)
+                    gf = np.asarray(sim_mesh.faces)
+                    
+                    # Get colors from ground mesh
+                    gc = getattr(sim_mesh.visual, 'face_colors', None)
+                    if gc is None:
+                        gc = np.full((len(gf), 3), 180, dtype=np.uint8)
+                    else:
+                        gc = np.asarray(gc)[:, :3]
+                    
+                    # Ground uses Lambert material
+                    gm = np.zeros(len(gf), dtype=np.int32)
+                    
+                    # Append to existing arrays
+                    vertex_offset = len(vertices) if len(vertices) > 0 else 0
+                    if len(vertices) > 0:
+                        vertices = np.vstack([vertices, gv]).astype(np.float32)
+                        indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
+                        colors = np.vstack([colors, gc]).astype(np.uint8)
+                        materials = np.concatenate([materials, gm])
+                    else:
+                        vertices = gv.astype(np.float32)
+                        indices = gf.astype(np.int32)
+                        colors = gc.astype(np.uint8)
+                        materials = gm
         
         if len(vertices) == 0:
             raise ValueError("No geometry to render")
@@ -1242,9 +1427,22 @@ def visualize_voxcity_gpu(
     output_directory: str = "output",
     rotation_frames: int = 60,
     rotation_file_prefix: str = "city_rotation",
-    # Building overlay
+    # Building simulation overlay
     building_sim_mesh=None,
+    building_value_name: str = 'svf_values',
+    building_colormap: str = 'viridis',
+    building_vmin: Optional[float] = None,
+    building_vmax: Optional[float] = None,
+    building_nan_color: str = 'gray',
     render_voxel_buildings: bool = False,
+    # Ground simulation surface overlay
+    ground_sim_grid: Optional[np.ndarray] = None,
+    ground_dem_grid: Optional[np.ndarray] = None,
+    ground_z_offset: Optional[float] = None,
+    ground_view_point_height: Optional[float] = None,
+    ground_colormap: str = 'viridis',
+    ground_vmin: Optional[float] = None,
+    ground_vmax: Optional[float] = None,
 ) -> np.ndarray | List[str]:
     """
     Visualize a VoxCity using GPU-accelerated ray tracing.
@@ -1287,9 +1485,33 @@ def visualize_voxcity_gpu(
     rotation_file_prefix : str
         Filename prefix for rotation frames
     building_sim_mesh : trimesh, optional
-        Building simulation mesh overlay
+        Building mesh with simulation results in metadata
+    building_value_name : str
+        Metadata key for building values (e.g., 'svf_values', 'global', 'direct')
+    building_colormap : str
+        Matplotlib colormap for building values
+    building_vmin : float, optional
+        Minimum value for building color scale
+    building_vmax : float, optional
+        Maximum value for building color scale
+    building_nan_color : str
+        Color for NaN/invalid building values
     render_voxel_buildings : bool
         Whether to show voxel buildings with sim mesh
+    ground_sim_grid : np.ndarray, optional
+        2D array of ground-level simulation values (e.g., GVI, solar)
+    ground_dem_grid : np.ndarray, optional
+        2D DEM array for ground surface positioning
+    ground_z_offset : float, optional
+        Height offset for ground surface above DEM
+    ground_view_point_height : float, optional
+        Alternative height parameter for ground surface
+    ground_colormap : str
+        Matplotlib colormap for ground values
+    ground_vmin : float, optional
+        Minimum value for ground color scale
+    ground_vmax : float, optional
+        Maximum value for ground color scale
     
     Returns
     -------
@@ -1310,6 +1532,14 @@ def visualize_voxcity_gpu(
     
     Rotation animation:
     >>> frames = visualize_voxcity_gpu(city, rotation=True, rotation_frames=120)
+    
+    With building solar irradiance:
+    >>> building_mesh = get_building_solar_irradiance(city, ...)
+    >>> img = visualize_voxcity_gpu(city, building_sim_mesh=building_mesh, 
+    ...                             building_value_name='global', building_colormap='magma')
+    
+    With ground-level Green View Index:
+    >>> img = visualize_voxcity_gpu(city, ground_sim_grid=gvi_array, ground_colormap='YlGn')
     """
     if not _HAS_TAICHI:
         raise ImportError("Taichi is required for GPU rendering. Install with: pip install taichi")
@@ -1341,6 +1571,20 @@ def visualize_voxcity_gpu(
             fov=fov,
             output_path=output_path,
             show_progress=show_progress,
+            # Building overlay
             building_sim_mesh=building_sim_mesh,
-            render_voxel_buildings=render_voxel_buildings
+            building_value_name=building_value_name,
+            building_colormap=building_colormap,
+            building_vmin=building_vmin,
+            building_vmax=building_vmax,
+            building_nan_color=building_nan_color,
+            render_voxel_buildings=render_voxel_buildings,
+            # Ground overlay
+            ground_sim_grid=ground_sim_grid,
+            ground_dem_grid=ground_dem_grid,
+            ground_z_offset=ground_z_offset,
+            ground_view_point_height=ground_view_point_height,
+            ground_colormap=ground_colormap,
+            ground_vmin=ground_vmin,
+            ground_vmax=ground_vmax,
         )
