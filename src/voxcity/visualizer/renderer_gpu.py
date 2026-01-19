@@ -938,14 +938,20 @@ if _HAS_TAICHI:
                     
                     # Handle emissive materials first - they emit light directly
                     if mat_type == MAT_EMISSIVE:
-                        # Emissive surface: add emission contribution and stop bouncing
-                        # The surface emits light proportional to its color and intensity
-                        color += throughput * surface_color * emissive_intensity
-                        # Also do some diffuse scattering for indirect illumination
-                        ray_direction = normal + random_in_hemisphere(normal)
-                        ray_direction = ray_direction.normalized()
-                        throughput *= surface_color * 0.3  # Reduce throughput after emission
-                        ray_origin = hit_point + normal * 0.001
+                        # Emissive surface: emit pure color without lighting calculations
+                        # Use saturation boost to make colors more vivid
+                        # Convert to HSV-like saturation boost: increase distance from gray
+                        avg = (surface_color[0] + surface_color[1] + surface_color[2]) / 3.0
+                        saturation_boost = 1.35  # Increase saturation by 35%
+                        boosted_color = ti.Vector([
+                            ti.max(0.0, ti.min(1.0, avg + (surface_color[0] - avg) * saturation_boost)),
+                            ti.max(0.0, ti.min(1.0, avg + (surface_color[1] - avg) * saturation_boost)),
+                            ti.max(0.0, ti.min(1.0, avg + (surface_color[2] - avg) * saturation_boost))
+                        ])
+                        # Emit pure color - this is the final color contribution
+                        color += throughput * boosted_color * emissive_intensity
+                        # Terminate ray - emissive surfaces don't bounce (pure emission)
+                        break
                     # Handle materials (voxel-challenge style)
                     elif mat_type == MAT_DIELECTRIC or mat_type == MAT_METAL:
                         # Water/reflective: use specular reflection with Fresnel (like voxel-challenge mat=3)
@@ -1666,6 +1672,12 @@ class GPURenderer:
             city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
         )
         vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
+        
+        # Initialize emissive array for base voxel geometry (no emission by default)
+        if len(indices) > 0:
+            emissive = np.zeros(len(indices), dtype=np.float32)
+        else:
+            emissive = np.array([], dtype=np.float32)
         
         # Add building sim mesh if provided
         if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
