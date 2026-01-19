@@ -860,6 +860,7 @@ if _HAS_TAICHI:
             
             floor_height = self.floor_height[None]
             floor_color = self.floor_color[None]
+            floor_enabled = floor_height > -1e9  # Floor is disabled when set very low
             eps = 1e-5
             
             for bounce in range(depth):
@@ -871,7 +872,7 @@ if _HAS_TAICHI:
                 # Check floor hit (Z-up coordinate system - floor is at z=floor_height)
                 floor_hit = 0
                 floor_t = 1e10
-                if ray_direction[2] < -eps:  # Ray pointing down (negative Z)
+                if floor_enabled and ray_direction[2] < -eps:  # Ray pointing down (negative Z)
                     floor_t = (floor_height - ray_origin[2]) / ray_direction[2]
                     if floor_t > 0.001:
                         floor_hit = 1
@@ -1768,6 +1769,307 @@ class GPURenderer:
         
         return filenames
 
+    def render_multi_view(self, city: VoxCity,
+                          voxel_color_map: str | dict = "default",
+                          output_directory: str = "output",
+                          file_prefix: str = "city_view",
+                          camera_height_factor: float = 0.5,
+                          camera_distance_factor: float = 1.5,
+                          look_at_z_factor: float = -0.1,
+                          fov: float = 25.0,
+                          floor_enabled: bool = False,
+                          floor_color: Tuple[float, float, float] = (0.3, 0.35, 0.3),
+                          show_progress: bool = True,
+                          views: Optional[List[str]] = None,
+                          # Building simulation overlay
+                          building_sim_mesh=None,
+                          building_value_name: str = 'svf_values',
+                          building_colormap: str = 'viridis',
+                          building_vmin: Optional[float] = None,
+                          building_vmax: Optional[float] = None,
+                          building_nan_color: str = 'gray',
+                          render_voxel_buildings: bool = False,
+                          # Ground simulation surface overlay
+                          ground_sim_grid: Optional[np.ndarray] = None,
+                          ground_dem_grid: Optional[np.ndarray] = None,
+                          ground_z_offset: Optional[float] = None,
+                          ground_view_point_height: Optional[float] = None,
+                          ground_colormap: str = 'viridis',
+                          ground_vmin: Optional[float] = None,
+                          ground_vmax: Optional[float] = None) -> List[Tuple[str, str]]:
+        """
+        Render multiple standard views of the city.
+        
+        Parameters
+        ----------
+        city : VoxCity
+            The VoxCity to render
+        voxel_color_map : str or dict
+            Color map for voxel classes
+        output_directory : str
+            Directory to save images
+        file_prefix : str
+            Prefix for image filenames
+        camera_height_factor : float
+            Camera height relative to scene diagonal
+        camera_distance_factor : float
+            Camera distance relative to scene diagonal
+        look_at_z_factor : float
+            Look-at Z offset as fraction of diagonal (negative = object appears higher)
+        fov : float
+            Field of view in degrees
+        floor_enabled : bool
+            Whether to render a floor plane that receives shadows
+        floor_color : Tuple[float, float, float]
+            RGB color of the floor (0-1 range)
+        show_progress : bool
+            Whether to show progress
+        views : List[str], optional
+            List of view names to render. If None, renders all standard views.
+            Available views:
+            - Isometric: 'iso_front_right', 'iso_front_left', 'iso_back_right', 'iso_back_left'
+            - Orthographic: 'xy_top', 'yz_right', 'xz_front', 'yz_left', 'xz_back'
+        building_sim_mesh, building_value_name, building_colormap, building_vmin,
+        building_vmax, building_nan_color, render_voxel_buildings : 
+            Building overlay parameters (same as render_rotation)
+        ground_sim_grid, ground_dem_grid, ground_z_offset, ground_view_point_height,
+        ground_colormap, ground_vmin, ground_vmax :
+            Ground overlay parameters (same as render_rotation)
+            
+        Returns
+        -------
+        List[Tuple[str, str]]
+            List of (view_name, filepath) tuples
+        """
+        os.makedirs(output_directory, exist_ok=True)
+        
+        meshsize = city.voxels.meta.meshsize
+        
+        # Determine which classes to exclude from voxel rendering
+        exclude_classes = set()
+        if building_sim_mesh is not None and not render_voxel_buildings:
+            exclude_classes.add(-3)  # Exclude building voxels
+        
+        collection = MeshBuilder.from_voxel_grid(
+            city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
+        )
+        vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
+        
+        # Add building sim mesh if provided
+        if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
+            bv = np.asarray(building_sim_mesh.vertices)
+            bf = np.asarray(building_sim_mesh.faces)
+            
+            values = None
+            if hasattr(building_sim_mesh, 'metadata') and isinstance(building_sim_mesh.metadata, dict):
+                values = building_sim_mesh.metadata.get(building_value_name)
+            
+            if values is not None:
+                values = np.asarray(values)
+                face_vals = None
+                if len(values) == len(bf):
+                    face_vals = values.astype(float)
+                elif len(values) == len(bv):
+                    vals_v = values.astype(float)
+                    face_vals = np.nanmean(vals_v[bf], axis=1)
+                
+                if face_vals is not None:
+                    finite = np.isfinite(face_vals)
+                    vmin_b = building_vmin if building_vmin is not None else (float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0)
+                    vmax_b = building_vmax if building_vmax is not None else (float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0)
+                    norm_b = mcolors.Normalize(vmin=vmin_b, vmax=vmax_b)
+                    cmap_b = cm.get_cmap(building_colormap)
+                    
+                    bc = np.zeros((len(bf), 3), dtype=np.uint8)
+                    if np.any(finite):
+                        colors_float = cmap_b(norm_b(face_vals[finite]))
+                        bc[finite] = (colors_float[:, :3] * 255).astype(np.uint8)
+                    
+                    nan_rgba = np.array(mcolors.to_rgba(building_nan_color))
+                    bc[~finite] = (nan_rgba[:3] * 255).astype(np.uint8)
+                else:
+                    bc = np.full((len(bf), 3), 180, dtype=np.uint8)
+            else:
+                bc = np.full((len(bf), 3), 180, dtype=np.uint8)
+            
+            bm = np.zeros(len(bf), dtype=np.int32)
+            
+            vertex_offset = len(vertices) if len(vertices) > 0 else 0
+            if len(vertices) > 0:
+                vertices = np.vstack([vertices, bv]).astype(np.float32)
+                indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
+                colors = np.vstack([colors, bc]).astype(np.uint8)
+                materials = np.concatenate([materials, bm])
+            else:
+                vertices = bv.astype(np.float32)
+                indices = bf.astype(np.int32)
+                colors = bc.astype(np.uint8)
+                materials = bm
+        
+        # Add ground simulation surface if provided
+        if ground_sim_grid is not None:
+            dem_grid = ground_dem_grid
+            if dem_grid is None:
+                dem_grid = getattr(city.dem, "elevation", None)
+            
+            if dem_grid is not None:
+                z_off = ground_z_offset if ground_z_offset is not None else ground_view_point_height
+                try:
+                    z_off = float(z_off) if z_off is not None else 1.5
+                except Exception:
+                    z_off = 1.5
+                
+                try:
+                    z_off = (z_off // meshsize + 1.0) * meshsize
+                except Exception:
+                    pass
+                
+                try:
+                    dem_norm = np.asarray(dem_grid, dtype=float)
+                    dem_norm = dem_norm - np.nanmin(dem_norm)
+                except Exception:
+                    dem_norm = dem_grid
+                
+                sim_vals = np.asarray(ground_sim_grid, dtype=float)
+                finite = np.isfinite(sim_vals)
+                vmin_g = ground_vmin if ground_vmin is not None else (float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0)
+                vmax_g = ground_vmax if ground_vmax is not None else (float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0)
+                
+                sim_mesh = create_sim_surface_mesh(
+                    ground_sim_grid,
+                    dem_norm,
+                    meshsize=meshsize,
+                    z_offset=z_off,
+                    cmap_name=ground_colormap,
+                    vmin=vmin_g,
+                    vmax=vmax_g,
+                )
+                
+                if sim_mesh is not None and hasattr(sim_mesh, 'vertices') and len(sim_mesh.vertices) > 0:
+                    gv = np.asarray(sim_mesh.vertices)
+                    gf = np.asarray(sim_mesh.faces)
+                    
+                    gc = getattr(sim_mesh.visual, 'face_colors', None)
+                    if gc is None:
+                        gc = np.full((len(gf), 3), 180, dtype=np.uint8)
+                    else:
+                        gc = np.asarray(gc)[:, :3]
+                    
+                    gm = np.zeros(len(gf), dtype=np.int32)
+                    
+                    vertex_offset = len(vertices) if len(vertices) > 0 else 0
+                    if len(vertices) > 0:
+                        vertices = np.vstack([vertices, gv]).astype(np.float32)
+                        indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
+                        colors = np.vstack([colors, gc]).astype(np.uint8)
+                        materials = np.concatenate([materials, gm])
+                    else:
+                        vertices = gv.astype(np.float32)
+                        indices = gf.astype(np.int32)
+                        colors = gc.astype(np.uint8)
+                        materials = gm
+        
+        if len(vertices) == 0:
+            raise ValueError("No geometry to render")
+        
+        # Set scene once with materials
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        
+        # Compute scene bounds
+        bounds_min = vertices.min(axis=0)
+        bounds_max = vertices.max(axis=0)
+        center = (bounds_min + bounds_max) / 2
+        diagonal = np.linalg.norm(bounds_max - bounds_min)
+        
+        # Set floor just below the model
+        if floor_enabled:
+            floor_height = bounds_min[2] - diagonal * 0.02
+            self.taichi_renderer.set_floor(floor_height, floor_color)
+        else:
+            self.taichi_renderer.set_floor(-1e10, floor_color)
+        
+        # Camera distance
+        distance = diagonal * camera_distance_factor
+        
+        # Define standard isometric camera directions (matching renderer.py)
+        # Direction vectors point FROM the center TO the camera
+        iso_angles = {
+            'iso_front_right': np.array([1.0, 1.0, 0.7]),
+            'iso_front_left': np.array([-1.0, 1.0, 0.7]),
+            'iso_back_right': np.array([1.0, -1.0, 0.7]),
+            'iso_back_left': np.array([-1.0, -1.0, 0.7])
+        }
+        
+        # Define orthographic views
+        ortho_views = {
+            'xy_top': (np.array([0, 0, 1]), np.array([-1, 0, 0])),      # Top-down, up = -X
+            'yz_right': (np.array([1, 0, 0]), np.array([0, 0, 1])),     # Right side
+            'xz_front': (np.array([0, 1, 0]), np.array([0, 0, 1])),     # Front
+            'yz_left': (np.array([-1, 0, 0]), np.array([0, 0, 1])),     # Left side
+            'xz_back': (np.array([0, -1, 0]), np.array([0, 0, 1]))      # Back
+        }
+        
+        # Build camera positions dict
+        camera_positions = {}
+        
+        for name, direction in iso_angles.items():
+            direction = direction / np.linalg.norm(direction)
+            camera_pos = center + direction * distance
+            look_at = (center[0], center[1], center[2] + diagonal * look_at_z_factor)
+            camera_positions[name] = {
+                'position': tuple(camera_pos),
+                'look_at': look_at,
+                'up': (0, 0, 1)
+            }
+        
+        for name, (direction, up) in ortho_views.items():
+            direction = direction / np.linalg.norm(direction)
+            # Top-down view needs more distance to capture full scene
+            if name == 'xy_top':
+                view_distance = distance * 0.8  # Double distance for top view
+            else:
+                view_distance = distance
+            camera_pos = center + direction * view_distance
+            look_at = tuple(center)
+            camera_positions[name] = {
+                'position': tuple(camera_pos),
+                'look_at': look_at,
+                'up': tuple(up)
+            }
+        
+        # Filter views if specified
+        if views is not None:
+            camera_positions = {k: v for k, v in camera_positions.items() if k in views}
+        
+        results = []
+        view_names = list(camera_positions.keys())
+        
+        for i, view_name in enumerate(view_names):
+            cam_info = camera_positions[view_name]
+            
+            # Use wider FOV for top-down view to capture more area
+            view_fov = fov * 1.5 if view_name == 'xy_top' else fov
+            
+            self.taichi_renderer.set_camera(
+                cam_info['position'],
+                cam_info['look_at'],
+                cam_info['up'],
+                view_fov
+            )
+            
+            filename = os.path.join(output_directory, f"{file_prefix}_{view_name}.png")
+            
+            if show_progress:
+                print(f"\rRendering view {i + 1}/{len(view_names)}: {view_name}", end="", flush=True)
+            
+            self.taichi_renderer.render_to_file(filename, show_progress=False)
+            results.append((view_name, filename))
+        
+        if show_progress:
+            print(f"\rRendered {len(view_names)} views to {output_directory}")
+        
+        return results
+
 
 def visualize_voxcity_gpu(
     city: VoxCity,
@@ -1787,6 +2089,10 @@ def visualize_voxcity_gpu(
     output_directory: str = "output",
     rotation_frames: int = 240,
     rotation_file_prefix: str = "city_rotation",
+    # Multi-view options
+    multi_view: bool = False,
+    multi_view_file_prefix: str = "city_view",
+    views: Optional[List[str]] = None,
     # Building simulation overlay
     building_sim_mesh=None,
     building_value_name: str = 'svf_values',
@@ -1803,7 +2109,7 @@ def visualize_voxcity_gpu(
     ground_colormap: str = 'viridis',
     ground_vmin: Optional[float] = None,
     ground_vmax: Optional[float] = None,
-) -> np.ndarray | List[str]:
+) -> np.ndarray | List[str] | List[Tuple[str, str]]:
     """
     Visualize a VoxCity using GPU-accelerated ray tracing.
     
@@ -1839,11 +2145,20 @@ def visualize_voxcity_gpu(
     rotation : bool
         If True, render rotating frames instead of single image
     output_directory : str
-        Directory for rotation frames
+        Directory for output frames/images
     rotation_frames : int
         Number of frames for rotation
     rotation_file_prefix : str
         Filename prefix for rotation frames
+    multi_view : bool
+        If True, render standard multi-view images (isometric + orthographic)
+    multi_view_file_prefix : str
+        Filename prefix for multi-view images
+    views : List[str], optional
+        Specific views to render. Available views:
+        - Isometric: 'iso_front_right', 'iso_front_left', 'iso_back_right', 'iso_back_left'
+        - Orthographic: 'xy_top', 'yz_right', 'xz_front', 'yz_left', 'xz_back'
+        If None, renders all 9 standard views.
     building_sim_mesh : trimesh, optional
         Building mesh with simulation results in metadata
     building_value_name : str
@@ -1875,9 +2190,10 @@ def visualize_voxcity_gpu(
     
     Returns
     -------
-    np.ndarray or List[str]
-        If rotation=False: (H, W, 3) RGB image array
+    np.ndarray or List[str] or List[Tuple[str, str]]
+        If rotation=False and multi_view=False: (H, W, 3) RGB image array
         If rotation=True: List of frame file paths
+        If multi_view=True: List of (view_name, filepath) tuples
     
     Examples
     --------
@@ -1892,6 +2208,15 @@ def visualize_voxcity_gpu(
     
     Rotation animation:
     >>> frames = visualize_voxcity_gpu(city, rotation=True, rotation_frames=120)
+    
+    Multi-view rendering (9 standard views):
+    >>> images = visualize_voxcity_gpu(city, multi_view=True, output_directory="output")
+    >>> for view_name, path in images:
+    ...     print(f"{view_name}: {path}")
+    
+    Multi-view with specific views only:
+    >>> images = visualize_voxcity_gpu(city, multi_view=True, 
+    ...                                views=['iso_front_right', 'iso_front_left', 'xy_top'])
     
     With building solar irradiance:
     >>> building_mesh = get_building_solar_irradiance(city, ...)
@@ -1920,6 +2245,32 @@ def visualize_voxcity_gpu(
             file_prefix=rotation_file_prefix,
             num_frames=rotation_frames,
             fov=fov,
+            show_progress=show_progress,
+            # Building overlay
+            building_sim_mesh=building_sim_mesh,
+            building_value_name=building_value_name,
+            building_colormap=building_colormap,
+            building_vmin=building_vmin,
+            building_vmax=building_vmax,
+            building_nan_color=building_nan_color,
+            render_voxel_buildings=render_voxel_buildings,
+            # Ground overlay
+            ground_sim_grid=ground_sim_grid,
+            ground_dem_grid=ground_dem_grid,
+            ground_z_offset=ground_z_offset,
+            ground_view_point_height=ground_view_point_height,
+            ground_colormap=ground_colormap,
+            ground_vmin=ground_vmin,
+            ground_vmax=ground_vmax,
+        )
+    elif multi_view:
+        return renderer.render_multi_view(
+            city,
+            voxel_color_map=voxel_color_map,
+            output_directory=output_directory,
+            file_prefix=multi_view_file_prefix,
+            fov=fov,
+            views=views,
             show_progress=show_progress,
             # Building overlay
             building_sim_mesh=building_sim_mesh,
