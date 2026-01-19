@@ -260,6 +260,7 @@ if _HAS_TAICHI:
     MAT_LAMBERT = 0    # Diffuse (Lambertian)
     MAT_METAL = 1      # Specular reflection (metal)
     MAT_DIELECTRIC = 2 # Glass/water with refraction
+    MAT_EMISSIVE = 3   # Emissive (luminous) material
 
 
     @ti.data_oriented
@@ -270,7 +271,8 @@ if _HAS_TAICHI:
                      colors: Optional[np.ndarray] = None,
                      materials: Optional[np.ndarray] = None,
                      roughness: Optional[np.ndarray] = None,
-                     ior: Optional[np.ndarray] = None):
+                     ior: Optional[np.ndarray] = None,
+                     emissive: Optional[np.ndarray] = None):
             """
             Initialize BVH from triangle mesh.
             
@@ -283,11 +285,13 @@ if _HAS_TAICHI:
             colors : np.ndarray, optional
                 (M, 3) or (M, 4) array of per-face colors (0-255 range)
             materials : np.ndarray, optional
-                (M,) array of material types per face (0=Lambert, 1=Metal, 2=Dielectric)
+                (M,) array of material types per face (0=Lambert, 1=Metal, 2=Dielectric, 3=Emissive)
             roughness : np.ndarray, optional
                 (M,) array of roughness values per face (0-1, used for Metal)
             ior : np.ndarray, optional
                 (M,) array of index of refraction per face (used for Dielectric, default 1.5)
+            emissive : np.ndarray, optional
+                (M,) array of emissive intensity per face (0-inf, used for Emissive materials)
             """
             self.n_vertices = len(vertices)
             self.n_triangles = len(indices)
@@ -303,6 +307,7 @@ if _HAS_TAICHI:
             self.face_materials = ti.field(dtype=ti.i32, shape=self.n_triangles)
             self.face_roughness = ti.field(dtype=ti.f32, shape=self.n_triangles)
             self.face_ior = ti.field(dtype=ti.f32, shape=self.n_triangles)
+            self.face_emissive = ti.field(dtype=ti.f32, shape=self.n_triangles)
             
             # Copy data to fields
             self.vertices.from_numpy(vertices.astype(np.float32))
@@ -339,6 +344,13 @@ if _HAS_TAICHI:
                 # Default IOR for glass/water (water ~1.33, glass ~1.5)
                 default_ior = np.full(self.n_triangles, 1.33, dtype=np.float32)
                 self.face_ior.from_numpy(default_ior)
+            
+            if emissive is not None:
+                self.face_emissive.from_numpy(emissive.astype(np.float32))
+            else:
+                # Default emissive intensity (0 = not emissive)
+                default_emissive = np.zeros(self.n_triangles, dtype=np.float32)
+                self.face_emissive.from_numpy(default_emissive)
             
             # Build BVH using fast iterative method
             (bvh_tri_id, bvh_left, bvh_right, bvh_next, 
@@ -500,6 +512,11 @@ if _HAS_TAICHI:
         def get_face_ior(self, tri_id):
             """Get the index of refraction of a triangle face."""
             return self.face_ior[tri_id]
+        
+        @ti.func
+        def get_face_emissive(self, tri_id):
+            """Get the emissive intensity of a triangle face."""
+            return self.face_emissive[tri_id]
 
 
     @ti.data_oriented
@@ -722,7 +739,8 @@ if _HAS_TAICHI:
                       colors: Optional[np.ndarray] = None,
                       materials: Optional[np.ndarray] = None,
                       roughness: Optional[np.ndarray] = None,
-                      ior: Optional[np.ndarray] = None):
+                      ior: Optional[np.ndarray] = None,
+                      emissive: Optional[np.ndarray] = None):
             """
             Set the scene geometry with optional material properties.
             
@@ -739,12 +757,15 @@ if _HAS_TAICHI:
                 - 0 (MAT_LAMBERT): Diffuse Lambertian
                 - 1 (MAT_METAL): Specular metal with roughness
                 - 2 (MAT_DIELECTRIC): Glass/water with refraction
+                - 3 (MAT_EMISSIVE): Emissive/luminous material
             roughness : np.ndarray, optional
                 (M,) array of roughness values (0-1) for Metal materials
             ior : np.ndarray, optional
                 (M,) array of index of refraction for Dielectric materials
+            emissive : np.ndarray, optional
+                (M,) array of emissive intensity values for Emissive materials
             """
-            self.bvh = TriangleBVH(vertices, indices, colors, materials, roughness, ior)
+            self.bvh = TriangleBVH(vertices, indices, colors, materials, roughness, ior, emissive)
         
         def set_camera(self, position: Tuple[float, float, float],
                        look_at: Tuple[float, float, float],
@@ -898,6 +919,7 @@ if _HAS_TAICHI:
                     surface_color = floor_color
                     mat_type = MAT_LAMBERT
                     roughness = 0.0
+                    emissive_intensity = 0.0
                     
                     if hit_floor:
                         # Floor hit - diffuse surface that receives shadows
@@ -907,14 +929,25 @@ if _HAS_TAICHI:
                         surface_color = self.bvh.get_face_color(tri_id)
                         mat_type = self.bvh.get_face_material(tri_id)
                         roughness = self.bvh.get_face_roughness(tri_id)
+                        emissive_intensity = self.bvh.get_face_emissive(tri_id)
                     
                         # Ensure normal faces correct direction
                         front_facing = ray_direction.dot(normal) < 0.0
                         if not front_facing:
                             normal = -normal
                     
+                    # Handle emissive materials first - they emit light directly
+                    if mat_type == MAT_EMISSIVE:
+                        # Emissive surface: add emission contribution and stop bouncing
+                        # The surface emits light proportional to its color and intensity
+                        color += throughput * surface_color * emissive_intensity
+                        # Also do some diffuse scattering for indirect illumination
+                        ray_direction = normal + random_in_hemisphere(normal)
+                        ray_direction = ray_direction.normalized()
+                        throughput *= surface_color * 0.3  # Reduce throughput after emission
+                        ray_origin = hit_point + normal * 0.001
                     # Handle materials (voxel-challenge style)
-                    if mat_type == MAT_DIELECTRIC or mat_type == MAT_METAL:
+                    elif mat_type == MAT_DIELECTRIC or mat_type == MAT_METAL:
                         # Water/reflective: use specular reflection with Fresnel (like voxel-challenge mat=3)
                         reflect_dir = ray_direction - 2.0 * ray_direction.dot(normal) * normal
                         # Add slight roughness
@@ -1232,6 +1265,7 @@ class GPURenderer:
                     building_vmin: Optional[float] = None,
                     building_vmax: Optional[float] = None,
                     building_nan_color: str = 'gray',
+                    building_emissive: float = 0.0,
                     render_voxel_buildings: bool = False,
                     # Ground simulation surface overlay
                     ground_sim_grid: Optional[np.ndarray] = None,
@@ -1240,7 +1274,8 @@ class GPURenderer:
                     ground_view_point_height: Optional[float] = None,
                     ground_colormap: str = 'viridis',
                     ground_vmin: Optional[float] = None,
-                    ground_vmax: Optional[float] = None) -> np.ndarray:
+                    ground_vmax: Optional[float] = None,
+                    ground_emissive: float = 0.0) -> np.ndarray:
         """
         Render a VoxCity to an image using GPU ray tracing.
         
@@ -1278,6 +1313,8 @@ class GPURenderer:
             Maximum value for building color scale
         building_nan_color : str
             Color for NaN/invalid building values
+        building_emissive : float
+            Emissive/luminous intensity for building simulation mesh (0=no emission, >0=glowing)
         render_voxel_buildings : bool
             Whether to render voxel buildings when building_sim_mesh is provided
         ground_sim_grid : np.ndarray, optional
@@ -1294,6 +1331,8 @@ class GPURenderer:
             Minimum value for ground color scale
         ground_vmax : float, optional
             Maximum value for ground color scale
+        ground_emissive : float
+            Emissive/luminous intensity for ground simulation mesh (0=no emission, >0=glowing)
             
         Returns
         -------
@@ -1314,6 +1353,9 @@ class GPURenderer:
         
         # Merge all meshes with material assignments
         vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
+        
+        # Initialize emissive array (all zeros for voxel meshes)
+        emissive = np.zeros(len(materials), dtype=np.float32) if len(materials) > 0 else np.zeros(0, dtype=np.float32)
         
         # Add building sim mesh if provided
         if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
@@ -1367,8 +1409,13 @@ class GPURenderer:
                 else:
                     bc = np.asarray(bc)[:, :3]
             
-            # Building meshes use default Lambert material
-            bm = np.zeros(len(bf), dtype=np.int32)
+            # Building meshes: use emissive material if building_emissive > 0
+            if building_emissive > 0:
+                bm = np.full(len(bf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                be = np.full(len(bf), building_emissive, dtype=np.float32)
+            else:
+                bm = np.zeros(len(bf), dtype=np.int32)  # MAT_LAMBERT = 0
+                be = np.zeros(len(bf), dtype=np.float32)
             
             # Append to existing arrays
             vertex_offset = len(vertices) if len(vertices) > 0 else 0
@@ -1377,11 +1424,13 @@ class GPURenderer:
                 indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
                 colors = np.vstack([colors, bc]).astype(np.uint8)
                 materials = np.concatenate([materials, bm])
+                emissive = np.concatenate([emissive, be])
             else:
                 vertices = bv.astype(np.float32)
                 indices = bf.astype(np.int32)
                 colors = bc.astype(np.uint8)
                 materials = bm
+                emissive = be
         
         # Add ground simulation surface overlay
         if ground_sim_grid is not None:
@@ -1440,8 +1489,13 @@ class GPURenderer:
                     else:
                         gc = np.asarray(gc)[:, :3]
                     
-                    # Ground uses Lambert material
-                    gm = np.zeros(len(gf), dtype=np.int32)
+                    # Ground: use emissive material if ground_emissive > 0
+                    if ground_emissive > 0:
+                        gm = np.full(len(gf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                        ge = np.full(len(gf), ground_emissive, dtype=np.float32)
+                    else:
+                        gm = np.zeros(len(gf), dtype=np.int32)  # MAT_LAMBERT = 0
+                        ge = np.zeros(len(gf), dtype=np.float32)
                     
                     # Append to existing arrays
                     vertex_offset = len(vertices) if len(vertices) > 0 else 0
@@ -1450,17 +1504,19 @@ class GPURenderer:
                         indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
                         colors = np.vstack([colors, gc]).astype(np.uint8)
                         materials = np.concatenate([materials, gm])
+                        emissive = np.concatenate([emissive, ge])
                     else:
                         vertices = gv.astype(np.float32)
                         indices = gf.astype(np.int32)
                         colors = gc.astype(np.uint8)
                         materials = gm
+                        emissive = ge
         
         if len(vertices) == 0:
             raise ValueError("No geometry to render")
         
-        # Set scene with materials
-        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        # Set scene with materials and emissive
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials, emissive=emissive)
         
         # Compute scene bounds for auto camera
         bounds_min = vertices.min(axis=0)
@@ -1485,9 +1541,19 @@ class GPURenderer:
         # Set camera
         self.taichi_renderer.set_camera(camera_position, camera_look_at, camera_up, fov)
         
-        # Set lighting only if explicitly provided (otherwise use renderer defaults)
+        # Set lighting: use dark mode for emissive simulation overlays, otherwise use defaults
+        has_emissive_overlay = building_emissive > 0 or ground_emissive > 0
         if light_direction is not None:
             self.taichi_renderer.set_lighting(light_direction, (0.9, 0.9, 0.85), ambient)
+        elif has_emissive_overlay:
+            # Dark mode for simulation results: lower ambient/direct, darker background
+            self.taichi_renderer.set_lighting(
+                direction=light_direction_from_angles(220, 45),
+                color=(0.2, 0.2, 0.18),  # Reduced direct light
+                ambient=(0.1, 0.1, 0.12),  # Very low ambient
+                light_noise=0.3
+            )
+            self.taichi_renderer.set_background_color((0.3, 0.35, 0.3))  # Dark background
         
         # Render
         if output_path:
@@ -1519,6 +1585,7 @@ class GPURenderer:
                         building_vmin: Optional[float] = None,
                         building_vmax: Optional[float] = None,
                         building_nan_color: str = 'gray',
+                        building_emissive: float = 0.0,
                         render_voxel_buildings: bool = False,
                         # Ground simulation surface overlay
                         ground_sim_grid: Optional[np.ndarray] = None,
@@ -1527,7 +1594,8 @@ class GPURenderer:
                         ground_view_point_height: Optional[float] = None,
                         ground_colormap: str = 'viridis',
                         ground_vmin: Optional[float] = None,
-                        ground_vmax: Optional[float] = None) -> List[str]:
+                        ground_vmax: Optional[float] = None,
+                        ground_emissive: float = 0.0) -> List[str]:
         """
         Render a rotating view of the city.
         
@@ -1641,8 +1709,13 @@ class GPURenderer:
             else:
                 bc = np.full((len(bf), 3), 200, dtype=np.uint8)
             
-            # Building meshes use default Lambert material
-            bm = np.zeros(len(bf), dtype=np.int32)
+            # Building meshes: use emissive material if building_emissive > 0
+            if building_emissive > 0:
+                bm = np.full(len(bf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                be = np.full(len(bf), building_emissive, dtype=np.float32)
+            else:
+                bm = np.zeros(len(bf), dtype=np.int32)  # MAT_LAMBERT = 0
+                be = np.zeros(len(bf), dtype=np.float32)
             
             # Append to existing arrays
             vertex_offset = len(vertices) if len(vertices) > 0 else 0
@@ -1651,11 +1724,13 @@ class GPURenderer:
                 indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
                 colors = np.vstack([colors, bc]).astype(np.uint8)
                 materials = np.concatenate([materials, bm])
+                emissive = np.concatenate([emissive, be])
             else:
                 vertices = bv.astype(np.float32)
                 indices = bf.astype(np.int32)
                 colors = bc.astype(np.uint8)
                 materials = bm
+                emissive = be
         
         # Add ground simulation surface overlay
         if ground_sim_grid is not None:
@@ -1705,7 +1780,13 @@ class GPURenderer:
                     else:
                         gc = np.asarray(gc)[:, :3]
                     
-                    gm = np.zeros(len(gf), dtype=np.int32)
+                    # Ground: use emissive material if ground_emissive > 0
+                    if ground_emissive > 0:
+                        gm = np.full(len(gf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                        ge = np.full(len(gf), ground_emissive, dtype=np.float32)
+                    else:
+                        gm = np.zeros(len(gf), dtype=np.int32)  # MAT_LAMBERT = 0
+                        ge = np.zeros(len(gf), dtype=np.float32)
                     
                     vertex_offset = len(vertices) if len(vertices) > 0 else 0
                     if len(vertices) > 0:
@@ -1713,17 +1794,19 @@ class GPURenderer:
                         indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
                         colors = np.vstack([colors, gc]).astype(np.uint8)
                         materials = np.concatenate([materials, gm])
+                        emissive = np.concatenate([emissive, ge])
                     else:
                         vertices = gv.astype(np.float32)
                         indices = gf.astype(np.int32)
                         colors = gc.astype(np.uint8)
                         materials = gm
+                        emissive = ge
         
         if len(vertices) == 0:
             raise ValueError("No geometry to render")
         
-        # Set scene once with materials
-        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        # Set scene once with materials and emissive
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials, emissive=emissive)
         
         # Compute scene bounds
         bounds_min = vertices.min(axis=0)
@@ -1737,6 +1820,17 @@ class GPURenderer:
             self.taichi_renderer.set_floor(floor_height, floor_color)
         else:
             self.taichi_renderer.set_floor(-1e10, floor_color)  # Disabled
+        
+        # Set lighting: use dark mode for emissive simulation overlays
+        has_emissive_overlay = building_emissive > 0 or ground_emissive > 0
+        if has_emissive_overlay:
+            self.taichi_renderer.set_lighting(
+                direction=light_direction_from_angles(220, 45),
+                color=(0.3, 0.3, 0.28),  # Reduced direct light
+                ambient=(0.05, 0.05, 0.06),  # Very low ambient
+                light_noise=0.3
+            )
+            self.taichi_renderer.set_background_color((0.15, 0.15, 0.18))  # Dark background
         
         camera_radius = diagonal * camera_distance_factor
         camera_height = center[2] + diagonal * camera_height_factor
@@ -1788,6 +1882,7 @@ class GPURenderer:
                           building_vmin: Optional[float] = None,
                           building_vmax: Optional[float] = None,
                           building_nan_color: str = 'gray',
+                          building_emissive: float = 0.0,
                           render_voxel_buildings: bool = False,
                           # Ground simulation surface overlay
                           ground_sim_grid: Optional[np.ndarray] = None,
@@ -1796,7 +1891,8 @@ class GPURenderer:
                           ground_view_point_height: Optional[float] = None,
                           ground_colormap: str = 'viridis',
                           ground_vmin: Optional[float] = None,
-                          ground_vmax: Optional[float] = None) -> List[Tuple[str, str]]:
+                          ground_vmax: Optional[float] = None,
+                          ground_emissive: float = 0.0) -> List[Tuple[str, str]]:
         """
         Render multiple standard views of the city.
         
@@ -1855,6 +1951,9 @@ class GPURenderer:
         )
         vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
         
+        # Initialize emissive array (all zeros for voxel meshes)
+        emissive = np.zeros(len(materials), dtype=np.float32) if len(materials) > 0 else np.zeros(0, dtype=np.float32)
+        
         # Add building sim mesh if provided
         if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
             bv = np.asarray(building_sim_mesh.vertices)
@@ -1892,7 +1991,13 @@ class GPURenderer:
             else:
                 bc = np.full((len(bf), 3), 180, dtype=np.uint8)
             
-            bm = np.zeros(len(bf), dtype=np.int32)
+            # Building meshes: use emissive material if building_emissive > 0
+            if building_emissive > 0:
+                bm = np.full(len(bf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                be = np.full(len(bf), building_emissive, dtype=np.float32)
+            else:
+                bm = np.zeros(len(bf), dtype=np.int32)  # MAT_LAMBERT = 0
+                be = np.zeros(len(bf), dtype=np.float32)
             
             vertex_offset = len(vertices) if len(vertices) > 0 else 0
             if len(vertices) > 0:
@@ -1900,11 +2005,13 @@ class GPURenderer:
                 indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
                 colors = np.vstack([colors, bc]).astype(np.uint8)
                 materials = np.concatenate([materials, bm])
+                emissive = np.concatenate([emissive, be])
             else:
                 vertices = bv.astype(np.float32)
                 indices = bf.astype(np.int32)
                 colors = bc.astype(np.uint8)
                 materials = bm
+                emissive = be
         
         # Add ground simulation surface if provided
         if ground_sim_grid is not None:
@@ -1955,7 +2062,13 @@ class GPURenderer:
                     else:
                         gc = np.asarray(gc)[:, :3]
                     
-                    gm = np.zeros(len(gf), dtype=np.int32)
+                    # Ground: use emissive material if ground_emissive > 0
+                    if ground_emissive > 0:
+                        gm = np.full(len(gf), 3, dtype=np.int32)  # MAT_EMISSIVE = 3
+                        ge = np.full(len(gf), ground_emissive, dtype=np.float32)
+                    else:
+                        gm = np.zeros(len(gf), dtype=np.int32)  # MAT_LAMBERT = 0
+                        ge = np.zeros(len(gf), dtype=np.float32)
                     
                     vertex_offset = len(vertices) if len(vertices) > 0 else 0
                     if len(vertices) > 0:
@@ -1963,17 +2076,19 @@ class GPURenderer:
                         indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
                         colors = np.vstack([colors, gc]).astype(np.uint8)
                         materials = np.concatenate([materials, gm])
+                        emissive = np.concatenate([emissive, ge])
                     else:
                         vertices = gv.astype(np.float32)
                         indices = gf.astype(np.int32)
                         colors = gc.astype(np.uint8)
                         materials = gm
+                        emissive = ge
         
         if len(vertices) == 0:
             raise ValueError("No geometry to render")
         
-        # Set scene once with materials
-        self.taichi_renderer.set_scene(vertices, indices, colors, materials)
+        # Set scene once with materials and emissive
+        self.taichi_renderer.set_scene(vertices, indices, colors, materials, emissive=emissive)
         
         # Compute scene bounds
         bounds_min = vertices.min(axis=0)
@@ -1987,6 +2102,17 @@ class GPURenderer:
             self.taichi_renderer.set_floor(floor_height, floor_color)
         else:
             self.taichi_renderer.set_floor(-1e10, floor_color)
+        
+        # Set lighting: use dark mode for emissive simulation overlays
+        has_emissive_overlay = building_emissive > 0 or ground_emissive > 0
+        if has_emissive_overlay:
+            self.taichi_renderer.set_lighting(
+                direction=light_direction_from_angles(220, 45),
+                color=(0.3, 0.3, 0.28),  # Reduced direct light
+                ambient=(0.05, 0.05, 0.06),  # Very low ambient
+                light_noise=0.3
+            )
+            self.taichi_renderer.set_background_color((0.15, 0.15, 0.18))  # Dark background
         
         # Camera distance
         distance = diagonal * camera_distance_factor
@@ -2100,6 +2226,7 @@ def visualize_voxcity_gpu(
     building_vmin: Optional[float] = None,
     building_vmax: Optional[float] = None,
     building_nan_color: str = 'gray',
+    building_emissive: float = 0.0,
     render_voxel_buildings: bool = False,
     # Ground simulation surface overlay
     ground_sim_grid: Optional[np.ndarray] = None,
@@ -2109,6 +2236,7 @@ def visualize_voxcity_gpu(
     ground_colormap: str = 'viridis',
     ground_vmin: Optional[float] = None,
     ground_vmax: Optional[float] = None,
+    ground_emissive: float = 0.0,
 ) -> np.ndarray | List[str] | List[Tuple[str, str]]:
     """
     Visualize a VoxCity using GPU-accelerated ray tracing.
@@ -2171,6 +2299,8 @@ def visualize_voxcity_gpu(
         Maximum value for building color scale
     building_nan_color : str
         Color for NaN/invalid building values
+    building_emissive : float
+        Emissive/luminous intensity for building simulation mesh (0=no emission, >0=glowing)
     render_voxel_buildings : bool
         Whether to show voxel buildings with sim mesh
     ground_sim_grid : np.ndarray, optional
@@ -2187,6 +2317,8 @@ def visualize_voxcity_gpu(
         Minimum value for ground color scale
     ground_vmax : float, optional
         Maximum value for ground color scale
+    ground_emissive : float
+        Emissive/luminous intensity for ground simulation mesh (0=no emission, >0=glowing)
     
     Returns
     -------
@@ -2253,6 +2385,7 @@ def visualize_voxcity_gpu(
             building_vmin=building_vmin,
             building_vmax=building_vmax,
             building_nan_color=building_nan_color,
+            building_emissive=building_emissive,
             render_voxel_buildings=render_voxel_buildings,
             # Ground overlay
             ground_sim_grid=ground_sim_grid,
@@ -2262,6 +2395,7 @@ def visualize_voxcity_gpu(
             ground_colormap=ground_colormap,
             ground_vmin=ground_vmin,
             ground_vmax=ground_vmax,
+            ground_emissive=ground_emissive,
         )
     elif multi_view:
         return renderer.render_multi_view(
@@ -2279,6 +2413,7 @@ def visualize_voxcity_gpu(
             building_vmin=building_vmin,
             building_vmax=building_vmax,
             building_nan_color=building_nan_color,
+            building_emissive=building_emissive,
             render_voxel_buildings=render_voxel_buildings,
             # Ground overlay
             ground_sim_grid=ground_sim_grid,
@@ -2288,6 +2423,7 @@ def visualize_voxcity_gpu(
             ground_colormap=ground_colormap,
             ground_vmin=ground_vmin,
             ground_vmax=ground_vmax,
+            ground_emissive=ground_emissive,
         )
     else:
         return renderer.render_city(
@@ -2305,6 +2441,7 @@ def visualize_voxcity_gpu(
             building_vmin=building_vmin,
             building_vmax=building_vmax,
             building_nan_color=building_nan_color,
+            building_emissive=building_emissive,
             render_voxel_buildings=render_voxel_buildings,
             # Ground overlay
             ground_sim_grid=ground_sim_grid,
@@ -2314,4 +2451,5 @@ def visualize_voxcity_gpu(
             ground_colormap=ground_colormap,
             ground_vmin=ground_vmin,
             ground_vmax=ground_vmax,
+            ground_emissive=ground_emissive,
         )
