@@ -626,24 +626,75 @@ if _HAS_TAICHI:
             # Lighting
             self.light_dir = ti.Vector.field(3, dtype=ti.f32, shape=())
             self.light_color = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.light_noise = ti.field(dtype=ti.f32, shape=())  # Light direction noise
             self.ambient_color = ti.Vector.field(3, dtype=ti.f32, shape=())
             
-            # Default lighting
+            # Floor plane (like voxel-challenge - receives shadows)
+            self.floor_height = ti.field(dtype=ti.f32, shape=())
+            self.floor_color = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.floor_height[None] = -1e10  # Disabled by default (very low)
+            self.floor_color[None] = [0.44, 0.47, 0.44]  # Gray-green #707970
+            
+            # Background color (like voxel-challenge)
+            self.background_color = ti.Vector.field(3, dtype=ti.f32, shape=())
+            self.background_color[None] = [0.8, 0.85, 0.95]  # Light bluish gray
+            
+            # Exposure and vignette fields (like voxel-challenge)
+            self._exposure_field = ti.field(dtype=ti.f32, shape=())
+            self._vignette_strength_field = ti.field(dtype=ti.f32, shape=())
+            self._vignette_radius_field = ti.field(dtype=ti.f32, shape=())
+            self._exposure_field[None] = 1.3
+            self._vignette_strength_field[None] = 0.0  # Disabled by default
+            self._vignette_radius_field[None] = 0.0
+            
+            # Python-side exposure properties
+            self.exposure = 1.3
+            self.vignette_strength = 0.0  # Disabled by default
+            self.vignette_radius = 0.0
+            
+            # Default lighting (adapted for Z-up coordinate system)
             self.set_lighting(
-                direction=(0.5, 0.5, 1.0),
-                color=(1.0, 1.0, 1.0),
-                ambient=(0.3, 0.3, 0.35)
+                direction=(0.5, 0.6, 0.7),  # Z-up: light from upper-right (azimuth ~60°, elevation ~45°)
+                color=(0.8, 0.8, 0.75),  # Moderate directional light
+                ambient=(0.15, 0.15, 0.18),  # Fill light for shadows
+                light_noise=0.3
             )
         
-        def set_lighting(self, direction: Tuple[float, float, float] = (0.5, 0.5, 1.0),
-                         color: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-                         ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35)):
+        def set_lighting(self, direction: Tuple[float, float, float] = (1.0, 1.0, -0.5),
+                         color: Tuple[float, float, float] = (0.9, 0.9, 0.85),
+                         ambient: Tuple[float, float, float] = (0.25, 0.25, 0.28),
+                         light_noise: float = 0.2):
             """Set scene lighting parameters."""
             d = np.array(direction, dtype=np.float32)
             d = d / np.linalg.norm(d)
             self.light_dir[None] = d.tolist()
             self.light_color[None] = color
             self.ambient_color[None] = ambient
+            self.light_noise[None] = light_noise
+        
+        def set_background_color(self, color: Tuple[float, float, float]):
+            """Set background color."""
+            self.background_color[None] = color
+        
+        def set_exposure(self, exposure: float = 3.0, vignette_strength: float = 0.7, vignette_radius: float = 0.2):
+            """Set exposure and vignette parameters."""
+            self.exposure = exposure
+            self.vignette_strength = vignette_strength
+            self.vignette_radius = vignette_radius
+        
+        def set_floor(self, height: float = -0.1, color: Tuple[float, float, float] = (0.3, 0.35, 0.3)):
+            """
+            Set floor plane for shadow casting (like voxel-challenge).
+            
+            Parameters
+            ----------
+            height : float
+                Y-coordinate of the floor plane. Set very negative to disable.
+            color : Tuple[float, float, float]
+                RGB color of the floor (0-1 range).
+            """
+            self.floor_height[None] = height
+            self.floor_color[None] = color
         
         def set_scene(self, vertices: np.ndarray, indices: np.ndarray,
                       colors: Optional[np.ndarray] = None,
@@ -769,11 +820,12 @@ if _HAS_TAICHI:
             """
             Trace a ray and compute color using multi-bounce path tracing.
             
-            This implements proper path tracing with:
-            - Lambert (diffuse) surfaces: random hemisphere scattering
-            - Metal (specular) surfaces: reflection with optional roughness
-            - Dielectric (glass/water) surfaces: refraction with Fresnel
-            - Russian Roulette for early termination of low-contribution paths
+            Follows voxel-challenge rendering approach:
+            - Lambert (diffuse) surfaces: random hemisphere scattering with direct lighting
+            - Metal/Water (mat=1,2): specular reflection with Fresnel
+            - Floor plane at configurable height that receives shadows
+            - Direct lighting checked on ALL bounces for better global illumination
+            - Russian Roulette for early termination
             """
             color = ti.Vector([0.0, 0.0, 0.0])
             throughput = ti.Vector([1.0, 1.0, 1.0])
@@ -781,94 +833,152 @@ if _HAS_TAICHI:
             ray_origin = origin
             ray_direction = direction
             
+            hit_background = 0
+            first_bounce_depth = 0
+            
+            floor_height = self.floor_height[None]
+            floor_color = self.floor_color[None]
+            eps = 1e-5
+            
             for bounce in range(depth):
-                # Russian Roulette for early termination (after first 2 bounces)
-                if bounce > 2:
-                    max_component = ti.max(throughput[0], ti.max(throughput[1], throughput[2]))
-                    if max_component < 0.1:
-                        # Terminate with probability based on throughput
-                        if ti.random() > max_component:
-                            break
-                        # Boost surviving rays to maintain unbiased estimate
-                        throughput *= 1.0 / max_component
-                hit, t, normal, tri_id = self.bvh.hit_all(ray_origin, ray_direction, 0.001, 1e10)
+                first_bounce_depth = bounce
+                
+                # Check BVH hit
+                bvh_hit, bvh_t, bvh_normal, tri_id = self.bvh.hit_all(ray_origin, ray_direction, 0.001, 1e10)
+                
+                # Check floor hit (Z-up coordinate system - floor is at z=floor_height)
+                floor_hit = 0
+                floor_t = 1e10
+                if ray_direction[2] < -eps:  # Ray pointing down (negative Z)
+                    floor_t = (floor_height - ray_origin[2]) / ray_direction[2]
+                    if floor_t > 0.001:
+                        floor_hit = 1
+                
+                # Determine which hit is closer
+                hit = bvh_hit or floor_hit
+                hit_floor = 0
+                t = 1e10
+                normal = ti.Vector([0.0, 0.0, 1.0])  # Default (floor normal points up in Z)
+                if floor_hit and (not bvh_hit or floor_t < bvh_t):
+                    hit_floor = 1
+                    t = floor_t
+                    normal = ti.Vector([0.0, 0.0, 1.0])  # Floor normal points up (Z-up)
+                elif bvh_hit:
+                    t = bvh_t
+                    normal = bvh_normal
                 
                 if hit:
-                    # Get surface properties
-                    surface_color = self.bvh.get_face_color(tri_id)
-                    mat_type = self.bvh.get_face_material(tri_id)
-                    roughness = self.bvh.get_face_roughness(tri_id)
-                    ior = self.bvh.get_face_ior(tri_id)
-                    
                     # Compute hit point
                     hit_point = ray_at(ray_origin, ray_direction, t)
                     
-                    # Determine if we hit front face (for dielectric refraction)
-                    front_facing = ray_direction.dot(normal) < 0.0
-                    if not front_facing:
-                        normal = -normal
+                    # Initialize surface properties (Taichi requires all vars defined)
+                    surface_color = floor_color
+                    mat_type = MAT_LAMBERT
+                    roughness = 0.0
                     
-                    # Add direct illumination (for diffuse and metallic surfaces)
-                    # Dielectrics typically don't have diffuse contribution
-                    if mat_type != MAT_DIELECTRIC:
-                        # Shadow ray
-                        shadow_origin = hit_point + normal * 0.001
-                        shadow_hit, _, _, _ = self.bvh.hit_all(
-                            shadow_origin, self.light_dir[None], 0.001, 1e10)
-                        
-                        # Diffuse lighting
-                        n_dot_l = ti.max(0.0, normal.dot(self.light_dir[None]))
-                        
-                        shading = self.ambient_color[None]
-                        if not shadow_hit:
-                            diffuse = n_dot_l * self.light_color[None]
-                            shading = self.ambient_color[None] + diffuse * 0.8
-                        
-                        # Only add direct lighting on first bounce to avoid over-brightening
-                        if bounce == 0:
-                            color += throughput * surface_color * shading * 0.8
-                    
-                    # Scatter the ray based on material type
-                    scattered = False
-                    out_origin = hit_point
-                    out_dir = ray_direction
-                    attenuation = ti.Vector([1.0, 1.0, 1.0])
-                    
-                    if mat_type == MAT_LAMBERT:
-                        scattered, out_origin, out_dir, attenuation = self._scatter_lambert(
-                            ray_direction, hit_point, normal, surface_color)
-                    elif mat_type == MAT_METAL:
-                        scattered, out_origin, out_dir, attenuation = self._scatter_metal(
-                            ray_direction, hit_point, normal, surface_color, roughness)
-                    else:  # MAT_DIELECTRIC
-                        scattered, out_origin, out_dir, attenuation = self._scatter_dielectric(
-                            ray_direction, hit_point, normal, surface_color, ior, front_facing)
-                    
-                    if scattered:
-                        throughput *= attenuation
-                        ray_origin = out_origin
-                        ray_direction = out_dir
+                    if hit_floor:
+                        # Floor hit - diffuse surface that receives shadows
+                        pass  # Already set above
                     else:
-                        # Ray was absorbed
-                        break
+                        # Get surface properties from BVH
+                        surface_color = self.bvh.get_face_color(tri_id)
+                        mat_type = self.bvh.get_face_material(tri_id)
+                        roughness = self.bvh.get_face_roughness(tri_id)
+                    
+                        # Ensure normal faces correct direction
+                        front_facing = ray_direction.dot(normal) < 0.0
+                        if not front_facing:
+                            normal = -normal
+                    
+                    # Handle materials (voxel-challenge style)
+                    if mat_type == MAT_DIELECTRIC or mat_type == MAT_METAL:
+                        # Water/reflective: use specular reflection with Fresnel (like voxel-challenge mat=3)
+                        reflect_dir = ray_direction - 2.0 * ray_direction.dot(normal) * normal
+                        # Add slight roughness
+                        water_roughness = 0.08
+                        noise = ti.Vector([
+                            (ti.random() - 0.5) * water_roughness,
+                            (ti.random() - 0.5) * water_roughness,
+                            (ti.random() - 0.5) * water_roughness
+                        ])
+                        ray_direction = (reflect_dir + noise).normalized()
+                        # Fresnel-like effect: more reflection at grazing angles
+                        fresnel = 0.4 + 0.6 * (1.0 - ti.abs(normal.dot(ray_direction)))
+                        throughput *= surface_color * fresnel
+                        ray_origin = hit_point + ray_direction * 0.001
+                    else:
+                        # Diffuse: scatter randomly in hemisphere
+                        ray_direction = normal + random_in_hemisphere(normal)
+                        ray_direction = ray_direction.normalized()
+                        throughput *= surface_color
+                        ray_origin = hit_point + normal * 0.001
+                    
+                    # Direct lighting check (on ALL bounces for ALL materials, like voxel-challenge)
+                    # Use hit_point + normal offset for shadow ray (not ray_origin which is for next bounce)
+                    shadow_origin = hit_point + normal * 0.001
+                    
+                    dir_noise = ti.Vector([
+                        (ti.random() - 0.5),
+                        (ti.random() - 0.5),
+                        (ti.random() - 0.5)
+                    ]) * self.light_noise[None]
+                    light_dir = (self.light_dir[None] + dir_noise).normalized()
+                    
+                    n_dot_l = light_dir.dot(normal)
+                    if n_dot_l > 0:
+                        # Shadow ray - check BVH hit from surface toward light
+                        shadow_hit, _, _, _ = self.bvh.hit_all(
+                            shadow_origin, light_dir, 0.001, 1e10)
+                        if not shadow_hit:
+                            # Light contribution (like voxel-challenge)
+                            color += throughput * self.light_color[None] * n_dot_l
                 else:
-                    # Background - sky gradient
-                    unit_dir = ray_direction.normalized()
-                    t_sky = 0.5 * (unit_dir[2] + 1.0)
-                    sky_color = (1.0 - t_sky) * ti.Vector([1.0, 1.0, 1.0]) + t_sky * ti.Vector([0.5, 0.7, 1.0])
-                    color += throughput * sky_color
+                    # Hit background
+                    hit_background = 1
                     break
+                
+                # Russian Roulette for early termination
+                max_c = ti.max(throughput[0], ti.max(throughput[1], throughput[2]))
+                if ti.random() > max_c:
+                    throughput = ti.Vector([0.0, 0.0, 0.0])
+                    break
+                else:
+                    throughput /= max_c
+            
+            # Background handling (like voxel-challenge)
+            # IMPORTANT: Only add background on DIRECT hits (first bounce)
+            # For indirect hits, don't add background - this preserves shadows!
+            if hit_background:
+                if first_bounce_depth == 0:
+                    # Direct hit to background - use background color
+                    color = self.background_color[None]
+                # else: don't add anything - indirect rays hitting background contribute nothing
+                # This is how voxel-challenge does it (lines 331-339 in renderer.py)
             
             return color
         
         @ti.kernel
-        def _finalize_pixels(self):
-            """Normalize accumulated pixel values."""
+        def _finalize_pixels_kernel(self):
+            """Normalize accumulated pixel values with exposure and vignette."""
+            samples = float(self.samples_per_pixel)
+            exposure = self._exposure_field[None]
+            vignette_strength = self._vignette_strength_field[None]
+            vignette_radius = self._vignette_radius_field[None]
+            
             for x, y in self.pixels:
                 if self.sample_count[x, y] > 0:
-                    self.pixels[x, y] = self.pixels[x, y] / float(self.sample_count[x, y])
-                    # Gamma correction
-                    self.pixels[x, y] = ti.sqrt(self.pixels[x, y])
+                    # Normalize by sample count
+                    c = self.pixels[x, y] / samples
+                    
+                    # Compute vignette (darkens corners like voxel-challenge)
+                    u = float(x) / float(self.width)
+                    v = float(y) / float(self.height)
+                    dist = ti.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2)
+                    darken = 1.0 - vignette_strength * ti.max(dist - vignette_radius, 0.0)
+                    
+                    # Apply exposure and vignette, then gamma correction
+                    for i in ti.static(range(3)):
+                        self.pixels[x, y][i] = ti.sqrt(c[i] * darken * exposure)
         
         def render(self, show_progress: bool = True) -> np.ndarray:
             """
@@ -903,7 +1013,12 @@ if _HAS_TAICHI:
             if show_progress:
                 print("\rRendering: 100.0%")
             
-            self._finalize_pixels()
+            # Sync exposure fields before finalizing
+            self._exposure_field[None] = self.exposure
+            self._vignette_strength_field[None] = self.vignette_strength
+            self._vignette_radius_field[None] = self.vignette_radius
+            
+            self._finalize_pixels_kernel()
             
             # Convert to numpy and format for image
             img = self.pixels.to_numpy()
@@ -1369,6 +1484,8 @@ class GPURenderer:
                         camera_height_factor: float = 0.35,
                         camera_distance_factor: float = 1.0,
                         fov: float = 30.0,
+                        floor_enabled: bool = True,
+                        floor_color: Tuple[float, float, float] = (0.3, 0.35, 0.3),
                         show_progress: bool = True) -> List[str]:
         """
         Render a rotating view of the city.
@@ -1391,6 +1508,10 @@ class GPURenderer:
             Camera distance relative to scene diagonal
         fov : float
             Field of view
+        floor_enabled : bool
+            Whether to render a floor plane that receives shadows
+        floor_color : Tuple[float, float, float]
+            RGB color of the floor (0-1 range)
         show_progress : bool
             Whether to show progress
             
@@ -1418,6 +1539,13 @@ class GPURenderer:
         bounds_max = vertices.max(axis=0)
         center = (bounds_min + bounds_max) / 2
         diagonal = np.linalg.norm(bounds_max - bounds_min)
+        
+        # Set floor just below the model (like voxel-challenge uses -0.1)
+        if floor_enabled:
+            floor_height = bounds_min[2] - diagonal * 0.02  # Slightly below minimum z
+            self.taichi_renderer.set_floor(floor_height, floor_color)
+        else:
+            self.taichi_renderer.set_floor(-1e10, floor_color)  # Disabled
         
         camera_radius = diagonal * camera_distance_factor
         camera_height = center[2] + diagonal * camera_height_factor
