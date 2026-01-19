@@ -24,6 +24,28 @@ from ..geoprocessor.mesh import create_sim_surface_mesh
 
 
 # ============================================================================
+# Lighting Helper Function
+# ============================================================================
+
+def light_direction_from_angles(azimuth_deg: float, elevation_deg: float) -> Tuple[float, float, float]:
+    """Convert azimuth and elevation angles to light direction vector (Z-up).
+    
+    Args:
+        azimuth_deg: Angle in XY plane from X-axis (0°=East, 90°=North), in degrees
+        elevation_deg: Angle above horizon (0°=horizontal, 90°=zenith), in degrees
+    
+    Returns:
+        Normalized (x, y, z) direction vector pointing toward the light source
+    """
+    az = math.radians(azimuth_deg)
+    el = math.radians(elevation_deg)
+    x = math.cos(el) * math.cos(az)
+    y = math.cos(el) * math.sin(az)
+    z = math.sin(el)
+    return (x, y, z)
+
+
+# ============================================================================
 # Taichi Import and Initialization
 # ============================================================================
 
@@ -652,10 +674,10 @@ if _HAS_TAICHI:
             self.vignette_strength = 0.0  # Disabled by default
             self.vignette_radius = 0.0
             
-            # Default lighting (adapted for Z-up coordinate system)
+            # Default lighting (azimuth=220°, elevation=45°)
             self.set_lighting(
-                direction=(0.5, 0.6, 0.7),  # Z-up: light from upper-right (azimuth ~60°, elevation ~45°)
-                color=(0.8, 0.8, 0.75),  # Moderate directional light
+                direction=light_direction_from_angles(220, 45),  # Southwest light
+                color=(0.9, 0.9, 0.85),  # Warm directional light
                 ambient=(0.15, 0.15, 0.18),  # Fill light for shadows
                 light_noise=0.3
             )
@@ -1161,8 +1183,8 @@ def merge_meshes(mesh_collection: MeshCollection,
 class GPURenderer:
     """High-level GPU renderer for VoxCity objects."""
     
-    def __init__(self, width: int = 800, height: int = 600,
-                 samples_per_pixel: int = 64, max_depth: int = 8,
+    def __init__(self, width: int = 1920, height: int = 1080,
+                 samples_per_pixel: int = 64, max_depth: int = 6,
                  arch: str = 'gpu'):
         """
         Initialize the GPU renderer.
@@ -1197,9 +1219,9 @@ class GPURenderer:
                     camera_position: Optional[Tuple[float, float, float]] = None,
                     camera_look_at: Optional[Tuple[float, float, float]] = None,
                     camera_up: Tuple[float, float, float] = (0, 0, 1),
-                    fov: float = 30.0,
-                    light_direction: Tuple[float, float, float] = (0.5, 0.5, 1.0),
-                    ambient: Tuple[float, float, float] = (0.3, 0.3, 0.35),
+                    fov: float = 25.0,
+                    light_direction: Optional[Tuple[float, float, float]] = None,
+                    ambient: Tuple[float, float, float] = (0.15, 0.15, 0.18),
                     output_path: Optional[str] = None,
                     show_progress: bool = True,
                     # Building simulation overlay
@@ -1445,25 +1467,26 @@ class GPURenderer:
         center = (bounds_min + bounds_max) / 2
         diagonal = np.linalg.norm(bounds_max - bounds_min)
         
-        # Auto camera position if not specified
+        # Auto camera position if not specified (matching render_rotation defaults)
         if camera_position is None:
-            # Isometric-like view
-            offset = diagonal * 1.2
+            # Isometric-like view with distance_factor=1.5, height_factor=0.5
+            camera_radius = diagonal * 1.5
             camera_position = (
-                center[0] + offset * 0.7,
-                center[1] + offset * 0.7,
-                center[2] + offset * 0.35
+                center[0] + camera_radius * 0.7,
+                center[1] + camera_radius * 0.7,
+                center[2] + diagonal * 0.5
             )
         
         if camera_look_at is None:
-            # Downward look-at to move the model further upward in frame
-            camera_look_at = (center[0], center[1], center[2] - diagonal * 0.10)
+            # look_at_z_factor=-0.1 to move object higher in frame
+            camera_look_at = (center[0], center[1], center[2] + diagonal * (-0.1))
         
         # Set camera
         self.taichi_renderer.set_camera(camera_position, camera_look_at, camera_up, fov)
         
-        # Set lighting
-        self.taichi_renderer.set_lighting(light_direction, (1.0, 1.0, 1.0), ambient)
+        # Set lighting only if explicitly provided (otherwise use renderer defaults)
+        if light_direction is not None:
+            self.taichi_renderer.set_lighting(light_direction, (0.9, 0.9, 0.85), ambient)
         
         # Render
         if output_path:
@@ -1480,13 +1503,30 @@ class GPURenderer:
                         voxel_color_map: str | dict = "default",
                         output_directory: str = "output",
                         file_prefix: str = "city_rotation",
-                        num_frames: int = 60,
-                        camera_height_factor: float = 0.35,
-                        camera_distance_factor: float = 1.0,
-                        fov: float = 30.0,
+                        num_frames: int = 240,
+                        camera_height_factor: float = 0.5,
+                        camera_distance_factor: float = 1.5,
+                        look_at_z_factor: float = -0.1,
+                        fov: float = 25.0,
                         floor_enabled: bool = True,
                         floor_color: Tuple[float, float, float] = (0.3, 0.35, 0.3),
-                        show_progress: bool = True) -> List[str]:
+                        show_progress: bool = True,
+                        # Building simulation overlay
+                        building_sim_mesh=None,
+                        building_value_name: str = 'svf_values',
+                        building_colormap: str = 'viridis',
+                        building_vmin: Optional[float] = None,
+                        building_vmax: Optional[float] = None,
+                        building_nan_color: str = 'gray',
+                        render_voxel_buildings: bool = False,
+                        # Ground simulation surface overlay
+                        ground_sim_grid: Optional[np.ndarray] = None,
+                        ground_dem_grid: Optional[np.ndarray] = None,
+                        ground_z_offset: Optional[float] = None,
+                        ground_view_point_height: Optional[float] = None,
+                        ground_colormap: str = 'viridis',
+                        ground_vmin: Optional[float] = None,
+                        ground_vmax: Optional[float] = None) -> List[str]:
         """
         Render a rotating view of the city.
         
@@ -1506,6 +1546,8 @@ class GPURenderer:
             Camera height relative to scene diagonal
         camera_distance_factor : float
             Camera distance relative to scene diagonal
+        look_at_z_factor : float
+            Look-at Z offset as fraction of diagonal (negative = object appears higher)
         fov : float
             Field of view
         floor_enabled : bool
@@ -1514,6 +1556,28 @@ class GPURenderer:
             RGB color of the floor (0-1 range)
         show_progress : bool
             Whether to show progress
+        building_sim_mesh : trimesh, optional
+            Building mesh with simulation results in metadata
+        building_value_name : str
+            Metadata key for building values
+        building_colormap : str
+            Matplotlib colormap for building values
+        building_vmin, building_vmax : float, optional
+            Value range for building color scale
+        building_nan_color : str
+            Color for NaN values
+        render_voxel_buildings : bool
+            Whether to render voxel buildings with sim mesh
+        ground_sim_grid : np.ndarray, optional
+            2D array of ground simulation values
+        ground_dem_grid : np.ndarray, optional
+            2D DEM array
+        ground_z_offset, ground_view_point_height : float, optional
+            Height offset for ground surface
+        ground_colormap : str
+            Matplotlib colormap for ground values
+        ground_vmin, ground_vmax : float, optional
+            Value range for ground color scale
             
         Returns
         -------
@@ -1523,10 +1587,136 @@ class GPURenderer:
         os.makedirs(output_directory, exist_ok=True)
         
         meshsize = city.voxels.meta.meshsize
+        
+        # Determine which classes to exclude from voxel rendering
+        exclude_classes = set()
+        if building_sim_mesh is not None and not render_voxel_buildings:
+            exclude_classes.add(-3)  # Exclude building voxels
+        
         collection = MeshBuilder.from_voxel_grid(
             city.voxels, meshsize=meshsize, voxel_color_map=voxel_color_map
         )
-        vertices, indices, colors, materials = merge_meshes(collection)
+        vertices, indices, colors, materials = merge_meshes(collection, exclude_classes)
+        
+        # Add building sim mesh if provided
+        if building_sim_mesh is not None and hasattr(building_sim_mesh, 'vertices'):
+            bv = np.asarray(building_sim_mesh.vertices)
+            bf = np.asarray(building_sim_mesh.faces)
+            
+            # Get simulation values from metadata and apply colormap
+            values = None
+            if hasattr(building_sim_mesh, 'metadata') and isinstance(building_sim_mesh.metadata, dict):
+                values = building_sim_mesh.metadata.get(building_value_name)
+            
+            if values is not None:
+                values = np.asarray(values)
+                
+                # Determine if values are per-face or per-vertex
+                face_vals = None
+                if len(values) == len(bf):
+                    face_vals = values.astype(float)
+                elif len(values) == len(bv):
+                    vals_v = values.astype(float)
+                    face_vals = np.nanmean(vals_v[bf], axis=1)
+                
+                if face_vals is not None:
+                    # Apply colormap
+                    finite = np.isfinite(face_vals)
+                    vmin_b = building_vmin if building_vmin is not None else (float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0)
+                    vmax_b = building_vmax if building_vmax is not None else (float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0)
+                    norm_b = mcolors.Normalize(vmin=vmin_b, vmax=vmax_b)
+                    cmap_b = cm.get_cmap(building_colormap)
+                    
+                    bc = np.zeros((len(bf), 3), dtype=np.uint8)
+                    if np.any(finite):
+                        colors_float = cmap_b(norm_b(face_vals[finite]))
+                        bc[finite] = (colors_float[:, :3] * 255).astype(np.uint8)
+                    
+                    # Handle NaN values
+                    nan_rgba = np.array(mcolors.to_rgba(building_nan_color))
+                    bc[~finite] = (nan_rgba[:3] * 255).astype(np.uint8)
+                else:
+                    bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+            else:
+                bc = np.full((len(bf), 3), 200, dtype=np.uint8)
+            
+            # Building meshes use default Lambert material
+            bm = np.zeros(len(bf), dtype=np.int32)
+            
+            # Append to existing arrays
+            vertex_offset = len(vertices) if len(vertices) > 0 else 0
+            if len(vertices) > 0:
+                vertices = np.vstack([vertices, bv]).astype(np.float32)
+                indices = np.vstack([indices, bf + vertex_offset]).astype(np.int32)
+                colors = np.vstack([colors, bc]).astype(np.uint8)
+                materials = np.concatenate([materials, bm])
+            else:
+                vertices = bv.astype(np.float32)
+                indices = bf.astype(np.int32)
+                colors = bc.astype(np.uint8)
+                materials = bm
+        
+        # Add ground simulation surface overlay
+        if ground_sim_grid is not None:
+            if ground_dem_grid is None:
+                ground_dem_grid = getattr(city.dem, "elevation", None)
+            
+            if ground_dem_grid is not None:
+                z_off = ground_z_offset if ground_z_offset is not None else ground_view_point_height
+                try:
+                    z_off = float(z_off) if z_off is not None else 1.5
+                except Exception:
+                    z_off = 1.5
+                
+                try:
+                    z_off = meshsize + z_off
+                except Exception:
+                    pass
+                
+                try:
+                    dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                    dem_norm = dem_norm - np.nanmin(dem_norm)
+                except Exception:
+                    dem_norm = ground_dem_grid
+                
+                sim_vals = np.asarray(ground_sim_grid, dtype=float)
+                finite = np.isfinite(sim_vals)
+                vmin_g = ground_vmin if ground_vmin is not None else (float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0)
+                vmax_g = ground_vmax if ground_vmax is not None else (float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0)
+                
+                sim_mesh = create_sim_surface_mesh(
+                    ground_sim_grid,
+                    dem_norm,
+                    meshsize=meshsize,
+                    z_offset=z_off,
+                    cmap_name=ground_colormap,
+                    vmin=vmin_g,
+                    vmax=vmax_g,
+                )
+                
+                if sim_mesh is not None and hasattr(sim_mesh, 'vertices') and len(sim_mesh.vertices) > 0:
+                    gv = np.asarray(sim_mesh.vertices)
+                    gf = np.asarray(sim_mesh.faces)
+                    
+                    gc = getattr(sim_mesh.visual, 'face_colors', None)
+                    if gc is None:
+                        gc = np.full((len(gf), 3), 180, dtype=np.uint8)
+                    else:
+                        gc = np.asarray(gc)[:, :3]
+                    
+                    gm = np.zeros(len(gf), dtype=np.int32)
+                    
+                    vertex_offset = len(vertices) if len(vertices) > 0 else 0
+                    if len(vertices) > 0:
+                        vertices = np.vstack([vertices, gv]).astype(np.float32)
+                        indices = np.vstack([indices, gf + vertex_offset]).astype(np.int32)
+                        colors = np.vstack([colors, gc]).astype(np.uint8)
+                        materials = np.concatenate([materials, gm])
+                    else:
+                        vertices = gv.astype(np.float32)
+                        indices = gf.astype(np.int32)
+                        colors = gc.astype(np.uint8)
+                        materials = gm
         
         if len(vertices) == 0:
             raise ValueError("No geometry to render")
@@ -1549,7 +1739,7 @@ class GPURenderer:
         
         camera_radius = diagonal * camera_distance_factor
         camera_height = center[2] + diagonal * camera_height_factor
-        look_at = (center[0], center[1], center[2] - diagonal * 0.10)
+        look_at = (center[0], center[1], center[2] + diagonal * look_at_z_factor)
         
         filenames = []
         
@@ -1582,20 +1772,20 @@ class GPURenderer:
 def visualize_voxcity_gpu(
     city: VoxCity,
     voxel_color_map: str | dict = "default",
-    width: int = 800,
-    height: int = 600,
+    width: int = 1920,
+    height: int = 1080,
     samples_per_pixel: int = 64,
     max_depth: int = 8,
     camera_position: Optional[Tuple[float, float, float]] = None,
     camera_look_at: Optional[Tuple[float, float, float]] = None,
-    fov: float = 30.0,
+    fov: float = 25.0,
     output_path: Optional[str] = None,
     show_progress: bool = True,
     arch: str = 'gpu',
     # Rotation options
     rotation: bool = False,
     output_directory: str = "output",
-    rotation_frames: int = 60,
+    rotation_frames: int = 240,
     rotation_file_prefix: str = "city_rotation",
     # Building simulation overlay
     building_sim_mesh=None,
@@ -1730,7 +1920,23 @@ def visualize_voxcity_gpu(
             file_prefix=rotation_file_prefix,
             num_frames=rotation_frames,
             fov=fov,
-            show_progress=show_progress
+            show_progress=show_progress,
+            # Building overlay
+            building_sim_mesh=building_sim_mesh,
+            building_value_name=building_value_name,
+            building_colormap=building_colormap,
+            building_vmin=building_vmin,
+            building_vmax=building_vmax,
+            building_nan_color=building_nan_color,
+            render_voxel_buildings=render_voxel_buildings,
+            # Ground overlay
+            ground_sim_grid=ground_sim_grid,
+            ground_dem_grid=ground_dem_grid,
+            ground_z_offset=ground_z_offset,
+            ground_view_point_height=ground_view_point_height,
+            ground_colormap=ground_colormap,
+            ground_vmin=ground_vmin,
+            ground_vmax=ground_vmax,
         )
     else:
         return renderer.render_city(
