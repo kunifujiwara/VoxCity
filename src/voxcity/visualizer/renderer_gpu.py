@@ -1555,11 +1555,11 @@ class GPURenderer:
             # Dark mode for simulation results: lower ambient/direct, darker background
             self.taichi_renderer.set_lighting(
                 direction=light_direction_from_angles(220, 45),
-                color=(0.2, 0.2, 0.18),  # Reduced direct light
-                ambient=(0.1, 0.1, 0.12),  # Very low ambient
+                color=(0.3, 0.3, 0.28),  # Reduced direct light
+                ambient=(0.05, 0.05, 0.06),  # Very low ambient
                 light_noise=0.3
             )
-            self.taichi_renderer.set_background_color((0.3, 0.35, 0.3))  # Dark background
+            self.taichi_renderer.set_background_color((0.15, 0.15, 0.18))  # Dark background
         
         # Render
         if output_path:
@@ -1591,7 +1591,7 @@ class GPURenderer:
                         building_vmin: Optional[float] = None,
                         building_vmax: Optional[float] = None,
                         building_nan_color: str = 'gray',
-                        building_emissive: float = 0.0,
+                        building_emissive: float = 0.5,
                         render_voxel_buildings: bool = False,
                         # Ground simulation surface overlay
                         ground_sim_grid: Optional[np.ndarray] = None,
@@ -1601,7 +1601,7 @@ class GPURenderer:
                         ground_colormap: str = 'viridis',
                         ground_vmin: Optional[float] = None,
                         ground_vmax: Optional[float] = None,
-                        ground_emissive: float = 0.0) -> List[str]:
+                        ground_emissive: float = 0.5) -> List[str]:
         """
         Render a rotating view of the city.
         
@@ -2038,8 +2038,9 @@ class GPURenderer:
                 except Exception:
                     z_off = 1.5
                 
+                # Position at ground level (one meshsize up) plus view point height
                 try:
-                    z_off = (z_off // meshsize + 1.0) * meshsize
+                    z_off = meshsize + z_off
                 except Exception:
                     pass
                 
