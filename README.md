@@ -42,7 +42,7 @@
 </p>
 
 <p align="center">
-  <em>Tutorial video by <a href="https://ual.sg/author/liang-xiucheng/">Xiucheng Liang</a></em>
+  <em>Tutorial video by <a href="https://ual.sg/author/xiucheng-liang/">Xiucheng Liang</a></em>
 </p>
 
 
@@ -534,7 +534,7 @@ Fujiwara K, Tsurumi R, Kiyono T, Fan Z, Liang X, Lei B, Yap W, Ito K, Biljecki F
 
 ## Credit
 
- - Tutorial video by <a href="https://ual.sg/author/liang-xiucheng/">Xiucheng Liang</a>
+ - Tutorial video by <a href="https://ual.sg/author/xiucheng-liang/">Xiucheng Liang</a>
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
 

@@ -1260,6 +1260,8 @@ class GPURenderer:
                     camera_look_at: Optional[Tuple[float, float, float]] = None,
                     camera_up: Tuple[float, float, float] = (0, 0, 1),
                     fov: float = 25.0,
+                    floor_enabled: bool = True,
+                    floor_color: Tuple[float, float, float] = (0.3, 0.35, 0.3),
                     light_direction: Optional[Tuple[float, float, float]] = None,
                     ambient: Tuple[float, float, float] = (0.15, 0.15, 0.18),
                     output_path: Optional[str] = None,
@@ -1271,7 +1273,7 @@ class GPURenderer:
                     building_vmin: Optional[float] = None,
                     building_vmax: Optional[float] = None,
                     building_nan_color: str = 'gray',
-                    building_emissive: float = 0.0,
+                    building_emissive: float = 0.5,
                     render_voxel_buildings: bool = False,
                     # Ground simulation surface overlay
                     ground_sim_grid: Optional[np.ndarray] = None,
@@ -1281,7 +1283,7 @@ class GPURenderer:
                     ground_colormap: str = 'viridis',
                     ground_vmin: Optional[float] = None,
                     ground_vmax: Optional[float] = None,
-                    ground_emissive: float = 0.0) -> np.ndarray:
+                    ground_emissive: float = 0.5) -> np.ndarray:
         """
         Render a VoxCity to an image using GPU ray tracing.
         
@@ -1299,6 +1301,10 @@ class GPURenderer:
             Camera up vector
         fov : float
             Field of view in degrees
+        floor_enabled : bool
+            Whether to render a floor plane that receives shadows
+        floor_color : Tuple[float, float, float]
+            RGB color of the floor (0-1 range)
         light_direction : tuple
             Light direction vector
         ambient : tuple
@@ -1546,6 +1552,13 @@ class GPURenderer:
         
         # Set camera
         self.taichi_renderer.set_camera(camera_position, camera_look_at, camera_up, fov)
+        
+        # Set floor just below the model (like voxel-challenge uses -0.1)
+        if floor_enabled:
+            floor_height = bounds_min[2] - diagonal * 0.02  # Slightly below minimum z
+            self.taichi_renderer.set_floor(floor_height, floor_color)
+        else:
+            self.taichi_renderer.set_floor(-1e10, floor_color)  # Disabled
         
         # Set lighting: use dark mode for emissive simulation overlays, otherwise use defaults
         has_emissive_overlay = building_emissive > 0 or ground_emissive > 0
@@ -1883,7 +1896,7 @@ class GPURenderer:
                           camera_distance_factor: float = 1.5,
                           look_at_z_factor: float = -0.1,
                           fov: float = 25.0,
-                          floor_enabled: bool = False,
+                          floor_enabled: bool = True,
                           floor_color: Tuple[float, float, float] = (0.3, 0.35, 0.3),
                           show_progress: bool = True,
                           views: Optional[List[str]] = None,
@@ -1894,7 +1907,7 @@ class GPURenderer:
                           building_vmin: Optional[float] = None,
                           building_vmax: Optional[float] = None,
                           building_nan_color: str = 'gray',
-                          building_emissive: float = 0.0,
+                          building_emissive: float = 0.5,
                           render_voxel_buildings: bool = False,
                           # Ground simulation surface overlay
                           ground_sim_grid: Optional[np.ndarray] = None,
@@ -1904,7 +1917,7 @@ class GPURenderer:
                           ground_colormap: str = 'viridis',
                           ground_vmin: Optional[float] = None,
                           ground_vmax: Optional[float] = None,
-                          ground_emissive: float = 0.0) -> List[Tuple[str, str]]:
+                          ground_emissive: float = 0.5) -> List[Tuple[str, str]]:
         """
         Render multiple standard views of the city.
         
@@ -2232,6 +2245,13 @@ def visualize_voxcity_gpu(
     multi_view: bool = False,
     multi_view_file_prefix: str = "city_view",
     views: Optional[List[str]] = None,
+    # Floor options
+    floor_enabled: bool = True,
+    # Lighting and background options
+    light_direction: Optional[Tuple[float, float, float]] = None,
+    direct: Optional[Tuple[float, float, float]] = None,
+    ambient: Optional[Tuple[float, float, float]] = None,
+    background_color: Optional[Tuple[float, float, float]] = None,
     # Building simulation overlay
     building_sim_mesh=None,
     building_value_name: str = 'svf_values',
@@ -2300,6 +2320,18 @@ def visualize_voxcity_gpu(
         - Isometric: 'iso_front_right', 'iso_front_left', 'iso_back_right', 'iso_back_left'
         - Orthographic: 'xy_top', 'yz_right', 'xz_front', 'yz_left', 'xz_back'
         If None, renders all 9 standard views.
+    floor_enabled : bool
+        Whether to render a floor plane that receives shadows (default: True)
+    light_direction : tuple, optional
+        Light direction vector (x, y, z). Use light_direction_from_angles() for easy setup.
+        If None, uses default southwest lighting.
+    direct : tuple, optional
+        Direct light color and intensity (R, G, B) from 0.0 to 1.0. 
+        Higher values = brighter direct light. Default is (0.9, 0.9, 0.85).
+    ambient : tuple, optional
+        Ambient light color (R, G, B) from 0.0 to 1.0. If None, uses default.
+    background_color : tuple, optional
+        Background color (R, G, B) from 0.0 to 1.0. If None, uses default light blue.
     building_sim_mesh : trimesh, optional
         Building mesh with simulation results in metadata
     building_value_name : str
@@ -2382,6 +2414,22 @@ def visualize_voxcity_gpu(
         arch=arch
     )
     
+    # Apply custom lighting if specified
+    if light_direction is not None or direct is not None or ambient is not None:
+        current_direction = light_direction if light_direction is not None else light_direction_from_angles(220, 45)
+        current_color = direct if direct is not None else (0.9, 0.9, 0.85)
+        current_ambient = ambient if ambient is not None else (0.15, 0.15, 0.18)
+        renderer.taichi_renderer.set_lighting(
+            direction=current_direction,
+            color=current_color,
+            ambient=current_ambient,
+            light_noise=0.3
+        )
+    
+    # Apply custom background color if specified
+    if background_color is not None:
+        renderer.taichi_renderer.set_background_color(background_color)
+    
     if rotation:
         return renderer.render_rotation(
             city,
@@ -2390,6 +2438,7 @@ def visualize_voxcity_gpu(
             file_prefix=rotation_file_prefix,
             num_frames=rotation_frames,
             fov=fov,
+            floor_enabled=floor_enabled,
             show_progress=show_progress,
             # Building overlay
             building_sim_mesh=building_sim_mesh,
@@ -2417,6 +2466,7 @@ def visualize_voxcity_gpu(
             output_directory=output_directory,
             file_prefix=multi_view_file_prefix,
             fov=fov,
+            floor_enabled=floor_enabled,
             views=views,
             show_progress=show_progress,
             # Building overlay
@@ -2445,6 +2495,7 @@ def visualize_voxcity_gpu(
             camera_position=camera_position,
             camera_look_at=camera_look_at,
             fov=fov,
+            floor_enabled=floor_enabled,
             output_path=output_path,
             show_progress=show_progress,
             # Building overlay
