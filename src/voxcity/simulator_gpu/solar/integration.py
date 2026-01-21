@@ -2762,6 +2762,341 @@ def get_cumulative_building_solar_irradiance(
     return result_mesh
 
 
+def get_building_sunlight_hours(
+    voxcity,
+    building_svf_mesh=None,
+    epw_file_path: str = None,
+    download_nearest_epw: bool = False,
+    dni_threshold: float = 120.0,
+    **kwargs
+):
+    """
+    GPU-accelerated Probable Sunlight Hours (PSH) computation for building surfaces.
+    
+    This function computes the number of hours each building face receives direct
+    sunlight, using EPW weather data to account for cloud cover. This implements
+    the Probable Sunlight Hours metric, which considers both geometric obstructions
+    and actual weather conditions from climate data.
+    
+    The WMO standard defines sunshine hours as periods when Direct Normal Irradiance
+    (DNI) exceeds 120 W/m². This threshold corresponds to the intensity of direct
+    sunlight shortly after sunrise or before sunset under clear skies.
+    
+    Key Distinction:
+        - Direct Sun Hours (DSH): Considers obstructions only, assumes clear sky
+        - Probable Sunlight Hours (PSH): Considers obstructions AND weather/clouds
+    
+    This function implements PSH by using actual DNI values from weather data.
+    
+    Args:
+        voxcity: VoxCity object (lat/lon extracted from extras.rectangle_vertices)
+        building_svf_mesh: Trimesh object with building surfaces (optional, created if None)
+        epw_file_path: Path to EPW file (required if download_nearest_epw=False)
+        download_nearest_epw: If True, download nearest EPW based on voxcity location
+        dni_threshold: DNI threshold in W/m² to count as sunshine (default: 120.0, WMO standard)
+        **kwargs: Additional parameters including:
+            - period_start (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 00:00:00')
+            - period_end (str): End time 'MM-DD HH:MM:SS' (default: '12-31 23:59:59')
+            - time_step_hours (float): Time step in hours (default: 1.0)
+            - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
+                Faces whose XY centroid falls outside the masked region are set to NaN.
+            - progress_report (bool): Print progress (default: False)
+            - output_dir (str): Directory for downloaded EPW files (default: 'output')
+            - max_distance (float): Max distance in km for EPW search (default: 100)
+    
+    Returns:
+        Trimesh object with sunlight hours in metadata:
+            - 'sunlight_hours': Total probable sunlight hours per face
+            - 'potential_sunlight_hours': Maximum possible hours (clear sky, no obstructions)
+            - 'sunlight_fraction': Ratio of actual to potential hours
+            - 'dni_threshold': The threshold used (W/m²)
+    
+    Example:
+        >>> # Compute annual probable sunlight hours (auto-download EPW)
+        >>> result = get_building_sunlight_hours(
+        ...     voxcity,
+        ...     download_nearest_epw=True,
+        ...     period_start='01-01 00:00:00',
+        ...     period_end='12-31 23:59:59',
+        ...     progress_report=True
+        ... )
+        >>> 
+        >>> # Or use a local EPW file
+        >>> result = get_building_sunlight_hours(
+        ...     voxcity,
+        ...     epw_file_path='path/to/weather.epw',
+        ...     period_start='06-01 00:00:00',
+        ...     period_end='08-31 23:59:59'
+        ... )
+        >>> 
+        >>> # Access results
+        >>> sunlight_hours = result.metadata['sunlight_hours']
+    """
+    from datetime import datetime
+    import pytz
+    
+    # Extract parameters
+    kwargs = dict(kwargs)
+    period_start = kwargs.pop('period_start', '01-01 00:00:00')
+    period_end = kwargs.pop('period_end', '12-31 23:59:59')
+    time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
+    progress_report = kwargs.pop('progress_report', False)
+    computation_mask = kwargs.pop('computation_mask', None)
+    
+    # Load EPW data (download or read from file)
+    weather_df, lon, lat, tz = _load_epw_data(
+        epw_file_path=epw_file_path,
+        download_nearest_epw=download_nearest_epw,
+        voxcity=voxcity,
+        **kwargs
+    )
+    
+    if progress_report:
+        print(f"  Location: lon={lon:.4f}, lat={lat:.4f}, tz={tz}")
+        print(f"  DNI range: {weather_df['DNI'].min():.1f} - {weather_df['DNI'].max():.1f} W/m²")
+    
+    if 'DNI' not in weather_df.columns:
+        raise ValueError("Weather dataframe must have 'DNI' column (Direct Normal Irradiance).")
+    
+    # Parse period
+    try:
+        start_dt = datetime.strptime(period_start, '%m-%d %H:%M:%S')
+        end_dt = datetime.strptime(period_end, '%m-%d %H:%M:%S')
+    except ValueError:
+        raise ValueError("period_start and period_end must be in format 'MM-DD HH:MM:SS'")
+    
+    # Filter dataframe to period
+    df = weather_df.copy()
+    df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
+    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+    start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
+    end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
+    
+    if start_hour <= end_hour:
+        df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
+    else:
+        df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    if df_period.empty:
+        raise ValueError("No weather data in the specified period.")
+    
+    # Localize and convert to UTC
+    offset_minutes = int(tz * 60)
+    local_tz = pytz.FixedOffset(offset_minutes)
+    df_period_local = df_period.copy()
+    df_period_local.index = df_period_local.index.tz_localize(local_tz)
+    df_period_utc = df_period_local.tz_convert(pytz.UTC)
+    
+    # Get solar positions
+    solar_positions = _get_solar_positions_astral(df_period_utc.index, lon, lat)
+    
+    # Create building mesh if not provided
+    if building_svf_mesh is None:
+        try:
+            from voxcity.geoprocessor.mesh import create_voxel_mesh
+            if progress_report:
+                print("Creating building mesh...")
+            voxel_data = voxcity.voxels.classes
+            meshsize = voxcity.voxels.meta.meshsize
+            building_id_grid = voxcity.buildings.ids
+            building_class_id = kwargs.pop('building_class_id', -3)
+            building_svf_mesh = create_voxel_mesh(
+                voxel_data,
+                building_class_id,
+                meshsize,
+                building_id_grid=building_id_grid,
+                mesh_type='open_air'
+            )
+            if building_svf_mesh is None or len(building_svf_mesh.faces) == 0:
+                raise ValueError("No building surfaces found in voxcity.")
+            if progress_report:
+                print(f"  Created building mesh with {len(building_svf_mesh.faces)} faces")
+        except ImportError:
+            raise ImportError("VoxCity geoprocessor.mesh required for mesh creation")
+    
+    # Initialize result mesh
+    result_mesh = building_svf_mesh.copy() if hasattr(building_svf_mesh, 'copy') else building_svf_mesh
+    n_faces = len(result_mesh.faces) if hasattr(result_mesh, 'faces') else 0
+    
+    if n_faces == 0:
+        raise ValueError("Building mesh has no faces")
+    
+    # Initialize sunlight hours arrays
+    sunlight_hours = np.zeros(n_faces, dtype=np.float64)
+    potential_hours = 0.0  # Total hours where DNI >= threshold (clear sky potential)
+    
+    if progress_report:
+        print(f"Computing probable sunlight hours for {n_faces} faces...")
+        print(f"  DNI threshold: {dni_threshold} W/m² (WMO standard)")
+    
+    # Extract arrays for processing
+    elevation_arr = solar_positions['elevation'].to_numpy()
+    azimuth_arr = solar_positions['azimuth'].to_numpy()
+    dni_arr = df_period_utc['DNI'].to_numpy()
+    n_timesteps = len(elevation_arr)
+    
+    # Count timesteps where sun is up AND DNI exceeds threshold
+    sunshine_timesteps = []
+    for t_idx in range(n_timesteps):
+        elev = elevation_arr[t_idx]
+        dni = dni_arr[t_idx]
+        
+        # Check if this is a sunshine hour:
+        # 1. Sun must be above horizon (elevation > 0)
+        # 2. DNI must exceed WMO threshold (accounts for clouds)
+        if elev > 0 and dni >= dni_threshold:
+            sunshine_timesteps.append(t_idx)
+            potential_hours += time_step_hours
+    
+    n_sunshine = len(sunshine_timesteps)
+    
+    if progress_report:
+        print(f"  Timesteps in period: {n_timesteps}")
+        print(f"  Sunshine timesteps (DNI >= {dni_threshold} W/m²): {n_sunshine}")
+        print(f"  Potential sunlight hours (clear sky): {potential_hours:.1f} h")
+    
+    if n_sunshine == 0:
+        if progress_report:
+            print("  No sunshine hours in period - returning zero sunlight hours")
+        # Set up metadata with zeros
+        result_mesh.metadata = getattr(result_mesh, 'metadata', {})
+        result_mesh.metadata['sunlight_hours'] = sunlight_hours
+        result_mesh.metadata['potential_sunlight_hours'] = potential_hours
+        result_mesh.metadata['sunlight_fraction'] = np.zeros(n_faces, dtype=np.float64)
+        return result_mesh
+    
+    # Loop over sunshine timesteps and check if each face receives direct sunlight
+    for i, t_idx in enumerate(sunshine_timesteps):
+        elev = elevation_arr[t_idx]
+        az = azimuth_arr[t_idx]
+        
+        # Compute direct irradiance visibility (unit DNI to get shading mask)
+        irradiance_mesh = get_building_solar_irradiance(
+            voxcity,
+            building_svf_mesh=building_svf_mesh,
+            azimuth_degrees_ori=az,
+            elevation_degrees=elev,
+            direct_normal_irradiance=1.0,  # Unit value to get shading factor
+            diffuse_irradiance=0.0,  # Only interested in direct sunlight
+            progress_report=False,
+            **kwargs
+        )
+        
+        if irradiance_mesh is not None and hasattr(irradiance_mesh, 'metadata'):
+            if 'direct' in irradiance_mesh.metadata:
+                direct_vals = irradiance_mesh.metadata['direct']
+                if len(direct_vals) == n_faces:
+                    # Face receives sunlight if direct irradiance > 0 (not shaded)
+                    # The value represents the fraction of direct beam that reaches the face
+                    # (accounts for incidence angle and shading)
+                    receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
+                    sunlight_hours += receives_sun.astype(np.float64) * time_step_hours
+        
+        if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
+            pct = (i + 1) * 100.0 / n_sunshine
+            print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
+    
+    # -------------------------------------------------------------------------
+    # Set vertical faces on domain perimeter to NaN (matching VoxCity behavior)
+    # -------------------------------------------------------------------------
+    voxel_data = voxcity.voxels.classes
+    meshsize = voxcity.voxels.meta.meshsize
+    ny_vc, nx_vc, nz = voxel_data.shape
+    grid_bounds_real = np.array([
+        [0.0, 0.0, 0.0],
+        [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
+    ], dtype=np.float64)
+    boundary_epsilon = meshsize * 0.05
+
+    mesh_face_centers = result_mesh.triangles_center
+    mesh_face_normals = result_mesh.face_normals
+
+    # Detect vertical faces (normal z-component near zero)
+    is_vertical = np.abs(mesh_face_normals[:, 2]) < 0.01
+
+    # Detect faces on domain boundary
+    on_x_min = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[0, 0]) < boundary_epsilon
+    on_y_min = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[0, 1]) < boundary_epsilon
+    on_x_max = np.abs(mesh_face_centers[:, 0] - grid_bounds_real[1, 0]) < boundary_epsilon
+    on_y_max = np.abs(mesh_face_centers[:, 1] - grid_bounds_real[1, 1]) < boundary_epsilon
+
+    is_boundary_vertical = is_vertical & (on_x_min | on_y_min | on_x_max | on_y_max)
+
+    # Set boundary vertical faces to NaN
+    sunlight_hours[is_boundary_vertical] = np.nan
+
+    if progress_report:
+        n_boundary = np.sum(is_boundary_vertical)
+        print(f"  Boundary vertical faces set to NaN: {n_boundary}/{n_faces} ({100*n_boundary/n_faces:.1f}%)")
+
+    # -------------------------------------------------------------------------
+    # Apply computation_mask: set faces outside masked XY region to NaN
+    # -------------------------------------------------------------------------
+    if computation_mask is not None:
+        face_x = mesh_face_centers[:, 0]
+        face_y = mesh_face_centers[:, 1]
+        
+        grid_i = (face_y / meshsize).astype(int)
+        grid_j = (face_x / meshsize).astype(int)
+        
+        if computation_mask.shape == (ny_vc, nx_vc):
+            mask_shape = computation_mask.shape
+        elif computation_mask.T.shape == (ny_vc, nx_vc):
+            computation_mask = computation_mask.T
+            mask_shape = computation_mask.shape
+        else:
+            mask_shape = computation_mask.shape
+        
+        grid_i = np.clip(grid_i, 0, mask_shape[0] - 1)
+        grid_j = np.clip(grid_j, 0, mask_shape[1] - 1)
+        
+        flipped_mask = np.flipud(computation_mask)
+        outside_mask = ~flipped_mask[grid_i, grid_j]
+        
+        sunlight_hours[outside_mask] = np.nan
+        
+        if progress_report:
+            n_outside = np.sum(outside_mask)
+            print(f"  Faces outside computation_mask set to NaN: {n_outside}/{n_faces} ({100*n_outside/n_faces:.1f}%)")
+
+    # Compute sunlight fraction (ratio of received to potential)
+    sunlight_fraction = np.zeros(n_faces, dtype=np.float64)
+    if potential_hours > 0:
+        sunlight_fraction = sunlight_hours / potential_hours
+    
+    # Store results in mesh metadata
+    result_mesh.metadata = getattr(result_mesh, 'metadata', {})
+    result_mesh.metadata['sunlight_hours'] = sunlight_hours
+    result_mesh.metadata['potential_sunlight_hours'] = potential_hours
+    result_mesh.metadata['sunlight_fraction'] = sunlight_fraction
+    result_mesh.metadata['dni_threshold'] = dni_threshold
+    
+    if progress_report:
+        valid_mask = ~np.isnan(sunlight_hours)
+        print(f"Probable sunlight hours computation complete:")
+        print(f"  Total faces: {n_faces}, Valid: {np.sum(valid_mask)}")
+        print(f"  Potential hours: {potential_hours:.1f} h")
+        print(f"  Mean sunlight hours: {np.nanmean(sunlight_hours):.1f} h")
+        print(f"  Max sunlight hours: {np.nanmax(sunlight_hours):.1f} h")
+        print(f"  Mean sunlight fraction: {np.nanmean(sunlight_fraction):.1%}")
+    
+    # Export if requested
+    if kwargs.get('obj_export', False):
+        import os
+        output_dir = kwargs.get('output_directory', 'output')
+        output_file_name = kwargs.get('output_file_name', 'building_sunlight_hours')
+        os.makedirs(output_dir, exist_ok=True)
+        try:
+            result_mesh.export(f"{output_dir}/{output_file_name}.obj")
+            if progress_report:
+                print(f"Exported to {output_dir}/{output_file_name}.obj")
+        except Exception as e:
+            print(f"Error exporting mesh: {e}")
+    
+    return result_mesh
+
+
 def get_building_global_solar_irradiance_using_epw(
     voxcity,
     calc_type: str = 'instantaneous',

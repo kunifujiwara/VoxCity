@@ -107,6 +107,7 @@ from .integration import (
     get_cumulative_global_solar_irradiance,
     get_building_solar_irradiance,
     get_cumulative_building_solar_irradiance,
+    get_building_sunlight_hours,
     get_global_solar_irradiance_using_epw,
     get_building_global_solar_irradiance_using_epw,
     # Volumetric solar irradiance functions
@@ -205,6 +206,7 @@ __all__ = [
     'get_cumulative_global_solar_irradiance',
     'get_building_solar_irradiance',
     'get_cumulative_building_solar_irradiance',
+    'get_building_sunlight_hours',
     'get_global_solar_irradiance_using_epw',
     'get_building_global_solar_irradiance_using_epw',
     # Volumetric solar irradiance functions
