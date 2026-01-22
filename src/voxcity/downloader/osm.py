@@ -14,6 +14,7 @@ The module includes functions for:
 """
 
 import requests
+import time
 from shapely.geometry import Polygon, shape, mapping
 from shapely.ops import transform
 import pyproj
@@ -25,6 +26,106 @@ from shapely.ops import transform
 import pyproj
 import pandas as pd
 import geopandas as gpd
+
+# Default Overpass API endpoints
+OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
+
+
+def _fetch_overpass_with_retry(query, timeout=30, max_retries=3, initial_delay=5.0, 
+                                 backoff_factor=2.0, endpoints=None):
+    """Fetch data from Overpass API with retry logic and exponential backoff.
+    
+    This function tries multiple Overpass API endpoints and retries on transient
+    failures with exponential backoff delays between attempts.
+    
+    Args:
+        query (str): The Overpass QL query to execute
+        timeout (int): Request timeout in seconds. Defaults to 30.
+        max_retries (int): Maximum number of retry attempts per full endpoint cycle.
+            Defaults to 3.
+        initial_delay (float): Initial delay in seconds before first retry.
+            Defaults to 5.0 seconds.
+        backoff_factor (float): Multiplier for delay between retries (exponential backoff).
+            Defaults to 2.0 (delays: 5s, 10s, 20s, ...).
+        endpoints (list, optional): List of Overpass API endpoint URLs to try.
+            Defaults to OVERPASS_ENDPOINTS.
+            
+    Returns:
+        dict: Parsed JSON response from Overpass API containing 'elements' key
+        
+    Raises:
+        RuntimeError: If all endpoints and retries are exhausted without success
+    """
+    if endpoints is None:
+        endpoints = OVERPASS_ENDPOINTS
+    
+    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
+    last_error = None
+    
+    for retry in range(max_retries):
+        if retry > 0:
+            delay = initial_delay * (backoff_factor ** (retry - 1))
+            print(f"  Retry {retry}/{max_retries - 1}: waiting {delay:.1f}s before next attempt...")
+            time.sleep(delay)
+        
+        for overpass_url in endpoints:
+            try:
+                response = requests.get(
+                    overpass_url, 
+                    params={"data": query}, 
+                    headers=headers, 
+                    timeout=timeout
+                )
+                
+                # Check for rate limiting (HTTP 429) or server errors (5xx)
+                if response.status_code == 429:
+                    last_error = Exception(f"Rate limited (HTTP 429) from {overpass_url}")
+                    continue
+                if response.status_code >= 500:
+                    last_error = Exception(f"Server error (HTTP {response.status_code}) from {overpass_url}")
+                    continue
+                if response.status_code != 200:
+                    last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
+                    continue
+                
+                # Some servers return HTML/plain text on rate-limit; guard JSON parsing
+                content_type = response.headers.get("Content-Type", "")
+                if "json" not in content_type.lower():
+                    # Attempt JSON anyway; if fails, try next endpoint
+                    try:
+                        data = response.json()
+                    except Exception as e:
+                        last_error = e
+                        continue
+                else:
+                    data = response.json()
+                
+                # Validate structure
+                if not isinstance(data, dict) or "elements" not in data:
+                    last_error = Exception(f"Malformed Overpass response from {overpass_url}")
+                    continue
+                
+                # Success!
+                return data
+                
+            except requests.exceptions.Timeout:
+                last_error = Exception(f"Timeout after {timeout}s from {overpass_url}")
+                continue
+            except requests.exceptions.ConnectionError as e:
+                last_error = Exception(f"Connection error from {overpass_url}: {e}")
+                continue
+            except Exception as e:
+                last_error = e
+                continue
+    
+    raise RuntimeError(
+        f"Failed to fetch OSM data from Overpass endpoints after {max_retries} attempts. "
+        f"Last error: {last_error}"
+    )
 
 def osm_json_to_geojson(osm_data):
     """
@@ -398,12 +499,6 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     max_lat = max(v[1] for v in rectangle_vertices)
     
     # Enhanced Overpass API query with recursive member extraction
-    # Try multiple Overpass endpoints to improve resiliency against rate limits or outages
-    overpass_endpoints = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.openstreetmap.ru/api/interpreter",
-    ]
     overpass_query = f"""
     [out:json];
     (
@@ -417,40 +512,8 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     out geom;
     """
     
-    # Send the request to the Overpass API with fallbacks and robust JSON handling
-    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
-    data = None
-    last_error = None
-    for overpass_url in overpass_endpoints:
-        try:
-            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=30)
-            # Ensure HTTP OK
-            if response.status_code != 200:
-                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
-                continue
-            # Some servers return HTML/plain text on rate-limit; guard JSON parsing
-            content_type = response.headers.get("Content-Type", "")
-            if "json" not in content_type.lower():
-                # Attempt JSON anyway; if fails, try next endpoint
-                try:
-                    data = response.json()
-                except Exception as e:
-                    last_error = e
-                    continue
-            else:
-                data = response.json()
-            # Validate structure
-            if not isinstance(data, dict) or "elements" not in data:
-                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
-                data = None
-                continue
-            # Success
-            break
-        except Exception as e:
-            last_error = e
-            continue
-    if data is None:
-        raise RuntimeError(f"Failed to fetch OSM data from Overpass endpoints. Last error: {last_error}")
+    # Fetch data from Overpass API with retry logic
+    data = _fetch_overpass_with_retry(overpass_query, timeout=30)
     
     # Build a mapping from (type, id) to element
     id_map = {}
@@ -1069,43 +1132,9 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
         "out skel qt;"
     )
 
-    # Overpass API endpoints (fallbacks)
-    overpass_endpoints = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.openstreetmap.ru/api/interpreter",
-    ]
-
-    # Fetch data from Overpass API with fallbacks and robust JSON handling
+    # Fetch data from Overpass API with retry logic
     print("Fetching data from Overpass API...")
-    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
-    data = None
-    last_error = None
-    for overpass_url in overpass_endpoints:
-        try:
-            response = requests.get(overpass_url, params={'data': query}, headers=headers, timeout=30)
-            if response.status_code != 200:
-                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
-                continue
-            content_type = response.headers.get("Content-Type", "")
-            if "json" not in content_type.lower():
-                try:
-                    data = response.json()
-                except Exception as e:
-                    last_error = e
-                    continue
-            else:
-                data = response.json()
-            if not isinstance(data, dict) or 'elements' not in data:
-                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
-                data = None
-                continue
-            break
-        except Exception as e:
-            last_error = e
-            continue
-    if data is None:
-        raise RuntimeError(f"Failed to fetch OSM data from Overpass endpoints. Last error: {last_error}")
+    data = _fetch_overpass_with_retry(query, timeout=30)
 
     # Convert OSM data to GeoJSON format using our custom converter instead of json2geojson
     print("Converting data to GeoJSON format...")
@@ -1356,13 +1385,6 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
     min_lat = min(v[1] for v in rectangle_vertices)
     max_lat = max(v[1] for v in rectangle_vertices)
     
-    # Overpass API endpoints (fallbacks)
-    overpass_endpoints = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.openstreetmap.ru/api/interpreter",
-    ]
-    
     # Build Overpass query - always get individual trees, optionally get polygons
     if include_polygons:
         # Query for individual trees AND tree land cover polygons
@@ -1390,37 +1412,8 @@ def load_tree_gdf_from_osm(rectangle_vertices, default_top_height=10.0, default_
         out body;
         """
     
-    # Send the request to the Overpass API with fallbacks
-    headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
-    data = None
-    last_error = None
-    
-    for overpass_url in overpass_endpoints:
-        try:
-            response = requests.get(overpass_url, params={"data": overpass_query}, headers=headers, timeout=60)
-            if response.status_code != 200:
-                last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
-                continue
-            content_type = response.headers.get("Content-Type", "")
-            if "json" not in content_type.lower():
-                try:
-                    data = response.json()
-                except Exception as e:
-                    last_error = e
-                    continue
-            else:
-                data = response.json()
-            if not isinstance(data, dict) or "elements" not in data:
-                last_error = Exception(f"Malformed Overpass response from {overpass_url}")
-                data = None
-                continue
-            break
-        except Exception as e:
-            last_error = e
-            continue
-    
-    if data is None:
-        raise RuntimeError(f"Failed to fetch OSM tree data from Overpass endpoints. Last error: {last_error}")
+    # Fetch data from Overpass API with retry logic
+    data = _fetch_overpass_with_retry(overpass_query, timeout=60)
     
     # Build index of nodes and ways for polygon reconstruction
     nodes = {}
