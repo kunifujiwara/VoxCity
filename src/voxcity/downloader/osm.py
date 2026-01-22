@@ -457,6 +457,85 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     for element in data['elements']:
         id_map[(element['type'], element['id'])] = element
     
+    def is_underground_construction(element):
+        """Check if an element represents an underground construction.
+        
+        Underground constructions are identified by explicit markers or
+        a combination of indicators suggesting the structure is entirely underground.
+        
+        Definite underground indicators (any one is sufficient):
+        - location tag = 'underground'
+        - tunnel tag = 'yes' combined with negative layer or level
+        
+        Probable underground (requires multiple indicators):
+        - layer tag with strongly negative value (< -1) combined with level < 0
+        - tunnel = 'yes' with location hints
+        
+        This conservative approach avoids excluding:
+        - Buildings with basements (layer=-1) that have above-ground portions
+        - Partially underground structures on slopes
+        - Buildings using layer for rendering order
+        
+        Args:
+            element: OSM element with tags
+            
+        Returns:
+            bool: True if the element is underground, False otherwise
+        """
+        tags = element.get('tags', {})
+        
+        # Definite indicator: explicit underground location
+        if tags.get('location') == 'underground':
+            return True
+        
+        # Parse layer value
+        layer_value = None
+        layer = tags.get('layer')
+        if layer is not None:
+            try:
+                layer_value = float(layer)
+            except (ValueError, TypeError):
+                pass
+        
+        # Parse level value (take the first/primary level if multiple)
+        level_value = None
+        level = tags.get('level')
+        if level is not None:
+            try:
+                # Level can be a single value or a range like "-5" or "-2;-1"
+                level_str = str(level).split(';')[0].split(',')[0].strip()
+                level_value = float(level_str)
+            except (ValueError, TypeError):
+                pass
+        
+        has_tunnel = tags.get('tunnel') == 'yes'
+        
+        # Tunnel structures with negative layer or level are underground
+        if has_tunnel:
+            if (layer_value is not None and layer_value < 0) or \
+               (level_value is not None and level_value < 0):
+                return True
+        
+        # Strongly negative layer (< -1) combined with negative level
+        # indicates a deeply underground structure, not just a basement
+        if layer_value is not None and layer_value < -1:
+            if level_value is not None and level_value < 0:
+                return True
+            # Very deep layer without above-ground levels specified
+            if level_value is None and layer_value <= -3:
+                return True
+        
+        # Check for underground-only building levels
+        # If building:levels:underground exists but no building:levels, it's fully underground
+        underground_levels = tags.get('building:levels:underground')
+        above_ground_levels = tags.get('building:levels')
+        if underground_levels is not None and above_ground_levels is None:
+            # Has only underground levels specified, likely fully underground
+            if has_tunnel or (layer_value is not None and layer_value < 0):
+                return True
+        
+        return False
+    
     # Process the response and create features list
     features = []
     
@@ -598,6 +677,9 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     # Process each element, handling relations and their way members
     for element in data['elements']:
         if element['type'] == 'way':
+            # Skip underground constructions
+            if is_underground_construction(element):
+                continue
             if 'geometry' in element:
                 coords = [(node['lon'], node['lat']) for node in element['geometry']]
                 properties = extract_properties(element, floor_height=floor_height)
@@ -606,6 +688,9 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
                     features.append(feature)
                     
         elif element['type'] == 'relation':
+            # Skip underground constructions
+            if is_underground_construction(element):
+                continue
             properties = extract_properties(element, floor_height=floor_height)
             
             # Process each member of the relation
@@ -1042,6 +1127,70 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     project = pyproj.Transformer.from_crs(wgs84, aea, always_xy=True).transform
     project_back = pyproj.Transformer.from_crs(aea, wgs84, always_xy=True).transform
 
+    def is_underground_construction(tags):
+        """Check if a feature represents an underground construction.
+        
+        Underground constructions are identified by explicit markers or
+        a combination of indicators suggesting the structure is entirely underground.
+        
+        Args:
+            tags: Dictionary of OSM tags
+            
+        Returns:
+            bool: True if the feature is underground, False otherwise
+        """
+        # Definite indicator: explicit underground location
+        if tags.get('location') == 'underground':
+            return True
+        
+        # Parse layer value
+        layer_value = None
+        layer = tags.get('layer')
+        if layer is not None:
+            try:
+                layer_value = float(layer)
+            except (ValueError, TypeError):
+                pass
+        
+        # Parse level value (take the first/primary level if multiple)
+        level_value = None
+        level = tags.get('level')
+        if level is not None:
+            try:
+                # Level can be a single value or a range like "-5" or "-2;-1"
+                level_str = str(level).split(';')[0].split(',')[0].strip()
+                level_value = float(level_str)
+            except (ValueError, TypeError):
+                pass
+        
+        has_tunnel = tags.get('tunnel') == 'yes'
+        
+        # Tunnel structures with negative layer or level are underground
+        if has_tunnel:
+            if (layer_value is not None and layer_value < 0) or \
+               (level_value is not None and level_value < 0):
+                return True
+        
+        # Strongly negative layer (< -1) combined with negative level
+        # indicates a deeply underground structure, not just a basement
+        if layer_value is not None and layer_value < -1:
+            if level_value is not None and level_value < 0:
+                return True
+            # Very deep layer without above-ground levels specified
+            if level_value is None and layer_value <= -3:
+                return True
+        
+        # Check for underground-only building levels
+        # If building:levels:underground exists but no building:levels, it's fully underground
+        underground_levels = tags.get('building:levels:underground')
+        above_ground_levels = tags.get('building:levels')
+        if underground_levels is not None and above_ground_levels is None:
+            # Has only underground levels specified, likely fully underground
+            if has_tunnel or (layer_value is not None and layer_value < 0):
+                return True
+        
+        return False
+
     # Lists to store geometries and properties for GeoDataFrame
     geometries = []
     properties = []
@@ -1056,6 +1205,10 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
         tags = feature['properties'].get('tags', {})
         classification_code, classification_name = get_classification(tags)
         if classification_code is None:
+            continue
+
+        # Skip underground buildings
+        if classification_code == 12 and is_underground_construction(tags):
             continue
 
         # Special handling for roads
