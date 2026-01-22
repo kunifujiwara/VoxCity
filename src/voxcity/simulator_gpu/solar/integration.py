@@ -2009,6 +2009,335 @@ def get_cumulative_global_solar_irradiance(
     return cumulative_map
 
 
+def get_sunlight_hours(
+    voxcity,
+    mode: str = 'PSH',
+    epw_file_path: str = None,
+    download_nearest_epw: bool = False,
+    dni_threshold: float = 120.0,
+    show_plot: bool = False,
+    **kwargs
+) -> np.ndarray:
+    """
+    GPU-accelerated ground-level sunlight hours computation.
+    
+    Supports two modes:
+    
+    **PSH (Probable Sunlight Hours)**: Uses EPW weather data to account for cloud cover.
+    Counts hours when DNI exceeds threshold (default 120 W/m², WMO standard).
+    This represents realistic sunlight exposure based on historical weather.
+    
+    **DSH (Direct Sun Hours)**: Assumes clear sky for all hours.
+    Counts hours when sun is above horizon and ground receives direct sunlight.
+    This represents theoretical maximum sunlight assuming no clouds.
+    
+    The WMO standard defines sunshine hours as periods when Direct Normal Irradiance
+    (DNI) exceeds 120 W/m². This threshold corresponds to the intensity of direct
+    sunlight shortly after sunrise or before sunset under clear skies.
+    
+    Args:
+        voxcity: VoxCity object (lat/lon extracted from extras.rectangle_vertices)
+        mode: 'PSH' (Probable Sunlight Hours) or 'DSH' (Direct Sun Hours)
+            - PSH: Uses EPW weather data, considers clouds (requires epw_file_path or download_nearest_epw)
+            - DSH: Assumes clear sky, counts all hours when sun is up (still uses EPW for timestamps/location)
+        epw_file_path: Path to EPW file (required if download_nearest_epw=False)
+        download_nearest_epw: If True, download nearest EPW based on voxcity location
+        dni_threshold: DNI threshold in W/m² for PSH mode (default: 120.0, WMO standard)
+        show_plot: Whether to display a matplotlib plot
+        **kwargs: Additional parameters including:
+            - period_start (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 00:00:00')
+            - period_end (str): End time 'MM-DD HH:MM:SS' (default: '12-31 23:59:59')
+            - time_step_hours (float): Time step in hours (default: 1.0)
+            - min_elevation (float): Minimum solar elevation in degrees for DSH mode (default: 0.0)
+            - view_point_height (float): Observer height above ground (default: 1.5)
+            - computation_mask (np.ndarray): Optional 2D boolean mask for sub-area computation
+            - progress_report (bool): Print progress (default: False)
+            - output_dir (str): Directory for downloaded EPW files (default: 'output')
+            - max_distance (float): Max distance in km for EPW search (default: 100)
+            - colormap (str): Matplotlib colormap name (default: 'magma')
+    
+    Returns:
+        2D numpy array of sunlight hours per grid cell with metadata dict:
+            - The array contains sunlight hours for each ground cell
+            - Access metadata via returned_array.metadata dict containing:
+                - 'potential_sunlight_hours': Maximum possible hours (no obstructions)
+                - 'mode': The mode used ('PSH' or 'DSH')
+                - 'dni_threshold': The threshold used (PSH mode only)
+                - 'min_elevation': The min elevation used (DSH mode only)
+    
+    Example:
+        >>> # Compute Probable Sunlight Hours (with weather/clouds)
+        >>> result = get_sunlight_hours(
+        ...     voxcity,
+        ...     mode='PSH',
+        ...     download_nearest_epw=True,
+        ...     period_start='01-01 00:00:00',
+        ...     period_end='12-31 23:59:59'
+        ... )
+        >>> 
+        >>> # Compute Direct Sun Hours (clear sky assumption)
+        >>> result = get_sunlight_hours(
+        ...     voxcity,
+        ...     mode='DSH',
+        ...     epw_file_path='weather.epw',
+        ...     period_start='06-21 00:00:00',
+        ...     period_end='06-21 23:59:59'
+        ... )
+        >>> 
+        >>> # Access results
+        >>> print(f"Mean sunlight hours: {np.nanmean(result):.1f} h")
+        >>> print(f"Potential hours: {result.metadata['potential_sunlight_hours']:.1f} h")
+    """
+    from datetime import datetime
+    import pytz
+    
+    # Validate mode
+    mode = mode.upper()
+    if mode not in ('PSH', 'DSH'):
+        raise ValueError(f"mode must be 'PSH' or 'DSH', got '{mode}'")
+    
+    # Extract parameters
+    kwargs = dict(kwargs)
+    period_start = kwargs.pop('period_start', '01-01 00:00:00')
+    period_end = kwargs.pop('period_end', '12-31 23:59:59')
+    time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
+    progress_report = kwargs.pop('progress_report', False)
+    computation_mask = kwargs.pop('computation_mask', None)
+    min_elevation = float(kwargs.pop('min_elevation', 0.0))
+    view_point_height = kwargs.pop('view_point_height', 1.5)
+    colormap = kwargs.pop('colormap', 'magma')
+    
+    # Load EPW data (download or read from file)
+    weather_df, lon, lat, tz = _load_epw_data(
+        epw_file_path=epw_file_path,
+        download_nearest_epw=download_nearest_epw,
+        voxcity=voxcity,
+        **kwargs
+    )
+    
+    if progress_report:
+        print(f"  Mode: {mode} ({'Probable Sunlight Hours' if mode == 'PSH' else 'Direct Sun Hours'})")
+        print(f"  Location: lon={lon:.4f}, lat={lat:.4f}, tz={tz}")
+        if mode == 'PSH':
+            print(f"  DNI range: {weather_df['DNI'].min():.1f} - {weather_df['DNI'].max():.1f} W/m²")
+    
+    if mode == 'PSH' and 'DNI' not in weather_df.columns:
+        raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
+    
+    # Parse period
+    try:
+        start_dt = datetime.strptime(period_start, '%m-%d %H:%M:%S')
+        end_dt = datetime.strptime(period_end, '%m-%d %H:%M:%S')
+    except ValueError:
+        raise ValueError("period_start and period_end must be in format 'MM-DD HH:MM:SS'")
+    
+    # Warn if minutes/seconds are specified (they are ignored)
+    if progress_report:
+        if start_dt.minute != 0 or start_dt.second != 0 or end_dt.minute != 0 or end_dt.second != 0:
+            print(f"  Note: Minutes/seconds in period are ignored (EPW data is hourly)")
+            print(f"    Requested: {period_start} to {period_end}")
+            print(f"    Using hours: {start_dt.month:02d}-{start_dt.day:02d} {start_dt.hour:02d}:00 to {end_dt.month:02d}-{end_dt.day:02d} {end_dt.hour:02d}:00")
+    
+    # Filter dataframe to period
+    df = weather_df.copy()
+    df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
+    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+    start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
+    end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
+    
+    if start_hour <= end_hour:
+        df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
+    else:
+        df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    if df_period.empty:
+        raise ValueError("No weather data in the specified period.")
+    
+    if progress_report:
+        first_ts = df_period.index[0]
+        last_ts = df_period.index[-1]
+        print(f"  EPW timesteps: {len(df_period)} hours ({first_ts.strftime('%m-%d %H:00')} to {last_ts.strftime('%m-%d %H:00')})")
+    
+    # Localize and convert to UTC
+    offset_minutes = int(tz * 60)
+    local_tz = pytz.FixedOffset(offset_minutes)
+    df_period_local = df_period.copy()
+    df_period_local.index = df_period_local.index.tz_localize(local_tz)
+    df_period_utc = df_period_local.tz_convert(pytz.UTC)
+    
+    # Get solar positions
+    solar_positions = _get_solar_positions_astral(df_period_utc.index, lon, lat)
+    
+    # Get grid dimensions
+    voxel_data = voxcity.voxels.classes
+    nx, ny, _ = voxel_data.shape
+    
+    # Initialize sunlight hours map
+    sunlight_hours_map = np.zeros((nx, ny), dtype=np.float64)
+    mask_map = np.ones((nx, ny), dtype=bool)
+    potential_hours = 0.0
+    
+    if progress_report:
+        if mode == 'PSH':
+            print(f"Computing Probable Sunlight Hours for ground ({nx}x{ny} grid)...")
+            print(f"  DNI threshold: {dni_threshold} W/m² (WMO standard)")
+        else:
+            print(f"Computing Direct Sun Hours for ground ({nx}x{ny} grid)...")
+            print(f"  Min elevation: {min_elevation}° (clear sky assumed)")
+    
+    # Extract arrays for processing
+    elevation_arr = solar_positions['elevation'].to_numpy()
+    azimuth_arr = solar_positions['azimuth'].to_numpy()
+    n_timesteps = len(elevation_arr)
+    
+    # For PSH mode, also need DNI values
+    if mode == 'PSH':
+        dni_arr = df_period_utc['DNI'].to_numpy()
+    
+    # Select sunshine timesteps based on mode
+    sunshine_timesteps = []
+    for t_idx in range(n_timesteps):
+        elev = elevation_arr[t_idx]
+        
+        if mode == 'PSH':
+            dni = dni_arr[t_idx]
+            if elev > 0 and dni >= dni_threshold:
+                sunshine_timesteps.append(t_idx)
+                potential_hours += time_step_hours
+        else:  # DSH mode
+            if elev > min_elevation:
+                sunshine_timesteps.append(t_idx)
+                potential_hours += time_step_hours
+    
+    n_sunshine = len(sunshine_timesteps)
+    
+    if progress_report:
+        print(f"  Timesteps in period: {n_timesteps}")
+        if mode == 'PSH':
+            print(f"  Sunshine timesteps (DNI >= {dni_threshold} W/m²): {n_sunshine}")
+        else:
+            print(f"  Sun-up timesteps (elevation > {min_elevation}°): {n_sunshine}")
+        print(f"  Potential sunlight hours: {potential_hours:.1f} h")
+    
+    if n_sunshine == 0:
+        if progress_report:
+            print("  No sunshine hours in period - returning zero sunlight hours")
+        # Create result array with metadata
+        result = np.zeros((nx, ny), dtype=np.float64)
+        result = _add_metadata_to_array(result, {
+            'potential_sunlight_hours': potential_hours,
+            'mode': mode,
+            'dni_threshold': dni_threshold if mode == 'PSH' else None,
+            'min_elevation': min_elevation if mode == 'DSH' else None
+        })
+        return result
+    
+    # Loop over sunshine timesteps and check if each ground cell receives direct sunlight
+    direct_kwargs = kwargs.copy()
+    direct_kwargs.update({
+        'show_plot': False,
+        'view_point_height': view_point_height,
+        'obj_export': False
+    })
+    
+    for i, t_idx in enumerate(sunshine_timesteps):
+        elev = elevation_arr[t_idx]
+        az = azimuth_arr[t_idx]
+        
+        # Compute direct irradiance map with unit DNI to get shading mask
+        direct_map = get_direct_solar_irradiance_map(
+            voxcity,
+            azimuth_degrees_ori=az,
+            elevation_degrees=elev,
+            direct_normal_irradiance=1.0,  # Unit value to get shading factor
+            **direct_kwargs
+        )
+        
+        # Cell receives sunlight if direct irradiance > 0 (not fully shaded)
+        receives_sun = np.nan_to_num(direct_map, nan=0.0) > 0.0
+        sunlight_hours_map += receives_sun.astype(np.float64) * time_step_hours
+        
+        # Track valid cells
+        mask_map &= ~np.isnan(direct_map)
+        
+        if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
+            pct = (i + 1) * 100.0 / n_sunshine
+            print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
+    
+    # Apply mask for invalid cells
+    sunlight_hours_map = np.where(mask_map, sunlight_hours_map, np.nan)
+    
+    # Apply computation mask if provided
+    if computation_mask is not None:
+        if computation_mask.shape == sunlight_hours_map.shape:
+            sunlight_hours_map = np.where(np.flipud(computation_mask), sunlight_hours_map, np.nan)
+        elif computation_mask.T.shape == sunlight_hours_map.shape:
+            sunlight_hours_map = np.where(np.flipud(computation_mask.T), sunlight_hours_map, np.nan)
+    
+    # Compute sunlight fraction
+    if potential_hours > 0:
+        sunlight_fraction_map = sunlight_hours_map / potential_hours
+    else:
+        sunlight_fraction_map = np.zeros_like(sunlight_hours_map)
+    
+    if progress_report:
+        mode_label = "Probable Sunlight Hours (PSH)" if mode == 'PSH' else "Direct Sun Hours (DSH)"
+        print(f"{mode_label} computation complete:")
+        print(f"  Potential hours: {potential_hours:.1f} h")
+        print(f"  Mean sunlight hours: {np.nanmean(sunlight_hours_map):.1f} h")
+        print(f"  Max sunlight hours: {np.nanmax(sunlight_hours_map):.1f} h")
+        print(f"  Mean sunlight fraction: {np.nanmean(sunlight_fraction_map):.1%}")
+    
+    if show_plot:
+        try:
+            import matplotlib.pyplot as plt
+            vmax = kwargs.get('vmax', potential_hours)
+            vmin = kwargs.get('vmin', 0.0)
+            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap.set_bad(color='lightgray')
+            plt.figure(figsize=(10, 8))
+            plt.imshow(sunlight_hours_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+            mode_label = "PSH" if mode == 'PSH' else "DSH"
+            plt.colorbar(label=f'{mode_label} Sunlight Hours (h)')
+            plt.axis('off')
+            plt.title(f"Ground-Level {mode_label} ({period_start.split()[0]} to {period_end.split()[0]})")
+            plt.show()
+        except ImportError:
+            pass
+    
+    # Add metadata to result array
+    result = _add_metadata_to_array(sunlight_hours_map, {
+        'potential_sunlight_hours': potential_hours,
+        'sunlight_fraction': sunlight_fraction_map,
+        'mode': mode,
+        'dni_threshold': dni_threshold if mode == 'PSH' else None,
+        'min_elevation': min_elevation if mode == 'DSH' else None
+    })
+    
+    return result
+
+
+def _add_metadata_to_array(arr: np.ndarray, metadata: dict) -> np.ndarray:
+    """
+    Add metadata dict to a numpy array as an attribute.
+    
+    Creates a subclass of ndarray that can hold metadata.
+    """
+    class ArrayWithMetadata(np.ndarray):
+        def __new__(cls, input_array, metadata=None):
+            obj = np.asarray(input_array).view(cls)
+            obj.metadata = metadata if metadata is not None else {}
+            return obj
+        
+        def __array_finalize__(self, obj):
+            if obj is None:
+                return
+            self.metadata = getattr(obj, 'metadata', {})
+    
+    return ArrayWithMetadata(arr, metadata)
+
+
 def get_building_solar_irradiance(
     voxcity,
     building_svf_mesh=None,
