@@ -101,9 +101,14 @@ def visualize_voxcity_plotly(
         vox = voxel_array
 
     # Downsample strategy
+    # Disable downsampling when building_sim_mesh is provided to avoid resolution mismatch
+    # between the detailed mesh overlay and blocky downsampled voxels.
     stride = 1
     if vox is not None:
-        if downsample is not None:
+        if building_sim_mesh is not None and getattr(building_sim_mesh, 'vertices', None) is not None:
+            # Force stride=1 when building mesh overlay is provided
+            stride = 1
+        elif downsample is not None:
             stride = max(1, int(downsample))
         else:
             nx_tmp, ny_tmp, nz_tmp = vox.shape
@@ -136,9 +141,12 @@ def visualize_voxcity_plotly(
         dx = meshsize * stride
         dy = meshsize * stride
         dz = meshsize * stride
-        x = np.arange(nx, dtype=float) * dx
-        y = np.arange(ny, dtype=float) * dy
-        z = np.arange(nz, dtype=float) * dz
+        # Use edge-aligned coordinates: voxel at index i spans from i*dx to (i+1)*dx.
+        # This aligns with mesh coordinate conventions where cell i is at [i*meshsize, (i+1)*meshsize].
+        # We store the voxel center position, so add half a cell offset.
+        x = np.arange(nx, dtype=float) * dx + dx / 2.0
+        y = np.arange(ny, dtype=float) * dy + dy / 2.0
+        z = np.arange(nz, dtype=float) * dz + dz / 2.0
 
         # Choose classes
         if classes is None:
@@ -157,28 +165,11 @@ def visualize_voxcity_plotly(
             vox_dict = get_voxel_color_map(voxel_color_map)
 
         # Occluder mask (any occupancy)
-        if stride > 1:
-            def _bool_max_pool_3d(arr_bool, sx):
-                if isinstance(sx, (tuple, list, np.ndarray)):
-                    sx, sy, sz = int(sx[0]), int(sx[1]), int(sx[2])
-                else:
-                    sy = sz = int(sx)
-                    sx = int(sx)
-                a = np.asarray(arr_bool, dtype=bool)
-                nx_, ny_, nz_ = a.shape
-                px = (sx - (nx_ % sx)) % sx
-                py = (sy - (ny_ % sy)) % sy
-                pz = (sz - (nz_ % sz)) % sz
-                if px or py or pz:
-                    a = np.pad(a, ((0, px), (0, py), (0, pz)), constant_values=False)
-                nxp, nyp, nzp = a.shape
-                a = a.reshape(nxp // sx, sx, nyp // sy, sy, nzp // sz, sz)
-                # Max over pooling dims (1, 3, 5) - must do all at once or adjust indices after each reduction
-                a = a.max(axis=(1, 3, 5))
-                return a
-            occluder = _bool_max_pool_3d((voxel_array != 0), stride)
-        else:
-            occluder = (vox != 0)
+        # Note: Must use downsampled vox array, not max-pooled original.
+        # The surface-aware downsampling picks only topmost values per Z-window,
+        # so using max pooling on the original would create a denser mask that
+        # incorrectly hides vertical faces in the sparse downsampled vox.
+        occluder = (vox != 0)
 
         def exposed_face_masks(occ, occ_any):
             p = np.pad(occ_any, ((0,1),(0,0),(0,0)), constant_values=False)
