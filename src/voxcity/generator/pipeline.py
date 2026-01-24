@@ -562,12 +562,11 @@ class OSMCanopyStrategy(CanopySourceStrategy):
         # Create canopy height grids from tree_gdf
         if len(self.tree_gdf) == 0:
             # Return empty grids if no trees found
-            if land_cover_grid is not None:
-                return np.zeros_like(land_cover_grid, dtype=float), np.zeros_like(land_cover_grid, dtype=float)
-            else:
-                from ..geoprocessor.raster.core import compute_grid_shape
-                grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
-                return np.zeros(grid_shape, dtype=float), np.zeros(grid_shape, dtype=float)
+            # Always use compute_grid_shape to ensure consistent grid dimensions
+            # (land_cover_grid might be a placeholder with wrong shape in parallel mode)
+            from ..geoprocessor.raster.core import compute_grid_shape
+            grid_shape = compute_grid_shape(rectangle_vertices, meshsize)
+            return np.zeros(grid_shape, dtype=float), np.zeros(grid_shape, dtype=float)
         
         canopy_top, canopy_bottom = create_canopy_grids_from_tree_gdf(
             self.tree_gdf, meshsize, rectangle_vertices
