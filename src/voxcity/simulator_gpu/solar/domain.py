@@ -6,6 +6,24 @@ Represents the 3D computational domain with:
 - Building geometry (3D obstacles)
 - Plant canopy (Leaf Area Density - LAD)
 - Surface properties (albedo)
+
+Coordinate System Notes:
+    VoxCity uses a grid where:
+    - i (row index) increases from North to South
+    - j (column index) increases from West to East
+    - k (layer index) increases upward
+    
+    The Domain class maps grid indices to coordinates as:
+    - x = i * dx (grid row direction, increases toward South)
+    - y = j * dy (grid column direction, increases toward East)
+    - z = k * dz (vertical, increases upward)
+    
+    Surface direction labels (INORTH, ISOUTH, etc.) follow PALM conventions
+    but in VoxCity's grid:
+    - IEAST (direction 4): surface at i+ boundary (South-facing in geographic terms)
+    - IWEST (direction 5): surface at i- boundary (North-facing in geographic terms)
+    - INORTH (direction 2): surface at j+ boundary (East-facing in geographic terms)
+    - ISOUTH (direction 3): surface at j- boundary (West-facing in geographic terms)
 """
 
 import taichi as ti
@@ -16,21 +34,22 @@ from ..init_taichi import ensure_initialized
 
 
 # Surface direction indices (matching PALM convention)
+# Note: In VoxCity's grid, +x = South, +y = East (not the PALM labels)
 IUP = 0      # Upward facing (horizontal roof/ground)
 IDOWN = 1    # Downward facing
-INORTH = 2   # North facing (positive y)
-ISOUTH = 3   # South facing (negative y)
-IEAST = 4    # East facing (positive x)
-IWEST = 5    # West facing (negative x)
+INORTH = 2   # +y normal (East-facing in VoxCity geographic terms)
+ISOUTH = 3   # -y normal (West-facing in VoxCity geographic terms)
+IEAST = 4    # +x normal (South-facing in VoxCity geographic terms)
+IWEST = 5    # -x normal (North-facing in VoxCity geographic terms)
 
-# Direction normal vectors (x, y, z)
+# Direction normal vectors (x, y, z) in grid-index coordinates
 DIR_NORMALS = {
     IUP: (0.0, 0.0, 1.0),
     IDOWN: (0.0, 0.0, -1.0),
-    INORTH: (0.0, 1.0, 0.0),
-    ISOUTH: (0.0, -1.0, 0.0),
-    IEAST: (1.0, 0.0, 0.0),
-    IWEST: (-1.0, 0.0, 0.0),
+    INORTH: (0.0, 1.0, 0.0),   # +y = +j = East
+    ISOUTH: (0.0, -1.0, 0.0),  # -y = -j = West
+    IEAST: (1.0, 0.0, 0.0),    # +x = +i = South
+    IWEST: (-1.0, 0.0, 0.0),   # -x = -i = North
 }
 
 
@@ -39,10 +58,10 @@ class Domain:
     """
     3D computational domain for solar radiation simulation.
     
-    The domain uses a regular grid with:
-    - x: West to East
-    - y: South to North  
-    - z: Ground to Sky
+    The domain uses a regular grid aligned with VoxCity indices:
+    - x (first index i): Row direction, increases North to South
+    - y (second index j): Column direction, increases West to East
+    - z (third index k): Vertical, increases Ground to Sky
     
     Attributes:
         nx, ny, nz: Number of grid cells in each direction

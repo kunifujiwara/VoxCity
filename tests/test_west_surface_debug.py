@@ -1,344 +1,361 @@
 """
-Debug test for west-facing vertical surface solar irradiance issue.
+Debug test script for west vertical surface shadowing issue.
 
-Issue: West-facing surfaces show shadows even when direct radiation comes from west.
-However, some west vertical surfaces near the west edge have higher irradiance.
+Issue:
+- West vertical surfaces show shadows even when direct radiation comes from west
+- Some west vertical surfaces near the west edge show higher irradiance
+- East-facing surfaces show reasonable results
+- Horizontal surfaces are fine
 
-Coordinate conventions:
-- Domain: x = West to East (so +x = East), y = South to North (so +y = North)
-- Plotly visualization: -y = W, +y = E, -x = N, +x = S (flipped!)
-- Solar azimuth (VoxCity): 0 = North, clockwise (so 270 = West)
+VoxCity coordinate system:
+- x (index i): increases from North to South
+- y (index j): increases from West to East
+- z (index k): increases upward
+
+Surface direction indices (from raytracing.py):
+- 0=IUP (+z normal): upward-facing
+- 1=IDOWN (-z normal): downward-facing
+- 2=INORTH (+y normal): East-facing (receives sun when sun_y > 0)
+- 3=ISOUTH (-y normal): West-facing (receives sun when sun_y < 0)
+- 4=IEAST (+x normal): South-facing (receives sun when sun_x > 0)
+- 5=IWEST (-x normal): North-facing (receives sun when sun_x < 0)
 """
 
 import numpy as np
 import sys
-from pathlib import Path
+sys.path.insert(0, 'src')
 
-# Add src to path for development
-src_path = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(src_path))
+from voxcity.simulator_gpu.solar import reset_solar_taichi_cache
 
 
-def test_sun_direction_conversion():
-    """Test that sun direction is computed correctly for different azimuths."""
-    print("\n" + "=" * 70)
-    print("TEST: Sun direction conversion from azimuth/elevation")
-    print("=" * 70)
+def test_sun_direction_computation():
+    """Test the sun direction computation logic."""
+    from voxcity.simulator_gpu.solar.integration import _compute_sun_direction
     
-    # Test various azimuths
+    print("=" * 70)
+    print("TEST 1: Sun Direction Computation")
+    print("=" * 70)
+    print()
+    print("VoxCity grid: x=South(+), y=East(+), z=Up(+)")
+    print()
+    
+    # Test each cardinal direction at 45 degree elevation
     test_cases = [
-        # (azimuth_ori, elevation, expected_description)
-        (0, 45, "North (sun in north)"),
-        (90, 45, "East (sun in east, morning)"),
-        (180, 45, "South (sun in south, noon)"),
-        (270, 45, "West (sun in west, afternoon)"),
+        (0, "North", "sun_x < 0, sun_y = 0"),
+        (90, "East", "sun_x = 0, sun_y > 0"),
+        (180, "South", "sun_x > 0, sun_y = 0"),
+        (270, "West", "sun_x = 0, sun_y < 0"),
+        (225, "Southwest", "sun_x > 0, sun_y < 0"),
+        (315, "Northwest", "sun_x < 0, sun_y < 0"),
     ]
     
-    print("\nDomain coordinate convention:")
-    print("  +x = East, -x = West")
-    print("  +y = North, -y = South")
-    print("  +z = Up")
+    print(f"{'Azimuth':>10} | {'sun_x':>8} {'sun_y':>8} {'sun_z':>8} | Expected")
+    print("-" * 65)
+    
+    all_passed = True
+    for az, name, expected in test_cases:
+        sx, sy, sz, _ = _compute_sun_direction(az, 45)
+        status = ""
+        
+        # Check if result matches expectation
+        if name == "North":
+            if sx >= 0 or abs(sy) > 0.1:
+                status = "FAIL"
+                all_passed = False
+        elif name == "East":
+            if sy <= 0 or abs(sx) > 0.1:
+                status = "FAIL"
+                all_passed = False
+        elif name == "South":
+            if sx <= 0 or abs(sy) > 0.1:
+                status = "FAIL"
+                all_passed = False
+        elif name == "West":
+            if sy >= 0 or abs(sx) > 0.1:
+                status = "FAIL"
+                all_passed = False
+        elif name == "Southwest":
+            if sx <= 0 or sy >= 0:
+                status = "FAIL"
+                all_passed = False
+        elif name == "Northwest":
+            if sx >= 0 or sy >= 0:
+                status = "FAIL"
+                all_passed = False
+        
+        print(f"{name:>10} | {sx:>8.3f} {sy:>8.3f} {sz:>8.3f} | {expected} {status}")
+    
     print()
-    
-    for azimuth_ori, elevation, desc in test_cases:
-        # FIXED conversion (from integration.py after fix)
-        azimuth_radians = np.deg2rad(azimuth_ori)  # No "180 - " transformation
-        elevation_radians = np.deg2rad(elevation)
-        
-        cos_elev = np.cos(elevation_radians)
-        
-        # Standard spherical-to-Cartesian: x=sin(az), y=cos(az) for azimuth from North
-        sun_dir_x = cos_elev * np.sin(azimuth_radians)  # East component
-        sun_dir_y = cos_elev * np.cos(azimuth_radians)  # North component
-        sun_dir_z = np.sin(elevation_radians)
-        
-        print(f"Azimuth={azimuth_ori:3d}° ({desc})")
-        print(f"  Using FIXED conversion: x=sin(az), y=cos(az)")
-        print(f"  sun_dir = ({sun_dir_x:.4f}, {sun_dir_y:.4f}, {sun_dir_z:.4f})")
-        
-        # Analyze: which surfaces should receive direct radiation?
-        # A surface receives direct radiation when dot(sun_dir, normal) > 0
-        # (sun_dir points toward sun, normal points outward from surface)
-        normals = {
-            "Up (IUP=0)": (0, 0, 1),
-            "Down (IDOWN=1)": (0, 0, -1),
-            "North (INORTH=2)": (0, 1, 0),
-            "South (ISOUTH=3)": (0, -1, 0),
-            "East (IEAST=4)": (1, 0, 0),
-            "West (IWEST=5)": (-1, 0, 0),
-        }
-        
-        print("  Expected illumination (dot > 0):")
-        for face_name, normal in normals.items():
-            dot = sun_dir_x * normal[0] + sun_dir_y * normal[1] + sun_dir_z * normal[2]
-            illuminated = "YES" if dot > 0 else "no"
-            print(f"    {face_name}: dot={dot:.4f} -> {illuminated}")
-        print()
-
-
-def test_face_sun_check_in_raytracing():
-    """Test the face_sun check logic from raytracing.py."""
-    print("\n" + "=" * 70)
-    print("TEST: face_sun check logic from raytracing.py (with FIXED sun_dir)")
-    print("=" * 70)
-    
-    # This is the current logic in raytracing.py:
-    # direction == 4 (East):  face_sun = 1 if sun_dir[0] > 0 else 0
-    # direction == 5 (West):  face_sun = 1 if sun_dir[0] < 0 else 0
-    
-    print("\nCurrent logic in raytracing.py:")
-    print("  East (dir=4):  face_sun = 1 if sun_dir[0] > 0")
-    print("  West (dir=5):  face_sun = 1 if sun_dir[0] < 0")
-    print()
-    
-    # Test with sun coming from west (azimuth=270)
-    azimuth_ori = 270  # West
-    elevation = 45
-    
-    # FIXED conversion
-    azimuth_radians = np.deg2rad(azimuth_ori)
-    elevation_radians = np.deg2rad(elevation)
-    
-    cos_elev = np.cos(elevation_radians)
-    sun_dir_x = cos_elev * np.sin(azimuth_radians)  # East component
-    sun_dir_y = cos_elev * np.cos(azimuth_radians)  # North component
-    sun_dir_z = np.sin(elevation_radians)
-    
-    print(f"Sun azimuth = {azimuth_ori}° (West)")
-    print(f"  sun_dir = ({sun_dir_x:.4f}, {sun_dir_y:.4f}, {sun_dir_z:.4f})")
-    print(f"  sun_dir[0] = {sun_dir_x:.4f}")
-    print()
-    
-    # Apply raytracing logic
-    east_face_sun = 1 if sun_dir_x > 0 else 0
-    west_face_sun = 1 if sun_dir_x < 0 else 0
-    
-    print("Raytracing face_sun results:")
-    print(f"  East-facing (dir=4): face_sun = {east_face_sun}")
-    print(f"  West-facing (dir=5): face_sun = {west_face_sun}")
-    print()
-    
-    # What should happen:
-    # Sun in west -> sun is at negative x -> sun_dir points toward negative x
-    # So sun_dir[0] should be NEGATIVE when sun is in west
-    # West-facing surface (normal = -x) should be illuminated when sun is in west
-    # The check "sun_dir[0] < 0" for west is correct!
-    # But wait, let's check the actual sun_dir value...
-    
-    print("Analysis:")
-    print(f"  Sun in west means sun is at -x side of domain")
-    print(f"  Vector pointing TOWARD sun should have NEGATIVE x component")
-    print(f"  Actual sun_dir[0] = {sun_dir_x:.4f}")
-    if sun_dir_x < 0:
-        print("  CORRECT: sun_dir[0] IS negative, as expected for sun in west")
-        print("  West-facing surfaces will be correctly illuminated!")
+    if all_passed:
+        print("All sun direction tests PASSED")
     else:
-        print("  BUG: sun_dir[0] is POSITIVE but sun is in west!")
-        print("  This means the azimuth conversion is incorrect!")
+        print("Some sun direction tests FAILED - check coordinate transformation!")
+    
+    return all_passed
 
 
-def test_correct_azimuth_conversion():
-    """Derive the correct azimuth conversion formula."""
-    print("\n" + "=" * 70)
-    print("TEST: Deriving correct azimuth conversion")
+def test_surface_normal_check():
+    """Test the surface normal vs sun direction check in raytracing."""
+    from voxcity.simulator_gpu.solar.integration import _compute_sun_direction
+    
+    print()
     print("=" * 70)
-    
-    # VoxCity/Astral azimuth convention:
-    # - 0° = North
-    # - 90° = East
-    # - 180° = South
-    # - 270° = West
-    
-    # Domain coordinate system:
-    # - +x = East
-    # - +y = North
-    
-    # For sun position, we need:
-    # - sun in North (azimuth=0): sun_dir should point toward +y → (0, +, +)
-    # - sun in East (azimuth=90): sun_dir should point toward +x → (+, 0, +)
-    # - sun in South (azimuth=180): sun_dir should point toward -y → (0, -, +)
-    # - sun in West (azimuth=270): sun_dir should point toward -x → (-, 0, +)
-    
-    print("\nExpected sun_dir for each azimuth:")
-    print("  Azimuth=0° (North):   sun_dir = (0, +, z)")
-    print("  Azimuth=90° (East):   sun_dir = (+, 0, z)")
-    print("  Azimuth=180° (South): sun_dir = (0, -, z)")
-    print("  Azimuth=270° (West):  sun_dir = (-, 0, z)")
-    print()
-    
-    # Standard spherical to Cartesian conversion:
-    # x = r * cos(elevation) * sin(azimuth)
-    # y = r * cos(elevation) * cos(azimuth)
-    # z = r * sin(elevation)
-    # This assumes azimuth is measured from +y (North) clockwise
-    
-    print("Using standard conversion (azimuth from North, clockwise):")
-    print("  x = cos(elev) * sin(azimuth)")
-    print("  y = cos(elev) * cos(azimuth)")
-    print()
-    
-    for azimuth_ori in [0, 90, 180, 270]:
-        elevation = 45
-        az_rad = np.deg2rad(azimuth_ori)
-        el_rad = np.deg2rad(elevation)
-        
-        x = np.cos(el_rad) * np.sin(az_rad)
-        y = np.cos(el_rad) * np.cos(az_rad)
-        z = np.sin(el_rad)
-        
-        print(f"  Azimuth={azimuth_ori:3d}°: sun_dir = ({x:.4f}, {y:.4f}, {z:.4f})")
-    
-    print()
-    print("This is the CORRECT conversion!")
-    print()
-    print("Current buggy code does: azimuth_degrees = 180 - azimuth_ori")
-    print("This flips the direction incorrectly!")
-
-
-def test_with_voxcity_data():
-    """Test with actual VoxCity data."""
-    print("\n" + "=" * 70)
-    print("TEST: Using actual VoxCity data")
+    print("TEST 2: Surface Normal vs Sun Direction Check")
     print("=" * 70)
+    print()
     
+    # The check in raytracing.py:
+    # direction 2 (INORTH, +y normal): face_sun = 1 if sun_y > 0 else 0
+    # direction 3 (ISOUTH, -y normal): face_sun = 1 if sun_y < 0 else 0
+    # direction 4 (IEAST, +x normal): face_sun = 1 if sun_x > 0 else 0
+    # direction 5 (IWEST, -x normal): face_sun = 1 if sun_x < 0 else 0
+    
+    surface_info = [
+        (2, "+y", "East-facing", "sun_y > 0", lambda sx, sy, sz: sy > 0),
+        (3, "-y", "West-facing", "sun_y < 0", lambda sx, sy, sz: sy < 0),
+        (4, "+x", "South-facing", "sun_x > 0", lambda sx, sy, sz: sx > 0),
+        (5, "-x", "North-facing", "sun_x < 0", lambda sx, sy, sz: sx < 0),
+    ]
+    
+    azimuths = [
+        (90, "East"),
+        (270, "West"),
+        (180, "South"),
+        (0, "North"),
+    ]
+    
+    print("Testing which surfaces receive direct sun for each sun azimuth:")
+    print()
+    
+    all_passed = True
+    for az, sun_pos in azimuths:
+        sx, sy, sz, _ = _compute_sun_direction(az, 45)
+        print(f"Sun from {sun_pos} (azimuth={az}): sun_dir = ({sx:.3f}, {sy:.3f}, {sz:.3f})")
+        
+        for dir_idx, normal, geo_name, condition, check_func in surface_info:
+            receives_sun = check_func(sx, sy, sz)
+            status = "receives sun" if receives_sun else "in shadow"
+            
+            # Verify correctness:
+            # - Sun from East (az=90) should illuminate East-facing (+y) surfaces
+            # - Sun from West (az=270) should illuminate West-facing (-y) surfaces
+            expected_lit = False
+            if sun_pos == "East" and geo_name == "East-facing":
+                expected_lit = True
+            elif sun_pos == "West" and geo_name == "West-facing":
+                expected_lit = True
+            elif sun_pos == "South" and geo_name == "South-facing":
+                expected_lit = True
+            elif sun_pos == "North" and geo_name == "North-facing":
+                expected_lit = True
+            
+            check = ""
+            if receives_sun != expected_lit:
+                check = " <-- ERROR!"
+                all_passed = False
+            
+            print(f"  Dir {dir_idx} ({geo_name}, {normal} normal): {status}{check}")
+        print()
+    
+    if all_passed:
+        print("All surface normal checks PASSED")
+    else:
+        print("Some surface normal checks FAILED!")
+    
+    return all_passed
+
+
+def test_with_voxcity_instantaneous():
+    """Test with actual VoxCity data at specific times."""
+    from voxcity.generator.io import load_voxcity
+    from voxcity.simulator_gpu.solar import get_building_global_solar_irradiance_using_epw
+    
+    print()
+    print("=" * 70)
+    print("TEST 3: VoxCity Instantaneous Test - West vs East facing surfaces")
+    print("=" * 70)
+    print()
+    
+    # Reset cache to ensure clean state
+    reset_solar_taichi_cache()
+    
+    # Load voxcity
+    input_path = "demo/output/voxcity_mini2.pkl"
+    print(f"Loading voxcity from {input_path}...")
     try:
-        from voxcity.generator.io import load_voxcity
-        
-        # Try multiple possible paths
-        possible_paths = [
-            "demo/output/voxcity.pkl",
-            "output/voxcity.pkl",
-            "../demo/output/voxcity.pkl",
-        ]
-        
-        voxcity = None
-        for path in possible_paths:
-            try:
-                voxcity = load_voxcity(path)
-                print(f"Loaded VoxCity data from: {path}")
-                break
-            except FileNotFoundError:
-                continue
-        
-        if voxcity is None:
-            print("Could not find voxcity.pkl in expected locations")
-            return
-        
-        # Get location
-        extras = getattr(voxcity, 'extras', None)
-        if isinstance(extras, dict):
-            rect_vertices = extras.get('rectangle_vertices', None)
-            if rect_vertices:
-                lats = [v[1] for v in rect_vertices]
-                lons = [v[0] for v in rect_vertices]
-                lat = np.mean(lats)
-                lon = np.mean(lons)
-                print(f"Location: lat={lat:.4f}, lon={lon:.4f}")
-        
-        # Test instantaneous calculation with sun from west
-        print("\nTesting instantaneous calculation with sun from west (3 PM on June 1)...")
-        
-        # First, let's just check what the solar position calculation gives us
-        from voxcity.simulator_gpu.solar.integration import _get_solar_positions_astral
-        import pandas as pd
-        from datetime import datetime
-        import pytz
-        
-        # Phoenix location (from the EPW file path)
-        lat = 33.45  # Phoenix approximate latitude
-        lon = -112.07  # Phoenix approximate longitude
-        tz_offset = -7  # MST
-        
-        # Create a datetime for June 1, 3 PM local time
-        local_tz = pytz.FixedOffset(int(tz_offset * 60))
-        dt_local = datetime(2024, 6, 1, 15, 0, 0, tzinfo=local_tz)
-        dt_utc = dt_local.astimezone(pytz.UTC)
-        
-        dates = pd.DatetimeIndex([dt_utc])
-        solar_pos = _get_solar_positions_astral(dates, lon, lat)
-        
-        azimuth = float(solar_pos.iloc[0]['azimuth'])
-        elevation = float(solar_pos.iloc[0]['elevation'])
-        
-        print(f"Solar position at 3 PM June 1 (Phoenix):")
-        print(f"  Azimuth: {azimuth:.2f}°")
-        print(f"  Elevation: {elevation:.2f}°")
-        
-        # Calculate sun_dir using current (buggy) method
-        azimuth_degrees = 180 - azimuth
-        az_rad = np.deg2rad(azimuth_degrees)
-        el_rad = np.deg2rad(elevation)
-        
-        sun_dir_x_buggy = np.cos(el_rad) * np.cos(az_rad)
-        sun_dir_y_buggy = np.cos(el_rad) * np.sin(az_rad)
-        sun_dir_z = np.sin(el_rad)
-        
-        print(f"\nCurrent (buggy) sun_dir calculation:")
-        print(f"  azimuth_degrees = 180 - {azimuth:.2f} = {azimuth_degrees:.2f}")
-        print(f"  sun_dir = ({sun_dir_x_buggy:.4f}, {sun_dir_y_buggy:.4f}, {sun_dir_z:.4f})")
-        
-        # Calculate sun_dir using correct method
-        az_rad_correct = np.deg2rad(azimuth)
-        sun_dir_x_correct = np.cos(el_rad) * np.sin(az_rad_correct)
-        sun_dir_y_correct = np.cos(el_rad) * np.cos(az_rad_correct)
-        
-        print(f"\nCorrect sun_dir calculation:")
-        print(f"  sun_dir = ({sun_dir_x_correct:.4f}, {sun_dir_y_correct:.4f}, {sun_dir_z:.4f})")
-        
-        # Check which surfaces should be illuminated
-        print(f"\nFace illumination analysis (sun coming from ~{azimuth:.0f}° azimuth):")
-        if 225 < azimuth < 315:
-            print(f"  Sun is in the WEST, so WEST-facing surfaces should be illuminated")
-            print(f"  West-facing surface has normal = (-1, 0, 0)")
-            print(f"  Correct sun_dir has x = {sun_dir_x_correct:.4f}")
-            if sun_dir_x_correct < 0:
-                print(f"  CORRECT: sun_dir[0] < 0, west surfaces would be illuminated")
-            else:
-                print(f"  BUG: sun_dir[0] > 0, west surfaces would be shadowed!")
-        
-    except Exception as e:
-        print(f"Could not load VoxCity data: {e}")
-        print("Skipping VoxCity test")
-
-
-def print_fix_recommendation():
-    """Print the recommended fix."""
-    print("\n" + "=" * 70)
-    print("RECOMMENDED FIX")
-    print("=" * 70)
+        voxcity = load_voxcity(input_path)
+    except FileNotFoundError:
+        print(f"ERROR: Could not find {input_path}")
+        print("Please ensure the file exists.")
+        return False
     
-    print("""
-The bug is in the azimuth-to-sun_dir conversion in integration.py.
-
-CURRENT (BUGGY) CODE:
-    azimuth_degrees = 180 - azimuth_degrees_ori
-    azimuth_radians = np.deg2rad(azimuth_degrees)
-    sun_dir_x = cos_elev * np.cos(azimuth_radians)
-    sun_dir_y = cos_elev * np.sin(azimuth_radians)
-
-CORRECT CODE:
-    azimuth_radians = np.deg2rad(azimuth_degrees_ori)
-    sun_dir_x = cos_elev * np.sin(azimuth_radians)
-    sun_dir_y = cos_elev * np.cos(azimuth_radians)
-
-The issue is that the standard spherical-to-Cartesian conversion for 
-azimuth measured from North (clockwise) is:
-    x = r * cos(elevation) * sin(azimuth)  # East component
-    y = r * cos(elevation) * cos(azimuth)  # North component
-
-The current code incorrectly applies "180 - azimuth" and uses cos/sin
-in the wrong order (cos for x, sin for y).
-
-Files to fix:
-1. src/voxcity/simulator_gpu/solar/integration.py
-   - Function: _compute_sun_direction (line ~288)
-   - Function: get_building_solar_irradiance (line ~2420)
-""")
+    print(f"Voxcity loaded successfully")
+    print()
+    
+    # Test afternoon (sun in West - should illuminate West-facing surfaces)
+    # June 1st at 3:00 PM - sun should be in the West
+    print("Test at 15:00 (3 PM) - Sun should be in the West")
+    print("-" * 50)
+    
+    result_pm = get_building_global_solar_irradiance_using_epw(
+        voxcity,
+        calc_type="instantaneous",
+        epw_file_path="demo/output/phoenix-sky.harbor.intl.ap_az_usa.epw",
+        calc_time="06-01 15:00:00",
+        with_reflections=False,
+        progress_report=False,
+    )
+    
+    # Get face normals and irradiance values
+    normals = result_pm.face_normals
+    direct = result_pm.metadata.get("direct", np.zeros(len(normals)))
+    diffuse = result_pm.metadata.get("diffuse", np.zeros(len(normals)))
+    global_irr = result_pm.metadata.get("global", np.zeros(len(normals)))
+    
+    # Also get the sun position from metadata if available
+    sun_azimuth = result_pm.metadata.get("sun_azimuth", None)
+    sun_elevation = result_pm.metadata.get("sun_elevation", None)
+    sun_direction = result_pm.metadata.get("sun_direction", None)
+    
+    if sun_azimuth is not None:
+        print(f"Sun azimuth: {sun_azimuth:.1f} degrees")
+    if sun_elevation is not None:
+        print(f"Sun elevation: {sun_elevation:.1f} degrees")
+    if sun_direction is not None:
+        print(f"Sun direction vector: ({sun_direction[0]:.3f}, {sun_direction[1]:.3f}, {sun_direction[2]:.3f})")
+    print()
+    
+    # Analyze by surface direction
+    # Find surfaces by normal direction
+    def analyze_direction(normals, direct, name, nx, ny, nz):
+        """Analyze surfaces facing a particular direction."""
+        mask = (np.abs(normals[:, 0] - nx) < 0.1) & \
+               (np.abs(normals[:, 1] - ny) < 0.1) & \
+               (np.abs(normals[:, 2] - nz) < 0.1)
+        count = np.sum(mask)
+        if count > 0:
+            mean_direct = np.nanmean(direct[mask])
+            max_direct = np.nanmax(direct[mask])
+            min_direct = np.nanmin(direct[mask])
+            nonzero = np.sum(direct[mask] > 0)
+            print(f"  {name}: {count:3d} faces, direct mean={mean_direct:.1f}, "
+                  f"min={min_direct:.1f}, max={max_direct:.1f} W/m2, {nonzero} with direct>0")
+            return mean_direct
+        else:
+            print(f"  {name}: 0 faces")
+            return 0
+    
+    print("Direct irradiance by surface orientation:")
+    
+    # +y normal = East-facing surfaces (INORTH direction=2)
+    east_facing = analyze_direction(normals, direct, "East-facing (+y)", 0, 1, 0)
+    
+    # -y normal = West-facing surfaces (ISOUTH direction=3)
+    west_facing = analyze_direction(normals, direct, "West-facing (-y)", 0, -1, 0)
+    
+    # +x normal = South-facing surfaces (IEAST direction=4)
+    south_facing = analyze_direction(normals, direct, "South-facing (+x)", 1, 0, 0)
+    
+    # -x normal = North-facing surfaces (IWEST direction=5)
+    north_facing = analyze_direction(normals, direct, "North-facing (-x)", -1, 0, 0)
+    
+    # +z normal = Upward-facing surfaces (IUP direction=0)
+    up_facing = analyze_direction(normals, direct, "Upward (+z)", 0, 0, 1)
+    
+    print()
+    
+    # At 3 PM, sun is in the west, so:
+    # - West-facing surfaces should receive significant direct radiation
+    # - East-facing surfaces should receive little/no direct radiation
+    if west_facing < east_facing:
+        print("WARNING: West-facing surfaces have LESS direct radiation than East-facing!")
+        print("         This is incorrect for afternoon sun (sun in West).")
+        print()
+    
+    # Now test morning (sun in East)
+    print()
+    print("Test at 09:00 (9 AM) - Sun should be in the East")
+    print("-" * 50)
+    
+    reset_solar_taichi_cache()
+    
+    result_am = get_building_global_solar_irradiance_using_epw(
+        voxcity,
+        calc_type="instantaneous",
+        epw_file_path="demo/output/phoenix-sky.harbor.intl.ap_az_usa.epw",
+        calc_time="06-01 09:00:00",
+        with_reflections=False,
+        progress_report=False,
+    )
+    
+    normals_am = result_am.face_normals
+    direct_am = result_am.metadata.get("direct", np.zeros(len(normals_am)))
+    
+    sun_azimuth_am = result_am.metadata.get("sun_azimuth", None)
+    sun_direction_am = result_am.metadata.get("sun_direction", None)
+    
+    if sun_azimuth_am is not None:
+        print(f"Sun azimuth: {sun_azimuth_am:.1f} degrees")
+    if sun_direction_am is not None:
+        print(f"Sun direction vector: ({sun_direction_am[0]:.3f}, {sun_direction_am[1]:.3f}, {sun_direction_am[2]:.3f})")
+    print()
+    
+    print("Direct irradiance by surface orientation:")
+    east_facing_am = analyze_direction(normals_am, direct_am, "East-facing (+y)", 0, 1, 0)
+    west_facing_am = analyze_direction(normals_am, direct_am, "West-facing (-y)", 0, -1, 0)
+    south_facing_am = analyze_direction(normals_am, direct_am, "South-facing (+x)", 1, 0, 0)
+    north_facing_am = analyze_direction(normals_am, direct_am, "North-facing (-x)", -1, 0, 0)
+    up_facing_am = analyze_direction(normals_am, direct_am, "Upward (+z)", 0, 0, 1)
+    
+    print()
+    
+    # At 9 AM, sun is in the east, so:
+    # - East-facing surfaces should receive significant direct radiation
+    # - West-facing surfaces should receive little/no direct radiation
+    if east_facing_am < west_facing_am:
+        print("WARNING: East-facing surfaces have LESS direct radiation than West-facing!")
+        print("         This is incorrect for morning sun (sun in East).")
+    
+    print()
+    print("SUMMARY:")
+    print("-" * 50)
+    print(f"At 9 AM (sun in East): East-facing={east_facing_am:.1f}, West-facing={west_facing_am:.1f}")
+    print(f"At 3 PM (sun in West): East-facing={east_facing:.1f}, West-facing={west_facing:.1f}")
+    print()
+    
+    # Final assessment
+    passed = True
+    if west_facing < east_facing:
+        print("ISSUE DETECTED: At 3 PM, West-facing surfaces should have MORE direct irradiance")
+        passed = False
+    if east_facing_am < west_facing_am:
+        print("ISSUE DETECTED: At 9 AM, East-facing surfaces should have MORE direct irradiance")
+        passed = False
+    
+    if passed:
+        print("Both morning and afternoon tests show expected behavior.")
+    
+    return passed
 
 
 if __name__ == "__main__":
-    test_sun_direction_conversion()
-    test_face_sun_check_in_raytracing()
-    test_correct_azimuth_conversion()
-    test_with_voxcity_data()
-    print_fix_recommendation()
+    print("West Surface Shadowing Debug Test")
+    print("=" * 70)
+    print()
+    
+    # Test 1: Sun direction computation
+    test1_passed = test_sun_direction_computation()
+    
+    # Test 2: Surface normal check logic
+    test2_passed = test_surface_normal_check()
+    
+    # Test 3: Actual VoxCity test
+    test3_passed = test_with_voxcity_instantaneous()
+    
+    print()
+    print("=" * 70)
+    print("FINAL RESULTS")
+    print("=" * 70)
+    print(f"Test 1 (Sun direction computation): {'PASSED' if test1_passed else 'FAILED'}")
+    print(f"Test 2 (Surface normal check): {'PASSED' if test2_passed else 'FAILED'}")
+    print(f"Test 3 (VoxCity instantaneous): {'PASSED' if test3_passed else 'FAILED'}")

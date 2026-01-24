@@ -47,7 +47,8 @@ class SolarPosition:
         zenith_angle: Solar zenith angle in degrees
         azimuth_angle: Solar azimuth angle in degrees (0 = North, 90 = East)
         elevation_angle: Solar elevation angle in degrees (0 = horizon, 90 = zenith)
-        direction: Unit vector pointing towards the sun (x, y, z)
+        direction: Unit vector pointing towards the sun in VoxCity grid coordinates
+                   (x = row/South direction, y = col/East direction, z = up)
         sun_up: True if sun is above horizon
     """
     cos_zenith: float
@@ -97,11 +98,11 @@ def calc_zenith(
     zenith_angle = math.acos(min(1.0, cos_zenith)) * RAD_TO_DEG
     elevation_angle = 90.0 - zenith_angle
     
-    # Solar direction vector (x=east, y=north, z=up)
-    # Direction in longitudes = sin(solar_azimuth) * sin(zenith)
+    # Solar direction vector in ENU coordinates (intermediate calculation)
+    # Direction in longitudes (East component) = -sin(hour_angle) * cos(declination)
     sun_dir_lon = -math.sin(hour_angle) * math.cos(declination)
     
-    # Direction in latitudes = cos(solar_azimuth) * sin(zenith)
+    # Direction in latitudes (North component)
     sun_dir_lat = (math.sin(declination) * math.cos(lat) - 
                    math.cos(hour_angle) * math.cos(declination) * math.sin(lat))
     
@@ -109,27 +110,34 @@ def calc_zenith(
     sin_zenith = math.sqrt(1.0 - cos_zenith**2) if cos_zenith < 1.0 else 0.0
     
     if sin_zenith > 1e-10:
-        # Horizontal components
-        sun_x = sun_dir_lon  # East component
-        sun_y = sun_dir_lat  # North component
-        sun_z = cos_zenith   # Up component
+        # Horizontal components in ENU (x=East, y=North, z=Up)
+        sun_x_enu = sun_dir_lon  # East component
+        sun_y_enu = sun_dir_lat  # North component
+        sun_z = cos_zenith       # Up component
         
         # Normalize
-        length = math.sqrt(sun_x**2 + sun_y**2 + sun_z**2)
+        length = math.sqrt(sun_x_enu**2 + sun_y_enu**2 + sun_z**2)
         if length > 1e-10:
-            sun_x /= length
-            sun_y /= length
+            sun_x_enu /= length
+            sun_y_enu /= length
             sun_z /= length
     else:
         # Sun at zenith
-        sun_x = 0.0
-        sun_y = 0.0
+        sun_x_enu = 0.0
+        sun_y_enu = 0.0
         sun_z = 1.0
     
-    # Azimuth angle (0 = North, 90 = East)
-    azimuth_angle = math.atan2(sun_x, sun_y) * RAD_TO_DEG
+    # Azimuth angle (0 = North, 90 = East) - computed from ENU coordinates
+    azimuth_angle = math.atan2(sun_x_enu, sun_y_enu) * RAD_TO_DEG
     if azimuth_angle < 0:
         azimuth_angle += 360.0
+    
+    # Convert direction from ENU to VoxCity grid-index coordinates:
+    # VoxCity grid: i (row) increases North->South, j (col) increases West->East
+    # Grid-index: x = i direction = South = -North, y = j direction = East
+    # Conversion: grid_x = -enu_y (North to South), grid_y = enu_x (East)
+    sun_x = -sun_y_enu  # Grid x = -North = South direction
+    sun_y = sun_x_enu   # Grid y = East direction
     
     sun_up = cos_zenith > 0.0
     
@@ -207,25 +215,30 @@ def calc_zenith_ti(
                   ti.cos(lat_rad) * ti.cos(declination) * ti.cos(hour_angle))
     cos_zenith = ti.max(0.0, cos_zenith)
     
-    # Direction components
+    # Direction components in ENU (x=East, y=North)
     sun_dir_lon = -ti.sin(hour_angle) * ti.cos(declination)
     sun_dir_lat = (ti.sin(declination) * ti.cos(lat_rad) - 
                    ti.cos(hour_angle) * ti.cos(declination) * ti.sin(lat_rad))
     
-    # Normalize
-    sun_x = sun_dir_lon
-    sun_y = sun_dir_lat
+    # Normalize ENU components
+    sun_x_enu = sun_dir_lon
+    sun_y_enu = sun_dir_lat
     sun_z = cos_zenith
-    length = ti.sqrt(sun_x**2 + sun_y**2 + sun_z**2)
+    length = ti.sqrt(sun_x_enu**2 + sun_y_enu**2 + sun_z**2)
     
     if length > 1e-10:
-        sun_x /= length
-        sun_y /= length
+        sun_x_enu /= length
+        sun_y_enu /= length
         sun_z /= length
     else:
-        sun_x = 0.0
-        sun_y = 0.0
+        sun_x_enu = 0.0
+        sun_y_enu = 0.0
         sun_z = 1.0
+    
+    # Convert from ENU to VoxCity grid-index coordinates:
+    # Grid x = -North = South direction, Grid y = East direction
+    sun_x = -sun_y_enu
+    sun_y = sun_x_enu
     
     return ti.math.vec4(cos_zenith, sun_x, sun_y, sun_z)
 

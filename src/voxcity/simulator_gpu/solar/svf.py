@@ -4,6 +4,19 @@ Sky View Factor (SVF) calculation for palm-solar.
 Computes the fraction of sky hemisphere visible from each surface element.
 Uses GPU-accelerated ray tracing to sample the hemisphere.
 
+Coordinate System:
+    SVF calculations use a local ENU-style coordinate system for hemisphere
+    sampling (x=East-like, y=North-like, z=Up). This is self-consistent
+    within SVF and does not affect sun direction calculations.
+    
+    Direction indices follow PALM naming convention:
+    - 0 (IUP): +z, upward-facing
+    - 1 (IDOWN): -z, downward-facing
+    - 2 (INORTH): +y normal (East-facing in geographic terms)
+    - 3 (ISOUTH): -y normal (West-facing in geographic terms)
+    - 4 (IEAST): +x normal (South-facing in geographic terms)
+    - 5 (IWEST): -x normal (North-facing in geographic terms)
+
 PALM Alignment:
 - Uses PALM's vffrac_up formula: (cos(2*elev_low) - cos(2*elev_high)) / (2*n_azim)
 - Default discretization: n_azimuth=80, n_elevation=40 (PALM defaults)
@@ -161,18 +174,18 @@ class SVFCalculator:
                 normal = Vector3(0.0, 0.0, 1.0)
             elif direction == 1:  # Down
                 normal = Vector3(0.0, 0.0, -1.0)
-            elif direction == 2:  # North (normal points +y)
+            elif direction == 2:  # INORTH: +y normal (East-facing in geographic terms)
                 normal = Vector3(0.0, 1.0, 0.0)
-                normal_azim = 0.0  # North is azimuth 0
-            elif direction == 3:  # South (normal points -y)
+                normal_azim = 0.0  # +y is azimuth 0 in this local coordinate system
+            elif direction == 3:  # ISOUTH: -y normal (West-facing in geographic terms)
                 normal = Vector3(0.0, -1.0, 0.0)
-                normal_azim = PI  # South is azimuth π
-            elif direction == 4:  # East (normal points +x)
+                normal_azim = PI  # -y is azimuth π
+            elif direction == 4:  # IEAST: +x normal (South-facing in geographic terms)
                 normal = Vector3(1.0, 0.0, 0.0)
-                normal_azim = PI / 2.0  # East is azimuth π/2
-            elif direction == 5:  # West (normal points -x)
+                normal_azim = PI / 2.0  # +x is azimuth π/2
+            elif direction == 5:  # IWEST: -x normal (North-facing in geographic terms)
                 normal = Vector3(-1.0, 0.0, 0.0)
-                normal_azim = 3.0 * PI / 2.0  # West is azimuth 3π/2
+                normal_azim = 3.0 * PI / 2.0  # -x is azimuth 3π/2
             
             visible_vf = 0.0
             total_vf = 0.0

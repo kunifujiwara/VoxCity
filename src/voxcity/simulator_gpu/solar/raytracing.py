@@ -78,32 +78,45 @@ class RayTracer:
         shadow_factor = 0 means fully sunlit
         shadow_factor = 1 means fully shaded
         """
+        # Small offset to ensure ray origin is outside the solid voxel
+        eps = 0.01
+        
         for i in range(n_surf):
             # Get surface position
             pos = surf_pos[i]
             direction = surf_dir[i]
             
-            # Check if surface faces sun
-            # For upward (0), downward (1), north (2), south (3), east (4), west (5)
+            # Check if surface normal faces toward sun (dot product > 0)
+            # Direction indices: 0=Up, 1=Down, 2=INORTH(+y), 3=ISOUTH(-y), 4=IEAST(+x), 5=IWEST(-x)
+            # In VoxCity grid: +x = South, +y = East, +z = Up
             face_sun = 1
-            if direction == 0:  # Up
+            normal = Vector3(0.0, 0.0, 0.0)
+            if direction == 0:  # Up (+z normal)
                 face_sun = 1 if sun_dir[2] > 0 else 0
-            elif direction == 1:  # Down
+                normal = Vector3(0.0, 0.0, 1.0)
+            elif direction == 1:  # Down (-z normal)
                 face_sun = 1 if sun_dir[2] < 0 else 0
-            elif direction == 2:  # North
+                normal = Vector3(0.0, 0.0, -1.0)
+            elif direction == 2:  # INORTH (+y normal, East-facing in VoxCity)
                 face_sun = 1 if sun_dir[1] > 0 else 0
-            elif direction == 3:  # South
+                normal = Vector3(0.0, 1.0, 0.0)
+            elif direction == 3:  # ISOUTH (-y normal, West-facing in VoxCity)
                 face_sun = 1 if sun_dir[1] < 0 else 0
-            elif direction == 4:  # East
+                normal = Vector3(0.0, -1.0, 0.0)
+            elif direction == 4:  # IEAST (+x normal, South-facing in VoxCity)
                 face_sun = 1 if sun_dir[0] > 0 else 0
-            elif direction == 5:  # West
+                normal = Vector3(1.0, 0.0, 0.0)
+            elif direction == 5:  # IWEST (-x normal, North-facing in VoxCity)
                 face_sun = 1 if sun_dir[0] < 0 else 0
+                normal = Vector3(-1.0, 0.0, 0.0)
             
             if face_sun == 0:
                 shadow_factor[i] = 1.0
             else:
-                # Trace ray toward sun
-                ray_origin = Vector3(pos[0], pos[1], pos[2])
+                # Offset ray origin slightly along surface normal to avoid self-intersection
+                ray_origin = Vector3(pos[0] + normal[0] * eps,
+                                     pos[1] + normal[1] * eps,
+                                     pos[2] + normal[2] * eps)
                 
                 hit, _, _, _, _ = ray_voxel_first_hit(
                     ray_origin, sun_dir,
@@ -130,30 +143,44 @@ class RayTracer:
         """
         Compute shadow factors including canopy absorption.
         """
+        # Small offset to ensure ray origin is outside the solid voxel
+        eps = 0.01
+        
         for i in range(n_surf):
             pos = surf_pos[i]
             direction = surf_dir[i]
             
-            # Check if surface faces sun
+            # Check if surface normal faces toward sun (dot product > 0)
+            # In VoxCity grid: +x = South, +y = East, +z = Up
             face_sun = 1
-            if direction == 0:
+            normal = Vector3(0.0, 0.0, 0.0)
+            if direction == 0:  # Up (+z)
                 face_sun = 1 if sun_dir[2] > 0 else 0
-            elif direction == 1:
+                normal = Vector3(0.0, 0.0, 1.0)
+            elif direction == 1:  # Down (-z)
                 face_sun = 1 if sun_dir[2] < 0 else 0
-            elif direction == 2:
+                normal = Vector3(0.0, 0.0, -1.0)
+            elif direction == 2:  # INORTH (+y, East-facing)
                 face_sun = 1 if sun_dir[1] > 0 else 0
-            elif direction == 3:
+                normal = Vector3(0.0, 1.0, 0.0)
+            elif direction == 3:  # ISOUTH (-y, West-facing)
                 face_sun = 1 if sun_dir[1] < 0 else 0
-            elif direction == 4:
+                normal = Vector3(0.0, -1.0, 0.0)
+            elif direction == 4:  # IEAST (+x, South-facing)
                 face_sun = 1 if sun_dir[0] > 0 else 0
-            elif direction == 5:
+                normal = Vector3(1.0, 0.0, 0.0)
+            elif direction == 5:  # IWEST (-x, North-facing)
                 face_sun = 1 if sun_dir[0] < 0 else 0
+                normal = Vector3(-1.0, 0.0, 0.0)
             
             if face_sun == 0:
                 shadow_factor[i] = 1.0
                 canopy_transmissivity[i] = 0.0
             else:
-                ray_origin = Vector3(pos[0], pos[1], pos[2])
+                # Offset ray origin slightly along surface normal to avoid self-intersection
+                ray_origin = Vector3(pos[0] + normal[0] * eps,
+                                     pos[1] + normal[1] * eps,
+                                     pos[2] + normal[2] * eps)
                 
                 trans, _ = ray_canopy_absorption(
                     ray_origin, sun_dir,
