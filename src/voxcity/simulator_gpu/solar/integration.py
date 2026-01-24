@@ -2055,6 +2055,11 @@ def get_sunlight_hours(
             - output_dir (str): Directory for downloaded EPW files (default: 'output')
             - max_distance (float): Max distance in km for EPW search (default: 100)
             - colormap (str): Matplotlib colormap name (default: 'magma')
+            - use_sky_patches (bool): Use sky patch optimization (default: True).
+                When True, sun positions are binned into sky patches and shading
+                is computed once per patch rather than per timestep.
+            - sky_discretization (str): Sky discretization method (default: 'tregenza').
+                Options: 'tregenza', 'reinhart', 'uniform', 'fibonacci'
     
     Returns:
         2D numpy array of sunlight hours per grid cell with metadata dict:
@@ -2106,6 +2111,8 @@ def get_sunlight_hours(
     min_elevation = float(kwargs.pop('min_elevation', 0.0))
     view_point_height = kwargs.pop('view_point_height', 1.5)
     colormap = kwargs.pop('colormap', 'magma')
+    use_sky_patches = kwargs.pop('use_sky_patches', True)
+    sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     
     # Load EPW data (download or read from file)
     weather_df, lon, lat, tz = _load_epw_data(
@@ -2241,29 +2248,120 @@ def get_sunlight_hours(
         'obj_export': False
     })
     
-    for i, t_idx in enumerate(sunshine_timesteps):
-        elev = elevation_arr[t_idx]
-        az = azimuth_arr[t_idx]
-        
-        # Compute direct irradiance map with unit DNI to get shading mask
-        direct_map = get_direct_solar_irradiance_map(
-            voxcity,
-            azimuth_degrees_ori=az,
-            elevation_degrees=elev,
-            direct_normal_irradiance=1.0,  # Unit value to get shading factor
-            **direct_kwargs
+    if use_sky_patches:
+        # Use sky patch aggregation for efficiency
+        # Instead of tracing rays for each timestep, aggregate hours per patch
+        # and compute shading once per active patch
+        import time as time_module
+        from .sky import (
+            generate_tregenza_patches,
+            generate_reinhart_patches,
+            generate_uniform_grid_patches,
+            generate_fibonacci_patches,
+            get_tregenza_patch_index
         )
         
-        # Cell receives sunlight if direct irradiance > 0 (not fully shaded)
-        receives_sun = np.nan_to_num(direct_map, nan=0.0) > 0.0
-        sunlight_hours_map += receives_sun.astype(np.float64) * time_step_hours
+        t0 = time_module.perf_counter() if progress_report else 0
         
-        # Track valid cells
-        mask_map &= ~np.isnan(direct_map)
+        # Generate sky patches
+        if sky_discretization.lower() == 'tregenza':
+            patches, directions, solid_angles = generate_tregenza_patches()
+        elif sky_discretization.lower() == 'reinhart':
+            mf = kwargs.get('reinhart_mf', kwargs.get('mf', 4))
+            patches, directions, solid_angles = generate_reinhart_patches(mf=mf)
+        elif sky_discretization.lower() == 'uniform':
+            n_az = kwargs.get('sky_n_azimuth', kwargs.get('n_azimuth', 36))
+            n_el = kwargs.get('sky_n_elevation', kwargs.get('n_elevation', 9))
+            patches, directions, solid_angles = generate_uniform_grid_patches(n_az, n_el)
+        elif sky_discretization.lower() == 'fibonacci':
+            n_patches = kwargs.get('sky_n_patches', kwargs.get('n_patches', 145))
+            patches, directions, solid_angles = generate_fibonacci_patches(n_patches=n_patches)
+        else:
+            raise ValueError(f"Unknown sky discretization method: {sky_discretization}")
         
-        if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
-            pct = (i + 1) * 100.0 / n_sunshine
-            print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
+        n_patches = len(patches)
+        hours_per_patch = np.zeros(n_patches, dtype=np.float64)
+        
+        # Bin sunshine timesteps to patches
+        for t_idx in sunshine_timesteps:
+            elev = elevation_arr[t_idx]
+            az = azimuth_arr[t_idx]
+            
+            patch_idx = int(get_tregenza_patch_index(float(az), float(elev)))
+            if 0 <= patch_idx < n_patches:
+                hours_per_patch[patch_idx] += time_step_hours
+        
+        # Count active patches (those with sunshine hours)
+        active_mask = hours_per_patch > 0
+        n_active = int(np.sum(active_mask))
+        active_indices = np.where(active_mask)[0]
+        
+        if progress_report:
+            bin_time = time_module.perf_counter() - t0
+            print(f"Sky patch optimization: {n_sunshine} sunshine timesteps -> {n_active} active patches ({sky_discretization})")
+            print(f"  Sun position binning: {bin_time:.3f}s")
+        
+        if progress_report:
+            t_patch_start = time_module.perf_counter()
+        
+        # Process each active patch once
+        for i, patch_idx in enumerate(active_indices):
+            az_deg = patches[patch_idx, 0]
+            el_deg = patches[patch_idx, 1]
+            patch_hours = hours_per_patch[patch_idx]
+            
+            # Compute direct irradiance map with unit DNI to get shading mask
+            direct_map = get_direct_solar_irradiance_map(
+                voxcity,
+                azimuth_degrees_ori=az_deg,
+                elevation_degrees=el_deg,
+                direct_normal_irradiance=1.0,
+                **direct_kwargs
+            )
+            
+            # Cell receives sunlight if direct irradiance > 0 (not fully shaded)
+            receives_sun = np.nan_to_num(direct_map, nan=0.0) > 0.0
+            sunlight_hours_map += receives_sun.astype(np.float64) * patch_hours
+            
+            # Track valid cells
+            mask_map &= ~np.isnan(direct_map)
+            
+            if progress_report and ((i + 1) % max(1, n_active // 10) == 0 or i == n_active - 1):
+                elapsed = time_module.perf_counter() - t_patch_start
+                pct = (i + 1) * 100.0 / n_active
+                avg_per_patch = elapsed / (i + 1)
+                eta = avg_per_patch * (n_active - i - 1)
+                print(f"  Patch {i+1}/{n_active} ({pct:.1f}%) - elapsed: {elapsed:.1f}s, ETA: {eta:.1f}s, avg: {avg_per_patch*1000:.1f}ms/patch")
+        
+        if progress_report:
+            total_patch_time = time_module.perf_counter() - t_patch_start
+            print(f"  Total patch processing: {total_patch_time:.2f}s ({n_active} patches)")
+    
+    else:
+        # Per-timestep path (original implementation)
+        for i, t_idx in enumerate(sunshine_timesteps):
+            elev = elevation_arr[t_idx]
+            az = azimuth_arr[t_idx]
+            
+            # Compute direct irradiance map with unit DNI to get shading mask
+            direct_map = get_direct_solar_irradiance_map(
+                voxcity,
+                azimuth_degrees_ori=az,
+                elevation_degrees=elev,
+                direct_normal_irradiance=1.0,  # Unit value to get shading factor
+                **direct_kwargs
+            )
+            
+            # Cell receives sunlight if direct irradiance > 0 (not fully shaded)
+            receives_sun = np.nan_to_num(direct_map, nan=0.0) > 0.0
+            sunlight_hours_map += receives_sun.astype(np.float64) * time_step_hours
+            
+            # Track valid cells
+            mask_map &= ~np.isnan(direct_map)
+            
+            if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
+                pct = (i + 1) * 100.0 / n_sunshine
+                print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
     
     # Apply mask for invalid cells
     sunlight_hours_map = np.where(mask_map, sunlight_hours_map, np.nan)
@@ -3136,6 +3234,11 @@ def get_building_sunlight_hours(
             - progress_report (bool): Print progress (default: False)
             - output_dir (str): Directory for downloaded EPW files (default: 'output')
             - max_distance (float): Max distance in km for EPW search (default: 100)
+            - use_sky_patches (bool): Use sky patch optimization (default: True).
+                When True, sun positions are binned into sky patches and shading
+                is computed once per patch rather than per timestep.
+            - sky_discretization (str): Sky discretization method (default: 'tregenza').
+                Options: 'tregenza', 'reinhart', 'uniform', 'fibonacci'
     
     Returns:
         Trimesh object with sunlight hours in metadata:
@@ -3183,6 +3286,8 @@ def get_building_sunlight_hours(
     progress_report = kwargs.pop('progress_report', False)
     computation_mask = kwargs.pop('computation_mask', None)
     min_elevation = float(kwargs.pop('min_elevation', 0.0))  # For DSH mode
+    use_sky_patches = kwargs.pop('use_sky_patches', True)
+    sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     
     # Load EPW data (download or read from file)
     weather_df, lon, lat, tz = _load_epw_data(
@@ -3343,36 +3448,129 @@ def get_building_sunlight_hours(
             result_mesh.metadata['min_elevation'] = min_elevation
         return result_mesh
     
-    # Loop over sunshine timesteps and check if each face receives direct sunlight
-    for i, t_idx in enumerate(sunshine_timesteps):
-        elev = elevation_arr[t_idx]
-        az = azimuth_arr[t_idx]
-        
-        # Compute direct irradiance visibility (unit DNI to get shading mask)
-        irradiance_mesh = get_building_solar_irradiance(
-            voxcity,
-            building_svf_mesh=building_svf_mesh,
-            azimuth_degrees_ori=az,
-            elevation_degrees=elev,
-            direct_normal_irradiance=1.0,  # Unit value to get shading factor
-            diffuse_irradiance=0.0,  # Only interested in direct sunlight
-            progress_report=False,
-            **kwargs
+    if use_sky_patches:
+        # Use sky patch aggregation for efficiency
+        # Instead of tracing rays for each timestep, aggregate hours per patch
+        # and compute shading once per active patch
+        import time as time_module
+        from .sky import (
+            generate_tregenza_patches,
+            generate_reinhart_patches,
+            generate_uniform_grid_patches,
+            generate_fibonacci_patches,
+            get_tregenza_patch_index
         )
         
-        if irradiance_mesh is not None and hasattr(irradiance_mesh, 'metadata'):
-            if 'direct' in irradiance_mesh.metadata:
-                direct_vals = irradiance_mesh.metadata['direct']
-                if len(direct_vals) == n_faces:
-                    # Face receives sunlight if direct irradiance > 0 (not shaded)
-                    # The value represents the fraction of direct beam that reaches the face
-                    # (accounts for incidence angle and shading)
-                    receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
-                    sunlight_hours += receives_sun.astype(np.float64) * time_step_hours
+        t0 = time_module.perf_counter() if progress_report else 0
         
-        if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
-            pct = (i + 1) * 100.0 / n_sunshine
-            print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
+        # Generate sky patches
+        if sky_discretization.lower() == 'tregenza':
+            patches, directions, solid_angles = generate_tregenza_patches()
+        elif sky_discretization.lower() == 'reinhart':
+            mf = kwargs.get('reinhart_mf', kwargs.get('mf', 4))
+            patches, directions, solid_angles = generate_reinhart_patches(mf=mf)
+        elif sky_discretization.lower() == 'uniform':
+            n_az = kwargs.get('sky_n_azimuth', kwargs.get('n_azimuth', 36))
+            n_el = kwargs.get('sky_n_elevation', kwargs.get('n_elevation', 9))
+            patches, directions, solid_angles = generate_uniform_grid_patches(n_az, n_el)
+        elif sky_discretization.lower() == 'fibonacci':
+            n_patches = kwargs.get('sky_n_patches', kwargs.get('n_patches', 145))
+            patches, directions, solid_angles = generate_fibonacci_patches(n_patches=n_patches)
+        else:
+            raise ValueError(f"Unknown sky discretization method: {sky_discretization}")
+        
+        n_patches_sky = len(patches)
+        hours_per_patch = np.zeros(n_patches_sky, dtype=np.float64)
+        
+        # Bin sunshine timesteps to patches
+        for t_idx in sunshine_timesteps:
+            elev = elevation_arr[t_idx]
+            az = azimuth_arr[t_idx]
+            
+            patch_idx = int(get_tregenza_patch_index(float(az), float(elev)))
+            if 0 <= patch_idx < n_patches_sky:
+                hours_per_patch[patch_idx] += time_step_hours
+        
+        # Count active patches (those with sunshine hours)
+        active_mask = hours_per_patch > 0
+        n_active = int(np.sum(active_mask))
+        active_indices = np.where(active_mask)[0]
+        
+        if progress_report:
+            bin_time = time_module.perf_counter() - t0
+            print(f"Sky patch optimization: {n_sunshine} sunshine timesteps -> {n_active} active patches ({sky_discretization})")
+            print(f"  Sun position binning: {bin_time:.3f}s")
+        
+        if progress_report:
+            t_patch_start = time_module.perf_counter()
+        
+        # Process each active patch once
+        for i, patch_idx in enumerate(active_indices):
+            az_deg = patches[patch_idx, 0]
+            el_deg = patches[patch_idx, 1]
+            patch_hours = hours_per_patch[patch_idx]
+            
+            # Compute direct irradiance visibility (unit DNI to get shading mask)
+            irradiance_mesh = get_building_solar_irradiance(
+                voxcity,
+                building_svf_mesh=building_svf_mesh,
+                azimuth_degrees_ori=az_deg,
+                elevation_degrees=el_deg,
+                direct_normal_irradiance=1.0,  # Unit value to get shading factor
+                diffuse_irradiance=0.0,  # Only interested in direct sunlight
+                progress_report=False,
+                **kwargs
+            )
+            
+            if irradiance_mesh is not None and hasattr(irradiance_mesh, 'metadata'):
+                if 'direct' in irradiance_mesh.metadata:
+                    direct_vals = irradiance_mesh.metadata['direct']
+                    if len(direct_vals) == n_faces:
+                        receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
+                        sunlight_hours += receives_sun.astype(np.float64) * patch_hours
+            
+            if progress_report and ((i + 1) % max(1, n_active // 10) == 0 or i == n_active - 1):
+                elapsed = time_module.perf_counter() - t_patch_start
+                pct = (i + 1) * 100.0 / n_active
+                avg_per_patch = elapsed / (i + 1)
+                eta = avg_per_patch * (n_active - i - 1)
+                print(f"  Patch {i+1}/{n_active} ({pct:.1f}%) - elapsed: {elapsed:.1f}s, ETA: {eta:.1f}s, avg: {avg_per_patch*1000:.1f}ms/patch")
+        
+        if progress_report:
+            total_patch_time = time_module.perf_counter() - t_patch_start
+            print(f"  Total patch processing: {total_patch_time:.2f}s ({n_active} patches)")
+    
+    else:
+        # Per-timestep path (original implementation)
+        for i, t_idx in enumerate(sunshine_timesteps):
+            elev = elevation_arr[t_idx]
+            az = azimuth_arr[t_idx]
+            
+            # Compute direct irradiance visibility (unit DNI to get shading mask)
+            irradiance_mesh = get_building_solar_irradiance(
+                voxcity,
+                building_svf_mesh=building_svf_mesh,
+                azimuth_degrees_ori=az,
+                elevation_degrees=elev,
+                direct_normal_irradiance=1.0,  # Unit value to get shading factor
+                diffuse_irradiance=0.0,  # Only interested in direct sunlight
+                progress_report=False,
+                **kwargs
+            )
+            
+            if irradiance_mesh is not None and hasattr(irradiance_mesh, 'metadata'):
+                if 'direct' in irradiance_mesh.metadata:
+                    direct_vals = irradiance_mesh.metadata['direct']
+                    if len(direct_vals) == n_faces:
+                        # Face receives sunlight if direct irradiance > 0 (not shaded)
+                        # The value represents the fraction of direct beam that reaches the face
+                        # (accounts for incidence angle and shading)
+                        receives_sun = np.nan_to_num(direct_vals, nan=0.0) > 0.0
+                        sunlight_hours += receives_sun.astype(np.float64) * time_step_hours
+            
+            if progress_report and ((i + 1) % max(1, n_sunshine // 10) == 0 or i == n_sunshine - 1):
+                pct = (i + 1) * 100.0 / n_sunshine
+                print(f"  Processed {i+1}/{n_sunshine} sunshine timesteps ({pct:.1f}%)")
     
     # -------------------------------------------------------------------------
     # Set vertical faces on domain perimeter to NaN (matching VoxCity behavior)
