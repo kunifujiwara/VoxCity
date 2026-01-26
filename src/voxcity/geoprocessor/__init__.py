@@ -10,6 +10,7 @@ from . import (
     selection,
     overlap,
     merge_utils,
+    citygml,
 )
 
 # Re-export frequently used functions at package level for convenience
@@ -55,6 +56,7 @@ __all__ = [
     "selection",
     "overlap",
     "merge_utils",
+    "citygml",
     # functions
     "filter_and_convert_gdf_to_geojson",
     "geojson_to_gdf",

@@ -6,7 +6,8 @@ from .pipeline import VoxCityPipeline
 from .grids import get_land_cover_grid
 from .io import save_voxcity
 
-from ..downloader.citygml import load_buid_dem_veg_from_citygml
+from ..downloader.citygml import download_and_extract_zip
+from ..geoprocessor.citygml import load_lod1_citygml, LOD1CityGMLParser
 from ..downloader.mbfp import get_mbfp_gdf
 from ..downloader.osm import load_gdf_from_openstreetmap
 from ..downloader.eubucco import load_gdf_from_eubucco
@@ -490,229 +491,252 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
 
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
-    output_dir = kwargs.get("output_dir", "output")
+    """
+    Generate a VoxCity model from PLATEAU CityGML data.
+    
+    This function supports two modes for each component:
+    
+    1. **Building/Bridge/Furniture voxelization**:
+       - LOD1 mode: Footprint-based building heights from GeoDataFrames
+       - LOD2 mode: Direct 3D voxelization from LOD2 triangulated geometry
+    
+    2. **Tree voxelization**:
+       - LOD1 mode: From CityGML vegetation GeoDataFrames
+       - LOD2 mode: From CityGML LOD2 vegetation geometry (when `include_lod2_vegetation=True`)
+       - External sources: Canopy height from GEE or other sources
+    
+    3. **Terrain and land cover voxelization**:
+       - CityGML terrain: From DEM triangulated geometry
+       - External DEM: From GEE-based sources or local files
+       - Land cover is placed at terrain surface
+       - Terrain is flattened under building footprints
+    
+    Args:
+        rectangle_vertices: List of (lon, lat) tuples defining the area of interest
+        land_cover_source: Land cover data source
+        canopy_height_source: Canopy height data source
+        meshsize: Grid resolution in meters
+        url_citygml: URL to download PLATEAU data from
+        citygml_path: Path to local PLATEAU CityGML directory
+        **kwargs: Additional options including:
+            - lod: str, LOD mode - 'lod1', 'lod2', or None for auto-detection
+              (default: None, auto-detects based on available data)
+            - include_bridges: bool, include bridge geometry in LOD2 mode (default: True)
+            - include_city_furniture: bool, include city furniture in LOD2 mode (default: False)
+            - include_lod2_vegetation: bool, use LOD2 vegetation geometry (default: True)
+            - dem_source: str, external DEM source (default: None, uses CityGML terrain)
+            - dem_path: str, path to local DEM GeoTIFF (required when dem_source='Local file')
+            - output_dir: Directory for intermediate data (default: "output")
+            - ssl_verify, ca_bundle, timeout: Network options for URL downloads
+            - timing: bool, if True prints timing information for each step (default: False)
+    
+    Returns:
+        VoxCity object containing the generated 3D city model
+    """
+    import time as _time
+    from .pipeline import VoxCityPipeline as _Pipeline
+    from .voxelizer import Voxelizer
+    from ..geoprocessor.citygml import (
+        resolve_citygml_path,
+        voxelize_buildings_citygml_optimized,
+        voxelize_trees_citygml_optimized,
+        voxelize_terrain_citygml_optimized,
+        apply_citygml_post_processing,
+        merge_lod2_voxels,
+    )
+    
+    # =========================================================================
+    # CONFIGURATION
+    # =========================================================================
+    output_dir = kwargs.pop("output_dir", "output")
     os.makedirs(output_dir, exist_ok=True)
-    kwargs.pop('output_dir', None)
-
+    
     ssl_verify = kwargs.pop('ssl_verify', kwargs.pop('verify', True))
     ca_bundle = kwargs.pop('ca_bundle', None)
     timeout = kwargs.pop('timeout', 60)
-
-    building_gdf, terrain_gdf, vegetation_gdf = load_buid_dem_veg_from_citygml(
-        url=url_citygml,
-        citygml_path=citygml_path,
-        base_dir=output_dir,
-        rectangle_vertices=rectangle_vertices,
-        ssl_verify=ssl_verify,
-        ca_bundle=ca_bundle,
-        timeout=timeout
-    )
-
-    try:
-        import geopandas as gpd  # noqa: F401
-        if building_gdf is not None:
-            if building_gdf.crs is None:
-                building_gdf = building_gdf.set_crs(epsg=4326)
-            elif getattr(building_gdf.crs, 'to_epsg', lambda: None)() != 4326 and building_gdf.crs != "EPSG:4326":
-                building_gdf = building_gdf.to_crs(epsg=4326)
-        if terrain_gdf is not None:
-            if terrain_gdf.crs is None:
-                terrain_gdf = terrain_gdf.set_crs(epsg=4326)
-            elif getattr(terrain_gdf.crs, 'to_epsg', lambda: None)() != 4326 and terrain_gdf.crs != "EPSG:4326":
-                terrain_gdf = terrain_gdf.to_crs(epsg=4326)
-        if vegetation_gdf is not None:
-            if vegetation_gdf.crs is None:
-                vegetation_gdf = vegetation_gdf.set_crs(epsg=4326)
-            elif getattr(vegetation_gdf.crs, 'to_epsg', lambda: None)() != 4326 and vegetation_gdf.crs != "EPSG:4326":
-                vegetation_gdf = vegetation_gdf.to_crs(epsg=4326)
-    except Exception:
-        pass
-
-    land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
-
-    print("Creating building height grid")
-    building_complementary_source = kwargs.get("building_complementary_source")
-    gdf_comp = None
-    geotiff_path_comp = None
-    complement_building_footprints = kwargs.get("complement_building_footprints")
-    if complement_building_footprints is None and (building_complementary_source not in (None, "None")):
-        complement_building_footprints = True
-
-    if (building_complementary_source is not None) and (building_complementary_source != "None"):
-        floor_height = kwargs.get("floor_height", 3.0)
-        if building_complementary_source == 'Microsoft Building Footprints':
-            gdf_comp = get_mbfp_gdf(kwargs.get("output_dir", "output"), rectangle_vertices)
-        elif building_complementary_source == 'OpenStreetMap':
-            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
-        elif building_complementary_source == 'EUBUCCO v0.1':
-            gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
-        elif building_complementary_source == 'Overture':
-            gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
-        elif building_complementary_source in ("GBA", "Global Building Atlas"):
-            clip_gba = kwargs.get("gba_clip", False)
-            gba_download_dir = kwargs.get("gba_download_dir")
-            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
-        elif building_complementary_source == 'Local file':
-            comp_path = kwargs.get("building_complementary_path")
-            if comp_path is not None:
-                _, extension = os.path.splitext(comp_path)
-                if extension == ".gpkg":
-                    gdf_comp = get_gdf_from_gpkg(comp_path, rectangle_vertices)
-        if gdf_comp is not None:
-            try:
-                if gdf_comp.crs is None:
-                    gdf_comp = gdf_comp.set_crs(epsg=4326)
-                elif getattr(gdf_comp.crs, 'to_epsg', lambda: None)() != 4326 and gdf_comp.crs != "EPSG:4326":
-                    gdf_comp = gdf_comp.to_crs(epsg=4326)
-            except Exception:
-                pass
-        elif building_complementary_source == "Open Building 2.5D Temporal":
-            roi = get_roi(rectangle_vertices)
-            os.makedirs(kwargs.get("output_dir", "output"), exist_ok=True)
-            geotiff_path_comp = os.path.join(kwargs.get("output_dir", "output"), "building_height.tif")
-            save_geotiff_open_buildings_temporal(roi, geotiff_path_comp)
-        elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
-            roi = get_roi(rectangle_vertices)
-            os.makedirs(kwargs.get("output_dir", "output"), exist_ok=True)
-            geotiff_path_comp = os.path.join(kwargs.get("output_dir", "output"), "building_height.tif")
-            save_geotiff_dsm_minus_dtm(roi, geotiff_path_comp, meshsize, building_complementary_source)
-
-    _allowed_building_kwargs = {
-        "overlapping_footprint",
-        "gdf_comp",
-        "geotiff_path_comp",
-        "complement_building_footprints",
-        "complement_height",
-    }
-    _building_kwargs = {k: v for k, v in kwargs.items() if k in _allowed_building_kwargs}
-    if gdf_comp is not None:
-        _building_kwargs["gdf_comp"] = gdf_comp
-    if geotiff_path_comp is not None:
-        _building_kwargs["geotiff_path_comp"] = geotiff_path_comp
-    if complement_building_footprints is not None:
-        _building_kwargs["complement_building_footprints"] = complement_building_footprints
-
-    comp_height_user = kwargs.get("building_complement_height")
-    if comp_height_user is not None:
-        _building_kwargs["complement_height"] = comp_height_user
-    if _building_kwargs.get("complement_building_footprints") and ("complement_height" not in _building_kwargs):
-        _building_kwargs["complement_height"] = 10.0
-
-    building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(
-        building_gdf, meshsize, rectangle_vertices, **_building_kwargs
-    )
-
+    
+    # Handle LOD mode: 'lod1', 'lod2', or None (auto-detect)
+    lod_mode = kwargs.pop('lod', None)
+    # Support legacy use_lod2 parameter for backward compatibility
+    if lod_mode is None and 'use_lod2' in kwargs:
+        use_lod2_legacy = kwargs.pop('use_lod2', False)
+        lod_mode = 'lod2' if use_lod2_legacy else 'lod1'
+    
+    include_bridges = kwargs.pop('include_bridges', True)
+    include_city_furniture = kwargs.pop('include_city_furniture', False)
+    include_lod2_vegetation = kwargs.pop('include_lod2_vegetation', True)
+    
+    dem_source = kwargs.get("dem_source", None)
     grid_vis = kwargs.get("gridvis", True)
-    if grid_vis:
-        building_height_grid_nan = building_height_grid.copy()
-        building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-        visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
-
-    if canopy_height_source == "Static":
-        canopy_height_grid_comp = np.zeros_like(land_cover_grid, dtype=float)
-        static_tree_height = kwargs.get("static_tree_height", 10.0)
-        _classes = get_land_cover_classes(land_cover_source)
-        _class_to_int = {name: i for i, name in enumerate(_classes.values())}
-        _tree_labels = ["Tree", "Trees", "Tree Canopy"]
-        _tree_indices = [_class_to_int[label] for label in _tree_labels if label in _class_to_int]
-        tree_mask = np.isin(land_cover_grid, _tree_indices) if _tree_indices else np.zeros_like(land_cover_grid, dtype=bool)
-        canopy_height_grid_comp[tree_mask] = static_tree_height
-        trunk_height_ratio = kwargs.get("trunk_height_ratio")
-        if trunk_height_ratio is None:
-            trunk_height_ratio = 11.76 / 19.98
-        canopy_bottom_height_grid_comp = canopy_height_grid_comp * float(trunk_height_ratio)
-    else:
-        from .grids import get_canopy_height_grid
-        canopy_height_grid_comp, canopy_bottom_height_grid_comp = get_canopy_height_grid(rectangle_vertices, meshsize, canopy_height_source, output_dir, **kwargs)
-
-    if vegetation_gdf is not None:
-        canopy_height_grid = create_vegetation_height_grid_from_gdf_polygon(vegetation_gdf, meshsize, rectangle_vertices)
-        trunk_height_ratio = kwargs.get("trunk_height_ratio")
-        if trunk_height_ratio is None:
-            trunk_height_ratio = 11.76 / 19.98
-        canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
-    else:
-        canopy_height_grid = np.zeros_like(building_height_grid)
-        canopy_bottom_height_grid = np.zeros_like(building_height_grid)
-
-    mask = (canopy_height_grid == 0) & (canopy_height_grid_comp != 0)
-    canopy_height_grid[mask] = canopy_height_grid_comp[mask]
-    mask_b = (canopy_bottom_height_grid == 0) & (canopy_bottom_height_grid_comp != 0)
-    canopy_bottom_height_grid[mask_b] = canopy_bottom_height_grid_comp[mask_b]
-    canopy_bottom_height_grid = np.minimum(canopy_bottom_height_grid, canopy_height_grid)
-
-    if kwargs.pop('flat_dem', None):
-        dem_grid = np.zeros_like(land_cover_grid)
-    else:
-        print("Creating Digital Elevation Model (DEM) grid")
-        dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
-        grid_vis = kwargs.get("gridvis", True)
-        if grid_vis:
-            visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
-
-    min_canopy_height = kwargs.get("min_canopy_height")
-    if min_canopy_height is not None:
-        canopy_height_grid[canopy_height_grid < kwargs["min_canopy_height"]] = 0
-        canopy_bottom_height_grid[canopy_height_grid == 0] = 0
-
-    remove_perimeter_object = kwargs.get("remove_perimeter_object")
-    if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
-        print("apply perimeter removal")
-        w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
-        h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
-
-        canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
-        canopy_bottom_height_grid[:w_peri, :] = canopy_bottom_height_grid[-w_peri:, :] = canopy_bottom_height_grid[:, :h_peri] = canopy_bottom_height_grid[:, -h_peri:] = 0
-
-        ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
-        ids2 = np.unique(building_id_grid[-w_peri:, :][building_id_grid[-w_peri:, :] > 0])
-        ids3 = np.unique(building_id_grid[:, :h_peri][building_id_grid[:, :h_peri] > 0])
-        ids4 = np.unique(building_id_grid[:, -h_peri:][building_id_grid[:, -h_peri:] > 0])
-        remove_ids = np.concatenate((ids1, ids2, ids3, ids4))
-
-        for remove_id in remove_ids:
-            positions = np.where(building_id_grid == remove_id)
-            building_height_grid[positions] = 0
-            building_min_height_grid[positions] = [[] for _ in range(len(building_min_height_grid[positions]))]
-
-        grid_vis = kwargs.get("gridvis", True)
-        if grid_vis:
-            building_height_grid_nan = building_height_grid.copy()
-            building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-            visualize_numerical_grid(
-                np.flipud(building_height_grid_nan),
-                meshsize,
-                "building height (m)",
-                cmap='viridis',
-                label='Value'
-            )
-            canopy_height_grid_nan = canopy_height_grid.copy()
-            canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-            visualize_numerical_grid(
-                np.flipud(canopy_height_grid_nan),
-                meshsize,
-                "Tree canopy height (m)",
-                cmap='Greens',
-                label='Tree canopy height (m)'
-            )
-
-    from .voxelizer import Voxelizer
+    trunk_height_ratio = kwargs.get("trunk_height_ratio", 11.76 / 19.98)
+    show_timing = kwargs.pop("timing", False)
+    
+    # Timing helper
+    _timings = {}
+    def _record_time(name, start):
+        elapsed = _time.perf_counter() - start
+        _timings[name] = elapsed
+        if show_timing:
+            print(f"  [TIMING] {name}: {elapsed:.2f}s")
+    
+    total_start = _time.perf_counter()
+    
+    # =========================================================================
+    # RESOLVE CITYGML PATH
+    # =========================================================================
+    t0 = _time.perf_counter()
+    citygml_path_resolved = resolve_citygml_path(
+        url_citygml, citygml_path, output_dir, ssl_verify, ca_bundle, timeout
+    )
+    _record_time("resolve_citygml_path", t0)
+    
+    # =========================================================================
+    # STEP 1: BUILDING, BRIDGE, AND FURNITURE VOXELIZATION
+    # Options: LOD1 (footprint-based) or LOD2 (triangulated geometry)
+    # =========================================================================
+    print("\n" + "=" * 60)
+    print("Step 1: Building/Bridge/Furniture Voxelization")
+    print("=" * 60)
+    
+    t0 = _time.perf_counter()
+    building_result = voxelize_buildings_citygml_optimized(
+        citygml_path_resolved=citygml_path_resolved,
+        rectangle_vertices=rectangle_vertices,
+        meshsize=meshsize,
+        lod=lod_mode,
+        include_bridges=include_bridges,
+        include_city_furniture=include_city_furniture,
+        grid_vis=grid_vis,
+        **kwargs
+    )
+    _record_time("voxelize_buildings", t0)
+    
+    lod_mode = building_result['lod']  # May be updated based on available data
+    use_lod2 = (lod_mode == 'lod2')
+    building_gdf = building_result['building_gdf']
+    building_height_grid = building_result['building_height_grid']
+    building_min_height_grid = building_result['building_min_height_grid']
+    building_id_grid = building_result['building_id_grid']
+    lod2_voxelizer = building_result.get('lod2_voxelizer')
+    
+    # =========================================================================
+    # STEP 2: TREE VOXELIZATION
+    # Options: LOD1 (CityGML vegetation GDF), LOD2 (triangulated), or external sources
+    # =========================================================================
+    print("\n" + "=" * 60)
+    print("Step 2: Tree Voxelization")
+    print("=" * 60)
+    
+    t0 = _time.perf_counter()
+    tree_result = voxelize_trees_citygml_optimized(
+        citygml_path_resolved=citygml_path_resolved,
+        rectangle_vertices=rectangle_vertices,
+        meshsize=meshsize,
+        land_cover_source=land_cover_source,
+        canopy_height_source=canopy_height_source,
+        use_lod2=use_lod2,
+        include_lod2_vegetation=include_lod2_vegetation,
+        trunk_height_ratio=trunk_height_ratio,
+        output_dir=output_dir,
+        **kwargs
+    )
+    _record_time("voxelize_trees", t0)
+    
+    canopy_height_grid = tree_result['canopy_height_grid']
+    canopy_bottom_height_grid = tree_result['canopy_bottom_height_grid']
+    
+    # =========================================================================
+    # STEP 3: TERRAIN AND LAND COVER VOXELIZATION
+    # Options: CityGML terrain or external DEM sources
+    # Land cover is placed at terrain surface, terrain flattened under buildings
+    # =========================================================================
+    print("\n" + "=" * 60)
+    print("Step 3: Terrain and Land Cover Voxelization")
+    print("=" * 60)
+    
+    t0 = _time.perf_counter()
+    terrain_result = voxelize_terrain_citygml_optimized(
+        citygml_path_resolved=citygml_path_resolved,
+        rectangle_vertices=rectangle_vertices,
+        meshsize=meshsize,
+        land_cover_source=land_cover_source,
+        dem_source=dem_source,
+        building_id_grid=building_id_grid,
+        grid_vis=grid_vis,
+        output_dir=output_dir,
+        dem_interpolation=kwargs.get('dem_interpolation', True),
+        dem_path=kwargs.get('dem_path'),
+    )
+    _record_time("voxelize_terrain", t0)
+    
+    dem_grid = terrain_result['dem_grid']
+    land_cover_grid = terrain_result['land_cover_grid']
+    
+    # =========================================================================
+    # STEP 4: APPLY POST-PROCESSING (perimeter removal, min canopy height)
+    # =========================================================================
+    t0 = _time.perf_counter()
+    apply_citygml_post_processing(
+        building_height_grid=building_height_grid,
+        building_min_height_grid=building_min_height_grid,
+        building_id_grid=building_id_grid,
+        canopy_height_grid=canopy_height_grid,
+        canopy_bottom_height_grid=canopy_bottom_height_grid,
+        meshsize=meshsize,
+        grid_vis=grid_vis,
+        **kwargs
+    )
+    _record_time("apply_post_processing", t0)
+    
+    # =========================================================================
+    # STEP 5: MERGE ALL VOXELIZATIONS
+    # Combine terrain/land cover + trees + buildings/bridges/furniture
+    # =========================================================================
+    print("\n" + "=" * 60)
+    print("Step 4: Merging All Voxel Layers")
+    print("=" * 60)
+    
+    t0 = _time.perf_counter()
     voxelizer = Voxelizer(
         voxel_size=meshsize,
         land_cover_source=land_cover_source,
-        trunk_height_ratio=kwargs.get("trunk_height_ratio"),
+        trunk_height_ratio=trunk_height_ratio,
     )
-    voxcity_grid = voxelizer.generate_combined(
-        building_height_grid_ori=building_height_grid,
-        building_min_height_grid_ori=building_min_height_grid,
-        building_id_grid_ori=building_id_grid,
-        land_cover_grid_ori=land_cover_grid,
-        dem_grid_ori=dem_grid,
-        tree_grid_ori=canopy_height_grid,
-        canopy_bottom_height_grid_ori=locals().get("canopy_bottom_height_grid"),
-    )
-
-    from .pipeline import VoxCityPipeline as _Pipeline
+    
+    if use_lod2 and lod2_voxelizer is not None:
+        voxcity_grid = merge_lod2_voxels(
+            voxelizer=voxelizer,
+            lod2_voxelizer=lod2_voxelizer,
+            building_height_grid=building_height_grid,
+            building_min_height_grid=building_min_height_grid,
+            building_id_grid=building_id_grid,
+            land_cover_grid=land_cover_grid,
+            dem_grid=dem_grid,
+            canopy_height_grid=canopy_height_grid,
+            canopy_bottom_height_grid=canopy_bottom_height_grid,
+            rectangle_vertices=rectangle_vertices,
+            meshsize=meshsize,
+            include_bridges=include_bridges,
+            include_city_furniture=include_city_furniture,
+        )
+    else:
+        # Standard mode: use footprint-based building voxelization
+        print("  Using standard footprint-based voxelization")
+        voxcity_grid = voxelizer.generate_combined(
+            building_height_grid_ori=building_height_grid,
+            building_min_height_grid_ori=building_min_height_grid,
+            building_id_grid_ori=building_id_grid,
+            land_cover_grid_ori=land_cover_grid,
+            dem_grid_ori=dem_grid,
+            tree_grid_ori=canopy_height_grid,
+            canopy_bottom_height_grid_ori=canopy_bottom_height_grid,
+        )
+    _record_time("merge_voxels", t0)
+    
+    # =========================================================================
+    # ASSEMBLE AND SAVE
+    # =========================================================================
+    t0 = _time.perf_counter()
     pipeline = _Pipeline(meshsize=meshsize, rectangle_vertices=rectangle_vertices)
     city = pipeline.assemble_voxcity(
         voxcity_grid=voxcity_grid,
@@ -722,20 +746,37 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         land_cover_grid=land_cover_grid,
         dem_grid=dem_grid,
         canopy_height_top=canopy_height_grid,
-        canopy_height_bottom=locals().get("canopy_bottom_height_grid"),
-        extras={"building_gdf": building_gdf},
+        canopy_height_bottom=canopy_bottom_height_grid,
+        extras={
+            "building_gdf": building_gdf,
+            "lod2_mode": use_lod2 and lod2_voxelizer is not None,
+            "include_bridges": include_bridges if use_lod2 else False,
+            "include_city_furniture": include_city_furniture if use_lod2 else False,
+            "num_lod2_buildings": len(lod2_voxelizer.parser.buildings) if (lod2_voxelizer and lod2_voxelizer.parser) else 0,
+        },
     )
 
-    # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
     _save_flag = kwargs.get("save_voxcity_data", kwargs.get("save_voxctiy_data", True))
     if _save_flag:
-        save_path = (
-            kwargs.get("save_path")
-            or kwargs.get("save_data_path")
-            or f"{output_dir}/voxcity.pkl"
-        )
+        save_path = kwargs.get("save_path") or kwargs.get("save_data_path") or f"{output_dir}/voxcity.pkl"
         save_voxcity(save_path, city)
+    _record_time("assemble_and_save", t0)
+
+    total_elapsed = _time.perf_counter() - total_start
+    _timings['TOTAL'] = total_elapsed
+
+    if use_lod2 and lod2_voxelizer is not None:
+        print("\n" + "=" * 60)
+        print("LOD2 VoxCity generation complete!")
+        print("=" * 60)
+
+    # Print timing summary if requested
+    if show_timing:
+        print("\n" + "=" * 60)
+        print("TIMING SUMMARY")
+        print("=" * 60)
+        for name, elapsed in sorted(_timings.items(), key=lambda x: -x[1]):
+            pct = (elapsed / total_elapsed * 100) if total_elapsed > 0 else 0
+            print(f"  {name}: {elapsed:.2f}s ({pct:.1f}%)")
 
     return city
-
-

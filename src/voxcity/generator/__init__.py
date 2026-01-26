@@ -25,6 +25,9 @@ from .pipeline import VoxCityPipeline
 from .io import save_voxcity, load_voxcity
 from .update import update_voxcity, regenerate_voxels
 
+# CityGML subpackage for LOD2 parsing and voxelization
+from ..geoprocessor import citygml
+
 __all__ = [
     "get_voxcity",
     "auto_select_data_sources",
@@ -42,6 +45,8 @@ __all__ = [
     "load_voxcity",
     "update_voxcity",
     "regenerate_voxels",
+    # CityGML subpackage
+    "citygml",
 ]
 
 

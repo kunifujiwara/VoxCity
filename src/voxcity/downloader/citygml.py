@@ -1,15 +1,16 @@
 """
-CityGML Parser Module for PLATEAU Data
+CityGML Downloader Module for PLATEAU Data
 
-This module provides functionality to parse CityGML files from Japan's PLATEAU dataset,
-extracting building footprints, terrain information, and vegetation data.
-The module handles various LOD (Level of Detail) representations and coordinate systems.
+This module provides download functionality for PLATEAU CityGML data.
 
 Main features:
 - Download and extract PLATEAU data from URLs
-- Parse CityGML files for buildings, terrain, and vegetation
-- Handle coordinate transformations and validations
 - Support for mesh code decoding
+
+Note:
+    CityGML parsing functionality has been moved to voxcity.geoprocessor.citygml.
+    For backward compatibility, `load_buid_dem_veg_from_citygml` is re-exported 
+    from this module but internally uses the new geoprocessor.citygml module.
 """
 
 import requests
@@ -260,57 +261,103 @@ def extract_terrain_info(file_path, namespaces):
         - Processes TIN Relief, breaklines, and mass points
         - Validates all geometries before inclusion
         - Handles coordinate conversion and validation
+        - Uses optimized batch processing for large terrain datasets
     """
     try:
         tree = ET.parse(file_path)
         root = tree.getroot()
 
         terrain_elements = []
-
+        source_file_name = Path(file_path).name
+        
         # Look for Relief features in the CityGML file
         for relief in root.findall('.//dem:ReliefFeature', namespaces):
             relief_id = relief.get('{http://www.opengis.net/gml}id')
 
-            # Extract TIN Relief components
+            # Extract TIN Relief components - OPTIMIZED VERSION
             for tin in relief.findall('.//dem:TINRelief', namespaces):
                 tin_id = tin.get('{http://www.opengis.net/gml}id')
 
                 triangles = tin.findall('.//gml:Triangle', namespaces)
-                for i, triangle in enumerate(triangles):
-                    pos_lists = triangle.findall('.//gml:posList', namespaces)
-                    for pos_list in pos_lists:
-                        try:
-                            coords_text = pos_list.text.strip().split()
-                            coords = []
-                            elevations = []
+                num_triangles = len(triangles)
+                
+                if num_triangles > 10000:
+                    # Use batch processing for large terrain datasets
+                    # Pre-allocate arrays for centroids and elevations
+                    centroids_x = []
+                    centroids_y = []
+                    elevations = []
+                    
+                    for i, triangle in enumerate(triangles):
+                        pos_lists = triangle.findall('.//gml:posList', namespaces)
+                        for pos_list in pos_lists:
+                            try:
+                                coords_text = pos_list.text.strip().split()
+                                if len(coords_text) >= 9:  # 3 vertices * 3 coords each
+                                    # Parse all 3 vertices at once
+                                    x0, y0, z0 = float(coords_text[0]), float(coords_text[1]), float(coords_text[2])
+                                    x1, y1, z1 = float(coords_text[3]), float(coords_text[4]), float(coords_text[5])
+                                    x2, y2, z2 = float(coords_text[6]), float(coords_text[7]), float(coords_text[8])
+                                    
+                                    # Compute centroid directly without Shapely
+                                    cx = (x0 + x1 + x2) / 3.0
+                                    cy = (y0 + y1 + y2) / 3.0
+                                    avg_elev = (z0 + z1 + z2) / 3.0
+                                    
+                                    if not (np.isinf(cx) or np.isinf(cy) or np.isinf(avg_elev)):
+                                        centroids_x.append(cx)
+                                        centroids_y.append(cy)
+                                        elevations.append(avg_elev)
+                            except (ValueError, IndexError):
+                                continue
+                    
+                    # Batch create Point objects at the end (much faster than one-by-one)
+                    for i, (cx, cy, elev) in enumerate(zip(centroids_x, centroids_y, elevations)):
+                        terrain_elements.append({
+                            'relief_id': relief_id,
+                            'tin_id': tin_id,
+                            'triangle_id': f"{tin_id}_tri_{i}",
+                            'elevation': elev,
+                            'geometry': Point(cx, cy),
+                            'polygon': None,  # Skip polygon for speed
+                            'source_file': source_file_name
+                        })
+                else:
+                    # Original code for small datasets
+                    for i, triangle in enumerate(triangles):
+                        pos_lists = triangle.findall('.//gml:posList', namespaces)
+                        for pos_list in pos_lists:
+                            try:
+                                coords_text = pos_list.text.strip().split()
+                                coords = []
+                                tri_elevations = []
 
-                            for j in range(0, len(coords_text), 3):
-                                if j + 2 < len(coords_text):
-                                    x = float(coords_text[j])
-                                    y = float(coords_text[j+1])
-                                    z = float(coords_text[j+2])
+                                for j in range(0, len(coords_text), 3):
+                                    if j + 2 < len(coords_text):
+                                        x = float(coords_text[j])
+                                        y = float(coords_text[j+1])
+                                        z = float(coords_text[j+2])
 
-                                    if not np.isinf(x) and not np.isinf(y) and not np.isinf(z):
-                                        coords.append((x, y))
-                                        elevations.append(z)
+                                        if not np.isinf(x) and not np.isinf(y) and not np.isinf(z):
+                                            coords.append((x, y))
+                                            tri_elevations.append(z)
 
-                            if len(coords) >= 3 and validate_coords(coords):
-                                polygon = Polygon(coords)
-                                if polygon.is_valid:
-                                    centroid = polygon.centroid
-                                    avg_elevation = np.mean(elevations)
-                                    terrain_elements.append({
-                                        'relief_id': relief_id,
-                                        'tin_id': tin_id,
-                                        'triangle_id': f"{tin_id}_tri_{i}",
-                                        'elevation': avg_elevation,
-                                        'geometry': centroid,
-                                        'polygon': polygon,
-                                        'source_file': Path(file_path).name
-                                    })
-                        except (ValueError, IndexError) as e:
-                            print(f"Error processing triangle in relief {relief_id}: {e}")
-                            continue
+                                if len(coords) >= 3 and validate_coords(coords):
+                                    polygon = Polygon(coords)
+                                    if polygon.is_valid:
+                                        centroid = polygon.centroid
+                                        avg_elevation = np.mean(tri_elevations)
+                                        terrain_elements.append({
+                                            'relief_id': relief_id,
+                                            'tin_id': tin_id,
+                                            'triangle_id': f"{tin_id}_tri_{i}",
+                                            'elevation': avg_elevation,
+                                            'geometry': centroid,
+                                            'polygon': polygon,
+                                            'source_file': source_file_name
+                                        })
+                            except (ValueError, IndexError) as e:
+                                continue
 
             # Extract breaklines
             for breakline in relief.findall('.//dem:breaklines', namespaces):
@@ -860,9 +907,15 @@ def load_buid_dem_veg_from_citygml(url=None,
                               rectangle_vertices=None,
                               ssl_verify=True,
                               ca_bundle=None,
-                              timeout=60):
+                              timeout=60,
+                              skip_buildings=False,
+                              skip_terrain=False,
+                              skip_vegetation=False):
     """
     Load and process PLATEAU data from URL or local files.
+    
+    **DEPRECATED**: This function is provided for backward compatibility.
+    New code should use `voxcity.geoprocessor.citygml.load_lod1_citygml()`.
 
     Args:
         url (str, optional): URL to download PLATEAU data from.
@@ -870,6 +923,12 @@ def load_buid_dem_veg_from_citygml(url=None,
         citygml_path (str, optional): Path to local CityGML files.
         rectangle_vertices (list, optional): List of (lon, lat) tuples defining
             a bounding rectangle for filtering tiles.
+        ssl_verify (bool): Whether to verify SSL certificates.
+        ca_bundle (str, optional): Path to CA certificate bundle.
+        timeout (int): Request timeout in seconds.
+        skip_buildings (bool): Skip building file parsing (for LOD2 mode).
+        skip_terrain (bool): Skip terrain/DEM file parsing.
+        skip_vegetation (bool): Skip vegetation file parsing.
 
     Returns:
         tuple: (gdf_buildings, gdf_terrain, gdf_vegetation) GeoDataFrames
@@ -878,8 +937,56 @@ def load_buid_dem_veg_from_citygml(url=None,
     Notes:
         - Can process from URL (download & extract) or local files
         - Optionally filters tiles by geographic extent
-        - Handles coordinate transformations
-        - Creates GeoDataFrames with proper CRS
+        - Internally uses geoprocessor.citygml.load_lod1_citygml()
+    """
+    from ..geoprocessor.citygml import load_lod1_citygml
+    
+    # Handle URL download
+    resolved_path = citygml_path
+    if url:
+        resolved_path, foldername = download_and_extract_zip(
+            url, extract_to=base_dir, ssl_verify=ssl_verify, ca_bundle=ca_bundle, timeout=timeout
+        )
+        # Check for nested folder structure
+        udx_path = os.path.join(resolved_path, 'udx')
+        if not os.path.exists(udx_path):
+            udx_path_2 = os.path.join(resolved_path, foldername, 'udx')
+            if os.path.exists(udx_path_2):
+                resolved_path = os.path.join(resolved_path, foldername)
+    elif citygml_path:
+        resolved_path = citygml_path
+    else:
+        print("Either url or citygml_path must be specified")
+        return None, None, None
+    
+    # Use the new parser
+    return load_lod1_citygml(
+        citygml_path=resolved_path,
+        rectangle_vertices=rectangle_vertices,
+        parse_buildings=not skip_buildings,
+        parse_terrain=not skip_terrain,
+        parse_vegetation=not skip_vegetation,
+    )
+
+
+# =============================================================================
+# Legacy functions - kept for backward compatibility but no longer used internally
+# =============================================================================
+
+def _legacy_load_buid_dem_veg_from_citygml(url=None, 
+                              base_dir='.', 
+                              citygml_path=None,
+                              rectangle_vertices=None,
+                              ssl_verify=True,
+                              ca_bundle=None,
+                              timeout=60,
+                              skip_buildings=False,
+                              skip_terrain=False,
+                              skip_vegetation=False):
+    """
+    Legacy implementation - kept for reference.
+    
+    This is the original implementation before refactoring to geoprocessor.citygml.
     """
     all_buildings = []
     all_terrain = []
@@ -908,18 +1015,30 @@ def load_buid_dem_veg_from_citygml(url=None,
             if os.path.exists(citygml_dir_2):
                 citygml_dir = citygml_dir_2
         
-        # Potential sub-folders
+        # Potential sub-folders - only include folders we need based on skip flags
         bldg_dir = os.path.join(citygml_dir, 'bldg')
         dem_dir = os.path.join(citygml_dir, 'dem')
         veg_dir = os.path.join(citygml_dir, 'veg')
         
+        # Build list of folders to process based on skip flags
+        folders_to_process = []
+        if not skip_buildings and os.path.exists(bldg_dir):
+            folders_to_process.append(bldg_dir)
+        if not skip_terrain and os.path.exists(dem_dir):
+            folders_to_process.append(dem_dir)
+        if not skip_vegetation and os.path.exists(veg_dir):
+            folders_to_process.append(veg_dir)
+        
         citygml_files = []
-        for folder in [bldg_dir, dem_dir, veg_dir, citygml_dir]:
-            if os.path.exists(folder):
-                citygml_files += [
-                    os.path.join(folder, f) for f in os.listdir(folder) 
-                    if f.endswith(('.gml', '.xml'))
-                ]
+        for folder in folders_to_process:
+            citygml_files += [
+                os.path.join(folder, f) for f in os.listdir(folder) 
+                if f.endswith(('.gml', '.xml'))
+            ]
+        
+        if not citygml_files:
+            print("No CityGML files to process (all types skipped or no files found)")
+            return None, None, None
         
         print(f"Found {len(citygml_files)} CityGML files to process")
 
@@ -942,9 +1061,12 @@ def load_buid_dem_veg_from_citygml(url=None,
 
             # Parse the file
             buildings, terrain_elements, vegetation_elements = parse_file(file_path)
-            all_buildings.extend(buildings)
-            all_terrain.extend(terrain_elements)
-            all_vegetation.extend(vegetation_elements)
+            if not skip_buildings:
+                all_buildings.extend(buildings)
+            if not skip_terrain:
+                all_terrain.extend(terrain_elements)
+            if not skip_vegetation:
+                all_vegetation.extend(vegetation_elements)
     
     except Exception as e:
         print(f"Error finding CityGML files: {e}")

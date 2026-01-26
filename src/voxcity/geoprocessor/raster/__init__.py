@@ -33,6 +33,11 @@ from .raster import (
     create_dem_grid_from_geotiff_polygon,
 )
 
+from .terrain import (
+    create_dem_grid_from_gdf_polygon,
+    create_dem_grid_from_gdf_kdtree,
+)
+
 from .buildings import (
     create_building_height_grid_from_gdf_polygon,
     create_building_height_grid_from_open_building_temporal_polygon,
@@ -45,7 +50,6 @@ from .export import (
 
 from .canopy import (
     create_vegetation_height_grid_from_gdf_polygon,
-    create_dem_grid_from_gdf_polygon,
     create_canopy_grids_from_tree_gdf,
 )
 
@@ -76,6 +80,7 @@ __all__ = [
     # vegetation/terrain/trees
     "create_vegetation_height_grid_from_gdf_polygon",
     "create_dem_grid_from_gdf_polygon",
+    "create_dem_grid_from_gdf_kdtree",
     "create_canopy_grids_from_tree_gdf",
 ]
 
