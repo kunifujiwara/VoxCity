@@ -352,8 +352,20 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
         print("Creating Digital Elevation Model (DEM) grid\n ")
         print(f"Data source: {source}")
 
-    if source == "Local file":
-        geotiff_path = kwargs["dem_path"]
+    # Check if source is a local file path (ends with .tif/.tiff or explicit "Local file")
+    is_local_file = (
+        source == "Local file" or 
+        (isinstance(source, str) and (source.lower().endswith('.tif') or source.lower().endswith('.tiff')))
+    )
+    
+    if is_local_file:
+        # Use the source directly if it's a path, otherwise use dem_path kwarg
+        if source == "Local file":
+            geotiff_path = kwargs["dem_path"]
+        else:
+            geotiff_path = source
+        if not os.path.exists(geotiff_path):
+            raise FileNotFoundError(f"Local DEM file not found: {geotiff_path}")
     else:
         try:
             initialize_earth_engine()

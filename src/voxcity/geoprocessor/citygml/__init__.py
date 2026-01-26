@@ -63,12 +63,14 @@ from .parsers import (
     parse_pos_list,
     triangulate_polygon,
     compute_triangle_normal,
+    detect_citygml_format,  # Format detection function
 )
 
 # Voxelizers
 from .voxelizer import (
     CityGMLVoxelizer,
     PLATEAUVoxelizer,
+    GenericCityGMLVoxelizer,
     parse_citygml_subset,
     # CityGML pipeline helpers
     resolve_citygml_path,
@@ -141,8 +143,10 @@ __all__ = [
     # Voxelizers
     "CityGMLVoxelizer",
     "PLATEAUVoxelizer",
+    "GenericCityGMLVoxelizer",
     "parse_citygml_subset",
     # CityGML pipeline helpers
+    "detect_citygml_format",
     "resolve_citygml_path",
     "voxelize_buildings_citygml",
     "voxelize_trees_citygml",

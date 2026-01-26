@@ -4,11 +4,21 @@ CityGML Parsers
 
 Parsers for CityGML LOD2 building data from various sources:
 
-- **CityGMLParser**: Standard European/German CityGML format (ETRS89_UTM)
-- **PLATEAUParser**: Japanese PLATEAU CityGML format (JGD2011/EPSG:6697)
+- **CityGMLParser**: Standard European/German CityGML format (ETRS89_UTM coordinates)
+- **LOD2CityGMLParser**: Unified LOD2 parser supporting both:
+  - **PLATEAU format**: Japanese PLATEAU CityGML (JGD2011/EPSG:6697, lat/lon coordinates)
+  - **Generic format**: European/German CityGML (UTM coordinates, e.g., ETRS89_UTM32)
 
-Both parsers extract triangulated 3D geometry that can be voxelized using
+Both parser types extract triangulated 3D geometry that can be voxelized using
 the companion voxelizer module.
+
+CityGML Format Detection
+------------------------
+The module provides `detect_citygml_format()` to auto-detect the format:
+- **PLATEAU format**: Directory contains `udx/` subfolder with `bldg/`, `dem/`, etc.
+- **Generic format**: Directory contains `.gml` files directly (no `udx/` structure)
+
+For backward compatibility, `PLATEAUParser` is an alias for `LOD2CityGMLParser`.
 """
 
 import os
@@ -58,19 +68,106 @@ from .utils import (
 
 
 # =============================================================================
-# German/European CityGML Parser
+# CityGML Format Detection
 # =============================================================================
 
-class CityGMLParser:
+def detect_citygml_format(citygml_path: str) -> str:
     """
-    Parser for standard CityGML files (German/European format).
+    Auto-detect the CityGML format based on directory structure.
     
-    Extracts LOD2 building geometry from CityGML files. Supports both
-    CityGML 1.0 and 2.0 namespace versions.
+    Detection rules:
+    - **'plateau'**: Directory contains `udx/` subfolder with PLATEAU structure
+      (bldg/, dem/, veg/, brid/, frn/, luse/ subfolders)
+    - **'generic'**: Directory contains `.gml` files directly (European/German format)
+    
+    Args:
+        citygml_path: Path to CityGML directory.
+        
+    Returns:
+        'plateau' or 'generic'
+        
+    Example::
+    
+        fmt = detect_citygml_format('/path/to/citygml_data')
+        if fmt == 'plateau':
+            # Use PLATEAU-specific processing
+            pass
+        else:
+            # Use generic CityGML processing
+            pass
+    """
+    path = Path(citygml_path)
+    
+    if not path.exists():
+        raise ValueError(f"CityGML path does not exist: {citygml_path}")
+    
+    # Check for PLATEAU structure: udx/ folder
+    udx_path = path / 'udx'
+    if udx_path.exists() and udx_path.is_dir():
+        # PLATEAU structure: check for bldg/ or other subfolders
+        plateau_subdirs = ['bldg', 'dem', 'veg', 'brid', 'frn', 'luse']
+        for subdir in plateau_subdirs:
+            if (udx_path / subdir).exists():
+                return 'plateau'
+    
+    # Check if path itself is udx folder
+    if path.name == 'udx':
+        plateau_subdirs = ['bldg', 'dem', 'veg', 'brid', 'frn', 'luse']
+        for subdir in plateau_subdirs:
+            if (path / subdir).exists():
+                return 'plateau'
+    
+    # Check for nested PLATEAU structure: <folder>/<folder>/udx/
+    for item in path.iterdir():
+        if item.is_dir():
+            nested_udx = item / 'udx'
+            if nested_udx.exists():
+                return 'plateau'
+    
+    # Check for generic CityGML: .gml files in directory
+    gml_files = list(path.glob('*.gml'))
+    if gml_files:
+        # Verify it's actually CityGML by checking one file's content
+        try:
+            with open(gml_files[0], 'r', encoding='utf-8') as f:
+                content = f.read(2000)  # Read first 2KB
+                if 'CityModel' in content or 'bldg:Building' in content:
+                    return 'generic'
+        except Exception:
+            pass
+        return 'generic'  # Assume generic if .gml files exist
+    
+    # Default: try to detect based on file content if any XML files exist
+    xml_files = list(path.glob('*.xml'))
+    if xml_files:
+        return 'generic'
+    
+    # If we can't determine, check for any files
+    any_files = list(path.iterdir())
+    if any_files:
+        # Check if any subdirectory looks like PLATEAU
+        for item in any_files:
+            if item.is_dir() and item.name in ['bldg', 'dem', 'veg', 'brid', 'frn', 'luse']:
+                return 'plateau'
+    
+    # Default to generic
+    return 'generic'
+
+
+# =============================================================================
+# Simple CityGML Parser (legacy, for triangle extraction only)
+# =============================================================================
+
+class SimpleCityGMLParser:
+    """
+    Simple parser for standard CityGML files (German/European format).
+    
+    Extracts LOD2 building geometry from CityGML files for rendering.
+    For full CityGML parsing with coordinate transformation, use CityGMLParser.
     
     Example::
     
-        parser = CityGMLParser()
+        parser = SimpleCityGMLParser()
         parser.parse_file("path/to/building.gml")
         # or parse entire directory
         parser.parse_directory("path/to/citygml_folder")
@@ -372,31 +469,50 @@ class CityGMLParser:
 
 
 # =============================================================================
-# Japanese PLATEAU Parser
+# Unified CityGML Parser (supports PLATEAU and Generic formats)
 # =============================================================================
 
-class PLATEAUParser:
+class CityGMLParser:
     """
-    Parser for Japanese PLATEAU CityGML data.
+    Unified parser for CityGML LOD2 data from various formats.
     
-    Supports parsing:
-    - Buildings from udx/bldg/*.gml
-    - DEM terrain from udx/dem/*.gml
-    - Vegetation from udx/veg/*.gml
-    - Bridges from udx/brid/*.gml
-    - City furniture from udx/frn/*.gml
-    - Land use from udx/luse/*.gml
+    Supports two main formats:
     
-    Coordinates are automatically transformed from lat/lon to local meters.
+    - **PLATEAU format** (Japanese): udx/ folder structure with bldg/, dem/, veg/
+      subfolders. Coordinates are in lat/lon (JGD2011/EPSG:6697).
     
-    Example::
+    - **Generic format** (European/German): .gml files directly in folder.
+      Coordinates are typically UTM (e.g., ETRS89_UTM32).
     
-        parser = PLATEAUParser()
-        parser.parse_plateau_directory(
+    The format is auto-detected based on directory structure, or can be
+    explicitly specified.
+    
+    Parsed elements include:
+    - Buildings (LOD2 triangulated geometry)
+    - DEM terrain triangles
+    - Vegetation (PlantCover, SolitaryVegetationObject)
+    - Bridges
+    - City furniture
+    - Land use polygons
+    
+    Coordinates are automatically transformed to local meters for voxelization.
+    
+    Example for PLATEAU data::
+    
+        parser = CityGMLParser()
+        parser.parse_directory(
             "path/to/plateau_data",
             parse_buildings=True,
             parse_dem=True,
             parse_vegetation=True
+        )
+    
+    Example for generic (European) data::
+    
+        parser = CityGMLParser()
+        parser.parse_directory(
+            "path/to/gml_folder",
+            format='generic'  # or auto-detected
         )
         
         # Access parsed data
@@ -404,8 +520,17 @@ class PLATEAUParser:
         terrain = parser.terrain_triangles
     """
     
-    def __init__(self):
-        """Initialize the parser."""
+    def __init__(self, format: str = 'auto'):
+        """
+        Initialize the parser.
+        
+        Args:
+            format: CityGML format - 'auto' (detect), 'plateau', or 'generic'.
+        """
+        self.format = format  # 'auto', 'plateau', or 'generic'
+        self._detected_format = None  # Actual format after detection
+        self._source_crs = None  # Source CRS from srsName attribute
+        
         self.buildings: List[PLATEAUBuilding] = []
         self.terrain_triangles: List[TerrainTriangle] = []
         self.vegetation: List[PLATEAUVegetation] = []
@@ -469,6 +594,64 @@ class PLATEAUParser:
         
         return ns
     
+    def parse_directory(self,
+                        base_path: str,
+                        rectangle_vertices: Optional[List[Tuple[float, float]]] = None,
+                        parse_buildings: bool = True,
+                        parse_dem: bool = True,
+                        parse_vegetation: bool = False,
+                        parse_bridges: bool = False,
+                        parse_city_furniture: bool = False,
+                        parse_land_use: bool = False,
+                        format: Optional[str] = None) -> None:
+        """
+        Parse CityGML files in a directory (auto-detects format).
+        
+        This is the main entry point for parsing CityGML data. It auto-detects
+        whether the data is in PLATEAU format (Japanese) or generic format
+        (European/German) and calls the appropriate parsing method.
+        
+        Args:
+            base_path: Path to CityGML data folder.
+            rectangle_vertices: Optional bounding rectangle [(lon, lat), ...] to filter.
+            parse_buildings: Whether to parse building files.
+            parse_dem: Whether to parse DEM files.
+            parse_vegetation: Whether to parse vegetation files.
+            parse_bridges: Whether to parse bridge files.
+            parse_city_furniture: Whether to parse city furniture files.
+            parse_land_use: Whether to parse land use files.
+            format: Force format - 'plateau', 'generic', or None for auto-detection.
+        """
+        # Determine format
+        if format is not None:
+            self._detected_format = format
+        elif self.format != 'auto':
+            self._detected_format = self.format
+        else:
+            self._detected_format = detect_citygml_format(base_path)
+        
+        print(f"Detected CityGML format: {self._detected_format}")
+        
+        if self._detected_format == 'plateau':
+            self.parse_plateau_directory(
+                base_path=base_path,
+                rectangle_vertices=rectangle_vertices,
+                parse_buildings=parse_buildings,
+                parse_dem=parse_dem,
+                parse_vegetation=parse_vegetation,
+                parse_bridges=parse_bridges,
+                parse_city_furniture=parse_city_furniture,
+                parse_land_use=parse_land_use,
+            )
+        else:
+            self.parse_generic_directory(
+                base_path=base_path,
+                rectangle_vertices=rectangle_vertices,
+                parse_buildings=parse_buildings,
+                parse_dem=parse_dem,
+                parse_vegetation=parse_vegetation,
+            )
+
     def parse_plateau_directory(self,
                                 base_path: str,
                                 rectangle_vertices: Optional[List[Tuple[float, float]]] = None,
@@ -596,6 +779,320 @@ class PLATEAUParser:
         if self.bounds_min is not None:
             print(f"  Bounds (local m): {self.bounds_min} to {self.bounds_max}")
     
+    def parse_generic_directory(self,
+                                base_path: str,
+                                rectangle_vertices: Optional[List[Tuple[float, float]]] = None,
+                                parse_buildings: bool = True,
+                                parse_dem: bool = True,
+                                parse_vegetation: bool = False) -> None:
+        """
+        Parse generic (European/German) CityGML files in a directory.
+        
+        Generic CityGML files use UTM coordinates (e.g., ETRS89_UTM32) instead
+        of lat/lon. This method handles the coordinate transformation.
+        
+        Args:
+            base_path: Path to folder containing .gml files.
+            rectangle_vertices: Optional bounding rectangle [(lon, lat), ...] to filter.
+                Note: For generic format, filtering uses transformed coordinates.
+            parse_buildings: Whether to parse building files.
+            parse_dem: Whether to parse DEM files (not typically present in generic format).
+            parse_vegetation: Whether to parse vegetation files.
+        """
+        print(f"Parsing generic CityGML directory: {base_path}")
+        
+        path = Path(base_path)
+        if not path.exists():
+            raise ValueError(f"Directory not found: {base_path}")
+        
+        # Find all GML files
+        gml_files = sorted(path.glob('*.gml'))
+        print(f"  Found {len(gml_files)} GML files")
+        
+        if not gml_files:
+            print("  Warning: No GML files found in directory")
+            return
+        
+        # Detect CRS from first file
+        self._detect_crs_from_file(gml_files[0])
+        
+        # Set up rectangle filter if provided (need to transform to source CRS)
+        if rectangle_vertices and HAS_SHAPELY:
+            self._setup_generic_filter(rectangle_vertices)
+        
+        # Parse each GML file
+        for gml_file in gml_files:
+            if parse_buildings:
+                self._parse_generic_building_file(str(gml_file))
+        
+        # For generic format, transform from UTM to local meters
+        self._setup_transformer_generic()
+        self._transform_all_coordinates_generic()
+        self._compute_scene_bounds()
+        
+        print(f"\nParsing complete:")
+        print(f"  Buildings: {len(self.buildings)}")
+        print(f"  Terrain triangles: {len(self.terrain_triangles)}")
+        print(f"  Vegetation objects: {len(self.vegetation)}")
+        if self.bounds_min is not None:
+            print(f"  Bounds (local m): {self.bounds_min} to {self.bounds_max}")
+    
+    def _detect_crs_from_file(self, filepath: Path) -> None:
+        """Detect coordinate reference system from GML file's srsName attribute."""
+        try:
+            if HAS_LXML:
+                tree = lxml_ET.parse(str(filepath))
+            else:
+                tree = ET.parse(str(filepath))
+            root = tree.getroot()
+            
+            # Look for srsName in Envelope or first geometry
+            envelope = root.find('.//{http://www.opengis.net/gml}Envelope')
+            if envelope is not None:
+                srs_name = envelope.get('srsName', '')
+                if srs_name:
+                    self._source_crs = srs_name
+                    print(f"  Detected CRS: {srs_name}")
+                    return
+            
+            # Try boundedBy
+            bounded_by = root.find('.//{http://www.opengis.net/gml}boundedBy')
+            if bounded_by is not None:
+                envelope = bounded_by.find('.//{http://www.opengis.net/gml}Envelope')
+                if envelope is not None:
+                    srs_name = envelope.get('srsName', '')
+                    if srs_name:
+                        self._source_crs = srs_name
+                        print(f"  Detected CRS: {srs_name}")
+                        return
+        except Exception as e:
+            print(f"  Warning: Could not detect CRS: {e}")
+    
+    def _setup_generic_filter(self, rectangle_vertices: List[Tuple[float, float]]) -> None:
+        """Set up filter for generic CityGML (converts lon/lat to source CRS)."""
+        if not self._source_crs:
+            return
+        
+        try:
+            import pyproj
+            
+            # Parse UTM zone from srsName
+            # Common formats: "urn:adv:crs:ETRS89_UTM32*DE_DHHN2016_NH" or "EPSG:25832"
+            srs = self._source_crs
+            epsg_code = None
+            
+            if 'EPSG:' in srs:
+                epsg_code = int(srs.split('EPSG:')[1].split('*')[0])
+            elif 'UTM32' in srs:
+                epsg_code = 25832  # ETRS89 / UTM zone 32N
+            elif 'UTM33' in srs:
+                epsg_code = 25833
+            elif 'UTM31' in srs:
+                epsg_code = 25831
+            
+            if epsg_code:
+                proj_wgs84 = pyproj.CRS.from_epsg(4326)
+                proj_source = pyproj.CRS.from_epsg(epsg_code)
+                transformer = pyproj.Transformer.from_crs(proj_wgs84, proj_source, always_xy=True)
+                
+                # Transform rectangle vertices to source CRS
+                transformed_verts = []
+                for lon, lat in rectangle_vertices:
+                    x, y = transformer.transform(lon, lat)
+                    transformed_verts.append((x, y))
+                
+                self._filter_polygon = Polygon(transformed_verts).buffer(10)  # 10m buffer
+                if prep is not None:
+                    self._prepared_filter = prep(self._filter_polygon)
+                self._filter_bounds = self._filter_polygon.bounds
+                print(f"  Set up filter in UTM coordinates")
+        except Exception as e:
+            print(f"  Warning: Could not set up filter: {e}")
+    
+    def _parse_generic_building_file(self, filepath: str) -> None:
+        """Parse a generic CityGML building file (European/German format)."""
+        print(f"    Parsing buildings: {os.path.basename(filepath)}")
+        
+        try:
+            if HAS_LXML:
+                tree = lxml_ET.parse(filepath)
+            else:
+                tree = ET.parse(filepath)
+            root = tree.getroot()
+            
+            # Find buildings with various namespace versions
+            buildings = root.findall('.//{http://www.opengis.net/citygml/building/2.0}Building')
+            if not buildings:
+                buildings = root.findall('.//{http://www.opengis.net/citygml/building/1.0}Building')
+            
+            extracted = 0
+            for building_elem in buildings:
+                building = self._extract_generic_building(building_elem)
+                if building and building.triangles:
+                    # Filter by rectangle if set
+                    if self._filter_bounds is not None and HAS_SHAPELY:
+                        all_verts = []
+                        for tri in building.triangles:
+                            all_verts.extend(tri)
+                        if all_verts:
+                            centroid = np.mean(all_verts, axis=0)
+                            minx, miny, maxx, maxy = self._filter_bounds
+                            if centroid[0] < minx or centroid[0] > maxx or centroid[1] < miny or centroid[1] > maxy:
+                                continue
+                    self.buildings.append(building)
+                    extracted += 1
+            
+            print(f"      Extracted {extracted} buildings")
+            
+        except Exception as e:
+            print(f"      Error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _extract_generic_building(self, building_elem: ET.Element) -> Optional[PLATEAUBuilding]:
+        """Extract building geometry from generic CityGML (UTM coordinates)."""
+        building_id = building_elem.get('{http://www.opengis.net/gml}id', 'unknown')
+        building = PLATEAUBuilding(id=building_id)
+        
+        # Get measured height
+        ns1 = '{http://www.opengis.net/citygml/building/1.0}'
+        ns2 = '{http://www.opengis.net/citygml/building/2.0}'
+        
+        for ns_prefix in [ns1, ns2]:
+            height_elem = building_elem.find(f'.//{ns_prefix}measuredHeight')
+            if height_elem is not None and height_elem.text:
+                try:
+                    building.measured_height = float(height_elem.text)
+                    break
+                except ValueError:
+                    pass
+        
+        # Also try generic stringAttribute for height info
+        for gen_attr in building_elem.iter('{http://www.opengis.net/citygml/generics/1.0}stringAttribute'):
+            name = gen_attr.get('name', '')
+            if name in ['HoeheDach', 'HoeheGrund', 'height']:
+                val_elem = gen_attr.find('{http://www.opengis.net/citygml/generics/1.0}value')
+                if val_elem is not None and val_elem.text:
+                    try:
+                        height = float(val_elem.text)
+                        if name == 'HoeheDach' and building.measured_height is None:
+                            building.roof_height = height
+                        elif name == 'HoeheGrund':
+                            building.ground_height = height
+                    except ValueError:
+                        pass
+        
+        # Extract all posLists - generic format uses (x, y, z) = (easting, northing, elevation)
+        for pos_list in building_elem.iter('{http://www.opengis.net/gml}posList'):
+            if pos_list.text:
+                try:
+                    vertices = self._parse_pos_list_generic(pos_list.text)
+                    if len(vertices) >= 3:
+                        triangles = self._triangulate_polygon(vertices)
+                        building.triangles.extend(triangles)
+                except Exception:
+                    continue
+        
+        return building if building.triangles else None
+    
+    def _parse_pos_list_generic(self, pos_list_text: str) -> np.ndarray:
+        """Parse GML posList for generic format (x, y, z = easting, northing, elevation)."""
+        coords = [float(x) for x in pos_list_text.strip().split()]
+        return np.array(coords).reshape(-1, 3)
+    
+    def _setup_transformer_generic(self) -> None:
+        """Set up coordinate transformer for generic CityGML (UTM to local meters)."""
+        if not self.buildings:
+            return
+        
+        # Collect all vertices to find center
+        all_xs = []
+        all_ys = []
+        
+        for building in self.buildings:
+            for v0, v1, v2 in building.triangles:
+                all_xs.extend([v0[0], v1[0], v2[0]])
+                all_ys.extend([v0[1], v1[1], v2[1]])
+        
+        if all_xs and all_ys:
+            center_x = np.mean(all_xs)
+            center_y = np.mean(all_ys)
+            
+            # For UTM, we just offset to local coordinates (already in meters)
+            self._utm_center_x = center_x
+            self._utm_center_y = center_y
+            
+            self.latlon_bounds_min = np.array([min(all_xs), min(all_ys), 0])
+            self.latlon_bounds_max = np.array([max(all_xs), max(all_ys), 0])
+            
+            print(f"  Data center (UTM): ({center_x:.1f}, {center_y:.1f})")
+            
+            # Convert UTM center to lat/lon for transformer
+            if self._source_crs:
+                try:
+                    import pyproj
+                    srs = self._source_crs
+                    epsg_code = None
+                    
+                    if 'EPSG:' in srs:
+                        epsg_code = int(srs.split('EPSG:')[1].split('*')[0])
+                    elif 'UTM32' in srs:
+                        epsg_code = 25832
+                    elif 'UTM33' in srs:
+                        epsg_code = 25833
+                    elif 'UTM31' in srs:
+                        epsg_code = 25831
+                    
+                    if epsg_code:
+                        proj_source = pyproj.CRS.from_epsg(epsg_code)
+                        proj_wgs84 = pyproj.CRS.from_epsg(4326)
+                        transformer = pyproj.Transformer.from_crs(proj_source, proj_wgs84, always_xy=True)
+                        center_lon, center_lat = transformer.transform(center_x, center_y)
+                        print(f"  Center (WGS84): ({center_lat:.6f}, {center_lon:.6f})")
+                        self.transformer = CoordinateTransformer(center_lat, center_lon)
+                except Exception as e:
+                    print(f"  Warning: Could not convert to WGS84: {e}")
+    
+    def _transform_all_coordinates_generic(self) -> None:
+        """Transform coordinates from UTM to local meters (offset from center)."""
+        if not hasattr(self, '_utm_center_x'):
+            print("  Warning: No center set, coordinates remain in UTM")
+            return
+        
+        print("  Transforming coordinates to local meters...")
+        
+        center_x = self._utm_center_x
+        center_y = self._utm_center_y
+        
+        # Transform buildings (just offset from center, already in meters)
+        for building in self.buildings:
+            new_triangles = []
+            for v0, v1, v2 in building.triangles:
+                new_v0 = np.array([v0[0] - center_x, v0[1] - center_y, v0[2]])
+                new_v1 = np.array([v1[0] - center_x, v1[1] - center_y, v1[2]])
+                new_v2 = np.array([v2[0] - center_x, v2[1] - center_y, v2[2]])
+                new_triangles.append((new_v0, new_v1, new_v2))
+            building.triangles = new_triangles
+            building.compute_bounds()
+        
+        # Transform terrain
+        for tri in self.terrain_triangles:
+            for i in range(len(tri.vertices)):
+                tri.vertices[i][0] -= center_x
+                tri.vertices[i][1] -= center_y
+            tri.centroid = np.mean(tri.vertices, axis=0)
+        
+        # Transform vegetation
+        for veg in self.vegetation:
+            new_triangles = []
+            for v0, v1, v2 in veg.triangles:
+                new_v0 = np.array([v0[0] - center_x, v0[1] - center_y, v0[2]])
+                new_v1 = np.array([v1[0] - center_x, v1[1] - center_y, v1[2]])
+                new_v2 = np.array([v2[0] - center_x, v2[1] - center_y, v2[2]])
+                new_triangles.append((new_v0, new_v1, new_v2))
+            veg.triangles = new_triangles
+            veg.compute_bounds()
+
     def _parse_building_file(self, filepath: str) -> None:
         """Parse a single building GML file with optimized filtering."""
         print(f"    Parsing buildings: {os.path.basename(filepath)}")
@@ -1168,7 +1665,7 @@ def load_citygml(path: str, scale: float = 10.0, add_ground: bool = True
 
 def load_plateau_citygml(base_path: str,
                          rectangle_vertices: Optional[List[Tuple[float, float]]] = None,
-                         **kwargs) -> PLATEAUParser:
+                         **kwargs) -> 'CityGMLParser':
     """
     Convenience function to load PLATEAU CityGML data.
     
@@ -1178,9 +1675,9 @@ def load_plateau_citygml(base_path: str,
         **kwargs: Additional arguments passed to parse_plateau_directory.
         
     Returns:
-        PLATEAUParser instance with parsed data.
+        CityGMLParser instance with parsed data.
     """
-    parser = PLATEAUParser()
+    parser = CityGMLParser()
     parser.parse_plateau_directory(base_path, rectangle_vertices=rectangle_vertices, **kwargs)
     return parser
 
@@ -1917,3 +2414,11 @@ def load_lod1_citygml(citygml_path: str,
         parser.get_terrain_gdf(),
         parser.get_vegetation_gdf()
     )
+
+
+# =============================================================================
+# Backward Compatibility Aliases
+# =============================================================================
+
+# PLATEAUParser is now an alias for CityGMLParser (unified parser)
+PLATEAUParser = CityGMLParser

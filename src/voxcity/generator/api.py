@@ -394,6 +394,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     }
     dem_keys = {
         "flat_dem",
+        "dem_path",
     }
     visualize_keys = {"gridvis", "mapvis"}
     io_keys = {"save_voxcity_data", "save_voxctiy_data", "save_data_path", "save_path"}
@@ -492,9 +493,16 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
     """
-    Generate a VoxCity model from PLATEAU CityGML data.
+    Generate a VoxCity model from CityGML data.
     
-    This function supports two modes for each component:
+    This function supports both:
+    - **PLATEAU format**: Japanese CityGML with udx/ folder structure (lat/lon coordinates)
+    - **Generic format**: European/German CityGML with GML files (UTM coordinates)
+    
+    The format is auto-detected based on directory structure. You can also specify
+    it explicitly using the `citygml_format` parameter.
+    
+    Modes for building voxelization:
     
     1. **Building/Bridge/Furniture voxelization**:
        - LOD1 mode: Footprint-based building heights from GeoDataFrames
@@ -508,6 +516,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     3. **Terrain and land cover voxelization**:
        - CityGML terrain: From DEM triangulated geometry
        - External DEM: From GEE-based sources or local files
+       - Local DTM: From GeoTIFF file (for generic CityGML)
        - Land cover is placed at terrain surface
        - Terrain is flattened under building footprints
     
@@ -516,9 +525,10 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         land_cover_source: Land cover data source
         canopy_height_source: Canopy height data source
         meshsize: Grid resolution in meters
-        url_citygml: URL to download PLATEAU data from
-        citygml_path: Path to local PLATEAU CityGML directory
+        url_citygml: URL to download CityGML data from
+        citygml_path: Path to local CityGML directory
         **kwargs: Additional options including:
+            - citygml_format: str, force format - 'plateau', 'generic', or None for auto
             - lod: str, LOD mode - 'lod1', 'lod2', or None for auto-detection
               (default: None, auto-detects based on available data)
             - include_bridges: bool, include bridge geometry in LOD2 mode (default: True)
@@ -526,17 +536,40 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             - include_lod2_vegetation: bool, use LOD2 vegetation geometry (default: True)
             - dem_source: str, external DEM source (default: None, uses CityGML terrain)
             - dem_path: str, path to local DEM GeoTIFF (required when dem_source='Local file')
+            - dtm_path: str, path to local DTM GeoTIFF (for generic CityGML format)
             - output_dir: Directory for intermediate data (default: "output")
             - ssl_verify, ca_bundle, timeout: Network options for URL downloads
             - timing: bool, if True prints timing information for each step (default: False)
     
     Returns:
         VoxCity object containing the generated 3D city model
+        
+    Example for PLATEAU data::
+    
+        city = get_voxcity_CityGML(
+            rectangle_vertices=[(139.75, 35.68), (139.76, 35.68), (139.76, 35.69), (139.75, 35.69)],
+            land_cover_source='OpenEarthMapJapan',
+            canopy_height_source='Static',
+            meshsize=1.0,
+            citygml_path='path/to/plateau_data'
+        )
+    
+    Example for generic (European) CityGML data::
+    
+        city = get_voxcity_CityGML(
+            rectangle_vertices=[(11.5, 48.0), (11.6, 48.0), (11.6, 48.1), (11.5, 48.1)],
+            land_cover_source='OpenStreetMap',
+            canopy_height_source='Static',
+            meshsize=1.0,
+            citygml_path='path/to/gml_folder',
+            dtm_path='path/to/dtm.tif'  # Optional, auto-detected if named *dgm*.tif/*dtm*.tif
+        )
     """
     import time as _time
     from .pipeline import VoxCityPipeline as _Pipeline
     from .voxelizer import Voxelizer
     from ..geoprocessor.citygml import (
+        detect_citygml_format,
         resolve_citygml_path,
         voxelize_buildings_citygml_optimized,
         voxelize_trees_citygml_optimized,
@@ -554,6 +587,9 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     ssl_verify = kwargs.pop('ssl_verify', kwargs.pop('verify', True))
     ca_bundle = kwargs.pop('ca_bundle', None)
     timeout = kwargs.pop('timeout', 60)
+    
+    # CityGML format: 'plateau', 'generic', or None (auto-detect)
+    citygml_format = kwargs.get('citygml_format', None)
     
     # Handle LOD mode: 'lod1', 'lod2', or None (auto-detect)
     lod_mode = kwargs.pop('lod', None)
@@ -607,6 +643,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         include_bridges=include_bridges,
         include_city_furniture=include_city_furniture,
         grid_vis=grid_vis,
+        citygml_format=citygml_format,
         **kwargs
     )
     _record_time("voxelize_buildings", t0)
@@ -664,6 +701,8 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         building_id_grid=building_id_grid,
         grid_vis=grid_vis,
         output_dir=output_dir,
+        citygml_format=citygml_format,
+        dtm_path=kwargs.get('dtm_path'),
         dem_interpolation=kwargs.get('dem_interpolation', True),
         dem_path=kwargs.get('dem_path'),
     )

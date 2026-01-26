@@ -52,7 +52,7 @@ from .constants import (
     DEFAULT_VOXEL_SIZE, DEFAULT_GROUND_THICKNESS,
 )
 from .utils import parse_pos_list, triangulate_polygon
-from .parsers import PLATEAUParser
+from .parsers import CityGMLParser, PLATEAUParser  # CityGMLParser is the unified class
 
 
 # =============================================================================
@@ -279,10 +279,12 @@ def _voxelize_building_kernel(
                 z_min = intersections[ii]
                 z_max = intersections[ii + 1]
                 
-                k_min = int((z_min - grid_origin[2]) / voxel_size) + ground_level
-                k_max = int((z_max - grid_origin[2]) / voxel_size) + 1 + ground_level
+                # ground_level is the highest ground voxel (k=0..ground_level filled with ground)
+                # Building must start at ground_level + 1 to sit ON TOP of ground, not inside
+                k_min = int((z_min - grid_origin[2]) / voxel_size) + ground_level + 1
+                k_max = int((z_max - grid_origin[2]) / voxel_size) + 1 + ground_level + 1
                 
-                k_min = max(ground_level, k_min)
+                k_min = max(ground_level + 1, k_min)
                 k_max = min(nz, k_max)
                 
                 for k in range(k_min, k_max):
@@ -392,10 +394,11 @@ def _voxelize_with_terrain_kernel(
                 building_min_height = z_min_abs - terrain_z
                 building_max_height = z_max_abs - terrain_z
                 
-                k_min = local_ground_level + int(building_min_height / voxel_size)
-                k_max = local_ground_level + int(building_max_height / voxel_size) + 1
+                # Buildings start at local_ground_level + 1 (ground is 0 to local_ground_level)
+                k_min = local_ground_level + 1 + int(building_min_height / voxel_size)
+                k_max = local_ground_level + 1 + int(building_max_height / voxel_size) + 1
                 
-                k_min = max(local_ground_level, k_min)
+                k_min = max(local_ground_level + 1, k_min)
                 k_max = min(nz, k_max)
                 
                 for k in range(k_min, k_max):
@@ -484,9 +487,11 @@ def _voxelize_surface_kernel(
                 v2_height = v2[2] - terrain_abs
                 
                 # Convert to voxel Z coordinates (above local ground level)
-                v0_voxel_z = grid_origin[2] + (local_ground_level + v0_height / voxel_size) * voxel_size
-                v1_voxel_z = grid_origin[2] + (local_ground_level + v1_height / voxel_size) * voxel_size
-                v2_voxel_z = grid_origin[2] + (local_ground_level + v2_height / voxel_size) * voxel_size
+                # Ground fills k=0 to k=local_ground_level, so building starts at k=local_ground_level+1
+                # When v0_height=0, vertex should be at top of ground = grid_origin[2] + (local_ground_level+1)*voxel_size
+                v0_voxel_z = grid_origin[2] + ((local_ground_level + 1) + v0_height / voxel_size) * voxel_size
+                v1_voxel_z = grid_origin[2] + ((local_ground_level + 1) + v1_height / voxel_size) * voxel_size
+                v2_voxel_z = grid_origin[2] + ((local_ground_level + 1) + v2_height / voxel_size) * voxel_size
                 
                 # Create adjusted vertices for intersection tests
                 v0_adj = np.array([v0[0], v0[1], v0_voxel_z])
@@ -955,8 +960,9 @@ class CityGMLVoxelizer:
                     z_hits.sort()
                     for idx in range(0, len(z_hits) - 1, 2):
                         z_min, z_max = z_hits[idx], z_hits[idx + 1]
-                        k_min = max(ground_level, int((z_min - grid_origin[2]) / self.voxel_size))
-                        k_max = min(nz, int((z_max - grid_origin[2]) / self.voxel_size) + 1)
+                        # ground_level is the highest ground voxel, buildings start at ground_level + 1
+                        k_min = max(ground_level + 1, int((z_min - grid_origin[2]) / self.voxel_size) + ground_level + 1)
+                        k_max = min(nz, int((z_max - grid_origin[2]) / self.voxel_size) + ground_level + 2)
                         voxel_grid[i, j, k_min:k_max] = BUILDING_CODE
     
     def _ray_triangle_z(self, px, py, v0, v1, v2):
@@ -1000,45 +1006,88 @@ class CityGMLVoxelizer:
 
 
 # =============================================================================
-# PLATEAU Voxelizer
+# Unified CityGML Voxelizer (supports PLATEAU and Generic formats)
 # =============================================================================
 
-class PLATEAUVoxelizer:
+class CityGMLVoxelizer:
     """
-    Voxelizer for Japanese PLATEAU CityGML data.
+    Unified voxelizer for CityGML LOD2 data from various formats.
     
-    Handles full PLATEAU data including buildings, DEM, vegetation, bridges,
-    city furniture, and land use.
+    Supports both:
+    - **PLATEAU format** (Japanese): udx/ folder structure
+    - **Generic format** (European/German): .gml files directly
     
-    Example::
+    Handles buildings, DEM terrain, vegetation, bridges, city furniture,
+    and land use elements.
     
-        voxelizer = PLATEAUVoxelizer(voxel_size=1.0)
-        voxelizer.parse_plateau_directory("path/to/plateau_data")
+    Example for PLATEAU data::
+    
+        voxelizer = CityGMLVoxelizer(voxel_size=1.0)
+        voxelizer.parse_directory("path/to/plateau_data")
         voxel_grid = voxelizer.voxelize(
             include_vegetation=True,
             include_bridges=True
         )
+    
+    Example for generic data::
+    
+        voxelizer = CityGMLVoxelizer(voxel_size=1.0)
+        voxelizer.parse_directory("path/to/gml_folder", format='generic')
+        voxel_grid = voxelizer.voxelize()
     """
     
-    def __init__(self, voxel_size: float = DEFAULT_VOXEL_SIZE, voxel_dtype=np.int8):
-        """Initialize the voxelizer."""
+    def __init__(self, voxel_size: float = DEFAULT_VOXEL_SIZE, voxel_dtype=np.int8, format: str = 'auto'):
+        """
+        Initialize the voxelizer.
+        
+        Args:
+            voxel_size: Size of each voxel in meters.
+            voxel_dtype: Data type for voxel array.
+            format: CityGML format - 'auto' (detect), 'plateau', or 'generic'.
+        """
         self.voxel_size = float(voxel_size)
         self.voxel_dtype = voxel_dtype
-        self.parser: Optional[PLATEAUParser] = None
+        self.format = format
+        self.parser: Optional[CityGMLParser] = None
         
         self.bounds_min: Optional[np.ndarray] = None
         self.bounds_max: Optional[np.ndarray] = None
+    
+    def parse_directory(self, base_path: str, format: Optional[str] = None, **kwargs) -> None:
+        """
+        Parse CityGML directory for buildings, DEM, and additional objects.
+        
+        This is the main entry point. It auto-detects the format (PLATEAU or generic)
+        and parses accordingly.
+        
+        Args:
+            base_path: Path to CityGML data folder.
+            format: Override format detection - 'plateau', 'generic', or None for auto.
+            **kwargs: Passed to CityGMLParser.parse_directory().
+        """
+        effective_format = format if format is not None else self.format
+        self.parser = CityGMLParser(format=effective_format)
+        self.parser.parse_directory(base_path, format=format, **kwargs)
+        
+        self.bounds_min = self.parser.bounds_min
+        self.bounds_max = self.parser.bounds_max
     
     def parse_plateau_directory(self, base_path: str, **kwargs) -> None:
         """
         Parse PLATEAU directory for buildings, DEM, and additional objects.
         
+        This is a convenience method for backward compatibility.
+        Prefer using parse_directory() instead.
+        
         Args:
             base_path: Path to PLATEAU data folder.
-            **kwargs: Passed to PLATEAUParser.parse_plateau_directory().
+            **kwargs: Passed to CityGMLParser.parse_plateau_directory().
         """
-        self.parser = PLATEAUParser()
+        self.parser = CityGMLParser(format='plateau')
         self.parser.parse_plateau_directory(base_path, **kwargs)
+        
+        self.bounds_min = self.parser.bounds_min
+        self.bounds_max = self.parser.bounds_max
         
         self.bounds_min = self.parser.bounds_min
         self.bounds_max = self.parser.bounds_max
@@ -1232,6 +1281,16 @@ class PLATEAUVoxelizer:
             else:
                 print("    Warning: No CityGML terrain data available, using bounds_min[2] as reference")
                 citygml_terrain_grid[:] = self.bounds_min[2]
+            
+            # CRITICAL FIX: When external DEM and CityGML use the same vertical datum,
+            # we should use the flattened external DEM as the terrain reference under buildings.
+            # This ensures buildings sit properly on the DEM.
+            # For cells under buildings, use the flattened DEM value instead of CityGML estimate.
+            building_mask = building_id_grid > 0
+            if np.any(building_mask):
+                # Use flattened external DEM under buildings for consistency
+                citygml_terrain_grid[building_mask] = dem_grid_absolute[building_mask]
+                print(f"    Aligned CityGML terrain with external DEM under {np.sum(building_mask)} building cells")
         else:
             # When using CityGML terrain, dem_grid_absolute is already in CityGML coordinates
             citygml_terrain_grid = dem_grid_absolute.copy()
@@ -2183,11 +2242,12 @@ def apply_citygml_post_processing(building_height_grid, building_min_height_grid
 
 def voxelize_buildings_citygml_optimized(citygml_path_resolved, rectangle_vertices, meshsize, 
                                           lod, include_bridges, include_city_furniture,
-                                          grid_vis, building_gdf_cached=None, **kwargs):
+                                          grid_vis, building_gdf_cached=None, citygml_format=None, **kwargs):
     """
     Optimized version of building voxelization that accepts pre-cached building GDF.
     
     This avoids redundant LOD1 parsing when data has already been parsed.
+    Supports both PLATEAU and generic (European/German) CityGML formats.
     
     Args:
         citygml_path_resolved: Path to CityGML directory.
@@ -2198,6 +2258,7 @@ def voxelize_buildings_citygml_optimized(citygml_path_resolved, rectangle_vertic
         include_city_furniture: Whether to include city furniture (LOD2 mode).
         grid_vis: Whether to visualize grids.
         building_gdf_cached: Pre-parsed building GeoDataFrame (optimization).
+        citygml_format: CityGML format - 'plateau', 'generic', or None for auto.
         **kwargs: Additional options.
         
     Returns:
@@ -2206,16 +2267,23 @@ def voxelize_buildings_citygml_optimized(citygml_path_resolved, rectangle_vertic
     import geopandas as gpd
     from ...geoprocessor.raster import create_building_height_grid_from_gdf_polygon
     from ...visualizer.grids import visualize_numerical_grid
+    from .parsers import detect_citygml_format as _detect_format
     
     lod2_voxelizer = None
+    
+    # Auto-detect format if not specified
+    if citygml_format is None:
+        citygml_format = _detect_format(citygml_path_resolved)
+        print(f"  Detected CityGML format: {citygml_format}")
     
     # Determine LOD mode: 'lod1', 'lod2', or None (auto-detect)
     if lod is None:
         # Auto-detect: try LOD2 first, fall back to LOD1 if not available
         print(f"  Mode: Auto-detecting LOD...")
-        lod2_voxelizer = PLATEAUVoxelizer(voxel_size=meshsize)
-        lod2_voxelizer.parse_plateau_directory(
+        lod2_voxelizer = CityGMLVoxelizer(voxel_size=meshsize, format=citygml_format)
+        lod2_voxelizer.parse_directory(
             base_path=citygml_path_resolved,
+            format=citygml_format,
             rectangle_vertices=rectangle_vertices,
             parse_buildings=True,
             parse_dem=False,
@@ -2238,9 +2306,10 @@ def voxelize_buildings_citygml_optimized(citygml_path_resolved, rectangle_vertic
         print(f"  Include bridges: {include_bridges}")
         print(f"  Include city furniture: {include_city_furniture}")
         
-        lod2_voxelizer = PLATEAUVoxelizer(voxel_size=meshsize)
-        lod2_voxelizer.parse_plateau_directory(
+        lod2_voxelizer = CityGMLVoxelizer(voxel_size=meshsize, format=citygml_format)
+        lod2_voxelizer.parse_directory(
             base_path=citygml_path_resolved,
+            format=citygml_format,
             rectangle_vertices=rectangle_vertices,
             parse_buildings=True,
             parse_dem=False,
@@ -2618,28 +2687,26 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
         lod2_voxels = lod2_voxels[:nx, :ny, :]
     
     # Since LOD2 voxelizer now uses the same flattened DEM as the base grid,
-    # the Z levels should align. However, there's a +1 offset difference between
-    # the standard voxelizer (ground_level = dem/voxel + 0.5 + 1) and the LOD2 
-    # voxelizer (local_ground = dem/voxel). We apply a uniform +1 Z offset.
+    # The LOD2 voxelizer kernels now include +1 offset for building placement,
+    # so buildings already start at k=local_ground_level+1 in the LOD2 grid.
+    # No additional z_offset needed since the kernel handles proper positioning.
     print("  Merging LOD2 voxels into base grid...")
     
     # Expand base grid if needed
-    total_nz = max(nz, lod2_voxels.shape[2] + 1)
+    total_nz = max(nz, lod2_voxels.shape[2])
     if total_nz > nz:
         voxcity_grid = np.pad(voxcity_grid, ((0, 0), (0, 0), (0, total_nz - nz)), mode='constant')
     
-    # Merge LOD2 voxels with +1 Z offset to match standard voxelizer ground level formula
+    # Merge LOD2 voxels directly (no z_offset - kernel already handles proper positioning)
     lod2_codes = [BUILDING_CODE, BRIDGE_CODE, CITY_FURNITURE_CODE]
     merged_count = 0
-    z_offset = 1  # Fixed offset: standard uses +1 in ground_level formula
     
     for i in range(nx):
         for j in range(ny):
             for k in range(lod2_voxels.shape[2]):
                 if lod2_voxels[i, j, k] in lod2_codes:
-                    new_k = k + z_offset
-                    if new_k < voxcity_grid.shape[2]:
-                        voxcity_grid[i, j, new_k] = lod2_voxels[i, j, k]
+                    if k < voxcity_grid.shape[2]:
+                        voxcity_grid[i, j, k] = lod2_voxels[i, j, k]
                         merged_count += 1
     
     print(f"  Merged {merged_count:,} LOD2 voxels")
@@ -2650,3 +2717,14 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
         print(f"    City Furniture: {np.sum(voxcity_grid == CITY_FURNITURE_CODE):,}")
     
     return voxcity_grid
+
+
+# =============================================================================
+# Backward Compatibility Aliases
+# =============================================================================
+
+# PLATEAUVoxelizer is now an alias for CityGMLVoxelizer (unified voxelizer)
+PLATEAUVoxelizer = CityGMLVoxelizer
+
+# GenericCityGMLVoxelizer is also an alias (for legacy compatibility)
+GenericCityGMLVoxelizer = CityGMLVoxelizer
