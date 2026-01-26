@@ -15,6 +15,174 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
+# Try to import numba for accelerated mesh generation
+_HAS_NUMBA = False
+try:
+    from numba import njit, prange
+    _HAS_NUMBA = True
+except ImportError:
+    pass
+
+
+# ============================================================================
+# Numba-accelerated voxel mesh generation
+# ============================================================================
+
+if _HAS_NUMBA:
+    @njit(cache=True)
+    def _generate_mesh_data_numba_serial(
+        voxel_mask: np.ndarray,
+        meshsize: float,
+    ):
+        """
+        Generate mesh vertices, faces and normals for visible voxel faces.
+        Serial version that returns arrays directly.
+        """
+        nx, ny, nz = voxel_mask.shape
+        
+        # First pass: count visible faces
+        n_faces = 0
+        for x in range(nx):
+            for y in range(ny):
+                for z in range(nz):
+                    if not voxel_mask[x, y, z]:
+                        continue
+                    if z + 1 >= nz or not voxel_mask[x, y, z + 1]:
+                        n_faces += 1
+                    if z - 1 < 0 or not voxel_mask[x, y, z - 1]:
+                        n_faces += 1
+                    if x + 1 >= nx or not voxel_mask[x + 1, y, z]:
+                        n_faces += 1
+                    if x - 1 < 0 or not voxel_mask[x - 1, y, z]:
+                        n_faces += 1
+                    if y + 1 >= ny or not voxel_mask[x, y + 1, z]:
+                        n_faces += 1
+                    if y - 1 < 0 or not voxel_mask[x, y - 1, z]:
+                        n_faces += 1
+        
+        if n_faces == 0:
+            return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.int32), np.zeros((0, 3), dtype=np.float32)
+        
+        # Allocate output arrays
+        vertices = np.zeros((n_faces * 4, 3), dtype=np.float32)
+        faces = np.zeros((n_faces * 2, 3), dtype=np.int32)
+        normals = np.zeros((n_faces * 2, 3), dtype=np.float32)
+        
+        # Unit cube face definitions (4 vertices per face, as quads)
+        unit_faces = np.array([
+            # Front (+Z)
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]],
+            # Back (-Z)
+            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+            # Right (+X)
+            [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0]],
+            # Left (-X)
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
+            # Top (+Y)
+            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]],
+            # Bottom (-Y)
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]]
+        ], dtype=np.float32)
+        
+        face_normals_ref = np.array([
+            [0.0, 0.0, 1.0],   # Front
+            [0.0, 0.0, -1.0],  # Back
+            [1.0, 0.0, 0.0],   # Right
+            [-1.0, 0.0, 0.0],  # Left
+            [0.0, 1.0, 0.0],   # Top
+            [0.0, -1.0, 0.0]   # Bottom
+        ], dtype=np.float32)
+        
+        # Second pass: generate mesh data
+        face_idx = 0
+        for x in range(nx):
+            for y in range(ny):
+                for z in range(nz):
+                    if not voxel_mask[x, y, z]:
+                        continue
+                    
+                    px = np.float32(x)
+                    py = np.float32(y)
+                    pz = np.float32(z)
+                    
+                    for dir_idx in range(6):
+                        is_visible = False
+                        if dir_idx == 0:  # +Z
+                            is_visible = z + 1 >= nz or not voxel_mask[x, y, z + 1]
+                        elif dir_idx == 1:  # -Z
+                            is_visible = z - 1 < 0 or not voxel_mask[x, y, z - 1]
+                        elif dir_idx == 2:  # +X
+                            is_visible = x + 1 >= nx or not voxel_mask[x + 1, y, z]
+                        elif dir_idx == 3:  # -X
+                            is_visible = x - 1 < 0 or not voxel_mask[x - 1, y, z]
+                        elif dir_idx == 4:  # +Y
+                            is_visible = y + 1 >= ny or not voxel_mask[x, y + 1, z]
+                        elif dir_idx == 5:  # -Y
+                            is_visible = y - 1 < 0 or not voxel_mask[x, y - 1, z]
+                        
+                        if is_visible:
+                            vert_base = face_idx * 4
+                            tri_base = face_idx * 2
+                            
+                            # Generate 4 vertices for this quad face
+                            for v in range(4):
+                                vertices[vert_base + v, 0] = (unit_faces[dir_idx, v, 0] + px) * meshsize
+                                vertices[vert_base + v, 1] = (unit_faces[dir_idx, v, 1] + py) * meshsize
+                                vertices[vert_base + v, 2] = (unit_faces[dir_idx, v, 2] + pz) * meshsize
+                            
+                            # Generate 2 triangles
+                            faces[tri_base, 0] = vert_base
+                            faces[tri_base, 1] = vert_base + 1
+                            faces[tri_base, 2] = vert_base + 2
+                            faces[tri_base + 1, 0] = vert_base
+                            faces[tri_base + 1, 1] = vert_base + 2
+                            faces[tri_base + 1, 2] = vert_base + 3
+                            
+                            # Set normals for both triangles
+                            normals[tri_base, 0] = face_normals_ref[dir_idx, 0]
+                            normals[tri_base, 1] = face_normals_ref[dir_idx, 1]
+                            normals[tri_base, 2] = face_normals_ref[dir_idx, 2]
+                            normals[tri_base + 1, 0] = face_normals_ref[dir_idx, 0]
+                            normals[tri_base + 1, 1] = face_normals_ref[dir_idx, 1]
+                            normals[tri_base + 1, 2] = face_normals_ref[dir_idx, 2]
+                            
+                            face_idx += 1
+        
+        return vertices, faces, normals
+
+
+def create_voxel_mesh_fast(voxel_array, class_id, meshsize=1.0):
+    """
+    Fast voxel mesh generation using numba JIT compilation.
+    
+    This is significantly faster than the original create_voxel_mesh for large arrays.
+    """
+    # Create boolean mask for the target class
+    voxel_mask = (voxel_array == class_id)
+    
+    if not np.any(voxel_mask):
+        return None
+    
+    # Generate mesh data using numba
+    vertices, faces, normals = _generate_mesh_data_numba_serial(voxel_mask, float(meshsize))
+    
+    if len(faces) == 0:
+        return None
+    
+    # Create trimesh
+    mesh = trimesh.Trimesh(
+        vertices=vertices,
+        faces=faces,
+        face_normals=normals,
+        process=False  # Skip processing for speed
+    )
+    
+    # Merge duplicate vertices
+    mesh.merge_vertices()
+    
+    return mesh
+
+
 def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
     Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.
@@ -87,6 +255,11 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     - For buildings (class_id=-3), building IDs are tracked to maintain building identity.
     - The mesh preserves sharp edges, which is important for architectural visualization.
     """
+    # Use fast numba implementation when available and no special features needed
+    if _HAS_NUMBA and building_id_grid is None and mesh_type is None:
+        return create_voxel_mesh_fast(voxel_array, class_id, meshsize)
+    
+    # Fall back to original implementation for special cases
     # Find voxels of the current class
     voxel_coords = np.argwhere(voxel_array == class_id)
 

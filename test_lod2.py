@@ -185,3 +185,25 @@ if not args.no_vis:
     )
 else:
     print("\nVisualization skipped (--no-vis flag).")
+
+# GPU Rendering
+print("\n" + "=" * 60)
+print("GPU Rendering...")
+print("=" * 60)
+
+from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
+
+# Single image rendering
+gpu_output_path = os.path.join(output_dir, "gpu_single_render.png")
+
+img = visualize_voxcity_gpu(
+    city,
+    voxel_color_map="default",
+    width=1920,
+    height=1080,
+    samples_per_pixel=64,
+    output_path=gpu_output_path,
+    show_progress=True,
+)
+
+print(f"\nGPU rendered image saved to: {gpu_output_path}")

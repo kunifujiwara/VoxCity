@@ -22,6 +22,14 @@ from .builder import MeshBuilder
 from .palette import get_voxel_color_map
 from ..geoprocessor.mesh import create_sim_surface_mesh
 
+# Try to import numba for accelerated BVH construction
+_HAS_NUMBA = False
+try:
+    from numba import njit, prange
+    _HAS_NUMBA = True
+except ImportError:
+    pass
+
 
 # ============================================================================
 # Lighting Helper Function
@@ -69,12 +77,234 @@ except ImportError:
 
 
 # ============================================================================
-# Fast BVH Construction (Iterative, Vectorized)
+# Numba-accelerated BVH Construction (much faster for large meshes)
 # ============================================================================
 
-def build_bvh_fast(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+if _HAS_NUMBA:
+    @njit(cache=True)
+    def _compute_morton_codes(centers: np.ndarray, bounds_min: np.ndarray, bounds_max: np.ndarray) -> np.ndarray:
+        """Compute 30-bit Morton codes for triangle centers (10 bits per axis)."""
+        n = len(centers)
+        codes = np.zeros(n, dtype=np.uint32)
+        
+        # Normalize to [0, 1023] range for 10-bit quantization
+        scale = bounds_max - bounds_min
+        for i in range(3):
+            if scale[i] < 1e-10:
+                scale[i] = 1.0
+        
+        for i in range(n):
+            # Normalize center to [0, 1]
+            nx = (centers[i, 0] - bounds_min[0]) / scale[0]
+            ny = (centers[i, 1] - bounds_min[1]) / scale[1]
+            nz = (centers[i, 2] - bounds_min[2]) / scale[2]
+            
+            # Clamp and convert to 10-bit integer
+            ix = min(1023, max(0, int(nx * 1023)))
+            iy = min(1023, max(0, int(ny * 1023)))
+            iz = min(1023, max(0, int(nz * 1023)))
+            
+            # Interleave bits (Morton code)
+            code = np.uint32(0)
+            for b in range(10):
+                code |= ((ix >> b) & 1) << (3 * b)
+                code |= ((iy >> b) & 1) << (3 * b + 1)
+                code |= ((iz >> b) & 1) << (3 * b + 2)
+            codes[i] = code
+        
+        return codes
+
+    @njit(cache=True)
+    def _build_bvh_lbvh(tri_min: np.ndarray, tri_max: np.ndarray, 
+                        sorted_indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, 
+                                                              np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Build BVH using LBVH (Linear BVH) approach with Morton code sorting.
+        Much faster than recursive median split for large meshes.
+        """
+        n_tris = len(sorted_indices)
+        
+        # Maximum nodes in a complete binary tree with n leaves = 2n - 1
+        max_nodes = 2 * n_tris
+        
+        # Allocate output arrays
+        bvh_tri_id = np.full(max_nodes, -1, dtype=np.int32)
+        bvh_left = np.full(max_nodes, -1, dtype=np.int32)
+        bvh_right = np.full(max_nodes, -1, dtype=np.int32)
+        bvh_parent = np.full(max_nodes, -1, dtype=np.int32)
+        bvh_min_out = np.zeros((max_nodes, 3), dtype=np.float32)
+        bvh_max_out = np.zeros((max_nodes, 3), dtype=np.float32)
+        
+        # Stack-based iterative construction
+        # Stack entries: (node_id, start_idx, end_idx, parent_id, is_left)
+        stack = np.zeros((64, 5), dtype=np.int32)  # Max depth ~64 is sufficient
+        stack_ptr = 0
+        
+        # Push root
+        stack[stack_ptr, 0] = 0      # node_id
+        stack[stack_ptr, 1] = 0      # start_idx
+        stack[stack_ptr, 2] = n_tris # end_idx
+        stack[stack_ptr, 3] = -1     # parent_id
+        stack[stack_ptr, 4] = 1      # is_left (doesn't matter for root)
+        stack_ptr += 1
+        
+        next_node = 1
+        
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node_id = stack[stack_ptr, 0]
+            start = stack[stack_ptr, 1]
+            end = stack[stack_ptr, 2]
+            parent_id = stack[stack_ptr, 3]
+            is_left = stack[stack_ptr, 4]
+            
+            count = end - start
+            
+            # Link to parent
+            if parent_id >= 0:
+                bvh_parent[node_id] = parent_id
+                if is_left:
+                    bvh_left[parent_id] = node_id
+                else:
+                    bvh_right[parent_id] = node_id
+            
+            if count == 1:
+                # Leaf node
+                tid = sorted_indices[start]
+                bvh_tri_id[node_id] = tid
+                bvh_min_out[node_id, 0] = tri_min[tid, 0]
+                bvh_min_out[node_id, 1] = tri_min[tid, 1]
+                bvh_min_out[node_id, 2] = tri_min[tid, 2]
+                bvh_max_out[node_id, 0] = tri_max[tid, 0]
+                bvh_max_out[node_id, 1] = tri_max[tid, 1]
+                bvh_max_out[node_id, 2] = tri_max[tid, 2]
+            else:
+                # Internal node - compute bounds
+                min_x = tri_min[sorted_indices[start], 0]
+                min_y = tri_min[sorted_indices[start], 1]
+                min_z = tri_min[sorted_indices[start], 2]
+                max_x = tri_max[sorted_indices[start], 0]
+                max_y = tri_max[sorted_indices[start], 1]
+                max_z = tri_max[sorted_indices[start], 2]
+                
+                for i in range(start + 1, end):
+                    tid = sorted_indices[i]
+                    if tri_min[tid, 0] < min_x: min_x = tri_min[tid, 0]
+                    if tri_min[tid, 1] < min_y: min_y = tri_min[tid, 1]
+                    if tri_min[tid, 2] < min_z: min_z = tri_min[tid, 2]
+                    if tri_max[tid, 0] > max_x: max_x = tri_max[tid, 0]
+                    if tri_max[tid, 1] > max_y: max_y = tri_max[tid, 1]
+                    if tri_max[tid, 2] > max_z: max_z = tri_max[tid, 2]
+                
+                bvh_min_out[node_id, 0] = min_x
+                bvh_min_out[node_id, 1] = min_y
+                bvh_min_out[node_id, 2] = min_z
+                bvh_max_out[node_id, 0] = max_x
+                bvh_max_out[node_id, 1] = max_y
+                bvh_max_out[node_id, 2] = max_z
+                
+                # Split in the middle (already sorted by Morton code)
+                mid = (start + end) // 2
+                
+                left_id = next_node
+                right_id = next_node + 1
+                next_node += 2
+                
+                # Push right child first (so left is processed first)
+                stack[stack_ptr, 0] = right_id
+                stack[stack_ptr, 1] = mid
+                stack[stack_ptr, 2] = end
+                stack[stack_ptr, 3] = node_id
+                stack[stack_ptr, 4] = 0  # is_left = False
+                stack_ptr += 1
+                
+                stack[stack_ptr, 0] = left_id
+                stack[stack_ptr, 1] = start
+                stack[stack_ptr, 2] = mid
+                stack[stack_ptr, 3] = node_id
+                stack[stack_ptr, 4] = 1  # is_left = True
+                stack_ptr += 1
+        
+        return bvh_tri_id[:next_node], bvh_left[:next_node], bvh_right[:next_node], \
+               bvh_parent[:next_node], bvh_min_out[:next_node], bvh_max_out[:next_node]
+
+    @njit(cache=True)
+    def _find_next_node(i: np.int32, bvh_parent: np.ndarray, bvh_left: np.ndarray, 
+                        bvh_right: np.ndarray) -> np.int32:
+        """Find next node in BVH traversal for node i."""
+        current = np.int32(i)
+        for _ in range(64):  # Max depth
+            parent = bvh_parent[current]
+            if parent == -1:
+                return np.int32(-1)
+            if bvh_left[parent] == current and bvh_right[parent] != -1:
+                return bvh_right[parent]
+            current = parent
+        return np.int32(-1)
+
+    @njit(parallel=True, cache=True)
+    def _compute_bvh_next_parallel(bvh_parent: np.ndarray, bvh_left: np.ndarray, 
+                                    bvh_right: np.ndarray) -> np.ndarray:
+        """Compute next traversal pointers in parallel using numba."""
+        n = len(bvh_parent)
+        bvh_next = np.full(n, -1, dtype=np.int32)
+        
+        for i in prange(n):
+            bvh_next[i] = _find_next_node(np.int32(i), bvh_parent, bvh_left, bvh_right)
+        
+        return bvh_next
+
+
+def build_bvh_fast_numba(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Build BVH using fast iterative construction with vectorized operations.
+    Build BVH using numba-accelerated LBVH construction.
+    Uses Morton codes for spatial sorting - much faster than recursive median split.
+    """
+    n_tris = len(indices)
+    if n_tris == 0:
+        return (np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.array([-1], dtype=np.int32),
+                np.zeros((1, 3), dtype=np.float32),
+                np.zeros((1, 3), dtype=np.float32))
+    
+    # Precompute triangle bounds and centers (vectorized NumPy - fast)
+    v0 = vertices[indices[:, 0]].astype(np.float32)
+    v1 = vertices[indices[:, 1]].astype(np.float32)
+    v2 = vertices[indices[:, 2]].astype(np.float32)
+    
+    tri_min = np.minimum(v0, np.minimum(v1, v2))
+    tri_max = np.maximum(v0, np.maximum(v1, v2))
+    tri_centers = ((v0 + v1 + v2) / 3.0).astype(np.float32)
+    
+    # Compute global bounds
+    bounds_min = tri_centers.min(axis=0)
+    bounds_max = tri_centers.max(axis=0)
+    
+    # Compute Morton codes and sort
+    morton_codes = _compute_morton_codes(tri_centers, bounds_min, bounds_max)
+    sorted_indices = np.argsort(morton_codes).astype(np.int32)
+    
+    # Build BVH using LBVH
+    bvh_tri_id, bvh_left, bvh_right, bvh_parent, bvh_min_arr, bvh_max_arr = \
+        _build_bvh_lbvh(tri_min, tri_max, sorted_indices)
+    
+    # Compute next pointers in parallel
+    bvh_next = _compute_bvh_next_parallel(bvh_parent, bvh_left, bvh_right)
+    
+    return bvh_tri_id, bvh_left, bvh_right, bvh_next, bvh_min_arr, bvh_max_arr
+
+
+# ============================================================================
+# Fast BVH Construction (Iterative, Vectorized) - Fallback for no numba
+# ============================================================================
+
+def build_bvh_fast(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build BVH using fast construction.
+    
+    Uses numba-accelerated LBVH when available, falls back to pure Python.
     
     Returns arrays for GPU consumption:
     - bvh_triangle_id: triangle ID at each node (-1 for internal)
@@ -84,6 +314,16 @@ def build_bvh_fast(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarra
     - bvh_min: bounding box min (N, 3)
     - bvh_max: bounding box max (N, 3)
     """
+    # Use numba-accelerated version if available
+    if _HAS_NUMBA:
+        return build_bvh_fast_numba(vertices, indices)
+    
+    # Fallback to pure Python implementation
+    return _build_bvh_pure_python(vertices, indices)
+
+
+def _build_bvh_pure_python(vertices: np.ndarray, indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Pure Python BVH construction (slower, used as fallback)."""
     n_tris = len(indices)
     if n_tris == 0:
         return (np.array([-1], dtype=np.int32),

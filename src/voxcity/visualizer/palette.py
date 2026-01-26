@@ -21,6 +21,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [186, 187, 181],
             -12: [248, 166, 2],
             -11: [81, 59, 56],
+            -5: [102, 89, 76],      # City furniture (urban brown)
+            -4: [69, 72, 97],       # Bridge (road-like dark gray-blue)
             -3: [180, 187, 216],
             -2: [78, 99, 63],
             -1: [188, 143, 143],
@@ -50,6 +52,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [128, 128, 128],
             -12: [255, 128, 0],
             -11: [153, 0, 0],
+            -5: [153, 102, 51],     # City furniture (brown)
+            -4: [25, 25, 25],       # Bridge (road-like dark)
             -3: [0, 255, 255],
             -2: [0, 153, 0],
             -1: [204, 0, 102],
@@ -79,6 +83,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [204, 204, 230],
             -12: [76, 76, 178],
             -11: [25, 25, 127],
+            -5: [89, 89, 140],      # City furniture
+            -4: [61, 61, 137],      # Bridge (road-like)
             -3: [179, 179, 230],
             -2: [51, 51, 153],
             -1: [102, 102, 178],
@@ -108,6 +114,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [226, 226, 226],
             -12: [255, 223, 179],
             -11: [204, 168, 166],
+            -5: [209, 196, 186],    # City furniture (warm beige)
+            -4: [199, 200, 214],    # Bridge (road-like lavender gray)
             -3: [214, 217, 235],
             -2: [190, 207, 180],
             -1: [235, 204, 204],
@@ -137,6 +145,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [61, 61, 61],
             -12: [153, 102, 0],
             -11: [51, 35, 33],
+            -5: [61, 53, 46],       # City furniture (dark brown)
+            -4: [35, 41, 53],       # Bridge (road-like dark)
             -3: [78, 82, 99],
             -2: [46, 58, 37],
             -1: [99, 68, 68],
@@ -166,6 +176,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [180, 180, 180],
             -12: [170, 170, 170],
             -11: [70, 70, 70],
+            -5: [80, 80, 80],       # City furniture
+            -4: [40, 40, 40],       # Bridge (road-like)
             -3: [190, 190, 190],
             -2: [90, 90, 90],
             -1: [160, 160, 160],
@@ -195,6 +207,8 @@ def get_voxel_color_map(color_scheme='default'):
             -13: [236, 236, 236],
             -12: [245, 232, 210],
             -11: [235, 210, 205],
+            -5: [228, 220, 212],   # City furniture (warm white)
+            -4: [215, 215, 220],   # Bridge (road-like gray)
             -3: [225, 230, 240],
             -2: [190, 210, 190],
             -1: [230, 215, 215],
