@@ -4,8 +4,8 @@ CityGML Parsers
 
 Parsers for CityGML LOD2 building data from various sources:
 
-- **CityGMLParser**: Standard European/German CityGML format (ETRS89_UTM coordinates)
-- **LOD2CityGMLParser**: Unified LOD2 parser supporting both:
+- **SimpleCityGMLParser**: Simple parser for Standard European/German CityGML format
+- **CityGMLParser**: Unified LOD2 parser supporting both:
   - **PLATEAU format**: Japanese PLATEAU CityGML (JGD2011/EPSG:6697, lat/lon coordinates)
   - **Generic format**: European/German CityGML (UTM coordinates, e.g., ETRS89_UTM32)
 
@@ -18,7 +18,7 @@ The module provides `detect_citygml_format()` to auto-detect the format:
 - **PLATEAU format**: Directory contains `udx/` subfolder with `bldg/`, `dem/`, etc.
 - **Generic format**: Directory contains `.gml` files directly (no `udx/` structure)
 
-For backward compatibility, `PLATEAUParser` is an alias for `LOD2CityGMLParser`.
+For backward compatibility, `PLATEAUParser` is an alias for `CityGMLParser`.
 """
 
 import os
