@@ -66,21 +66,11 @@ def create_building_height_grid_from_gdf_polygon(
         max(coord[0] for coord in rectangle_vertices)
     ]
     plotting_box = box(extent[2], extent[0], extent[3], extent[1])
-    
-    # Handle None or empty GeoDataFrame
-    if gdf is None or len(gdf) == 0:
-        filtered_gdf = gpd.GeoDataFrame(
-            columns=['building_id', 'height', 'storeys', 'ground_elevation', 'geometry', 'source_file', 'id'],
-            geometry='geometry'
-        )
-        if gdf is not None and gdf.crs is not None:
-            filtered_gdf = filtered_gdf.set_crs(gdf.crs)
-        print("0 of the total 0 building footprint from the base data source did not have height data.")
-    else:
-        filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
-        zero_height_count = len(filtered_gdf[filtered_gdf['height'] == 0]) if 'height' in filtered_gdf.columns else 0
-        nan_height_count = len(filtered_gdf[filtered_gdf['height'].isna()]) if 'height' in filtered_gdf.columns else 0
-        print(f"{zero_height_count+nan_height_count} of the total {len(filtered_gdf)} building footprint from the base data source did not have height data.")
+    filtered_gdf = gdf[gdf.geometry.intersects(plotting_box)].copy()
+
+    zero_height_count = len(filtered_gdf[filtered_gdf['height'] == 0])
+    nan_height_count = len(filtered_gdf[filtered_gdf['height'].isna()])
+    print(f"{zero_height_count+nan_height_count} of the total {len(filtered_gdf)} building footprint from the base data source did not have height data.")
 
     if gdf_comp is not None:
         filtered_gdf_comp = gdf_comp[gdf_comp.geometry.intersects(plotting_box)].copy()
@@ -191,13 +181,11 @@ def create_building_height_grid_from_gdf_polygon(
 
 
 def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, complement_height):
-    # Use (rows, cols) = (grid_size[1], grid_size[0]) = (Y, X) convention to match other VoxCity grids
-    output_shape = (grid_size[1], grid_size[0])
-    building_height_grid = np.zeros(output_shape)
-    building_id_grid = np.zeros(output_shape)
-    building_min_height_grid = np.empty(output_shape, dtype=object)
-    for i in range(output_shape[0]):
-        for j in range(output_shape[1]):
+    building_height_grid = np.zeros(grid_size)
+    building_id_grid = np.zeros(grid_size)
+    building_min_height_grid = np.empty(grid_size, dtype=object)
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
             building_min_height_grid[i, j] = []
 
     building_polygons = []
@@ -231,10 +219,9 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
         idx.insert(i_b, bbox)
 
     INTERSECTION_THRESHOLD = 0.3
-    # Loop over grid in (X, Y) order for cell creation, but store in (Y, X) order
-    for ix in range(grid_size[0]):  # X direction (along u_vec)
-        for iy in range(grid_size[1]):  # Y direction (along v_vec)
-            cell = create_cell_polygon(origin, ix, iy, adjusted_meshsize, u_vec, v_vec)
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
             if not cell.is_valid:
                 cell = cell.buffer(0)
             cell_area = cell.area
@@ -250,8 +237,6 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
 
             found_intersection = False
             all_zero_or_nan = True
-            # Store in (Y, X) = (iy, ix) order to match (rows, cols) convention
-            row_idx, col_idx = iy, ix
             for (k, polygon, bbox, height, min_height, is_inner, feature_id, _) in cell_buildings:
                 try:
                     minx_p, miny_p, maxx_p, maxy_p = bbox
@@ -273,16 +258,16 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
                         if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                             found_intersection = True
                             if not is_inner:
-                                building_min_height_grid[row_idx, col_idx].append([min_height, height])
-                                building_id_grid[row_idx, col_idx] = feature_id
+                                building_min_height_grid[i, j].append([min_height, height])
+                                building_id_grid[i, j] = feature_id
                                 if (height is not None and not np.isnan(height) and height > 0):
                                     all_zero_or_nan = False
-                                    current_height = building_height_grid[row_idx, col_idx]
+                                    current_height = building_height_grid[i, j]
                                     if (current_height == 0 or np.isnan(current_height) or current_height < height):
-                                        building_height_grid[row_idx, col_idx] = height
+                                        building_height_grid[i, j] = height
                             else:
-                                building_min_height_grid[row_idx, col_idx] = [[0, 0]]
-                                building_height_grid[row_idx, col_idx] = 0
+                                building_min_height_grid[i, j] = [[0, 0]]
+                                building_height_grid[i, j] = 0
                                 found_intersection = True
                                 all_zero_or_nan = False
                                 break
@@ -295,24 +280,24 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
                             if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
                                 found_intersection = True
                                 if not is_inner:
-                                    building_min_height_grid[row_idx, col_idx].append([min_height, height])
-                                    building_id_grid[row_idx, col_idx] = feature_id
+                                    building_min_height_grid[i, j].append([min_height, height])
+                                    building_id_grid[i, j] = feature_id
                                     if (height is not None and not np.isnan(height) and height > 0):
                                         all_zero_or_nan = False
-                                        if (building_height_grid[row_idx, col_idx] == 0 or 
-                                            np.isnan(building_height_grid[row_idx, col_idx]) or 
-                                            building_height_grid[row_idx, col_idx] < height):
-                                            building_height_grid[row_idx, col_idx] = height
+                                        if (building_height_grid[i, j] == 0 or 
+                                            np.isnan(building_height_grid[i, j]) or 
+                                            building_height_grid[i, j] < height):
+                                            building_height_grid[i, j] = height
                                 else:
-                                    building_min_height_grid[row_idx, col_idx] = [[0, 0]]
-                                    building_height_grid[row_idx, col_idx] = 0
+                                    building_min_height_grid[i, j] = [[0, 0]]
+                                    building_height_grid[i, j] = 0
                                     found_intersection = True
                                     all_zero_or_nan = False
                                     break
                     except Exception:
                         continue
             if found_intersection and all_zero_or_nan:
-                building_height_grid[row_idx, col_idx] = np.nan
+                building_height_grid[i, j] = np.nan
 
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
@@ -406,16 +391,12 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                     dtype=np.float64
                 )
 
-    # Apply flipud for north-up orientation (matching other VoxCity grids like dem_grid)
-    # Do NOT transpose - keep (rows, cols) = (Y, X) convention
-    building_height_grid = np.flipud(height_raster)
-    building_id_grid = np.flipud(id_raster)
-    min_heights = np.flipud(min_heights_raster)
+    building_height_grid = np.flipud(height_raster).T
+    building_id_grid = np.flipud(id_raster).T
+    min_heights = np.flipud(min_heights_raster).T
 
-    # Initialize min_height_grid with correct shape (grid_size[1], grid_size[0]) = (rows, cols)
-    building_min_height_grid = np.empty((grid_size[1], grid_size[0]), dtype=object)
-    for i in range(grid_size[1]):
-        for j in range(grid_size[0]):
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
             if building_height_grid[i, j] > 0:
                 building_min_height_grid[i, j] = [[min_heights[i, j], building_height_grid[i, j]]]
             else:

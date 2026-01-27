@@ -70,7 +70,7 @@ DATA_SOURCES = {
         "path": r"data\13101_chiyoda-ku_pref_2023_citygml_2_op",
         "areas": PLATEAU_AREAS,
         "default_area": "tokyo_station",
-        "land_cover": "OpenEarthMapJapan",
+        "land_cover": "OpenStreetMap",
         "canopy": "Static",
         "requires_ee": True,
     },
@@ -86,16 +86,20 @@ DATA_SOURCES = {
 }
 
 def create_rectangle(center_lon, center_lat, size_meters):
-    """Create rectangle vertices from center point and size."""
+    """Create rectangle vertices from center point and size.
+    
+    Returns vertices in VoxCity standard order: [SW, NW, NE, SE] (counter-clockwise from SW).
+    """
     # Approximate conversion: 1 degree latitude ≈ 111km, longitude varies with latitude
     lat_offset = (size_meters / 2) / 111000
     lon_offset = (size_meters / 2) / (111000 * np.cos(np.radians(center_lat)))
     
+    # VoxCity standard order: SW, NW, NE, SE (counter-clockwise from SW)
     return [
-        (center_lon - lon_offset, center_lat - lat_offset),  # SW
-        (center_lon + lon_offset, center_lat - lat_offset),  # SE
-        (center_lon + lon_offset, center_lat + lat_offset),  # NE
-        (center_lon - lon_offset, center_lat + lat_offset),  # NW
+        (center_lon - lon_offset, center_lat - lat_offset),  # SW (vertex_0)
+        (center_lon - lon_offset, center_lat + lat_offset),  # NW (vertex_1)
+        (center_lon + lon_offset, center_lat + lat_offset),  # NE (vertex_2)
+        (center_lon + lon_offset, center_lat - lat_offset),  # SE (vertex_3)
     ]
 
 # Parse command line arguments
@@ -132,7 +136,7 @@ if args.list_areas:
 if data_config["requires_ee"]:
     import ee
     ee.Authenticate()
-    ee.Initialize(project='ee-project-250322')
+    ee.Initialize(project='take-gee')
 
 # Determine the test area
 if args.lon and args.lat:
@@ -243,8 +247,11 @@ print("\nTest completed successfully!")
 # Visualize the result interactively
 if not args.no_vis:
     print("\n" + "=" * 60)
-    print("Launching interactive visualization...")
+    print("Launching interactive visualization in browser...")
     print("=" * 60)
+
+    import plotly.io as pio
+    pio.renderers.default = "browser"  # Force display in browser
 
     from voxcity.visualizer import visualize_voxcity
 
@@ -260,27 +267,27 @@ if not args.no_vis:
 else:
     print("\nVisualization skipped (--no-vis flag).")
 
-# GPU Rendering
-if not args.no_gpu:
-    print("\n" + "=" * 60)
-    print("GPU Rendering...")
-    print("=" * 60)
+# # GPU Rendering
+# if not args.no_gpu:
+#     print("\n" + "=" * 60)
+#     print("GPU Rendering...")
+#     print("=" * 60)
 
-    from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
+#     from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
 
-    # Single image rendering
-    gpu_output_path = os.path.join(output_dir, f"gpu_render_{args.data}.png")
+#     # Single image rendering
+#     gpu_output_path = os.path.join(output_dir, f"gpu_render_{args.data}.png")
 
-    img = visualize_voxcity_gpu(
-        city,
-        voxel_color_map="default",
-        width=1920,
-        height=1080,
-        samples_per_pixel=64,
-        output_path=gpu_output_path,
-        show_progress=True,
-    )
+#     img = visualize_voxcity_gpu(
+#         city,
+#         voxel_color_map="default",
+#         width=1920,
+#         height=1080,
+#         samples_per_pixel=64,
+#         output_path=gpu_output_path,
+#         show_progress=True,
+#     )
 
-    print(f"\nGPU rendered image saved to: {gpu_output_path}")
-else:
-    print("\nGPU rendering skipped (--no-gpu flag).")
+#     print(f"\nGPU rendered image saved to: {gpu_output_path}")
+# else:
+#     print("\nGPU rendering skipped (--no-gpu flag).")

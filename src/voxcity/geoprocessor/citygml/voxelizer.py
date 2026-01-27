@@ -2471,6 +2471,13 @@ def voxelize_trees_citygml_optimized(citygml_path_resolved, rectangle_vertices, 
         canopy_height_grid = np.zeros_like(canopy_height_grid_comp)
         canopy_bottom_height_grid = np.zeros_like(canopy_height_grid_comp)
     
+    # Fix potential shape mismatch due to orientation issues
+    if canopy_height_grid.shape != canopy_height_grid_comp.shape and \
+       canopy_height_grid.shape == canopy_height_grid_comp.T.shape:
+        print(f"  Adjusting grid orientation mismatch: {canopy_height_grid_comp.shape} -> {canopy_height_grid.shape}")
+        canopy_height_grid_comp = np.flipud(canopy_height_grid_comp.T)
+        canopy_bottom_height_grid_comp = np.flipud(canopy_bottom_height_grid_comp.T)
+
     # Merge: use external source where CityGML has no data
     mask = (canopy_height_grid == 0) & (canopy_height_grid_comp != 0)
     canopy_height_grid[mask] = canopy_height_grid_comp[mask]
@@ -2524,7 +2531,7 @@ def voxelize_terrain_citygml_optimized(citygml_path_resolved, rectangle_vertices
     else:
         print("  Creating land cover grid...")
         land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
-    
+        
     # Get DEM grid
     if kwargs.get('flat_dem', False):
         print("  Using flat DEM")
@@ -2555,20 +2562,23 @@ def voxelize_terrain_citygml_optimized(citygml_path_resolved, rectangle_vertices
             elif getattr(terrain_gdf.crs, 'to_epsg', lambda: None)() != 4326:
                 terrain_gdf = terrain_gdf.to_crs(epsg=4326)
         
-        # Check if interpolation is requested
-        dem_interpolation = kwargs.get('dem_interpolation', False)
+        dem_grid = None
         
-        if dem_interpolation:
-            # Use scipy.interpolate.griddata for smooth interpolation
-            print("  Using interpolated DEM (scipy.interpolate.griddata)")
-            dem_grid = create_dem_grid_from_gdf_polygon(
-                terrain_gdf, meshsize, rectangle_vertices, 
-                interpolation=True, method='linear'
-            )
-        else:
-            # Use KDTree-based nearest-neighbor for faster processing
-            print("  Using KDTree-based DEM (nearest-neighbor, optimized)")
-            dem_grid = create_dem_grid_from_gdf_kdtree(terrain_gdf, meshsize, rectangle_vertices)
+        if terrain_gdf is not None:
+            # Check if interpolation is requested
+            dem_interpolation = kwargs.get('dem_interpolation', False)
+            
+            if dem_interpolation:
+                # Use scipy.interpolate.griddata for smooth interpolation
+                print("  Using interpolated DEM (scipy.interpolate.griddata)")
+                dem_grid = create_dem_grid_from_gdf_polygon(
+                    terrain_gdf, meshsize, rectangle_vertices, 
+                    interpolation=True, method='linear'
+                )
+            else:
+                # Use KDTree-based nearest-neighbor for faster processing
+                print("  Using KDTree-based DEM (nearest-neighbor, optimized)")
+                dem_grid = create_dem_grid_from_gdf_kdtree(terrain_gdf, meshsize, rectangle_vertices)
         
         if dem_grid is None or (np.all(dem_grid == 0) and terrain_gdf is None):
             print("  Warning: No terrain data found in CityGML. Using flat DEM.")
@@ -2628,6 +2638,56 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
     from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
     
     print("  Using LOD2 triangulated building voxelization")
+    
+    # Align 2D grid shapes (transpose/crop) within CityGML pipeline
+    def _align_to_ref(grid, ref_shape, name):
+        if grid is None:
+            return None
+        if grid.shape == ref_shape:
+            return grid
+        if grid.T.shape == ref_shape:
+            print(f"  Aligning {name} grid shape {grid.shape} -> {ref_shape} via transpose")
+            return grid.T
+        return grid
+    
+    ref_shape = None
+    for candidate in (land_cover_grid, dem_grid, canopy_height_grid, building_height_grid):
+        if candidate is not None:
+            ref_shape = candidate.shape
+            break
+    if ref_shape is None:
+        ref_shape = building_height_grid.shape
+    
+    grids = {
+        "building_height_grid": building_height_grid,
+        "building_min_height_grid": building_min_height_grid,
+        "building_id_grid": building_id_grid,
+        "land_cover_grid": land_cover_grid,
+        "dem_grid": dem_grid,
+        "canopy_height_grid": canopy_height_grid,
+        "canopy_bottom_height_grid": canopy_bottom_height_grid,
+    }
+    
+    for name, grid in grids.items():
+        grids[name] = _align_to_ref(grid, ref_shape, name)
+    
+    shapes = [g.shape for g in grids.values() if g is not None]
+    if shapes:
+        min_r = min(s[0] for s in shapes)
+        min_c = min(s[1] for s in shapes)
+        if any(s != (min_r, min_c) for s in shapes):
+            print(f"  Cropping grids to common shape ({min_r}, {min_c})")
+            for name, grid in grids.items():
+                if grid is not None:
+                    grids[name] = grid[:min_r, :min_c]
+    
+    building_height_grid = grids["building_height_grid"]
+    building_min_height_grid = grids["building_min_height_grid"]
+    building_id_grid = grids["building_id_grid"]
+    land_cover_grid = grids["land_cover_grid"]
+    dem_grid = grids["dem_grid"]
+    canopy_height_grid = grids["canopy_height_grid"]
+    canopy_bottom_height_grid = grids["canopy_bottom_height_grid"]
     
     # Create empty building grids for base voxelization
     empty_building_min_height_grid = np.empty_like(building_min_height_grid, dtype=object)
