@@ -107,7 +107,7 @@ class CoordinateTransformer:
             lat = y / self.meters_per_degree_lat + self.center_lat
             return lon, lat
     
-    def transform_coords(self, coords: np.ndarray) -> np.ndarray:
+    def transform_coords(self, coords: np.ndarray, voxcity_convention: bool = True) -> np.ndarray:
         """
         Transform array of coordinates (N x 3) from lat/lon/z to x/y/z meters.
         
@@ -115,29 +115,50 @@ class CoordinateTransformer:
         
         Args:
             coords: Nx3 array with columns [lat, lon, z].
+            voxcity_convention: If True (default), output uses VoxCity grid convention
+                where x=South (row direction) and y=East (column direction).
+                If False, uses standard ENU where x=East and y=North.
             
         Returns:
             Nx3 array with columns [x, y, z] in local meters.
+            
+        VoxCity Coordinate Convention:
+            VoxCity uses a grid where:
+            - x (row index i): increases from North to South
+            - y (col index j): increases from West to East
+            - z: increases upward
+            
+            This differs from standard ENU (East-North-Up):
+            - ENU: x=East, y=North, z=Up
+            - VoxCity: x=South, y=East, z=Up
+            
+            Conversion: voxcity_x = -enu_north, voxcity_y = enu_east
         """
         result = np.zeros_like(coords)
         
         for i in range(len(coords)):
             lat, lon, z = coords[i]
-            x, y = self.transform(lon, lat)
-            result[i] = [x, y, z]
+            east, north = self.transform(lon, lat)
+            
+            if voxcity_convention:
+                # VoxCity: x=South=-North, y=East
+                result[i] = [-north, east, z]
+            else:
+                # Standard ENU: x=East, y=North
+                result[i] = [east, north, z]
         
         return result
     
     def transform_coords_array(self, lons: np.ndarray, lats: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Transform arrays of lon/lat to x/y.
+        Transform arrays of lon/lat to x/y (standard ENU convention).
         
         Args:
             lons: Array of longitudes.
             lats: Array of latitudes.
             
         Returns:
-            (xs, ys) arrays in local meters.
+            (xs, ys) arrays in local meters (ENU: x=East, y=North).
         """
         if HAS_PYPROJ:
             return self.transformer.transform(lons, lats)
@@ -145,6 +166,20 @@ class CoordinateTransformer:
             xs = (lons - self.center_lon) * self.meters_per_degree_lon
             ys = (lats - self.center_lat) * self.meters_per_degree_lat
             return xs, ys
+    
+    def transform_point_voxcity(self, lon: float, lat: float) -> Tuple[float, float]:
+        """
+        Transform single coordinate from lon/lat to VoxCity grid coordinates.
+        
+        Args:
+            lon: Longitude in degrees.
+            lat: Latitude in degrees.
+            
+        Returns:
+            (x, y) in VoxCity convention where x=South, y=East.
+        """
+        east, north = self.transform(lon, lat)
+        return (-north, east)  # VoxCity: x=South=-North, y=East
 
 
 # =============================================================================

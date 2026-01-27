@@ -1160,13 +1160,14 @@ class CityGMLVoxelizer:
             print(f"  Rectangle distances: {dist_side_1:.1f}m x {dist_side_2:.1f}m -> internal grid {nx} x {ny}")
             
             # Transform rectangle vertices to local coordinates for voxelization
+            # Using VoxCity convention: x=South, y=East
             transformer = self.parser.transformer
             if transformer is None:
                 raise ValueError("Coordinate transformer not initialized")
             
             rect_local = []
             for lon, lat in rectangle_vertices:
-                x, y = transformer.transform(lon, lat)
+                x, y = transformer.transform_point_voxcity(lon, lat)
                 rect_local.append((x, y))
             
             rect_x = [p[0] for p in rect_local]
@@ -1340,10 +1341,8 @@ class CityGMLVoxelizer:
         if include_vegetation:
             print(f"  Vegetation voxels: {np.sum(voxel_grid == TREE_CODE)}")
         
-        # Apply -90 degree clockwise rotation around Z axis to align with VoxCity standard mode
-        # This corrects the coordinate system mismatch between LOD2 CityGML and standard mode
-        voxel_grid = np.rot90(voxel_grid, k=1, axes=(0, 1))
-        print(f"  Applied coordinate rotation (-90° clockwise around Z)")
+        # Grid is already in VoxCity convention (x=South, y=East) due to coordinate
+        # transformation in transform_coords() with voxcity_convention=True
         
         return voxel_grid
     

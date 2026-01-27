@@ -70,7 +70,7 @@ DATA_SOURCES = {
         "path": r"data\13101_chiyoda-ku_pref_2023_citygml_2_op",
         "areas": PLATEAU_AREAS,
         "default_area": "tokyo_station",
-        "land_cover": "OpenStreetMap",
+        "land_cover": "OpenEarthMapJapan",
         "canopy": "Static",
         "requires_ee": True,
     },
@@ -136,7 +136,7 @@ if args.list_areas:
 if data_config["requires_ee"]:
     import ee
     ee.Authenticate()
-    ee.Initialize(project='take-gee')
+    ee.Initialize(project='ee-project-250322')
 
 # Determine the test area
 if args.lon and args.lat:
