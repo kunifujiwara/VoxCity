@@ -1147,17 +1147,15 @@ class CityGMLVoxelizer:
             _, _, dist_side_2 = geod.inv(vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
             
             # VoxCity standard formula: int(dist / meshsize + 0.5)
-            # target_grid_size is (rows, cols) = (Y, X), so swap to (nx, ny) = (X, Y)
+            # target_grid_size is (nx, ny) matching the base grid shape
             if target_grid_size is not None:
-                # target_grid_size is in VoxCity convention (rows, cols) = (Y, X)
-                # We need (nx, ny) = (X, Y) for internal grid creation
-                ny, nx = target_grid_size  # Swap: rows -> ny (Y), cols -> nx (X)
-                print(f"  Using target grid size: {target_grid_size[0]} x {target_grid_size[1]} (rows x cols)")
+                nx, ny = target_grid_size
+                print(f"  Using target grid size: {nx} x {ny}")
             else:
                 nx = max(1, int(dist_side_1 / self.voxel_size + 0.5))
                 ny = max(1, int(dist_side_2 / self.voxel_size + 0.5))
             
-            print(f"  Rectangle distances: {dist_side_1:.1f}m x {dist_side_2:.1f}m -> internal grid {nx} x {ny}")
+            print(f"  Rectangle distances: {dist_side_1:.1f}m x {dist_side_2:.1f}m -> grid {nx} x {ny}")
             
             # Transform rectangle vertices to local coordinates for voxelization
             # Using VoxCity convention: x=South, y=East
@@ -2710,10 +2708,19 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
     print("  Voxelizing LOD2 geometry...")
     nx, ny, nz = voxcity_grid.shape
     
-    # Pass flattened DEM to LOD2 voxelizer for terrain-relative building placement
-    # Only pass building_id_grid if it has actual buildings (not all zeros)
-    # If all zeros, let LOD2 voxelizer create its own from LOD2 geometry
-    dem_grid_for_lod2 = ensure_orientation(dem_grid.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # Determine which DEM to use for LOD2 building height calculations:
+    # Priority 1: LOD2 voxelizer's own CityGML terrain triangles (ensures coordinate consistency)
+    # Priority 2: External DEM grid (fallback when no CityGML terrain available)
+    # Priority 3: Flat terrain from building minimum Z (last resort)
+    has_citygml_terrain = (lod2_voxelizer.parser.terrain_triangles and 
+                           len(lod2_voxelizer.parser.terrain_triangles) > 0)
+    
+    if has_citygml_terrain:
+        print("    Using CityGML terrain triangles for building height reference")
+        dem_grid_for_lod2 = None  # Let LOD2 voxelizer use its internal terrain
+    else:
+        print("    No CityGML terrain triangles, using external DEM grid as fallback")
+        dem_grid_for_lod2 = ensure_orientation(dem_grid.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
     
     # Check if we have LOD1 building footprints to pass
     has_lod1_buildings = np.any(building_id_grid > 0)
@@ -2736,8 +2743,10 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
         external_building_id_grid=building_id_grid_for_lod2,
     )
     
-    # Resize if needed
+    # Check for dimension mismatch (should not happen with correct coordinate handling)
     lod2_nx, lod2_ny, lod2_nz = lod2_voxels.shape
+    
+    # Resize if needed (for small size differences due to rounding)
     if (lod2_nx, lod2_ny) != (nx, ny):
         print(f"  Resizing LOD2 voxels from ({lod2_nx}, {lod2_ny}) to ({nx}, {ny})...")
         from scipy.ndimage import zoom
@@ -2745,10 +2754,9 @@ def merge_lod2_voxels(voxelizer, lod2_voxelizer, building_height_grid, building_
         lod2_voxels = zoom(lod2_voxels.astype(float), zoom_factors, order=0).astype(lod2_voxels.dtype)
         lod2_voxels = lod2_voxels[:nx, :ny, :]
     
-    # Since LOD2 voxelizer now uses the same flattened DEM as the base grid,
-    # The LOD2 voxelizer kernels now include +1 offset for building placement,
-    # so buildings already start at k=local_ground_level+1 in the LOD2 grid.
-    # No additional z_offset needed since the kernel handles proper positioning.
+    # LOD2 voxelizer uses its own CityGML terrain for building height calculations,
+    # ensuring coordinate system consistency. Buildings are placed at correct heights
+    # relative to their terrain reference.
     print("  Merging LOD2 voxels into base grid...")
     
     # Expand base grid if needed
