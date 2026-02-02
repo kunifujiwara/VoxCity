@@ -71,9 +71,12 @@ def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     if polygons_gdf.crs != edges_gdf.crs:
         polygons_gdf = polygons_gdf.to_crs(edges_gdf.crs)
 
+    #Filter NaN first
+    valid_polygons = polygons_gdf[polygons_gdf[value_col].notna()]
+    
     # Project to Web Mercator for accurate length calculations
     edges_3857 = edges_gdf.to_crs(epsg=3857)
-    polys_3857 = polygons_gdf.to_crs(epsg=3857)
+    polys_3857 = valid_polygons.to_crs(epsg=3857)
 
     # Compute intersections between edges and polygons
     intersected = gpd.overlay(edges_3857, polys_3857, how='intersection')
