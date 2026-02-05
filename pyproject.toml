@@ -106,6 +106,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["src/voxcity"]
+# Note: When running coverage with integration tests, use:
+#   pytest tests/ --cov=src/voxcity --ignore=tests/test_integration_pipeline.py
+# This avoids GPU/Taichi resource contention issues with coverage instrumentation
 omit = [
   # Visualization and I/O heavy modules (non-deterministic / GUI)
   "src/voxcity/utils/visualization.py",

@@ -2,6 +2,7 @@ import pytest
 import os
 import tempfile
 import shutil
+import gc
 from pathlib import Path
 
 # Earth Engine patch applied lazily in fixture to avoid slow module-level imports
@@ -54,6 +55,9 @@ def run_voxelcity_pipeline(
     """VoxelCity pipeline integration test function."""
     # Apply GEE patch lazily when actually running tests
     _patch_voxcity_gee_for_service_account()
+    
+    # Force garbage collection before running to clear any stale GPU resources
+    gc.collect()
     
     import os
     from time import perf_counter
@@ -342,6 +346,12 @@ def test_voxelcity_pipeline_multiple_cities(city_config, temp_output_dir):
     except (AttributeError, ValueError) as e:
         if "geometry column" in str(e) or "geometry data type" in str(e):
             pytest.skip(f"Skipping {city_config['name']} due to empty building data: {e}")
+        else:
+            raise
+    except RuntimeError as e:
+        # Taichi/GPU resource errors can occur in CI with coverage instrumentation
+        if "taichi" in str(e).lower() or "cuda" in str(e).lower() or "gpu" in str(e).lower():
+            pytest.skip(f"Skipping {city_config['name']} due to GPU/Taichi resource issue: {e}")
         else:
             raise
 

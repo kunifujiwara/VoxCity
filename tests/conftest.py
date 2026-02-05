@@ -6,6 +6,25 @@ from pathlib import Path
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
+
+def pytest_collection_modifyitems(config, items):
+    """Reorder tests to run integration tests last.
+    
+    This helps avoid Taichi/GPU state interference between tests.
+    Integration tests that use GPU rendering should run after all other tests.
+    """
+    integration_tests = []
+    other_tests = []
+    
+    for item in items:
+        if 'integration' in item.keywords or 'test_integration' in item.nodeid:
+            integration_tests.append(item)
+        else:
+            other_tests.append(item)
+    
+    # Run other tests first, then integration tests
+    items[:] = other_tests + integration_tests
+
 @pytest.fixture
 def sample_rectangle_vertices():
     """Sample rectangle vertices for testing"""
