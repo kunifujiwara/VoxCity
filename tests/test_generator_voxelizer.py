@@ -5,6 +5,7 @@ import numpy as np
 from voxcity.generator.voxelizer import (
     Voxelizer,
     _flatten_building_segments,
+    replace_nan_in_nested,
     GROUND_CODE,
     TREE_CODE,
     BUILDING_CODE,
@@ -209,3 +210,94 @@ class TestVoxelizerGenerateCombined:
         # Land cover values are positive (e.g., 11 for developed space from Urbanwatch)
         # Check that there are positive values at z=0 (land cover layer)
         assert np.any(result[:, :, 0] > 0)
+
+
+class TestReplaceNanInNested:
+    """Tests for replace_nan_in_nested function."""
+
+    def test_non_array_returns_unchanged(self):
+        """Non-array input should be returned unchanged."""
+        result = replace_nan_in_nested("not an array")
+        assert result == "not an array"
+        
+        result = replace_nan_in_nested(42)
+        assert result == 42
+        
+        result = replace_nan_in_nested(None)
+        assert result is None
+
+    def test_empty_cells_stay_empty(self):
+        """Empty list cells should remain empty lists."""
+        arr = np.empty((2, 2), dtype=object)
+        arr[0, 0] = []
+        arr[0, 1] = []
+        arr[1, 0] = []
+        arr[1, 1] = []
+        
+        result = replace_nan_in_nested(arr)
+        
+        assert result[0, 0] == []
+        assert result[0, 1] == []
+
+    def test_none_cells_become_empty(self):
+        """None cells should become empty lists."""
+        arr = np.empty((1, 1), dtype=object)
+        arr[0, 0] = None
+        
+        result = replace_nan_in_nested(arr)
+        
+        assert result[0, 0] == []
+
+    def test_replaces_nan_in_list_segments(self):
+        """NaN values in list segments should be replaced."""
+        arr = np.empty((1, 1), dtype=object)
+        arr[0, 0] = [[np.nan, 10.0], [5.0, np.nan]]
+        
+        result = replace_nan_in_nested(arr, replace_value=99.0)
+        
+        assert result[0, 0][0][0] == 99.0
+        assert result[0, 0][0][1] == 10.0
+        assert result[0, 0][1][0] == 5.0
+        assert result[0, 0][1][1] == 99.0
+
+    def test_replaces_nan_in_numpy_segments(self):
+        """NaN values in numpy array segments should be replaced."""
+        arr = np.empty((1, 1), dtype=object)
+        arr[0, 0] = [np.array([np.nan, 10.0])]
+        
+        result = replace_nan_in_nested(arr, replace_value=7.0)
+        
+        assert result[0, 0][0][0] == 7.0
+        assert result[0, 0][0][1] == 10.0
+
+    def test_preserves_non_nan_values(self):
+        """Non-NaN values should be preserved."""
+        arr = np.empty((1, 1), dtype=object)
+        arr[0, 0] = [[1.0, 2.0], [3.0, 4.0]]
+        
+        result = replace_nan_in_nested(arr, replace_value=99.0)
+        
+        assert result[0, 0][0][0] == 1.0
+        assert result[0, 0][0][1] == 2.0
+        assert result[0, 0][1][0] == 3.0
+        assert result[0, 0][1][1] == 4.0
+
+    def test_default_replace_value(self):
+        """Default replace value should be 10.0."""
+        arr = np.empty((1, 1), dtype=object)
+        arr[0, 0] = [[np.nan]]
+        
+        result = replace_nan_in_nested(arr)
+        
+        assert result[0, 0][0][0] == 10.0
+
+    def test_preserves_shape(self):
+        """Output should have same shape as input."""
+        arr = np.empty((3, 4), dtype=object)
+        for i in range(3):
+            for j in range(4):
+                arr[i, j] = []
+        
+        result = replace_nan_in_nested(arr)
+        
+        assert result.shape == (3, 4)

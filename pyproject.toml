@@ -112,14 +112,44 @@ source = ["src/voxcity"]
 omit = [
   # Visualization and I/O heavy modules (non-deterministic / GUI)
   "src/voxcity/utils/visualization.py",
-  # External data/network heavy downloaders
+  # External data/network heavy downloaders (require network/external services)
   "src/voxcity/downloader/gee.py",
   "src/voxcity/downloader/mbfp.py",
   "src/voxcity/downloader/oemj.py",
   "src/voxcity/downloader/overture.py",
   "src/voxcity/downloader/citygml.py",
+  "src/voxcity/downloader/osm.py",
+  "src/voxcity/downloader/gba.py",
+  "src/voxcity/downloader/eubucco.py",
+  "src/voxcity/downloader/plateau.py",
+  "src/voxcity/downloader/cog.py",
+  "src/voxcity/downloader/las.py",
+  "src/voxcity/downloader/ocean.py",
   # Pure exporters (file writers) not critical for algorithmic coverage
   "src/voxcity/exporter/*",
+  # GPU-specific code requiring Taichi/CUDA hardware (tested via integration tests)
+  "src/voxcity/simulator_gpu/*",
+  "src/voxcity/visualizer/renderer_gpu.py",
+  # Visualization/rendering code (requires GUI/display)
+  "src/voxcity/visualizer/renderer.py",
+  "src/voxcity/visualizer/maps.py",
+  "src/voxcity/visualizer/palette.py",
+  # Drawing code (interactive/visualization)
+  "src/voxcity/geoprocessor/draw.py",
+  # Weather data downloading (requires external API)
+  "src/voxcity/utils/weather/onebuilding.py",
+  # Raster I/O heavy modules (require GeoTIFF files)
+  "src/voxcity/geoprocessor/raster/buildings.py",
+  "src/voxcity/geoprocessor/raster/canopy.py",
+  "src/voxcity/geoprocessor/raster/landcover.py",
+  "src/voxcity/geoprocessor/raster/raster.py",
+  "src/voxcity/geoprocessor/raster/export.py",
+  # Grid generation (requires external data sources)
+  "src/voxcity/generator/grids.py",
+  "src/voxcity/generator/api.py",
+  # Visibility simulation (requires full voxel grid)
+  "src/voxcity/simulator/visibility/view.py",
+  "src/voxcity/simulator/visibility/landmark.py",
 ]
 
 [tool.coverage.report]

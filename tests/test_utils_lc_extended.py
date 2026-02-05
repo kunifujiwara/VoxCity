@@ -8,6 +8,9 @@ from voxcity.utils.lc import (
     get_source_class_descriptions,
     convert_land_cover,
     get_class_priority,
+    get_nearest_class,
+    get_dominant_class,
+    convert_land_cover_array,
 )
 
 
@@ -157,3 +160,102 @@ class TestGetClassPriority:
         priority = get_class_priority("OpenStreetMap")
         # No Data should have lowest priority (highest number in this system)
         assert priority["No Data"] == max(priority.values())
+
+
+class TestGetNearestClass:
+    def test_exact_match(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green", (0, 0, 255): "Blue"}
+        result = get_nearest_class((255, 0, 0), classes)
+        assert result == "Red"
+
+    def test_closest_match(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green", (0, 0, 255): "Blue"}
+        # (250, 5, 5) is closest to red
+        result = get_nearest_class((250, 5, 5), classes)
+        assert result == "Red"
+
+    def test_closer_to_green(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green", (0, 0, 255): "Blue"}
+        # (10, 240, 10) is closest to green
+        result = get_nearest_class((10, 240, 10), classes)
+        assert result == "Green"
+
+    def test_gray_between_colors(self):
+        classes = {(0, 0, 0): "Black", (255, 255, 255): "White"}
+        # Gray is equidistant, but one should be picked
+        result = get_nearest_class((128, 128, 128), classes)
+        assert result in ["Black", "White"]
+
+    def test_land_cover_classes(self):
+        classes = get_land_cover_classes("Urbanwatch")
+        # Exact building color
+        result = get_nearest_class((255, 0, 0), classes)
+        assert result == "Building"
+
+
+class TestGetDominantClass:
+    def test_uniform_cell(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green"}
+        # All red pixels
+        cell = np.array([[[255, 0, 0], [255, 0, 0]],
+                         [[255, 0, 0], [255, 0, 0]]])
+        result = get_dominant_class(cell, classes)
+        assert result == "Red"
+
+    def test_majority_class(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green"}
+        # 3 red, 1 green
+        cell = np.array([[[255, 0, 0], [255, 0, 0]],
+                         [[255, 0, 0], [0, 255, 0]]])
+        result = get_dominant_class(cell, classes)
+        assert result == "Red"
+
+    def test_empty_cell(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green"}
+        cell = np.array([]).reshape(0, 0, 3)
+        result = get_dominant_class(cell, classes)
+        assert result == "No Data"
+
+    def test_single_pixel(self):
+        classes = {(255, 0, 0): "Red", (0, 255, 0): "Green"}
+        cell = np.array([[[0, 255, 0]]])
+        result = get_dominant_class(cell, classes)
+        assert result == "Green"
+
+
+class TestConvertLandCoverArray:
+    def test_basic_conversion(self):
+        classes = {(255, 0, 0): "Building", (0, 255, 0): "Tree", (0, 0, 255): "Water"}
+        arr = np.array([["Building", "Tree"], ["Water", "Building"]])
+        result = convert_land_cover_array(arr, classes)
+        
+        # Building should be index 0, Tree index 1, Water index 2
+        assert result[0, 0] == 0  # Building
+        assert result[0, 1] == 1  # Tree
+        assert result[1, 0] == 2  # Water
+        assert result[1, 1] == 0  # Building
+
+    def test_unknown_class_negative_one(self):
+        classes = {(255, 0, 0): "Building", (0, 255, 0): "Tree"}
+        arr = np.array([["Building", "Unknown"]])
+        result = convert_land_cover_array(arr, classes)
+        
+        assert result[0, 0] == 0  # Building
+        assert result[0, 1] == -1  # Unknown maps to -1
+
+    def test_with_real_land_cover_classes(self):
+        classes = get_land_cover_classes("Urbanwatch")
+        arr = np.array([["Building", "Road"]])
+        result = convert_land_cover_array(arr, classes)
+        
+        # Check that conversion works with real classes
+        assert result.shape == (1, 2)
+        assert result[0, 0] >= 0  # Valid Building index
+        assert result[0, 1] >= 0  # Valid Road index
+
+    def test_output_is_array(self):
+        classes = {(255, 0, 0): "A", (0, 255, 0): "B"}
+        arr = np.array([["A", "B"]])
+        result = convert_land_cover_array(arr, classes)
+        
+        assert isinstance(result, np.ndarray)
