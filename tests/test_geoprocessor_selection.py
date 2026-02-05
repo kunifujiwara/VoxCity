@@ -79,6 +79,65 @@ class TestFilterBuildings:
         
         assert len(result) == 1
 
+    def test_skips_invalid_geometry(self):
+        """Should skip features with invalid geometry."""
+        features = [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [1, 0]]]  # Too few points - invalid
+                },
+                "properties": {"id": 1}
+            },
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]  # Valid
+                },
+                "properties": {"id": 2}
+            }
+        ]
+        
+        plotting_box = box(0, 0, 10, 10)
+        
+        result = filter_buildings(features, plotting_box)
+        
+        # Only valid polygon should be included
+        assert len(result) == 1
+        assert result[0]["properties"]["id"] == 2
+
+    def test_skips_non_polygon_geometry(self):
+        """Should skip features with non-polygon geometry types."""
+        features = [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",  # Not a polygon
+                    "coordinates": [0, 0]
+                },
+                "properties": {"id": 1}
+            },
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]
+                },
+                "properties": {"id": 2}
+            }
+        ]
+        
+        plotting_box = box(0, 0, 10, 10)
+        
+        result = filter_buildings(features, plotting_box)
+        
+        # Point should be skipped - only polygon included
+        # Note: validate_polygon_coordinates returns False for non-polygon
+        assert len(result) == 1
+        assert result[0]["properties"]["id"] == 2
+
 
 class TestFindBuildingContainingPoint:
     """Tests for find_building_containing_point function."""

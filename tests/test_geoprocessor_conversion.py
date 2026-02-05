@@ -2,9 +2,10 @@
 import pytest
 import numpy as np
 import geopandas as gpd
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 
 from voxcity.geoprocessor.conversion import (
+    filter_and_convert_gdf_to_geojson,
     geojson_to_gdf,
     gdf_to_geojson_dicts,
 )
@@ -149,3 +150,124 @@ class TestRoundTrip:
         assert len(result) == 1
         assert result[0]["type"] == "Feature"
         assert result[0]["properties"]["height"] == 15.5
+
+
+class TestFilterAndConvertGdfToGeojson:
+    """Tests for filter_and_convert_gdf_to_geojson function."""
+
+    def test_filters_within_rectangle(self):
+        """Test that only polygons within the rectangle are returned."""
+        # Create GDF with two polygons - one inside, one outside the rectangle
+        inside = Polygon([(0.1, 0.1), (0.2, 0.1), (0.2, 0.2), (0.1, 0.2)])
+        outside = Polygon([(10.0, 10.0), (10.1, 10.0), (10.1, 10.1), (10.0, 10.1)])
+        
+        gdf = gpd.GeoDataFrame(
+            {"height": [10.0, 20.0]},
+            geometry=[inside, outside],
+            crs="EPSG:4326"
+        )
+        
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        assert len(result) == 1
+        assert result[0]["properties"]["height"] == 10.0
+
+    def test_converts_to_geojson_format(self):
+        """Test the output format is correct GeoJSON."""
+        poly = Polygon([(0.1, 0.1), (0.2, 0.1), (0.2, 0.2), (0.1, 0.2)])
+        gdf = gpd.GeoDataFrame(
+            {"height": [15.5]},
+            geometry=[poly],
+            crs="EPSG:4326"
+        )
+        
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        assert len(result) == 1
+        feature = result[0]
+        assert feature["type"] == "Feature"
+        assert "properties" in feature
+        assert "geometry" in feature
+        assert feature["properties"]["height"] == 15.5
+        assert feature["properties"]["confidence"] == -1.0
+        assert feature["properties"]["id"] == 1
+
+    def test_handles_multipolygon(self):
+        """Test that MultiPolygon is split into individual Polygon features."""
+        multi_poly = MultiPolygon([
+            Polygon([(0.1, 0.1), (0.2, 0.1), (0.2, 0.2), (0.1, 0.2)]),
+            Polygon([(0.3, 0.3), (0.4, 0.3), (0.4, 0.4), (0.3, 0.4)])
+        ])
+        
+        gdf = gpd.GeoDataFrame(
+            {"height": [25.0]},
+            geometry=[multi_poly],
+            crs="EPSG:4326"
+        )
+        
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        # MultiPolygon with 2 parts should produce 2 features
+        assert len(result) == 2
+        for feature in result:
+            assert feature["geometry"]["type"] == "Polygon"
+            assert feature["properties"]["height"] == 25.0
+
+    def test_reprojects_to_epsg4326(self):
+        """Test that non-4326 CRS is converted."""
+        # Create polygon in Web Mercator (EPSG:3857)
+        poly_3857 = Polygon([
+            (11132.0, 11132.0),
+            (22264.0, 11132.0),
+            (22264.0, 22264.0),
+            (11132.0, 22264.0)
+        ])
+        gdf = gpd.GeoDataFrame(
+            {"height": [10.0]},
+            geometry=[poly_3857],
+            crs="EPSG:3857"
+        )
+        
+        # Rectangle in WGS84
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        # Should have been reprojected and found
+        assert len(result) == 1
+
+    def test_empty_result_for_no_matches(self):
+        """Test that empty list is returned when no polygons match."""
+        poly = Polygon([(50.0, 50.0), (51.0, 50.0), (51.0, 51.0), (50.0, 51.0)])
+        gdf = gpd.GeoDataFrame(
+            {"height": [10.0]},
+            geometry=[poly],
+            crs="EPSG:4326"
+        )
+        
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        assert result == []
+
+    def test_assigns_sequential_ids(self):
+        """Test that sequential IDs are assigned to features."""
+        polys = [
+            Polygon([(0.1, 0.1), (0.2, 0.1), (0.2, 0.2), (0.1, 0.2)]),
+            Polygon([(0.3, 0.3), (0.4, 0.3), (0.4, 0.4), (0.3, 0.4)]),
+            Polygon([(0.5, 0.5), (0.6, 0.5), (0.6, 0.6), (0.5, 0.6)])
+        ]
+        gdf = gpd.GeoDataFrame(
+            {"height": [10.0, 20.0, 30.0]},
+            geometry=polys,
+            crs="EPSG:4326"
+        )
+        
+        rectangle = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+        result = filter_and_convert_gdf_to_geojson(gdf, rectangle)
+        
+        ids = [f["properties"]["id"] for f in result]
+        assert ids == [1, 2, 3]
+
