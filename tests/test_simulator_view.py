@@ -1,6 +1,6 @@
 import numpy as np
 
-from voxcity.simulator.view import calculate_transmittance
+from voxcity.simulator.common.raytracing import calculate_transmittance
 
 
 def test_calculate_transmittance_monotonic():

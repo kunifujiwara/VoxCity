@@ -4,9 +4,15 @@ import tempfile
 import shutil
 from pathlib import Path
 
-# Apply Earth Engine patch for CI service account authentication
+# Earth Engine patch applied lazily in fixture to avoid slow module-level imports
+_gee_patched = False
+
 def _patch_voxcity_gee_for_service_account():
     """Patch VoxelCity's Earth Engine initialization for service account support."""
+    global _gee_patched
+    if _gee_patched:
+        return
+    _gee_patched = True
     try:
         import ee
         import json
@@ -34,8 +40,6 @@ def _patch_voxcity_gee_for_service_account():
     except ImportError:
         pass
 
-_patch_voxcity_gee_for_service_account()
-
 
 def run_voxelcity_pipeline(
     rectangle_vertices,
@@ -48,6 +52,9 @@ def run_voxelcity_pipeline(
     kwargs
 ):
     """VoxelCity pipeline integration test function."""
+    # Apply GEE patch lazily when actually running tests
+    _patch_voxcity_gee_for_service_account()
+    
     import os
     from time import perf_counter
     import numpy as np
@@ -77,11 +84,11 @@ def run_voxelcity_pipeline(
     t_end("4.1 get_voxcity", t0)
 
     # 4.2 Visualize voxel city
-    from voxcity.utils.visualization import visualize_voxcity_multi_view
+    from voxcity.visualizer import visualize_voxcity
     t0 = t_start()
     # Avoid rendering heavy 3D views in CI to prevent VTK segfaults
-    visualize_voxcity_multi_view(city.voxels.classes, city.voxels.meta.meshsize, show_views=False)
-    t_end("4.2 visualize_voxcity_multi_view", t0)
+    visualize_voxcity(city, mode="interactive", show=False)
+    t_end("4.2 visualize_voxcity", t0)
 
     # 5.1 ENVI-MET INX and EDB
     from voxcity.exporter.envimet import export_inx, generate_edb_file
@@ -390,7 +397,7 @@ def test_pipeline_function_imports():
     """Test that all required modules can be imported."""
     # Test critical imports
     from voxcity.generator import get_voxcity
-    from voxcity.utils.visualization import visualize_voxcity_multi_view
+    from voxcity.visualizer import visualize_voxcity
     from voxcity.exporter.envimet import export_inx, generate_edb_file
     from voxcity.exporter.magicavoxel import export_magicavoxel_vox
     from voxcity.exporter.obj import export_obj

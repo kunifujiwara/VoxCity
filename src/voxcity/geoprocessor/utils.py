@@ -45,7 +45,7 @@ from rtree import index
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError, GeocoderInsufficientPrivileges
 from geopy.extra.rate_limiter import RateLimiter
-import reverse_geocoder as rg
+# reverse_geocoder is imported lazily to avoid slow startup (loads large CSV on import)
 import pycountry
 
 # Timezone handling
@@ -569,6 +569,7 @@ def get_city_country_name_from_rectangle(coordinates):
     except GeocoderInsufficientPrivileges:
         # Fallback to offline reverse_geocoder at coarse resolution
         try:
+            import reverse_geocoder as rg
             results = rg.search((center_lat, center_lon))
             name = results[0].get('name') or ''
             country = get_country_name(center_lon, center_lat) or ''
@@ -812,7 +813,8 @@ def get_country_name(lon, lat):
         >>> country = get_country_name(139.6503, 35.6762)
         >>> print(f"Country: {country}")  # "Japan"
     """
-    # Use reverse geocoder to get country code
+    # Use reverse geocoder to get country code (lazy import to avoid slow startup)
+    import reverse_geocoder as rg
     results = rg.search((lat, lon))
     country_code = results[0]['cc']
     

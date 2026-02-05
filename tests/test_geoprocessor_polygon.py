@@ -1,10 +1,8 @@
 import pytest
 from shapely.geometry import box
 
-from voxcity.geoprocessor.polygon import (
-    filter_buildings,
-    swap_coordinates,
-)
+from voxcity.geoprocessor.selection import filter_buildings
+from voxcity.geoprocessor.io import swap_coordinates
 
 
 @pytest.fixture
