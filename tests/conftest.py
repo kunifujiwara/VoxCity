@@ -3,6 +3,11 @@ import os
 import sys
 from pathlib import Path
 
+# Configure matplotlib to use non-interactive backend BEFORE importing pyplot
+# This prevents visualization windows from appearing during tests
+import matplotlib
+matplotlib.use('Agg')
+
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
@@ -62,3 +67,15 @@ def sample_geojson():
 def gee_authenticated():
     """Check if Google Earth Engine is authenticated and available."""
     return os.getenv('GEE_AUTHENTICATED', 'false').lower() == 'true' 
+
+
+@pytest.fixture(autouse=True)
+def cleanup_matplotlib():
+    """Automatically close all matplotlib figures after each test.
+    
+    This prevents memory warnings about too many open figures and
+    ensures tests don't interfere with each other.
+    """
+    yield
+    import matplotlib.pyplot as plt
+    plt.close('all')
