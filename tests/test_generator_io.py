@@ -6,7 +6,7 @@ import os
 import pickle
 
 from voxcity.models import VoxCity, GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid
-from voxcity.generator.io import save_voxcity, load_voxcity, save_voxcity_data
+from voxcity.generator.io import save_voxcity, load_voxcity
 
 
 @pytest.fixture
@@ -183,74 +183,6 @@ class TestLoadVoxcity:
             # Bounds should be calculated from grid size and meshsize
             expected_bounds = (0.0, 0.0, 10 * 2.0, 10 * 2.0)
             assert loaded.voxels.meta.bounds == expected_bounds
-
-
-class TestSaveVoxcityData:
-    """Tests for save_voxcity_data (legacy function)."""
-    
-    def test_save_voxcity_data_creates_file(self):
-        """Test that save_voxcity_data creates a file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, 'legacy_data.pkl')
-            
-            # Create test data
-            voxcity_grid = np.zeros((10, 10, 5), dtype=np.int8)
-            building_height_grid = np.zeros((10, 10))
-            building_min_height_grid = np.zeros((10, 10))
-            building_id_grid = np.zeros((10, 10), dtype=np.int32)
-            canopy_height_grid = np.zeros((10, 10))
-            land_cover_grid = np.ones((10, 10), dtype=np.int8)
-            dem_grid = np.zeros((10, 10))
-            building_gdf = None
-            meshsize = 1.0
-            rectangle_vertices = [(139.0, 35.0), (139.0, 35.1), (139.1, 35.1), (139.1, 35.0)]
-            
-            save_voxcity_data(
-                output_path, voxcity_grid, building_height_grid, building_min_height_grid,
-                building_id_grid, canopy_height_grid, land_cover_grid, dem_grid,
-                building_gdf, meshsize, rectangle_vertices
-            )
-            
-            assert os.path.exists(output_path)
-    
-    def test_save_voxcity_data_contains_all_fields(self):
-        """Test that save_voxcity_data saves all required fields."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, 'legacy_data.pkl')
-            
-            voxcity_grid = np.zeros((10, 10, 5), dtype=np.int8)
-            building_height_grid = np.ones((10, 10)) * 15.0
-            building_min_height_grid = np.zeros((10, 10))
-            building_id_grid = np.arange(100, dtype=np.int32).reshape(10, 10)
-            canopy_height_grid = np.ones((10, 10)) * 5.0
-            land_cover_grid = np.ones((10, 10), dtype=np.int8)
-            dem_grid = np.ones((10, 10)) * 10.0
-            building_gdf = None
-            meshsize = 2.5
-            rectangle_vertices = [(139.0, 35.0), (139.0, 35.1), (139.1, 35.1), (139.1, 35.0)]
-            
-            save_voxcity_data(
-                output_path, voxcity_grid, building_height_grid, building_min_height_grid,
-                building_id_grid, canopy_height_grid, land_cover_grid, dem_grid,
-                building_gdf, meshsize, rectangle_vertices
-            )
-            
-            with open(output_path, 'rb') as f:
-                data = pickle.load(f)
-            
-            assert 'voxcity_grid' in data
-            assert 'building_height_grid' in data
-            assert 'building_min_height_grid' in data
-            assert 'building_id_grid' in data
-            assert 'canopy_height_grid' in data
-            assert 'land_cover_grid' in data
-            assert 'dem_grid' in data
-            assert 'building_gdf' in data
-            assert 'meshsize' in data
-            assert 'rectangle_vertices' in data
-            
-            np.testing.assert_array_equal(data['voxcity_grid'], voxcity_grid)
-            assert data['meshsize'] == 2.5
 
 
 class TestRoundTrip:

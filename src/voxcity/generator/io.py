@@ -1,30 +1,3 @@
-def save_voxcity_data(output_path, voxcity_grid, building_height_grid, building_min_height_grid, 
-                     building_id_grid, canopy_height_grid, land_cover_grid, dem_grid, 
-                     building_gdf, meshsize, rectangle_vertices):
-    import pickle
-    import os
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    data_dict = {
-        'voxcity_grid': voxcity_grid,
-        'building_height_grid': building_height_grid,
-        'building_min_height_grid': building_min_height_grid,
-        'building_id_grid': building_id_grid,
-        'canopy_height_grid': canopy_height_grid,
-        'land_cover_grid': land_cover_grid,
-        'dem_grid': dem_grid,
-        'building_gdf': building_gdf,
-        'meshsize': meshsize,
-        'rectangle_vertices': rectangle_vertices
-    }
-
-    with open(output_path, 'wb') as f:
-        pickle.dump(data_dict, f)
-
-    print(f"Voxcity data saved to {output_path}")
-
-
 def load_voxcity(input_path):
     import pickle
     import numpy as np

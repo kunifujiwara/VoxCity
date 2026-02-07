@@ -333,6 +333,11 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
     canopy_height_grid = create_height_grid_from_geotiff_polygon(geotiff_path, meshsize, rectangle_vertices)
 
+    # The ETH dataset stores canopy height as uint8 and uses 255 as its
+    # nodata / "no canopy" sentinel.  Replace with 0 so downstream code
+    # treats those cells as bare ground instead of 255-metre-tall trees.
+    canopy_height_grid = np.where(canopy_height_grid >= 255, 0, canopy_height_grid)
+
     trunk_height_ratio = kwargs.get("trunk_height_ratio")
     if trunk_height_ratio is None:
         trunk_height_ratio = 11.76 / 19.98

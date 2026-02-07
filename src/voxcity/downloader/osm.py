@@ -785,85 +785,6 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     gdf = gpd.GeoDataFrame(properties_list, geometry=geometries, crs="EPSG:4326")
     return gdf
 
-def convert_feature(feature):
-    """Convert a GeoJSON feature to a standardized format with height information.
-    
-    This function:
-    1. Handles both Polygon and MultiPolygon geometries
-    2. Extracts and validates height information
-    3. Ensures coordinate order consistency (lon, lat)
-    4. Adds confidence scores for height estimates
-    
-    Args:
-        feature (dict): Input GeoJSON feature with geometry and properties
-        
-    Returns:
-        dict: Converted feature with:
-            - Standardized geometry (always Polygon)
-            - Height information in properties
-            - Confidence score for height values
-            Or None if the feature is invalid or not a polygon
-    """
-    new_feature = {}
-    new_feature['type'] = 'Feature'
-    new_feature['properties'] = {}
-    new_feature['geometry'] = {}
-
-    # Convert geometry
-    geometry = feature['geometry']
-    geom_type = geometry['type']
-
-    # Convert MultiPolygon to Polygon if necessary
-    if geom_type == 'MultiPolygon':
-        # Flatten MultiPolygon to Polygon by taking the first polygon
-        # Alternatively, you can merge all polygons into one if needed
-        coordinates = geometry['coordinates'][0]  # Take the first polygon
-        if len(coordinates[0]) < 3:
-            return None
-    elif geom_type == 'Polygon':
-        coordinates = geometry['coordinates']
-        if len(coordinates[0]) < 3:
-            return None
-    else:
-        # Skip features that are not polygons
-        return None
-
-    # Reformat coordinates: convert lists to tuples
-    new_coordinates = []
-    for ring in coordinates:
-        new_ring = []
-        for coord in ring:
-            # Swap the order if needed (assuming original is [lat, lon])
-            lat, lon = coord
-            new_ring.append((lon, lat))  # Changed to (lon, lat)
-        new_coordinates.append(new_ring)
-
-    new_feature['geometry']['type'] = 'Polygon'
-    new_feature['geometry']['coordinates'] = new_coordinates
-
-    # Process properties
-    properties = feature.get('properties', {})
-    height = properties.get('height')
-
-    # If height is not available, estimate it based on building levels
-    if not height:
-        levels = properties.get('building:levels')
-        if levels:
-            if type(levels)==str:
-                # If levels is a string (invalid format), use default height
-                height = 10.0  # Default height in meters
-            else:
-                # Calculate height based on number of levels
-                height = float(levels) * 3.0  # Assume 3m per level
-        else:
-            # No level information available, use default height
-            height = 10.0  # Default height in meters
-
-    new_feature['properties']['height'] = float(height)
-    new_feature['properties']['confidence'] = -1.0  # Confidence score for height estimate
-
-    return new_feature
-
 
 # Classification mapping defines the land cover/use classes and their associated tags
 # The numbers (0-13) represent class codes used in the system
@@ -1031,33 +952,6 @@ def get_classification(tags):
     if 'area:highway' in tags:
         return 11, 'Road'
     return None, None
-
-def swap_coordinates(geom_mapping):
-    """Swap coordinate order in a GeoJSON geometry object.
-    
-    This function:
-    1. Handles nested coordinate structures (Polygons, MultiPolygons)
-    2. Preserves the original coordinate order if already correct
-    3. Works recursively for complex geometries
-    
-    Args:
-        geom_mapping (dict): GeoJSON geometry object with coordinates
-        
-    Returns:
-        dict: Geometry with coordinates in the correct order (lon, lat)
-    """
-    coords = geom_mapping['coordinates']
-
-    def swap_coords(coord_list):
-        # Recursively swap coordinates for nested lists
-        if isinstance(coord_list[0], (list, tuple)):
-            return [swap_coords(c) for c in coord_list]
-        else:
-            # Keep original order since already (lon, lat)
-            return coord_list
-
-    geom_mapping['coordinates'] = swap_coords(coords)
-    return geom_mapping
 
 def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     """Load and classify land cover data from OpenStreetMap.

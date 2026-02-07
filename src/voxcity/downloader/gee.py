@@ -103,14 +103,16 @@ def get_ee_image(collection_name, roi):
         roi: Earth Engine geometry to clip to
         
     Returns:
-        ee.Image: Image clipped to ROI
+        ee.Image: Image clipped to ROI with masked pixels unmasked to 0
         
     Note:
         Unlike get_ee_image_collection(), this function works with single image assets
         rather than image collections. It's useful for static datasets like DEMs.
+        Masked pixels are replaced with 0 via unmask() so that downstream consumers
+        receive numeric values instead of dataset-specific nodata sentinels (e.g. 255).
     """
     collection = ee.Image(collection_name)
-    return collection.clip(roi)
+    return collection.clip(roi).unmask()
 
 def save_geotiff(image, filename, resolution=1, scale=None, region=None, crs=None):
     """Save an Earth Engine image as a GeoTIFF file.

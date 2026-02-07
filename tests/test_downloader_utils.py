@@ -30,23 +30,3 @@ def test_download_file_failure(tmp_path, capsys):
         assert "Failed to download" in captured.out
         assert "404" in captured.out
 
-
-@patch('gdown.download')
-def test_download_file_google_drive(mock_gdown, tmp_path):
-    mock_gdown.return_value = True
-    result = utils.download_file_google_drive("test_id", str(tmp_path / "test.txt"))
-    assert result is True
-    mock_gdown.assert_called_once()
-
-
-@patch('gdown.download')
-def test_download_file_google_drive_failure(mock_gdown, tmp_path, capsys):
-    """Test download_file_google_drive with exception."""
-    mock_gdown.side_effect = Exception("Network error")
-    result = utils.download_file_google_drive("test_id", str(tmp_path / "test.txt"))
-    assert result is False
-    # Should print error message
-    captured = capsys.readouterr()
-    assert "Error downloading" in captured.out
-    assert "Network error" in captured.out
-

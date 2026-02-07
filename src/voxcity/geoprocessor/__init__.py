@@ -19,11 +19,8 @@ from .conversion import (
     gdf_to_geojson_dicts,
 )
 from .io import (
-    get_geojson_from_gpkg,
     get_gdf_from_gpkg,
     load_gdf_from_multiple_gz,
-    swap_coordinates,
-    save_geojson,
 )
 from .heights import (
     extract_building_heights_from_gdf,
@@ -59,11 +56,8 @@ __all__ = [
     "filter_and_convert_gdf_to_geojson",
     "geojson_to_gdf",
     "gdf_to_geojson_dicts",
-    "get_geojson_from_gpkg",
     "get_gdf_from_gpkg",
     "load_gdf_from_multiple_gz",
-    "swap_coordinates",
-    "save_geojson",
     "extract_building_heights_from_gdf",
     "extract_building_heights_from_geotiff",
     "complement_building_heights_from_gdf",

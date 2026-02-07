@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from voxcity.generator.io import (
-    save_voxcity_data,
     load_voxcity,
     save_voxcity,
 )
@@ -106,23 +105,3 @@ class TestSaveLoadVoxcity:
                 pickle.dump(city, f)
             loaded = load_voxcity(path)
             assert isinstance(loaded, VoxCity)
-
-
-class TestSaveVoxcityData:
-    def test_legacy_save(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, 'data.pkl')
-            save_voxcity_data(
-                output_path=path,
-                voxcity_grid=np.zeros((3, 3, 5)),
-                building_height_grid=np.zeros((3, 3)),
-                building_min_height_grid=np.zeros((3, 3)),
-                building_id_grid=np.zeros((3, 3)),
-                canopy_height_grid=np.zeros((3, 3)),
-                land_cover_grid=np.ones((3, 3)),
-                dem_grid=np.zeros((3, 3)),
-                building_gdf=None,
-                meshsize=1.0,
-                rectangle_vertices=[(0, 0), (1, 0), (1, 1), (0, 1)],
-            )
-            assert os.path.exists(path)
