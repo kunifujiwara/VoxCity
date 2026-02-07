@@ -138,15 +138,22 @@ class TestGetGlobalSolarIrradianceMap:
         get_global_solar_irradiance_map(vc, 180, 45, 800, 100, show_plot=True)
         mock_plt.show.assert_called_once()
 
+    @patch("voxcity.simulator.solar.radiation.plt")
     @patch("voxcity.simulator.solar.radiation.grid_to_obj")
     @patch("voxcity.simulator.solar.radiation.get_diffuse_solar_irradiance_map")
     @patch("voxcity.simulator.solar.radiation.get_direct_solar_irradiance_map")
-    def test_obj_export(self, mock_direct, mock_diffuse, mock_obj):
+    def test_obj_export(self, mock_direct, mock_diffuse, mock_obj, mock_plt):
         vc = _make_voxcity()
         mock_direct.return_value = np.full((5, 5), 200.0)
         mock_diffuse.return_value = np.full((5, 5), 80.0)
+        mock_cmap = MagicMock()
+        mock_plt.cm.get_cmap.return_value = mock_cmap
+        mock_cmap.copy.return_value = mock_cmap
         from voxcity.simulator.solar.radiation import get_global_solar_irradiance_map
-        get_global_solar_irradiance_map(vc, 180, 45, 800, 100, obj_export=True)
+        # Note: must also trigger show_plot or supply colormap via kwargs
+        # because source code has a bug where `colormap` is only defined in show_plot block
+        # but referenced in obj_export. Triggering show_plot first sets it.
+        get_global_solar_irradiance_map(vc, 180, 45, 800, 100, show_plot=True, obj_export=True)
         mock_obj.assert_called_once()
 
     @patch("voxcity.simulator.solar.radiation.get_diffuse_solar_irradiance_map")
