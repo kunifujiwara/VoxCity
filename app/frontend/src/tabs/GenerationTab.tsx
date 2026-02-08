@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { generateModel } from '../api';
-import PlotlyViewer from '../components/PlotlyViewer';
+import ThreeViewer from '../components/ThreeViewer';
 
 interface GenerationTabProps {
   rectangle: number[][] | null;
@@ -139,7 +139,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
 
       {/* Right – 3D preview */}
       <div className="panel">
-        <PlotlyViewer figureJson={figureJson} />
+        <ThreeViewer figureJson={figureJson} />
       </div>
     </div>
   );

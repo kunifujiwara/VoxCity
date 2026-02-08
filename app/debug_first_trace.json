@@ -1,0 +1,43 @@
+{
+  "color": "rgb(180,187,216)",
+  "flatshading": false,
+  "i": {
+    "dtype": "i4",
+    "bdata": "AAAAAAQAAAAAAAAABAAAAA=="
+  },
+  "j": {
+    "dtype": "i4",
+    "bdata": "AQAAAAUAAAACAAAABgAAAA=="
+  },
+  "k": {
+    "dtype": "i4",
+    "bdata": "AgAAAAYAAAADAAAABwAAAA=="
+  },
+  "lighting": {
+    "ambient": 0.35,
+    "diffuse": 1.0,
+    "fresnel": 0.1,
+    "roughness": 0.5,
+    "specular": 0.4
+  },
+  "lightposition": {
+    "x": 35.0,
+    "y": 27.5,
+    "z": 35.0
+  },
+  "name": "+x",
+  "opacity": 1.0,
+  "x": {
+    "dtype": "f8",
+    "bdata": "AAAAAAAALkAAAAAAAAAuQAAAAAAAAC5AAAAAAAAALkAAAAAAAAAuQAAAAAAAAC5AAAAAAAAALkAAAAAAAAAuQA=="
+  },
+  "y": {
+    "dtype": "f8",
+    "bdata": "AAAAAAAAJEAAAAAAAAAuQAAAAAAAAC5AAAAAAAAAJEAAAAAAAAAkQAAAAAAAAC5AAAAAAAAALkAAAAAAAAAkQA=="
+  },
+  "z": {
+    "dtype": "f8",
+    "bdata": "AAAAAAAAFEAAAAAAAAAUQAAAAAAAACRAAAAAAAAAJEAAAAAAAAAkQAAAAAAAACRAAAAAAAAALkAAAAAAAAAuQA=="
+  },
+  "type": "mesh3d"
+}

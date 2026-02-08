@@ -221,10 +221,14 @@ input:focus, select:focus {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Plotly container ─────────────────────────────── */
-.plotly-container {
+/* ── Three.js viewer container ────────────────────── */
+.three-container {
   width: 100%;
   min-height: 500px;
+  height: 100%;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 /* ── Map container ────────────────────────────────── */

@@ -69,6 +69,12 @@ from voxcity.exporter.obj import export_obj
 from voxcity.visualizer import visualize_voxcity_plotly
 from voxcity.utils.lc import get_land_cover_classes
 
+# Ensure Taichi is initialized early (before any simulation calls).
+# This must happen at module-import time so that reloaded worker
+# processes always have a valid Taichi runtime.
+from voxcity.simulator_gpu.init_taichi import ensure_initialized
+ensure_initialized()
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------

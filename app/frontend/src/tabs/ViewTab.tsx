@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { runView } from '../api';
-import PlotlyViewer from '../components/PlotlyViewer';
+import ThreeViewer from '../components/ThreeViewer';
 
 interface ViewTabProps {
   hasModel: boolean;
@@ -207,7 +207,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
       </div>
 
       <div className="panel">
-        <PlotlyViewer figureJson={figureJson} />
+        <ThreeViewer figureJson={figureJson} />
       </div>
     </div>
   );

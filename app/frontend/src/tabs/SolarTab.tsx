@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { runSolar } from '../api';
-import PlotlyViewer from '../components/PlotlyViewer';
+import ThreeViewer from '../components/ThreeViewer';
 
 interface SolarTabProps {
   hasModel: boolean;
@@ -151,7 +151,7 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
       </div>
 
       <div className="panel">
-        <PlotlyViewer figureJson={figureJson} />
+        <ThreeViewer figureJson={figureJson} />
       </div>
     </div>
   );

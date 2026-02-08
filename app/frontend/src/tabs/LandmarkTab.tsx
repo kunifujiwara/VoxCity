@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { runLandmark } from '../api';
-import PlotlyViewer from '../components/PlotlyViewer';
+import ThreeViewer from '../components/ThreeViewer';
 
 interface LandmarkTabProps {
   hasModel: boolean;
@@ -156,7 +156,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
       </div>
 
       <div className="panel">
-        <PlotlyViewer figureJson={figureJson} />
+        <ThreeViewer figureJson={figureJson} />
       </div>
     </div>
   );
