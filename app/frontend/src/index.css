@@ -1,0 +1,310 @@
+/* VoxCity Web App – global styles */
+:root {
+  --vc-primary: #4B5563;
+  --vc-bg: #F5F5F5;
+  --vc-surface: #FFFFFF;
+  --vc-muted: #6B7280;
+  --vc-ring: #E5E7EB;
+  --vc-accent: #3B82F6;
+  --vc-danger: #EF4444;
+  --vc-success: #22C55E;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  color: #1F2937;
+  background: var(--vc-bg);
+}
+
+/* ── Layout ───────────────────────────────────────── */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  height: 52px;
+  background: var(--vc-surface);
+  border-bottom: 1px solid var(--vc-ring);
+  flex-shrink: 0;
+}
+
+.app-header .logo {
+  height: 30px;
+  width: auto;
+}
+
+.app-header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--vc-primary);
+}
+
+/* ── Tabs ─────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--vc-surface);
+  border-bottom: 1px solid var(--vc-ring);
+  padding: 0 1.5rem;
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  padding: 0.65rem 1.25rem;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--vc-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover { color: var(--vc-primary); }
+.tab-btn.active {
+  color: var(--vc-accent);
+  border-bottom-color: var(--vc-accent);
+}
+
+/* ── Main content ─────────────────────────────────── */
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.25rem;
+  height: 100%;
+}
+
+.panel {
+  background: var(--vc-surface);
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.panel h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* ── Form elements ────────────────────────────────── */
+label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--vc-muted);
+  margin-bottom: 0.25rem;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--vc-ring);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, select:focus {
+  border-color: var(--vc-accent);
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.form-row > * { flex: 1; }
+
+.form-group {
+  margin-bottom: 0.75rem;
+}
+
+/* ── Buttons ──────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  background: var(--vc-primary);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover { background: #374151; }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--vc-accent);
+  border-color: var(--vc-accent);
+}
+.btn-primary:hover { background: #2563EB; }
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+/* ── Alerts / status ──────────────────────────────── */
+.alert {
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.alert-warning {
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  color: #92400E;
+}
+
+.alert-error {
+  background: #FEE2E2;
+  border: 1px solid #EF4444;
+  color: #991B1B;
+}
+
+.alert-info {
+  background: #DBEAFE;
+  border: 1px solid #3B82F6;
+  color: #1E40AF;
+}
+
+.alert-success {
+  background: #DCFCE7;
+  border: 1px solid #22C55E;
+  color: #166534;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--vc-ring);
+  border-top-color: var(--vc-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 0.5rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Plotly container ─────────────────────────────── */
+.plotly-container {
+  width: 100%;
+  min-height: 500px;
+}
+
+/* ── Map container ────────────────────────────────── */
+.map-container {
+  width: 100%;
+  height: 500px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--vc-ring);
+}
+
+.map-container .leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
+/* ── Checkbox / radio ─────────────────────────────── */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.radio-group {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #1F2937;
+}
+
+/* ── Expander / collapsible ───────────────────────── */
+.expander {
+  border: 1px solid var(--vc-ring);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.expander-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: #F9FAFB;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  user-select: none;
+}
+
+.expander-header:hover { background: #F3F4F6; }
+
+.expander-body {
+  padding: 0.75rem;
+  border-top: 1px solid var(--vc-ring);
+}
+
+/* ── Footer ───────────────────────────────────────── */
+.app-footer {
+  text-align: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  color: var(--vc-muted);
+  border-top: 1px solid var(--vc-ring);
+  background: var(--vc-surface);
+  flex-shrink: 0;
+}
+
+.app-footer a {
+  color: var(--vc-accent);
+  text-decoration: none;
+}
+.app-footer a:hover { text-decoration: underline; }

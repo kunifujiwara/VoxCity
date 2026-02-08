@@ -115,3 +115,12 @@ ENV/
 # Local demo outputs
 demo/
 
+# Frontend dependencies & build artifacts
+app/frontend/node_modules/
+app/frontend/dist/
+app/frontend/package-lock.json
+
+# App output / temp files
+app/output/
+app/cache/
+
