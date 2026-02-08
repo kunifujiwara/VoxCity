@@ -24,6 +24,8 @@ from .utils import (
     get_solar_positions_astral,
     compute_boundary_vertical_mask,
     apply_computation_mask_to_faces,
+    get_timezone_offset_from_location,
+    generate_annual_hourly_dataframe,
 )
 
 from .caching import (
@@ -513,6 +515,9 @@ def get_building_sunlight_hours(
     epw_file_path: str = None,
     download_nearest_epw: bool = False,
     dni_threshold: float = 120.0,
+    lon: float = None,
+    lat: float = None,
+    tz: float = None,
     **kwargs
 ):
     """
@@ -520,13 +525,19 @@ def get_building_sunlight_hours(
     
     Supports PSH (Probable Sunlight Hours) and DSH (Direct Sun Hours) modes.
     
+    **DSH mode** does NOT require an EPW file. Location is automatically
+    extracted from the VoxCity object and timezone is inferred.
+    
     Args:
         voxcity: VoxCity object
         building_svf_mesh: Trimesh object with building surfaces (optional)
         mode: 'PSH' or 'DSH'
-        epw_file_path: Path to EPW file
+        epw_file_path: Path to EPW file (required for PSH, optional for DSH)
         download_nearest_epw: If True, download nearest EPW
         dni_threshold: DNI threshold for PSH mode (default: 120.0 W/m²)
+        lon: Longitude in degrees (optional, extracted from voxcity if not provided)
+        lat: Latitude in degrees (optional, extracted from voxcity if not provided)
+        tz: Timezone offset in hours (optional, inferred from location if not provided)
         **kwargs: Additional parameters
     
     Returns:
@@ -549,16 +560,37 @@ def get_building_sunlight_hours(
     use_sky_patches = kwargs.pop('use_sky_patches', True)
     sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     
-    # Load EPW data
-    weather_df, lon, lat, tz = load_epw_data(
-        epw_file_path=epw_file_path,
-        download_nearest_epw=download_nearest_epw,
-        voxcity=voxcity,
-        **kwargs
-    )
-    
-    if mode == 'PSH' and 'DNI' not in weather_df.columns:
-        raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
+    # Load data depending on mode
+    if mode == 'DSH' and epw_file_path is None and not download_nearest_epw:
+        # DSH mode without EPW: derive location and timezone from voxcity
+        if lat is None or lon is None:
+            _lat, _lon = get_location_from_voxcity(voxcity)
+            if lat is None:
+                lat = _lat
+            if lon is None:
+                lon = _lon
+        if tz is None:
+            tz = get_timezone_offset_from_location(lon, lat)
+        
+        # Generate synthetic annual hourly timestamps
+        weather_df = generate_annual_hourly_dataframe()
+    else:
+        # PSH mode or DSH with EPW provided
+        weather_df, lon_epw, lat_epw, tz_epw = load_epw_data(
+            epw_file_path=epw_file_path,
+            download_nearest_epw=download_nearest_epw,
+            voxcity=voxcity,
+            **kwargs
+        )
+        if lon is None:
+            lon = lon_epw
+        if lat is None:
+            lat = lat_epw
+        if tz is None:
+            tz = tz_epw
+        
+        if mode == 'PSH' and 'DNI' not in weather_df.columns:
+            raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
     
     # Filter dataframe
     df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz)

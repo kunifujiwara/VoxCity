@@ -26,6 +26,9 @@ from .utils import (
     load_epw_data,
     get_solar_positions_astral,
     add_metadata_to_array,
+    get_location_from_voxcity,
+    get_timezone_offset_from_location,
+    generate_annual_hourly_dataframe,
 )
 
 from .caching import (
@@ -751,6 +754,9 @@ def get_sunlight_hours(
     download_nearest_epw: bool = False,
     dni_threshold: float = 120.0,
     show_plot: bool = False,
+    lon: float = None,
+    lat: float = None,
+    tz: float = None,
     **kwargs
 ) -> np.ndarray:
     """
@@ -759,16 +765,23 @@ def get_sunlight_hours(
     Supports two modes:
     
     **PSH (Probable Sunlight Hours)**: Uses EPW weather data to account for cloud cover.
+      Requires an EPW file (via epw_file_path or download_nearest_epw).
     
     **DSH (Direct Sun Hours)**: Assumes clear sky for all hours.
+      Does NOT require an EPW file. Location (lon/lat) is automatically
+      extracted from the VoxCity object, and timezone is inferred from
+      the location. These can be overridden via the lon, lat, tz parameters.
     
     Args:
         voxcity: VoxCity object
         mode: 'PSH' (Probable Sunlight Hours) or 'DSH' (Direct Sun Hours)
-        epw_file_path: Path to EPW file
+        epw_file_path: Path to EPW file (required for PSH, optional for DSH)
         download_nearest_epw: If True, download nearest EPW based on location
         dni_threshold: DNI threshold for PSH mode (default: 120.0 W/m², WMO standard)
         show_plot: Whether to display a matplotlib plot
+        lon: Longitude in degrees (optional, extracted from voxcity if not provided)
+        lat: Latitude in degrees (optional, extracted from voxcity if not provided)
+        tz: Timezone offset in hours (optional, inferred from location if not provided)
         **kwargs: Additional parameters
     
     Returns:
@@ -793,20 +806,46 @@ def get_sunlight_hours(
     use_sky_patches = kwargs.pop('use_sky_patches', True)
     sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     
-    # Load EPW data
-    weather_df, lon, lat, tz = load_epw_data(
-        epw_file_path=epw_file_path,
-        download_nearest_epw=download_nearest_epw,
-        voxcity=voxcity,
-        **kwargs
-    )
-    
-    if progress_report:
-        print(f"  Mode: {mode}")
-        print(f"  Location: lon={lon:.4f}, lat={lat:.4f}, tz={tz}")
-    
-    if mode == 'PSH' and 'DNI' not in weather_df.columns:
-        raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
+    # Load data depending on mode
+    if mode == 'DSH' and epw_file_path is None and not download_nearest_epw:
+        # DSH mode without EPW: derive location and timezone from voxcity
+        if lat is None or lon is None:
+            _lat, _lon = get_location_from_voxcity(voxcity)
+            if lat is None:
+                lat = _lat
+            if lon is None:
+                lon = _lon
+        if tz is None:
+            tz = get_timezone_offset_from_location(lon, lat)
+        
+        # Generate synthetic annual hourly timestamps
+        weather_df = generate_annual_hourly_dataframe()
+        
+        if progress_report:
+            print(f"  Mode: {mode} (no EPW file needed)")
+            print(f"  Location: lon={lon:.4f}, lat={lat:.4f}, tz={tz}")
+    else:
+        # PSH mode or DSH with EPW provided
+        weather_df, lon_epw, lat_epw, tz_epw = load_epw_data(
+            epw_file_path=epw_file_path,
+            download_nearest_epw=download_nearest_epw,
+            voxcity=voxcity,
+            **kwargs
+        )
+        # Use EPW values as defaults, but allow user overrides
+        if lon is None:
+            lon = lon_epw
+        if lat is None:
+            lat = lat_epw
+        if tz is None:
+            tz = tz_epw
+        
+        if progress_report:
+            print(f"  Mode: {mode}")
+            print(f"  Location: lon={lon:.4f}, lat={lat:.4f}, tz={tz}")
+        
+        if mode == 'PSH' and 'DNI' not in weather_df.columns:
+            raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
     
     # Filter dataframe to period
     df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz)

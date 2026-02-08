@@ -302,6 +302,59 @@ def get_hour_range_from_period(start_time: str, end_time: str) -> Tuple[int, int
 # EPW Data Loading
 # =============================================================================
 
+def get_timezone_offset_from_location(lon: float, lat: float) -> float:
+    """
+    Get UTC timezone offset (in hours) from longitude/latitude using timezonefinder.
+    
+    Falls back to a simple longitude-based estimate if timezonefinder is not available.
+    
+    Args:
+        lon: Longitude in degrees
+        lat: Latitude in degrees
+        
+    Returns:
+        Timezone offset in hours (e.g. 9.0 for JST, -5.0 for EST)
+    """
+    try:
+        from timezonefinder import TimezoneFinder
+        import pytz
+        tf = TimezoneFinder()
+        tz_str = tf.timezone_at(lng=lon, lat=lat)
+        if tz_str:
+            timezone = pytz.timezone(tz_str)
+            offset_seconds = timezone.utcoffset(datetime(2020, 6, 15)).total_seconds()
+            return offset_seconds / 3600.0
+    except ImportError:
+        pass
+    # Fallback: estimate from longitude (each 15° ≈ 1 hour)
+    return round(lon / 15.0)
+
+
+def generate_annual_hourly_dataframe(year: int = 2020):
+    """
+    Generate a pandas DataFrame with hourly timestamps for a full year.
+    
+    The DataFrame has a datetime index (timezone-naive) and no weather columns,
+    suitable for DSH (Direct Sun Hours) calculations that only need solar
+    position data and do not require weather/EPW data.
+    
+    Args:
+        year: The year to generate timestamps for (default: 2020, a non-leap year
+              is fine since solar geometry varies negligibly between years)
+        
+    Returns:
+        pandas DataFrame with hourly datetime index spanning the full year
+    """
+    import pandas as pd
+    times = pd.date_range(
+        start=f'{year}-01-01 00:00:00',
+        end=f'{year}-12-31 23:00:00',
+        freq='h'
+    )
+    df = pd.DataFrame(index=times)
+    return df
+
+
 def load_epw_data(
     epw_file_path: Optional[str] = None,
     download_nearest_epw: bool = False,
