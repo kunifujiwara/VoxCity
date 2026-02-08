@@ -4,6 +4,8 @@
 [![License](https://img.shields.io/pypi/l/voxcity.svg)](https://pypi.org/project/voxcity/)
 [![Downloads](https://pepy.tech/badge/voxcity)](https://pepy.tech/project/voxcity)
 [![Documentation Status](https://readthedocs.org/projects/voxcity/badge/?version=latest)](https://voxcity.readthedocs.io/en/latest/?badge=latest)
+[![codecov](https://codecov.io/gh/kunifujiwara/VoxCity/graph/badge.svg)](https://codecov.io/gh/kunifujiwara/VoxCity)
+[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.compenvurbsys.2025.102366-blue)](https://doi.org/10.1016/j.compenvurbsys.2025.102366)
 <!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
 
 <p align="center">
