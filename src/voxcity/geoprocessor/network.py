@@ -81,6 +81,10 @@ def vectorized_edge_values(G, polygons_gdf, value_col='value'):
     # Compute intersections between edges and polygons
     intersected = gpd.overlay(edges_3857, polys_3857, how='intersection')
 
+    # If no intersections found, return empty dict
+    if intersected.empty or 'edge_id' not in intersected.columns:
+        return {}
+
     # Calculate length-weighted averages
     intersected['seg_length'] = intersected.geometry.length
     intersected['weighted_val'] = intersected['seg_length'] * intersected[value_col]
@@ -92,11 +96,16 @@ def vectorized_edge_values(G, polygons_gdf, value_col='value'):
         if df['seg_length'].sum() > 0 else np.nan
     )
 
+    # Build lookup from edge_id to (u, v, k)
+    id_to_edge = {
+        int(row['edge_id']): (row['u'], row['v'], row['k'])
+        for _, row in edges_gdf.iterrows()
+    }
+
     # Map results back to edge tuples
     edge_values = {}
     for edge_id, val in results.items():
-        rec = edges_gdf.iloc[edge_id]
-        edge_values[(rec['u'], rec['v'], rec['k'])] = val
+        edge_values[id_to_edge[int(edge_id)]] = val
 
     return edge_values
 
