@@ -76,6 +76,19 @@ from voxcity.utils.lc import get_land_cover_classes
 from voxcity.simulator_gpu.init_taichi import ensure_initialized
 ensure_initialized()
 
+# Attempt to initialize Google Earth Engine for background users.
+try:
+    from voxcity.downloader.gee import initialize_earth_engine
+
+    _gee_project = os.environ.get("GEE_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if _gee_project:
+        initialize_earth_engine(project=_gee_project)
+    else:
+        initialize_earth_engine()
+except Exception:
+    # Keep startup resilient; EE init will be attempted again on demand.
+    pass
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
