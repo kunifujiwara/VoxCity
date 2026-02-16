@@ -724,11 +724,19 @@ def _get_cached_topo_kernel():
         grid_nz: ti.i32
     ):
         for i, j in topo_f:
-            max_k = -1
+            # Find terrain surface: top of the first contiguous solid from below.
+            # This gives the actual ground level, NOT the top of elevated
+            # structures (bridges, overpasses) that may exist higher up.
+            # Without this, columns under bridges would start ray tracing
+            # above the bridge, missing the occlusion entirely.
+            ground_k = -1
             for k in range(grid_nz):
                 if is_solid_f[i, j, k] == 1:
-                    max_k = k
-            topo_f[i, j] = max_k
+                    ground_k = k
+                else:
+                    if ground_k >= 0:
+                        break  # First air gap above contiguous ground
+            topo_f[i, j] = ground_k
     
     _cached_topo_kernel = _topo_kernel
     return _cached_topo_kernel
