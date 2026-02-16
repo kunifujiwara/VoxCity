@@ -78,10 +78,25 @@ export interface ModelInfo {
   land_cover_source: string;
 }
 
+export interface AutoDetectResult {
+  building_source: string;
+  building_complementary_source: string;
+  land_cover_source: string;
+  canopy_height_source: string;
+  dem_source: string;
+}
+
 // ── API functions ────────────────────────────────────────────
 
 export async function healthCheck() {
   return request<{ status: string; has_model: boolean }>('/health');
+}
+
+export async function autoDetectSources(rectangleVertices: number[][]) {
+  return request<AutoDetectResult>('/auto-detect-sources', {
+    method: 'POST',
+    body: JSON.stringify({ rectangle_vertices: rectangleVertices }),
+  });
 }
 
 export async function geocodeCity(cityName: string) {
@@ -111,10 +126,12 @@ export async function rectangleFromDimensions(
 export async function generateModel(params: {
   rectangle_vertices: number[][];
   meshsize: number;
-  building_source?: string;
-  land_cover_source?: string;
-  canopy_height_source?: string;
-  dem_source?: string;
+  mode: string;
+  building_source?: string | null;
+  land_cover_source?: string | null;
+  canopy_height_source?: string | null;
+  dem_source?: string | null;
+  building_complementary_source?: string | null;
   building_complement_height?: number;
   static_tree_height?: number;
   overlapping_footprint?: string;

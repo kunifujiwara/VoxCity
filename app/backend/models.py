@@ -37,13 +37,21 @@ class RectangleFromDimensions(BaseModel):
     height_m: float
 
 
+class AutoDetectSourcesRequest(BaseModel):
+    rectangle_vertices: List[List[float]]  # [[lon, lat], ...]
+
+
 class GenerateRequest(BaseModel):
     rectangle_vertices: List[List[float]]  # [[lon, lat], ...]
     meshsize: float = 5.0
-    building_source: str = "OpenStreetMap"
-    land_cover_source: str = "OpenStreetMap"
-    canopy_height_source: str = "Static"
-    dem_source: str = "Flat"
+    mode: str = "plateau"  # "plateau" or "normal"
+    # Normal-mode data sources (ignored when mode="plateau")
+    building_source: Optional[str] = None  # None = auto-select
+    land_cover_source: Optional[str] = None  # None = auto-select
+    canopy_height_source: Optional[str] = None  # None = auto-select
+    dem_source: Optional[str] = None  # None = auto-select
+    building_complementary_source: Optional[str] = None  # None = auto-select
+    # Shared parameters
     building_complement_height: float = 10.0
     static_tree_height: float = 10.0
     overlapping_footprint: Any = "auto"

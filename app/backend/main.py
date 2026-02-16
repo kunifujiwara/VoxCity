@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import (
+    AutoDetectSourcesRequest,
     ExportCitylesRequest,
     ExportObjRequest,
     GenerateRequest,
@@ -44,7 +45,7 @@ from .state import app_state
 # ---------------------------------------------------------------------------
 # VoxCity imports (validated against current package)
 # ---------------------------------------------------------------------------
-from voxcity.generator import get_voxcity, get_voxcity_CityGML, Voxelizer
+from voxcity.generator import get_voxcity, get_voxcity_CityGML, Voxelizer, auto_select_data_sources
 from voxcity.models import (
     BuildingGrid,
     CanopyGrid,
@@ -74,6 +75,19 @@ from voxcity.utils.lc import get_land_cover_classes
 # processes always have a valid Taichi runtime.
 from voxcity.simulator_gpu.init_taichi import ensure_initialized
 ensure_initialized()
+
+# Attempt to initialize Google Earth Engine for background users.
+try:
+    from voxcity.downloader.gee import initialize_earth_engine
+
+    _gee_project = os.environ.get("GEE_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if _gee_project:
+        initialize_earth_engine(project=_gee_project)
+    else:
+        initialize_earth_engine()
+except Exception:
+    # Keep startup resilient; EE init will be attempted again on demand.
+    pass
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -264,6 +278,18 @@ async def rectangle_from_dimensions(req: RectangleFromDimensions):
     return {"vertices": vertices}
 
 
+@app.post("/api/auto-detect-sources")
+async def detect_sources(req: AutoDetectSourcesRequest):
+    """Auto-detect the best data sources for a given area."""
+    try:
+        verts = _vertices_to_tuples(req.rectangle_vertices)
+        sources = auto_select_data_sources(verts)
+        return sources
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/generate")
 async def generate_model(req: GenerateRequest):
     """Generate a VoxCity model.
@@ -276,12 +302,7 @@ async def generate_model(req: GenerateRequest):
         output_dir = os.path.join(BASE_OUTPUT_DIR, "test")
         os.makedirs(output_dir, exist_ok=True)
 
-        is_jp = _is_japan(req.rectangle_vertices)
-        land_cover_source = "OpenEarthMapJapan" if is_jp else req.land_cover_source
-
         kwargs: Dict[str, Any] = {
-            "building_complementary_source": "None",
-            "complement_building_footprints": True,
             "building_complement_height": req.building_complement_height,
             "overlapping_footprint": req.overlapping_footprint,
             "output_dir": output_dir,
@@ -291,42 +312,71 @@ async def generate_model(req: GenerateRequest):
             "mapvis": False,
         }
 
-        # Attempt cached CityGML first
-        cached = None
-        if req.use_citygml_cache:
-            cached = _load_citygml_cache(req.rectangle_vertices)
+        if req.mode == "plateau":
+            # ── PLATEAU mode ──────────────────────────────────────
+            is_jp = _is_japan(req.rectangle_vertices)
+            land_cover_source = "OpenEarthMapJapan" if is_jp else (req.land_cover_source or "OpenStreetMap")
 
-        if cached is not None:
-            cached_buildings, cached_terrain = (
-                cached if isinstance(cached, tuple) else (cached, None)
-            )
+            kwargs["building_complementary_source"] = "None"
+            kwargs["complement_building_footprints"] = True
+
+            # Attempt cached CityGML first
+            cached = None
+            if req.use_citygml_cache:
+                cached = _load_citygml_cache(req.rectangle_vertices)
+
+            if cached is not None:
+                cached_buildings, cached_terrain = (
+                    cached if isinstance(cached, tuple) else (cached, None)
+                )
+                voxcity_result = get_voxcity(
+                    rectangle_vertices,
+                    meshsize=req.meshsize,
+                    building_source="GeoDataFrame",
+                    land_cover_source=land_cover_source,
+                    canopy_height_source=req.canopy_height_source or "Static",
+                    dem_source="Flat",
+                    building_gdf=cached_buildings,
+                    terrain_gdf=cached_terrain,
+                    **kwargs,
+                )
+            else:
+                voxcity_result = get_voxcity_CityGML(
+                    rectangle_vertices,
+                    land_cover_source,
+                    req.canopy_height_source or "Static",
+                    req.meshsize,
+                    citygml_path=CITYGML_PATH,
+                    **kwargs,
+                )
+        else:
+            # ── Normal mode ───────────────────────────────────────
+            # Pass None for any source not specified → get_voxcity auto-selects
             voxcity_result = get_voxcity(
                 rectangle_vertices,
                 meshsize=req.meshsize,
-                building_source="GeoDataFrame",
-                land_cover_source=land_cover_source,
+                building_source=req.building_source,
+                land_cover_source=req.land_cover_source,
                 canopy_height_source=req.canopy_height_source,
-                dem_source="Flat",
-                building_gdf=cached_buildings,
-                terrain_gdf=cached_terrain,
+                dem_source=req.dem_source,
+                building_complementary_source=req.building_complementary_source,
                 **kwargs,
             )
-        else:
-            voxcity_result = get_voxcity_CityGML(
-                rectangle_vertices,
-                land_cover_source,
-                req.canopy_height_source,
-                req.meshsize,
-                citygml_path=CITYGML_PATH,
-                **kwargs,
-            )
+
+        # Resolve effective land_cover_source for state
+        effective_lc = (
+            voxcity_result.extras.get("land_cover_source")
+            or voxcity_result.extras.get("selected_sources", {}).get("land_cover_source")
+            or req.land_cover_source
+            or "OpenStreetMap"
+        )
 
         # Store in app state
         app_state.store_generation_result(
             voxcity_obj=voxcity_result,
             meshsize=req.meshsize,
             rectangle_vertices=req.rectangle_vertices,
-            land_cover_source=land_cover_source,
+            land_cover_source=effective_lc,
         )
 
         # Build 3D preview

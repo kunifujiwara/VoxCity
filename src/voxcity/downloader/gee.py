@@ -22,9 +22,26 @@ Note: Most functions require Earth Engine authentication to be set up beforehand
 # Earth Engine and geospatial imports
 import ee
 import geemap
+import json
+import os
 
 # Local imports
 # from ..geo.utils import convert_format_lat_lon
+
+def _load_service_account_credentials():
+    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not credentials_path or not os.path.exists(credentials_path):
+        return None
+    try:
+        with open(credentials_path, "r", encoding="utf-8") as f:
+            key_data = json.load(f)
+        client_email = key_data.get("client_email")
+        if not client_email:
+            return None
+        return ee.ServiceAccountCredentials(email=client_email, key_file=credentials_path)
+    except Exception:
+        return None
+
 
 def initialize_earth_engine(**initialize_kwargs):
     """Initialize the Earth Engine API if not already initialized.
@@ -39,8 +56,28 @@ def initialize_earth_engine(**initialize_kwargs):
     try:
         # If this succeeds, EE is already initialized
         ee.data.getAssetRoots()
+        return
     except Exception:
-        ee.Initialize(**initialize_kwargs)
+        pass
+
+    # Prefer service account credentials if provided via env
+    credentials = _load_service_account_credentials()
+    if credentials is not None:
+        project = (
+            initialize_kwargs.pop("project", None)
+            or os.environ.get("GEE_PROJECT")
+            or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        )
+        try:
+            if project:
+                ee.Initialize(credentials, project=project)
+            else:
+                ee.Initialize(credentials)
+            return
+        except Exception:
+            pass
+
+    ee.Initialize(**initialize_kwargs)
 
 def get_roi(input_coords):
     """Create an Earth Engine region of interest polygon from coordinates.

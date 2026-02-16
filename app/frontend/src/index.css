@@ -312,3 +312,41 @@ input:focus, select:focus {
   text-decoration: none;
 }
 .app-footer a:hover { text-decoration: underline; }
+
+/* ── Mode toggle ──────────────────────────────────── */
+.mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  background: var(--vc-bg);
+  color: var(--vc-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-btn:first-child { border-right: 1px solid var(--vc-ring); }
+
+.mode-btn:hover { background: #E5E7EB; }
+
+.mode-btn.active {
+  background: var(--vc-accent);
+  color: #fff;
+}
+
+.mode-description {
+  font-size: 0.78rem;
+  color: var(--vc-muted);
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
