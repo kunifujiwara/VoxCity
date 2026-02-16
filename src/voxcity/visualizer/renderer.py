@@ -350,15 +350,32 @@ def visualize_voxcity_plotly(
         except Exception:
             z_off = 1.5
         try:
-            ms = float(meshsize)
-            z_off = (z_off // ms + 1.0) * ms
+            z_off = float(meshsize) + z_off
         except Exception:
             pass
-        try:
-            dem_norm = np.asarray(ground_dem_grid, dtype=float)
-            dem_norm = dem_norm - np.nanmin(dem_norm)
-        except Exception:
-            dem_norm = ground_dem_grid
+
+        # Derive DEM from the actual voxel grid so that sim-surface z
+        # aligns exactly with the terrain voxel tops.  The raw
+        # city.dem.elevation can differ from what was used during
+        # voxelisation (e.g. smoothing under buildings), causing a
+        # heterogeneous offset.  By reading terrain heights straight
+        # from the voxel array every cell gets a consistent offset.
+        if voxel_array is not None and getattr(voxel_array, 'ndim', 0) == 3:
+            # Land-cover classes (>=1) mark the topmost ground voxel.
+            lc_mask = (voxel_array >= 1)
+            k_indices = np.arange(voxel_array.shape[2])
+            masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+            k_top_grid = np.max(masked_k, axis=2)           # (nx, ny)
+            k_top_grid = np.maximum(k_top_grid, 0)
+            # Voxel array is SOUTH_UP; flip to NORTH_UP for
+            # create_sim_surface_mesh which flips back internally.
+            dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+        else:
+            try:
+                dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                dem_norm = dem_norm - np.nanmin(dem_norm)
+            except Exception:
+                dem_norm = ground_dem_grid
 
         sim_mesh = create_sim_surface_mesh(
             ground_sim_grid,
@@ -814,18 +831,27 @@ class PyVistaRenderer:
             except Exception:
                 z_off = 1.5
             
-            # Snap to grid
             try:
-                z_off = (z_off // meshsize + 1.0) * meshsize
+                z_off = float(meshsize) + z_off
             except Exception:
                 pass
             
-            # Normalize DEM
-            try:
-                dem_norm = np.asarray(ground_dem_grid, dtype=float)
-                dem_norm = dem_norm - np.nanmin(dem_norm)
-            except Exception:
-                dem_norm = ground_dem_grid
+            # Derive DEM from the actual voxel grid (same rationale as
+            # the interactive path – see visualize_voxcity_plotly).
+            voxel_classes = getattr(city.voxels, 'classes', None)
+            if voxel_classes is not None and getattr(voxel_classes, 'ndim', 0) == 3:
+                lc_mask = (voxel_classes >= 1)
+                k_indices = np.arange(voxel_classes.shape[2])
+                masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+                k_top_grid = np.max(masked_k, axis=2)
+                k_top_grid = np.maximum(k_top_grid, 0)
+                dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+            else:
+                try:
+                    dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                    dem_norm = dem_norm - np.nanmin(dem_norm)
+                except Exception:
+                    dem_norm = ground_dem_grid
             
             # Determine color range
             sim_vals = np.asarray(ground_sim_grid, dtype=float)

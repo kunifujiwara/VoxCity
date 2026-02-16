@@ -1466,12 +1466,21 @@ class GPURenderer:
                 except Exception:
                     pass
                 
-                # Normalize DEM
-                try:
-                    dem_norm = np.asarray(ground_dem_grid, dtype=float)
-                    dem_norm = dem_norm - np.nanmin(dem_norm)
-                except Exception:
-                    dem_norm = ground_dem_grid
+                # Derive DEM from voxel grid for consistent alignment
+                voxel_classes = getattr(city.voxels, 'classes', None)
+                if voxel_classes is not None and getattr(voxel_classes, 'ndim', 0) == 3:
+                    lc_mask = (voxel_classes >= 1)
+                    k_indices = np.arange(voxel_classes.shape[2])
+                    masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+                    k_top_grid = np.max(masked_k, axis=2)
+                    k_top_grid = np.maximum(k_top_grid, 0)
+                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                else:
+                    try:
+                        dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                        dem_norm = dem_norm - np.nanmin(dem_norm)
+                    except Exception:
+                        dem_norm = ground_dem_grid
                 
                 # Determine color range
                 sim_vals = np.asarray(ground_sim_grid, dtype=float)
@@ -1774,11 +1783,21 @@ class GPURenderer:
                 except Exception:
                     pass
                 
-                try:
-                    dem_norm = np.asarray(ground_dem_grid, dtype=float)
-                    dem_norm = dem_norm - np.nanmin(dem_norm)
-                except Exception:
-                    dem_norm = ground_dem_grid
+                # Derive DEM from voxel grid for consistent alignment
+                voxel_classes = getattr(city.voxels, 'classes', None)
+                if voxel_classes is not None and getattr(voxel_classes, 'ndim', 0) == 3:
+                    lc_mask = (voxel_classes >= 1)
+                    k_indices = np.arange(voxel_classes.shape[2])
+                    masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+                    k_top_grid = np.max(masked_k, axis=2)
+                    k_top_grid = np.maximum(k_top_grid, 0)
+                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                else:
+                    try:
+                        dem_norm = np.asarray(ground_dem_grid, dtype=float)
+                        dem_norm = dem_norm - np.nanmin(dem_norm)
+                    except Exception:
+                        dem_norm = ground_dem_grid
                 
                 sim_vals = np.asarray(ground_sim_grid, dtype=float)
                 finite = np.isfinite(sim_vals)
@@ -2057,11 +2076,21 @@ class GPURenderer:
                 except Exception:
                     pass
                 
-                try:
-                    dem_norm = np.asarray(dem_grid, dtype=float)
-                    dem_norm = dem_norm - np.nanmin(dem_norm)
-                except Exception:
-                    dem_norm = dem_grid
+                # Derive DEM from voxel grid for consistent alignment
+                voxel_classes = getattr(city.voxels, 'classes', None)
+                if voxel_classes is not None and getattr(voxel_classes, 'ndim', 0) == 3:
+                    lc_mask = (voxel_classes >= 1)
+                    k_indices = np.arange(voxel_classes.shape[2])
+                    masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+                    k_top_grid = np.max(masked_k, axis=2)
+                    k_top_grid = np.maximum(k_top_grid, 0)
+                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                else:
+                    try:
+                        dem_norm = np.asarray(dem_grid, dtype=float)
+                        dem_norm = dem_norm - np.nanmin(dem_norm)
+                    except Exception:
+                        dem_norm = dem_grid
                 
                 sim_vals = np.asarray(ground_sim_grid, dtype=float)
                 finite = np.isfinite(sim_vals)
