@@ -322,6 +322,12 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None,
                         has_building = float(building_height_grid[j, i]) > 0.0
                     if has_canopy and not has_building:
                         cityles_code = under_tree_code
+
+                # Override land use to Building (10) for cells with building height
+                if building_height_grid is not None:
+                    if float(building_height_grid[j, i]) > 0.0:
+                        cityles_code = 10
+
                 f.write(f"{cityles_code}\n")
 
                 cityles_landuse_grid[j, i] = cityles_code
