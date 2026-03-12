@@ -22,7 +22,7 @@ from .voxelizer import (
     BUILDING_CODE,
 )
 from .pipeline import VoxCityPipeline
-from .io import save_voxcity, load_voxcity
+from .io import save_voxcity, load_voxcity, save_results_h5, load_results_h5
 from .update import update_voxcity, regenerate_voxels
 
 __all__ = [
@@ -40,6 +40,8 @@ __all__ = [
     "VoxCityPipeline",
     "save_voxcity",
     "load_voxcity",
+    "save_results_h5",
+    "load_results_h5",
     "update_voxcity",
     "regenerate_voxels",
 ]

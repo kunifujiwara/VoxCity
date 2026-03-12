@@ -1,67 +1,13 @@
-def load_voxcity(input_path):
-    import pickle
-    import numpy as np
-    from ..models import GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid, VoxCity
+"""Backward-compatible re-exports from :mod:`voxcity.io`.
 
-    with open(input_path, 'rb') as f:
-        obj = pickle.load(f)
+All I/O functions now live in ``voxcity.io``.  This shim ensures that
+existing imports like ``from voxcity.generator.io import save_voxcity``
+continue to work.
+"""
 
-    # New format: the entire VoxCity object (optionally wrapped)
-    if isinstance(obj, VoxCity):
-        return obj
-    if isinstance(obj, dict) and obj.get('__format__') == 'voxcity.v2' and isinstance(obj.get('voxcity'), VoxCity):
-        return obj['voxcity']
-
-    # Legacy dict format fallback
-    d = obj
-    rv = d.get('rectangle_vertices') or []
-    if rv:
-        xs = [p[0] for p in rv]
-        ys = [p[1] for p in rv]
-        bounds = (min(xs), min(ys), max(xs), max(ys))
-    else:
-        ny, nx = d['land_cover_grid'].shape
-        ms = float(d['meshsize'])
-        bounds = (0.0, 0.0, nx * ms, ny * ms)
-
-    meta = GridMetadata(crs='EPSG:4326', bounds=bounds, meshsize=float(d['meshsize']))
-
-    voxels = VoxelGrid(classes=d['voxcity_grid'], meta=meta)
-    buildings = BuildingGrid(
-        heights=d['building_height_grid'],
-        min_heights=d['building_min_height_grid'],
-        ids=d['building_id_grid'],
-        meta=meta,
-    )
-    land = LandCoverGrid(classes=d['land_cover_grid'], meta=meta)
-    dem = DemGrid(elevation=d['dem_grid'], meta=meta)
-    canopy = CanopyGrid(top=d.get('canopy_height_grid'), bottom=None, meta=meta)
-
-    extras = {
-        'rectangle_vertices': d.get('rectangle_vertices'),
-        'building_gdf': d.get('building_gdf'),
-    }
-
-    return VoxCity(voxels=voxels, buildings=buildings, land_cover=land, dem=dem, tree_canopy=canopy, extras=extras)
-
-
-
-def save_voxcity(output_path, city):
-    """Save a VoxCity instance to disk, preserving the entire object."""
-    import pickle
-    import os
-    from ..models import VoxCity as _VoxCity
-
-    if not isinstance(city, _VoxCity):
-        raise TypeError("save_voxcity expects a VoxCity instance")
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    with open(output_path, 'wb') as f:
-        payload = {
-            '__format__': 'voxcity.v2',
-            'voxcity': city,
-        }
-        pickle.dump(payload, f)
-
-    print(f"Voxcity data saved to {output_path}")
+from ..io import (  # noqa: F401
+    load_voxcity,
+    save_voxcity,
+    save_results_h5,
+    load_results_h5,
+)

@@ -921,7 +921,7 @@ def load_voxcity(filepath):
     
     try:
         # Try using voxcity package loader
-        from voxcity.generator.io import load_voxcity as voxcity_load
+        from voxcity.io import load_voxcity as voxcity_load
         return voxcity_load(str(filepath))
     except ImportError:
         # Fallback: load as raw pickle
