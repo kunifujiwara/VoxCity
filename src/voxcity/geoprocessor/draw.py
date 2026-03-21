@@ -906,10 +906,15 @@ def draw_additional_buildings(
         for idx, row in updated_gdf.iterrows():
             if isinstance(row.geometry, geom.Polygon):
                 coords = [list(row.geometry.exterior.coords)]
+                # Sanitize: skip if coordinates contain NaN
+                if any(math.isnan(c) for ring in coords for pt in ring for c in pt):
+                    continue
+                h = row.get("height", 0)
+                h = 0.0 if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
                 features.append({
                     "type": "Feature",
                     "id": str(idx),
-                    "properties": {"idx": int(idx), "height": float(row.get("height", 0))},
+                    "properties": {"idx": int(idx), "height": h},
                     "geometry": {"type": "Polygon", "coordinates": coords},
                 })
         return {"type": "FeatureCollection", "features": features}
