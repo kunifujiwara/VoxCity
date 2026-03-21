@@ -467,11 +467,14 @@ def export_lonlat(rectangle_vertices, grid_shape, output_path):
                 f.write(f"{i_1based} {j_1based} {lon:.7f} {lat:.8f}\n")
 
 
+_TRUNK_RATIO_SENTINEL = object()   # internal sentinel – never pass this
+
+
 def export_cityles(city: VoxCity,
                    output_directory: str = "output/cityles",
                    building_material: str = 'default',
                    tree_type: str = 'default',
-                   trunk_height_ratio: float = 0.3,
+                   trunk_height_ratio: float = _TRUNK_RATIO_SENTINEL,
                    canopy_bottom_height_grid=None,
                    under_tree_class_name: str = 'Bareland',
                    under_tree_cityles_code=None,
@@ -482,32 +485,33 @@ def export_cityles(city: VoxCity,
     
     Parameters:
     -----------
-    building_height_grid : numpy.ndarray
-        2D array of building heights
-    building_id_grid : numpy.ndarray
-        2D array of building IDs
-    canopy_height_grid : numpy.ndarray
-        2D array of canopy heights
-    land_cover_grid : numpy.ndarray
-        2D array of land cover values (may be raw or VoxCity standard)
-    dem_grid : numpy.ndarray
-        2D array of elevation values
-    meshsize : float
-        Grid cell size in meters
-    land_cover_source : str
-        Source of land cover data (e.g., 'ESRI 10m Annual Land Cover', 'ESA WorldCover')
-    rectangle_vertices : list of tuples
-        List of (lon, lat) vertices defining the area
+    city : VoxCity
+        A VoxCity model instance.
     output_directory : str
-        Output directory path
+        Output directory path.
     building_material : str
-        Building material type for mapping
+        Building material type for mapping.
     tree_type : str
-        Tree type for mapping
-    trunk_height_ratio : float
-        Ratio of tree base height to total canopy height
+        Tree type for mapping.
+    trunk_height_ratio : float, optional
+        Ratio of trunk height to total canopy height.  When explicitly
+        provided, the canopy bottom height grid is *always* recomputed as
+        ``canopy_top * trunk_height_ratio``, even when the VoxCity object
+        already contains a per-cell canopy bottom grid.  When omitted the
+        existing ``city.tree_canopy.bottom`` is used if available, otherwise
+        a default ratio of 0.3 is applied.
+    canopy_bottom_height_grid : numpy.ndarray, optional
+        Explicit canopy bottom height grid.  Ignored when
+        *trunk_height_ratio* is explicitly provided.
+    under_tree_class_name : str
+        Ground land-cover class to assign under tree canopy.
+    under_tree_cityles_code : int, optional
+        Override CityLES code for under-tree class.
+    land_cover_source : str, optional
+        Source of land cover data.  Auto-detected from VoxCity extras when
+        omitted.
     **kwargs : dict
-        Additional parameters (for compatibility)
+        Additional parameters (for compatibility).
     
     Returns:
     --------
@@ -526,6 +530,22 @@ def export_cityles(city: VoxCity,
     meshsize = float(city.voxels.meta.meshsize)
     rectangle_vertices = city.extras.get("rectangle_vertices") or [(0.0, 0.0)] * 4
     land_cover_source = land_cover_source or city.extras.get("land_cover_source", "Standard")
+
+    # ── Resolve canopy bottom height grid ───────────────────
+    _user_specified_ratio = trunk_height_ratio is not _TRUNK_RATIO_SENTINEL
+    if not _user_specified_ratio:
+        trunk_height_ratio = 0.3          # default value
+
+    if _user_specified_ratio:
+        # User explicitly asked for a ratio → recompute from canopy top
+        canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
+        print(f"Canopy bottom heights recomputed with trunk_height_ratio={trunk_height_ratio}")
+    elif canopy_bottom_height_grid is None:
+        # Nothing explicit – try the VoxCity model's stored bottom grid
+        if city.tree_canopy is not None and city.tree_canopy.bottom is not None:
+            canopy_bottom_height_grid = city.tree_canopy.bottom
+            print("Using canopy bottom heights from VoxCity model")
+        # else stays None → export_vmap will use trunk_height_ratio internally
 
     print(f"Land cover source: {land_cover_source}")
     
