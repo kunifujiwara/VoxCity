@@ -617,121 +617,244 @@ def draw_additional_buildings(
     
     # ipyleaflet expects (Lat, Lon), so we flip it here
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
-    
-    # --- UI Setup ---
+
+    # Use CartoDB Positron as basemap (clean, light style)
+    carto_light = TileLayer(
+        url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
+        attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+        name="CartoDB Positron",
+        max_zoom=20,
+    )
+    m.layers = (carto_light,)
+
+    # --- UI Setup (Gemini-style minimal design) ---
     style_html = HTML(
         """
     <style>
-        .vox-panel { font-family: 'Segoe UI', sans-serif; }
-        .vox-header { font-size: 14px; font-weight: 600; color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 4px; margin-bottom: 2px; }
-        .vox-section { font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 2px 0; }
-        .vox-section-add { color: #2e7d32; }
-        .vox-section-remove { color: #c62828; }
-        .vox-status { padding: 6px 8px; border-radius: 3px; font-size: 11px; margin-top: 6px; font-weight: 500; line-height: 1.3; }
-        .vox-status-info { background-color: #e3f2fd; color: #0d47a1; border-left: 3px solid #0d47a1; }
-        .vox-status-success { background-color: #e8f5e9; color: #1b5e20; border-left: 3px solid #1b5e20; }
-        .vox-status-warn { background-color: #fff3e0; color: #e65100; border-left: 3px solid #e65100; }
-        .vox-status-danger { background-color: #ffebee; color: #c62828; border-left: 3px solid #c62828; }
-        .vox-divider { height: 1px; background: #e0e0e0; margin: 6px 0; }
+        /* ── Gemini-style panel ── */
+        .gm-root {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #1f1f1f;
+            line-height: 1.5;
+        }
+        .gm-root * { box-sizing: border-box; }
+
+        /* title */
+        .gm-title {
+            font-size: 14px; font-weight: 500; color: #1f1f1f;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e8eaed;
+            margin-bottom: 12px;
+        }
+        /* section labels */
+        .gm-label {
+            font-size: 11px; font-weight: 500; color: #5f6368;
+            letter-spacing: 0.3px;
+            margin: 0 0 6px 0;
+        }
+        /* separator */
+        .gm-sep { height: 1px; background: #e8eaed; margin: 12px 0; }
+
+        /* status chip */
+        .gm-status {
+            padding: 6px 12px; border-radius: 16px;
+            font-size: 11px; font-weight: 400; line-height: 1.3;
+            margin-top: 10px; text-align: center;
+        }
+        .gm-status-info    { background: #f0f4ff; color: #1a73e8; }
+        .gm-status-success { background: #e6f4ea; color: #137333; }
+        .gm-status-warn    { background: #fef7e0; color: #b06000; }
+        .gm-status-danger  { background: #fce8e6; color: #c5221f; }
+
+        /* ── Override ipywidgets button styles ── */
+        .gm-root .jupyter-button {
+            border-radius: 18px !important;
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            border: 1px solid #dadce0 !important;
+            box-shadow: none !important;
+            transition: background 0.15s, border-color 0.15s, box-shadow 0.15s !important;
+        }
+        .gm-root .jupyter-button:hover {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+        }
+
+        /* default / neutral buttons */
+        .gm-root .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info) {
+            background: #f8f9fa !important;
+            color: #3c4043 !important;
+            border-color: #dadce0 !important;
+        }
+        .gm-root .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info):hover {
+            background: #f1f3f4 !important;
+        }
+
+        /* primary (Add) */
+        .gm-root .mod-primary {
+            background: #1a73e8 !important;
+            color: #fff !important;
+            border-color: #1a73e8 !important;
+        }
+        .gm-root .mod-primary:hover {
+            background: #1765cc !important;
+            border-color: #1765cc !important;
+        }
+        .gm-root .mod-primary:disabled {
+            background: #e8eaed !important;
+            color: #9aa0a6 !important;
+            border-color: #e8eaed !important;
+        }
+
+        /* danger (Remove toggles) */
+        .gm-root .mod-danger {
+            background: #fff !important;
+            color: #c5221f !important;
+            border-color: #f1c8c6 !important;
+        }
+        .gm-root .mod-danger:hover {
+            background: #fce8e6 !important;
+        }
+        .gm-root .mod-danger.mod-active {
+            background: #fce8e6 !important;
+            border-color: #c5221f !important;
+        }
+
+        /* toggle active state */
+        .gm-root .jupyter-button.mod-active:not(.mod-danger) {
+            background: #e8f0fe !important;
+            color: #1a73e8 !important;
+            border-color: #1a73e8 !important;
+        }
+
+        /* input fields */
+        .gm-root input[type="number"] {
+            border-radius: 8px !important;
+            border: 1px solid #dadce0 !important;
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 12px !important;
+            padding: 2px 6px !important;
+        }
+        .gm-root input[type="number"]:focus {
+            border-color: #1a73e8 !important;
+            outline: none !important;
+        }
+        .gm-root .widget-label {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 11px !important;
+            color: #5f6368 !important;
+            font-weight: 500 !important;
+        }
     </style>
     """
     )
 
-    # --- ADD BUILDINGS Section ---
-    add_section_label = HTML("<div class='vox-panel vox-section vox-section-add'>➕ ADD</div>")
-    
+    # --- ADD Section ---
+    add_label = HTML("<div class='gm-label'>Add</div>")
+
     rect_btn = ToggleButton(
         value=False,
-        description="📐 Rectangle",
+        description="Rectangle",
         icon="",
-        layout=Layout(width="100px"),
+        layout=Layout(width="92px", height="30px"),
         tooltip="Click 3 corners on map to draw rectangle",
     )
-    freehand_btn = HTML("<span style='font-size:10px; color:#666; margin-left:5px;'>or 🖊️ left toolbar</span>")
-    
+    freehand_hint = HTML(
+        "<span style='font-size:10px; color:#80868b; margin-left:6px;'>or polygon tool on left</span>"
+    )
+
     h_in = FloatText(
         value=10.0,
-        description="Height:",
-        layout=Layout(width="120px"),
-        style={"description_width": "45px"},
+        description="Height",
+        layout=Layout(width="115px", height="28px"),
+        style={"description_width": "42px"},
     )
     mh_in = FloatText(
         value=0.0,
-        description="Base:",
-        layout=Layout(width="100px"),
-        style={"description_width": "35px"},
+        description="Base",
+        layout=Layout(width="100px", height="28px"),
+        style={"description_width": "34px"},
     )
     add_btn = Button(
-        description="Add Building",
-        button_style="success",
+        description="Add",
+        button_style="primary",
         icon="plus",
         disabled=True,
-        layout=Layout(flex="1"),
+        layout=Layout(flex="1", height="32px"),
     )
     clr_btn = Button(
         description="Clear",
-        button_style="warning",
-        icon="eraser",
+        button_style="",
+        icon="",
         disabled=True,
-        layout=Layout(width="70px"),
+        layout=Layout(width="64px", height="32px"),
         tooltip="Clear drawing",
     )
 
-    # --- REMOVE BUILDINGS Section ---
-    divider = HTML("<div class='vox-divider'></div>")
-    remove_section_label = HTML("<div class='vox-panel vox-section vox-section-remove'>🗑️ REMOVE</div>")
-    
+    # --- REMOVE Section ---
+    sep = HTML("<div class='gm-sep'></div>")
+    remove_label = HTML("<div class='gm-label'>Remove</div>")
+
     del_btn = ToggleButton(
         value=False,
-        description="👆 Click",
+        description="Click",
         icon="",
         button_style="danger",
-        layout=Layout(width="80px"),
+        layout=Layout(width="72px", height="30px"),
         tooltip="Click on buildings to remove",
     )
     poly_del_btn = ToggleButton(
         value=False,
-        description="⬡ Area",
+        description="Area",
         icon="",
         button_style="danger",
-        layout=Layout(width="75px"),
+        layout=Layout(width="68px", height="30px"),
         tooltip="Draw polygon to remove buildings inside",
     )
 
-    # --- Status Bar ---
+    # --- Status ---
     status_bar = HTML(
-        value="<div class='vox-panel vox-status vox-status-info'>Ready. Select a tool above.</div>"
+        value="<div class='gm-status gm-status-info'>Ready</div>"
     )
 
-    # Layout rows - compact
-    add_tools_row = HBox([rect_btn, freehand_btn], layout=Layout(margin="1px 0"))
-    input_row = HBox([h_in, mh_in], layout=Layout(margin="2px 0"))
-    action_row = HBox([add_btn, clr_btn], layout=Layout(margin="2px 0"))
-    remove_tools_row = HBox([del_btn, poly_del_btn], layout=Layout(margin="1px 0"))
+    # Layout
+    add_tools_row = HBox([rect_btn, freehand_hint], layout=Layout(margin="0 0 6px 0", align_items="center"))
+    input_row = HBox([h_in, mh_in], layout=Layout(margin="0 0 6px 0"))
+    action_row = HBox([add_btn, clr_btn], layout=Layout(margin="0", gap="6px"))
+    remove_tools_row = HBox([del_btn, poly_del_btn], layout=Layout(margin="0", gap="6px"))
 
     panel = VBox(
         [
             style_html,
-            HTML("<div class='vox-panel'><div class='vox-header'>🏙️ Building Editor</div></div>"),
-            add_section_label,
+            HTML("<div class='gm-title'>Building Editor</div>"),
+            add_label,
             add_tools_row,
             input_row,
             action_row,
-            divider,
-            remove_section_label,
+            sep,
+            remove_label,
             remove_tools_row,
             status_bar,
         ],
         layout=Layout(
-            width="280px",
-            padding="8px",
-            background_color="white",
-            border_radius="6px",
-            box_shadow="0px 2px 8px rgba(0,0,0,0.12)",
+            width="260px",
+            padding="14px 16px",
         ),
     )
-    
-    m.add_control(WidgetControl(widget=panel, position="topright"))
+    panel.add_class("gm-root")
+
+    # Wrap in an outer container for card styling (border-radius, shadow)
+    card = VBox(
+        [panel],
+        layout=Layout(
+            background_color="white",
+            border_radius="16px",
+            box_shadow="0 1px 3px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.06)",
+            overflow="hidden",
+        ),
+    )
+
+    m.add_control(WidgetControl(widget=card, position="topright"))
 
     # --- Global State & Transformers ---
     state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None, "removal_poly": None, "removal_preview": None}
@@ -746,7 +869,7 @@ def draw_additional_buildings(
     # --- Helper Functions ---
     def set_status(msg, type="info"):
         status_bar.value = (
-            f"<div class='vox-panel vox-status vox-status-{type}'>{msg}</div>"
+            f"<div class='gm-panel gm-status gm-status-{type}'>{msg}</div>"
         )
 
     def add_polygon_to_map(poly_geom, gdf_index, height):
@@ -767,7 +890,7 @@ def draw_additional_buildings(
                     del building_layers[gdf_index]
                 try:
                     updated_gdf.drop(index=gdf_index, inplace=True)
-                    set_status(f"🗑️ Removed #{gdf_index}. Click more or deselect.", "danger")
+                    set_status(f"Removed #{gdf_index}", "danger")
                 except KeyError:
                     pass
 
@@ -797,25 +920,25 @@ def draw_additional_buildings(
             draw_control.clear()
             clear_removal_preview()
             m.default_style = {"cursor": "crosshair"}
-            set_status("📐 <b>Step 1/3:</b> Click first corner", "info")
+            set_status("Step 1/3 — Click first corner", "info")
         elif change["owner"] is del_btn and change["new"]:
             rect_btn.value = False
             poly_del_btn.value = False
             clear_all(None)
             clear_removal_preview()
             m.default_style = {"cursor": "no-drop"}
-            set_status("👆 Click on buildings to delete", "danger")
+            set_status("Click buildings to delete", "danger")
         elif change["owner"] is poly_del_btn and change["new"]:
             rect_btn.value = False
             del_btn.value = False
             clear_all(None)
             clear_removal_preview()
             m.default_style = {"cursor": "crosshair"}
-            set_status("⬡ Use polygon tool (◇) on left", "danger")
+            set_status("Draw polygon to select area", "danger")
         elif not rect_btn.value and not del_btn.value and not poly_del_btn.value:
             m.default_style = original_style
             clear_removal_preview()
-            set_status("Ready. Select a tool above.", "info")
+            set_status("Ready", "info")
 
     rect_btn.observe(on_mode_change, names="value")
     del_btn.observe(on_mode_change, names="value")
@@ -895,7 +1018,7 @@ def draw_additional_buildings(
             
             count = len(state["clicks"])
             if count == 1:
-                set_status("📐 <b>Step 2/3:</b> Click second corner", "info")
+                set_status("Step 2/3 — Click second corner", "info")
             elif count == 2:
                 (l1, la1), (l2, la2) = state["clicks"]
                 x1, y1 = to_merc.transform(l1, la1)
@@ -903,14 +1026,14 @@ def draw_additional_buildings(
                 if math.hypot(x2 - x1, y2 - y1) < 0.5:
                     state["clicks"].pop()
                     refresh_markers()
-                    set_status("⚠️ Too close! Click further away", "warn")
+                    set_status("Too close — click further away", "warn")
                 else:
-                    set_status("📐 <b>Step 3/3:</b> Click opposite side", "info")
+                    set_status("Step 3/3 — Click opposite side", "info")
             elif count == 3:
                 verts, err = build_rect(state["clicks"])
                 if err:
                     state["clicks"].pop()
-                    set_status(f"⚠️ {err} - try again", "warn")
+                    set_status(f"{err} — try again", "warn")
                 else:
                     clear_preview()
                     clear_temps()
@@ -928,7 +1051,7 @@ def draw_additional_buildings(
                     clr_btn.disabled = False
                     state["clicks"] = []
                     rect_btn.value = False
-                    set_status("✅ Shape ready! Set height → <b>Add</b>", "success")
+                    set_status("Shape ready — set height and add", "success")
 
         elif kwargs.get("type") == "mousemove":
             coords = kwargs.get("coordinates")
@@ -1019,10 +1142,10 @@ def draw_additional_buildings(
                     clear_removal_preview()
                     poly_del_btn.value = False  # Exit poly delete mode after removal
                     m.default_style = original_style
-                    set_status(f"🗑️ Removed {removed_count} building(s)", "success")
+                    set_status(f"Removed {removed_count} building(s)", "success")
                 else:
                     draw_control.clear()
-                    set_status("⚠️ No buildings in area", "warn")
+                    set_status("No buildings in selected area", "warn")
             else:
                 # Normal mode - adding a freehand polygon as building
                 rect_btn.value = False
@@ -1034,7 +1157,7 @@ def draw_additional_buildings(
                 state["poly"] = polygon_coords
                 add_btn.disabled = False
                 clr_btn.disabled = False
-                set_status("✅ Shape ready! Set height → <b>Add</b>", "success")
+                set_status("Shape ready — set height and add", "success")
 
     draw_control = DrawControl(
         polygon={"shapeOptions": {"color": "#FF5722", "fillColor": "#FF5722", "fillOpacity": 0.2}},
@@ -1062,9 +1185,9 @@ def draw_additional_buildings(
             }
             add_polygon_to_map(poly, new_idx, h_in.value)
             clear_all(None)
-            set_status(f"🏢 Added! H={h_in.value}m (ID:{new_idx})", "success")
+            set_status(f"Added — {h_in.value}m (#{new_idx})", "success")
         except Exception as e:
-            set_status(f"❌ Error: {str(e)[:30]}", "danger")
+            set_status(f"Error: {str(e)[:30]}", "danger")
 
     def clear_all(b):
         draw_control.clear()
@@ -1075,7 +1198,7 @@ def draw_additional_buildings(
         add_btn.disabled = True
         clr_btn.disabled = True
         if b:
-            set_status("Cleared. Draw new shape.", "warn")
+            set_status("Cleared", "info")
 
     add_btn.on_click(add_geom)
     clr_btn.on_click(clear_all)
