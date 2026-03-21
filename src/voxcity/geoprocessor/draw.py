@@ -1378,30 +1378,184 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             m.add_layer(circle)
             tree_layers[tree_id_val] = circle
 
-    # UI widgets for parameters
-    top_height_input = FloatText(value=10.0, description='Top height (m):', disabled=False, style={'description_width': 'initial'})
-    bottom_height_input = FloatText(value=4.0, description='Bottom height (m):', disabled=False, style={'description_width': 'initial'})
-    crown_diameter_input = FloatText(value=6.0, description='Crown diameter (m):', disabled=False, style={'description_width': 'initial'})
-    fixed_prop_checkbox = Checkbox(value=True, description='Fixed proportion', indent=False)
+    # UI widgets for parameters (Gemini-style)
+    style_html = HTML(
+        """
+    <style>
+        /* ── Gemini-style panel (trees) ── */
+        .gm-tree-root {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #1f1f1f;
+            line-height: 1.5;
+        }
+        .gm-tree-root * { box-sizing: border-box; }
 
-    add_mode_button = Button(description='Add', button_style='success')
-    remove_mode_button = Button(description='Remove', button_style='')
-    status_output = Output()
+        .gm-tree-root .gm-title {
+            font-size: 13px; font-weight: 500; color: #1f1f1f;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #e8eaed;
+            margin-bottom: 8px;
+        }
+        .gm-tree-root .gm-label {
+            font-size: 11px; font-weight: 500; color: #5f6368;
+            letter-spacing: 0.3px;
+            margin: 0 0 4px 0;
+        }
+        .gm-tree-root .gm-sep { height: 1px; background: #e8eaed; margin: 8px 0; }
+        .gm-tree-root .gm-hint {
+            font-size: 10px; color: #80868b; line-height: 1.4; margin: 0 0 8px 0;
+        }
+        .gm-tree-root .gm-hover {
+            font-size: 11px; color: #1a73e8; font-weight: 500;
+            padding: 4px 10px; border-radius: 12px;
+            background: #f0f4ff; margin-top: 6px;
+            min-height: 0; line-height: 1.3;
+        }
+        .gm-tree-root .gm-hover:empty { display: none; }
+
+        /* Override ipywidgets buttons */
+        .gm-tree-root .jupyter-button {
+            border-radius: 18px !important;
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            border: 1px solid #dadce0 !important;
+            box-shadow: none !important;
+            transition: background 0.15s, border-color 0.15s !important;
+        }
+        .gm-tree-root .jupyter-button:hover {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+        }
+        /* neutral */
+        .gm-tree-root .jupyter-button:not(.mod-success):not(.mod-danger) {
+            background: #f8f9fa !important;
+            color: #3c4043 !important;
+            border-color: #dadce0 !important;
+        }
+        .gm-tree-root .jupyter-button:not(.mod-success):not(.mod-danger):hover {
+            background: #f1f3f4 !important;
+        }
+        /* success (Add active) */
+        .gm-tree-root .mod-success {
+            background: #1a73e8 !important;
+            color: #fff !important;
+            border-color: #1a73e8 !important;
+        }
+        .gm-tree-root .mod-success:hover {
+            background: #1765cc !important;
+            border-color: #1765cc !important;
+        }
+        /* danger (Remove active) */
+        .gm-tree-root .mod-danger {
+            background: #c5221f !important;
+            color: #fff !important;
+            border-color: #c5221f !important;
+        }
+        .gm-tree-root .mod-danger:hover {
+            background: #a8201e !important;
+            border-color: #a8201e !important;
+        }
+
+        /* inputs */
+        .gm-tree-root input[type="number"] {
+            border-radius: 8px !important;
+            border: 1px solid #dadce0 !important;
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 12px !important;
+            padding: 2px 6px !important;
+        }
+        .gm-tree-root input[type="number"]:focus {
+            border-color: #1a73e8 !important;
+            outline: none !important;
+        }
+        .gm-tree-root .widget-label {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 11px !important;
+            color: #5f6368 !important;
+            font-weight: 500 !important;
+        }
+        /* checkbox */
+        .gm-tree-root .widget-checkbox { margin-top: 2px; }
+        .gm-tree-root .widget-checkbox .widget-label {
+            font-size: 10px !important;
+            color: #80868b !important;
+        }
+    </style>
+    """
+    )
+
+    top_height_input = FloatText(
+        value=10.0, description='Top (m):',
+        layout=Layout(width='150px', height='26px'),
+        style={'description_width': '55px'},
+    )
+    bottom_height_input = FloatText(
+        value=4.0, description='Bottom (m):',
+        layout=Layout(width='150px', height='26px'),
+        style={'description_width': '70px'},
+    )
+    crown_diameter_input = FloatText(
+        value=6.0, description='Crown (m):',
+        layout=Layout(width='150px', height='26px'),
+        style={'description_width': '65px'},
+    )
+    fixed_prop_checkbox = Checkbox(
+        value=True, description='Fixed proportion', indent=False,
+        layout=Layout(width='auto', height='22px'),
+    )
+
+    add_mode_button = Button(
+        description='Add', button_style='success',
+        layout=Layout(flex='1', height='28px'),
+    )
+    remove_mode_button = Button(
+        description='Remove', button_style='',
+        layout=Layout(flex='1', height='28px'),
+    )
+
     hover_info = HTML("")
 
-    control_panel = VBox([
-        HTML("<h3 style=\"margin:0 0 4px 0;\">Tree Placement Tool</h3>"),
-        HTML("<div style=\"margin:0 0 6px 0;\">1. Choose Add/Remove mode<br>2. Set tree parameters (top, bottom, crown)<br>3. Click on the map to add/remove consecutively<br>4. Hover over a tree to view parameters</div>"),
-        HBox([add_mode_button, remove_mode_button]),
-        top_height_input,
-        bottom_height_input,
-        crown_diameter_input,
-        fixed_prop_checkbox,
-        hover_info,
-        status_output
-    ])
+    # Layout
+    mode_row = HBox(
+        [add_mode_button, remove_mode_button],
+        layout=Layout(margin='0 0 4px 0', gap='6px'),
+    )
+    param_col = VBox(
+        [top_height_input, bottom_height_input, crown_diameter_input, fixed_prop_checkbox],
+        layout=Layout(margin='0', gap='2px'),
+    )
 
-    widget_control = WidgetControl(widget=control_panel, position='topright')
+    panel = VBox(
+        [
+            style_html,
+            HTML("<div class='gm-title'>Tree Editor</div>"),
+            HTML("<div class='gm-label'>Mode</div>"),
+            mode_row,
+            HTML("<div class='gm-sep'></div>"),
+            HTML("<div class='gm-label'>Parameters</div>"),
+            param_col,
+            hover_info,
+        ],
+        layout=Layout(
+            width='230px',
+            padding='10px 12px',
+            max_height='420px',
+            overflow_y='hidden',
+        ),
+    )
+    panel.add_class("gm-tree-root")
+
+    card = VBox(
+        [panel],
+        layout=Layout(
+            background_color='white',
+            border_radius='16px',
+            box_shadow='0 1px 3px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.06)',
+            overflow='hidden',
+        ),
+    )
+
+    widget_control = WidgetControl(widget=card, position='topright')
     m.add_control(widget_control)
 
     # State for mode
@@ -1504,9 +1658,6 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     # Consecutive placements by map click
     def handle_map_click(**kwargs):
         nonlocal updated_trees
-        with status_output:
-            clear_output()
-
         if kwargs.get('type') == 'click':
             lat, lon = kwargs.get('coordinates', (None, None))
             if lat is None or lon is None:
@@ -1591,9 +1742,9 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                 rad_m = max(int(round(float(row2.get('crown_diameter', 6.0)) / 2.0)), 1)
                 if dist_m <= rad_m:
                     hover_info.value = (
-                        f"<div style=\"color:#d61f1f; font-weight:600; margin:2px 0;\">"
-                        f"Tree {int(row2.get('tree_id', 0))} | Top {float(row2.get('top_height', 10.0))} m | "
-                        f"Bottom {float(row2.get('bottom_height', 0.0))} m | Crown {float(row2.get('crown_diameter', 6.0))} m"
+                        f"<div class='gm-hover'>"
+                        f"#{int(row2.get('tree_id', 0))} &nbsp; Top {float(row2.get('top_height', 10.0))}m &middot; "
+                        f"Base {float(row2.get('bottom_height', 0.0))}m &middot; Crown {float(row2.get('crown_diameter', 6.0))}m"
                         f"</div>"
                     )
                     shown = True
@@ -1601,10 +1752,6 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             if not shown:
                 hover_info.value = ""
     m.on_interaction(handle_map_click)
-
-    with status_output:
-        print(f"Total trees loaded: {len(updated_trees)}")
-        print("Set parameters, then click on the map to add trees")
 
     return m, updated_trees
 
