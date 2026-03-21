@@ -629,10 +629,34 @@ def draw_additional_buildings(
     )
     m.layers = (carto_light,)
 
+    # Remove any default DrawControl that may have been added
+    for ctrl in list(m.controls):
+        if isinstance(ctrl, DrawControl):
+            m.remove_control(ctrl)
+
     # --- UI Setup (Gemini-style minimal design) ---
     style_html = HTML(
         """
     <style>
+        /* Hide Leaflet.draw toolbar if present */
+        .leaflet-draw { display: none !important; }
+
+        /* Force crosshair cursor during drawing modes */
+        .drawing-mode,
+        .drawing-mode .leaflet-container,
+        .drawing-mode .leaflet-interactive,
+        .drawing-mode .leaflet-grab,
+        .drawing-mode .leaflet-overlay-pane,
+        .drawing-mode .leaflet-overlay-pane * {
+            cursor: crosshair !important;
+        }
+        .delete-mode,
+        .delete-mode .leaflet-container,
+        .delete-mode .leaflet-interactive,
+        .delete-mode .leaflet-grab {
+            cursor: no-drop !important;
+        }
+
         /* ── Gemini-style panel ── */
         .gm-root {
             font-family: 'Google Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -761,8 +785,12 @@ def draw_additional_buildings(
         layout=Layout(width="92px", height="30px"),
         tooltip="Click 3 corners on map to draw rectangle",
     )
-    freehand_hint = HTML(
-        "<span style='font-size:10px; color:#80868b; margin-left:6px;'>or polygon tool on left</span>"
+    poly_btn = ToggleButton(
+        value=False,
+        description="Polygon",
+        icon="",
+        layout=Layout(width="82px", height="30px"),
+        tooltip="Click to draw polygon, double-click to finish",
     )
 
     h_in = FloatText(
@@ -820,7 +848,7 @@ def draw_additional_buildings(
     )
 
     # Layout
-    add_tools_row = HBox([rect_btn, freehand_hint], layout=Layout(margin="0 0 6px 0", align_items="center"))
+    add_tools_row = HBox([rect_btn, poly_btn], layout=Layout(margin="0 0 6px 0", align_items="center", gap="6px"))
     input_row = HBox([h_in, mh_in], layout=Layout(margin="0 0 6px 0"))
     action_row = HBox([add_btn, clr_btn], layout=Layout(margin="0", gap="6px"))
     remove_tools_row = HBox([del_btn, poly_del_btn], layout=Layout(margin="0", gap="6px"))
@@ -859,7 +887,7 @@ def draw_additional_buildings(
     m.add_control(WidgetControl(widget=card, position="topright"))
 
     # --- Global State & Transformers ---
-    state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None, "removal_poly": None, "removal_preview": None}
+    state = {"poly": [], "clicks": [], "temp_layers": [], "preview": None, "removal_poly": None, "removal_preview": None, "removal_clicks": [], "removal_layers": [], "poly_clicks": [], "poly_layers": [], "poly_preview": None}
     to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     to_geo = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
     _style_attr = getattr(m, "default_style", {})
@@ -921,36 +949,77 @@ def draw_additional_buildings(
                 pass
             state["removal_preview"] = None
         state["removal_poly"] = None
+        # Clear custom polygon drawing layers
+        while state["removal_layers"]:
+            try:
+                m.remove_layer(state["removal_layers"].pop())
+            except Exception:
+                pass
+        state["removal_clicks"] = []
+
+    # --- Cursor helpers ---
+    def _set_drawing_cursor():
+        m.default_style = {"cursor": "crosshair"}
+        m.remove_class("delete-mode")
+        m.add_class("drawing-mode")
+
+    def _set_delete_cursor():
+        m.default_style = {"cursor": "no-drop"}
+        m.remove_class("drawing-mode")
+        m.add_class("delete-mode")
+
+    def _reset_cursor():
+        m.default_style = original_style
+        m.remove_class("drawing-mode")
+        m.remove_class("delete-mode")
 
     # --- Logic ---
     def on_mode_change(change):
         if change["owner"] is rect_btn and change["new"]:
+            poly_btn.value = False
             del_btn.value = False
             poly_del_btn.value = False
-            draw_control.clear()
             clear_removal_preview()
-            m.default_style = {"cursor": "crosshair"}
-            set_status("Step 1/3 — Click first corner", "info")
-        elif change["owner"] is del_btn and change["new"]:
+            clear_poly_draw()
+            _set_drawing_cursor()
+            set_status("Step 1/3 \u2014 Click first corner", "info")
+        elif change["owner"] is poly_btn and change["new"]:
             rect_btn.value = False
+            del_btn.value = False
             poly_del_btn.value = False
             clear_all(None)
             clear_removal_preview()
-            m.default_style = {"cursor": "no-drop"}
+            _set_drawing_cursor()
+            m.double_click_zoom = False
+            set_status("Click to draw polygon, click first point to close", "info")
+        elif change["owner"] is del_btn and change["new"]:
+            rect_btn.value = False
+            poly_btn.value = False
+            poly_del_btn.value = False
+            clear_all(None)
+            clear_removal_preview()
+            clear_poly_draw()
+            _set_delete_cursor()
             set_status("Click buildings to delete", "danger")
         elif change["owner"] is poly_del_btn and change["new"]:
             rect_btn.value = False
+            poly_btn.value = False
             del_btn.value = False
             clear_all(None)
             clear_removal_preview()
-            m.default_style = {"cursor": "crosshair"}
-            set_status("Draw polygon to select area", "danger")
-        elif not rect_btn.value and not del_btn.value and not poly_del_btn.value:
-            m.default_style = original_style
+            clear_poly_draw()
+            _set_drawing_cursor()
+            m.double_click_zoom = False
+            set_status("Click to draw removal area, click first point to close", "danger")
+        elif not rect_btn.value and not del_btn.value and not poly_del_btn.value and not poly_btn.value:
+            _reset_cursor()
+            m.double_click_zoom = True
             clear_removal_preview()
+            clear_poly_draw()
             set_status("Ready", "info")
 
     rect_btn.observe(on_mode_change, names="value")
+    poly_btn.observe(on_mode_change, names="value")
     del_btn.observe(on_mode_change, names="value")
     poly_del_btn.observe(on_mode_change, names="value")
 
@@ -962,6 +1031,21 @@ def draw_additional_buildings(
                 pass
             state["preview"] = None
     
+    def clear_poly_draw():
+        """Clear polygon drawing layers."""
+        while state["poly_layers"]:
+            try:
+                m.remove_layer(state["poly_layers"].pop())
+            except Exception:
+                pass
+        if state["poly_preview"]:
+            try:
+                m.remove_layer(state["poly_preview"])
+            except Exception:
+                pass
+            state["poly_preview"] = None
+        state["poly_clicks"] = []
+
     def clear_temps():
         while state["temp_layers"]:
             try:
@@ -1016,8 +1100,211 @@ def draw_additional_buildings(
 
     # Mousemove throttle state
     _last_mousemove = [0.0]
+    _last_removal_click = [0.0]  # Guard against click events from dblclick
+    _last_poly_click = [0.0]    # Guard for polygon draw mode
+
+    def _refresh_poly_markers():
+        """Redraw markers and edges for the polygon being drawn."""
+        while state["poly_layers"]:
+            try:
+                m.remove_layer(state["poly_layers"].pop())
+            except Exception:
+                pass
+        pts = state["poly_clicks"]
+        for lon, lat in pts:
+            pt = Circle(location=(lat, lon), radius=2, color="#4CAF50", fill_color="#4CAF50", fill_opacity=1.0)
+            m.add_layer(pt)
+            state["poly_layers"].append(pt)
+        for i in range(len(pts) - 1):
+            line = Polyline(locations=[(pts[i][1], pts[i][0]), (pts[i+1][1], pts[i+1][0])], color="#4CAF50", weight=2)
+            m.add_layer(line)
+            state["poly_layers"].append(line)
+
+    # Proximity threshold in degrees (~10 pixels at typical zoom)
+    _CLOSE_THRESHOLD = 0.0001
+
+    def _is_near_first(pts, lon, lat):
+        """Check if (lon, lat) is close to the first point in pts."""
+        if len(pts) < 3:
+            return False
+        dx = lon - pts[0][0]
+        dy = lat - pts[0][1]
+        return (dx * dx + dy * dy) < (_CLOSE_THRESHOLD * _CLOSE_THRESHOLD)
+
+    def _finish_poly_footprint(pts):
+        """Finalize a polygon footprint from clicked points."""
+        clear_poly_draw()
+        state["poly"] = pts
+        poly_locs = [(lat, lon) for lon, lat in pts]
+        preview = LeafletPolygon(
+            locations=poly_locs,
+            color="#4CAF50",
+            fill_color="#4CAF50",
+            fill_opacity=0.3,
+        )
+        state["preview"] = preview
+        m.add_layer(preview)
+        add_btn.disabled = False
+        clr_btn.disabled = False
+        poly_btn.value = False
+        m.double_click_zoom = True
+        set_status("Shape ready \u2014 set height and add", "success")
+
+    def _execute_polygon_removal(polygon_coords):
+        """Remove buildings within the drawn polygon."""
+        removal_polygon = geom.Polygon(polygon_coords)
+        buildings_to_remove = []
+        for idx, row in updated_gdf.iterrows():
+            if isinstance(row.geometry, geom.Polygon):
+                if removal_polygon.contains(row.geometry) or removal_polygon.intersects(row.geometry):
+                    buildings_to_remove.append(idx)
+        if buildings_to_remove:
+            removed_count = 0
+            for idx in buildings_to_remove:
+                try:
+                    updated_gdf.drop(index=idx, inplace=True)
+                    removed_count += 1
+                except KeyError:
+                    pass
+            buildings_geojson.data = _build_geojson_data()
+            clear_removal_preview()
+            poly_del_btn.value = False
+            _reset_cursor()
+            m.double_click_zoom = True
+            set_status(f"Removed {removed_count} building(s)", "success")
+        else:
+            clear_removal_preview()
+            set_status("No buildings in selected area", "warn")
+
+    def _refresh_removal_markers():
+        """Redraw markers and edges for the removal polygon being drawn."""
+        # Clear old layers
+        while state["removal_layers"]:
+            try:
+                m.remove_layer(state["removal_layers"].pop())
+            except Exception:
+                pass
+        pts = state["removal_clicks"]
+        # Draw vertices
+        for lon, lat in pts:
+            pt = Circle(location=(lat, lon), radius=2, color="#FF0000", fill_color="#FF0000", fill_opacity=1.0)
+            m.add_layer(pt)
+            state["removal_layers"].append(pt)
+        # Draw edges
+        for i in range(len(pts) - 1):
+            line = Polyline(locations=[(pts[i][1], pts[i][0]), (pts[i+1][1], pts[i+1][0])], color="#FF0000", weight=2)
+            m.add_layer(line)
+            state["removal_layers"].append(line)
 
     def handle_map_interaction(**kwargs):
+        # --- Custom polygon drawing for adding a building footprint ---
+        if poly_btn.value:
+            if kwargs.get("type") == "dblclick":
+                pts = state["poly_clicks"]
+                if len(pts) >= 3:
+                    _finish_poly_footprint(pts)
+                else:
+                    set_status("Need at least 3 points", "warn")
+                return
+            elif kwargs.get("type") == "click":
+                now = time.time()
+                if now - _last_poly_click[0] < 0.3:
+                    return
+                _last_poly_click[0] = now
+                coords = kwargs.get("coordinates")
+                if not coords:
+                    return
+                lat, lon = coords
+                # Close polygon if clicking near the first vertex
+                if _is_near_first(state["poly_clicks"], lon, lat):
+                    _finish_poly_footprint(state["poly_clicks"])
+                    return
+                state["poly_clicks"].append((lon, lat))
+                _refresh_poly_markers()
+                n = len(state["poly_clicks"])
+                set_status(f"{n} point(s) \u2014 click first point to close", "info")
+            elif kwargs.get("type") == "mousemove":
+                now = time.time()
+                if now - _last_mousemove[0] < 0.05:
+                    return
+                _last_mousemove[0] = now
+                pts = state["poly_clicks"]
+                if pts:
+                    coords = kwargs.get("coordinates")
+                    if not coords:
+                        return
+                    lat_c, lon_c = coords
+                    if state["poly_preview"] and isinstance(state["poly_preview"], Polyline):
+                        state["poly_preview"].locations = [(pts[-1][1], pts[-1][0]), (lat_c, lon_c)]
+                    else:
+                        if state["poly_preview"]:
+                            try:
+                                m.remove_layer(state["poly_preview"])
+                            except Exception:
+                                pass
+                        line = Polyline(
+                            locations=[(pts[-1][1], pts[-1][0]), (lat_c, lon_c)],
+                            color="#4CAF50", weight=2, dash_array="5, 5",
+                        )
+                        state["poly_preview"] = line
+                        m.add_layer(line)
+            return
+
+        # --- Custom polygon drawing for area removal ---
+        if poly_del_btn.value:
+            if kwargs.get("type") == "dblclick":
+                pts = state["removal_clicks"]
+                if len(pts) >= 3:
+                    _execute_polygon_removal(pts)
+                else:
+                    set_status("Need at least 3 points", "warn")
+                return
+            elif kwargs.get("type") == "click":
+                # Skip click events that are part of a double-click
+                now = time.time()
+                if now - _last_removal_click[0] < 0.3:
+                    return
+                _last_removal_click[0] = now
+                coords = kwargs.get("coordinates")
+                if not coords:
+                    return
+                lat, lon = coords
+                # Close polygon if clicking near the first vertex
+                if _is_near_first(state["removal_clicks"], lon, lat):
+                    _execute_polygon_removal(state["removal_clicks"])
+                    return
+                state["removal_clicks"].append((lon, lat))
+                _refresh_removal_markers()
+                n = len(state["removal_clicks"])
+                set_status(f"{n} point(s) \u2014 click first point to close", "danger")
+            elif kwargs.get("type") == "mousemove":
+                now = time.time()
+                if now - _last_mousemove[0] < 0.05:
+                    return
+                _last_mousemove[0] = now
+                pts = state["removal_clicks"]
+                if pts:
+                    coords = kwargs.get("coordinates")
+                    if not coords:
+                        return
+                    lat_c, lon_c = coords
+                    # Show a dashed preview line from last point to cursor
+                    if state["removal_preview"] and isinstance(state["removal_preview"], Polyline):
+                        state["removal_preview"].locations = [(pts[-1][1], pts[-1][0]), (lat_c, lon_c)]
+                    else:
+                        if state["removal_preview"]:
+                            try:
+                                m.remove_layer(state["removal_preview"])
+                            except Exception:
+                                pass
+                        line = Polyline(
+                            locations=[(pts[-1][1], pts[-1][0]), (lat_c, lon_c)],
+                            color="#FF0000", weight=2, dash_array="5, 5",
+                        )
+                        state["removal_preview"] = line
+                        m.add_layer(line)
+            return
+
         if not rect_btn.value:
             return
 
@@ -1125,66 +1412,17 @@ def draw_additional_buildings(
             coords = geo_json["geometry"]["coordinates"][0]
             polygon_coords = [(c[0], c[1]) for c in coords[:-1]]
             
-            # Check if we're in polygon removal mode
-            if poly_del_btn.value:
-                # Create the removal polygon and find buildings to remove
-                removal_polygon = geom.Polygon(polygon_coords)
-                state["removal_poly"] = removal_polygon
-                
-                # Find all buildings within or intersecting the drawn polygon
-                buildings_to_remove = []
-                for idx, row in updated_gdf.iterrows():
-                    if isinstance(row.geometry, geom.Polygon):
-                        if removal_polygon.contains(row.geometry) or removal_polygon.intersects(row.geometry):
-                            buildings_to_remove.append(idx)
-                
-                if buildings_to_remove:
-                    # Highlight buildings that will be removed
-                    clear_removal_preview()
-                    
-                    # Create a preview polygon showing the selection area
-                    preview_locs = [(lat, lon) for lon, lat in polygon_coords]
-                    preview = LeafletPolygon(
-                        locations=preview_locs,
-                        color="#FF0000",
-                        fill_color="#FF0000",
-                        fill_opacity=0.2,
-                        weight=2,
-                        dash_array="5, 5",
-                    )
-                    state["removal_preview"] = preview
-                    m.add_layer(preview)
-                    
-                    # Remove the buildings from GeoDataFrame and refresh GeoJSON
-                    removed_count = 0
-                    for idx in buildings_to_remove:
-                        try:
-                            updated_gdf.drop(index=idx, inplace=True)
-                            removed_count += 1
-                        except KeyError:
-                            pass
-                    buildings_geojson.data = _build_geojson_data()
-                    
-                    draw_control.clear()
-                    clear_removal_preview()
-                    poly_del_btn.value = False  # Exit poly delete mode after removal
-                    m.default_style = original_style
-                    set_status(f"Removed {removed_count} building(s)", "success")
-                else:
-                    draw_control.clear()
-                    set_status("No buildings in selected area", "warn")
-            else:
-                # Normal mode - adding a freehand polygon as building
-                rect_btn.value = False
-                del_btn.value = False
-                poly_del_btn.value = False
-                state["clicks"] = []
-                clear_preview()
-                clear_temps()
-                state["poly"] = polygon_coords
-                add_btn.disabled = False
-                clr_btn.disabled = False
-                set_status("Shape ready — set height and add", "success")
+            # Normal mode - adding a freehand polygon as building
+            rect_btn.value = False
+            del_btn.value = False
+            poly_del_btn.value = False
+            state["clicks"] = []
+            clear_preview()
+            clear_temps()
+            state["poly"] = polygon_coords
+            add_btn.disabled = False
+            clr_btn.disabled = False
+            set_status("Shape ready — set height and add", "success")
 
     draw_control = DrawControl(
         polygon={"shapeOptions": {"color": "#FF5722", "fillColor": "#FF5722", "fillOpacity": 0.2}},
@@ -1217,7 +1455,6 @@ def draw_additional_buildings(
             set_status(f"Error: {str(e)[:30]}", "danger")
 
     def clear_all(b):
-        draw_control.clear()
         clear_preview()
         clear_temps()
         state["clicks"] = []
