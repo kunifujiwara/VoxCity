@@ -1579,9 +1579,11 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     # ---------------------------------------------------------
     tree_gdf = None
     rectangle_vertices = None
+    building_gdf = None
     if voxcity is not None:
         tree_gdf = voxcity.extras.get('tree_gdf', None)
         rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
+        building_gdf = voxcity.extras.get('building_gdf', None)
     
     # Initialize or copy the tree GeoDataFrame
     if tree_gdf is None:
@@ -1643,6 +1645,43 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         except Exception:
             pass
 
+    # ── Building footprints overlay ──────────────────────────
+    def _build_building_geojson(bld_gdf):
+        """Build a GeoJSON FeatureCollection from a building GeoDataFrame."""
+        features = []
+        if bld_gdf is None or len(bld_gdf) == 0:
+            return {"type": "FeatureCollection", "features": features}
+        for idx, row in bld_gdf.iterrows():
+            if isinstance(row.geometry, geom.Polygon):
+                coords = [list(row.geometry.exterior.coords)]
+                if any(math.isnan(c) for ring in coords for pt in ring for c in pt):
+                    continue
+                features.append({
+                    "type": "Feature",
+                    "id": str(idx),
+                    "properties": {},
+                    "geometry": {"type": "Polygon", "coordinates": coords},
+                })
+        return {"type": "FeatureCollection", "features": features}
+
+    _bld_style = {
+        "color": "#1565c0",
+        "fillColor": "#42a5f5",
+        "fillOpacity": 0.35,
+        "weight": 1,
+    }
+
+    buildings_overlay = GeoJSON(
+        data=_build_building_geojson(building_gdf),
+        style=_bld_style,
+    )
+    # Add by default (will be toggled via checkbox)
+    _bld_layer_on_map = True
+    if building_gdf is not None and len(building_gdf) > 0:
+        m.add_layer(buildings_overlay)
+    else:
+        _bld_layer_on_map = False
+
     # Display existing trees as circles
     tree_layers = {}
     for idx, row in updated_trees.iterrows():
@@ -1652,7 +1691,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             # Ensure integer radius in meters as required by ipyleaflet Circle
             radius_m = max(int(round(float(row.get('crown_diameter', 6.0)) / 2.0)), 1)
             tree_id_val = int(row.get('tree_id', idx+1))
-            circle = Circle(location=(lat, lon), radius=radius_m, color='#2ab7ca', weight=1, opacity=1.0, fill_color='#2ab7ca', fill_opacity=0.3)
+            circle = Circle(location=(lat, lon), radius=radius_m, color='#00ff7f', weight=1, opacity=1.0, fill_color='#00ff7f', fill_opacity=0.3)
             m.add_layer(circle)
             tree_layers[tree_id_val] = circle
 
@@ -1763,19 +1802,19 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     )
 
     top_height_input = FloatText(
-        value=10.0, description='Top (m):',
-        layout=Layout(width='150px', height='26px'),
-        style={'description_width': '55px'},
+        value=10.0, description='Top height (m):',
+        layout=Layout(width='180px', height='26px'),
+        style={'description_width': '100px'},
     )
     bottom_height_input = FloatText(
-        value=4.0, description='Bottom (m):',
-        layout=Layout(width='150px', height='26px'),
-        style={'description_width': '70px'},
+        value=4.0, description='Trunk height (m):',
+        layout=Layout(width='180px', height='26px'),
+        style={'description_width': '100px'},
     )
     crown_diameter_input = FloatText(
-        value=6.0, description='Crown (m):',
-        layout=Layout(width='150px', height='26px'),
-        style={'description_width': '65px'},
+        value=6.0, description='Crown dia. (m):',
+        layout=Layout(width='180px', height='26px'),
+        style={'description_width': '100px'},
     )
     fixed_prop_checkbox = Checkbox(
         value=True, description='Fixed proportion', indent=False,
@@ -1968,7 +2007,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
                 # Add circle layer representing crown diameter (radius in meters)
                 radius_m = max(int(round(new_row['crown_diameter'] / 2.0)), 1)
-                circle = Circle(location=(lat, lon), radius=radius_m, color='#2ab7ca', weight=1, opacity=1.0, fill_color='#2ab7ca', fill_opacity=0.3)
+                circle = Circle(location=(lat, lon), radius=radius_m, color='#00ff7f', weight=1, opacity=1.0, fill_color='#00ff7f', fill_opacity=0.3)
                 m.add_layer(circle)
 
                 tree_layers[next_tree_id] = circle
