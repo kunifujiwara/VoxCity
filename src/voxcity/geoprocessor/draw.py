@@ -654,7 +654,7 @@ def draw_additional_buildings(
         .delete-mode .leaflet-container,
         .delete-mode .leaflet-interactive,
         .delete-mode .leaflet-grab {
-            cursor: no-drop !important;
+            cursor: pointer !important;
         }
 
         /* ── Gemini-style panel ── */
@@ -964,7 +964,7 @@ def draw_additional_buildings(
         m.add_class("drawing-mode")
 
     def _set_delete_cursor():
-        m.default_style = {"cursor": "no-drop"}
+        m.default_style = {"cursor": "pointer"}
         m.remove_class("drawing-mode")
         m.add_class("delete-mode")
 
@@ -1134,7 +1134,7 @@ def draw_additional_buildings(
     def _finish_poly_footprint(pts):
         """Finalize a polygon footprint from clicked points."""
         clear_poly_draw()
-        state["poly"] = pts
+        state["poly"] = list(pts)
         poly_locs = [(lat, lon) for lon, lat in pts]
         preview = LeafletPolygon(
             locations=poly_locs,
@@ -1146,9 +1146,7 @@ def draw_additional_buildings(
         m.add_layer(preview)
         add_btn.disabled = False
         clr_btn.disabled = False
-        poly_btn.value = False
-        m.double_click_zoom = True
-        set_status("Shape ready \u2014 set height and add", "success")
+        set_status("Shape ready \u2014 set height and +Add", "success")
 
     def _execute_polygon_removal(polygon_coords):
         """Remove buildings within the drawn polygon."""
@@ -1168,10 +1166,10 @@ def draw_additional_buildings(
                     pass
             buildings_geojson.data = _build_geojson_data()
             clear_removal_preview()
-            poly_del_btn.value = False
-            _reset_cursor()
-            m.double_click_zoom = True
-            set_status(f"Removed {removed_count} building(s)", "success")
+            # Stay in removal mode for next area
+            _set_drawing_cursor()
+            m.double_click_zoom = False
+            set_status(f"Removed {removed_count} \u2014 draw next area or deselect", "success")
         else:
             clear_removal_preview()
             set_status("No buildings in selected area", "warn")
@@ -1354,8 +1352,7 @@ def draw_additional_buildings(
                     add_btn.disabled = False
                     clr_btn.disabled = False
                     state["clicks"] = []
-                    rect_btn.value = False
-                    set_status("Shape ready — set height and add", "success")
+                    set_status("Shape ready — set height and +Add", "success")
 
         elif kwargs.get("type") == "mousemove":
             # Throttle: skip if less than 50ms since last update
@@ -1449,8 +1446,20 @@ def draw_additional_buildings(
                 "id": new_idx,
             }
             buildings_geojson.data = _build_geojson_data()
-            clear_all(None)
-            set_status(f"Added — {h_in.value}m (#{new_idx})", "success")
+            # Clear drawn shape but stay in current mode
+            clear_preview()
+            clear_temps()
+            clear_poly_draw()
+            state["clicks"] = []
+            state["poly"] = []
+            add_btn.disabled = True
+            clr_btn.disabled = True
+            if rect_btn.value:
+                set_status(f"Added #{new_idx} — draw next rectangle", "success")
+            elif poly_btn.value:
+                set_status(f"Added #{new_idx} — draw next polygon", "success")
+            else:
+                set_status(f"Added — {h_in.value}m (#{new_idx})", "success")
         except Exception as e:
             set_status(f"Error: {str(e)[:30]}", "danger")
 
