@@ -24,6 +24,7 @@ Dependencies:
 """
 
 import math
+import time
 from pyproj import Transformer
 from ipyleaflet import (
     Map,
@@ -36,6 +37,7 @@ from ipyleaflet import (
     basemaps,
     basemap_to_tiles,
     TileLayer,
+    GeoJSON,
 )
 from geopy import distance
 import shapely.geometry as geom
@@ -863,45 +865,53 @@ def draw_additional_buildings(
     _style_attr = getattr(m, "default_style", {})
     original_style = _style_attr.copy() if isinstance(_style_attr, dict) else {"cursor": "grab"}
     
-    # Track building layers for polygon removal mode
-    building_layers = {}
-
     # --- Helper Functions ---
     def set_status(msg, type="info"):
         status_bar.value = (
             f"<div class='gm-panel gm-status gm-status-{type}'>{msg}</div>"
         )
 
-    def add_polygon_to_map(poly_geom, gdf_index, height):
-        coords = list(poly_geom.exterior.coords)
-        leaflet_poly = LeafletPolygon(
-            locations=[(c[1], c[0]) for c in coords[:-1]],  # Flip (Lon, Lat) -> (Lat, Lon) for Leaflet
-            color="#2196F3",
-            fill_color="#2196F3",
-            fill_opacity=0.4,
-            weight=1,
-            popup=HTML(f"<b>ID:</b> {gdf_index}<br><b>H:</b> {height}m"),
-        )
+    # --- Batch render buildings via GeoJSON layer (fast) ---
+    def _build_geojson_data():
+        """Build a GeoJSON FeatureCollection from the current GeoDataFrame."""
+        features = []
+        for idx, row in updated_gdf.iterrows():
+            if isinstance(row.geometry, geom.Polygon):
+                coords = [list(row.geometry.exterior.coords)]
+                features.append({
+                    "type": "Feature",
+                    "id": str(idx),
+                    "properties": {"idx": int(idx), "height": float(row.get("height", 0))},
+                    "geometry": {"type": "Polygon", "coordinates": coords},
+                })
+        return {"type": "FeatureCollection", "features": features}
 
-        def on_poly_click(**kwargs):
-            if del_btn.value:
-                m.remove_layer(leaflet_poly)
-                if gdf_index in building_layers:
-                    del building_layers[gdf_index]
+    _geojson_style = {
+        "color": "#2196F3",
+        "fillColor": "#2196F3",
+        "fillOpacity": 0.4,
+        "weight": 1,
+    }
+
+    buildings_geojson = GeoJSON(
+        data=_build_geojson_data(),
+        style=_geojson_style,
+        hover_style={"fillOpacity": 0.6},
+    )
+
+    def _on_geojson_click(event=None, feature=None, id=None, properties=None, **kwargs):
+        if del_btn.value and properties:
+            gdf_index = properties.get("idx")
+            if gdf_index is not None:
                 try:
                     updated_gdf.drop(index=gdf_index, inplace=True)
+                    buildings_geojson.data = _build_geojson_data()
                     set_status(f"Removed #{gdf_index}", "danger")
                 except KeyError:
                     pass
 
-        leaflet_poly.on_click(on_poly_click)
-        m.add_layer(leaflet_poly)
-        building_layers[gdf_index] = leaflet_poly
-
-    # --- Render Existing ---
-    for idx, row in updated_gdf.iterrows():
-        if isinstance(row.geometry, geom.Polygon):
-            add_polygon_to_map(row.geometry, idx, row.get("height", 0))
+    buildings_geojson.on_click(_on_geojson_click)
+    m.add_layer(buildings_geojson)
 
     def clear_removal_preview():
         if state["removal_preview"]:
@@ -1004,6 +1014,9 @@ def draw_additional_buildings(
         ]
         return [to_geo.transform(*p) for p in corners_merc], None
 
+    # Mousemove throttle state
+    _last_mousemove = [0.0]
+
     def handle_map_interaction(**kwargs):
         if not rect_btn.value:
             return
@@ -1018,6 +1031,8 @@ def draw_additional_buildings(
             
             count = len(state["clicks"])
             if count == 1:
+                # Entering drawing mode: clear any reused preview so it starts fresh
+                clear_preview()
                 set_status("Step 2/3 — Click second corner", "info")
             elif count == 2:
                 (l1, la1), (l2, la2) = state["clicks"]
@@ -1028,6 +1043,8 @@ def draw_additional_buildings(
                     refresh_markers()
                     set_status("Too close — click further away", "warn")
                 else:
+                    # Switching from line to polygon preview: clear the Polyline
+                    clear_preview()
                     set_status("Step 3/3 — Click opposite side", "info")
             elif count == 3:
                 verts, err = build_rect(state["clicks"])
@@ -1054,37 +1071,52 @@ def draw_additional_buildings(
                     set_status("Shape ready — set height and add", "success")
 
         elif kwargs.get("type") == "mousemove":
+            # Throttle: skip if less than 50ms since last update
+            now = time.time()
+            if now - _last_mousemove[0] < 0.05:
+                return
+            _last_mousemove[0] = now
+
             coords = kwargs.get("coordinates")
             if not coords:
                 return
             lat_c, lon_c = coords
             if len(state["clicks"]) == 1:
-                clear_preview()
                 (lon1, lat1) = state["clicks"][0]
-                line = Polyline(
-                    locations=[(lat1, lon1), (lat_c, lon_c)],
-                    color="#FF5722",
-                    weight=2,
-                    dash_array="5, 5",
-                )
-                state["preview"] = line
-                m.add_layer(line)
+                new_locs = [(lat1, lon1), (lat_c, lon_c)]
+                # Reuse existing Polyline if possible
+                if state["preview"] and isinstance(state["preview"], Polyline):
+                    state["preview"].locations = new_locs
+                else:
+                    clear_preview()
+                    line = Polyline(
+                        locations=new_locs,
+                        color="#FF5722",
+                        weight=2,
+                        dash_array="5, 5",
+                    )
+                    state["preview"] = line
+                    m.add_layer(line)
             elif len(state["clicks"]) == 2:
                 tentative_clicks = state["clicks"] + [(lon_c, lat_c)]
                 verts, err = build_rect(tentative_clicks)
-                clear_preview()
                 if not err:
                     poly_locs = [(lat, lon) for lon, lat in verts]
-                    poly = LeafletPolygon(
-                        locations=poly_locs,
-                        color="#FF5722",
-                        weight=2,
-                        fill_color="#FF5722",
-                        fill_opacity=0.1,
-                        dash_array="5, 5",
-                    )
-                    state["preview"] = poly
-                    m.add_layer(poly)
+                    # Reuse existing LeafletPolygon if possible
+                    if state["preview"] and isinstance(state["preview"], LeafletPolygon):
+                        state["preview"].locations = poly_locs
+                    else:
+                        clear_preview()
+                        poly = LeafletPolygon(
+                            locations=poly_locs,
+                            color="#FF5722",
+                            weight=2,
+                            fill_color="#FF5722",
+                            fill_opacity=0.1,
+                            dash_array="5, 5",
+                        )
+                        state["preview"] = poly
+                        m.add_layer(poly)
 
     m.on_interaction(handle_map_interaction)
 
@@ -1123,20 +1155,15 @@ def draw_additional_buildings(
                     state["removal_preview"] = preview
                     m.add_layer(preview)
                     
-                    # Remove the buildings
+                    # Remove the buildings from GeoDataFrame and refresh GeoJSON
                     removed_count = 0
                     for idx in buildings_to_remove:
-                        if idx in building_layers:
-                            try:
-                                m.remove_layer(building_layers[idx])
-                                del building_layers[idx]
-                            except Exception:
-                                pass
                         try:
                             updated_gdf.drop(index=idx, inplace=True)
                             removed_count += 1
                         except KeyError:
                             pass
+                    buildings_geojson.data = _build_geojson_data()
                     
                     draw_control.clear()
                     clear_removal_preview()
@@ -1183,7 +1210,7 @@ def draw_additional_buildings(
                 "building_id": new_idx,
                 "id": new_idx,
             }
-            add_polygon_to_map(poly, new_idx, h_in.value)
+            buildings_geojson.data = _build_geojson_data()
             clear_all(None)
             set_status(f"Added — {h_in.value}m (#{new_idx})", "success")
         except Exception as e:
