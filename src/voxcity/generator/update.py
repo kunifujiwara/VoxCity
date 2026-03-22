@@ -100,8 +100,10 @@ def update_voxcity(
     tree_gdf_mode : str, default "replace"
         How to combine tree_gdf with existing canopy data. Options:
         - "replace": Replace the existing canopy grids with new ones from tree_gdf.
-        - "add": Merge the tree_gdf grids with existing canopy grids by taking
-          the maximum height at each cell (preserves existing trees).
+        - "add": Merge the tree_gdf grids with existing (or provided) canopy grids
+          by taking the maximum height at each cell (preserves existing trees).
+          When canopy_top/canopy_bottom are also provided, the tree_gdf grids
+          are merged on top of those arrays instead of the existing city canopy.
 
     land_cover_source : str, optional
         The land cover source name for proper voxelization. If not provided,
@@ -182,7 +184,7 @@ def update_voxcity(
         )
 
     # --- Auto-generate canopy grids from tree GeoDataFrame if provided ---
-    if tree_gdf is not None and tree_canopy is None and canopy_top is None:
+    if tree_gdf is not None and tree_canopy is None:
         # Validate tree_gdf_mode
         if tree_gdf_mode not in ("replace", "add"):
             raise ValueError(
@@ -206,15 +208,15 @@ def update_voxcity(
         )
         
         if tree_gdf_mode == "add":
-            # Merge with existing canopy by taking maximum values
-            existing_top = city.tree_canopy.top
-            existing_bottom = city.tree_canopy.bottom
-            if existing_top is not None:
-                canopy_top = np.maximum(existing_top, new_canopy_top)
+            # Merge with canopy_top/canopy_bottom if provided, else existing
+            base_top = canopy_top if canopy_top is not None else city.tree_canopy.top
+            base_bottom = canopy_bottom if canopy_bottom is not None else city.tree_canopy.bottom
+            if base_top is not None:
+                canopy_top = np.maximum(base_top, new_canopy_top)
             else:
                 canopy_top = new_canopy_top
-            if existing_bottom is not None:
-                canopy_bottom = np.maximum(existing_bottom, new_canopy_bottom)
+            if base_bottom is not None:
+                canopy_bottom = np.maximum(base_bottom, new_canopy_bottom)
             else:
                 canopy_bottom = new_canopy_bottom
         else:
