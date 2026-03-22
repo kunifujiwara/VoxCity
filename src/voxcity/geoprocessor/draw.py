@@ -25,6 +25,7 @@ Dependencies:
 
 import math
 import time
+import numpy as np
 from pyproj import Transformer
 from ipyleaflet import (
     Map,
@@ -1549,30 +1550,33 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
 
 def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     """
-    Creates an interactive map to add trees by clicking and setting parameters.
-    
+    Interactive map editor for trees: add tree points, remove tree points,
+    visualise the existing canopy grid (uniform colour), and remove canopy
+    cells by clicking or drawing an area polygon.
+
     Users can:
     - Set tree parameters: top height, bottom height, crown diameter
     - Click multiple times to add multiple trees with the same parameters
     - Update parameters at any time to change subsequent trees
-    
+    - View existing canopy grid cells as a uniform-colour overlay
+    - Remove individual canopy cells by clicking (Remove / Click mode)
+    - Remove trees and canopy cells in bulk by drawing an area polygon
+
     Args:
-        voxcity (VoxCity, optional): A VoxCity object from which to extract tree_gdf 
-            and rectangle_vertices. If provided, tree_gdf is extracted from 
-            voxcity.extras['tree_gdf'] and rectangle_vertices from 
-            voxcity.extras['rectangle_vertices'].
+        voxcity (VoxCity, optional): A VoxCity object from which to extract
+            tree_gdf, rectangle_vertices, building_gdf, and tree_canopy grids.
         initial_center (tuple, optional): (lon, lat) for initial map center.
         zoom (int): Initial zoom level. Default=17.
-    
+
     Returns:
-        tuple: (map_object, updated_tree_gdf)
-    
+        tuple: (map_object, updated_tree_gdf, canopy_top, canopy_bottom)
+            - map_object: ipyleaflet Map
+            - updated_tree_gdf: GeoDataFrame of tree points (mutated in-place)
+            - canopy_top: np.ndarray or None — modified canopy top heights
+            - canopy_bottom: np.ndarray or None — modified canopy bottom heights
+
     Examples:
-        Using a VoxCity object:
-        >>> m, tree_gdf = draw_additional_trees(voxcity=my_voxcity)
-        
-        Using with custom center and zoom:
-        >>> m, tree_gdf = draw_additional_trees(voxcity=my_voxcity, initial_center=(-73.98, 40.75), zoom=18)
+        >>> m, tree_gdf, ct, cb = draw_additional_trees(voxcity=vc)
     """
     # ---------------------------------------------------------
     # Extract data from VoxCity object if provided
@@ -1580,10 +1584,17 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     tree_gdf = None
     rectangle_vertices = None
     building_gdf = None
+    canopy_top = None
+    canopy_bottom = None
     if voxcity is not None:
         tree_gdf = voxcity.extras.get('tree_gdf', None)
         rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
         building_gdf = voxcity.extras.get('building_gdf', None)
+        # Extract canopy data for visualization and removal
+        if voxcity.tree_canopy is not None and voxcity.tree_canopy.top is not None:
+            canopy_top = voxcity.tree_canopy.top.copy()
+            if voxcity.tree_canopy.bottom is not None:
+                canopy_bottom = voxcity.tree_canopy.bottom.copy()
     
     # Initialize or copy the tree GeoDataFrame
     if tree_gdf is None:
@@ -1681,6 +1692,113 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         m.add_layer(buildings_overlay)
     else:
         _bld_layer_on_map = False
+
+    # ── Canopy grid overlay ──────────────────────────────
+    _canopy_grid_geom = None
+    if canopy_top is not None and rectangle_vertices is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0 = np.array(rectangle_vertices[0])
+        _v1 = np.array(rectangle_vertices[1])
+        _v3 = np.array(rectangle_vertices[3])
+        _side_1 = _v1 - _v0
+        _side_2 = _v3 - _v0
+        _meshsize = voxcity.tree_canopy.meta.meshsize
+
+        _geod = initialize_geod()
+        _dist_1 = calculate_distance(_geod, _v0[0], _v0[1], _v1[0], _v1[1])
+        _dist_2 = calculate_distance(_geod, _v0[0], _v0[1], _v3[0], _v3[1])
+        _u_vec = normalize_to_one_meter(_side_1, _dist_1)
+        _v_vec = normalize_to_one_meter(_side_2, _dist_2)
+
+        _grid_size, _adj_mesh = calculate_grid_size(_side_1, _side_2, _u_vec, _v_vec, _meshsize)
+
+        _canopy_grid_geom = {
+            'origin': _v0,
+            'side_1': _side_1,
+            'side_2': _side_2,
+            'u_vec': _u_vec,
+            'v_vec': _v_vec,
+            'grid_size': _grid_size,
+            'adj_mesh': _adj_mesh,
+        }
+
+    def _geo_to_cell(lon, lat):
+        """Convert geographic (lon, lat) to canopy grid indices (i, j).
+
+        The canopy array has shape (nx, ny) where:
+          - first axis  (i) runs along side_1 (v0→v1), scaled by adj_mesh[0]
+          - second axis (j) runs along side_2 (v0→v3), scaled by adj_mesh[1]
+        """
+        if _canopy_grid_geom is None or canopy_top is None:
+            return None, None
+        origin = _canopy_grid_geom['origin']
+        s1 = _canopy_grid_geom['side_1']
+        s2 = _canopy_grid_geom['side_2']
+        nx, ny = _canopy_grid_geom['grid_size']
+        delta = np.array([lon, lat]) - origin
+        det = s1[0] * s2[1] - s1[1] * s2[0]
+        if abs(det) < 1e-15:
+            return None, None
+        # alpha = fractional position along side_1 → maps to first axis (i)
+        alpha = (delta[0] * s2[1] - delta[1] * s2[0]) / det
+        # beta  = fractional position along side_2 → maps to second axis (j)
+        beta = (s1[0] * delta[1] - s1[1] * delta[0]) / det
+        i = int(math.floor(alpha * nx))
+        j = int(math.floor(beta * ny))
+        if 0 <= i < canopy_top.shape[0] and 0 <= j < canopy_top.shape[1]:
+            return i, j
+        return None, None
+
+    def _build_canopy_geojson():
+        """Build GeoJSON from non-zero canopy cells (uniform style).
+
+        canopy_top has shape (nx, ny) where:
+          - first axis  (i) runs along side_1 (v0→v1), scaled by adj_mesh[0]
+          - second axis (j) runs along side_2 (v0→v3), scaled by adj_mesh[1]
+        Cell (i, j) bottom-left corner = origin + i*dx*u + j*dy*v
+        """
+        features = []
+        if canopy_top is None or _canopy_grid_geom is None:
+            return {"type": "FeatureCollection", "features": features}
+        origin = _canopy_grid_geom['origin']
+        u = _canopy_grid_geom['u_vec']
+        v = _canopy_grid_geom['v_vec']
+        dx = _canopy_grid_geom['adj_mesh'][0]
+        dy = _canopy_grid_geom['adj_mesh'][1]
+        ni, nj = canopy_top.shape  # ni along u (side_1), nj along v (side_2)
+        for i in range(ni):
+            for j in range(nj):
+                if canopy_top[i, j] > 0:
+                    bl = origin + i * dx * u + j * dy * v
+                    br = origin + (i + 1) * dx * u + j * dy * v
+                    tr = origin + (i + 1) * dx * u + (j + 1) * dy * v
+                    tl = origin + i * dx * u + (j + 1) * dy * v
+                    coords = [[bl.tolist(), br.tolist(), tr.tolist(), tl.tolist(), bl.tolist()]]
+                    features.append({
+                        "type": "Feature",
+                        "id": f"{i}_{j}",
+                        "properties": {"i": i, "j": j},
+                        "geometry": {"type": "Polygon", "coordinates": coords},
+                    })
+        return {"type": "FeatureCollection", "features": features}
+
+    _canopy_style = {
+        "color": "#2e7d32",
+        "fillColor": "#4caf50",
+        "fillOpacity": 0.35,
+        "weight": 0.5,
+    }
+
+    canopy_overlay = GeoJSON(
+        data=_build_canopy_geojson(),
+        style=_canopy_style,
+    )
+    _canopy_on_map = False
+    if canopy_top is not None and np.any(canopy_top > 0):
+        m.add_layer(canopy_overlay)
+        _canopy_on_map = True
 
     # Display existing trees as circles
     tree_layers = {}
@@ -1826,15 +1944,29 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         layout=Layout(flex='1', height='28px'),
     )
     remove_mode_button = Button(
-        description='Remove', button_style='',
+        description='Click', button_style='',
         layout=Layout(flex='1', height='28px'),
     )
+    area_remove_button = ToggleButton(
+        value=False,
+        description='Area',
+        button_style='danger',
+        layout=Layout(flex='1', height='28px'),
+        tooltip='Draw polygon to remove trees & canopy inside',
+    )
 
+    status_bar = HTML(
+        value="<div class='gm-status gm-status-info' style='padding:4px 10px;border-radius:12px;font-size:11px;margin-top:6px;text-align:center;background:#f0f4ff;color:#1a73e8;'>Ready</div>"
+    )
     hover_info = HTML("")
 
     # Layout
     mode_row = HBox(
-        [add_mode_button, remove_mode_button],
+        [add_mode_button],
+        layout=Layout(margin='0 0 4px 0', gap='6px'),
+    )
+    remove_row = HBox(
+        [remove_mode_button, area_remove_button],
         layout=Layout(margin='0 0 4px 0', gap='6px'),
     )
     param_col = VBox(
@@ -1846,17 +1978,21 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         [
             style_html,
             HTML("<div class='gm-title'>Tree Editor</div>"),
-            HTML("<div class='gm-label'>Mode</div>"),
+            HTML("<div class='gm-label'>Add</div>"),
             mode_row,
             HTML("<div class='gm-sep'></div>"),
             HTML("<div class='gm-label'>Parameters</div>"),
             param_col,
+            HTML("<div class='gm-sep'></div>"),
+            HTML("<div class='gm-label'>Remove</div>"),
+            remove_row,
+            status_bar,
             hover_info,
         ],
         layout=Layout(
             width='230px',
             padding='10px 12px',
-            max_height='420px',
+            max_height='480px',
             overflow_y='hidden',
         ),
     )
@@ -1877,6 +2013,15 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
     # State for mode
     mode = 'add'
+    # Area-removal polygon drawing state
+    _area_state = {
+        'clicks': [],
+        'layers': [],
+        'preview': None,
+    }
+    _last_area_click = [0.0]
+    _last_mousemove = [0.0]
+    _CLOSE_THRESHOLD = 0.0001
     # Fixed proportion state
     base_bottom_ratio = bottom_height_input.value / top_height_input.value if top_height_input.value else 0.4
     base_crown_ratio = crown_diameter_input.value / top_height_input.value if top_height_input.value else 0.6
@@ -1955,13 +2100,134 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     bottom_height_input.observe(on_bottom_change, names='value')
     crown_diameter_input.observe(on_crown_change, names='value')
 
+    def _set_status(msg, stype='info'):
+        colors = {
+            'info': ('background:#f0f4ff;color:#1a73e8;', ''),
+            'success': ('background:#e6f4ea;color:#137333;', ''),
+            'danger': ('background:#fce8e6;color:#c5221f;', ''),
+            'warn': ('background:#fef7e0;color:#b06000;', ''),
+        }
+        style_str = colors.get(stype, colors['info'])[0]
+        status_bar.value = (
+            f"<div style='padding:4px 10px;border-radius:12px;font-size:11px;"
+            f"margin-top:6px;text-align:center;{style_str}'>{msg}</div>"
+        )
+
+    def _clear_area_draw():
+        """Clear area-removal polygon drawing state."""
+        while _area_state['layers']:
+            try:
+                m.remove_layer(_area_state['layers'].pop())
+            except Exception:
+                pass
+        if _area_state['preview']:
+            try:
+                m.remove_layer(_area_state['preview'])
+            except Exception:
+                pass
+            _area_state['preview'] = None
+        _area_state['clicks'] = []
+
+    def _is_near_first(pts, lon, lat):
+        if len(pts) < 3:
+            return False
+        dx = lon - pts[0][0]
+        dy = lat - pts[0][1]
+        return (dx * dx + dy * dy) < (_CLOSE_THRESHOLD * _CLOSE_THRESHOLD)
+
+    def _refresh_area_markers():
+        while _area_state['layers']:
+            try:
+                m.remove_layer(_area_state['layers'].pop())
+            except Exception:
+                pass
+        pts = _area_state['clicks']
+        for lon_p, lat_p in pts:
+            pt = Circle(location=(lat_p, lon_p), radius=2, color='#FF0000',
+                        fill_color='#FF0000', fill_opacity=1.0)
+            m.add_layer(pt)
+            _area_state['layers'].append(pt)
+        for i in range(len(pts) - 1):
+            line = Polyline(
+                locations=[(pts[i][1], pts[i][0]), (pts[i+1][1], pts[i+1][0])],
+                color='#FF0000', weight=2,
+            )
+            m.add_layer(line)
+            _area_state['layers'].append(line)
+
+    def _execute_area_removal(polygon_coords):
+        """Remove all trees (points + canopy cells) inside the drawn polygon."""
+        nonlocal updated_trees
+        removal_polygon = geom.Polygon(polygon_coords)
+        removed_trees = 0
+        removed_cells = 0
+
+        # Remove tree points inside the polygon
+        indices_to_drop = []
+        for idx2, row2 in updated_trees.iterrows():
+            if row2.geometry is not None and hasattr(row2.geometry, 'x'):
+                if removal_polygon.contains(row2.geometry):
+                    tid = int(row2.get('tree_id', idx2 + 1))
+                    layer = tree_layers.get(tid)
+                    if layer is not None:
+                        try:
+                            m.remove_layer(layer)
+                        except Exception:
+                            pass
+                        del tree_layers[tid]
+                    indices_to_drop.append(idx2)
+                    removed_trees += 1
+        if indices_to_drop:
+            updated_trees.drop(index=indices_to_drop, inplace=True)
+            updated_trees.reset_index(drop=True, inplace=True)
+
+        # Remove canopy cells inside the polygon
+        if canopy_top is not None and _canopy_grid_geom is not None:
+            origin = _canopy_grid_geom['origin']
+            u = _canopy_grid_geom['u_vec']
+            v = _canopy_grid_geom['v_vec']
+            dx = _canopy_grid_geom['adj_mesh'][0]
+            dy = _canopy_grid_geom['adj_mesh'][1]
+            ni_c, nj_c = canopy_top.shape  # ni along u, nj along v
+            for i_c in range(ni_c):
+                for j_c in range(nj_c):
+                    if canopy_top[i_c, j_c] > 0:
+                        center = origin + (i_c + 0.5) * dx * u + (j_c + 0.5) * dy * v
+                        pt = geom.Point(center[0], center[1])
+                        if removal_polygon.contains(pt):
+                            canopy_top[i_c, j_c] = 0
+                            if canopy_bottom is not None:
+                                canopy_bottom[i_c, j_c] = 0
+                            removed_cells += 1
+            if removed_cells > 0:
+                canopy_overlay.data = _build_canopy_geojson()
+
+        _clear_area_draw()
+        m.double_click_zoom = True
+        if removed_trees > 0 or removed_cells > 0:
+            parts = []
+            if removed_trees:
+                parts.append(f"{removed_trees} tree(s)")
+            if removed_cells:
+                parts.append(f"{removed_cells} cell(s)")
+            _set_status(f"Removed {', '.join(parts)}", 'success')
+        else:
+            _set_status('No trees in selected area', 'warn')
+
     def set_mode(new_mode):
         nonlocal mode
         mode = new_mode
+        _clear_area_draw()
+        if new_mode != 'area':
+            area_remove_button.value = False
+            m.double_click_zoom = True
         # Visual feedback
         add_mode_button.button_style = 'success' if mode == 'add' else ''
         remove_mode_button.button_style = 'danger' if mode == 'remove' else ''
-        # No on-screen mode label
+        if mode == 'add':
+            _set_status('Click map to add tree', 'info')
+        elif mode == 'remove':
+            _set_status('Click trees/canopy to remove', 'danger')
 
     def on_click_add(b):
         set_mode('add')
@@ -1969,12 +2235,81 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     def on_click_remove(b):
         set_mode('remove')
 
+    def on_area_toggle(change):
+        if change['name'] == 'value':
+            if change['new']:
+                set_mode('area')
+                area_remove_button.value = True
+                area_remove_button.button_style = 'danger'
+                add_mode_button.button_style = ''
+                remove_mode_button.button_style = ''
+                m.double_click_zoom = False
+                _set_status('Click to draw removal area, click first point to close', 'danger')
+            else:
+                _clear_area_draw()
+                m.double_click_zoom = True
+                set_mode('add')
+
     add_mode_button.on_click(on_click_add)
     remove_mode_button.on_click(on_click_remove)
+    area_remove_button.observe(on_area_toggle, names='value')
 
     # Consecutive placements by map click
     def handle_map_click(**kwargs):
         nonlocal updated_trees
+
+        # ── Area removal polygon drawing ──
+        if area_remove_button.value:
+            if kwargs.get('type') == 'dblclick':
+                pts = _area_state['clicks']
+                if len(pts) >= 3:
+                    _execute_area_removal(pts)
+                else:
+                    _set_status('Need at least 3 points', 'warn')
+                return
+            elif kwargs.get('type') == 'click':
+                now = time.time()
+                if now - _last_area_click[0] < 0.3:
+                    return
+                _last_area_click[0] = now
+                coords = kwargs.get('coordinates')
+                if not coords:
+                    return
+                lat, lon = coords
+                if _is_near_first(_area_state['clicks'], lon, lat):
+                    _execute_area_removal(_area_state['clicks'])
+                    return
+                _area_state['clicks'].append((lon, lat))
+                _refresh_area_markers()
+                n = len(_area_state['clicks'])
+                _set_status(f'{n} point(s) \u2014 click first point to close', 'danger')
+            elif kwargs.get('type') == 'mousemove':
+                now = time.time()
+                if now - _last_mousemove[0] < 0.05:
+                    return
+                _last_mousemove[0] = now
+                pts = _area_state['clicks']
+                if pts:
+                    coords = kwargs.get('coordinates')
+                    if not coords:
+                        return
+                    lat_c, lon_c = coords
+                    if _area_state['preview'] and isinstance(_area_state['preview'], Polyline):
+                        _area_state['preview'].locations = [(pts[-1][1], pts[-1][0]), (lat_c, lon_c)]
+                    else:
+                        if _area_state['preview']:
+                            try:
+                                m.remove_layer(_area_state['preview'])
+                            except Exception:
+                                pass
+                        line = Polyline(
+                            locations=[(pts[-1][1], pts[-1][0]), (lat_c, lon_c)],
+                            color='#FF0000', weight=2, dash_array='5, 5',
+                        )
+                        _area_state['preview'] = line
+                        m.add_layer(line)
+            return
+
         if kwargs.get('type') == 'click':
             lat, lon = kwargs.get('coordinates', (None, None))
             if lat is None or lon is None:
@@ -2011,10 +2346,10 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                 m.add_layer(circle)
 
                 tree_layers[next_tree_id] = circle
-
-                # Suppress status prints on add
+                _set_status(f'Added tree #{next_tree_id}', 'success')
             else:
                 # Remove mode: find the nearest tree within its crown radius + 5m
+                removed_something = False
                 candidate_id = None
                 candidate_idx = None
                 candidate_dist = None
@@ -2040,10 +2375,22 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                     # Remove from gdf
                     updated_trees.drop(index=candidate_idx, inplace=True)
                     updated_trees.reset_index(drop=True, inplace=True)
-                    # Suppress status prints on remove
-                else:
-                    # Suppress status prints when nothing to remove
-                    pass
+                    removed_something = True
+                    _set_status(f'Removed tree #{candidate_id}', 'danger')
+
+                # Also remove canopy cell at click location
+                ci, cj = _geo_to_cell(lon, lat)
+                if ci is not None and canopy_top is not None and canopy_top[ci, cj] > 0:
+                    canopy_top[ci, cj] = 0
+                    if canopy_bottom is not None:
+                        canopy_bottom[ci, cj] = 0
+                    canopy_overlay.data = _build_canopy_geojson()
+                    removed_something = True
+                    if candidate_id is None:
+                        _set_status('Removed canopy cell', 'danger')
+
+                if not removed_something:
+                    _set_status('Nothing to remove here', 'warn')
         elif kwargs.get('type') == 'mousemove':
             lat, lon = kwargs.get('coordinates', (None, None))
             if lat is None or lon is None:
@@ -2070,13 +2417,13 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                 hover_info.value = ""
     m.on_interaction(handle_map_click)
 
-    return m, updated_trees
+    return m, updated_trees, canopy_top, canopy_bottom
 
 
 def create_tree_editor(tree_gdf=None, initial_center=None, zoom=17, rectangle_vertices=None):
     """
     Convenience wrapper to display the tree editor map and return the GeoDataFrame.
     """
-    m, gdf = draw_additional_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
-    display(m)
-    return gdf
+    result = draw_additional_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
+    display(result[0])
+    return result[1]
