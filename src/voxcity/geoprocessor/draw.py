@@ -1755,9 +1755,9 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     def _build_canopy_geojson():
         """Build GeoJSON from non-zero canopy cells (uniform style).
 
-        Uses vectorised numpy to compute all cell corners at once, then
-        merges adjacent cells via shapely unary_union to minimise the
-        number of GeoJSON features sent to the browser.
+        Uses row-strip merging: for each row, contiguous runs of non-zero
+        cells are merged into single rectangles, drastically reducing the
+        number of polygons fed to unary_union.
         """
         empty = {"type": "FeatureCollection", "features": []}
         if canopy_top is None or _canopy_grid_geom is None:
@@ -1772,27 +1772,31 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         if not np.any(mask):
             return empty
 
-        ii, jj = np.nonzero(mask)
-        n = len(ii)
+        nx, ny = mask.shape
 
-        # Vectorised corner computation (all cells at once)
-        # bl = origin + i*dx*u + j*dy*v, etc.
-        i_f = ii.astype(float)
-        j_f = jj.astype(float)
-        # shape (n, 2) for each corner
-        bl = origin + np.outer(i_f * dx, u) + np.outer(j_f * dy, v)
-        br = origin + np.outer((i_f + 1) * dx, u) + np.outer(j_f * dy, v)
-        tr = origin + np.outer((i_f + 1) * dx, u) + np.outer((j_f + 1) * dy, v)
-        tl = origin + np.outer(i_f * dx, u) + np.outer((j_f + 1) * dy, v)
+        # Build strips: for each row i, find contiguous runs of True in j
+        strips = []
+        for i in range(nx):
+            row = mask[i]
+            if not np.any(row):
+                continue
+            # Find run starts and ends
+            d = np.diff(np.concatenate(([0], row.astype(np.int8), [0])))
+            starts = np.where(d == 1)[0]
+            ends = np.where(d == -1)[0]
+            for s, e in zip(starts, ends):
+                # Rectangle from (i, s) to (i+1, e)
+                bl = origin + (i * dx) * u + (s * dy) * v
+                br = origin + ((i + 1) * dx) * u + (s * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (e * dy) * v
+                tl = origin + (i * dx) * u + (e * dy) * v
+                strips.append(geom.Polygon([bl, br, tr, tl]))
 
-        # Build shapely boxes and merge adjacent ones
-        from shapely.geometry import box as _sbox
+        if not strips:
+            return empty
+
         from shapely.ops import unary_union as _uunion
-        polys = [
-            geom.Polygon([bl[k], br[k], tr[k], tl[k]])
-            for k in range(n)
-        ]
-        merged = _uunion(polys)
+        merged = _uunion(strips)
 
         # Convert merged geometry into GeoJSON features
         features = []
@@ -1800,7 +1804,6 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             return empty
 
         def _poly_to_feature(poly, fid):
-            # Include exterior ring AND interior rings (holes)
             coords = [list(poly.exterior.coords)]
             for interior in poly.interiors:
                 coords.append(list(interior.coords))
@@ -2241,6 +2244,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
     def _execute_area_addition(polygon_coords):
         """Set canopy grid cells inside the drawn polygon to uniform top/trunk heights."""
+        from matplotlib.path import Path as _MplPath
         add_polygon = geom.Polygon(polygon_coords)
 
         th = float(top_height_input.value)
@@ -2257,7 +2261,6 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             dy = _canopy_grid_geom['adj_mesh'][1]
             nx, ny = canopy_top.shape
 
-            # Build centers for ALL grid cells
             ii_all = np.arange(nx)
             jj_all = np.arange(ny)
             ii_grid, jj_grid = np.meshgrid(ii_all, jj_all, indexing='ij')
@@ -2268,10 +2271,9 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                        + np.outer((ii_flat + 0.5) * dx, u)
                        + np.outer((jj_flat + 0.5) * dy, v))
 
-            from shapely.prepared import prep as _prep
-            prep_poly = _prep(add_polygon)
-            pts = [geom.Point(c[0], c[1]) for c in centers]
-            inside = np.array([prep_poly.contains(p) for p in pts])
+            # Vectorised containment via matplotlib Path
+            mpl_path = _MplPath(polygon_coords)
+            inside = mpl_path.contains_points(centers)
 
             if np.any(inside):
                 added_cells = int(inside.sum())
@@ -2315,6 +2317,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
         # Remove canopy cells inside the polygon (vectorised)
         if canopy_top is not None and _canopy_grid_geom is not None:
+            from matplotlib.path import Path as _MplPath
             origin = _canopy_grid_geom['origin']
             u = _canopy_grid_geom['u_vec']
             v = _canopy_grid_geom['v_vec']
@@ -2324,15 +2327,12 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             nz_mask = canopy_top > 0
             ii_nz, jj_nz = np.nonzero(nz_mask)
             if len(ii_nz) > 0:
-                # Vectorised center computation
                 centers = (origin
                            + np.outer((ii_nz + 0.5) * dx, u)
                            + np.outer((jj_nz + 0.5) * dy, v))
-                # Use prepared geometry for fast containment check
-                from shapely.prepared import prep as _prep
-                prep_poly = _prep(removal_polygon)
-                pts = [geom.Point(c[0], c[1]) for c in centers]
-                inside = np.array([prep_poly.contains(p) for p in pts])
+                # Vectorised containment via matplotlib Path
+                mpl_path = _MplPath(polygon_coords)
+                inside = mpl_path.contains_points(centers)
                 if np.any(inside):
                     removed_cells = int(inside.sum())
                     canopy_top[ii_nz[inside], jj_nz[inside]] = 0
@@ -2373,7 +2373,10 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             m.double_click_zoom = True
             m.default_style = {'cursor': 'grab'}
             m.remove_class('tree-drawing-mode')
+        # Guard against toggle observe callbacks overriding the mode
+        _toggling[0] = True
         _update_button_styles()
+        _toggling[0] = False
         _update_param_visibility()
         if mode == 'add_click':
             _set_status('Click map to add tree', 'info')
