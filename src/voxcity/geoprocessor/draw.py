@@ -572,7 +572,7 @@ def display_buildings_and_draw_polygon(voxcity=None, building_gdf=None, rectangl
 
 
 
-def draw_additional_buildings(
+def edit_buildings(
     voxcity=None,
     building_gdf=None,
     initial_center=None,
@@ -1538,7 +1538,7 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
         >>> # Draw buildings on the displayed map
         >>> print(buildings)  # Automatically contains all drawn buildings
     """
-    m, gdf = draw_additional_buildings(
+    m, gdf = edit_buildings(
         building_gdf=building_gdf,
         initial_center=initial_center,
         zoom=zoom,
@@ -1548,7 +1548,7 @@ def create_building_editor(building_gdf=None, initial_center=None, zoom=17, rect
     return gdf
 
 
-def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
+def edit_trees(voxcity=None, initial_center=None, zoom=17):
     """
     Interactive map editor for trees: add tree points, remove tree points,
     visualise the existing canopy grid (uniform colour), and remove canopy
@@ -1576,7 +1576,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             - canopy_bottom: np.ndarray or None — modified canopy bottom heights
 
     Examples:
-        >>> m, tree_gdf, ct, cb = draw_additional_trees(voxcity=vc)
+        >>> m, tree_gdf, ct, cb = edit_trees(voxcity=vc)
     """
     # ---------------------------------------------------------
     # Extract data from VoxCity object if provided
@@ -2594,6 +2594,6 @@ def create_tree_editor(tree_gdf=None, initial_center=None, zoom=17, rectangle_ve
     """
     Convenience wrapper to display the tree editor map and return the GeoDataFrame.
     """
-    result = draw_additional_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
+    result = edit_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
     display(result[0])
     return result[1]
