@@ -184,7 +184,7 @@ def update_voxcity(
         )
 
     # --- Auto-generate canopy grids from tree GeoDataFrame if provided ---
-    if tree_gdf is not None and tree_canopy is None:
+    if tree_gdf is not None and len(tree_gdf) > 0 and tree_canopy is None:
         # Validate tree_gdf_mode
         if tree_gdf_mode not in ("replace", "add"):
             raise ValueError(
