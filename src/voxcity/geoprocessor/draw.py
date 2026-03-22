@@ -1625,6 +1625,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
     # Create map
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    m.layout.height = '600px'
     # Add Google Satellite basemap with Esri fallback
     try:
         google_sat = TileLayer(
@@ -1754,39 +1755,74 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     def _build_canopy_geojson():
         """Build GeoJSON from non-zero canopy cells (uniform style).
 
-        canopy_top has shape (nx, ny) where:
-          - first axis  (i) runs along side_1 (v0→v1), scaled by adj_mesh[0]
-          - second axis (j) runs along side_2 (v0→v3), scaled by adj_mesh[1]
-        Cell (i, j) bottom-left corner = origin + i*dx*u + j*dy*v
+        Uses vectorised numpy to compute all cell corners at once, then
+        merges adjacent cells via shapely unary_union to minimise the
+        number of GeoJSON features sent to the browser.
         """
-        features = []
+        empty = {"type": "FeatureCollection", "features": []}
         if canopy_top is None or _canopy_grid_geom is None:
-            return {"type": "FeatureCollection", "features": features}
+            return empty
         origin = _canopy_grid_geom['origin']
         u = _canopy_grid_geom['u_vec']
         v = _canopy_grid_geom['v_vec']
         dx = _canopy_grid_geom['adj_mesh'][0]
         dy = _canopy_grid_geom['adj_mesh'][1]
-        ni, nj = canopy_top.shape  # ni along u (side_1), nj along v (side_2)
-        for i in range(ni):
-            for j in range(nj):
-                if canopy_top[i, j] > 0:
-                    bl = origin + i * dx * u + j * dy * v
-                    br = origin + (i + 1) * dx * u + j * dy * v
-                    tr = origin + (i + 1) * dx * u + (j + 1) * dy * v
-                    tl = origin + i * dx * u + (j + 1) * dy * v
-                    coords = [[bl.tolist(), br.tolist(), tr.tolist(), tl.tolist(), bl.tolist()]]
-                    features.append({
-                        "type": "Feature",
-                        "id": f"{i}_{j}",
-                        "properties": {"i": i, "j": j},
-                        "geometry": {"type": "Polygon", "coordinates": coords},
-                    })
+
+        mask = canopy_top > 0
+        if not np.any(mask):
+            return empty
+
+        ii, jj = np.nonzero(mask)
+        n = len(ii)
+
+        # Vectorised corner computation (all cells at once)
+        # bl = origin + i*dx*u + j*dy*v, etc.
+        i_f = ii.astype(float)
+        j_f = jj.astype(float)
+        # shape (n, 2) for each corner
+        bl = origin + np.outer(i_f * dx, u) + np.outer(j_f * dy, v)
+        br = origin + np.outer((i_f + 1) * dx, u) + np.outer(j_f * dy, v)
+        tr = origin + np.outer((i_f + 1) * dx, u) + np.outer((j_f + 1) * dy, v)
+        tl = origin + np.outer(i_f * dx, u) + np.outer((j_f + 1) * dy, v)
+
+        # Build shapely boxes and merge adjacent ones
+        from shapely.geometry import box as _sbox
+        from shapely.ops import unary_union as _uunion
+        polys = [
+            geom.Polygon([bl[k], br[k], tr[k], tl[k]])
+            for k in range(n)
+        ]
+        merged = _uunion(polys)
+
+        # Convert merged geometry into GeoJSON features
+        features = []
+        if merged.is_empty:
+            return empty
+
+        def _poly_to_feature(poly, fid):
+            # Include exterior ring AND interior rings (holes)
+            coords = [list(poly.exterior.coords)]
+            for interior in poly.interiors:
+                coords.append(list(interior.coords))
+            return {
+                "type": "Feature", "id": str(fid),
+                "properties": {},
+                "geometry": {"type": "Polygon", "coordinates": coords},
+            }
+
+        if merged.geom_type == 'Polygon':
+            features.append(_poly_to_feature(merged, 0))
+        elif merged.geom_type in ('MultiPolygon', 'GeometryCollection'):
+            fid = 0
+            for part in merged.geoms:
+                if part.geom_type == 'Polygon' and not part.is_empty:
+                    features.append(_poly_to_feature(part, fid))
+                    fid += 1
         return {"type": "FeatureCollection", "features": features}
 
     _canopy_style = {
-        "color": "#2e7d32",
-        "fillColor": "#4caf50",
+        "color": "#00ff7f",
+        "fillColor": "#00ff7f",
         "fillOpacity": 0.35,
         "weight": 0.5,
     }
@@ -1849,7 +1885,8 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         .gm-tree-root .gm-hover:empty { display: none; }
 
         /* Override ipywidgets buttons */
-        .gm-tree-root .jupyter-button {
+        .gm-tree-root .jupyter-button,
+        .gm-tree-root .jupyter-widgets.widget-toggle-button button {
             border-radius: 18px !important;
             font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
             font-size: 12px !important;
@@ -1857,9 +1894,19 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             border: 1px solid #dadce0 !important;
             box-shadow: none !important;
             transition: background 0.15s, border-color 0.15s !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 0 !important;
+            line-height: 1 !important;
         }
-        .gm-tree-root .jupyter-button:hover {
+        .gm-tree-root .jupyter-button:hover,
+        .gm-tree-root .jupyter-widgets.widget-toggle-button button:hover {
             box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+        }
+        /* ToggleButton container */
+        .gm-tree-root .widget-toggle-button {
+            height: 26px !important;
         }
         /* neutral */
         .gm-tree-root .jupyter-button:not(.mod-success):not(.mod-danger) {
@@ -1920,80 +1967,78 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     )
 
     top_height_input = FloatText(
-        value=10.0, description='Top height (m):',
-        layout=Layout(width='180px', height='26px'),
-        style={'description_width': '100px'},
+        value=10.0, description='Top (m):',
+        layout=Layout(width='160px', height='24px'),
+        style={'description_width': '62px'},
     )
     bottom_height_input = FloatText(
-        value=4.0, description='Trunk height (m):',
-        layout=Layout(width='180px', height='26px'),
-        style={'description_width': '100px'},
+        value=4.0, description='Trunk (m):',
+        layout=Layout(width='160px', height='24px'),
+        style={'description_width': '62px'},
     )
     crown_diameter_input = FloatText(
-        value=6.0, description='Crown dia. (m):',
-        layout=Layout(width='180px', height='26px'),
-        style={'description_width': '100px'},
+        value=6.0, description='Dia. (m):',
+        layout=Layout(width='160px', height='24px'),
+        style={'description_width': '62px'},
     )
     fixed_prop_checkbox = Checkbox(
         value=True, description='Fixed proportion', indent=False,
-        layout=Layout(width='auto', height='22px'),
+        layout=Layout(width='auto', height='20px'),
     )
 
     add_mode_button = Button(
         description='Add', button_style='success',
-        layout=Layout(flex='1', height='28px'),
+        layout=Layout(flex='1', height='26px'),
     )
     remove_mode_button = Button(
         description='Click', button_style='',
-        layout=Layout(flex='1', height='28px'),
+        layout=Layout(flex='1', height='26px'),
     )
     area_remove_button = ToggleButton(
         value=False,
         description='Area',
         button_style='danger',
-        layout=Layout(flex='1', height='28px'),
+        layout=Layout(flex='1', height='26px'),
         tooltip='Draw polygon to remove trees & canopy inside',
     )
 
     status_bar = HTML(
-        value="<div class='gm-status gm-status-info' style='padding:4px 10px;border-radius:12px;font-size:11px;margin-top:6px;text-align:center;background:#f0f4ff;color:#1a73e8;'>Ready</div>"
+        value="<div style='padding:3px 8px;border-radius:10px;font-size:10px;text-align:center;background:#f0f4ff;color:#1a73e8;'>Ready</div>"
     )
     hover_info = HTML("")
 
     # Layout
     mode_row = HBox(
         [add_mode_button],
-        layout=Layout(margin='0 0 4px 0', gap='6px'),
+        layout=Layout(margin='0', gap='4px'),
     )
     remove_row = HBox(
         [remove_mode_button, area_remove_button],
-        layout=Layout(margin='0 0 4px 0', gap='6px'),
+        layout=Layout(margin='0', gap='4px'),
     )
     param_col = VBox(
         [top_height_input, bottom_height_input, crown_diameter_input, fixed_prop_checkbox],
-        layout=Layout(margin='0', gap='2px'),
+        layout=Layout(margin='0', gap='0px'),
     )
 
     panel = VBox(
         [
             style_html,
-            HTML("<div class='gm-title'>Tree Editor</div>"),
-            HTML("<div class='gm-label'>Add</div>"),
+            HTML("<div class='gm-title' style='margin-bottom:4px;padding-bottom:4px;'>Tree Editor</div>"),
+            HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Add</div>"),
             mode_row,
-            HTML("<div class='gm-sep'></div>"),
-            HTML("<div class='gm-label'>Parameters</div>"),
+            HTML("<div class='gm-sep' style='margin:4px 0;'></div>"),
             param_col,
-            HTML("<div class='gm-sep'></div>"),
-            HTML("<div class='gm-label'>Remove</div>"),
+            HTML("<div class='gm-sep' style='margin:4px 0;'></div>"),
+            HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Remove</div>"),
             remove_row,
             status_bar,
             hover_info,
         ],
         layout=Layout(
-            width='230px',
-            padding='10px 12px',
-            max_height='480px',
-            overflow_y='hidden',
+            width='200px',
+            padding='8px 10px',
+            overflow_y='auto',
         ),
     )
     panel.add_class("gm-tree-root")
@@ -2109,8 +2154,8 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         }
         style_str = colors.get(stype, colors['info'])[0]
         status_bar.value = (
-            f"<div style='padding:4px 10px;border-radius:12px;font-size:11px;"
-            f"margin-top:6px;text-align:center;{style_str}'>{msg}</div>"
+            f"<div style='padding:3px 8px;border-radius:10px;font-size:10px;"
+            f"text-align:center;{style_str}'>{msg}</div>"
         )
 
     def _clear_area_draw():
@@ -2181,26 +2226,32 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             updated_trees.drop(index=indices_to_drop, inplace=True)
             updated_trees.reset_index(drop=True, inplace=True)
 
-        # Remove canopy cells inside the polygon
+        # Remove canopy cells inside the polygon (vectorised)
         if canopy_top is not None and _canopy_grid_geom is not None:
             origin = _canopy_grid_geom['origin']
             u = _canopy_grid_geom['u_vec']
             v = _canopy_grid_geom['v_vec']
             dx = _canopy_grid_geom['adj_mesh'][0]
             dy = _canopy_grid_geom['adj_mesh'][1]
-            ni_c, nj_c = canopy_top.shape  # ni along u, nj along v
-            for i_c in range(ni_c):
-                for j_c in range(nj_c):
-                    if canopy_top[i_c, j_c] > 0:
-                        center = origin + (i_c + 0.5) * dx * u + (j_c + 0.5) * dy * v
-                        pt = geom.Point(center[0], center[1])
-                        if removal_polygon.contains(pt):
-                            canopy_top[i_c, j_c] = 0
-                            if canopy_bottom is not None:
-                                canopy_bottom[i_c, j_c] = 0
-                            removed_cells += 1
-            if removed_cells > 0:
-                canopy_overlay.data = _build_canopy_geojson()
+
+            nz_mask = canopy_top > 0
+            ii_nz, jj_nz = np.nonzero(nz_mask)
+            if len(ii_nz) > 0:
+                # Vectorised center computation
+                centers = (origin
+                           + np.outer((ii_nz + 0.5) * dx, u)
+                           + np.outer((jj_nz + 0.5) * dy, v))
+                # Use prepared geometry for fast containment check
+                from shapely.prepared import prep as _prep
+                prep_poly = _prep(removal_polygon)
+                pts = [geom.Point(c[0], c[1]) for c in centers]
+                inside = np.array([prep_poly.contains(p) for p in pts])
+                if np.any(inside):
+                    removed_cells = int(inside.sum())
+                    canopy_top[ii_nz[inside], jj_nz[inside]] = 0
+                    if canopy_bottom is not None:
+                        canopy_bottom[ii_nz[inside], jj_nz[inside]] = 0
+                    canopy_overlay.data = _build_canopy_geojson()
 
         _clear_area_draw()
         m.double_click_zoom = True
