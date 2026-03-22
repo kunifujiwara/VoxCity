@@ -2597,3 +2597,755 @@ def create_tree_editor(tree_gdf=None, initial_center=None, zoom=17, rectangle_ve
     result = edit_trees(tree_gdf, initial_center, zoom, rectangle_vertices)
     display(result[0])
     return result[1]
+
+
+# ─────────────────────────────────────────────────────────────
+# Land-cover class colour palette (by class name)
+# ─────────────────────────────────────────────────────────────
+_LC_COLORS_BY_NAME = {
+    "Bareland":          "#c4a882",
+    "Rangeland":         "#b8d68e",
+    "Shrub":             "#6b8e23",
+    "Agriculture land":  "#f5deb3",
+    "Tree":              "#228b22",
+    "Moss and lichen":   "#8fbc8f",
+    "Wet land":          "#4682b4",
+    "Mangrove":          "#2e8b57",
+    "Mangroves":         "#2e8b57",
+    "Water":             "#1e90ff",
+    "Snow and ice":      "#f0f8ff",
+    "Developed space":   "#a9a9a9",
+    "Road":              "#696969",
+    "Building":          "#cd853f",
+    "No Data":           "#808080",
+    # Source-specific aliases
+    "Parking Lot":       "#a9a9a9",
+    "Tree Canopy":       "#228b22",
+    "Grass/Shrub":       "#b8d68e",
+    "Agriculture":       "#f5deb3",
+    "Barren":            "#c4a882",
+    "Unknown":           "#808080",
+    "Sea":               "#1e90ff",
+    "Trees":             "#228b22",
+    "Grass":             "#b8d68e",
+    "Grassland":         "#b8d68e",
+    "Flooded Vegetation": "#4682b4",
+    "Crops":             "#f5deb3",
+    "Cropland":          "#f5deb3",
+    "Scrub/Shrub":       "#6b8e23",
+    "Shrubland":         "#6b8e23",
+    "Built Area":        "#cd853f",
+    "Built-up":          "#cd853f",
+    "Built":             "#cd853f",
+    "Bare Ground":       "#c4a882",
+    "Bare":              "#c4a882",
+    "Barren / sparse vegetation": "#c4a882",
+    "Snow/Ice":          "#f0f8ff",
+    "Snow and Ice":      "#f0f8ff",
+    "Clouds":            "#808080",
+    "Open water":        "#1e90ff",
+    "Herbaceous wetland": "#4682b4",
+    "Shrub and Scrub":   "#6b8e23",
+}
+
+
+def edit_landcover(voxcity=None, initial_center=None, zoom=17):
+    """
+    Interactive map editor for land-cover classes.
+
+    Users can:
+    - Select a land-cover class from the palette
+    - Paint individual cells by clicking (Paint / Click mode)
+    - Paint cells in bulk by drawing an area polygon (Paint / Area mode)
+    - View the existing land-cover grid colour-coded by class
+    - Toggle building footprint and land-cover overlays on/off
+
+    Args:
+        voxcity (VoxCity, optional): A VoxCity object from which to extract
+            the land_cover grid, rectangle_vertices, and building_gdf.
+        initial_center (tuple, optional): (lon, lat) for initial map centre.
+        zoom (int): Initial zoom level. Default=17.
+
+    Returns:
+        tuple: (map_object, land_cover_classes)
+            - map_object: ipyleaflet Map
+            - land_cover_classes: np.ndarray — modified 2D land-cover grid
+
+    Examples:
+        >>> m, lc = edit_landcover(voxcity=vc)
+    """
+    # ---------------------------------------------------------
+    # Extract data from VoxCity object
+    # ---------------------------------------------------------
+    land_cover = None
+    rectangle_vertices = None
+    building_gdf = None
+    land_cover_source = None
+    if voxcity is not None:
+        if voxcity.land_cover is not None and voxcity.land_cover.classes is not None:
+            land_cover = voxcity.land_cover.classes.copy()
+        rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
+        building_gdf = voxcity.extras.get('building_gdf', None)
+        land_cover_source = voxcity.extras.get('land_cover_source', None)
+        if land_cover_source is None:
+            selected = voxcity.extras.get('selected_sources', {})
+            land_cover_source = selected.get('land_cover_source', 'OpenStreetMap')
+
+    if land_cover is None:
+        raise ValueError("VoxCity object must contain a land_cover grid.")
+
+    # ---------------------------------------------------------
+    # Build 0-based index ↔ name/colour lookups from the source
+    # ---------------------------------------------------------
+    from ..utils.lc import get_land_cover_classes as _get_lc_classes
+    _src_classes = _get_lc_classes(land_cover_source)
+    # Unique class names in insertion order → 0-based indices
+    _class_names = list(dict.fromkeys(_src_classes.values()))
+    _LC_NAMES = {i: name for i, name in enumerate(_class_names)}  # 0-based
+    _LC_COLORS = {i: _LC_COLORS_BY_NAME.get(name, "#808080") for i, name in enumerate(_class_names)}
+    _num_classes = len(_class_names)
+    # Names of classes that should not be painted (managed by other editors)
+    _NON_EDITABLE_NAMES = {"Tree", "Tree Canopy", "Trees", "Building", "Built Area", "Built-up", "Built"}
+    _EDITABLE_CLASSES = [i for i, name in enumerate(_class_names) if name not in _NON_EDITABLE_NAMES]
+
+    # ---------------------------------------------------------
+    # Grid geometry (same as tree_canopy / buildings)
+    # ---------------------------------------------------------
+    _lc_grid_geom = None
+    if rectangle_vertices is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0 = np.array(rectangle_vertices[0])
+        _v1 = np.array(rectangle_vertices[1])
+        _v3 = np.array(rectangle_vertices[3])
+        _side_1 = _v1 - _v0
+        _side_2 = _v3 - _v0
+        _meshsize = voxcity.land_cover.meta.meshsize
+
+        _geod = initialize_geod()
+        _dist_1 = calculate_distance(_geod, _v0[0], _v0[1], _v1[0], _v1[1])
+        _dist_2 = calculate_distance(_geod, _v0[0], _v0[1], _v3[0], _v3[1])
+        _u_vec = normalize_to_one_meter(_side_1, _dist_1)
+        _v_vec = normalize_to_one_meter(_side_2, _dist_2)
+
+        _grid_size, _adj_mesh = calculate_grid_size(_side_1, _side_2, _u_vec, _v_vec, _meshsize)
+
+        _lc_grid_geom = {
+            'origin': _v0,
+            'side_1': _side_1,
+            'side_2': _side_2,
+            'u_vec': _u_vec,
+            'v_vec': _v_vec,
+            'grid_size': _grid_size,
+            'adj_mesh': _adj_mesh,
+        }
+
+    # ---------------------------------------------------------
+    # Coordinate helpers
+    # ---------------------------------------------------------
+    def _geo_to_cell(lon, lat):
+        """Convert geographic (lon, lat) to grid indices (i, j)."""
+        if _lc_grid_geom is None:
+            return None, None
+        origin = _lc_grid_geom['origin']
+        s1 = _lc_grid_geom['side_1']
+        s2 = _lc_grid_geom['side_2']
+        nx, ny = _lc_grid_geom['grid_size']
+        delta = np.array([lon, lat]) - origin
+        det = s1[0] * s2[1] - s1[1] * s2[0]
+        if abs(det) < 1e-15:
+            return None, None
+        alpha = (delta[0] * s2[1] - delta[1] * s2[0]) / det
+        beta = (s1[0] * delta[1] - s1[1] * delta[0]) / det
+        i = int(math.floor(alpha * nx))
+        j = int(math.floor(beta * ny))
+        if 0 <= i < land_cover.shape[0] and 0 <= j < land_cover.shape[1]:
+            return i, j
+        return None, None
+
+    # ---------------------------------------------------------
+    # GeoJSON builders
+    # ---------------------------------------------------------
+    def _build_lc_geojson():
+        """Build colour-coded GeoJSON from the land-cover grid.
+
+        Merges contiguous cells of the same class per row into strip
+        polygons, then groups them by class code.
+        """
+        empty = {"type": "FeatureCollection", "features": []}
+        if land_cover is None or _lc_grid_geom is None:
+            return empty
+        origin = _lc_grid_geom['origin']
+        u = _lc_grid_geom['u_vec']
+        v = _lc_grid_geom['v_vec']
+        dx = _lc_grid_geom['adj_mesh'][0]
+        dy = _lc_grid_geom['adj_mesh'][1]
+
+        nx, ny = land_cover.shape
+        features = []
+        fid = 0
+        for i in range(nx):
+            row = land_cover[i]
+            j = 0
+            while j < ny:
+                cls_val = int(row[j])
+                if cls_val < 0 or cls_val >= _num_classes:
+                    j += 1
+                    continue
+                # Find contiguous run of the same class
+                j_end = j + 1
+                while j_end < ny and int(row[j_end]) == cls_val:
+                    j_end += 1
+                bl = origin + (i * dx) * u + (j * dy) * v
+                br = origin + ((i + 1) * dx) * u + (j * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (j_end * dy) * v
+                tl = origin + (i * dx) * u + (j_end * dy) * v
+                coords = [bl.tolist(), br.tolist(), tr.tolist(), tl.tolist(), bl.tolist()]
+                color = _LC_COLORS.get(cls_val, "#808080")
+                features.append({
+                    "type": "Feature",
+                    "id": str(fid),
+                    "properties": {
+                        "cls": cls_val,
+                        "style": {
+                            "color": color,
+                            "fillColor": color,
+                            "fillOpacity": 0.55,
+                            "weight": 0.3,
+                        },
+                    },
+                    "geometry": {"type": "Polygon", "coordinates": [coords]},
+                })
+                fid += 1
+                j = j_end
+        return {"type": "FeatureCollection", "features": features}
+
+    def _lc_style_callback(feature):
+        return feature['properties'].get('style', {
+            "color": "#808080", "fillColor": "#808080",
+            "fillOpacity": 0.55, "weight": 0.3,
+        })
+
+    def _build_building_geojson(bld_gdf):
+        features = []
+        if bld_gdf is None or len(bld_gdf) == 0:
+            return {"type": "FeatureCollection", "features": features}
+        for idx, row in bld_gdf.iterrows():
+            if isinstance(row.geometry, geom.Polygon):
+                coords = [list(row.geometry.exterior.coords)]
+                if any(math.isnan(c) for ring in coords for pt in ring for c in pt):
+                    continue
+                features.append({
+                    "type": "Feature",
+                    "id": str(idx),
+                    "properties": {},
+                    "geometry": {"type": "Polygon", "coordinates": coords},
+                })
+        return {"type": "FeatureCollection", "features": features}
+
+    # ---------------------------------------------------------
+    # Map centre
+    # ---------------------------------------------------------
+    if initial_center is not None:
+        center_lon, center_lat = initial_center
+    elif rectangle_vertices is not None:
+        center_lon = (rectangle_vertices[0][0] + rectangle_vertices[2][0]) / 2
+        center_lat = (rectangle_vertices[0][1] + rectangle_vertices[2][1]) / 2
+    else:
+        center_lon, center_lat = -100.0, 40.0
+
+    # ---------------------------------------------------------
+    # Create map
+    # ---------------------------------------------------------
+    m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    m.layout.height = '600px'
+    try:
+        google_sat = TileLayer(
+            url='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            name='Google Satellite',
+            attribution='Google Satellite',
+        )
+        m.layers = tuple([google_sat])
+    except Exception:
+        try:
+            m.layers = tuple([basemap_to_tiles(basemaps.Esri.WorldImagery)])
+        except Exception:
+            pass
+
+    # Rectangle outline
+    if rectangle_vertices is not None and len(rectangle_vertices) >= 4:
+        try:
+            lat_lon_coords = [(lat, lon) for lon, lat in rectangle_vertices]
+            rect_outline = LeafletPolygon(
+                locations=lat_lon_coords,
+                color="#fed766", weight=2,
+                fill_color="#fed766", fill_opacity=0.0,
+            )
+            m.add_layer(rect_outline)
+        except Exception:
+            pass
+
+    # Building overlay
+    _bld_style = {
+        "color": "#1565c0", "fillColor": "#42a5f5",
+        "fillOpacity": 0.35, "weight": 1,
+    }
+    buildings_overlay = GeoJSON(
+        data=_build_building_geojson(building_gdf),
+        style=_bld_style,
+    )
+    if building_gdf is not None and len(building_gdf) > 0:
+        m.add_layer(buildings_overlay)
+
+    # Land-cover overlay
+    lc_overlay = GeoJSON(
+        data=_build_lc_geojson(),
+        style_callback=_lc_style_callback,
+    )
+    m.add_layer(lc_overlay)
+
+    # ---------------------------------------------------------
+    # UI — Gemini-style panel
+    # ---------------------------------------------------------
+    style_html = HTML("""
+    <style>
+        .lc-drawing-mode,
+        .lc-drawing-mode .leaflet-container,
+        .lc-drawing-mode .leaflet-interactive,
+        .lc-drawing-mode .leaflet-grab,
+        .lc-drawing-mode .leaflet-overlay-pane,
+        .lc-drawing-mode .leaflet-overlay-pane * {
+            cursor: crosshair !important;
+        }
+        .gm-lc-root {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #1f1f1f; line-height: 1.5;
+        }
+        .gm-lc-root * { box-sizing: border-box; }
+        .gm-lc-root .gm-title {
+            font-size: 13px; font-weight: 500; color: #1f1f1f;
+            padding-bottom: 6px; border-bottom: 1px solid #e8eaed; margin-bottom: 8px;
+        }
+        .gm-lc-root .gm-label {
+            font-size: 11px; font-weight: 500; color: #5f6368;
+            letter-spacing: 0.3px; margin: 0 0 4px 0;
+        }
+        .gm-lc-root .gm-sep { height: 1px; background: #e8eaed; margin: 8px 0; }
+        .gm-lc-root .gm-hint {
+            font-size: 10px; color: #80868b; line-height: 1.4; margin: 0 0 8px 0;
+        }
+        .gm-lc-root .gm-hover {
+            font-size: 11px; color: #1a73e8; font-weight: 500;
+            padding: 4px 10px; border-radius: 12px;
+            background: #f0f4ff; margin-top: 6px;
+            min-height: 0; line-height: 1.3;
+        }
+        .gm-lc-root .gm-hover:empty { display: none; }
+        .gm-lc-root .jupyter-button,
+        .gm-lc-root .jupyter-widgets.widget-toggle-button button {
+            border-radius: 18px !important;
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 12px !important; font-weight: 500 !important;
+            border: 1px solid #dadce0 !important; box-shadow: none !important;
+            transition: background 0.15s, border-color 0.15s !important;
+            display: flex !important; align-items: center !important;
+            justify-content: center !important; padding: 0 !important;
+            line-height: 1 !important;
+        }
+        .gm-lc-root .jupyter-button:hover,
+        .gm-lc-root .jupyter-widgets.widget-toggle-button button:hover {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+        }
+        .gm-lc-root .widget-toggle-button { height: 26px !important; }
+        .gm-lc-root .jupyter-button:not(.mod-success):not(.mod-danger) {
+            background: #f8f9fa !important; color: #3c4043 !important;
+            border-color: #dadce0 !important;
+        }
+        .gm-lc-root .jupyter-button:not(.mod-success):not(.mod-danger):hover {
+            background: #f1f3f4 !important;
+        }
+        .gm-lc-root .mod-success {
+            background: #1a73e8 !important; color: #fff !important;
+            border-color: #1a73e8 !important;
+        }
+        .gm-lc-root .mod-success:hover {
+            background: #1765cc !important; border-color: #1765cc !important;
+        }
+        .gm-lc-root .mod-danger,
+        .gm-lc-root .widget-toggle-button .mod-danger {
+            background: #c5221f !important; color: #fff !important;
+            border-color: #c5221f !important;
+        }
+        .gm-lc-root .mod-danger:hover,
+        .gm-lc-root .widget-toggle-button .mod-danger:hover {
+            background: #a8201e !important; border-color: #a8201e !important;
+        }
+        .gm-lc-root .widget-toggle-button .mod-success {
+            background: #1a73e8 !important; color: #fff !important;
+            border-color: #1a73e8 !important;
+        }
+        .gm-lc-root .widget-toggle-button .mod-success:hover {
+            background: #1765cc !important; border-color: #1765cc !important;
+        }
+        .gm-lc-root .widget-label {
+            font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif !important;
+            font-size: 11px !important; color: #5f6368 !important;
+            font-weight: 500 !important;
+        }
+    </style>
+    """)
+
+    # ── Class palette ──
+    # _EDITABLE_CLASSES was already built above (excludes Tree/Building)
+    _selected_class = [_EDITABLE_CLASSES[0]]  # mutable container
+
+    def _make_swatch(cls_code, selected=False):
+        color = _LC_COLORS.get(cls_code, "#808080")
+        name = _LC_NAMES.get(cls_code, "?")
+        border = f"3px solid #1a73e8" if selected else f"1px solid #dadce0"
+        return (
+            f"<div style='display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;' "
+            f"data-cls='{cls_code}'>"
+            f"<span style='display:inline-block;width:14px;height:14px;border-radius:3px;"
+            f"background:{color};border:{border};flex-shrink:0;'></span>"
+            f"<span style='font-size:11px;color:#3c4043;'>{name}</span>"
+            f"</div>"
+        )
+
+    def _build_palette_html():
+        parts = []
+        for c in _EDITABLE_CLASSES:
+            parts.append(_make_swatch(c, selected=(c == _selected_class[0])))
+        return "".join(parts)
+
+    palette_html_widget = HTML(value=_build_palette_html())
+
+    # Class selector buttons (one per editable class)
+    class_buttons = []
+    for cls_code in _EDITABLE_CLASSES:
+        color = _LC_COLORS.get(cls_code, "#808080")
+        name = _LC_NAMES.get(cls_code, "?")
+        btn = Button(
+            description=name,
+            layout=Layout(width='auto', height='22px', padding='0 6px'),
+            button_style='success' if cls_code == _selected_class[0] else '',
+        )
+        btn._lc_code = cls_code
+        class_buttons.append(btn)
+
+    def _on_class_button(b):
+        _selected_class[0] = b._lc_code
+        for cb in class_buttons:
+            cb.button_style = 'success' if cb._lc_code == _selected_class[0] else ''
+        palette_html_widget.value = _build_palette_html()
+        _set_status(f'Selected: {_LC_NAMES.get(b._lc_code, "?")}', 'info')
+
+    for btn in class_buttons:
+        btn.on_click(_on_class_button)
+
+    # Wrap class buttons in rows (2 columns)
+    _class_rows = []
+    for i in range(0, len(class_buttons), 2):
+        pair = class_buttons[i:i+2]
+        _class_rows.append(HBox(pair, layout=Layout(gap='4px', margin='1px 0')))
+    class_palette = VBox(_class_rows, layout=Layout(margin='0', gap='0'))
+
+    # Mode buttons
+    paint_click_button = Button(
+        description='Click', button_style='success',
+        layout=Layout(flex='1', height='26px'),
+    )
+    paint_area_button = ToggleButton(
+        value=False, description='Area', button_style='',
+        layout=Layout(flex='1', height='26px'),
+        tooltip='Draw polygon to paint area',
+    )
+
+    status_bar = HTML(
+        value="<div style='padding:3px 8px;border-radius:10px;font-size:10px;"
+              "text-align:center;background:#f0f4ff;color:#1a73e8;'>Ready</div>"
+    )
+    hover_info = HTML("")
+
+    paint_row = HBox(
+        [paint_click_button, paint_area_button],
+        layout=Layout(margin='0', gap='4px'),
+    )
+
+    panel = VBox(
+        [
+            style_html,
+            HTML("<div class='gm-title' style='margin-bottom:4px;padding-bottom:4px;'>Land Cover Editor</div>"),
+            HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Class</div>"),
+            class_palette,
+            HTML("<div class='gm-sep' style='margin:4px 0;'></div>"),
+            HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Paint</div>"),
+            paint_row,
+            status_bar,
+            hover_info,
+        ],
+        layout=Layout(
+            width='200px', padding='8px 10px', overflow_y='auto',
+        ),
+    )
+    panel.add_class("gm-lc-root")
+
+    card = VBox(
+        [panel],
+        layout=Layout(
+            background_color='white', border_radius='16px',
+            box_shadow='0 1px 3px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.06)',
+            overflow='hidden',
+        ),
+    )
+    widget_control = WidgetControl(widget=card, position='topright')
+    m.add_control(widget_control)
+
+    # ---------------------------------------------------------
+    # State
+    # ---------------------------------------------------------
+    mode = 'paint_click'
+    _area_state = {'clicks': [], 'layers': [], 'preview': None}
+    _last_area_click = [0.0]
+    _last_mousemove = [0.0]
+    _CLOSE_THRESHOLD = 0.0001
+    _toggling = [False]
+
+    def _set_status(msg, stype='info'):
+        colors = {
+            'info':    'background:#f0f4ff;color:#1a73e8;',
+            'success': 'background:#e6f4ea;color:#137333;',
+            'danger':  'background:#fce8e6;color:#c5221f;',
+            'warn':    'background:#fef7e0;color:#b06000;',
+        }
+        style_str = colors.get(stype, colors['info'])
+        status_bar.value = (
+            f"<div style='padding:3px 8px;border-radius:10px;font-size:10px;"
+            f"text-align:center;{style_str}'>{msg}</div>"
+        )
+
+    def _clear_area_draw():
+        while _area_state['layers']:
+            try:
+                m.remove_layer(_area_state['layers'].pop())
+            except Exception:
+                pass
+        if _area_state['preview']:
+            try:
+                m.remove_layer(_area_state['preview'])
+            except Exception:
+                pass
+            _area_state['preview'] = None
+        _area_state['clicks'] = []
+
+    def _is_near_first(pts, lon, lat):
+        if len(pts) < 3:
+            return False
+        dx = lon - pts[0][0]
+        dy = lat - pts[0][1]
+        return (dx * dx + dy * dy) < (_CLOSE_THRESHOLD * _CLOSE_THRESHOLD)
+
+    def _refresh_area_markers(color='#1a73e8'):
+        while _area_state['layers']:
+            try:
+                m.remove_layer(_area_state['layers'].pop())
+            except Exception:
+                pass
+        pts = _area_state['clicks']
+        for lon_p, lat_p in pts:
+            pt = Circle(location=(lat_p, lon_p), radius=2, color=color,
+                        fill_color=color, fill_opacity=1.0)
+            m.add_layer(pt)
+            _area_state['layers'].append(pt)
+        for i in range(len(pts) - 1):
+            line = Polyline(
+                locations=[(pts[i][1], pts[i][0]), (pts[i+1][1], pts[i+1][0])],
+                color=color, weight=2,
+            )
+            m.add_layer(line)
+            _area_state['layers'].append(line)
+
+    def _refresh_lc_overlay():
+        lc_overlay.data = _build_lc_geojson()
+
+    def _paint_cell(lon, lat):
+        """Paint a single cell at (lon, lat) with the selected class."""
+        ci, cj = _geo_to_cell(lon, lat)
+        if ci is None:
+            _set_status('Outside grid', 'warn')
+            return
+        cls_val = _selected_class[0]
+        old_val = int(land_cover[ci, cj])
+        land_cover[ci, cj] = cls_val
+        _refresh_lc_overlay()
+        name = _LC_NAMES.get(cls_val, "?")
+        _set_status(f'Painted ({ci},{cj}) → {name}', 'success')
+
+    def _execute_area_paint(polygon_coords):
+        """Paint all grid cells inside the drawn polygon."""
+        from matplotlib.path import Path as _MplPath
+        cls_val = _selected_class[0]
+        painted = 0
+        if _lc_grid_geom is not None:
+            origin = _lc_grid_geom['origin']
+            u = _lc_grid_geom['u_vec']
+            v = _lc_grid_geom['v_vec']
+            dx = _lc_grid_geom['adj_mesh'][0]
+            dy = _lc_grid_geom['adj_mesh'][1]
+            nx, ny = land_cover.shape
+
+            ii_all = np.arange(nx)
+            jj_all = np.arange(ny)
+            ii_grid, jj_grid = np.meshgrid(ii_all, jj_all, indexing='ij')
+            ii_flat = ii_grid.ravel()
+            jj_flat = jj_grid.ravel()
+
+            centers = (origin
+                       + np.outer((ii_flat + 0.5) * dx, u)
+                       + np.outer((jj_flat + 0.5) * dy, v))
+            mpl_path = _MplPath(polygon_coords)
+            inside = mpl_path.contains_points(centers)
+            if np.any(inside):
+                painted = int(inside.sum())
+                land_cover[ii_flat[inside], jj_flat[inside]] = cls_val
+                _refresh_lc_overlay()
+
+        _clear_area_draw()
+        m.double_click_zoom = True
+        name = _LC_NAMES.get(cls_val, "?")
+        if painted > 0:
+            _set_status(f'Painted {painted} cell(s) → {name}', 'success')
+        else:
+            _set_status('No cells in drawn area', 'warn')
+
+    # ---------------------------------------------------------
+    # Mode management
+    # ---------------------------------------------------------
+    def _update_button_styles():
+        paint_click_button.button_style = 'success' if mode == 'paint_click' else ''
+        paint_area_button.button_style = 'success' if mode == 'paint_area' else ''
+        paint_area_button.value = (mode == 'paint_area')
+
+    def set_mode(new_mode):
+        nonlocal mode
+        mode = new_mode
+        _clear_area_draw()
+        if new_mode == 'paint_area':
+            m.double_click_zoom = False
+            m.default_style = {'cursor': 'crosshair'}
+            m.add_class('lc-drawing-mode')
+        else:
+            m.double_click_zoom = True
+            m.default_style = {'cursor': 'grab'}
+            m.remove_class('lc-drawing-mode')
+        _toggling[0] = True
+        _update_button_styles()
+        _toggling[0] = False
+        if mode == 'paint_click':
+            _set_status('Click map to paint cell', 'info')
+        elif mode == 'paint_area':
+            _set_status('Draw polygon to paint area', 'info')
+
+    def on_click_paint_click(b):
+        set_mode('paint_click')
+
+    def on_paint_area_toggle(change):
+        if _toggling[0] or change['name'] != 'value':
+            return
+        _toggling[0] = True
+        if change['new']:
+            set_mode('paint_area')
+        else:
+            set_mode('paint_click')
+        _toggling[0] = False
+
+    paint_click_button.on_click(on_click_paint_click)
+    paint_area_button.observe(on_paint_area_toggle, names='value')
+
+    # ---------------------------------------------------------
+    # Map interaction handler
+    # ---------------------------------------------------------
+    def handle_map_click(**kwargs):
+        # ── Area polygon drawing ──
+        if mode == 'paint_area':
+            _area_color = '#1a73e8'
+            if kwargs.get('type') == 'dblclick':
+                pts = _area_state['clicks']
+                if len(pts) >= 3:
+                    _execute_area_paint(pts)
+                else:
+                    _set_status('Need at least 3 points', 'warn')
+                return
+            elif kwargs.get('type') == 'click':
+                now = time.time()
+                if now - _last_area_click[0] < 0.3:
+                    return
+                _last_area_click[0] = now
+                coords = kwargs.get('coordinates')
+                if not coords:
+                    return
+                lat, lon = coords
+                if _is_near_first(_area_state['clicks'], lon, lat):
+                    _execute_area_paint(_area_state['clicks'])
+                    return
+                _area_state['clicks'].append((lon, lat))
+                _refresh_area_markers(_area_color)
+                n = len(_area_state['clicks'])
+                _set_status(f'{n} point(s) \u2014 click first point to close', 'info')
+            elif kwargs.get('type') == 'mousemove':
+                now = time.time()
+                if now - _last_mousemove[0] < 0.05:
+                    return
+                _last_mousemove[0] = now
+                pts = _area_state['clicks']
+                if pts:
+                    coords = kwargs.get('coordinates')
+                    if not coords:
+                        return
+                    lat_c, lon_c = coords
+                    if _area_state['preview'] and isinstance(_area_state['preview'], Polyline):
+                        _area_state['preview'].locations = [(pts[-1][1], pts[-1][0]), (lat_c, lon_c)]
+                    else:
+                        if _area_state['preview']:
+                            try:
+                                m.remove_layer(_area_state['preview'])
+                            except Exception:
+                                pass
+                        line = Polyline(
+                            locations=[(pts[-1][1], pts[-1][0]), (lat_c, lon_c)],
+                            color=_area_color, weight=2, dash_array='5, 5',
+                        )
+                        _area_state['preview'] = line
+                        m.add_layer(line)
+            return
+
+        # ── Click painting ──
+        if kwargs.get('type') == 'click':
+            lat, lon = kwargs.get('coordinates', (None, None))
+            if lat is None or lon is None:
+                return
+            if mode == 'paint_click':
+                _paint_cell(lon, lat)
+        elif kwargs.get('type') == 'mousemove':
+            lat, lon = kwargs.get('coordinates', (None, None))
+            if lat is None or lon is None:
+                return
+            ci, cj = _geo_to_cell(lon, lat)
+            if ci is not None:
+                cls_val = int(land_cover[ci, cj])
+                name = _LC_NAMES.get(cls_val, f"Code {cls_val}")
+                color = _LC_COLORS.get(cls_val, "#808080")
+                hover_info.value = (
+                    f"<div class='gm-hover'>"
+                    f"<span style='display:inline-block;width:10px;height:10px;"
+                    f"border-radius:2px;background:{color};margin-right:4px;'></span>"
+                    f"({ci},{cj}) {name}"
+                    f"</div>"
+                )
+            else:
+                hover_info.value = ""
+
+    m.on_interaction(handle_map_click)
+
+    return m, land_cover
