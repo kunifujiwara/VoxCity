@@ -1853,6 +1853,16 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     style_html = HTML(
         """
     <style>
+        /* ── Cursor overrides for tree editor ── */
+        .tree-drawing-mode,
+        .tree-drawing-mode .leaflet-container,
+        .tree-drawing-mode .leaflet-interactive,
+        .tree-drawing-mode .leaflet-grab,
+        .tree-drawing-mode .leaflet-overlay-pane,
+        .tree-drawing-mode .leaflet-overlay-pane * {
+            cursor: crosshair !important;
+        }
+
         /* ── Gemini-style panel (trees) ── */
         .gm-tree-root {
             font-family: 'Google Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -1928,14 +1938,26 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             border-color: #1765cc !important;
         }
         /* danger (Remove active) */
-        .gm-tree-root .mod-danger {
+        .gm-tree-root .mod-danger,
+        .gm-tree-root .widget-toggle-button .mod-danger {
             background: #c5221f !important;
             color: #fff !important;
             border-color: #c5221f !important;
         }
-        .gm-tree-root .mod-danger:hover {
+        .gm-tree-root .mod-danger:hover,
+        .gm-tree-root .widget-toggle-button .mod-danger:hover {
             background: #a8201e !important;
             border-color: #a8201e !important;
+        }
+        /* success on toggle buttons */
+        .gm-tree-root .widget-toggle-button .mod-success {
+            background: #1a73e8 !important;
+            color: #fff !important;
+            border-color: #1a73e8 !important;
+        }
+        .gm-tree-root .widget-toggle-button .mod-success:hover {
+            background: #1765cc !important;
+            border-color: #1765cc !important;
         }
 
         /* inputs */
@@ -1986,18 +2008,25 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         layout=Layout(width='auto', height='20px'),
     )
 
-    add_mode_button = Button(
-        description='Add', button_style='success',
+    add_click_button = Button(
+        description='Click', button_style='success',
         layout=Layout(flex='1', height='26px'),
     )
-    remove_mode_button = Button(
+    add_area_button = ToggleButton(
+        value=False,
+        description='Area',
+        button_style='',
+        layout=Layout(flex='1', height='26px'),
+        tooltip='Draw polygon to fill with trees',
+    )
+    remove_click_button = Button(
         description='Click', button_style='',
         layout=Layout(flex='1', height='26px'),
     )
-    area_remove_button = ToggleButton(
+    remove_area_button = ToggleButton(
         value=False,
         description='Area',
-        button_style='danger',
+        button_style='',
         layout=Layout(flex='1', height='26px'),
         tooltip='Draw polygon to remove trees & canopy inside',
     )
@@ -2008,12 +2037,12 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     hover_info = HTML("")
 
     # Layout
-    mode_row = HBox(
-        [add_mode_button],
+    add_row = HBox(
+        [add_click_button, add_area_button],
         layout=Layout(margin='0', gap='4px'),
     )
     remove_row = HBox(
-        [remove_mode_button, area_remove_button],
+        [remove_click_button, remove_area_button],
         layout=Layout(margin='0', gap='4px'),
     )
     param_col = VBox(
@@ -2021,12 +2050,22 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         layout=Layout(margin='0', gap='0px'),
     )
 
+    def _update_param_visibility():
+        """Show/hide diameter input based on current mode."""
+        if mode in ('add_click',):
+            crown_diameter_input.layout.display = ''
+        else:
+            crown_diameter_input.layout.display = 'none'
+
+    # Initially show diameter (start in add_click mode)
+    crown_diameter_input.layout.display = ''
+
     panel = VBox(
         [
             style_html,
             HTML("<div class='gm-title' style='margin-bottom:4px;padding-bottom:4px;'>Tree Editor</div>"),
             HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Add</div>"),
-            mode_row,
+            add_row,
             HTML("<div class='gm-sep' style='margin:4px 0;'></div>"),
             param_col,
             HTML("<div class='gm-sep' style='margin:4px 0;'></div>"),
@@ -2056,9 +2095,9 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
     widget_control = WidgetControl(widget=card, position='topright')
     m.add_control(widget_control)
 
-    # State for mode
-    mode = 'add'
-    # Area-removal polygon drawing state
+    # State for mode: 'add_click' | 'add_area' | 'remove_click' | 'remove_area'
+    mode = 'add_click'
+    # Polygon drawing state (shared by area-add and area-remove)
     _area_state = {
         'clicks': [],
         'layers': [],
@@ -2180,7 +2219,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         dy = lat - pts[0][1]
         return (dx * dx + dy * dy) < (_CLOSE_THRESHOLD * _CLOSE_THRESHOLD)
 
-    def _refresh_area_markers():
+    def _refresh_area_markers(color='#FF0000'):
         while _area_state['layers']:
             try:
                 m.remove_layer(_area_state['layers'].pop())
@@ -2188,17 +2227,65 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                 pass
         pts = _area_state['clicks']
         for lon_p, lat_p in pts:
-            pt = Circle(location=(lat_p, lon_p), radius=2, color='#FF0000',
-                        fill_color='#FF0000', fill_opacity=1.0)
+            pt = Circle(location=(lat_p, lon_p), radius=2, color=color,
+                        fill_color=color, fill_opacity=1.0)
             m.add_layer(pt)
             _area_state['layers'].append(pt)
         for i in range(len(pts) - 1):
             line = Polyline(
                 locations=[(pts[i][1], pts[i][0]), (pts[i+1][1], pts[i+1][0])],
-                color='#FF0000', weight=2,
+                color=color, weight=2,
             )
             m.add_layer(line)
             _area_state['layers'].append(line)
+
+    def _execute_area_addition(polygon_coords):
+        """Set canopy grid cells inside the drawn polygon to uniform top/trunk heights."""
+        add_polygon = geom.Polygon(polygon_coords)
+
+        th = float(top_height_input.value)
+        bh = float(bottom_height_input.value)
+        if bh > th:
+            bh, th = th, bh
+
+        added_cells = 0
+        if canopy_top is not None and _canopy_grid_geom is not None:
+            origin = _canopy_grid_geom['origin']
+            u = _canopy_grid_geom['u_vec']
+            v = _canopy_grid_geom['v_vec']
+            dx = _canopy_grid_geom['adj_mesh'][0]
+            dy = _canopy_grid_geom['adj_mesh'][1]
+            nx, ny = canopy_top.shape
+
+            # Build centers for ALL grid cells
+            ii_all = np.arange(nx)
+            jj_all = np.arange(ny)
+            ii_grid, jj_grid = np.meshgrid(ii_all, jj_all, indexing='ij')
+            ii_flat = ii_grid.ravel()
+            jj_flat = jj_grid.ravel()
+
+            centers = (origin
+                       + np.outer((ii_flat + 0.5) * dx, u)
+                       + np.outer((jj_flat + 0.5) * dy, v))
+
+            from shapely.prepared import prep as _prep
+            prep_poly = _prep(add_polygon)
+            pts = [geom.Point(c[0], c[1]) for c in centers]
+            inside = np.array([prep_poly.contains(p) for p in pts])
+
+            if np.any(inside):
+                added_cells = int(inside.sum())
+                canopy_top[ii_flat[inside], jj_flat[inside]] = th
+                if canopy_bottom is not None:
+                    canopy_bottom[ii_flat[inside], jj_flat[inside]] = bh
+                canopy_overlay.data = _build_canopy_geojson()
+
+        _clear_area_draw()
+        m.double_click_zoom = True
+        if added_cells > 0:
+            _set_status(f'Added {added_cells} canopy cell(s)', 'success')
+        else:
+            _set_status('No cells in drawn area', 'warn')
 
     def _execute_area_removal(polygon_coords):
         """Remove all trees (points + canopy cells) inside the drawn polygon."""
@@ -2265,56 +2352,85 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
         else:
             _set_status('No trees in selected area', 'warn')
 
+    def _update_button_styles():
+        """Update all button styles to reflect current mode."""
+        add_click_button.button_style = 'success' if mode == 'add_click' else ''
+        add_area_button.button_style = 'success' if mode == 'add_area' else ''
+        add_area_button.value = (mode == 'add_area')
+        remove_click_button.button_style = 'danger' if mode == 'remove_click' else ''
+        remove_area_button.button_style = 'danger' if mode == 'remove_area' else ''
+        remove_area_button.value = (mode == 'remove_area')
+
     def set_mode(new_mode):
         nonlocal mode
         mode = new_mode
         _clear_area_draw()
-        if new_mode != 'area':
-            area_remove_button.value = False
+        if new_mode in ('add_area', 'remove_area'):
+            m.double_click_zoom = False
+            m.default_style = {'cursor': 'crosshair'}
+            m.add_class('tree-drawing-mode')
+        else:
             m.double_click_zoom = True
-        # Visual feedback
-        add_mode_button.button_style = 'success' if mode == 'add' else ''
-        remove_mode_button.button_style = 'danger' if mode == 'remove' else ''
-        if mode == 'add':
+            m.default_style = {'cursor': 'grab'}
+            m.remove_class('tree-drawing-mode')
+        _update_button_styles()
+        _update_param_visibility()
+        if mode == 'add_click':
             _set_status('Click map to add tree', 'info')
-        elif mode == 'remove':
+        elif mode == 'add_area':
+            _set_status('Draw polygon to fill with trees', 'info')
+        elif mode == 'remove_click':
             _set_status('Click trees/canopy to remove', 'danger')
+        elif mode == 'remove_area':
+            _set_status('Draw polygon to remove trees', 'danger')
 
-    def on_click_add(b):
-        set_mode('add')
+    def on_click_add_click(b):
+        set_mode('add_click')
 
-    def on_click_remove(b):
-        set_mode('remove')
+    def on_click_remove_click(b):
+        set_mode('remove_click')
 
-    def on_area_toggle(change):
-        if change['name'] == 'value':
-            if change['new']:
-                set_mode('area')
-                area_remove_button.value = True
-                area_remove_button.button_style = 'danger'
-                add_mode_button.button_style = ''
-                remove_mode_button.button_style = ''
-                m.double_click_zoom = False
-                _set_status('Click to draw removal area, click first point to close', 'danger')
-            else:
-                _clear_area_draw()
-                m.double_click_zoom = True
-                set_mode('add')
+    _toggling = [False]  # guard against recursive observe
 
-    add_mode_button.on_click(on_click_add)
-    remove_mode_button.on_click(on_click_remove)
-    area_remove_button.observe(on_area_toggle, names='value')
+    def on_add_area_toggle(change):
+        if _toggling[0] or change['name'] != 'value':
+            return
+        _toggling[0] = True
+        if change['new']:
+            set_mode('add_area')
+        else:
+            set_mode('add_click')
+        _toggling[0] = False
+
+    def on_remove_area_toggle(change):
+        if _toggling[0] or change['name'] != 'value':
+            return
+        _toggling[0] = True
+        if change['new']:
+            set_mode('remove_area')
+        else:
+            set_mode('add_click')
+        _toggling[0] = False
+
+    add_click_button.on_click(on_click_add_click)
+    add_area_button.observe(on_add_area_toggle, names='value')
+    remove_click_button.on_click(on_click_remove_click)
+    remove_area_button.observe(on_remove_area_toggle, names='value')
 
     # Consecutive placements by map click
     def handle_map_click(**kwargs):
         nonlocal updated_trees
 
-        # ── Area removal polygon drawing ──
-        if area_remove_button.value:
+        # ── Area polygon drawing (add_area or remove_area) ──
+        if mode in ('add_area', 'remove_area'):
+            _area_color = '#1a73e8' if mode == 'add_area' else '#FF0000'
+            _area_stype = 'info' if mode == 'add_area' else 'danger'
+            _area_execute = _execute_area_addition if mode == 'add_area' else _execute_area_removal
+
             if kwargs.get('type') == 'dblclick':
                 pts = _area_state['clicks']
                 if len(pts) >= 3:
-                    _execute_area_removal(pts)
+                    _area_execute(pts)
                 else:
                     _set_status('Need at least 3 points', 'warn')
                 return
@@ -2328,12 +2444,12 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                     return
                 lat, lon = coords
                 if _is_near_first(_area_state['clicks'], lon, lat):
-                    _execute_area_removal(_area_state['clicks'])
+                    _area_execute(_area_state['clicks'])
                     return
                 _area_state['clicks'].append((lon, lat))
-                _refresh_area_markers()
+                _refresh_area_markers(_area_color)
                 n = len(_area_state['clicks'])
-                _set_status(f'{n} point(s) \u2014 click first point to close', 'danger')
+                _set_status(f'{n} point(s) \u2014 click first point to close', _area_stype)
             elif kwargs.get('type') == 'mousemove':
                 now = time.time()
                 if now - _last_mousemove[0] < 0.05:
@@ -2355,7 +2471,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
                                 pass
                         line = Polyline(
                             locations=[(pts[-1][1], pts[-1][0]), (lat_c, lon_c)],
-                            color='#FF0000', weight=2, dash_array='5, 5',
+                            color=_area_color, weight=2, dash_array='5, 5',
                         )
                         _area_state['preview'] = line
                         m.add_layer(line)
@@ -2365,7 +2481,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
             lat, lon = kwargs.get('coordinates', (None, None))
             if lat is None or lon is None:
                 return
-            if mode == 'add':
+            if mode == 'add_click':
                 # Determine next tree_id
                 next_tree_id = int(updated_trees['tree_id'].max() + 1) if len(updated_trees) > 0 else 1
 
@@ -2398,7 +2514,7 @@ def draw_additional_trees(voxcity=None, initial_center=None, zoom=17):
 
                 tree_layers[next_tree_id] = circle
                 _set_status(f'Added tree #{next_tree_id}', 'success')
-            else:
+            elif mode == 'remove_click':
                 # Remove mode: find the nearest tree within its crown radius + 5m
                 removed_something = False
                 candidate_id = None
