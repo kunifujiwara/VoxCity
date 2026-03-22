@@ -54,6 +54,7 @@ from ipywidgets import (
     Checkbox,
     ToggleButton,
     Layout,
+    Dropdown,
 )
 import pandas as pd
 from IPython.display import display, clear_output
@@ -586,11 +587,24 @@ def edit_building(
         initial_center (tuple): (Longitude, Latitude) - Standard GeoJSON order.
     """
     # --- Data Initialization ---
+    tree_gdf = None
+    land_cover = None
+    land_cover_source = None
+    canopy_top = None
     if voxcity is not None:
         if building_gdf is None:
             building_gdf = voxcity.extras.get("building_gdf", None)
         if rectangle_vertices is None:
             rectangle_vertices = voxcity.extras.get("rectangle_vertices", None)
+        tree_gdf = voxcity.extras.get("tree_gdf", None)
+        if voxcity.tree_canopy is not None and voxcity.tree_canopy.top is not None:
+            canopy_top = voxcity.tree_canopy.top.copy()
+        if voxcity.land_cover is not None and voxcity.land_cover.classes is not None:
+            land_cover = voxcity.land_cover.classes.copy()
+        land_cover_source = voxcity.extras.get("land_cover_source", None)
+        if land_cover_source is None:
+            selected = voxcity.extras.get("selected_sources", {})
+            land_cover_source = selected.get("land_cover_source", "OpenStreetMap")
     
     if building_gdf is None:
         updated_gdf = gpd.GeoDataFrame(
@@ -620,20 +634,191 @@ def edit_building(
     
     # ipyleaflet expects (Lat, Lon), so we flip it here
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
+    m.layout.height = '600px'
 
-    # Use CartoDB Positron as basemap (clean, light style)
-    carto_light = TileLayer(
-        url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
-        attribution='&copy; <a href="https://carto.com/">CARTO</a>',
-        name="CartoDB Positron",
-        max_zoom=20,
-    )
-    m.layers = (carto_light,)
+    # ── Basemap tile layers ──
+    _basemap_tiles = {
+        "CartoDB Positron": TileLayer(
+            url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+            name="CartoDB Positron", max_zoom=20,
+        ),
+        "Google Satellite": TileLayer(
+            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            name="Google Satellite", attribution="Google Satellite",
+        ),
+        "OpenStreetMap": TileLayer(
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            name="OpenStreetMap", max_zoom=19,
+        ),
+    }
+    _current_basemap = [_basemap_tiles["Google Satellite"]]
+    m.layers = (_current_basemap[0],)
 
     # Remove any default DrawControl that may have been added
     for ctrl in list(m.controls):
         if isinstance(ctrl, DrawControl):
             m.remove_control(ctrl)
+
+    # ── Cross-layer overlays (trees & land cover) ──
+    _overlay_layers = {}  # name -> (GeoJSON layer, on_map flag)
+
+    # Tree overlay — canopy grid (like edit_tree)
+    _canopy_grid_geom_b = None
+    if canopy_top is not None and rectangle_vertices is not None and voxcity is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0 = np.array(rectangle_vertices[0])
+        _v1 = np.array(rectangle_vertices[1])
+        _v3 = np.array(rectangle_vertices[3])
+        _side_1 = _v1 - _v0
+        _side_2 = _v3 - _v0
+        _meshsize_tc = voxcity.tree_canopy.meta.meshsize
+        _geod = initialize_geod()
+        _dist_1 = calculate_distance(_geod, _v0[0], _v0[1], _v1[0], _v1[1])
+        _dist_2 = calculate_distance(_geod, _v0[0], _v0[1], _v3[0], _v3[1])
+        _u_vec = normalize_to_one_meter(_side_1, _dist_1)
+        _v_vec = normalize_to_one_meter(_side_2, _dist_2)
+        _grid_size, _adj_mesh = calculate_grid_size(_side_1, _side_2, _u_vec, _v_vec, _meshsize_tc)
+        _canopy_grid_geom_b = {
+            'origin': _v0, 'u_vec': _u_vec, 'v_vec': _v_vec,
+            'grid_size': _grid_size, 'adj_mesh': _adj_mesh,
+        }
+
+    def _build_canopy_geojson_b():
+        empty = {"type": "FeatureCollection", "features": []}
+        if canopy_top is None or _canopy_grid_geom_b is None:
+            return empty
+        origin = _canopy_grid_geom_b['origin']
+        u = _canopy_grid_geom_b['u_vec']
+        v = _canopy_grid_geom_b['v_vec']
+        dx = _canopy_grid_geom_b['adj_mesh'][0]
+        dy = _canopy_grid_geom_b['adj_mesh'][1]
+        mask = canopy_top > 0
+        if not np.any(mask):
+            return empty
+        nx, ny = mask.shape
+        strips = []
+        for i in range(nx):
+            row = mask[i]
+            if not np.any(row):
+                continue
+            d = np.diff(np.concatenate(([0], row.astype(np.int8), [0])))
+            starts = np.where(d == 1)[0]
+            ends = np.where(d == -1)[0]
+            for s, e in zip(starts, ends):
+                bl = origin + (i * dx) * u + (s * dy) * v
+                br = origin + ((i + 1) * dx) * u + (s * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (e * dy) * v
+                tl = origin + (i * dx) * u + (e * dy) * v
+                strips.append(geom.Polygon([bl, br, tr, tl]))
+        if not strips:
+            return empty
+        from shapely.ops import unary_union as _uu
+        merged = _uu(strips)
+        features = []
+        def _pf(poly, fid):
+            coords = [list(poly.exterior.coords)]
+            for interior in poly.interiors:
+                coords.append(list(interior.coords))
+            return {"type": "Feature", "id": str(fid), "properties": {},
+                    "geometry": {"type": "Polygon", "coordinates": coords}}
+        if merged.geom_type == 'Polygon':
+            features.append(_pf(merged, 0))
+        elif merged.geom_type in ('MultiPolygon', 'GeometryCollection'):
+            fid = 0
+            for part in merged.geoms:
+                if part.geom_type == 'Polygon' and not part.is_empty:
+                    features.append(_pf(part, fid)); fid += 1
+        return {"type": "FeatureCollection", "features": features}
+
+    if canopy_top is not None and _canopy_grid_geom_b is not None:
+        _tree_overlay = GeoJSON(
+            data=_build_canopy_geojson_b(),
+            style={"color": "#00ff7f", "fillColor": "#00ff7f", "fillOpacity": 0.35, "weight": 0.5},
+        )
+        _overlay_layers['Trees'] = [_tree_overlay, False]
+
+    # Land cover overlay
+    _lc_grid_geom_b = None
+    if land_cover is not None and rectangle_vertices is not None and voxcity is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0 = np.array(rectangle_vertices[0])
+        _v1 = np.array(rectangle_vertices[1])
+        _v3 = np.array(rectangle_vertices[3])
+        _side_1 = _v1 - _v0
+        _side_2 = _v3 - _v0
+        _meshsize_lc = voxcity.land_cover.meta.meshsize
+        _geod = initialize_geod()
+        _dist_1 = calculate_distance(_geod, _v0[0], _v0[1], _v1[0], _v1[1])
+        _dist_2 = calculate_distance(_geod, _v0[0], _v0[1], _v3[0], _v3[1])
+        _u_vec = normalize_to_one_meter(_side_1, _dist_1)
+        _v_vec = normalize_to_one_meter(_side_2, _dist_2)
+        _grid_size, _adj_mesh = calculate_grid_size(_side_1, _side_2, _u_vec, _v_vec, _meshsize_lc)
+        _lc_grid_geom_b = {
+            'origin': _v0, 'u_vec': _u_vec, 'v_vec': _v_vec,
+            'grid_size': _grid_size, 'adj_mesh': _adj_mesh,
+        }
+
+    def _build_lc_geojson_b():
+        empty = {"type": "FeatureCollection", "features": []}
+        if land_cover is None or _lc_grid_geom_b is None:
+            return empty
+        from ..utils.lc import get_land_cover_classes as _get_lc_classes
+        _src_classes = _get_lc_classes(land_cover_source)
+        _class_names = list(dict.fromkeys(_src_classes.values()))
+        _lc_colors_local = {i: _LC_COLORS_BY_NAME.get(name, "#808080") for i, name in enumerate(_class_names)}
+        _num = len(_class_names)
+        origin = _lc_grid_geom_b['origin']
+        u = _lc_grid_geom_b['u_vec']
+        v = _lc_grid_geom_b['v_vec']
+        dx = _lc_grid_geom_b['adj_mesh'][0]
+        dy = _lc_grid_geom_b['adj_mesh'][1]
+        nx, ny = land_cover.shape
+        features = []
+        fid = 0
+        for i in range(nx):
+            row = land_cover[i]
+            j = 0
+            while j < ny:
+                cls_val = int(row[j])
+                if cls_val < 0 or cls_val >= _num:
+                    j += 1; continue
+                j_end = j + 1
+                while j_end < ny and int(row[j_end]) == cls_val:
+                    j_end += 1
+                bl = origin + (i * dx) * u + (j * dy) * v
+                br = origin + ((i + 1) * dx) * u + (j * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (j_end * dy) * v
+                tl = origin + (i * dx) * u + (j_end * dy) * v
+                coords = [bl.tolist(), br.tolist(), tr.tolist(), tl.tolist(), bl.tolist()]
+                color = _lc_colors_local.get(cls_val, "#808080")
+                features.append({
+                    "type": "Feature", "id": str(fid),
+                    "properties": {"cls": cls_val,
+                                   "style": {"color": color, "fillColor": color,
+                                             "fillOpacity": 0.55, "weight": 0.3}},
+                    "geometry": {"type": "Polygon", "coordinates": [coords]},
+                })
+                fid += 1; j = j_end
+        return {"type": "FeatureCollection", "features": features}
+
+    def _lc_style_cb_b(feature):
+        return feature['properties'].get('style', {
+            "color": "#808080", "fillColor": "#808080",
+            "fillOpacity": 0.55, "weight": 0.3,
+        })
+
+    if land_cover is not None and _lc_grid_geom_b is not None:
+        _lc_overlay = GeoJSON(
+            data=_build_lc_geojson_b(),
+            style_callback=_lc_style_cb_b,
+        )
+        _overlay_layers['Land Cover'] = [_lc_overlay, False]
 
     # --- UI Setup (Gemini-style minimal design) ---
     style_html = HTML(
@@ -848,6 +1033,56 @@ def edit_building(
         value="<div class='gm-status gm-status-info'>Ready</div>"
     )
 
+    # ── Basemap switcher ──
+    basemap_dropdown = Dropdown(
+        options=list(_basemap_tiles.keys()),
+        value="Google Satellite",
+        layout=Layout(width="140px", height="26px"),
+    )
+
+    def _on_basemap_change(change):
+        name = change['new']
+        new_tile = _basemap_tiles[name]
+        layers = list(m.layers)
+        layers[0] = new_tile
+        m.layers = tuple(layers)
+        _current_basemap[0] = new_tile
+
+    basemap_dropdown.observe(_on_basemap_change, names='value')
+
+    # ── Layer toggle checkboxes ──
+    _layer_checkboxes = []
+    for _lyr_name, (_lyr_obj, _lyr_on) in _overlay_layers.items():
+        cb = Checkbox(
+            value=_lyr_on, description=_lyr_name, indent=False,
+            layout=Layout(width='auto', height='20px'),
+        )
+
+        def _make_toggle(layer_name, layer_obj):
+            def _toggle(change):
+                if change['new']:
+                    m.add_layer(layer_obj)
+                    _overlay_layers[layer_name][1] = True
+                else:
+                    try:
+                        m.remove_layer(layer_obj)
+                    except Exception:
+                        pass
+                    _overlay_layers[layer_name][1] = False
+            return _toggle
+
+        cb.observe(_make_toggle(_lyr_name, _lyr_obj), names='value')
+        _layer_checkboxes.append(cb)
+
+    _layer_widgets = []
+    if _layer_checkboxes or True:  # always show basemap dropdown
+        _layer_widgets.append(HTML("<div class='gm-sep'></div>"))
+        _layer_widgets.append(HTML("<div class='gm-label'>Basemap</div>"))
+        _layer_widgets.append(basemap_dropdown)
+    if _layer_checkboxes:
+        _layer_widgets.append(HTML("<div class='gm-label' style='margin-top:6px;'>Layers</div>"))
+        _layer_widgets.extend(_layer_checkboxes)
+
     # Layout
     add_tools_row = HBox([rect_btn, poly_btn], layout=Layout(margin="0 0 6px 0", align_items="center", gap="6px"))
     input_row = HBox([h_in, mh_in], layout=Layout(margin="0 0 6px 0"))
@@ -866,7 +1101,7 @@ def edit_building(
             remove_label,
             remove_tools_row,
             status_bar,
-        ],
+        ] + _layer_widgets,
         layout=Layout(
             width="260px",
             padding="14px 16px",
@@ -1586,6 +1821,8 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
     building_gdf = None
     canopy_top = None
     canopy_bottom = None
+    land_cover_t = None
+    land_cover_source_t = None
     if voxcity is not None:
         tree_gdf = voxcity.extras.get('tree_gdf', None)
         rectangle_vertices = voxcity.extras.get('rectangle_vertices', None)
@@ -1595,6 +1832,13 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
             canopy_top = voxcity.tree_canopy.top.copy()
             if voxcity.tree_canopy.bottom is not None:
                 canopy_bottom = voxcity.tree_canopy.bottom.copy()
+        # Extract land cover for cross-layer overlay
+        if voxcity.land_cover is not None and voxcity.land_cover.classes is not None:
+            land_cover_t = voxcity.land_cover.classes.copy()
+        land_cover_source_t = voxcity.extras.get('land_cover_source', None)
+        if land_cover_source_t is None:
+            selected = voxcity.extras.get('selected_sources', {})
+            land_cover_source_t = selected.get('land_cover_source', 'OpenStreetMap')
     
     # Initialize or copy the tree GeoDataFrame
     if tree_gdf is None:
@@ -1626,21 +1870,26 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
     # Create map
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
     m.layout.height = '600px'
-    # Add Google Satellite basemap with Esri fallback
-    try:
-        google_sat = TileLayer(
+
+    # ── Basemap tile layers ──
+    _basemap_tiles_t = {
+        "Google Satellite": TileLayer(
             url='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-            name='Google Satellite',
-            attribution='Google Satellite'
-        )
-        # Replace default base layer with Google Satellite
-        m.layers = tuple([google_sat])
-    except Exception:
-        try:
-            m.layers = tuple([basemap_to_tiles(basemaps.Esri.WorldImagery)])
-        except Exception:
-            # Fallback silently if basemap cannot be added
-            pass
+            name='Google Satellite', attribution='Google Satellite',
+        ),
+        "CartoDB Positron": TileLayer(
+            url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+            name="CartoDB Positron", max_zoom=20,
+        ),
+        "OpenStreetMap": TileLayer(
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            name="OpenStreetMap", max_zoom=19,
+        ),
+    }
+    _current_basemap_t = [_basemap_tiles_t["Google Satellite"]]
+    m.layers = tuple([_current_basemap_t[0]])
 
     # If rectangle_vertices provided, draw its edges on the map
     if rectangle_vertices is not None and len(rectangle_vertices) >= 4:
@@ -1687,12 +1936,88 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
         data=_build_building_geojson(building_gdf),
         style=_bld_style,
     )
-    # Add by default (will be toggled via checkbox)
-    _bld_layer_on_map = True
-    if building_gdf is not None and len(building_gdf) > 0:
-        m.add_layer(buildings_overlay)
-    else:
-        _bld_layer_on_map = False
+    # Hidden by default — toggled via checkbox
+    _overlay_layers_t = {}  # name -> [GeoJSON layer, on_map flag]
+    _overlay_layers_t['Buildings'] = [buildings_overlay, False]
+
+    # ── Land cover overlay (cross-layer, hidden by default) ──
+    _lc_grid_geom_t = None
+    if land_cover_t is not None and rectangle_vertices is not None and voxcity is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0_lc = np.array(rectangle_vertices[0])
+        _v1_lc = np.array(rectangle_vertices[1])
+        _v3_lc = np.array(rectangle_vertices[3])
+        _side_1_lc = _v1_lc - _v0_lc
+        _side_2_lc = _v3_lc - _v0_lc
+        _meshsize_lct = voxcity.land_cover.meta.meshsize
+        _geod_lc = initialize_geod()
+        _dist_1_lc = calculate_distance(_geod_lc, _v0_lc[0], _v0_lc[1], _v1_lc[0], _v1_lc[1])
+        _dist_2_lc = calculate_distance(_geod_lc, _v0_lc[0], _v0_lc[1], _v3_lc[0], _v3_lc[1])
+        _u_vec_lc = normalize_to_one_meter(_side_1_lc, _dist_1_lc)
+        _v_vec_lc = normalize_to_one_meter(_side_2_lc, _dist_2_lc)
+        _grid_size_lc, _adj_mesh_lc = calculate_grid_size(_side_1_lc, _side_2_lc, _u_vec_lc, _v_vec_lc, _meshsize_lct)
+        _lc_grid_geom_t = {
+            'origin': _v0_lc, 'u_vec': _u_vec_lc, 'v_vec': _v_vec_lc,
+            'grid_size': _grid_size_lc, 'adj_mesh': _adj_mesh_lc,
+        }
+
+    def _build_lc_geojson_t():
+        empty = {"type": "FeatureCollection", "features": []}
+        if land_cover_t is None or _lc_grid_geom_t is None:
+            return empty
+        from ..utils.lc import get_land_cover_classes as _get_lc_classes
+        _src_classes = _get_lc_classes(land_cover_source_t)
+        _class_names = list(dict.fromkeys(_src_classes.values()))
+        _lc_colors_local = {i: _LC_COLORS_BY_NAME.get(name, "#808080") for i, name in enumerate(_class_names)}
+        _num = len(_class_names)
+        origin = _lc_grid_geom_t['origin']
+        u = _lc_grid_geom_t['u_vec']
+        v = _lc_grid_geom_t['v_vec']
+        dx = _lc_grid_geom_t['adj_mesh'][0]
+        dy = _lc_grid_geom_t['adj_mesh'][1]
+        nx, ny = land_cover_t.shape
+        features = []
+        fid = 0
+        for i in range(nx):
+            row = land_cover_t[i]
+            j = 0
+            while j < ny:
+                cls_val = int(row[j])
+                if cls_val < 0 or cls_val >= _num:
+                    j += 1; continue
+                j_end = j + 1
+                while j_end < ny and int(row[j_end]) == cls_val:
+                    j_end += 1
+                bl = origin + (i * dx) * u + (j * dy) * v
+                br = origin + ((i + 1) * dx) * u + (j * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (j_end * dy) * v
+                tl = origin + (i * dx) * u + (j_end * dy) * v
+                coords = [bl.tolist(), br.tolist(), tr.tolist(), tl.tolist(), bl.tolist()]
+                color = _lc_colors_local.get(cls_val, "#808080")
+                features.append({
+                    "type": "Feature", "id": str(fid),
+                    "properties": {"cls": cls_val,
+                                   "style": {"color": color, "fillColor": color,
+                                             "fillOpacity": 0.55, "weight": 0.3}},
+                    "geometry": {"type": "Polygon", "coordinates": [coords]},
+                })
+                fid += 1; j = j_end
+        return {"type": "FeatureCollection", "features": features}
+
+    def _lc_style_cb_t(feature):
+        return feature['properties'].get('style', {
+            "color": "#808080", "fillColor": "#808080",
+            "fillOpacity": 0.55, "weight": 0.3,
+        })
+
+    if land_cover_t is not None and _lc_grid_geom_t is not None:
+        _lc_overlay_t = GeoJSON(
+            data=_build_lc_geojson_t(),
+            style_callback=_lc_style_cb_t,
+        )
+        _overlay_layers_t['Land Cover'] = [_lc_overlay_t, False]
 
     # ── Canopy grid overlay ──────────────────────────────
     _canopy_grid_geom = None
@@ -2063,6 +2388,55 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
     # Initially show diameter (start in add_click mode)
     crown_diameter_input.layout.display = ''
 
+    # ── Basemap switcher ──
+    basemap_dropdown_t = Dropdown(
+        options=list(_basemap_tiles_t.keys()),
+        value="Google Satellite",
+        layout=Layout(width="140px", height="26px"),
+    )
+
+    def _on_basemap_change_t(change):
+        name = change['new']
+        new_tile = _basemap_tiles_t[name]
+        layers = list(m.layers)
+        layers[0] = new_tile
+        m.layers = tuple(layers)
+        _current_basemap_t[0] = new_tile
+
+    basemap_dropdown_t.observe(_on_basemap_change_t, names='value')
+
+    # ── Layer toggle checkboxes ──
+    _layer_checkboxes_t = []
+    for _lyr_name, (_lyr_obj, _lyr_on) in _overlay_layers_t.items():
+        cb = Checkbox(
+            value=_lyr_on, description=_lyr_name, indent=False,
+            layout=Layout(width='auto', height='20px'),
+        )
+
+        def _make_toggle_t(layer_name, layer_obj):
+            def _toggle(change):
+                if change['new']:
+                    m.add_layer(layer_obj)
+                    _overlay_layers_t[layer_name][1] = True
+                else:
+                    try:
+                        m.remove_layer(layer_obj)
+                    except Exception:
+                        pass
+                    _overlay_layers_t[layer_name][1] = False
+            return _toggle
+
+        cb.observe(_make_toggle_t(_lyr_name, _lyr_obj), names='value')
+        _layer_checkboxes_t.append(cb)
+
+    _layer_widgets_t = []
+    _layer_widgets_t.append(HTML("<div class='gm-sep' style='margin:4px 0;'></div>"))
+    _layer_widgets_t.append(HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Basemap</div>"))
+    _layer_widgets_t.append(basemap_dropdown_t)
+    if _layer_checkboxes_t:
+        _layer_widgets_t.append(HTML("<div class='gm-label' style='margin:4px 0 2px 0;'>Layers</div>"))
+        _layer_widgets_t.extend(_layer_checkboxes_t)
+
     panel = VBox(
         [
             style_html,
@@ -2076,11 +2450,10 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
             remove_row,
             status_bar,
             hover_info,
-        ],
+        ] + _layer_widgets_t,
         layout=Layout(
             width='200px',
             padding='8px 10px',
-            overflow_y='auto',
         ),
     )
     panel.add_class("gm-tree-root")
@@ -2681,6 +3054,7 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
     rectangle_vertices = None
     building_gdf = None
     land_cover_source = None
+    canopy_top_lc = None
     if voxcity is not None:
         if voxcity.land_cover is not None and voxcity.land_cover.classes is not None:
             land_cover = voxcity.land_cover.classes.copy()
@@ -2690,6 +3064,9 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
         if land_cover_source is None:
             selected = voxcity.extras.get('selected_sources', {})
             land_cover_source = selected.get('land_cover_source', 'OpenStreetMap')
+        # Extract tree canopy for cross-layer overlay
+        if voxcity.tree_canopy is not None and voxcity.tree_canopy.top is not None:
+            canopy_top_lc = voxcity.tree_canopy.top.copy()
 
     if land_cover is None:
         raise ValueError("VoxCity object must contain a land_cover grid.")
@@ -2860,18 +3237,26 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
     # ---------------------------------------------------------
     m = Map(center=(center_lat, center_lon), zoom=zoom, scroll_wheel_zoom=True)
     m.layout.height = '600px'
-    try:
-        google_sat = TileLayer(
+
+    # ── Basemap tile layers ──
+    _basemap_tiles_lc = {
+        "Google Satellite": TileLayer(
             url='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-            name='Google Satellite',
-            attribution='Google Satellite',
-        )
-        m.layers = tuple([google_sat])
-    except Exception:
-        try:
-            m.layers = tuple([basemap_to_tiles(basemaps.Esri.WorldImagery)])
-        except Exception:
-            pass
+            name='Google Satellite', attribution='Google Satellite',
+        ),
+        "CartoDB Positron": TileLayer(
+            url="https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png",
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>',
+            name="CartoDB Positron", max_zoom=20,
+        ),
+        "OpenStreetMap": TileLayer(
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            name="OpenStreetMap", max_zoom=19,
+        ),
+    }
+    _current_basemap_lc = [_basemap_tiles_lc["Google Satellite"]]
+    m.layers = tuple([_current_basemap_lc[0]])
 
     # Rectangle outline
     if rectangle_vertices is not None and len(rectangle_vertices) >= 4:
@@ -2886,7 +3271,10 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
         except Exception:
             pass
 
-    # Building overlay
+    # ── Cross-layer overlays (buildings & trees, hidden by default) ──
+    _overlay_layers_lc = {}
+
+    # Building overlay (hidden by default)
     _bld_style = {
         "color": "#1565c0", "fillColor": "#42a5f5",
         "fillOpacity": 0.35, "weight": 1,
@@ -2895,10 +3283,86 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
         data=_build_building_geojson(building_gdf),
         style=_bld_style,
     )
-    if building_gdf is not None and len(building_gdf) > 0:
-        m.add_layer(buildings_overlay)
+    _overlay_layers_lc['Buildings'] = [buildings_overlay, False]
 
-    # Land-cover overlay
+    # Tree / canopy overlay (hidden by default)
+    _canopy_grid_geom_lc = None
+    if canopy_top_lc is not None and rectangle_vertices is not None and voxcity is not None:
+        from .utils import initialize_geod, calculate_distance, normalize_to_one_meter
+        from .raster.core import calculate_grid_size
+
+        _v0_tc = np.array(rectangle_vertices[0])
+        _v1_tc = np.array(rectangle_vertices[1])
+        _v3_tc = np.array(rectangle_vertices[3])
+        _side_1_tc = _v1_tc - _v0_tc
+        _side_2_tc = _v3_tc - _v0_tc
+        _meshsize_tc = voxcity.tree_canopy.meta.meshsize
+        _geod_tc = initialize_geod()
+        _dist_1_tc = calculate_distance(_geod_tc, _v0_tc[0], _v0_tc[1], _v1_tc[0], _v1_tc[1])
+        _dist_2_tc = calculate_distance(_geod_tc, _v0_tc[0], _v0_tc[1], _v3_tc[0], _v3_tc[1])
+        _u_vec_tc = normalize_to_one_meter(_side_1_tc, _dist_1_tc)
+        _v_vec_tc = normalize_to_one_meter(_side_2_tc, _dist_2_tc)
+        _grid_size_tc, _adj_mesh_tc = calculate_grid_size(_side_1_tc, _side_2_tc, _u_vec_tc, _v_vec_tc, _meshsize_tc)
+        _canopy_grid_geom_lc = {
+            'origin': _v0_tc, 'u_vec': _u_vec_tc, 'v_vec': _v_vec_tc,
+            'grid_size': _grid_size_tc, 'adj_mesh': _adj_mesh_tc,
+        }
+
+    def _build_canopy_geojson_lc():
+        empty = {"type": "FeatureCollection", "features": []}
+        if canopy_top_lc is None or _canopy_grid_geom_lc is None:
+            return empty
+        origin = _canopy_grid_geom_lc['origin']
+        u = _canopy_grid_geom_lc['u_vec']
+        v = _canopy_grid_geom_lc['v_vec']
+        dx = _canopy_grid_geom_lc['adj_mesh'][0]
+        dy = _canopy_grid_geom_lc['adj_mesh'][1]
+        mask = canopy_top_lc > 0
+        if not np.any(mask):
+            return empty
+        nx, ny = mask.shape
+        strips = []
+        for i in range(nx):
+            row = mask[i]
+            if not np.any(row):
+                continue
+            d = np.diff(np.concatenate(([0], row.astype(np.int8), [0])))
+            starts = np.where(d == 1)[0]
+            ends = np.where(d == -1)[0]
+            for s, e in zip(starts, ends):
+                bl = origin + (i * dx) * u + (s * dy) * v
+                br = origin + ((i + 1) * dx) * u + (s * dy) * v
+                tr = origin + ((i + 1) * dx) * u + (e * dy) * v
+                tl = origin + (i * dx) * u + (e * dy) * v
+                strips.append(geom.Polygon([bl, br, tr, tl]))
+        if not strips:
+            return empty
+        from shapely.ops import unary_union as _uu
+        merged = _uu(strips)
+        features = []
+        def _pf(poly, fid):
+            coords = [list(poly.exterior.coords)]
+            for interior in poly.interiors:
+                coords.append(list(interior.coords))
+            return {"type": "Feature", "id": str(fid), "properties": {},
+                    "geometry": {"type": "Polygon", "coordinates": coords}}
+        if merged.geom_type == 'Polygon':
+            features.append(_pf(merged, 0))
+        elif merged.geom_type in ('MultiPolygon', 'GeometryCollection'):
+            fid = 0
+            for part in merged.geoms:
+                if part.geom_type == 'Polygon' and not part.is_empty:
+                    features.append(_pf(part, fid)); fid += 1
+        return {"type": "FeatureCollection", "features": features}
+
+    if canopy_top_lc is not None and _canopy_grid_geom_lc is not None:
+        _tree_overlay_lc = GeoJSON(
+            data=_build_canopy_geojson_lc(),
+            style={"color": "#00ff7f", "fillColor": "#00ff7f", "fillOpacity": 0.35, "weight": 0.5},
+        )
+        _overlay_layers_lc['Trees'] = [_tree_overlay_lc, False]
+
+    # Land-cover overlay (always visible)
     lc_overlay = GeoJSON(
         data=_build_lc_geojson(),
         style_callback=_lc_style_callback,
@@ -3073,6 +3537,55 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
         layout=Layout(margin='0', gap='4px'),
     )
 
+    # ── Basemap switcher ──
+    basemap_dropdown_lc = Dropdown(
+        options=list(_basemap_tiles_lc.keys()),
+        value="Google Satellite",
+        layout=Layout(width="140px", height="26px"),
+    )
+
+    def _on_basemap_change_lc(change):
+        name = change['new']
+        new_tile = _basemap_tiles_lc[name]
+        layers = list(m.layers)
+        layers[0] = new_tile
+        m.layers = tuple(layers)
+        _current_basemap_lc[0] = new_tile
+
+    basemap_dropdown_lc.observe(_on_basemap_change_lc, names='value')
+
+    # ── Layer toggle checkboxes ──
+    _layer_checkboxes_lc = []
+    for _lyr_name, (_lyr_obj, _lyr_on) in _overlay_layers_lc.items():
+        cb = Checkbox(
+            value=_lyr_on, description=_lyr_name, indent=False,
+            layout=Layout(width='auto', height='20px'),
+        )
+
+        def _make_toggle_lc(layer_name, layer_obj):
+            def _toggle(change):
+                if change['new']:
+                    m.add_layer(layer_obj)
+                    _overlay_layers_lc[layer_name][1] = True
+                else:
+                    try:
+                        m.remove_layer(layer_obj)
+                    except Exception:
+                        pass
+                    _overlay_layers_lc[layer_name][1] = False
+            return _toggle
+
+        cb.observe(_make_toggle_lc(_lyr_name, _lyr_obj), names='value')
+        _layer_checkboxes_lc.append(cb)
+
+    _layer_widgets_lc = []
+    _layer_widgets_lc.append(HTML("<div class='gm-sep' style='margin:4px 0;'></div>"))
+    _layer_widgets_lc.append(HTML("<div class='gm-label' style='margin:0 0 2px 0;'>Basemap</div>"))
+    _layer_widgets_lc.append(basemap_dropdown_lc)
+    if _layer_checkboxes_lc:
+        _layer_widgets_lc.append(HTML("<div class='gm-label' style='margin:4px 0 2px 0;'>Layers</div>"))
+        _layer_widgets_lc.extend(_layer_checkboxes_lc)
+
     panel = VBox(
         [
             style_html,
@@ -3084,9 +3597,9 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
             paint_row,
             status_bar,
             hover_info,
-        ],
+        ] + _layer_widgets_lc,
         layout=Layout(
-            width='200px', padding='8px 10px', overflow_y='auto',
+            width='200px', padding='8px 10px',
         ),
     )
     panel.add_class("gm-lc-root")
