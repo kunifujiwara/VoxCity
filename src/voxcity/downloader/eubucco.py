@@ -51,20 +51,20 @@ def populate_country_links():
     global country_links
 
     # Populate the coutry_links variable
-    response = requests.get(f"{EUBUCCO_BASE_URL}/countries")
+    try:
+        response = requests.get(f"{EUBUCCO_BASE_URL}/countries", timeout=10)
+    except requests.RequestException as e:
+        logging.warning(f"Failed to reach EUBUCCO API: {e}")
+        return
+
     if response.status_code != 200:
         msg = f"Failed get the country-url lookup. Status code: {response.status_code}"
-        logging.error(msg)
-        raise Exception(msg)
-    
+        logging.warning(msg)
+        return
 
     data = response.json()
     country_links = {country_data["name"]: country_data["gpkg"]["download_link"]
                                                for country_data in data}
-
-
-# Get the country links when the current module is being imported
-populate_country_links()
 
 
 # ================================
