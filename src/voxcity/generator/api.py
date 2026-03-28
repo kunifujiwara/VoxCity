@@ -1,4 +1,5 @@
 import os
+import warnings
 import numpy as np
 
 from ..models import PipelineConfig
@@ -82,6 +83,160 @@ def _center_of_rectangle(rectangle_vertices):
     lons = [p[0] for p in rectangle_vertices]
     lats = [p[1] for p in rectangle_vertices]
     return (sum(lons) / len(lons), sum(lats) / len(lats))
+
+
+def _get_region_flags(rectangle_vertices):
+    """Return a dict of boolean region flags for the centre of *rectangle_vertices*.
+
+    This mirrors the logic in ``auto_select_data_sources`` so that coverage
+    checks stay in sync with auto-selection.
+    """
+    try:
+        from ..geoprocessor.utils import get_country_name
+    except Exception:
+        get_country_name = None
+
+    center_lon, center_lat = _center_of_rectangle(rectangle_vertices)
+
+    country = None
+    if get_country_name is not None:
+        try:
+            country = get_country_name(center_lon, center_lat)
+        except Exception:
+            pass
+
+    eu_countries = {
+        'Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czechia', 'Czech Republic',
+        'Denmark', 'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Ireland',
+        'Italy', 'Latvia', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands', 'Poland',
+        'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland',
+    }
+    eubucco_countries = eu_countries | {'Switzerland'}
+
+    africa_countries = {
+        'Algeria', 'Angola', 'Benin', 'Botswana', 'Burkina Faso', 'Burundi', 'Cabo Verde',
+        'Cameroon', 'Central African Republic', 'Chad', 'Comoros', 'Congo',
+        'Republic of the Congo', 'Democratic Republic of the Congo', 'Cote dIvoire',
+        "Côte d'Ivoire", 'Ivory Coast', 'Djibouti', 'Egypt', 'Equatorial Guinea', 'Eritrea',
+        'Eswatini', 'Ethiopia', 'Gabon', 'Gambia', 'Ghana', 'Guinea', 'Guinea-Bissau',
+        'Kenya', 'Lesotho', 'Liberia', 'Libya', 'Madagascar', 'Malawi', 'Mali', 'Mauritania',
+        'Mauritius', 'Morocco', 'Mozambique', 'Namibia', 'Niger', 'Nigeria', 'Rwanda',
+        'Sao Tome and Principe', 'Senegal', 'Seychelles', 'Sierra Leone', 'Somalia',
+        'South Africa', 'South Sudan', 'Sudan', 'Tanzania', 'Togo', 'Tunisia', 'Uganda',
+        'Zambia', 'Zimbabwe', 'Western Sahara',
+    }
+    south_asia_countries = {
+        'Afghanistan', 'Bangladesh', 'Bhutan', 'India', 'Maldives', 'Nepal', 'Pakistan', 'Sri Lanka',
+    }
+    se_asia_countries = {
+        'Brunei', 'Cambodia', 'Indonesia', 'Laos', 'Lao PDR', 'Malaysia', 'Myanmar',
+        'Philippines', 'Singapore', 'Thailand', 'Timor-Leste', 'Vietnam', 'Viet Nam',
+    }
+    latam_carib_countries = {
+        'Mexico', 'Belize', 'Costa Rica', 'El Salvador', 'Guatemala', 'Honduras', 'Nicaragua',
+        'Panama', 'Argentina', 'Bolivia', 'Brazil', 'Chile', 'Colombia', 'Ecuador', 'Guyana',
+        'Paraguay', 'Peru', 'Suriname', 'Uruguay', 'Venezuela', 'Antigua and Barbuda',
+        'Bahamas', 'Barbados', 'Cuba', 'Dominica', 'Dominican Republic', 'Grenada', 'Haiti',
+        'Jamaica', 'Saint Kitts and Nevis', 'Saint Lucia',
+        'Saint Vincent and the Grenadines', 'Trinidad and Tobago',
+    }
+
+    _alias = {
+        'United States of America': 'United States',
+        'Czech Republic': 'Czechia',
+        'Viet Nam': 'Vietnam',
+        'Lao PDR': 'Laos',
+        'Ivory Coast': "Côte d'Ivoire",
+    }
+    country_norm = _alias.get(country, country) if country else None
+
+    return {
+        'country': country,
+        'is_usa': (country in ('United States', 'United States of America')) or (-170 <= center_lon <= -65 and 20 <= center_lat <= 72),
+        'is_canada': (country == 'Canada'),
+        'is_australia': (country == 'Australia'),
+        'is_france': (country == 'France'),
+        'is_england': (country == 'United Kingdom'),
+        'is_netherlands': (country == 'Netherlands'),
+        'is_japan': (country == 'Japan') or (127 <= center_lon <= 146 and 24 <= center_lat <= 46),
+        'is_europe': (country in eu_countries) or (-75 <= center_lon <= 60 and 25 <= center_lat <= 85),
+        'is_eubucco': (country_norm in eubucco_countries) if country_norm else False,
+        'in_africa': (country_norm in africa_countries) if country_norm else (-25 <= center_lon <= 80 and -55 <= center_lat <= 45),
+        'in_south_asia': (country_norm in south_asia_countries) if country_norm else (50 <= center_lon <= 100 and 0 <= center_lat <= 35),
+        'in_se_asia': (country_norm in se_asia_countries) if country_norm else (90 <= center_lon <= 150 and -10 <= center_lat <= 25),
+        'in_latam_carib': (country_norm in latam_carib_countries) if country_norm else (-110 <= center_lon <= -30 and -60 <= center_lat <= 30),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Source ↔ coverage mapping
+# ---------------------------------------------------------------------------
+# Each entry maps a source name to a callable (flags_dict → bool) that
+# returns True when the source is expected to cover the target area.
+# Sources not listed here are assumed to have global coverage.
+
+_BUILDING_SOURCE_COVERAGE = {
+    'EUBUCCO v0.1': lambda f: f['is_eubucco'],
+    'Open Building 2.5D Temporal': lambda f: f['in_africa'] or f['in_south_asia'] or f['in_se_asia'] or f['in_latam_carib'],
+    'Microsoft Building Footprints': lambda f: f['is_usa'] or f['is_canada'] or f['is_australia'] or f['is_europe'],
+}
+
+_BUILDING_COMP_COVERAGE = {
+    **_BUILDING_SOURCE_COVERAGE,
+    'England 1m DSM - DTM': lambda f: f['is_england'],
+    'Netherlands 0.5m DSM - DTM': lambda f: f['is_netherlands'],
+}
+
+_LAND_COVER_COVERAGE = {
+    'Urbanwatch': lambda f: f['is_usa'],
+    'OpenEarthMapJapan': lambda f: f['is_japan'],
+}
+
+_DEM_COVERAGE = {
+    'USGS 3DEP 1m': lambda f: f['is_usa'],
+    'England 1m DTM': lambda f: f['is_england'],
+    'DEM France 1m': lambda f: f['is_france'],
+    'DEM France 5m': lambda f: f['is_france'],
+    'AUSTRALIA 5M DEM': lambda f: f['is_australia'],
+    'Netherlands 0.5m DTM': lambda f: f['is_netherlands'],
+}
+
+
+def _warn_source_coverage(rectangle_vertices, building_source, building_complementary_source,
+                          land_cover_source, canopy_height_source, dem_source):
+    """Emit ``warnings.warn`` for each user-selected source whose known
+    coverage region does not include the target area."""
+    try:
+        flags = _get_region_flags(rectangle_vertices)
+    except Exception:
+        return  # best-effort; never block the pipeline
+
+    detected = flags.get('country') or 'Unknown'
+
+    checks = [
+        ('building_source', building_source, _BUILDING_SOURCE_COVERAGE),
+        ('building_complementary_source', building_complementary_source, _BUILDING_COMP_COVERAGE),
+        ('land_cover_source', land_cover_source, _LAND_COVER_COVERAGE),
+        ('dem_source', dem_source, _DEM_COVERAGE),
+        # canopy_height_source – all current options are global; skip
+    ]
+
+    for param_name, source_name, coverage_map in checks:
+        if source_name is None or source_name == 'None':
+            continue
+        checker = coverage_map.get(source_name)
+        if checker is None:
+            continue  # global or unknown – no warning
+        if not checker(flags):
+            msg = (
+                f"'{source_name}' ({param_name}) may not cover the target area "
+                f"(detected country: {detected}). "
+                f"This source has limited geographic coverage and the results "
+                f"may be empty or incomplete. "
+                f"Consider using a global source or one that covers this region."
+            )
+            warnings.warn(msg, UserWarning, stacklevel=3)
+            _logger.warning(msg)
 
 
 def auto_select_data_sources(rectangle_vertices):
@@ -278,6 +433,28 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     if building_complementary_source is None and 'building_complementary_source' in kwargs:
         building_complementary_source = kwargs.pop('building_complementary_source')
     
+    # Validate that sources requiring only raster height data are not used as building_source
+    # when a complementary source is also specified (building_source needs vector footprints).
+    _RASTER_ONLY_SOURCES = {'Open Building 2.5D Temporal'}
+    if (
+        building_source in _RASTER_ONLY_SOURCES
+        and building_complementary_source is not None
+        and building_complementary_source != 'None'
+    ):
+        raise ValueError(
+            f"Invalid source combination:\n"
+            f"  building_source = '{building_source}'\n"
+            f"  building_complementary_source = '{building_complementary_source}'\n\n"
+            f"'{building_source}' provides only raster height data (no building footprint "
+            f"vector geometries). When building_complementary_source is set, the primary "
+            f"building_source must provide vector footprints.\n\n"
+            f"How to fix — swap the two sources:\n"
+            f"  building_source = '{building_complementary_source}'\n"
+            f"  building_complementary_source = '{building_source}'\n\n"
+            f"Note: '{building_source}' can still be used as the sole building_source "
+            f"(without a complementary source) — set building_complementary_source='None'."
+        )
+
     # Determine if we need to auto-select any sources
     sources_to_select = []
     if building_source is None:
@@ -376,6 +553,12 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     except Exception:
         pass
     
+    # Warn about sources that may not cover the target area
+    _warn_source_coverage(
+        rectangle_vertices, building_source, building_complementary_source,
+        land_cover_source, canopy_height_source, dem_source,
+    )
+
     output_dir = kwargs.get("output_dir", "output")
     # Group incoming kwargs into structured options for consistency
     land_cover_keys = {
