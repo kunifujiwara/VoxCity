@@ -43,6 +43,7 @@ from ._common import (
     build_building_geojson,
     build_canopy_geojson,
     build_lc_geojson,
+    build_lc_legend_html,
     lc_style_callback,
     generate_editor_css,
     geo_to_cell,
@@ -274,13 +275,32 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
     basemap_dropdown.observe(_on_basemap_change, names="value")
 
     # Layer toggles
+    _lc_legend_widget = HTML(layout=Layout(display="none"))
+    _legend_raw = build_lc_legend_html(land_cover_source_t)
     _layer_checkboxes = []
     for _lyr_name, (_lyr_obj, _lyr_on) in _overlay_layers.items():
         cb = Checkbox(
             value=_lyr_on, description=_lyr_name, indent=False,
             layout=Layout(width="auto", height="20px"),
         )
-        cb.observe(make_layer_toggle(m, _overlay_layers, _lyr_name, _lyr_obj), names="value")
+        _toggle_cb = make_layer_toggle(
+            m, _overlay_layers, _lyr_name, _lyr_obj,
+            front_layers=lambda: [canopy_overlay] + list(tree_layers.values()),
+        )
+        if _lyr_name == "Land Cover" and _legend_raw:
+            def _lc_toggle(change, _orig=_toggle_cb):
+                _orig(change)
+                if change["new"]:
+                    _lc_legend_widget.value = _legend_raw
+                    _lc_legend_widget.layout.display = None
+                else:
+                    _lc_legend_widget.layout.display = "none"
+            cb.observe(_lc_toggle, names="value")
+            if _lyr_on:
+                _lc_legend_widget.value = _legend_raw
+                _lc_legend_widget.layout.display = None
+        else:
+            cb.observe(_toggle_cb, names="value")
         _layer_checkboxes.append(cb)
 
     _layer_widgets = [
@@ -291,6 +311,8 @@ def edit_tree(voxcity=None, initial_center=None, zoom=17):
     if _layer_checkboxes:
         _layer_widgets.append(HTML("<div class='gm-label' style='margin:4px 0 2px 0;'>Layers</div>"))
         _layer_widgets.extend(_layer_checkboxes)
+    if _legend_raw:
+        _layer_widgets.append(_lc_legend_widget)
 
     panel = VBox(
         [

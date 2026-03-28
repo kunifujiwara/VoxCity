@@ -78,6 +78,27 @@ LC_COLORS_BY_NAME: dict[str, str] = {
 _LC_COLORS_BY_NAME = LC_COLORS_BY_NAME
 
 
+def get_lc_source_colors(land_cover_source: str | None) -> dict[str, str]:
+    """Return ``{class_name: hex_color}`` derived from source RGB keys.
+
+    Uses the RGB tuples defined in ``get_land_cover_classes()`` so that the
+    editor UI matches the colours used in visualiser and exporter modules.
+    Falls back to :data:`LC_COLORS_BY_NAME` when *land_cover_source* is None.
+    """
+    if land_cover_source is None:
+        return dict(LC_COLORS_BY_NAME)
+
+    from ...utils.lc import get_land_cover_classes
+
+    src_classes = get_land_cover_classes(land_cover_source)
+    colors: dict[str, str] = {}
+    for rgb, name in src_classes.items():
+        if name not in colors:
+            r, g, b = rgb
+            colors[name] = f"#{r:02x}{g:02x}{b:02x}"
+    return colors
+
+
 # ─────────────────────────────────────────────────────────────
 # Basemap tile layers
 # ─────────────────────────────────────────────────────────────
@@ -299,7 +320,8 @@ def build_lc_geojson(
 
     src_classes = get_land_cover_classes(land_cover_source)
     class_names = list(dict.fromkeys(src_classes.values()))
-    lc_colors = {i: LC_COLORS_BY_NAME.get(name, "#808080") for i, name in enumerate(class_names)}
+    name_to_hex = get_lc_source_colors(land_cover_source)
+    lc_colors = {i: name_to_hex.get(name, "#808080") for i, name in enumerate(class_names)}
     num = len(class_names)
 
     origin = grid_geom["origin"]
@@ -355,6 +377,42 @@ def lc_style_callback(feature: dict) -> dict:
         "fillOpacity": 0.55,
         "weight": 0.3,
     })
+
+
+# ─────────────────────────────────────────────────────────────
+# Land-cover legend builder
+# ─────────────────────────────────────────────────────────────
+def build_lc_legend_html(land_cover_source: str | None) -> str:
+    """Return an HTML string showing a compact land-cover class legend.
+
+    Only classes that belong to the given *land_cover_source* are shown.
+    Returns an empty string when the source is ``None``.
+    """
+    if land_cover_source is None:
+        return ""
+
+    from ...utils.lc import get_land_cover_classes
+
+    src_classes = get_land_cover_classes(land_cover_source)
+    class_names = list(dict.fromkeys(src_classes.values()))
+    name_to_hex = get_lc_source_colors(land_cover_source)
+
+    items: list[str] = []
+    for name in class_names:
+        color = name_to_hex.get(name, "#808080")
+        items.append(
+            f"<span style='display:inline-flex;align-items:center;margin:0 4px 1px 0;'>"
+            f"<span style='width:8px;height:8px;border-radius:1px;"
+            f"background:{color};display:inline-block;margin-right:2px;"
+            f"border:1px solid rgba(0,0,0,0.15);flex-shrink:0;'></span>"
+            f"<span style='font-size:9px;color:#3c4043;white-space:nowrap;line-height:1;'>{name}</span>"
+            f"</span>"
+        )
+    return (
+        "<div style='display:flex;flex-wrap:wrap;gap:0;margin-top:2px;'>"
+        + "".join(items)
+        + "</div>"
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -448,18 +506,37 @@ def handle_area_mousemove(
 # ─────────────────────────────────────────────────────────────
 # Layer-toggle checkbox factory
 # ─────────────────────────────────────────────────────────────
-def make_layer_toggle(m, overlay_layers: dict, layer_name: str, layer_obj):
-    """Return an observe callback that toggles *layer_obj* on/off the map."""
+def make_layer_toggle(m, overlay_layers: dict, layer_name: str, layer_obj,
+                      front_layers=None):
+    """Return an observe callback that toggles *layer_obj* on/off the map.
+
+    Parameters
+    ----------
+    front_layers : list[Layer] | callable, optional
+        Layers that must always remain in front (on top) of overlay layers.
+        When an overlay is toggled on the entire ``m.layers`` tuple is rebuilt
+        so that these layers are guaranteed to be last (= rendered on top).
+        Can also be a callable returning such a list.
+    """
     def _toggle(change):
         if change["new"]:
-            m.add_layer(layer_obj)
             overlay_layers[layer_name][1] = True
+            # Rebuild m.layers so front layers stay on top.
+            _fl = front_layers() if callable(front_layers) else (front_layers or [])
+            _fl_ids = {id(x) for x in _fl}
+            on_map_ids = {id(l) for l in m.layers}
+            # Base layers = everything currently on map except front layers
+            base = [l for l in m.layers if id(l) not in _fl_ids]
+            # Insert the new overlay
+            if id(layer_obj) not in on_map_ids:
+                base.append(layer_obj)
+            # Re-append front layers that were already on the map
+            front_on_map = [f for f in _fl if id(f) in on_map_ids]
+            m.layers = tuple(base + front_on_map)
         else:
-            try:
-                m.remove_layer(layer_obj)
-            except Exception:
-                pass
             overlay_layers[layer_name][1] = False
+            layers = [l for l in m.layers if l is not layer_obj]
+            m.layers = tuple(layers)
     return _toggle
 
 
@@ -517,21 +594,21 @@ def generate_editor_css(
 
     .{root_class} .gm-title {{
         font-size: 14px; font-weight: 500; color: #1f1f1f;
-        padding-bottom: 8px;
+        padding-bottom: 6px;
         border-bottom: 1px solid #e8eaed;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
     }}
     .{root_class} .gm-label {{
         font-size: 11px; font-weight: 500; color: #5f6368;
         letter-spacing: 0.3px;
-        margin: 0 0 6px 0;
+        margin: 0 0 4px 0;
     }}
-    .{root_class} .gm-sep {{ height: 1px; background: #e8eaed; margin: 12px 0; }}
+    .{root_class} .gm-sep {{ height: 1px; background: #e8eaed; margin: 8px 0; }}
 
     .{root_class} .gm-status {{
-        padding: 6px 12px; border-radius: 16px;
+        padding: 4px 10px; border-radius: 16px;
         font-size: 11px; font-weight: 400; line-height: 1.3;
-        margin-top: 10px; text-align: center;
+        margin-top: 6px; text-align: center;
     }}
     .{root_class} .gm-status-info    {{ background: #f0f4ff; color: #1a73e8; }}
     .{root_class} .gm-status-success {{ background: #e6f4ea; color: #137333; }}
@@ -571,12 +648,12 @@ def generate_editor_css(
     .{root_class} .widget-toggle-button {{ height: 26px !important; }}
 
     /* neutral */
-    .{root_class} .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info) {{
+    .{root_class} .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info):not(.mod-active) {{
         background: #f8f9fa !important;
         color: #3c4043 !important;
         border-color: #dadce0 !important;
     }}
-    .{root_class} .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info):hover {{
+    .{root_class} .jupyter-button:not(.mod-primary):not(.mod-danger):not(.mod-warning):not(.mod-success):not(.mod-info):not(.mod-active):hover {{
         background: #f1f3f4 !important;
     }}
 

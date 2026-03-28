@@ -43,6 +43,7 @@ from ._common import (
     build_building_geojson,
     build_canopy_geojson,
     build_lc_geojson,
+    build_lc_legend_html,
     lc_style_callback,
     generate_editor_css,
     is_near_first,
@@ -236,13 +237,34 @@ def edit_building(
     basemap_dropdown.observe(_on_basemap_change, names="value")
 
     # Layer toggle checkboxes
+    # Mutable list populated later with the main buildings layer so that
+    # overlay layers (Trees / Land Cover) always render behind it.
+    _front_layers = []
+
+    _lc_legend_widget = HTML(layout=Layout(display="none"))
+    _legend_raw = build_lc_legend_html(land_cover_source)
     _layer_checkboxes = []
     for _lyr_name, (_lyr_obj, _lyr_on) in _overlay_layers.items():
         cb = Checkbox(
             value=_lyr_on, description=_lyr_name, indent=False,
             layout=Layout(width="auto", height="20px"),
         )
-        cb.observe(make_layer_toggle(m, _overlay_layers, _lyr_name, _lyr_obj), names="value")
+        _toggle_cb = make_layer_toggle(m, _overlay_layers, _lyr_name, _lyr_obj,
+                                       front_layers=_front_layers)
+        if _lyr_name == "Land Cover" and _legend_raw:
+            def _lc_toggle(change, _orig=_toggle_cb):
+                _orig(change)
+                if change["new"]:
+                    _lc_legend_widget.value = _legend_raw
+                    _lc_legend_widget.layout.display = None
+                else:
+                    _lc_legend_widget.layout.display = "none"
+            cb.observe(_lc_toggle, names="value")
+            if _lyr_on:
+                _lc_legend_widget.value = _legend_raw
+                _lc_legend_widget.layout.display = None
+        else:
+            cb.observe(_toggle_cb, names="value")
         _layer_checkboxes.append(cb)
 
     _layer_widgets = []
@@ -251,23 +273,25 @@ def edit_building(
         _layer_widgets.append(HTML("<div class='gm-label'>Basemap</div>"))
         _layer_widgets.append(basemap_dropdown)
     if _layer_checkboxes:
-        _layer_widgets.append(HTML("<div class='gm-label' style='margin-top:6px;'>Layers</div>"))
+        _layer_widgets.append(HTML("<div class='gm-label' style='margin-top:4px;'>Layers</div>"))
         _layer_widgets.extend(_layer_checkboxes)
+    if _legend_raw:
+        _layer_widgets.append(_lc_legend_widget)
 
     # Layout
-    add_tools_row = HBox([rect_btn, poly_btn], layout=Layout(margin="0 0 6px 0", align_items="center", gap="6px"))
-    input_row = HBox([h_in, mh_in], layout=Layout(margin="0 0 6px 0"))
+    add_tools_row = HBox([rect_btn, poly_btn], layout=Layout(margin="0 0 4px 0", align_items="center", gap="6px"))
+    input_row = HBox([h_in, mh_in], layout=Layout(margin="0 0 4px 0"))
     action_row = HBox([add_btn, clr_btn], layout=Layout(margin="0", gap="6px"))
     remove_tools_row = HBox([del_btn, poly_del_btn], layout=Layout(margin="0", gap="6px"))
 
     panel = VBox(
         [
             style_html,
-            HTML("<div class='gm-title'>Building Editor</div>"),
+            HTML("<div class='gm-title' style='margin-bottom:8px;padding-bottom:6px;'>Building Editor</div>"),
             add_label, add_tools_row, input_row, action_row,
             sep, remove_label, remove_tools_row, status_bar,
         ] + _layer_widgets,
-        layout=Layout(width="260px", padding="14px 16px"),
+        layout=Layout(width="260px", padding="10px 14px"),
     )
     panel.add_class("gm-root")
 
@@ -321,6 +345,7 @@ def edit_building(
 
     buildings_geojson.on_click(_on_geojson_click)
     m.add_layer(buildings_geojson)
+    _front_layers.append(buildings_geojson)
 
     # --- Helpers ---
     def clear_removal_preview():
@@ -563,6 +588,12 @@ def edit_building(
                 if is_near_first(state["poly_clicks"], lon, lat):
                     _finish_poly_footprint(state["poly_clicks"])
                     return
+                # Starting a new polygon: clear previous un-added polygon
+                if not state["poly_clicks"] and state["poly"]:
+                    clear_preview()
+                    state["poly"] = []
+                    add_btn.disabled = True
+                    clr_btn.disabled = True
                 state["poly_clicks"].append((lon, lat))
                 _refresh_poly_markers()
                 n = len(state["poly_clicks"])

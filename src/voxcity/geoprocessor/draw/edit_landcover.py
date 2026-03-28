@@ -38,6 +38,8 @@ from ._common import (
     build_building_geojson,
     build_canopy_geojson,
     build_lc_geojson,
+    build_lc_legend_html,
+    get_lc_source_colors,
     lc_style_callback,
     generate_editor_css,
     geo_to_cell,
@@ -101,7 +103,8 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
     _src_classes = get_land_cover_classes(land_cover_source)
     _class_names = list(dict.fromkeys(_src_classes.values()))
     _LC_NAMES = {i: name for i, name in enumerate(_class_names)}
-    _LC_COLORS = {i: LC_COLORS_BY_NAME.get(name, "#808080") for i, name in enumerate(_class_names)}
+    _name_to_hex = get_lc_source_colors(land_cover_source)
+    _LC_COLORS = {i: _name_to_hex.get(name, "#808080") for i, name in enumerate(_class_names)}
     _num_classes = len(_class_names)
     _NON_EDITABLE_NAMES = {"Tree", "Tree Canopy", "Trees", "Building", "Built Area", "Built-up", "Built"}
     _EDITABLE_CLASSES = [i for i, name in enumerate(_class_names) if name not in _NON_EDITABLE_NAMES]
@@ -171,57 +174,65 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
     m.add_layer(lc_overlay)
 
     # --- UI ---
+    # Generate per-class CSS for colored palette buttons
+    # add_class() puts the class on the <button> element itself, so use
+    # .jupyter-button.gm-lc-cN (same element) not > (child combinator).
+    _palette_css_parts = []
+    for _cls in range(len(_class_names)):
+        _c = _LC_COLORS.get(_cls, "#808080")
+        _r, _g, _b = int(_c[1:3], 16), int(_c[3:5], 16), int(_c[5:7], 16)
+        _lum = 0.299 * _r + 0.587 * _g + 0.114 * _b
+        _tc = "#fff" if _lum < 140 else "#1f1f1f"
+        _palette_css_parts.append(
+            f"    .gm-lc-root .jupyter-button.gm-lc-c{_cls}:not(#_) {{"
+            f" background:{_c} !important;color:{_tc} !important;"
+            f" border-color:rgba(0,0,0,0.18) !important;}}"
+        )
+    # Selection ring for colored buttons
+    _palette_css_parts.append(
+        "    .gm-lc-root .jupyter-button[class*='gm-lc-c'].mod-success:not(#_)"
+        " { outline:2px solid #1a73e8;outline-offset:-2px; }"
+    )
+    _palette_css_parts.append(
+        "    .gm-lc-root .jupyter-button[class*='gm-lc-c']:hover:not(#_)"
+        " { filter:brightness(0.92) !important; }"
+    )
+    _palette_extra_css = "\n".join(_palette_css_parts)
+
     style_html = HTML(generate_editor_css(
         "gm-lc-root",
         drawing_mode_class="lc-drawing-mode",
         delete_mode_class="lc-delete-mode",
+        extra_css=_palette_extra_css,
     ))
 
     _selected_class = [_EDITABLE_CLASSES[0]]
-
-    def _make_swatch(cls_code, selected=False):
-        color = _LC_COLORS.get(cls_code, "#808080")
-        name = _LC_NAMES.get(cls_code, "?")
-        border = "3px solid #1a73e8" if selected else "1px solid #dadce0"
-        return (
-            f"<div style='display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;' "
-            f"data-cls='{cls_code}'>"
-            f"<span style='display:inline-block;width:14px;height:14px;border-radius:3px;"
-            f"background:{color};border:{border};flex-shrink:0;'></span>"
-            f"<span style='font-size:11px;color:#3c4043;'>{name}</span>"
-            f"</div>"
-        )
-
-    def _build_palette_html():
-        return "".join(_make_swatch(c, selected=(c == _selected_class[0])) for c in _EDITABLE_CLASSES)
-
-    palette_html_widget = HTML(value=_build_palette_html())
 
     class_buttons = []
     for cls_code in _EDITABLE_CLASSES:
         name = _LC_NAMES.get(cls_code, "?")
         btn = Button(
             description=name,
-            layout=Layout(width="auto", height="22px", padding="0 6px"),
+            layout=Layout(width="auto", height="20px", padding="0 4px"),
             button_style="success" if cls_code == _selected_class[0] else "",
         )
         btn._lc_code = cls_code
+        btn.add_class(f"gm-lc-c{cls_code}")
         class_buttons.append(btn)
 
     def _on_class_button(b):
         _selected_class[0] = b._lc_code
         for cb in class_buttons:
             cb.button_style = "success" if cb._lc_code == _selected_class[0] else ""
-        palette_html_widget.value = _build_palette_html()
         _set_status(f"Selected: {_LC_NAMES.get(b._lc_code, '?')}", "info")
 
     for btn in class_buttons:
         btn.on_click(_on_class_button)
 
     _class_rows = []
-    for i in range(0, len(class_buttons), 2):
-        pair = class_buttons[i : i + 2]
-        _class_rows.append(HBox(pair, layout=Layout(gap="4px", margin="1px 0")))
+    for i in range(0, len(class_buttons), 3):
+        row = class_buttons[i : i + 3]
+        _class_rows.append(HBox(row, layout=Layout(gap="3px", margin="1px 0")))
     class_palette = VBox(_class_rows, layout=Layout(margin="0", gap="0"))
 
     paint_click_button = Button(description="Click", button_style="success", layout=Layout(flex="1", height="26px"))
@@ -262,7 +273,8 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
             value=_lyr_on, description=_lyr_name, indent=False,
             layout=Layout(width="auto", height="20px"),
         )
-        cb.observe(make_layer_toggle(m, _overlay_layers, _lyr_name, _lyr_obj), names="value")
+        cb.observe(make_layer_toggle(m, _overlay_layers, _lyr_name, _lyr_obj,
+                                       front_layers=[lc_overlay]), names="value")
         _layer_checkboxes.append(cb)
 
     _layer_widgets = [
@@ -286,7 +298,7 @@ def edit_landcover(voxcity=None, initial_center=None, zoom=17):
             status_bar,
             hover_info,
         ] + _layer_widgets,
-        layout=Layout(width="200px", padding="8px 10px"),
+        layout=Layout(width="220px", padding="8px 10px"),
     )
     panel.add_class("gm-lc-root")
 
