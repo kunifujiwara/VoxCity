@@ -801,6 +801,7 @@ def get_country_name(lon, lat):
     Get country name from coordinates using reverse geocoding.
     Uses a local database for fast reverse geocoding to country level,
     then converts the country code to full name using pycountry.
+    Results are cached to avoid repeated lookups for nearby coordinates.
     
     Args:
         lon (float): Longitude in decimal degrees
@@ -813,6 +814,12 @@ def get_country_name(lon, lat):
         >>> country = get_country_name(139.6503, 35.6762)
         >>> print(f"Country: {country}")  # "Japan"
     """
+    # Round to ~1 km precision for cache efficiency
+    cache_key = (round(lat, 2), round(lon, 2))
+    cached = _country_name_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     # Use reverse geocoder to get country code (lazy import to avoid slow startup)
     import reverse_geocoder as rg
     results = rg.search((lat, lon))
@@ -821,7 +828,10 @@ def get_country_name(lon, lat):
     # Convert country code to full name using pycountry
     country = pycountry.countries.get(alpha_2=country_code)
 
-    if country:
-        return country.name
-    else:
-        return None
+    name = country.name if country else None
+    _country_name_cache[cache_key] = name
+    return name
+
+
+# Module-level cache for get_country_name (thread-safe reads; benign races on writes)
+_country_name_cache: dict = {}

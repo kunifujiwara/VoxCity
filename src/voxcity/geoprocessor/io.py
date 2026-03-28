@@ -6,6 +6,9 @@ import gzip
 import json
 
 import geopandas as gpd
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
 
 def get_gdf_from_gpkg(gpkg_path, rectangle_vertices):
     """
@@ -13,7 +16,7 @@ def get_gdf_from_gpkg(gpkg_path, rectangle_vertices):
 
     Note: rectangle_vertices is currently unused but kept for signature compatibility.
     """
-    print(f"Opening GPKG file: {gpkg_path}")
+    _logger.info("Opening GPKG file: %s", gpkg_path)
     gdf = gpd.read_file(gpkg_path)
 
     if gdf.crs is None:
@@ -46,7 +49,7 @@ def load_gdf_from_multiple_gz(file_paths):
                         data['properties']['height'] = 0
                     geojson_objects.append(data)
                 except json.JSONDecodeError as e:
-                    print(f"Skipping line in {gz_file_path} due to JSONDecodeError: {e}")
+                    _logger.warning("Skipping line in %s due to JSONDecodeError: %s", gz_file_path, e)
 
     gdf = gpd.GeoDataFrame.from_features(geojson_objects)
     gdf.set_crs(epsg=4326, inplace=True)

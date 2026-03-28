@@ -652,7 +652,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             or kwargs.get("save_path")
             or io_options.get("save_data_path")
             or kwargs.get("save_data_path")
-            or f"{output_dir}/voxcity.pkl"
+            or f"{output_dir}/voxcity.h5"
         )
         save_voxcity(save_path, city)
 
@@ -915,7 +915,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         save_path = (
             kwargs.get("save_path")
             or kwargs.get("save_data_path")
-            or f"{output_dir}/voxcity.pkl"
+            or f"{output_dir}/voxcity.h5"
         )
         save_voxcity(save_path, city)
 

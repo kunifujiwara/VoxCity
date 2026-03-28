@@ -3,6 +3,7 @@ Persistence functions for VoxCity models and simulation results.
 
 Provides:
 - ``save_voxcity`` / ``load_voxcity`` – pickle-based VoxCity model I/O
+- ``save_h5`` / ``load_h5`` – HDF5-based VoxCity model I/O (recommended)
 - ``save_results_h5`` / ``load_results_h5`` – HDF5-based combined model + results I/O
 """
 
@@ -11,21 +12,51 @@ Provides:
 # Pickle-based VoxCity model save/load
 # =============================================================================
 
-def load_voxcity(input_path):
-    """Load a VoxCity instance from a pickle file.
+def load_voxcity(input_path, *, trusted: bool = False):
+    """Load a VoxCity instance from a file.
 
-    Supports three on-disk formats:
-    1. A bare ``VoxCity`` object.
-    2. A dict with ``{'__format__': 'voxcity.v2', 'voxcity': VoxCity}``.
-    3. Legacy dict format (pre-dataclass era).
+    The format is detected automatically based on the file extension:
+
+    * ``.h5`` / ``.hdf5`` → safe HDF5 format (no warning).
+    * Anything else (e.g. ``.pkl``) → legacy pickle format.
+
+    .. warning::
+        Pickle files can execute arbitrary code on load. Only load files you
+        created yourself or received from a trusted source.  Pass
+        ``trusted=True`` to suppress this warning.
+
+    Parameters
+    ----------
+    input_path : str or Path
+        Path to the file.
+    trusted : bool, default False
+        (Pickle only) Set to ``True`` to acknowledge the security
+        implications of loading a pickle file and suppress the warning.
 
     Returns
     -------
     VoxCity
     """
+    import os
+
+    ext = os.path.splitext(str(input_path))[1].lower()
+    if ext in ('.h5', '.hdf5'):
+        return load_h5(input_path)
+
+    # Legacy pickle path
+    import warnings
     import pickle
     import numpy as np
     from .models import GridMetadata, VoxelGrid, BuildingGrid, LandCoverGrid, DemGrid, CanopyGrid, VoxCity
+
+    if not trusted:
+        warnings.warn(
+            "Loading a pickle file is potentially unsafe. Only load files you trust. "
+            "Pass trusted=True to suppress this warning, or use load_h5() / "
+            "load_results_h5() for a safer HDF5-based alternative.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     with open(input_path, 'rb') as f:
         obj = pickle.load(f)
@@ -70,14 +101,34 @@ def load_voxcity(input_path):
 
 
 def save_voxcity(output_path, city):
-    """Save a VoxCity instance to disk as a pickle file."""
-    import pickle
+    """Save a VoxCity instance to disk.
+
+    The format is chosen automatically based on the file extension:
+
+    * ``.h5`` / ``.hdf5`` → safe HDF5 format (recommended).
+    * Anything else (e.g. ``.pkl``) → legacy pickle format.
+
+    Parameters
+    ----------
+    output_path : str or Path
+        Destination file path.
+    city : VoxCity
+        The model to save.
+    """
     import os
     from .models import VoxCity as _VoxCity
+    from .utils.logging import get_logger
 
     if not isinstance(city, _VoxCity):
         raise TypeError("save_voxcity expects a VoxCity instance")
 
+    ext = os.path.splitext(str(output_path))[1].lower()
+    if ext in ('.h5', '.hdf5'):
+        save_h5(output_path, city)
+        return
+
+    # Legacy pickle path
+    import pickle
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
 
     with open(output_path, 'wb') as f:
@@ -87,7 +138,58 @@ def save_voxcity(output_path, city):
         }
         pickle.dump(payload, f)
 
-    print(f"Voxcity data saved to {output_path}")
+    get_logger(__name__).info("Voxcity data saved to %s", output_path)
+
+
+# =============================================================================
+# HDF5 save/load for plain VoxCity models (no simulation results)
+# =============================================================================
+
+def save_h5(output_path, city):
+    """Save a VoxCity model to an HDF5 file (no simulation results).
+
+    This is the recommended alternative to :func:`save_voxcity` (pickle-based)
+    because HDF5 files cannot execute arbitrary code on load.
+
+    Parameters
+    ----------
+    output_path : str or Path
+        Destination file path (e.g. ``"model.h5"``).
+    city : VoxCity
+        The VoxCity model instance.
+
+    See Also
+    --------
+    load_h5 : Load a VoxCity model from an HDF5 file.
+    save_results_h5 : Save a VoxCity model together with simulation results.
+    """
+    save_results_h5(output_path, city, ground_results=None, building_results=None)
+
+
+def load_h5(input_path):
+    """Load a VoxCity model from an HDF5 file.
+
+    This is the safe counterpart to :func:`load_voxcity` (pickle-based).
+    Works with files written by either :func:`save_h5` or
+    :func:`save_results_h5` — simulation result groups are simply ignored.
+
+    Parameters
+    ----------
+    input_path : str or Path
+        Path to the HDF5 file.
+
+    Returns
+    -------
+    VoxCity
+        The reconstructed VoxCity model.
+
+    See Also
+    --------
+    save_h5 : Save a VoxCity model to an HDF5 file.
+    load_results_h5 : Load a VoxCity model together with simulation results.
+    """
+    results = load_results_h5(input_path)
+    return results['voxcity']
 
 
 # =============================================================================

@@ -8,6 +8,8 @@ continue to work.
 from ..io import (  # noqa: F401
     load_voxcity,
     save_voxcity,
+    save_h5,
+    load_h5,
     save_results_h5,
     load_results_h5,
 )

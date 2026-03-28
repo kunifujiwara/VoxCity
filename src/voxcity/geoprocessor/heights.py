@@ -12,6 +12,9 @@ from shapely.geometry import shape
 from rtree import index
 import rasterio
 from pyproj import Transformer, CRS
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -63,7 +66,7 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
                             overlapping_height_area += ref_row['height'] * overlap_area
                             overlapping_area += overlap_area
                     except Exception:
-                        print(f"Failed to fix polygon")
+                        _logger.warning("Failed to fix polygon")
                     continue
 
             if overlapping_height_area > 0:
@@ -75,8 +78,8 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
                 gdf_primary.at[idx_primary, 'height'] = np.nan
 
     if count_0 > 0:
-        print(f"For {count_1} of these building footprints without height, values from the complementary source were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in complementary data.")
+        _logger.info("For %d of these building footprints without height, values from the complementary source were assigned.", count_1)
+        _logger.info("For %d of these building footprints without height, no data exist in complementary data.", count_2)
 
     return gdf_primary
 
@@ -144,12 +147,12 @@ def complement_building_heights_from_gdf(gdf_0, gdf_1, primary_id='id', ref_id='
     count_8 = len(final_gdf)
 
     if count_0 > 0:
-        print(f"{count_0} of the total {count_total} building footprints from base data source did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from complementary data were assigned.")
-        print(f"For the rest {count_2}, no data exists in complementary data.")
-        print(f"Footprints of {count_3} buildings were added from the complementary source.")
-        print(f"Of these {count_4} additional building footprints, {count_5} had height data while {count_6} had no height data.")
-        print(f"In total, {count_7} buildings had height data out of {count_8} total building footprints.")
+        _logger.info("%d of the total %d building footprints from base data source did not have height data.", count_0, count_total)
+        _logger.info("For %d of these building footprints without height, values from complementary data were assigned.", count_1)
+        _logger.info("For the rest %d, no data exists in complementary data.", count_2)
+        _logger.info("Footprints of %d buildings were added from the complementary source.", count_3)
+        _logger.info("Of these %d additional building footprints, %d had height data while %d had no height data.", count_4, count_5, count_6)
+        _logger.info("In total, %d buildings had height data out of %d total building footprints.", count_7, count_8)
 
     return final_gdf
 
@@ -186,13 +189,13 @@ def extract_building_heights_from_geotiff(geotiff_path, gdf):
                     count_2 += 1
                     gdf.at[idx, 'height'] = np.nan
             except ValueError as e:
-                print(f"Error processing building at index {idx}. Error: {str(e)}")
+                _logger.warning("Error processing building at index %s: %s", idx, e)
                 gdf.at[idx, 'height'] = None
 
     if count_0 > 0:
-        print(f"{count_0} of the total {len(gdf)} building footprint from OSM did not have height data.")
-        print(f"For {count_1} of these building footprints without height, values from complementary data were assigned.")
-        print(f"For {count_2} of these building footprints without height, no data exist in complementary data.")
+        _logger.info("%d of the total %d building footprint from OSM did not have height data.", count_0, len(gdf))
+        _logger.info("For %d of these building footprints without height, values from complementary data were assigned.", count_1)
+        _logger.info("For %d of these building footprints without height, no data exist in complementary data.", count_2)
 
     return gdf
 

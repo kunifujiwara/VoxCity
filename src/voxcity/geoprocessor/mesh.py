@@ -100,117 +100,128 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     if len(voxel_coords) == 0:
         return None
 
-    # Define the 6 faces of a unit cube (local coordinates 0..1)
-    unit_faces = np.array([
-        # Front
-        [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
-        # Back
-        [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]],
-        # Right
-        [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],
-        # Left
-        [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],
-        # Top
-        [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],
-        # Bottom
-        [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]]
-    ])
+    nx, ny, nz = voxel_array.shape
 
-    # Define face normals
-    face_normals = np.array([
+    # 6 face direction offsets: Front(z+1), Back(z-1), Right(x+1), Left(x-1), Top(y+1), Bottom(y-1)
+    direction_offsets = np.array([
         [0, 0, 1],   # Front
         [0, 0, -1],  # Back
         [1, 0, 0],   # Right
         [-1, 0, 0],  # Left
         [0, 1, 0],   # Top
-        [0, -1, 0]   # Bottom
-    ])
+        [0, -1, 0],  # Bottom
+    ], dtype=np.intp)
 
-    vertices = []
-    faces = []
-    face_normals_list = []
-    building_ids = []  # List to store building IDs for each face
+    # Unit face vertices (6 faces × 4 vertices × 3 coords)
+    unit_faces = np.array([
+        [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],  # Front
+        [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]],  # Back
+        [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],  # Right
+        [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],  # Left
+        [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],  # Top
+        [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],  # Bottom
+    ], dtype=np.float64)
 
-    for x, y, z in voxel_coords:
-        # For buildings, get the building ID from the grid
-        building_id = None
-        if class_id == -3 and building_id_grid is not None:
-            building_id = building_id_grid_flipud[x, y]
-            
-        # Check each face of the current voxel
-        adjacent_coords = [
-            (x,   y,   z+1),  # Front
-            (x,   y,   z-1),  # Back
-            (x+1, y,   z),    # Right
-            (x-1, y,   z),    # Left
-            (x,   y+1, z),    # Top
-            (x,   y-1, z)     # Bottom
-        ]
+    face_normal_vectors = np.array([
+        [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+    ], dtype=np.float64)
 
-        # Only create faces where there's a transition based on mesh_type
-        for face_idx, adj_coord in enumerate(adjacent_coords):
-            try:
-                # If adj_coord is outside array bounds, it's a boundary => face is visible
-                if adj_coord[0] < 0 or adj_coord[1] < 0 or adj_coord[2] < 0:
-                    is_boundary = True
-                else:
-                    adj_value = voxel_array[adj_coord]
-                    
-                    if class_id == -3 and mesh_type in ('building_solar', 'open_air'):
-                        # Only create faces at boundaries with void (0) or trees (-2)
-                        is_boundary = (adj_value == 0 or adj_value == -2)
-                    else:
-                        # Default behavior - create faces at any class change
-                        is_boundary = (adj_value == 0 or adj_value != class_id)
-            except IndexError:
-                # Out of range => boundary
-                is_boundary = True
+    # Whether to use solar/open_air boundary logic
+    solar_mode = (class_id == -3 and mesh_type in ('building_solar', 'open_air'))
 
-            if is_boundary:
-                # Local face in (0..1) for x,y,z, then shift by voxel coords
-                face_verts = (unit_faces[face_idx] + np.array([x, y, z])) * meshsize
-                current_vert_count = len(vertices)
+    # Collect per-direction boundary face data
+    all_face_verts = []      # list of (M, 4, 3) arrays
+    all_face_normals = []    # list of (M, 3) arrays
+    all_building_ids_list = []  # list of (M,) arrays  (only when tracking)
+    track_ids = (class_id == -3 and building_id_grid is not None)
 
-                vertices.extend(face_verts)
-                # Convert quad to two triangles
-                faces.extend([
-                    [current_vert_count, current_vert_count + 1, current_vert_count + 2],
-                    [current_vert_count, current_vert_count + 2, current_vert_count + 3]
-                ])
-                # Add face normals for both triangles
-                face_normals_list.extend([face_normals[face_idx], face_normals[face_idx]])
-                
-                # Store building ID for both triangles if this is a building
-                if class_id == -3 and building_id_grid is not None:
-                    building_ids.extend([building_id, building_id])
+    for d in range(6):
+        adj = voxel_coords + direction_offsets[d]  # (N, 3)
 
-    if not vertices:
+        # Out-of-bounds mask → always a boundary
+        oob = (
+            (adj[:, 0] < 0) | (adj[:, 0] >= nx) |
+            (adj[:, 1] < 0) | (adj[:, 1] >= ny) |
+            (adj[:, 2] < 0) | (adj[:, 2] >= nz)
+        )
+
+        # In-bounds: look up adjacent voxel value
+        adj_clamped = adj.copy()
+        adj_clamped[oob] = 0  # safe dummy index
+        adj_values = voxel_array[adj_clamped[:, 0], adj_clamped[:, 1], adj_clamped[:, 2]]
+
+        if solar_mode:
+            inbound_boundary = (adj_values == 0) | (adj_values == -2)
+        else:
+            inbound_boundary = (adj_values == 0) | (adj_values != class_id)
+
+        is_boundary = oob | inbound_boundary
+        # Voxels with a boundary face in this direction
+        face_coords = voxel_coords[is_boundary]  # (M, 3)
+        if len(face_coords) == 0:
+            continue
+
+        # Generate 4 vertices per face: (M, 4, 3)
+        verts = (unit_faces[d][np.newaxis, :, :] + face_coords[:, np.newaxis, :]) * meshsize
+        all_face_verts.append(verts)
+
+        # Normal repeated M times
+        normals_d = np.broadcast_to(face_normal_vectors[d], (len(face_coords), 3)).copy()
+        all_face_normals.append(normals_d)
+
+        if track_ids:
+            ids = building_id_grid_flipud[face_coords[:, 0], face_coords[:, 1]]
+            all_building_ids_list.append(ids)
+
+    if not all_face_verts:
         return None
 
-    vertices = np.array(vertices)
-    faces = np.array(faces)
-    face_normals_list = np.array(face_normals_list)
+    # Concatenate all directions
+    all_verts = np.concatenate(all_face_verts, axis=0)     # (F, 4, 3)
+    all_normals = np.concatenate(all_face_normals, axis=0)  # (F, 3)
+    n_faces_quad = all_verts.shape[0]
+
+    # Flatten vertices: (F*4, 3)
+    vertices = all_verts.reshape(-1, 3)
+
+    # Build triangle face indices: each quad → 2 triangles
+    base_idx = np.arange(n_faces_quad, dtype=np.intp) * 4  # (F,)
+    tri1 = np.column_stack([base_idx, base_idx + 1, base_idx + 2])
+    tri2 = np.column_stack([base_idx, base_idx + 2, base_idx + 3])
+    faces = np.empty((n_faces_quad * 2, 3), dtype=np.intp)
+    faces[0::2] = tri1
+    faces[1::2] = tri2
+
+    # Duplicate normals for 2 triangles per quad
+    face_normals_arr = np.empty((n_faces_quad * 2, 3), dtype=np.float64)
+    face_normals_arr[0::2] = all_normals
+    face_normals_arr[1::2] = all_normals
 
     # Create mesh
     mesh = trimesh.Trimesh(
         vertices=vertices,
         faces=faces,
-        face_normals=face_normals_list
+        face_normals=face_normals_arr,
     )
 
     # Merge vertices that are at the same position
     mesh.merge_vertices()
-    
+
     # Ensure metadata dict exists
     if not hasattr(mesh, 'metadata') or mesh.metadata is None:
         mesh.metadata = {}
 
     # Store intended per-triangle normals to avoid reliance on auto-computed normals
-    mesh.metadata['provided_face_normals'] = face_normals_list
+    mesh.metadata['provided_face_normals'] = face_normals_arr
 
     # Add building IDs as metadata for buildings
-    if class_id == -3 and building_id_grid is not None and building_ids:
-        mesh.metadata['building_id'] = np.array(building_ids)
+    if track_ids and all_building_ids_list:
+        bid_arr = np.concatenate(all_building_ids_list)   # (F,)
+        # Duplicate for 2 triangles per quad
+        bid_tris = np.empty(n_faces_quad * 2, dtype=bid_arr.dtype)
+        bid_tris[0::2] = bid_arr
+        bid_tris[1::2] = bid_arr
+        mesh.metadata['building_id'] = bid_tris
 
     return mesh
 

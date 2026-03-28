@@ -1,5 +1,8 @@
 import numpy as np
 from typing import Optional
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
 
 try:
     from numba import jit, prange
@@ -7,7 +10,7 @@ try:
     NUMBA_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional accel
     NUMBA_AVAILABLE = False
-    print("Numba not available. Using optimized version without JIT compilation.")
+    _logger.info("Numba not available. Using optimized version without JIT compilation.")
 
     def jit(*args, **kwargs):
         def decorator(func):
@@ -88,40 +91,34 @@ def _voxelize_kernel(
 
 def _flatten_building_segments(building_min_height_grid: np.ndarray, voxel_size: float):
     rows, cols = building_min_height_grid.shape
-    counts = np.zeros((rows, cols), dtype=np.int32)
-    # First pass: count segments per cell
-    for i in range(rows):
-        for j in range(cols):
-            cell = building_min_height_grid[i, j]
-            n = 0
-            if isinstance(cell, list):
-                n = len(cell)
-            counts[i, j] = np.int32(n)
+    flat = building_min_height_grid.ravel()
 
-    # Prefix sum to compute offsets
-    offsets = np.zeros((rows, cols), dtype=np.int32)
-    total = 0
-    for i in range(rows):
-        for j in range(cols):
-            offsets[i, j] = total
-            total += int(counts[i, j])
+    # Vectorised count: number of segments per cell
+    counts_flat = np.array(
+        [len(c) if isinstance(c, list) else 0 for c in flat],
+        dtype=np.int32,
+    )
+    counts = counts_flat.reshape(rows, cols)
+    total = int(counts_flat.sum())
 
-    seg_starts = np.zeros(total, dtype=np.int32)
-    seg_ends = np.zeros(total, dtype=np.int32)
+    # Compute offsets via cumulative sum (no nested loop)
+    cum = np.empty(len(counts_flat) + 1, dtype=np.int32)
+    cum[0] = 0
+    np.cumsum(counts_flat, out=cum[1:])
+    offsets = cum[:-1].reshape(rows, cols)
 
-    # Second pass: fill flattened arrays
-    for i in range(rows):
-        for j in range(cols):
-            base = offsets[i, j]
-            n = counts[i, j]
-            if n == 0:
-                continue
-            cell = building_min_height_grid[i, j]
-            for k in range(int(n)):
-                mh = cell[k][0]
-                mx = cell[k][1]
-                seg_starts[base + k] = int(mh / voxel_size + 0.5)
-                seg_ends[base + k] = int(mx / voxel_size + 0.5)
+    seg_starts = np.empty(total, dtype=np.int32)
+    seg_ends = np.empty(total, dtype=np.int32)
+
+    # Single pass: fill flattened arrays (only visit non-empty cells)
+    inv_vs = 1.0 / voxel_size
+    nz_indices = np.nonzero(counts_flat)[0]
+    for idx in nz_indices:
+        cell = flat[idx]
+        base = cum[idx]
+        for k, seg in enumerate(cell):
+            seg_starts[base + k] = int(seg[0] * inv_vs + 0.5)
+            seg_ends[base + k] = int(seg[1] * inv_vs + 0.5)
 
     return seg_starts, seg_ends, offsets, counts
 
@@ -145,7 +142,7 @@ class Voxelizer:
         try:
             bytes_per_elem = np.dtype(self.voxel_dtype).itemsize
             est_mb = rows * cols * max_height * bytes_per_elem / (1024 ** 2)
-            print(f"Voxel grid shape: ({rows}, {cols}, {max_height}), dtype: {self.voxel_dtype}, ~{est_mb:.1f} MB")
+            _logger.info("Voxel grid shape: (%d, %d, %d), dtype: %s, ~%.1f MB", rows, cols, max_height, self.voxel_dtype, est_mb)
             if (self.max_voxel_ram_mb is not None) and (est_mb > self.max_voxel_ram_mb):
                 raise MemoryError(
                     f"Estimated voxel grid memory {est_mb:.1f} MB exceeds limit {self.max_voxel_ram_mb} MB. Increase mesh size or restrict ROI."
@@ -170,12 +167,12 @@ class Voxelizer:
         canopy_bottom_height_grid_ori: Optional[np.ndarray] = None,
         **kwargs,
     ) -> np.ndarray:
-        print("Generating 3D voxel data")
+        _logger.info("Generating 3D voxel data")
         
-        # Print class definitions if requested
+        # Log class definitions if requested
         if kwargs.get("print_class_info", True):
-            print(VOXEL_CODE_DESCRIPTIONS)
-            print(LAND_COVER_DESCRIPTIONS)
+            _logger.info(VOXEL_CODE_DESCRIPTIONS)
+            _logger.info(LAND_COVER_DESCRIPTIONS)
 
         land_cover_grid_converted = self._convert_land_cover(land_cover_grid_ori)
 
@@ -286,10 +283,10 @@ class Voxelizer:
         layered_interval: Optional[int] = None,
         print_class_info: bool = True,
     ):
-        print("Generating 3D voxel data")
+        _logger.info("Generating 3D voxel data")
         if print_class_info:
-            print(VOXEL_CODE_DESCRIPTIONS)
-            print(LAND_COVER_DESCRIPTIONS)
+            _logger.info(VOXEL_CODE_DESCRIPTIONS)
+            _logger.info(LAND_COVER_DESCRIPTIONS)
 
         if self.land_cover_source == 'OpenStreetMap':
             # OpenStreetMap uses Standard classification, just shift to 1-based
