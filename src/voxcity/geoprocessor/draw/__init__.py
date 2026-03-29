@@ -23,6 +23,8 @@ from .rectangle import (
     draw_rectangle_map,
     draw_rectangle_map_cityname,
     center_location_map_cityname,
+    rectangle_map,
+    create_rectangle_map,
 )
 
 # Polygon utilities
@@ -44,6 +46,8 @@ __all__ = [
     "draw_rectangle_map",
     "draw_rectangle_map_cityname",
     "center_location_map_cityname",
+    "rectangle_map",
+    "create_rectangle_map",
     "display_buildings_and_draw_polygon",
     "get_polygon_vertices",
     "edit_building",
