@@ -4,6 +4,10 @@ import sys
 import logging
 from pathlib import Path
 
+# Disable Numba JIT so coverage.py can trace @njit function bodies.
+# Must be set before numba is first imported by any test module.
+os.environ["NUMBA_DISABLE_JIT"] = "1"
+
 # Configure matplotlib to use non-interactive backend BEFORE importing pyplot
 # This prevents visualization windows from appearing during tests
 import matplotlib

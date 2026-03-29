@@ -70,6 +70,7 @@ jobs:
         shell: bash -l {0}
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+          NUMBA_DISABLE_JIT: "1"
         run: |
           pytest --cov=voxcity --cov-report=xml -v
       

@@ -111,46 +111,33 @@ source = ["src/voxcity"]
 #   pytest tests/ --cov=src/voxcity --ignore=tests/test_integration_pipeline.py
 # This avoids GPU/Taichi resource contention issues with coverage instrumentation
 omit = [
-  # Visualization and I/O heavy modules (non-deterministic / GUI)
-  "src/voxcity/utils/visualization.py",
-  # External data/network heavy downloaders (require network/external services)
-  "src/voxcity/downloader/gee.py",
-  "src/voxcity/downloader/mbfp.py",
-  "src/voxcity/downloader/oemj.py",
-  "src/voxcity/downloader/overture.py",
-  "src/voxcity/downloader/citygml.py",
-  "src/voxcity/downloader/osm.py",
-  "src/voxcity/downloader/gba.py",
-  "src/voxcity/downloader/eubucco.py",
-  "src/voxcity/downloader/plateau.py",
-  "src/voxcity/downloader/cog.py",
-  "src/voxcity/downloader/las.py",
-  "src/voxcity/downloader/ocean.py",
-  # Pure exporters (file writers) not critical for algorithmic coverage
-  "src/voxcity/exporter/*",
-  # GPU-specific code requiring Taichi/CUDA hardware (tested via integration tests)
-  "src/voxcity/simulator_gpu/*",
-  "src/voxcity/visualizer/renderer_gpu.py",
-  # Visualization/rendering code (requires GUI/display)
-  "src/voxcity/visualizer/renderer.py",
-  "src/voxcity/visualizer/maps.py",
-  "src/voxcity/visualizer/palette.py",
-  # Drawing code (interactive/visualization)
-  "src/voxcity/geoprocessor/draw.py",
-  # Weather data downloading (requires external API)
-  "src/voxcity/utils/weather/onebuilding.py",
-  # Raster I/O heavy modules (require GeoTIFF files)
-  "src/voxcity/geoprocessor/raster/buildings.py",
-  "src/voxcity/geoprocessor/raster/canopy.py",
-  "src/voxcity/geoprocessor/raster/landcover.py",
-  "src/voxcity/geoprocessor/raster/raster.py",
-  "src/voxcity/geoprocessor/raster/export.py",
-  # Grid generation (requires external data sources)
-  "src/voxcity/generator/grids.py",
-  "src/voxcity/generator/api.py",
-  # Visibility simulation (requires full voxel grid)
-  "src/voxcity/simulator/visibility/view.py",
-  "src/voxcity/simulator/visibility/landmark.py",
+  # Use */voxcity/ prefix so patterns match both src/ (local) and
+  # site-packages/ (CI after pip install).
+  # ---------- Network-dependent downloaders ----------
+  "*/voxcity/downloader/gee.py",
+  "*/voxcity/downloader/mbfp.py",
+  "*/voxcity/downloader/oemj.py",
+  "*/voxcity/downloader/overture.py",
+  "*/voxcity/downloader/citygml.py",
+  "*/voxcity/downloader/osm.py",
+  "*/voxcity/downloader/gba.py",
+  "*/voxcity/downloader/eubucco.py",
+  "*/voxcity/downloader/ocean.py",
+  # ---------- GPU / Taichi (tested via integration tests) ----------
+  "*/voxcity/simulator_gpu/*",
+  "*/voxcity/visualizer/renderer_gpu.py",
+  # ---------- GUI / Jupyter widget code ----------
+  "*/voxcity/visualizer/renderer.py",
+  "*/voxcity/visualizer/maps.py",
+  "*/voxcity/geoprocessor/draw/*",
+  # ---------- Modules that import hard deps at top level ----------
+  "*/voxcity/geoprocessor/raster/buildings.py",  # imports downloader.gee
+  "*/voxcity/generator/grids.py",                # imports all downloaders
+  "*/voxcity/generator/api.py",                  # imports all downloaders
+  "*/voxcity/simulator/visibility/view.py",      # imports exporter.obj
+  "*/voxcity/simulator/visibility/landmark.py",  # heavy compute, imports matplotlib
+  # ---------- Network-dependent weather ----------
+  "*/voxcity/utils/weather/onebuilding.py",
 ]
 
 [tool.coverage.report]
