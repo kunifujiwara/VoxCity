@@ -139,11 +139,12 @@ class TestVoxelizerEstimateAndAllocate:
         assert grid.shape == (10, 10, 20)
         assert np.all(grid == 0)
 
-    def test_prints_memory_info(self, capsys):
-        v = Voxelizer(voxel_size=1.0, land_cover_source='OpenStreetMap')
-        grid = v._estimate_and_allocate(5, 5, 5)
-        captured = capsys.readouterr()
-        assert 'Voxel grid shape' in captured.out
+    def test_prints_memory_info(self, caplog, propagate_voxcity_logs):
+        import logging
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            v = Voxelizer(voxel_size=1.0, land_cover_source='OpenStreetMap')
+            grid = v._estimate_and_allocate(5, 5, 5)
+        assert 'Voxel grid shape' in caplog.text
         assert grid.shape == (5, 5, 5)
 
 

@@ -143,7 +143,7 @@ class TestPipelineConfig:
         assert cfg.output_dir == "output"
         assert cfg.mapvis is False
         assert cfg.gridvis is True
-        assert cfg.parallel_download is False
+        assert cfg.parallel_download is True
         assert cfg.building_source is None
         assert cfg.land_cover_source is None
         assert isinstance(cfg.land_cover_options, dict)

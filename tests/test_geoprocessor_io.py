@@ -79,18 +79,19 @@ class TestLoadGdfFromMultipleGz:
         
         assert gdf.iloc[0]["height"] == 0
 
-    def test_skips_invalid_json_lines(self, tmp_path, capsys):
+    def test_skips_invalid_json_lines(self, tmp_path, caplog, propagate_voxcity_logs):
         """Test that invalid JSON lines are skipped with warning."""
+        import logging
         gz_file = tmp_path / "test.gz"
         with gzip.open(gz_file, 'wt', encoding='utf-8') as f:
             f.write(json.dumps({"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}, "properties": {"height": 10}}) + "\n")
             f.write("invalid json\n")  # Bad line
             f.write(json.dumps({"type": "Feature", "geometry": {"type": "Point", "coordinates": [1, 1]}, "properties": {"height": 20}}) + "\n")
         
-        gdf = load_gdf_from_multiple_gz([str(gz_file)])
+        with caplog.at_level(logging.WARNING, logger="voxcity"):
+            gdf = load_gdf_from_multiple_gz([str(gz_file)])
         
         # Should have 2 valid features
         assert len(gdf) == 2
-        # Should have printed warning
-        captured = capsys.readouterr()
-        assert "Skipping line" in captured.out or "JSONDecodeError" in captured.out
+        # Should have logged warning
+        assert "Skipping line" in caplog.text or "JSONDecodeError" in caplog.text

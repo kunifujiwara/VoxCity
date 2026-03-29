@@ -58,12 +58,14 @@ class TestExtractBuildingHeightsFromGdf:
             ]
         }, crs="EPSG:4326")
     
-    def test_extract_heights_from_overlapping_buildings(self, primary_gdf_no_heights, reference_gdf_with_heights, capsys):
+    def test_extract_heights_from_overlapping_buildings(self, primary_gdf_no_heights, reference_gdf_with_heights, caplog, propagate_voxcity_logs):
         """Test height extraction from overlapping reference buildings."""
-        result = extract_building_heights_from_gdf(
-            primary_gdf_no_heights.copy(),
-            reference_gdf_with_heights.copy()
-        )
+        import logging
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            result = extract_building_heights_from_gdf(
+                primary_gdf_no_heights.copy(),
+                reference_gdf_with_heights.copy()
+            )
         
         # Buildings 1 and 2 should get heights from overlapping reference
         assert result.iloc[0]['height'] > 0  # Building 1 overlaps with ref 101
@@ -72,9 +74,8 @@ class TestExtractBuildingHeightsFromGdf:
         # Building 3 has no overlap, should remain nan
         assert pd.isna(result.iloc[2]['height'])
         
-        # Check printed output
-        captured = capsys.readouterr()
-        assert "building footprints without height" in captured.out
+        # Check logged output
+        assert "building footprints without height" in caplog.text
     
     def test_preserve_existing_heights(self, primary_gdf_with_heights, reference_gdf_with_heights):
         """Test that existing heights are preserved."""
@@ -200,30 +201,32 @@ class TestComplementBuildingHeightsFromGdf:
             ]
         }, crs="EPSG:4326")
     
-    def test_complement_adds_non_overlapping_buildings(self, primary_gdf, reference_gdf, capsys):
+    def test_complement_adds_non_overlapping_buildings(self, primary_gdf, reference_gdf, caplog, propagate_voxcity_logs):
         """Test that non-overlapping buildings from reference are added."""
-        result = complement_building_heights_from_gdf(
-            primary_gdf.copy(),
-            reference_gdf.copy()
-        )
+        import logging
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            result = complement_building_heights_from_gdf(
+                primary_gdf.copy(),
+                reference_gdf.copy()
+            )
         
         # Should have more buildings than primary
         assert len(result) > len(primary_gdf)
         
         # Building at (10, 0) should be added
-        captured = capsys.readouterr()
-        assert "were added from the complementary source" in captured.out
+        assert "were added from the complementary source" in caplog.text
     
-    def test_complement_fills_missing_heights(self, primary_gdf, reference_gdf, capsys):
+    def test_complement_fills_missing_heights(self, primary_gdf, reference_gdf, caplog, propagate_voxcity_logs):
         """Test that missing heights are filled from overlapping reference."""
-        result = complement_building_heights_from_gdf(
-            primary_gdf.copy(),
-            reference_gdf.copy()
-        )
+        import logging
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            result = complement_building_heights_from_gdf(
+                primary_gdf.copy(),
+                reference_gdf.copy()
+            )
         
-        # Check output message
-        captured = capsys.readouterr()
-        assert "building footprints" in captured.out
+        # Check logged output
+        assert "building footprints" in caplog.text
     
     def test_preserve_existing_heights(self, reference_gdf):
         """Test that existing heights in primary are preserved."""

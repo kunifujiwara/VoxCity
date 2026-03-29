@@ -137,8 +137,9 @@ class TestLoadGdfFromMultipleGz:
         finally:
             Path(gz_path).unlink(missing_ok=True)
 
-    def test_load_gz_with_invalid_json_line(self, capsys):
+    def test_load_gz_with_invalid_json_line(self, caplog, propagate_voxcity_logs):
         """Test that invalid JSON lines are skipped with warning."""
+        import logging
         from voxcity.geoprocessor.io import load_gdf_from_multiple_gz
         
         with tempfile.NamedTemporaryFile(suffix='.gz', delete=False) as f:
@@ -150,11 +151,11 @@ class TestLoadGdfFromMultipleGz:
                 f.write('invalid json line\n')
                 f.write('{"type": "Feature", "geometry": {"type": "Point", "coordinates": [139.1, 35.1]}, "properties": {"height": 20}}\n')
             
-            gdf = load_gdf_from_multiple_gz([gz_path])
+            with caplog.at_level(logging.WARNING, logger="voxcity"):
+                gdf = load_gdf_from_multiple_gz([gz_path])
             
             assert len(gdf) == 2  # Invalid line skipped
-            captured = capsys.readouterr()
-            assert 'Skipping line' in captured.out
+            assert 'Skipping line' in caplog.text
         finally:
             Path(gz_path).unlink(missing_ok=True)
 

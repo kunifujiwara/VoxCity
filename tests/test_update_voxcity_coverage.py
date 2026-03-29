@@ -118,6 +118,7 @@ class TestUpdateWithTreeGdf:
         mock_vox.return_value = vox_instance
 
         tree_gdf = MagicMock()
+        tree_gdf.__len__.return_value = 1
         result = update_voxcity(city, tree_gdf=tree_gdf, tree_gdf_mode="replace")
         np.testing.assert_array_equal(result.tree_canopy.top, new_top)
 
@@ -144,6 +145,7 @@ class TestUpdateWithTreeGdf:
         mock_vox.return_value = vox_instance
 
         tree_gdf = MagicMock()
+        tree_gdf.__len__.return_value = 1
         result = update_voxcity(city, tree_gdf=tree_gdf, tree_gdf_mode="add")
         # Maximum of existing (5.0) and new (3.0) → 5.0
         np.testing.assert_array_equal(result.tree_canopy.top, np.full(shape, 5.0))
@@ -153,8 +155,10 @@ class TestUpdateWithTreeGdf:
         from voxcity.generator.update import update_voxcity
 
         city = _make_city()
+        mock_gdf = MagicMock()
+        mock_gdf.__len__.return_value = 1
         with pytest.raises(ValueError, match="Invalid tree_gdf_mode"):
-            update_voxcity(city, tree_gdf=MagicMock(), tree_gdf_mode="merge")
+            update_voxcity(city, tree_gdf=mock_gdf, tree_gdf_mode="merge")
 
     @patch("voxcity.generator.update.Voxelizer")
     def test_no_rect_for_tree_raises(self, mock_vox):
@@ -162,8 +166,10 @@ class TestUpdateWithTreeGdf:
 
         city = _make_city()
         city.extras = {}  # no rectangle_vertices
+        mock_gdf = MagicMock()
+        mock_gdf.__len__.return_value = 1
         with pytest.raises(ValueError, match="rectangle_vertices"):
-            update_voxcity(city, tree_gdf=MagicMock())
+            update_voxcity(city, tree_gdf=mock_gdf)
 
 
 # ===========================================================================

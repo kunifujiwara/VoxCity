@@ -134,7 +134,7 @@ class TestPipelineConfig:
         assert config.meshsize == 1.0
         assert config.building_source is None
         assert config.output_dir == "output"
-        assert config.parallel_download is False
+        assert config.parallel_download is True
 
     def test_creation_with_all_options(self):
         config = PipelineConfig(

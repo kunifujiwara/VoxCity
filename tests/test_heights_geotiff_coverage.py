@@ -80,7 +80,8 @@ class TestExtractBuildingHeightsFromGeotiff:
 class TestComplementBuildingStatsOutput:
     """Cover heights.py lines 128-156 (statistics printing branch)."""
 
-    def test_stats_printed_when_missing_heights(self, capsys):
+    def test_stats_printed_when_missing_heights(self, caplog, propagate_voxcity_logs):
+        import logging
         from voxcity.geoprocessor.heights import complement_building_heights_from_gdf
 
         # Primary GDF with 2 buildings: one with height, one without
@@ -97,8 +98,8 @@ class TestComplementBuildingStatsOutput:
             "id": [101, 102],
         }, crs="EPSG:4326")
 
-        result = complement_building_heights_from_gdf(primary_gdf, ref_gdf)
-        captured = capsys.readouterr()
+        with caplog.at_level(logging.INFO, logger="voxcity"):
+            result = complement_building_heights_from_gdf(primary_gdf, ref_gdf)
         # Stats should mention the number of buildings without height
-        assert "did not have height data" in captured.out
+        assert "did not have height data" in caplog.text
         assert len(result) >= 2  # At least original + non-overlapping ref buildings

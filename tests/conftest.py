@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import logging
 from pathlib import Path
 
 # Configure matplotlib to use non-interactive backend BEFORE importing pyplot
@@ -10,6 +11,16 @@ matplotlib.use('Agg')
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+
+@pytest.fixture
+def propagate_voxcity_logs():
+    """Temporarily enable propagation on the voxcity logger so caplog can capture records."""
+    voxcity_logger = logging.getLogger("voxcity")
+    old_propagate = voxcity_logger.propagate
+    voxcity_logger.propagate = True
+    yield
+    voxcity_logger.propagate = old_propagate
 
 
 def pytest_collection_modifyitems(config, items):
