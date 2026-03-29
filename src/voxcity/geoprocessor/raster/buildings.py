@@ -28,7 +28,8 @@ from ...downloader.gee import (
     get_roi,
     save_geotiff_open_buildings_temporal,
 )
-from .core import calculate_grid_size, create_cell_polygon
+from .core import calculate_grid_size, create_cell_polygon, compute_grid_geometry
+from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def create_building_height_grid_from_gdf_polygon(
@@ -45,19 +46,11 @@ def create_building_height_grid_from_gdf_polygon(
     Create a building height grid from GeoDataFrame data within a polygon boundary.
     Returns: (building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings)
     """
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-
-    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
-    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
-
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
-    origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin = geom["origin"]
+    side_1, side_2 = geom["side_1"], geom["side_2"]
+    u_vec, v_vec = geom["u_vec"], geom["v_vec"]
+    grid_size, adjusted_meshsize = geom["grid_size"], geom["adj_mesh"]
 
     extent = [
         min(coord[1] for coord in rectangle_vertices),
@@ -391,9 +384,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                     dtype=np.float64
                 )
 
-    building_height_grid = np.flipud(height_raster).T
-    building_id_grid = np.flipud(id_raster).T
-    min_heights = np.flipud(min_heights_raster).T
+    building_height_grid = ensure_orientation(height_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
+    building_id_grid = ensure_orientation(id_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
+    min_heights = ensure_orientation(min_heights_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
 
     for i in range(grid_size[0]):
         for j in range(grid_size[1]):

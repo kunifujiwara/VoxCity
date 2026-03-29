@@ -2,9 +2,12 @@ import numpy as np
 from typing import List, Tuple
 from shapely.geometry import Polygon
 from affine import Affine
-from pyproj import Geod, Transformer, CRS
+from pyproj import Transformer, CRS
 import rasterio
 from scipy.interpolate import griddata
+
+from ..utils import initialize_geod
+from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def create_height_grid_from_geotiff_polygon(
@@ -22,7 +25,7 @@ def create_height_grid_from_geotiff_polygon(
         poly = Polygon(polygon)
         left_wgs84, bottom_wgs84, right_wgs84, top_wgs84 = poly.bounds
 
-        geod = Geod(ellps="WGS84")
+        geod = initialize_geod()
         _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
         _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
 
@@ -48,7 +51,7 @@ def create_height_grid_from_geotiff_polygon(
         flat_indices = np.ravel_multi_index((row, col), img.shape)
         np.put(grid, np.ravel_multi_index((rows.flatten()[valid], cols.flatten()[valid]), grid.shape), img.flat[flat_indices])
 
-    return np.flipud(grid)
+    return ensure_orientation(grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
 
 def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertices, dem_interpolation=False):
@@ -67,21 +70,29 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
         transform = src.transform
         src_crs = src.crs
 
-        if src_crs.to_epsg() != 3857:
-            transformer_to_3857 = Transformer.from_crs(src_crs, CRS.from_epsg(3857), always_xy=True)
+        # Use UTM instead of Web Mercator for metric grid spacing
+        # to avoid Mercator distortion at high latitudes.
+        centroid = roi_shapely.centroid
+        lon_c, lat_c = float(centroid.x), float(centroid.y)
+        zone = int((lon_c + 180.0) // 6) + 1
+        epsg_metric = 32600 + zone if lat_c >= 0 else 32700 + zone
+        crs_metric = CRS.from_epsg(epsg_metric)
+
+        if src_crs.to_epsg() != epsg_metric:
+            transformer_to_metric = Transformer.from_crs(src_crs, crs_metric, always_xy=True)
         else:
-            transformer_to_3857 = lambda x, y: (x, y)
+            transformer_to_metric = lambda x, y: (x, y)
 
         roi_bounds = roi_shapely.bounds
-        roi_left, roi_bottom = transformer_to_3857.transform(roi_bounds[0], roi_bounds[1])
-        roi_right, roi_top = transformer_to_3857.transform(roi_bounds[2], roi_bounds[3])
+        roi_left, roi_bottom = transformer_to_metric.transform(roi_bounds[0], roi_bounds[1])
+        roi_right, roi_top = transformer_to_metric.transform(roi_bounds[2], roi_bounds[3])
 
         wgs84 = CRS.from_epsg(4326)
-        transformer_to_wgs84 = Transformer.from_crs(CRS.from_epsg(3857), wgs84, always_xy=True)
+        transformer_to_wgs84 = Transformer.from_crs(crs_metric, wgs84, always_xy=True)
         roi_left_wgs84, roi_bottom_wgs84 = transformer_to_wgs84.transform(roi_left, roi_bottom)
         roi_right_wgs84, roi_top_wgs84 = transformer_to_wgs84.transform(roi_right, roi_top)
 
-        geod = Geod(ellps="WGS84")
+        geod = initialize_geod()
         _, _, roi_width_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_right_wgs84, roi_bottom_wgs84)
         _, _, roi_height_m = geod.inv(roi_left_wgs84, roi_bottom_wgs84, roi_left_wgs84, roi_top_wgs84)
 
@@ -94,7 +105,7 @@ def create_dem_grid_from_geotiff_polygon(tiff_path, mesh_size, rectangle_vertice
 
         rows, cols = np.meshgrid(range(dem.shape[0]), range(dem.shape[1]), indexing='ij')
         orig_x, orig_y = rasterio.transform.xy(transform, rows.ravel(), cols.ravel())
-        orig_x, orig_y = transformer_to_3857.transform(orig_x, orig_y)
+        orig_x, orig_y = transformer_to_metric.transform(orig_x, orig_y)
 
         points = np.column_stack((orig_x, orig_y))
         values = dem.ravel()

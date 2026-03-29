@@ -28,6 +28,7 @@ from ..utils.lc import get_land_cover_classes
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_numerical_grid
 from ..utils.logging import get_logger
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 _logger = get_logger(__name__)
@@ -789,7 +790,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     if grid_vis:
         building_height_grid_nan = building_height_grid.copy()
         building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-        visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
+        visualize_numerical_grid(ensure_orientation(building_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "building height (m)", cmap='viridis', label='Value')
 
     if canopy_height_source == "Static":
         canopy_height_grid_comp = np.zeros_like(land_cover_grid, dtype=float)
@@ -831,7 +832,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
         grid_vis = kwargs.get("gridvis", True)
         if grid_vis:
-            visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+            visualize_numerical_grid(ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
     min_canopy_height = kwargs.get("min_canopy_height")
     if min_canopy_height is not None:
@@ -863,7 +864,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             building_height_grid_nan = building_height_grid.copy()
             building_height_grid_nan[building_height_grid_nan == 0] = np.nan
             visualize_numerical_grid(
-                np.flipud(building_height_grid_nan),
+                ensure_orientation(building_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP),
                 meshsize,
                 "building height (m)",
                 cmap='viridis',
@@ -872,7 +873,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
             canopy_height_grid_nan = canopy_height_grid.copy()
             canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
             visualize_numerical_grid(
-                np.flipud(canopy_height_grid_nan),
+                ensure_orientation(canopy_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP),
                 meshsize,
                 "Tree canopy height (m)",
                 cmap='Greens',

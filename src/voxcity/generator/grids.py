@@ -36,6 +36,7 @@ from ..geoprocessor.raster import (
 from ..utils.lc import convert_land_cover_array, get_land_cover_classes, get_source_class_descriptions
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 # Track last effective land cover source to help downstream components (e.g., voxelizer)
@@ -130,7 +131,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
 
     grid_vis = kwargs.get("gridvis", True)
     if grid_vis:
-        visualize_land_cover_grid(np.flipud(land_cover_grid_str), meshsize, color_map, land_cover_classes)
+        visualize_land_cover_grid(ensure_orientation(land_cover_grid_str, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, color_map, land_cover_classes)
 
     # Record effective source for downstream consumers
     global _LAST_EFFECTIVE_LC_SOURCE
@@ -240,7 +241,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     if grid_vis:
         building_height_grid_nan = building_height_grid.copy()
         building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-        visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
+        visualize_numerical_grid(ensure_orientation(building_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "building height (m)", cmap='viridis', label='Value')
 
     return building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings
 
@@ -285,7 +286,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
         grid_vis = kwargs.get("gridvis", True)
         if grid_vis:
             vis = canopy_top.copy(); vis[vis == 0] = np.nan
-            visualize_numerical_grid(np.flipud(vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+            visualize_numerical_grid(ensure_orientation(vis, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
         return canopy_top, canopy_bottom
 
     if source in ('GeoDataFrame', 'tree_gdf', 'Tree_GeoDataFrame', 'GDF'):
@@ -306,7 +307,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
         if grid_vis:
             vis = canopy_top.copy()
             vis[vis == 0] = np.nan
-            visualize_numerical_grid(np.flipud(vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+            visualize_numerical_grid(ensure_orientation(vis, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
 
         return canopy_top, canopy_bottom
 
@@ -347,7 +348,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     if grid_vis:
         canopy_height_grid_nan = canopy_height_grid.copy()
         canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-        visualize_numerical_grid(np.flipud(canopy_height_grid_nan), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+        visualize_numerical_grid(ensure_orientation(canopy_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
     return canopy_height_grid, canopy_bottom_grid
 
 
@@ -392,7 +393,7 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
     grid_vis = kwargs.get("gridvis", True)
     if grid_vis:
-        visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+        visualize_numerical_grid(ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
 
     return dem_grid
 

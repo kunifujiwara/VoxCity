@@ -26,6 +26,7 @@ The module uses several external libraries for geographic operations:
 # Standard library imports
 import os
 import math
+import functools
 from math import radians, sin, cos, sqrt, atan2
 from datetime import datetime
 
@@ -58,6 +59,9 @@ warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarni
 
 # Global constants
 floor_height = 2.5  # Standard floor height in meters used for building height calculations
+
+# Module-level singleton: Geod is stateless and thread-safe; avoid re-creating per call
+_WGS84_GEOD = Geod(ellps='WGS84')
 
 # Package logging
 from ..utils.logging import get_logger
@@ -161,9 +165,7 @@ def quadkey_to_tile(quadkey):
 
 def initialize_geod():
     """
-    Initialize a Geod object for geodetic calculations using WGS84 ellipsoid.
-    The WGS84 ellipsoid (EPSG:4326) is the standard reference system used by GPS
-    and most modern mapping applications.
+    Return the module-level WGS84 Geod singleton for geodetic calculations.
     
     The Geod object provides methods for:
     - Forward geodetic calculations (direct)
@@ -178,7 +180,7 @@ def initialize_geod():
         >>> geod = initialize_geod()
         >>> fwd_az, back_az, dist = geod.inv(lon1, lat1, lon2, lat2)
     """
-    return Geod(ellps='WGS84')
+    return _WGS84_GEOD
 
 def calculate_distance(geod, lon1, lat1, lon2, lat2):
     """
@@ -222,9 +224,11 @@ def normalize_to_one_meter(vector, distance_in_meters):
     """
     return vector * (1 / distance_in_meters)
 
+@functools.lru_cache(maxsize=16)
 def setup_transformer(from_crs, to_crs):
     """
     Set up a coordinate transformer between two Coordinate Reference Systems (CRS).
+    Results are cached to avoid repeated expensive Transformer construction.
     The always_xy=True parameter ensures consistent handling of coordinate order
     by always using (x,y) or (longitude,latitude) order regardless of CRS definition.
     

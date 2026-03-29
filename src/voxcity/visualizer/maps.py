@@ -12,6 +12,7 @@ from ..geoprocessor.raster import (
     calculate_grid_size,
     create_coordinate_mesh,
 )
+from ..geoprocessor.raster.core import compute_grid_geometry, create_cell_polygon
 from ..geoprocessor.utils import (
     initialize_geod,
     calculate_distance,
@@ -132,48 +133,27 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
 
 
 def visualize_land_cover_grid_on_map(grid, rectangle_vertices, meshsize, source='Urbanwatch', vmin=None, vmax=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
-    geod = initialize_geod()
     land_cover_classes = get_land_cover_classes(source)
-    vertex_0 = rectangle_vertices[0]; vertex_1 = rectangle_vertices[1]; vertex_3 = rectangle_vertices[3]
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-    origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
+    adjusted_meshsize = geom['adj_mesh']
     transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
     plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, rectangle_vertices, 'land_cover', alpha=alpha, buf=buf, edge=edge, basemap=basemap, land_cover_classes=land_cover_classes)
 
 
 def visualize_building_height_grid_on_map(building_height_grid, filtered_buildings, rectangle_vertices, meshsize, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-    origin = np.array(rectangle_vertices[0])
-    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
+    adjusted_meshsize = geom['adj_mesh']
     transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
     plot_grid(building_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, 'building_height', vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap, buildings=filtered_buildings)
 
 
 def visualize_numerical_grid_on_map(canopy_height_grid, rectangle_vertices, meshsize, type, vmin=None, vmax=None, color_map=None, alpha=0.5, buf=0.2, edge=True, basemap='CartoDB light'):
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-    dist_side_1 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_1[1], vertex_1[0])
-    dist_side_2 = calculate_distance(geod, vertex_0[1], vertex_0[0], vertex_3[1], vertex_3[0])
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-    origin = np.array(rectangle_vertices[0])
-    _, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin, u_vec, v_vec = geom['origin'], geom['u_vec'], geom['v_vec']
+    adjusted_meshsize = geom['adj_mesh']
     transformer = setup_transformer(CRS.from_epsg(4326), CRS.from_epsg(3857))
     plot_grid(canopy_height_grid, origin, adjusted_meshsize, u_vec, v_vec, transformer,
               rectangle_vertices, type, vmin=vmin, vmax=vmax, color_map=color_map, alpha=alpha, buf=buf, edge=edge, basemap=basemap)

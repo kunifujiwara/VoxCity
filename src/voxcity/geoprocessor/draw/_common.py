@@ -133,39 +133,11 @@ def compute_grid_geometry(rectangle_vertices: list, meshsize: float) -> dict | N
 
     Returns a dict with keys: origin, side_1, side_2, u_vec, v_vec,
     grid_size, adj_mesh — or *None* if inputs are insufficient.
+
+    Delegates to :func:`geoprocessor.raster.core.compute_grid_geometry`.
     """
-    if rectangle_vertices is None or len(rectangle_vertices) < 4:
-        return None
-
-    from ..utils import (
-        initialize_geod,
-        calculate_distance,
-        normalize_to_one_meter,
-    )
-    from ..raster.core import calculate_grid_size
-
-    v0 = np.array(rectangle_vertices[0])
-    v1 = np.array(rectangle_vertices[1])
-    v3 = np.array(rectangle_vertices[3])
-    side_1 = v1 - v0
-    side_2 = v3 - v0
-
-    geod = initialize_geod()
-    dist_1 = calculate_distance(geod, v0[0], v0[1], v1[0], v1[1])
-    dist_2 = calculate_distance(geod, v0[0], v0[1], v3[0], v3[1])
-    u_vec = normalize_to_one_meter(side_1, dist_1)
-    v_vec = normalize_to_one_meter(side_2, dist_2)
-    grid_size, adj_mesh = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
-
-    return {
-        "origin": v0,
-        "side_1": side_1,
-        "side_2": side_2,
-        "u_vec": u_vec,
-        "v_vec": v_vec,
-        "grid_size": grid_size,
-        "adj_mesh": adj_mesh,
-    }
+    from ..raster.core import compute_grid_geometry as _compute_grid_geometry
+    return _compute_grid_geometry(rectangle_vertices, meshsize)
 
 
 # ─────────────────────────────────────────────────────────────

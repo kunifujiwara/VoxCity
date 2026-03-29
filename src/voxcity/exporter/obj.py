@@ -39,6 +39,7 @@ import matplotlib.pyplot as plt
 import trimesh
 import numpy as np
 from ..visualizer import get_voxel_color_map
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 def convert_colormap_indices(original_map):
     """
@@ -528,8 +529,8 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
     rows, cols = value_array_ori.shape
 
     # Flip arrays vertically and normalize DEM values
-    value_array = np.flipud(value_array_ori.copy())
-    dem_array = np.flipud(dem_array_ori.copy()) - np.min(dem_array_ori)
+    value_array = ensure_orientation(value_array_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    dem_array = ensure_orientation(dem_array_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP) - np.min(dem_array_ori)
 
     # Get valid indices (non-NaN)
     valid_indices = np.argwhere(~np.isnan(value_array))

@@ -4,10 +4,11 @@ from typing import List, Tuple
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import Polygon, Point
-from pyproj import CRS, Transformer, Geod
+from pyproj import CRS, Transformer
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
-from .core import calculate_grid_size
+from .core import calculate_grid_size, compute_grid_geometry
+from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
@@ -34,7 +35,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
         raise ValueError("polygon must be a list of (lon, lat) or a shapely Polygon.")
 
     left, bottom, right, top = poly.bounds
-    geod = Geod(ellps="WGS84")
+    geod = initialize_geod()
     _, _, width_m = geod.inv(left, bottom, right, bottom)
     _, _, height_m = geod.inv(left, bottom, left, top)
 
@@ -74,7 +75,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
             col_idx = i % num_cells_x
             veg_grid[row_idx, col_idx] = row_data['height']
 
-    return np.flipud(veg_grid)
+    return ensure_orientation(veg_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
 
 def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
@@ -97,7 +98,7 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
         raise ValueError("`polygon` must be a list of (lon, lat) or a shapely Polygon.")
 
     left, bottom, right, top = poly.bounds
-    geod = Geod(ellps="WGS84")
+    geod = initialize_geod()
     _, _, width_m = geod.inv(left, bottom, right, bottom)
     _, _, height_m = geod.inv(left, bottom, left, top)
     num_cells_x = int(width_m / mesh_size + 0.5)
@@ -148,7 +149,7 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
         row = i // num_cells_x
         col = i % num_cells_x
         dem_grid[row, col] = elevation_val
-    return np.flipud(dem_grid)
+    return ensure_orientation(dem_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
 
 def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
@@ -185,19 +186,11 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
     elif tree_gdf.crs.to_epsg() != 4326:
         tree_gdf = tree_gdf.to_crs(epsg=4326)
 
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-
-    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
-    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
-
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
-    origin = np.array(rectangle_vertices[0])
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin = geom["origin"]
+    side_1, side_2 = geom["side_1"], geom["side_2"]
+    u_vec, v_vec = geom["u_vec"], geom["v_vec"]
+    grid_size, adjusted_meshsize = geom["grid_size"], geom["adj_mesh"]
     nx, ny = grid_size[0], grid_size[1]
 
     i_centers_m = (np.arange(nx) + 0.5) * adjusted_meshsize[0]
@@ -293,7 +286,7 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                 # CRITICAL: Flip the mask vertically to match the grid coordinate system
                 # Rasterio produces north-up (row 0 = north), but the grid uses
                 # origin at rectangle_vertices[0] (typically SW, so row 0 = south)
-                mask = np.flipud(mask)
+                mask = ensure_orientation(mask, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
                 
                 # Apply heights where mask is set (using maximum to preserve higher trees)
                 polygon_cells = mask == 1

@@ -4,7 +4,8 @@ from shapely.geometry import Polygon
 from affine import Affine
 import rasterio
 
-from pyproj import Geod
+from ..utils import initialize_geod
+from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 from ...utils.lc import (
     get_class_priority,
@@ -20,10 +21,10 @@ def tree_height_grid_from_land_cover(land_cover_grid_ori: np.ndarray) -> np.ndar
     
     Expects 1-based land cover indices where class 5 is Tree.
     """
-    land_cover_grid = np.flipud(land_cover_grid_ori)
     # 1-based indices: 1=Bareland, 2=Rangeland, 3=Shrub, 4=Agriculture, 5=Tree, etc.
     tree_translation_dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 10, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0}
-    tree_height_grid = translate_array(np.flipud(land_cover_grid), tree_translation_dict).astype(int)
+    # Double-flip was a no-op; operate directly on the original grid.
+    tree_height_grid = translate_array(land_cover_grid_ori, tree_translation_dict).astype(int)
     return tree_height_grid
 
 
@@ -42,7 +43,7 @@ def create_land_cover_grid_from_geotiff_polygon(
         poly = Polygon(polygon)
         left_wgs84, bottom_wgs84, right_wgs84, top_wgs84 = poly.bounds
 
-        geod = Geod(ellps="WGS84")
+        geod = initialize_geod()
         _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
         _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
 
@@ -71,7 +72,7 @@ def create_land_cover_grid_from_geotiff_polygon(
             grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
             grid[grid_row, grid_col] = dominant_class
 
-    return np.flipud(grid)
+    return ensure_orientation(grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
 
 def create_land_cover_grid_from_gdf_polygon(
@@ -116,20 +117,14 @@ def create_land_cover_grid_from_gdf_polygon(
         calculate_distance,
         normalize_to_one_meter,
     )
-    from .core import calculate_grid_size
+    from .core import calculate_grid_size, compute_grid_geometry
 
     # Calculate grid dimensions
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
-    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
-
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-
-    grid_size, adjusted_meshsize = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    origin = geom["origin"]
+    side_1, side_2 = geom["side_1"], geom["side_2"]
+    u_vec, v_vec = geom["u_vec"], geom["v_vec"]
+    grid_size, adjusted_meshsize = geom["grid_size"], geom["adj_mesh"]
     rows, cols = grid_size
 
     # Get bounding box for the raster
@@ -274,7 +269,7 @@ def create_land_cover_grid_from_gdf_polygon(
             print(f"  Warning: Ocean detection failed: {e}")
 
     # Flip to match expected orientation (north-up)
-    grid = np.flipud(grid)
+    grid = ensure_orientation(grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
     
     return grid
 

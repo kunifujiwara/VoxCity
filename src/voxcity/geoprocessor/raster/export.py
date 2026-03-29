@@ -1,7 +1,8 @@
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import box
-from pyproj import CRS, Transformer
+from pyproj import CRS
+from ..utils import setup_transformer
 from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
@@ -19,10 +20,8 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
 
     rows, cols = grid.shape
 
-    wgs84 = CRS.from_epsg(4326)
-    web_mercator = CRS.from_epsg(3857)
-    transformer_to_mercator = Transformer.from_crs(wgs84, web_mercator, always_xy=True)
-    transformer_to_wgs84 = Transformer.from_crs(web_mercator, wgs84, always_xy=True)
+    transformer_to_mercator = setup_transformer("EPSG:4326", "EPSG:3857")
+    transformer_to_wgs84 = setup_transformer("EPSG:3857", "EPSG:4326")
 
     min_x, min_y = transformer_to_mercator.transform(min_lon, min_lat)
     max_x, max_y = transformer_to_mercator.transform(max_lon, max_lat)
@@ -30,20 +29,27 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     cell_size_x = (max_x - min_x) / cols
     cell_size_y = (max_y - min_y) / rows
 
-    polygons = []
-    values = []
+    # Vectorized: compute all cell edges at once
+    j_idx = np.arange(cols)
+    i_idx = np.arange(rows)
+    cell_min_xs = min_x + j_idx * cell_size_x
+    cell_max_xs = min_x + (j_idx + 1) * cell_size_x
+    cell_max_ys = max_y - i_idx * cell_size_y
+    cell_min_ys = max_y - (i_idx + 1) * cell_size_y
 
-    for i in range(rows):
-        for j in range(cols):
-            cell_min_x = min_x + j * cell_size_x
-            cell_max_x = min_x + (j + 1) * cell_size_x
-            cell_min_y = max_y - (i + 1) * cell_size_y
-            cell_max_y = max_y - i * cell_size_y
-            cell_min_lon, cell_min_lat = transformer_to_wgs84.transform(cell_min_x, cell_min_y)
-            cell_max_lon, cell_max_lat = transformer_to_wgs84.transform(cell_max_x, cell_max_y)
-            cell_poly = box(cell_min_lon, cell_min_lat, cell_max_lon, cell_max_lat)
-            polygons.append(cell_poly)
-            values.append(grid[i, j])
+    # Meshgrid for all cells (row-major: i varies slowest)
+    jj, ii = np.meshgrid(j_idx, i_idx)
+    min_xs_flat = cell_min_xs[jj.ravel()]
+    max_xs_flat = cell_max_xs[jj.ravel()]
+    min_ys_flat = cell_min_ys[ii.ravel()]
+    max_ys_flat = cell_max_ys[ii.ravel()]
+
+    # Batch transform all corners to WGS84
+    min_lons, min_lats = transformer_to_wgs84.transform(min_xs_flat, min_ys_flat)
+    max_lons, max_lats = transformer_to_wgs84.transform(max_xs_flat, max_ys_flat)
+
+    polygons = [box(lo1, la1, lo2, la2) for lo1, la1, lo2, la2 in zip(min_lons, min_lats, max_lons, max_lats)]
+    values = grid.ravel().tolist()
 
     gdf = gpd.GeoDataFrame({'geometry': polygons, 'value': values}, crs=CRS.from_epsg(4326))
     return gdf
@@ -54,7 +60,6 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     Converts a 2D grid to a GeoDataFrame with point geometries at cell centers and values.
     Output CRS: EPSG:4326
     """
-    import geopandas as gpd
     from shapely.geometry import Point
 
     grid = ensure_orientation(grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
@@ -66,10 +71,8 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
 
     rows, cols = grid.shape
 
-    wgs84 = CRS.from_epsg(4326)
-    web_mercator = CRS.from_epsg(3857)
-    transformer_to_mercator = Transformer.from_crs(wgs84, web_mercator, always_xy=True)
-    transformer_to_wgs84 = Transformer.from_crs(web_mercator, wgs84, always_xy=True)
+    transformer_to_mercator = setup_transformer("EPSG:4326", "EPSG:3857")
+    transformer_to_wgs84 = setup_transformer("EPSG:3857", "EPSG:4326")
 
     min_x, min_y = transformer_to_mercator.transform(min_lon, min_lat)
     max_x, max_y = transformer_to_mercator.transform(max_lon, max_lat)
@@ -77,15 +80,21 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     cell_size_x = (max_x - min_x) / cols
     cell_size_y = (max_y - min_y) / rows
 
-    points = []
-    values = []
-    for i in range(rows):
-        for j in range(cols):
-            cell_center_x = min_x + (j + 0.5) * cell_size_x
-            cell_center_y = max_y - (i + 0.5) * cell_size_y
-            center_lon, center_lat = transformer_to_wgs84.transform(cell_center_x, cell_center_y)
-            points.append(Point(center_lon, center_lat))
-            values.append(grid[i, j])
+    # Vectorized: compute all cell centers at once
+    j_idx = np.arange(cols)
+    i_idx = np.arange(rows)
+    center_xs = min_x + (j_idx + 0.5) * cell_size_x
+    center_ys = max_y - (i_idx + 0.5) * cell_size_y
+
+    jj, ii = np.meshgrid(j_idx, i_idx)
+    cx_flat = center_xs[jj.ravel()]
+    cy_flat = center_ys[ii.ravel()]
+
+    # Batch transform to WGS84
+    lons, lats = transformer_to_wgs84.transform(cx_flat, cy_flat)
+
+    points = [Point(lo, la) for lo, la in zip(lons, lats)]
+    values = grid.ravel().tolist()
 
     gdf = gpd.GeoDataFrame({'geometry': points, 'value': values}, crs=CRS.from_epsg(4326))
     return gdf

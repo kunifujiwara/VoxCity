@@ -3,6 +3,7 @@ from ..utils.logging import get_logger
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 from ..models import (
     GridMetadata,
@@ -220,7 +221,7 @@ class VoxCityPipeline:
             for i, name in int_to_class.items():
                 land_cover_grid_str[land_cover_grid == i] = name
             color_map = {cls: [r/255, g/255, b/255] for (r,g,b), cls in land_cover_classes.items()}
-            visualize_land_cover_grid(np.flipud(land_cover_grid_str), meshsize, color_map, land_cover_classes)
+            visualize_land_cover_grid(ensure_orientation(land_cover_grid_str, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, color_map, land_cover_classes)
         except Exception as e:
             get_logger(__name__).warning("Land cover visualization failed: %s", e)
         
@@ -228,7 +229,7 @@ class VoxCityPipeline:
         try:
             building_height_grid_nan = building_height_grid.copy().astype(float)
             building_height_grid_nan[building_height_grid_nan == 0] = np.nan
-            visualize_numerical_grid(np.flipud(building_height_grid_nan), meshsize, "building height (m)", cmap='viridis', label='Value')
+            visualize_numerical_grid(ensure_orientation(building_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "building height (m)", cmap='viridis', label='Value')
         except Exception as e:
             get_logger(__name__).warning("Building height visualization failed: %s", e)
         
@@ -237,13 +238,13 @@ class VoxCityPipeline:
             try:
                 canopy_height_grid_nan = canopy_top.copy()
                 canopy_height_grid_nan[canopy_height_grid_nan == 0] = np.nan
-                visualize_numerical_grid(np.flipud(canopy_height_grid_nan), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
+                visualize_numerical_grid(ensure_orientation(canopy_height_grid_nan, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "Tree canopy height", cmap='Greens', label='Tree canopy height (m)')
             except Exception as e:
                 get_logger(__name__).warning("Canopy height visualization failed: %s", e)
         
         # Visualize DEM
         try:
-            visualize_numerical_grid(np.flipud(dem_grid), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
+            visualize_numerical_grid(ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, title='Digital Elevation Model', cmap='terrain', label='Elevation (m)')
         except Exception as e:
             get_logger(__name__).warning("DEM visualization failed: %s", e)
 
@@ -579,7 +580,7 @@ class OSMCanopyStrategy(CanopySourceStrategy):
             from ..visualizer.grids import visualize_numerical_grid
             canopy_vis = canopy_top.copy()
             canopy_vis[canopy_vis == 0] = np.nan
-            visualize_numerical_grid(np.flipud(canopy_vis), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
+            visualize_numerical_grid(ensure_orientation(canopy_vis, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP), meshsize, "Tree canopy height (top)", cmap='Greens', label='Tree canopy height (m)')
         
         return canopy_top, canopy_bottom
 

@@ -182,15 +182,7 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         }
         return metadata
 
-    def haversine_distance(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-        from math import radians, sin, cos, sqrt, atan2
-        R = 6371
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-        c = 2 * atan2(sqrt(a), sqrt(1-a))
-        return R * c
+    from ...geoprocessor.utils import haversine_distance
 
     def try_download_station_zip(original_url: str, timeout_s: int = 30) -> Optional[bytes]:
         def candidate_urls(url: str) -> List[str]:

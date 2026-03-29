@@ -31,6 +31,7 @@ from ..geoprocessor.raster import apply_operation, translate_array, group_and_la
 from ..geoprocessor.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
 from ..models import VoxCity
+from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 def array_to_string(arr):
     """Convert a 2D numpy array to a string representation with comma-separated values.
@@ -129,8 +130,8 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         - Land cover is converted based on source-specific mapping
     """
     # Flip building height grid vertically and replace NaN with 10m height
-    building_height_grid = np.flipud(np.nan_to_num(building_height_grid_ori, nan=10.0)).copy()
-    building_id_grid = np.flipud(building_id_grid_ori)
+    building_height_grid = ensure_orientation(np.nan_to_num(building_height_grid_ori, nan=10.0), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).copy()
+    building_id_grid = ensure_orientation(building_id_grid_ori, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
     
     # Set border cells to 0 height
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
@@ -144,7 +145,7 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         # All other sources need remapping to standard indices
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)        
 
-    land_cover_grid = np.flipud(land_cover_grid_converted).copy()
+    land_cover_grid = ensure_orientation(land_cover_grid_converted, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).copy()
 
     # Dictionary mapping land cover types to vegetation codes
     # Standard 1-based indices: 1=Bareland, 2=Rangeland, 3=Shrub, 4=Agriculture, 5=Tree, 
@@ -183,7 +184,7 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
 
     # Process canopy and DEM grids
     canopy_height_grid = canopy_height_grid_ori.copy()
-    dem_grid = np.flipud(dem_grid_ori).copy() - np.min(dem_grid_ori)
+    dem_grid = ensure_orientation(dem_grid_ori, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).copy() - np.min(dem_grid_ori)
 
     return building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
@@ -440,11 +441,12 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
 
     # Generate and add 3D plant data
     tree_content = ""
+    building_height_flipped = ensure_orientation(building_height_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
     for i in range(grids_I):
         for j in range(grids_J):
             canopy_height = int(canopy_height_grid[j, i] + 0.5)
             # Only add trees where there are no buildings
-            if canopy_height_grid[j, i] > 0 and np.flipud(building_height_grid)[j, i]==0:
+            if canopy_height_grid[j, i] > 0 and building_height_flipped[j, i]==0:
                 plantid = f'H{canopy_height:02d}W01'
                 tree_ij = f"""  <3Dplants>
      <rootcell_i> {i+1} </rootcell_i>

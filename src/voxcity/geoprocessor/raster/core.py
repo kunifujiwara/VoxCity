@@ -148,6 +148,40 @@ def create_cell_polygon(
     return Polygon([bottom_left, bottom_right, top_right, top_left])
 
 
+def compute_grid_geometry(rectangle_vertices, meshsize: float) -> dict:
+    """
+    Compute full grid geometry from rectangle vertices and mesh size.
+
+    Returns a dict with keys: origin, side_1, side_2, u_vec, v_vec,
+    grid_size, adj_mesh — or *None* if inputs are insufficient.
+    """
+    if rectangle_vertices is None or len(rectangle_vertices) < 4:
+        return None
+
+    v0 = np.array(rectangle_vertices[0])
+    v1 = np.array(rectangle_vertices[1])
+    v3 = np.array(rectangle_vertices[3])
+    side_1 = v1 - v0
+    side_2 = v3 - v0
+
+    geod = initialize_geod()
+    dist_1 = calculate_distance(geod, v0[0], v0[1], v1[0], v1[1])
+    dist_2 = calculate_distance(geod, v0[0], v0[1], v3[0], v3[1])
+    u_vec = normalize_to_one_meter(side_1, dist_1)
+    v_vec = normalize_to_one_meter(side_2, dist_2)
+    grid_size, adj_mesh = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
+
+    return {
+        "origin": v0,
+        "side_1": side_1,
+        "side_2": side_2,
+        "u_vec": u_vec,
+        "v_vec": v_vec,
+        "grid_size": grid_size,
+        "adj_mesh": adj_mesh,
+    }
+
+
 def compute_grid_shape(rectangle_vertices, meshsize: float) -> Tuple[int, int]:
     """
     Compute the grid dimensions (rows, cols) for a given rectangle and mesh size.
@@ -162,19 +196,10 @@ def compute_grid_shape(rectangle_vertices, meshsize: float) -> Tuple[int, int]:
     Returns:
         Tuple of (grid_size_0, grid_size_1) representing grid dimensions.
     """
-    geod = initialize_geod()
-    vertex_0, vertex_1, vertex_3 = rectangle_vertices[0], rectangle_vertices[1], rectangle_vertices[3]
-    
-    dist_side_1 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_1[0], vertex_1[1])
-    dist_side_2 = calculate_distance(geod, vertex_0[0], vertex_0[1], vertex_3[0], vertex_3[1])
-    
-    side_1 = np.array(vertex_1) - np.array(vertex_0)
-    side_2 = np.array(vertex_3) - np.array(vertex_0)
-    u_vec = normalize_to_one_meter(side_1, dist_side_1)
-    v_vec = normalize_to_one_meter(side_2, dist_side_2)
-    
-    grid_size, _ = calculate_grid_size(side_1, side_2, u_vec, v_vec, meshsize)
-    return grid_size
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    if geom is None:
+        return (1, 1)
+    return geom["grid_size"]
 
 
 
