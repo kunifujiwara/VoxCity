@@ -20,6 +20,7 @@ from .core import (
     create_coordinate_mesh,
     create_cell_polygon,
     compute_grid_shape,
+    compute_cell_center_coords,
 )
 
 from .landcover import (

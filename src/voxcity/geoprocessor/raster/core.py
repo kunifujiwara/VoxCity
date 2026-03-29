@@ -182,6 +182,36 @@ def compute_grid_geometry(rectangle_vertices, meshsize: float) -> dict:
     }
 
 
+def compute_cell_center_coords(rectangle_vertices, meshsize: float) -> dict:
+    """
+    Compute (lon, lat) coordinates for each grid cell center.
+
+    Works correctly for both axis-aligned and rotated rectangles.
+    Cell (i, j) centre = origin + (i+0.5)*dx*u_vec + (j+0.5)*dy*v_vec.
+
+    Returns a dict with all keys from :func:`compute_grid_geometry` plus:
+    - ``lons`` : ndarray of shape *grid_size* with cell-centre longitudes
+    - ``lats`` : ndarray of shape *grid_size* with cell-centre latitudes
+
+    Returns *None* when *rectangle_vertices* is insufficient.
+    """
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    if geom is None:
+        return None
+
+    origin = geom["origin"]
+    u_vec = geom["u_vec"]
+    v_vec = geom["v_vec"]
+    nx, ny = geom["grid_size"]
+    dx, dy = geom["adj_mesh"]
+
+    ii, jj = np.meshgrid(np.arange(nx) + 0.5, np.arange(ny) + 0.5, indexing="ij")
+    lons = origin[0] + ii * dx * u_vec[0] + jj * dy * v_vec[0]
+    lats = origin[1] + ii * dx * u_vec[1] + jj * dy * v_vec[1]
+
+    return {**geom, "lons": lons, "lats": lats}
+
+
 def compute_grid_shape(rectangle_vertices, meshsize: float) -> Tuple[int, int]:
     """
     Compute the grid dimensions (rows, cols) for a given rectangle and mesh size.

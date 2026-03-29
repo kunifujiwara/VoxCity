@@ -92,8 +92,13 @@ def _compute_ground_irradiance_with_reflections(
     )
     
     # Set solar position for this timestep
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith = compute_sun_direction(
-        azimuth_degrees_ori, elevation_degrees
+        azimuth_degrees_ori, elevation_degrees, rotation_angle
     )
     
     # Set sun direction and cos_zenith directly on the SolarCalculator fields
@@ -227,8 +232,13 @@ def get_direct_solar_irradiance_map(
         tree_k = kwargs.get('tree_k', 0.6)
         tree_lad = kwargs.get('tree_lad', 1.0)
         
-        # Convert to sun direction vector
-        azimuth_degrees = 180 - azimuth_degrees_ori
+        # Convert to sun direction vector, accounting for grid rotation
+        rotation_angle = 0
+        extras = getattr(voxcity, 'extras', None)
+        if isinstance(extras, dict):
+            rotation_angle = extras.get('rotation_angle', 0)
+
+        azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
         azimuth_radians = np.deg2rad(azimuth_degrees)
         elevation_radians = np.deg2rad(elevation_degrees)
         

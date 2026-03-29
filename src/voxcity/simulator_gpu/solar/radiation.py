@@ -137,7 +137,8 @@ class RadiationModel:
         # Initialize sub-components
         self.solar_calc = SolarCalculator(
             domain.origin_lat or 0.0, 
-            domain.origin_lon or 0.0
+            domain.origin_lon or 0.0,
+            getattr(domain, 'rotation_angle', 0),
         )
         
         self.ray_tracer = RayTracer(domain)

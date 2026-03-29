@@ -315,13 +315,20 @@ def get_or_create_radiation_model(
     
     # Get location
     origin_lat, origin_lon = get_location_from_voxcity(voxcity)
-    
+
+    # Get rotation angle
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     # Create domain
     domain = Domain(
         nx=ni, ny=nj, nz=nk,
         dx=meshsize, dy=meshsize, dz=meshsize,
         origin_lat=origin_lat,
-        origin_lon=origin_lon
+        origin_lon=origin_lon,
+        rotation_angle=rotation_angle,
     )
     
     # Convert VoxCity voxel data to domain arrays
@@ -459,14 +466,21 @@ def get_or_create_building_radiation_model(
     
     # Get location
     origin_lat, origin_lon = get_location_from_voxcity(voxcity)
-    
+
+    # Get rotation angle
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     ni, nj, nk = ny_vc, nx_vc, nz
     
     domain = Domain(
         nx=ni, ny=nj, nz=nk,
         dx=meshsize, dy=meshsize, dz=meshsize,
         origin_lat=origin_lat,
-        origin_lon=origin_lon
+        origin_lon=origin_lon,
+        rotation_angle=rotation_angle,
     )
     
     # Convert VoxCity voxel data
@@ -632,12 +646,19 @@ def get_or_create_volumetric_calculator(
         print("Creating new VolumetricFluxCalculator...")
     
     origin_lat, origin_lon = get_location_from_voxcity(voxcity)
-    
+
+    # Get rotation angle
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     domain = Domain(
         nx=ni, ny=nj, nz=nk,
         dx=meshsize, dy=meshsize, dz=meshsize,
         origin_lat=origin_lat,
-        origin_lon=origin_lon
+        origin_lon=origin_lon,
+        rotation_angle=rotation_angle,
     )
     
     default_lad = kwargs.get('default_lad', 1.0)
@@ -968,12 +989,14 @@ def convert_voxcity_to_domain(
         land_cover_grid = voxcity_data.land_cover.classes
         extras = getattr(voxcity_data, 'extras', {})
         rectangle_vertices = extras.get('rectangle_vertices', None)
+        rotation_angle = extras.get('rotation_angle', 0)
     else:
         # Legacy dict format
         voxel_grid = voxcity_data['voxcity_grid']
         meshsize = voxcity_data['meshsize']
         land_cover_grid = voxcity_data.get('land_cover_grid', None)
         rectangle_vertices = voxcity_data.get('rectangle_vertices', None)
+        rotation_angle = 0
     
     ny, nx, nz = voxel_grid.shape
     dx = dy = dz = float(meshsize)
@@ -999,7 +1022,8 @@ def convert_voxcity_to_domain(
         dx=dx, dy=dy, dz=dz,
         origin=(0.0, 0.0, 0.0),
         origin_lat=origin_lat,
-        origin_lon=origin_lon
+        origin_lon=origin_lon,
+        rotation_angle=rotation_angle
     )
     
     # Create arrays for conversion

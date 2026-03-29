@@ -79,7 +79,8 @@ class Domain:
         dz: float = 1.0,
         origin: Tuple[float, float, float] = (0.0, 0.0, 0.0),
         origin_lat: Optional[float] = None,
-        origin_lon: Optional[float] = None
+        origin_lon: Optional[float] = None,
+        rotation_angle: float = 0,
     ):
         """
         Initialize the domain.
@@ -90,6 +91,7 @@ class Domain:
             origin: Domain origin coordinates
             origin_lat: Latitude for solar calculations (degrees)
             origin_lon: Longitude for solar calculations (degrees)
+            rotation_angle: Grid rotation angle in degrees (clockwise, default 0)
         """
         # Ensure Taichi is initialized before creating any fields
         ensure_initialized()
@@ -103,6 +105,7 @@ class Domain:
         self.origin = origin
         self.origin_lat = origin_lat if origin_lat is not None else 0.0
         self.origin_lon = origin_lon if origin_lon is not None else 0.0
+        self.rotation_angle = rotation_angle
         
         # Domain bounds
         self.x_min = origin[0]

@@ -86,6 +86,40 @@ def _center_of_rectangle(rectangle_vertices):
     return (sum(lons) / len(lons), sum(lats) / len(lats))
 
 
+def _compute_rotation_angle(rectangle_vertices):
+    """Return the rotation angle (degrees) of a rectangle from its vertices.
+
+    The angle is the clockwise bearing of the v0→v1 edge measured in Web
+    Mercator space.  For an axis-aligned rectangle (v0=SW, v1=NW) the edge
+    points due north and the returned angle is 0.  Angles are wrapped to
+    (-180, 180].
+    """
+    import math
+    from pyproj import Transformer
+
+    if rectangle_vertices is None or len(rectangle_vertices) < 2:
+        return 0
+
+    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    x0, y0 = to_merc.transform(rectangle_vertices[0][0], rectangle_vertices[0][1])
+    x1, y1 = to_merc.transform(rectangle_vertices[1][0], rectangle_vertices[1][1])
+    dx = x1 - x0
+    dy = y1 - y0
+
+    # atan2(east, north) gives clockwise-from-north bearing
+    angle_deg = math.degrees(math.atan2(dx, dy))
+
+    # Snap near-zero values to exactly 0 (floating-point noise)
+    if abs(angle_deg) < 1e-6:
+        return 0
+    # Wrap to (-180, 180]
+    if angle_deg > 180:
+        angle_deg -= 360
+    elif angle_deg <= -180:
+        angle_deg += 360
+    return round(angle_deg, 6)
+
+
 def _get_region_flags(rectangle_vertices):
     """Return a dict of boolean region flags for the centre of *rectangle_vertices*.
 
@@ -669,6 +703,10 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         }
     except Exception:
         pass
+
+    # Store rotation angle metadata (0 = axis-aligned, non-zero = rotated rectangle)
+    # Automatically compute from rectangle geometry if not explicitly provided.
+    city.extras['rotation_angle'] = _compute_rotation_angle(rectangle_vertices)
 
     return city
 

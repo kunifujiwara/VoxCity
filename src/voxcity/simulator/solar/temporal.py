@@ -547,7 +547,14 @@ def get_cumulative_building_solar_irradiance(
     times_len = len(df_period_utc.index)
     azimuth_deg_arr = solar_positions['azimuth'].to_numpy()
     elev_deg_arr = solar_positions['elevation'].to_numpy()
-    az_rad_arr = _np.deg2rad(180.0 - azimuth_deg_arr)
+
+    # Account for grid rotation
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
+    az_rad_arr = _np.deg2rad(180.0 - (azimuth_deg_arr - rotation_angle))
     el_rad_arr = _np.deg2rad(elev_deg_arr)
     sun_dx_arr = _np.cos(el_rad_arr) * _np.cos(az_rad_arr)
     sun_dy_arr = _np.cos(el_rad_arr) * _np.sin(az_rad_arr)
@@ -654,7 +661,7 @@ def get_cumulative_building_solar_irradiance(
             cumulative_dni_patch = float(patch_cumulative_dni[patch_idx])
             
             # Convert patch direction to sun vector
-            az_rad = _np.deg2rad(180.0 - az_deg)
+            az_rad = _np.deg2rad(180.0 - (az_deg - rotation_angle))
             el_rad = _np.deg2rad(el_deg)
             sun_dx = _np.cos(el_rad) * _np.cos(az_rad)
             sun_dy = _np.cos(el_rad) * _np.sin(az_rad)

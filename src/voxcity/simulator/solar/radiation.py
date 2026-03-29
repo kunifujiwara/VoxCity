@@ -34,7 +34,13 @@ def get_direct_solar_irradiance_map(
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
 
-    azimuth_degrees = 180 - azimuth_degrees_ori
+    # Account for grid rotation
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
+    azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
     dx = np.cos(elevation_radians) * np.cos(azimuth_radians)
@@ -556,8 +562,14 @@ def get_building_solar_irradiance(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
 
+    # Account for grid rotation
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     # Sun vector
-    az_rad = np.deg2rad(180 - azimuth_degrees)
+    az_rad = np.deg2rad(180 - (azimuth_degrees - rotation_angle))
     el_rad = np.deg2rad(elevation_degrees)
     sun_dx = np.cos(el_rad) * np.cos(az_rad)
     sun_dy = np.cos(el_rad) * np.sin(az_rad)

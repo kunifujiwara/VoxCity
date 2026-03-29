@@ -63,7 +63,8 @@ def calc_zenith(
     day_of_year: int,
     second_of_day: float,
     latitude: float,
-    longitude: float
+    longitude: float,
+    rotation_angle: float = 0,
 ) -> SolarPosition:
     """
     Calculate solar position.
@@ -75,6 +76,7 @@ def calc_zenith(
         second_of_day: Seconds since midnight UTC
         latitude: Latitude in degrees (-90 to 90)
         longitude: Longitude in degrees (-180 to 180)
+        rotation_angle: Grid rotation angle in degrees (clockwise, default 0)
     
     Returns:
         SolarPosition with all solar geometry data
@@ -136,8 +138,20 @@ def calc_zenith(
     # VoxCity grid: i (row) increases North->South, j (col) increases West->East
     # Grid-index: x = i direction = South = -North, y = j direction = East
     # Conversion: grid_x = -enu_y (North to South), grid_y = enu_x (East)
-    sun_x = -sun_y_enu  # Grid x = -North = South direction
-    sun_y = sun_x_enu   # Grid y = East direction
+    sun_x_std = -sun_y_enu  # Grid x = -North = South direction
+    sun_y_std = sun_x_enu   # Grid y = East direction
+
+    # Apply grid rotation correction: when the grid is rotated CW by theta,
+    # the sun direction in grid coordinates is rotated CCW by theta.
+    if rotation_angle != 0:
+        rot_rad = rotation_angle * DEG_TO_RAD
+        cos_rot = math.cos(rot_rad)
+        sin_rot = math.sin(rot_rad)
+        sun_x = sun_x_std * cos_rot - sun_y_std * sin_rot
+        sun_y = sun_x_std * sin_rot + sun_y_std * cos_rot
+    else:
+        sun_x = sun_x_std
+        sun_y = sun_y_std
     
     sun_up = cos_zenith > 0.0
     
@@ -154,7 +168,8 @@ def calc_zenith(
 def calc_solar_position_datetime(
     dt: datetime,
     latitude: float,
-    longitude: float
+    longitude: float,
+    rotation_angle: float = 0,
 ) -> SolarPosition:
     """
     Calculate solar position from datetime.
@@ -163,6 +178,7 @@ def calc_solar_position_datetime(
         dt: Datetime (should be in UTC or timezone-aware)
         latitude: Latitude in degrees
         longitude: Longitude in degrees
+        rotation_angle: Grid rotation angle in degrees (clockwise, default 0)
     
     Returns:
         SolarPosition
@@ -177,7 +193,7 @@ def calc_solar_position_datetime(
     # Seconds since midnight UTC
     second_of_day = dt.hour * 3600.0 + dt.minute * 60.0 + dt.second + dt.microsecond / 1e6
     
-    return calc_zenith(day_of_year, second_of_day, latitude, longitude)
+    return calc_zenith(day_of_year, second_of_day, latitude, longitude, rotation_angle)
 
 
 def get_day_of_year(year: int, month: int, day: int) -> int:
@@ -251,18 +267,20 @@ class SolarCalculator:
     Pre-computes solar positions for all time steps.
     """
     
-    def __init__(self, latitude: float, longitude: float):
+    def __init__(self, latitude: float, longitude: float, rotation_angle: float = 0):
         """
         Initialize solar calculator.
         
         Args:
             latitude: Site latitude in degrees
             longitude: Site longitude in degrees
+            rotation_angle: Grid rotation angle in degrees (clockwise, default 0)
         """
         self.latitude = latitude
         self.longitude = longitude
         self.lat_rad = latitude * DEG_TO_RAD
         self.lon_rad = longitude * DEG_TO_RAD
+        self.rotation_angle = rotation_angle
         
         # Current solar position (stored as fields for GPU access)
         self.cos_zenith = ti.field(dtype=ti.f32, shape=())
@@ -276,14 +294,14 @@ class SolarCalculator:
     
     def update(self, day_of_year: int, second_of_day: float):
         """Update solar position for given time."""
-        pos = calc_zenith(day_of_year, second_of_day, self.latitude, self.longitude)
+        pos = calc_zenith(day_of_year, second_of_day, self.latitude, self.longitude, self.rotation_angle)
         self.cos_zenith[None] = pos.cos_zenith
         self.sun_direction[None] = Vector3(*pos.direction)
         self.sun_up[None] = 1 if pos.sun_up else 0
     
     def update_datetime(self, dt: datetime):
         """Update solar position for given datetime."""
-        pos = calc_solar_position_datetime(dt, self.latitude, self.longitude)
+        pos = calc_solar_position_datetime(dt, self.latitude, self.longitude, self.rotation_angle)
         self.cos_zenith[None] = pos.cos_zenith
         self.sun_direction[None] = Vector3(*pos.direction)
         self.sun_up[None] = 1 if pos.sun_up else 0

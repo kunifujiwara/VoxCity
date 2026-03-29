@@ -7,7 +7,7 @@ from shapely.geometry import Polygon, Point
 from pyproj import CRS, Transformer
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
-from .core import calculate_grid_size, compute_grid_geometry
+from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords
 from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
@@ -16,6 +16,9 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects.
     Cells with vegetation take the max height of intersecting features.
     Returns north-up grid (row 0 = north).
+
+    Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
+    correctly.
     """
     if veg_gdf.crs is None:
         warnings.warn("veg_gdf has no CRS. Assuming EPSG:4326. ")
@@ -27,33 +30,24 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     if 'height' not in veg_gdf.columns:
         raise ValueError("Vegetation GeoDataFrame must have a 'height' column.")
 
-    if isinstance(polygon, list):
-        poly = Polygon(polygon)
-    elif isinstance(polygon, Polygon):
-        poly = polygon
+    if isinstance(polygon, Polygon):
+        rectangle_vertices = list(polygon.exterior.coords[:-1])
+    elif isinstance(polygon, list):
+        rectangle_vertices = polygon
     else:
         raise ValueError("polygon must be a list of (lon, lat) or a shapely Polygon.")
 
-    left, bottom, right, top = poly.bounds
-    geod = initialize_geod()
-    _, _, width_m = geod.inv(left, bottom, right, bottom)
-    _, _, height_m = geod.inv(left, bottom, left, top)
-
-    num_cells_x = int(width_m / mesh_size + 0.5)
-    num_cells_y = int(height_m / mesh_size + 0.5)
-
-    if num_cells_x < 1 or num_cells_y < 1:
-        warnings.warn("Polygon bounding box is smaller than mesh_size; returning empty array.")
+    cc = compute_cell_center_coords(rectangle_vertices, mesh_size)
+    if cc is None:
+        warnings.warn("Rectangle is too small; returning empty array.")
         return np.array([])
 
-    xs = np.linspace(left, right, num_cells_x)
-    ys = np.linspace(top, bottom, num_cells_y)
-    X, Y = np.meshgrid(xs, ys)
-    xs_flat = X.ravel()
-    ys_flat = Y.ravel()
+    nx, ny = cc["grid_size"]
+    center_lons = cc["lons"].ravel()
+    center_lats = cc["lats"].ravel()
 
     grid_points = gpd.GeoDataFrame(
-        geometry=[Point(lon, lat) for lon, lat in zip(xs_flat, ys_flat)],
+        geometry=[Point(lon, lat) for lon, lat in zip(center_lons, center_lats)],
         crs="EPSG:4326"
     )
 
@@ -68,20 +62,22 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
         joined.groupby(joined.index).agg({'height': 'max'})
     )
 
-    veg_grid = np.zeros((num_cells_y, num_cells_x), dtype=float)
+    veg_grid = np.zeros(nx * ny, dtype=float)
     for i, row_data in joined_agg.iterrows():
         if not np.isnan(row_data['height']):
-            row_idx = i // num_cells_x
-            col_idx = i % num_cells_x
-            veg_grid[row_idx, col_idx] = row_data['height']
+            veg_grid[i] = row_data['height']
 
-    return ensure_orientation(veg_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    veg_grid = veg_grid.reshape(nx, ny)
+    return veg_grid
 
 
 def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     """
     Create a height grid from a terrain GeoDataFrame using nearest-neighbor sampling.
     Returns north-up grid.
+
+    Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
+    correctly.
     """
     if terrain_gdf.crs is None:
         warnings.warn("terrain_gdf has no CRS. Assuming EPSG:4326. ")
@@ -90,31 +86,24 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
         if terrain_gdf.crs.to_epsg() != 4326:
             terrain_gdf = terrain_gdf.to_crs(epsg=4326)
 
-    if isinstance(polygon, list):
-        poly = Polygon(polygon)
-    elif isinstance(polygon, Polygon):
-        poly = polygon
+    if isinstance(polygon, Polygon):
+        rectangle_vertices = list(polygon.exterior.coords[:-1])
+    elif isinstance(polygon, list):
+        rectangle_vertices = polygon
     else:
         raise ValueError("`polygon` must be a list of (lon, lat) or a shapely Polygon.")
 
-    left, bottom, right, top = poly.bounds
-    geod = initialize_geod()
-    _, _, width_m = geod.inv(left, bottom, right, bottom)
-    _, _, height_m = geod.inv(left, bottom, left, top)
-    num_cells_x = int(width_m / mesh_size + 0.5)
-    num_cells_y = int(height_m / mesh_size + 0.5)
-    if num_cells_x < 1 or num_cells_y < 1:
-        warnings.warn("Polygon bounding box is smaller than mesh_size; returning empty array.")
+    cc = compute_cell_center_coords(rectangle_vertices, mesh_size)
+    if cc is None:
+        warnings.warn("Rectangle is too small; returning empty array.")
         return np.array([])
 
-    xs = np.linspace(left, right, num_cells_x)
-    ys = np.linspace(top, bottom, num_cells_y)
-    X, Y = np.meshgrid(xs, ys)
-    xs_flat = X.ravel()
-    ys_flat = Y.ravel()
+    nx, ny = cc["grid_size"]
+    center_lons = cc["lons"].ravel()
+    center_lats = cc["lats"].ravel()
 
     grid_points = gpd.GeoDataFrame(
-        geometry=[Point(lon, lat) for lon, lat in zip(xs_flat, ys_flat)],
+        geometry=[Point(lon, lat) for lon, lat in zip(center_lons, center_lats)],
         crs="EPSG:4326"
     )
 
@@ -122,10 +111,10 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
         raise ValueError("terrain_gdf must have an 'elevation' column.")
 
     try:
-        centroid = poly.centroid
-        lon_c, lat_c = float(centroid.x), float(centroid.y)
-        zone = int((lon_c + 180.0) // 6) + 1
-        epsg_proj = 32600 + zone if lat_c >= 0 else 32700 + zone
+        clon = float(np.mean(center_lons))
+        clat = float(np.mean(center_lats))
+        zone = int((clon + 180.0) // 6) + 1
+        epsg_proj = 32600 + zone if clat >= 0 else 32700 + zone
         terrain_proj = terrain_gdf.to_crs(epsg=epsg_proj)
         grid_points_proj = grid_points.to_crs(epsg=epsg_proj)
 
@@ -144,12 +133,12 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
             distance_col="dist_to_terrain"
         )
 
-    dem_grid = np.full((num_cells_y, num_cells_x), np.nan, dtype=float)
+    dem_grid = np.full(nx * ny, np.nan, dtype=float)
     for i, elevation_val in zip(grid_points_elev.index, grid_points_elev['elevation']):
-        row = i // num_cells_x
-        col = i % num_cells_x
-        dem_grid[row, col] = elevation_val
-    return ensure_orientation(dem_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+        dem_grid[i] = elevation_val
+
+    dem_grid = dem_grid.reshape(nx, ny)
+    return dem_grid
 
 
 def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):

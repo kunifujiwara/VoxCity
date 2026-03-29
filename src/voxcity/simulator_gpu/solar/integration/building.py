@@ -103,8 +103,13 @@ def get_building_solar_irradiance(
     )
     
     # Set solar position
+    rotation_angle = 0
+    extras = getattr(voxcity, 'extras', None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get('rotation_angle', 0)
+
     sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith = compute_sun_direction(
-        azimuth_degrees_ori, elevation_degrees
+        azimuth_degrees_ori, elevation_degrees, rotation_angle
     )
     
     model.solar_calc.sun_direction[None] = (sun_dir_x, sun_dir_y, sun_dir_z)

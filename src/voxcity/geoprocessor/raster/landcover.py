@@ -36,43 +36,42 @@ def create_land_cover_grid_from_geotiff_polygon(
 ) -> np.ndarray:
     """
     Create a land cover grid from a GeoTIFF file within a polygon boundary.
+
+    Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
+    correctly.
     """
+    from .core import compute_cell_center_coords
+
+    cc = compute_cell_center_coords(polygon, mesh_size)
+    nx, ny = cc["grid_size"]
+    center_lons = cc["lons"].ravel()
+    center_lats = cc["lats"].ravel()
+
     with rasterio.open(tiff_path) as src:
         img = src.read((1, 2, 3))
-        left, bottom, right, top = src.bounds
-        poly = Polygon(polygon)
-        left_wgs84, bottom_wgs84, right_wgs84, top_wgs84 = poly.bounds
 
-        geod = initialize_geod()
-        _, _, width = geod.inv(left_wgs84, bottom_wgs84, right_wgs84, bottom_wgs84)
-        _, _, height = geod.inv(left_wgs84, bottom_wgs84, left_wgs84, top_wgs84)
+        # Transform cell centres to raster CRS if needed
+        if src.crs and src.crs.to_epsg() != 4326:
+            from pyproj import Transformer
+            tfm = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+            sx, sy = tfm.transform(center_lons, center_lats)
+        else:
+            sx, sy = center_lons.copy(), center_lats.copy()
 
-        num_cells_x = int(width / mesh_size + 0.5)
-        num_cells_y = int(height / mesh_size + 0.5)
-
-        adjusted_mesh_size_x = (right - left) / num_cells_x
-        adjusted_mesh_size_y = (top - bottom) / num_cells_y
-
-        new_affine = Affine(adjusted_mesh_size_x, 0, left, 0, -adjusted_mesh_size_y, top)
-
-        cols, rows = np.meshgrid(np.arange(num_cells_x), np.arange(num_cells_y))
-        xs, ys = new_affine * (cols, rows)
-        xs_flat, ys_flat = xs.flatten(), ys.flatten()
-
-        row, col = rasterio.transform.rowcol(src.transform, xs_flat, ys_flat)
+        row, col = rasterio.transform.rowcol(src.transform, sx, sy)
         row, col = np.array(row), np.array(col)
 
         valid = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
-        row, col = row[valid], col[valid]
 
-        grid = np.full((num_cells_y, num_cells_x), 'No Data', dtype=object)
-        for i, (r, c) in enumerate(zip(row, col)):
-            cell_data = img[:, r, c]
+        grid = np.full(nx * ny, 'No Data', dtype=object)
+        for idx in np.where(valid)[0]:
+            cell_data = img[:, row[idx], col[idx]]
             dominant_class = get_dominant_class(cell_data, land_cover_classes)
-            grid_row, grid_col = np.unravel_index(i, (num_cells_y, num_cells_x))
-            grid[grid_row, grid_col] = dominant_class
+            grid[idx] = dominant_class
 
-    return ensure_orientation(grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+        grid = grid.reshape(nx, ny)
+
+    return grid
 
 
 def create_land_cover_grid_from_gdf_polygon(
@@ -88,6 +87,8 @@ def create_land_cover_grid_from_gdf_polygon(
     Create a grid of land cover classes from GeoDataFrame polygon data.
     
     Uses vectorized rasterization for ~100x speedup over cell-by-cell intersection.
+    Correctly handles rotated rectangles by rasterizing onto a bounding-box
+    grid and then sampling at the rotated cell centre coordinates.
     
     Args:
         gdf: GeoDataFrame with land cover polygons and 'class' column
@@ -117,9 +118,9 @@ def create_land_cover_grid_from_gdf_polygon(
         calculate_distance,
         normalize_to_one_meter,
     )
-    from .core import calculate_grid_size, compute_grid_geometry
+    from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords
 
-    # Calculate grid dimensions
+    # Calculate grid dimensions (correct for rotated rectangles)
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     origin = geom["origin"]
     side_1, side_2 = geom["side_1"], geom["side_2"]
@@ -127,15 +128,22 @@ def create_land_cover_grid_from_gdf_polygon(
     grid_size, adjusted_meshsize = geom["grid_size"], geom["adj_mesh"]
     rows, cols = grid_size
 
-    # Get bounding box for the raster
+    # Get bounding box for the rasterization working grid
     min_lon = min(coord[0] for coord in rectangle_vertices)
     max_lon = max(coord[0] for coord in rectangle_vertices)
     min_lat = min(coord[1] for coord in rectangle_vertices)
     max_lat = max(coord[1] for coord in rectangle_vertices)
 
-    # Create affine transform (top-left origin, pixel size)
-    pixel_width = (max_lon - min_lon) / cols
-    pixel_height = (max_lat - min_lat) / rows
+    # Compute bounding-box grid dimensions (may differ from rows/cols for rotated rects)
+    geod_inst = initialize_geod()
+    _, _, bb_width_m = geod_inst.inv(min_lon, min_lat, max_lon, min_lat)
+    _, _, bb_height_m = geod_inst.inv(min_lon, min_lat, min_lon, max_lat)
+    bb_cols = max(1, int(bb_width_m / meshsize + 0.5))
+    bb_rows = max(1, int(bb_height_m / meshsize + 0.5))
+
+    # Create affine transform for the bounding-box working grid
+    pixel_width = (max_lon - min_lon) / bb_cols
+    pixel_height = (max_lat - min_lat) / bb_rows
     transform = Affine(pixel_width, 0, min_lon, 0, -pixel_height, max_lat)
 
     # Build class name to priority mapping, then sort classes by priority (highest priority = lowest number = rasterize last)
@@ -148,8 +156,8 @@ def create_land_cover_grid_from_gdf_polygon(
     code_to_class = {i: cls for cls, i in class_to_code.items()}
     default_code = class_to_code[default_class]
 
-    # Initialize grid with default class code
-    grid_int = np.full((rows, cols), default_code, dtype=np.int32)
+    # Initialize bounding-box grid with default class code
+    bb_grid = np.full((bb_rows, bb_cols), default_code, dtype=np.int32)
 
     # Sort classes by priority (highest priority last so they overwrite lower priority)
     # Lower priority number = higher priority = should be drawn last
@@ -184,11 +192,11 @@ def create_land_cover_grid_from_gdf_polygon(
         class_code = class_to_code[lc_class]
         shapes = [(geom, class_code) for geom in valid_geometries]
         
-        # Rasterize this class onto the grid (overwrites previous values)
+        # Rasterize this class onto the bounding-box grid (overwrites previous values)
         try:
             features.rasterize(
                 shapes=shapes,
-                out=grid_int,
+                out=bb_grid,
                 transform=transform,
                 all_touched=False,  # Only cells whose center is inside
             )
@@ -198,33 +206,30 @@ def create_land_cover_grid_from_gdf_polygon(
                 try:
                     features.rasterize(
                         shapes=[(geom, val)],
-                        out=grid_int,
+                        out=bb_grid,
                         transform=transform,
                         all_touched=False,
                     )
                 except Exception:
                     continue
 
-    # Convert integer codes back to class names
-    grid = np.empty((rows, cols), dtype=object)
-    for code, cls_name in code_to_class.items():
-        grid[grid_int == code] = cls_name
-
-    # Apply ocean detection BEFORE flipping if requested
-    # This uses land polygons from OSM coastlines to classify ocean areas
+    # Apply ocean detection on the bounding-box grid BEFORE resampling
     if detect_ocean:
         try:
             from ...downloader.ocean import get_land_polygon_for_area, get_ocean_class_for_source
             
             ocean_class = get_ocean_class_for_source(source)
+            if ocean_class not in class_to_code:
+                class_to_code[ocean_class] = len(class_to_code)
+                code_to_class[class_to_code[ocean_class]] = ocean_class
+            ocean_code = class_to_code[ocean_class]
             
             # Use provided land_polygon or query from coastlines if not provided
             if land_polygon == "NOT_PROVIDED":
                 land_polygon = get_land_polygon_for_area(rectangle_vertices, use_cache=False)
             
             if land_polygon is not None:
-                # Rasterize land polygon - cells inside are land, outside are ocean
-                land_mask = np.zeros((rows, cols), dtype=np.uint8)
+                land_mask = np.zeros((bb_rows, bb_cols), dtype=np.uint8)
                 
                 try:
                     if land_polygon.geom_type == 'Polygon':
@@ -239,38 +244,45 @@ def create_land_cover_grid_from_gdf_polygon(
                         all_touched=False
                     )
                     
-                    # Apply ocean class to cells that are:
-                    # 1. Outside land polygon (land_mask == 0)
-                    # 2. Currently classified as the default class
-                    ocean_cells = (land_mask == 0) & (grid == default_class)
+                    ocean_cells = (land_mask == 0) & (bb_grid == default_code)
                     ocean_count = np.sum(ocean_cells)
                     
                     if ocean_count > 0:
-                        grid[ocean_cells] = ocean_class
-                        pct = 100 * ocean_count / grid.size
+                        bb_grid[ocean_cells] = ocean_code
+                        pct = 100 * ocean_count / bb_grid.size
                         print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}'")
                         
                 except Exception as e:
                     print(f"  Warning: Ocean rasterization failed: {e}")
             else:
-                # No coastlines - check if area is all ocean or all land
                 from ...downloader.ocean import check_if_area_is_ocean_via_land_features
                 is_ocean = check_if_area_is_ocean_via_land_features(rectangle_vertices)
                 if is_ocean:
-                    # Convert all default class cells to water
-                    ocean_cells = (grid == default_class)
+                    ocean_cells = (bb_grid == default_code)
                     ocean_count = np.sum(ocean_cells)
                     if ocean_count > 0:
-                        grid[ocean_cells] = ocean_class
-                        pct = 100 * ocean_count / grid.size
+                        bb_grid[ocean_cells] = ocean_code
+                        pct = 100 * ocean_count / bb_grid.size
                         print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}' (open ocean)")
                         
         except Exception as e:
             print(f"  Warning: Ocean detection failed: {e}")
 
-    # Flip to match expected orientation (north-up)
-    grid = ensure_orientation(grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
-    
+    # Sample the bounding-box grid at rotated cell centre coordinates
+    cc = compute_cell_center_coords(rectangle_vertices, meshsize)
+    center_lons = cc["lons"].ravel()
+    center_lats = cc["lats"].ravel()
+
+    col_idx = np.clip(((center_lons - min_lon) / pixel_width).astype(int), 0, bb_cols - 1)
+    row_idx = np.clip(((max_lat - center_lats) / pixel_height).astype(int), 0, bb_rows - 1)
+
+    grid_int = bb_grid[row_idx, col_idx].reshape(rows, cols)
+
+    # Convert integer codes back to class names
+    grid = np.empty((rows, cols), dtype=object)
+    for code, cls_name in code_to_class.items():
+        grid[grid_int == code] = cls_name
+
     return grid
 
 

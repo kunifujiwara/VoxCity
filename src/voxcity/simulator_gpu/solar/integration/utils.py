@@ -170,7 +170,8 @@ def compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
 
 def compute_sun_direction(
     azimuth_degrees_ori: float,
-    elevation_degrees: float
+    elevation_degrees: float,
+    rotation_angle: float = 0,
 ) -> Tuple[float, float, float, float]:
     """
     Compute sun direction vector from azimuth and elevation angles.
@@ -178,12 +179,13 @@ def compute_sun_direction(
     Args:
         azimuth_degrees_ori: Solar azimuth in VoxCity convention (0=North, clockwise)
         elevation_degrees: Solar elevation in degrees above horizon
+        rotation_angle: Grid rotation angle in degrees (clockwise, from voxcity.extras)
         
     Returns:
         Tuple of (sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith)
     """
-    # Convert from VoxCity convention to model coordinates
-    azimuth_degrees = 180 - azimuth_degrees_ori
+    # Convert from VoxCity convention to model coordinates, accounting for grid rotation
+    azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
     azimuth_radians = np.deg2rad(azimuth_degrees)
     elevation_radians = np.deg2rad(elevation_degrees)
     

@@ -18,6 +18,7 @@ from ipyleaflet import (
     DrawControl,
     Rectangle,
     Polygon as LeafletPolygon,
+    Polyline,
 )
 from geopy import distance
 
@@ -127,29 +128,126 @@ def draw_rectangle_map_cityname(cityname, zoom=15):
     return m, rectangle_vertices
 
 
-def center_location_map_cityname(cityname, east_west_length, north_south_length, zoom=15):
+def _rotate_vertices(base_vertices, angle_deg):
+    """Rotate axis-aligned vertices by *angle_deg* around their centroid in Web Mercator.
+
+    Returns a new list of (lon, lat) tuples.
+    """
+    if angle_deg == 0:
+        return list(base_vertices)
+
+    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    to_wgs84 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+
+    projected = [to_merc.transform(lon, lat) for lon, lat in base_vertices]
+    cx = sum(x for x, y in projected) / len(projected)
+    cy = sum(y for x, y in projected) / len(projected)
+
+    angle_rad = -math.radians(angle_deg)
+    cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+
+    rotated_proj = []
+    for x, y in projected:
+        dx, dy = x - cx, y - cy
+        rotated_proj.append((dx * cos_a - dy * sin_a + cx,
+                             dx * sin_a + dy * cos_a + cy))
+
+    return [to_wgs84.transform(x, y) for x, y in rotated_proj]
+
+
+def center_location_map_cityname(cityname, east_west_length, north_south_length, zoom=15, rotation_angle=0):
     """
     Create a map centered on a city where clicking creates a rectangle of specified dimensions.
+
+    After placing a center point, an interactive rotation slider appears so the
+    rectangle can be rotated on the map in real time.
 
     Args:
         cityname (str): Name of the city.
         east_west_length (float): Width of the rectangle in meters.
         north_south_length (float): Height of the rectangle in meters.
         zoom (int): Initial zoom level. Defaults to 15.
+        rotation_angle (float): Initial rotation angle in degrees
+            (positive = counter-clockwise). Defaults to 0.
 
     Returns:
-        tuple: (Map object, list that will be populated with (lon, lat) vertices)
+        tuple: (widget, list that will be populated with (lon, lat) vertices)
+            *widget* is an ipywidgets VBox containing the map and a rotation
+            slider.  Display it with ``display(widget)`` or as the last
+            expression in a notebook cell.
     """
+    import ipywidgets as widgets
+
     center = get_coordinates_from_cityname(cityname)
     m = Map(center=center, zoom=zoom)
     rectangle_vertices = []
+    # Internal state: axis-aligned base vertices (before rotation)
+    _state = {"base_vertices": None, "polygon_layer": None, "aux_lines": []}
+
+    rotation_slider = widgets.FloatSlider(
+        value=rotation_angle,
+        min=-90.0,
+        max=90.0,
+        step=1.0,
+        description="Rotation (°):",
+        continuous_update=True,
+        style={"description_width": "initial"},
+        layout=widgets.Layout(width="100%"),
+    )
+
+    def _update_polygon(angle_deg):
+        """Recompute rotated vertices, update the map polygon and the output list."""
+        base = _state["base_vertices"]
+        if base is None:
+            return
+
+        # Remove previous polygon and auxiliary lines
+        if _state["polygon_layer"] is not None:
+            try:
+                m.remove_layer(_state["polygon_layer"])
+            except Exception:
+                pass
+        for line in _state["aux_lines"]:
+            try:
+                m.remove_layer(line)
+            except Exception:
+                pass
+        _state["aux_lines"] = []
+
+        vertices = _rotate_vertices(base, angle_deg)
+
+        rectangle_vertices.clear()
+        rectangle_vertices.extend(vertices)
+
+        poly = LeafletPolygon(
+            locations=[(lat, lon) for lon, lat in vertices],
+            color="red",
+            fill_color="red",
+            fill_opacity=0.2,
+        )
+        _state["polygon_layer"] = poly
+        m.add_layer(poly)
+
+        # Draw auxiliary crosshair lines through midpoints of opposite sides
+        # vertices order: [v0, v1, v2, v3]
+        v0, v1, v2, v3 = vertices
+        mid_01 = ((v0[0] + v1[0]) / 2, (v0[1] + v1[1]) / 2)  # midpoint left side
+        mid_32 = ((v3[0] + v2[0]) / 2, (v3[1] + v2[1]) / 2)  # midpoint right side
+        mid_03 = ((v0[0] + v3[0]) / 2, (v0[1] + v3[1]) / 2)  # midpoint bottom side
+        mid_12 = ((v1[0] + v2[0]) / 2, (v1[1] + v2[1]) / 2)  # midpoint top side
+
+        for start, end in [(mid_01, mid_32), (mid_03, mid_12)]:
+            line = Polyline(
+                locations=[(start[1], start[0]), (end[1], end[0])],
+                color="red",
+                weight=1,
+                opacity=0.6,
+                dash_array="6 4",
+            )
+            _state["aux_lines"].append(line)
+            m.add_layer(line)
 
     def handle_draw(target, action, geo_json):
-        rectangle_vertices.clear()
-        for layer in m.layers:
-            if isinstance(layer, Rectangle):
-                m.remove_layer(layer)
-
         if action == "created" and geo_json["geometry"]["type"] == "Point":
             lon, lat = geo_json["geometry"]["coordinates"][0], geo_json["geometry"]["coordinates"][1]
             print(f"Point drawn at Longitude: {lon}, Latitude: {lat}")
@@ -163,25 +261,16 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
                 (south.latitude, lon), bearing=270,
             )
 
-            rectangle_vertices.extend([
+            _state["base_vertices"] = [
                 (west_at_south.longitude, south.latitude),
                 (west_at_south.longitude, north.latitude),
                 (east_at_south.longitude, north.latitude),
                 (east_at_south.longitude, south.latitude),
-            ])
+            ]
 
-            rectangle = Rectangle(
-                bounds=[
-                    (north.latitude, west_at_south.longitude),
-                    (south.latitude, east_at_south.longitude),
-                ],
-                color="red",
-                fill_color="red",
-                fill_opacity=0.2,
-            )
-            m.add_layer(rectangle)
+            _update_polygon(rotation_slider.value)
 
-            print("Rectangle vertices:")
+            print(f"Rectangle vertices (rotation={rotation_slider.value}°):")
             for vertex in rectangle_vertices:
                 print(f"Longitude: {vertex[0]}, Latitude: {vertex[1]}")
 
@@ -194,4 +283,10 @@ def center_location_map_cityname(cityname, east_west_length, north_south_length,
     m.add_control(draw_control)
     draw_control.on_draw(handle_draw)
 
-    return m, rectangle_vertices
+    def _on_slider_change(change):
+        _update_polygon(change["new"])
+
+    rotation_slider.observe(_on_slider_change, names="value")
+
+    ui = widgets.VBox([m, rotation_slider])
+    return ui, rectangle_vertices
