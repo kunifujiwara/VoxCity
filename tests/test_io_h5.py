@@ -329,6 +329,50 @@ class TestVoxCityFields:
         loaded = load_results_h5(path)["voxcity"]
         assert loaded.extras == {}
 
+    def test_geodataframe_extras_round_trip(self, tmp_path):
+        """GeoDataFrame extras survive the HDF5 round-trip via GeoParquet."""
+        geopandas = pytest.importorskip("geopandas")
+        from shapely.geometry import box
+
+        gdf = geopandas.GeoDataFrame(
+            {"building_id": [1, 2, 3], "height": [10.0, 20.0, 30.0]},
+            geometry=[box(0, 0, 1, 1), box(1, 1, 2, 2), box(2, 2, 3, 3)],
+            crs="EPSG:4326",
+        )
+        city = _make_voxcity(with_extras=False)
+        city.extras["building_gdf"] = gdf
+        city.extras["source"] = "test"
+
+        path = str(tmp_path / "gdf.h5")
+        save_results_h5(path, city)
+        loaded = load_results_h5(path)["voxcity"]
+
+        assert "building_gdf" in loaded.extras
+        loaded_gdf = loaded.extras["building_gdf"]
+        assert isinstance(loaded_gdf, geopandas.GeoDataFrame)
+        assert list(loaded_gdf.columns) == list(gdf.columns)
+        assert len(loaded_gdf) == 3
+        np.testing.assert_array_equal(loaded_gdf["building_id"].values, [1, 2, 3])
+        np.testing.assert_array_almost_equal(loaded_gdf["height"].values, [10.0, 20.0, 30.0])
+        assert loaded_gdf.crs.to_epsg() == 4326
+        # JSON extras should also survive
+        assert loaded.extras["source"] == "test"
+
+    def test_numpy_array_extras_round_trip(self, tmp_path):
+        """Numpy array extras survive the HDF5 round-trip."""
+        arr = np.random.rand(5, 5)
+        city = _make_voxcity(with_extras=False)
+        city.extras["custom_grid"] = arr
+        city.extras["label"] = "custom"
+
+        path = str(tmp_path / "np_extras.h5")
+        save_results_h5(path, city)
+        loaded = load_results_h5(path)["voxcity"]
+
+        assert "custom_grid" in loaded.extras
+        np.testing.assert_array_almost_equal(loaded.extras["custom_grid"], arr)
+        assert loaded.extras["label"] == "custom"
+
 
 # ---------------------------------------------------------------------------
 # min_heights serialization

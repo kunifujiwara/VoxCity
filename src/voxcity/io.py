@@ -374,15 +374,37 @@ def save_results_h5(
             if city.tree_canopy.bottom is not None:
                 can_grp.create_dataset('bottom', data=np.asarray(city.tree_canopy.bottom), compression='gzip')
 
-        # extras – store JSON-serializable entries
+        # extras – store all entries (JSON scalars, numpy arrays, GeoDataFrames)
         extras = getattr(city, 'extras', None) or {}
-        _safe = {}
+        _safe = {}  # JSON-serializable scalars / lists
         for k, v in extras.items():
+            # GeoDataFrame → GeoParquet bytes
+            try:
+                import geopandas as _gpd
+                if isinstance(v, _gpd.GeoDataFrame):
+                    import io as _io
+                    buf = _io.BytesIO()
+                    v.to_parquet(buf)
+                    if 'extras_gdf' not in vc:
+                        vc.create_group('extras_gdf')
+                    vc['extras_gdf'].create_dataset(k, data=np.void(buf.getvalue()))
+                    continue
+            except ImportError:
+                pass  # geopandas not installed – fall through
+
+            # numpy array → dataset
+            if isinstance(v, np.ndarray):
+                if 'extras_np' not in vc:
+                    vc.create_group('extras_np')
+                vc['extras_np'].create_dataset(k, data=v, compression='gzip')
+                continue
+
+            # JSON-serializable scalar / list / string
             try:
                 json.dumps(v)
                 _safe[k] = v
             except (TypeError, ValueError):
-                pass  # skip non-serializable (e.g. GeoDataFrame)
+                pass  # truly non-serializable – skip
         if _safe:
             vc.attrs['extras_json'] = json.dumps(_safe)
 
@@ -518,6 +540,22 @@ def load_results_h5(input_path):
         extras_json = vc.attrs.get('extras_json', None)
         if extras_json:
             extras = json.loads(extras_json)
+
+        # GeoDataFrame extras (stored as GeoParquet bytes)
+        if 'extras_gdf' in vc:
+            try:
+                import geopandas as _gpd
+                import io as _io
+                for k in vc['extras_gdf']:
+                    raw = bytes(vc['extras_gdf'][k][()])
+                    extras[k] = _gpd.read_parquet(_io.BytesIO(raw))
+            except ImportError:
+                pass  # geopandas not installed – skip GeoDataFrame extras
+
+        # numpy array extras
+        if 'extras_np' in vc:
+            for k in vc['extras_np']:
+                extras[k] = vc['extras_np'][k][:]
 
         voxels = VoxelGrid(classes=voxel_grid, meta=meta)
         buildings = BuildingGrid(
