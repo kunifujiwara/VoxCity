@@ -732,17 +732,28 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     try:
         import geopandas as gpd  # noqa: F401
+        def _ensure_geom(g):
+            try:
+                _ = g.crs
+                return g
+            except AttributeError:
+                if 'geometry' in g.columns:
+                    return g.set_geometry('geometry')
+                raise
         if building_gdf is not None:
+            building_gdf = _ensure_geom(building_gdf)
             if building_gdf.crs is None:
                 building_gdf = building_gdf.set_crs(epsg=4326)
             elif getattr(building_gdf.crs, 'to_epsg', lambda: None)() != 4326 and building_gdf.crs != "EPSG:4326":
                 building_gdf = building_gdf.to_crs(epsg=4326)
         if terrain_gdf is not None:
+            terrain_gdf = _ensure_geom(terrain_gdf)
             if terrain_gdf.crs is None:
                 terrain_gdf = terrain_gdf.set_crs(epsg=4326)
             elif getattr(terrain_gdf.crs, 'to_epsg', lambda: None)() != 4326 and terrain_gdf.crs != "EPSG:4326":
                 terrain_gdf = terrain_gdf.to_crs(epsg=4326)
         if vegetation_gdf is not None:
+            vegetation_gdf = _ensure_geom(vegetation_gdf)
             if vegetation_gdf.crs is None:
                 vegetation_gdf = vegetation_gdf.set_crs(epsg=4326)
             elif getattr(vegetation_gdf.crs, 'to_epsg', lambda: None)() != 4326 and vegetation_gdf.crs != "EPSG:4326":

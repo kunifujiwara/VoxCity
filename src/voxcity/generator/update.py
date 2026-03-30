@@ -17,6 +17,17 @@ from ..models import (
 from .voxelizer import Voxelizer
 
 
+def _ensure_active_geometry(gdf):
+    """Ensure *gdf* has an active geometry column."""
+    try:
+        _ = gdf.crs
+        return gdf
+    except AttributeError:
+        if 'geometry' in gdf.columns:
+            return gdf.set_geometry('geometry')
+        raise
+
+
 def update_voxcity(
     city: VoxCity,
     *,
@@ -166,6 +177,7 @@ def update_voxcity(
     # --- Auto-generate building grids from GeoDataFrame if provided ---
     if building_gdf is not None and buildings is None and building_heights is None:
         # Auto-generate building grids from the GeoDataFrame
+        building_gdf = _ensure_active_geometry(building_gdf)
         from ..geoprocessor.raster import create_building_height_grid_from_gdf_polygon
         
         rectangle_vertices = city.extras.get("rectangle_vertices")
@@ -185,6 +197,7 @@ def update_voxcity(
 
     # --- Auto-generate canopy grids from tree GeoDataFrame if provided ---
     if tree_gdf is not None and len(tree_gdf) > 0 and tree_canopy is None:
+        tree_gdf = _ensure_active_geometry(tree_gdf)
         # Validate tree_gdf_mode
         if tree_gdf_mode not in ("replace", "add"):
             raise ValueError(

@@ -11,6 +11,17 @@ from .core import calculate_grid_size, compute_grid_geometry, compute_cell_cente
 from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
+def _ensure_active_geometry(gdf):
+    """Ensure *gdf* has an active geometry column, returning the (possibly fixed) GeoDataFrame."""
+    try:
+        _ = gdf.crs  # fast check – succeeds when geometry column is active
+        return gdf
+    except AttributeError:
+        if 'geometry' in gdf.columns:
+            return gdf.set_geometry('geometry')
+        raise
+
+
 def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     """
     Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects.
@@ -20,6 +31,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
     """
+    veg_gdf = _ensure_active_geometry(veg_gdf)
     if veg_gdf.crs is None:
         warnings.warn("veg_gdf has no CRS. Assuming EPSG:4326. ")
         veg_gdf = veg_gdf.set_crs(epsg=4326)
@@ -79,6 +91,7 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
     """
+    terrain_gdf = _ensure_active_geometry(terrain_gdf)
     if terrain_gdf.crs is None:
         warnings.warn("terrain_gdf has no CRS. Assuming EPSG:4326. ")
         terrain_gdf = terrain_gdf.set_crs(epsg=4326)
@@ -169,6 +182,7 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
         if col not in tree_gdf.columns:
             raise ValueError(f"tree_gdf must contain '{col}' column.")
 
+    tree_gdf = _ensure_active_geometry(tree_gdf)
     if tree_gdf.crs is None:
         warnings.warn("tree_gdf has no CRS. Assuming EPSG:4326.")
         tree_gdf = tree_gdf.set_crs(epsg=4326)
