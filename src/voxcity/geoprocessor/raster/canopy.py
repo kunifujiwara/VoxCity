@@ -55,6 +55,11 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
         return np.array([])
 
     nx, ny = cc["grid_size"]
+    dx, dy = cc["adj_mesh"]
+    if nx <= 1 and ny <= 1 and dx < mesh_size and dy < mesh_size:
+        warnings.warn("Rectangle is smaller than mesh_size; returning empty array.")
+        return np.array([])
+
     center_lons = cc["lons"].ravel()
     center_lats = cc["lats"].ravel()
 
@@ -112,6 +117,11 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
         return np.array([])
 
     nx, ny = cc["grid_size"]
+    dx, dy = cc["adj_mesh"]
+    if nx <= 1 and ny <= 1 and dx < mesh_size and dy < mesh_size:
+        warnings.warn("Rectangle is smaller than mesh_size; returning empty array.")
+        return np.array([])
+
     center_lons = cc["lons"].ravel()
     center_lats = cc["lats"].ravel()
 
