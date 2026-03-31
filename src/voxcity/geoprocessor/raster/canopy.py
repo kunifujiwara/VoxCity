@@ -51,7 +51,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
 
     cc = compute_cell_center_coords(rectangle_vertices, mesh_size)
     if cc is None:
-        warnings.warn("Rectangle is too small; returning empty array.")
+        warnings.warn("Rectangle is smaller than mesh_size; returning empty array.")
         return np.array([])
 
     nx, ny = cc["grid_size"]
@@ -108,7 +108,7 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
 
     cc = compute_cell_center_coords(rectangle_vertices, mesh_size)
     if cc is None:
-        warnings.warn("Rectangle is too small; returning empty array.")
+        warnings.warn("Rectangle is smaller than mesh_size; returning empty array.")
         return np.array([])
 
     nx, ny = cc["grid_size"]
