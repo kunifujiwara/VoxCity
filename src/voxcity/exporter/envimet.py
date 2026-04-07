@@ -96,7 +96,7 @@ def array_to_string_int(arr):
     """
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
-def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source):
+def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, envimet_mapping=None):
     """Prepare and process input grids for ENVI-met model.
     
     This function performs several key transformations on input grids:
@@ -114,6 +114,15 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         dem_grid_ori (numpy.ndarray): Original DEM grid (meters)
         meshsize (float): Size of mesh cells in meters
         land_cover_source (str): Source of land cover data for class conversion
+        envimet_mapping (dict, optional): Custom mapping from land cover class indices
+            (1-based) to ENVI-met IDs, overriding the defaults. Each value is a dict
+            with optional ``'veg'`` (simple plant ID) and/or ``'mat'`` (soil profile ID)
+            keys. Only provided keys are overridden; others keep their defaults.
+            Tree vegetation mapping (key 5 ``'veg'``) is ignored.
+            Example::
+
+                {2: {'veg': '0200H1'}, 11: {'mat': '0200PP'},
+                 7: {'veg': '0200XX', 'mat': '0200WW'}}
         
     Returns:
         tuple: Processed grids:
@@ -161,7 +170,6 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         7: '0200XX',  # Wet land
         8: ''  # Mangroves
     }
-    land_cover_veg_grid = translate_array(land_cover_grid, veg_translation_dict)
 
     # Dictionary mapping land cover types to material codes
     mat_translation_dict = {
@@ -180,6 +188,16 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         13: '000000', # Building
         14: '000000', # No Data
     }
+
+    # Apply user overrides from envimet_mapping
+    if envimet_mapping:
+        for cls, ids in envimet_mapping.items():
+            if 'veg' in ids and cls != 5:  # Tree vegetation is not customizable
+                veg_translation_dict[cls] = ids['veg']
+            if 'mat' in ids:
+                mat_translation_dict[cls] = ids['mat']
+
+    land_cover_veg_grid = translate_array(land_cover_grid, veg_translation_dict)
     land_cover_mat_grid = translate_array(land_cover_grid, mat_translation_dict)
 
     # Process canopy and DEM grids
@@ -211,6 +229,11 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
             - verticalStretch (float): Vertical stretch factor
             - startStretch (float): Height to start stretching
             - min_grids_Z (int): Minimum vertical grid cells
+            - common_wall_material (str): ENVI-met wall material ID (default '000000')
+            - common_roof_material (str): ENVI-met roof material ID (default '000000')
+            - rooftop_vegetation (bool): If True, keep 1D vegetation (grass, shrubs)
+              on cells that also contain buildings (green roofs). If False (default),
+              remove 1D vegetation from building cells.
             
     Returns:
         str: Complete XML content for INX file
@@ -268,8 +291,8 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
          <locationTimeZone_Longitude> $locationTimeZone_Longitude$ </locationTimeZone_Longitude>
       </locationData>
       <defaultSettings>
-         <commonWallMaterial> 000000 </commonWallMaterial>
-         <commonRoofMaterial> 000000 </commonRoofMaterial>
+         <commonWallMaterial> $commonWallMaterial$ </commonWallMaterial>
+         <commonRoofMaterial> $commonRoofMaterial$ </commonRoofMaterial>
       </defaultSettings>
       <buildings2D>
          <zTop type="matrix-data" dataI="$grids-I$" dataJ="$grids-J$">
@@ -411,6 +434,10 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     # Set grid cell sizes
     dx, dy, dz_base = meshsize, meshsize, meshsize
 
+    # Resolve building material settings
+    common_wall_material = kwargs.get('common_wall_material', '000000')
+    common_roof_material = kwargs.get('common_roof_material', '000000')
+
     # Replace grid-related placeholders
     grid_placeholders = {
         "$grids-I$": str(grids_I),
@@ -422,6 +449,8 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         "$useTelescoping_grid$": str(useTelescoping_grid),
         "$verticalStretch$": str(verticalStretch),
         "$startStretch$": str(startStretch),
+        "$commonWallMaterial$": common_wall_material,
+        "$commonRoofMaterial$": common_roof_material,
     }
 
     for placeholder, value in grid_placeholders.items():
@@ -437,7 +466,14 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     xml_template = xml_template.replace("$buildingNr$", array_to_string(building_nr_grid))
 
     # Add vegetation data
-    xml_template = xml_template.replace("$ID_plants1D$", array_to_string(land_cover_veg_grid))
+    # Optionally remove 1D vegetation from building cells
+    rooftop_vegetation = kwargs.get('rooftop_vegetation', False)
+    if not rooftop_vegetation:
+        veg_grid = land_cover_veg_grid.copy()
+        veg_grid[building_height_grid > 0] = ''
+        xml_template = xml_template.replace("$ID_plants1D$", array_to_string(veg_grid))
+    else:
+        xml_template = xml_template.replace("$ID_plants1D$", array_to_string(land_cover_veg_grid))
 
     # Generate and add 3D plant data
     tree_content = ""
@@ -497,7 +533,15 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
         output_directory (str): Directory to save output
         file_basename (str): Base filename (without extension)
         land_cover_source (str | None): Optional override for land cover source; defaults to city.extras
-        **kwargs: Additional keyword arguments passed to create_xml_content()
+        **kwargs: Additional keyword arguments:
+            - envimet_mapping (dict): Custom mapping from land cover class indices
+              (1-based) to ENVI-met IDs. Each value is a dict with optional 'veg'
+              (simple plant ID) and/or 'mat' (soil profile ID) keys.
+              Tree vegetation (key 5 'veg') is ignored.
+              Example: ``{2: {'veg': '0200H1'}, 12: {'mat': '0200AR'}}``
+            - rooftop_vegetation (bool): If True, keep 1D vegetation (grass, shrubs)
+              on building cells (e.g. green roofs). Default False (remove them).
+            - Other kwargs are passed to create_xml_content().
             
     Notes:
         - Creates output directory if it doesn't exist
@@ -510,6 +554,9 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
     rectangle_vertices = city.extras.get("rectangle_vertices") or [(0.0, 0.0)] * 4
     lc_source = land_cover_source or city.extras.get("land_cover_source", "Standard")
 
+    # Extract mapping overrides from kwargs
+    envimet_mapping = kwargs.pop('envimet_mapping', None)
+
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
         city.buildings.heights.copy(),
@@ -518,7 +565,8 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
         city.land_cover.classes.copy(),
         city.dem.elevation.copy(),
         meshsize,
-        lc_source)    
+        lc_source,
+        envimet_mapping=envimet_mapping)    
 
     # Create XML content
     xml_content = create_xml_content(building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx, meshsize, rectangle_vertices, **kwargs)
@@ -556,6 +604,7 @@ def generate_edb_file(**kwargs):
             - lad (float): Leaf area density in m²/m³ (default 1.0)
             - trunk_height_ratio (float): Ratio of trunk height to total height
               (default 11.76/19.98)
+            - output_dir (str): Directory to save the EDB file (default: current directory)
               
     Notes:
         - Generates plants for heights from 1-50m
@@ -572,6 +621,8 @@ def generate_edb_file(**kwargs):
     trunk_height_ratio = kwargs.get("trunk_height_ratio")
     if trunk_height_ratio is None:
         trunk_height_ratio = 11.76 / 19.98
+
+    output_dir = kwargs.get("output_dir", ".")
 
     # Create header with current timestamp
     header = f'''<ENVI-MET_Datafile>
@@ -671,7 +722,9 @@ def generate_edb_file(**kwargs):
 
     content = header + ''.join(plant3d_objects) + footer
     
-    with open('projectdatabase.edb', 'w') as f:
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, 'projectdatabase.edb')
+    with open(output_path, 'w') as f:
         f.write(content)
 
 def generate_lad_profile(height, trunk_height_ratio, lad = '1.00000'):
