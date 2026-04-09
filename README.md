@@ -39,7 +39,7 @@
 | Demo | Description | Link |
 |------|-------------|------|
 | **Basic** | Generate a voxel city model, visualize, and export | <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Open in Colab</a> |
-| **ENVI-met Export** | Export a VoxCity model to ENVI-met INX format | <a href="https://drive.google.com/file/d/1Yv7hMmfEiygCbuz5gPfGmCZyVQnr-8Qn/view?usp=sharing">Open in Colab</a> |
+| **ENVI-met Export** | Export a VoxCity model to ENVI-met INX format | <a href="https://colab.research.google.com/drive/1Yv7hMmfEiygCbuz5gPfGmCZyVQnr-8Qn">Open in Colab</a> |
 
 ### YouTube Video
 
