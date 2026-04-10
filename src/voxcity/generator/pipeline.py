@@ -151,6 +151,18 @@ class VoxCityPipeline:
             h_peri = int(ro * bh.shape[1] + 0.5)
             canopy_top[:w_peri, :] = canopy_top[-w_peri:, :] = canopy_top[:, :h_peri] = canopy_top[:, -h_peri:] = 0
             canopy_bottom[:w_peri, :] = canopy_bottom[-w_peri:, :] = canopy_bottom[:, :h_peri] = canopy_bottom[:, -h_peri:] = 0
+            # Set land cover to "Developed space" in perimeter cells.
+            # land_cover_grid uses 0-based source-specific indices; find the value
+            # that converts to standard class 11 for the current source.
+            from ..utils.lc import convert_land_cover as _cvt_lc
+            if lc_src_effective == 'OpenStreetMap':
+                _developed_src_val = 10  # 10 + 1 = 11
+            else:
+                _probe = np.arange(20, dtype=land_cover_grid.dtype)
+                _converted = _cvt_lc(_probe, land_cover_source=lc_src_effective)
+                _matches = np.where(_converted == 11)[0]
+                _developed_src_val = int(_matches[0]) if len(_matches) > 0 else 10
+            land_cover_grid[:w_peri, :] = land_cover_grid[-w_peri:, :] = land_cover_grid[:, :h_peri] = land_cover_grid[:, -h_peri:] = _developed_src_val
             ids1 = np.unique(bid[:w_peri, :][bid[:w_peri, :] > 0]); ids2 = np.unique(bid[-w_peri:, :][bid[-w_peri:, :] > 0])
             ids3 = np.unique(bid[:, :h_peri][bid[:, :h_peri] > 0]); ids4 = np.unique(bid[:, -h_peri:][bid[:, -h_peri:] > 0])
             for rid in np.concatenate((ids1, ids2, ids3, ids4)):

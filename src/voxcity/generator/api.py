@@ -897,6 +897,19 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         canopy_height_grid[:w_peri, :] = canopy_height_grid[-w_peri:, :] = canopy_height_grid[:, :h_peri] = canopy_height_grid[:, -h_peri:] = 0
         canopy_bottom_height_grid[:w_peri, :] = canopy_bottom_height_grid[-w_peri:, :] = canopy_bottom_height_grid[:, :h_peri] = canopy_bottom_height_grid[:, -h_peri:] = 0
 
+        # Set land cover to "Developed space" (standard class 11) in perimeter cells.
+        # land_cover_grid uses 0-based source-specific indices; find the value that
+        # converts to standard class 11 for the current source.
+        from ..utils.lc import convert_land_cover as _cvt_lc
+        if land_cover_source == 'OpenStreetMap':
+            _developed_src_val = 10  # 10 + 1 = 11
+        else:
+            _probe = np.arange(20, dtype=land_cover_grid.dtype)
+            _converted = _cvt_lc(_probe, land_cover_source=land_cover_source)
+            _matches = np.where(_converted == 11)[0]
+            _developed_src_val = int(_matches[0]) if len(_matches) > 0 else 10
+        land_cover_grid[:w_peri, :] = land_cover_grid[-w_peri:, :] = land_cover_grid[:, :h_peri] = land_cover_grid[:, -h_peri:] = _developed_src_val
+
         ids1 = np.unique(building_id_grid[:w_peri, :][building_id_grid[:w_peri, :] > 0])
         ids2 = np.unique(building_id_grid[-w_peri:, :][building_id_grid[-w_peri:, :] > 0])
         ids3 = np.unique(building_id_grid[:, :h_peri][building_id_grid[:, :h_peri] > 0])

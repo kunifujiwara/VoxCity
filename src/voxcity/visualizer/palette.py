@@ -36,7 +36,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [205, 215, 224],
             11: [108, 119, 129],
             12: [59, 62, 87],
-            13: [150, 166, 190],
+            13: [108, 119, 129],
             14: [239, 228, 176],
         }
     elif color_scheme == 'high_contrast':
@@ -65,7 +65,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [255, 255, 255],
             11: [76, 76, 76],
             12: [0, 0, 0],
-            13: [102, 102, 255],
+            13: [76, 76, 76],
             14: [255, 204, 153],
         }
     elif color_scheme == 'monochrome':
@@ -94,7 +94,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [242, 242, 255],
             11: [128, 128, 178],
             12: [51, 51, 127],
-            13: [153, 153, 204],
+            13: [128, 128, 178],
             14: [230, 230, 255],
         }
     elif color_scheme == 'pastel':
@@ -123,7 +123,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [242, 245, 250],
             11: [209, 213, 219],
             12: [189, 190, 204],
-            13: [215, 221, 232],
+            13: [209, 213, 219],
             14: [250, 244, 227],
         }
     elif color_scheme == 'dark_mode':
@@ -152,7 +152,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [82, 87, 92],
             11: [46, 51, 56],
             12: [25, 31, 43],
-            13: [56, 64, 82],
+            13: [46, 51, 56],
             14: [102, 97, 75],
         }
     elif color_scheme == 'grayscale':
@@ -181,7 +181,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [220, 220, 220],
             11: [140, 140, 140],
             12: [30, 30, 30],
-            13: [170, 170, 170],
+            13: [140, 140, 140],
             14: [230, 230, 230],
         }
     elif color_scheme == 'white_mode':
@@ -210,7 +210,7 @@ def get_voxel_color_map(color_scheme='default'):
             10: [252, 252, 252],
             11: [230, 230, 230],
             12: [210, 210, 215],
-            13: [230, 235, 240],
+            13: [230, 230, 230],
             14: [248, 245, 235],
         }
     else:
