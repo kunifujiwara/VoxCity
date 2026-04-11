@@ -44,6 +44,7 @@ class AppState:
     last_sim_mesh: Optional[Any] = None          # mesh object for building surfaces
     last_sim_voxcity_grid: Optional[Any] = None  # voxcity_grid used (may be marked)
     last_sim_view_point_height: float = 1.5      # view_point_height used in last sim
+    last_colorbar_title: Optional[str] = None     # Colorbar title (with unit) for last sim
 
     # Render cache for fast rerender (skip voxel face extraction)
     last_base_fig_json: Optional[str] = None     # Full Plotly figure JSON from last sim render

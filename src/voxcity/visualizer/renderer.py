@@ -85,6 +85,9 @@ def visualize_voxcity_plotly(
     ground_vmax=None,
     sim_surface_opacity=0.95,
     ground_shaded=False,
+    # Custom colorbar titles
+    building_colorbar_title=None,
+    ground_colorbar_title=None,
 ):
     """
     Interactive 3D visualization using Plotly Mesh3d of voxel faces and optional overlays.
@@ -334,7 +337,7 @@ def visualize_voxcity_plotly(
                     x=[None], y=[None], z=[None],
                     mode='markers',
                     marker=dict(size=0.1, color=[vmin_b, vmax_b], colorscale=colorscale_b, cmin=vmin_b, cmax=vmax_b,
-                                colorbar=dict(title=building_value_name, len=0.5, y=0.8), showscale=True),
+                                colorbar=dict(title=building_colorbar_title or building_value_name, len=0.5, y=0.8), showscale=True),
                     showlegend=False, hoverinfo='skip')
             )
 
@@ -433,7 +436,7 @@ def visualize_voxcity_plotly(
                     x=[None], y=[None], z=[None],
                     mode='markers',
                     marker=dict(size=0.1, color=[vmin_g, vmax_g], colorscale=colorscale_g, cmin=vmin_g, cmax=vmax_g,
-                                colorbar=dict(title='ground', len=0.5, y=0.2), showscale=True),
+                                colorbar=dict(title=ground_colorbar_title or 'ground', len=0.5, y=0.2), showscale=True),
                     showlegend=False, hoverinfo='skip')
             )
 

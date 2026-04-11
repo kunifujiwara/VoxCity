@@ -277,6 +277,7 @@ def _build_sim_overlay_traces(
     vmax: Optional[float],
     view_point_height: float,
     downsample: int,
+    colorbar_title: str = "",
 ) -> list:
     """Build only the simulation overlay Plotly traces (no voxels).
 
@@ -352,7 +353,7 @@ def _build_sim_overlay_traces(
                 marker=dict(
                     size=0.1, color=[vmin_g, vmax_g],
                     colorscale=colorscale_g, cmin=vmin_g, cmax=vmax_g,
-                    colorbar=dict(title='ground', len=0.5, y=0.2), showscale=True,
+                    colorbar=dict(title=colorbar_title or 'Ground', len=0.5, y=0.2), showscale=True,
                 ),
                 showlegend=False, hoverinfo='skip',
             ))
@@ -414,7 +415,7 @@ def _build_sim_overlay_traces(
                 marker=dict(
                     size=0.1, color=[vmin_b, vmax_b],
                     colorscale=colorscale_b, cmin=vmin_b, cmax=vmax_b,
-                    colorbar=dict(title=value_name, len=0.5, y=0.8), showscale=True,
+                    colorbar=dict(title=colorbar_title or value_name, len=0.5, y=0.8), showscale=True,
                 ),
                 showlegend=False, hoverinfo='skip',
             ))
@@ -464,6 +465,7 @@ def _reset_taichi_and_caches():
     app_state.last_base_fig_json = None
     app_state.last_downsample = None
     app_state.last_hidden_classes = None
+    app_state.last_colorbar_title = None
 
 
 # ---------------------------------------------------------------------------
@@ -713,6 +715,10 @@ async def run_solar(req: SolarRequest):
             app_state.last_sim_mesh = None
             app_state.last_sim_voxcity_grid = voxcity.voxels.classes
             app_state.last_sim_view_point_height = req.view_point_height
+            app_state.last_colorbar_title = (
+                "Inst. Solar Irradiance (W/m²)" if req.calc_type == "instantaneous"
+                else "Cum. Solar Irradiance (Wh/m²)"
+            )
 
             # Build overlay figure
             voxcity_grid = voxcity.voxels.classes
@@ -734,6 +740,7 @@ async def run_solar(req: SolarRequest):
                     "ground_vmax": req.vmax,
                     "sim_surface_opacity": 0.95,
                     "title": "Solar overlay",
+                    "ground_colorbar_title": app_state.last_colorbar_title,
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -772,6 +779,10 @@ async def run_solar(req: SolarRequest):
             app_state.last_sim_grid = None
             app_state.last_sim_mesh = irradiance
             app_state.last_sim_voxcity_grid = voxcity.voxels.classes
+            app_state.last_colorbar_title = (
+                "Inst. Global Irradiance (W/m²)" if req.calc_type == "instantaneous"
+                else "Cum. Global Irradiance (Wh/m²)"
+            )
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -785,6 +796,7 @@ async def run_solar(req: SolarRequest):
                     "voxel_color_map": "grayscale",
                     "building_sim_mesh": irradiance,
                     "building_value_name": "global",
+                    "building_colorbar_title": app_state.last_colorbar_title,
                     "building_colormap": req.colormap,
                     "building_vmin": req.vmin,
                     "building_vmax": req.vmax,
@@ -856,6 +868,7 @@ async def run_view(req: ViewRequest):
             app_state.last_sim_mesh = None
             app_state.last_sim_voxcity_grid = voxcity.voxels.classes
             app_state.last_sim_view_point_height = req.view_point_height
+            app_state.last_colorbar_title = "View Index"
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -876,6 +889,7 @@ async def run_view(req: ViewRequest):
                     "ground_vmax": req.vmax,
                     "sim_surface_opacity": 0.95,
                     "title": req.view_type.replace("_", " ").title() + " View Index",
+                    "ground_colorbar_title": "View Index",
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -916,6 +930,7 @@ async def run_view(req: ViewRequest):
             app_state.last_sim_grid = None
             app_state.last_sim_mesh = mesh
             app_state.last_sim_voxcity_grid = voxcity.voxels.classes
+            app_state.last_colorbar_title = "View Factor"
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -929,6 +944,7 @@ async def run_view(req: ViewRequest):
                     "voxel_color_map": "grayscale",
                     "building_sim_mesh": mesh,
                     "building_value_name": "view_factor_values",
+                    "building_colorbar_title": "View Factor",
                     "building_colormap": req.colormap,
                     "building_vmin": req.vmin,
                     "building_vmax": req.vmax,
@@ -1016,6 +1032,7 @@ async def run_landmark(req: LandmarkRequest):
             app_state.last_sim_mesh = None
             app_state.last_sim_voxcity_grid = voxcity_grid
             app_state.last_sim_view_point_height = req.view_point_height
+            app_state.last_colorbar_title = "Visibility"
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
@@ -1035,6 +1052,7 @@ async def run_landmark(req: LandmarkRequest):
                     "ground_vmax": req.vmax,
                     "sim_surface_opacity": 0.95,
                     "title": "Landmark Visibility (Ground)",
+                    "ground_colorbar_title": "Visibility",
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -1078,6 +1096,7 @@ async def run_landmark(req: LandmarkRequest):
             app_state.last_sim_grid = None
             app_state.last_sim_mesh = landmark_mesh
             app_state.last_sim_voxcity_grid = voxcity_grid
+            app_state.last_colorbar_title = "Visibility"
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
@@ -1090,6 +1109,7 @@ async def run_landmark(req: LandmarkRequest):
                     "voxel_color_map": "grayscale",
                     "building_sim_mesh": landmark_mesh,
                     "building_value_name": "view_factor_values",
+                    "building_colorbar_title": "Visibility",
                     "building_colormap": req.colormap,
                     "building_vmin": req.vmin,
                     "building_vmax": req.vmax,
@@ -1145,6 +1165,7 @@ async def rerender(req: RerenderRequest):
                 vmax=req.vmax,
                 view_point_height=app_state.last_sim_view_point_height,
                 downsample=app_state.last_downsample or 1,
+                colorbar_title=app_state.last_colorbar_title or "",
             )
 
             fig_dict['data'] = voxel_traces + sim_traces
@@ -1177,6 +1198,7 @@ async def rerender(req: RerenderRequest):
                     "ground_vmax": req.vmax,
                     "sim_surface_opacity": 0.95,
                     "title": title_map.get(app_state.last_sim_type, "Simulation"),
+                    "ground_colorbar_title": app_state.last_colorbar_title,
                 },
                 forced_downsample=app_state.last_downsample,
             )
@@ -1200,6 +1222,7 @@ async def rerender(req: RerenderRequest):
                 "building_vmax": req.vmax,
                 "render_voxel_buildings": False,
                 "title": title_map.get(app_state.last_sim_type, "Simulation"),
+                "building_colorbar_title": app_state.last_colorbar_title,
             }
             if app_state.last_sim_type == "solar":
                 plot_kwargs["building_opacity"] = 1.0

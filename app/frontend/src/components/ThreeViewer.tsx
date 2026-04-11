@@ -186,37 +186,127 @@ function buildColorbar(trace: any): {
   const vmin: number = marker.cmin ?? 0;
   const vmax: number = marker.cmax ?? 1;
   const stops: [number, string][] = marker.colorscale; // [[0, 'rgb(...)'], ...]
-  const title: string = marker.colorbar?.title ?? '';
 
-  const W = 40;
-  const H = 256;
+  // Extract title — Plotly may serialize as {text: "..."} or plain string
+  const rawTitle = marker.colorbar?.title;
+  const title: string =
+    typeof rawTitle === 'object' && rawTitle !== null
+      ? rawTitle.text ?? ''
+      : rawTitle ?? '';
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Build display title: join name + unit on one line for horizontal layout
+  let displayTitle = title;
+
+  // Layout constants (CSS pixels) — horizontal orientation
+  const FONT = 11;
+  const TITLE_H = displayTitle ? 18 : 0;
+  const PAD = 10;
+  const BAR_W = 280;  // gradient bar width (horizontal)
+  const BAR_H = 12;   // gradient bar height
+  const TICK_COUNT = 5;
+  const TICK_LABEL_H = 16;
+  const PANEL_W = PAD + BAR_W + PAD;
+  const PANEL_H = PAD + TITLE_H + BAR_H + 4 + TICK_LABEL_H + PAD;
+  const BAR_X = PAD;
+  const BAR_Y = PAD + TITLE_H;
+  const RADIUS = 8;
+
   const canvas = document.createElement('canvas');
-  canvas.width = W + 80; // extra room for labels
-  canvas.height = H + 40;
+  canvas.width = PANEL_W * dpr;
+  canvas.height = PANEL_H * dpr;
+  canvas.style.width = `${PANEL_W}px`;
+  canvas.style.height = `${PANEL_H}px`;
   const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(dpr, dpr);
 
-  // Draw gradient bar
-  const grad = ctx.createLinearGradient(0, H, 0, 0); // bottom→top
+  // --- Glass panel background ---
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(RADIUS, 0);
+  ctx.lineTo(PANEL_W - RADIUS, 0);
+  ctx.quadraticCurveTo(PANEL_W, 0, PANEL_W, RADIUS);
+  ctx.lineTo(PANEL_W, PANEL_H - RADIUS);
+  ctx.quadraticCurveTo(PANEL_W, PANEL_H, PANEL_W - RADIUS, PANEL_H);
+  ctx.lineTo(RADIUS, PANEL_H);
+  ctx.quadraticCurveTo(0, PANEL_H, 0, PANEL_H - RADIUS);
+  ctx.lineTo(0, RADIUS);
+  ctx.quadraticCurveTo(0, 0, RADIUS, 0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+
+  // --- Title ---
+  if (displayTitle) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.font = `bold ${FONT}px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayTitle, PANEL_W / 2, PAD + TITLE_H / 2);
+  }
+
+  // --- Horizontal gradient bar with rounded corners ---
+  const barRadius = 4;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(BAR_X + barRadius, BAR_Y);
+  ctx.lineTo(BAR_X + BAR_W - barRadius, BAR_Y);
+  ctx.quadraticCurveTo(BAR_X + BAR_W, BAR_Y, BAR_X + BAR_W, BAR_Y + barRadius);
+  ctx.lineTo(BAR_X + BAR_W, BAR_Y + BAR_H - barRadius);
+  ctx.quadraticCurveTo(BAR_X + BAR_W, BAR_Y + BAR_H, BAR_X + BAR_W - barRadius, BAR_Y + BAR_H);
+  ctx.lineTo(BAR_X + barRadius, BAR_Y + BAR_H);
+  ctx.quadraticCurveTo(BAR_X, BAR_Y + BAR_H, BAR_X, BAR_Y + BAR_H - barRadius);
+  ctx.lineTo(BAR_X, BAR_Y + barRadius);
+  ctx.quadraticCurveTo(BAR_X, BAR_Y, BAR_X + barRadius, BAR_Y);
+  ctx.closePath();
+  ctx.clip();
+
+  const grad = ctx.createLinearGradient(BAR_X, 0, BAR_X + BAR_W, 0); // left→right
   for (const [t, col] of stops) {
     grad.addColorStop(t, col);
   }
   ctx.fillStyle = grad;
-  ctx.fillRect(8, 16, W, H);
+  ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H);
+  ctx.restore();
 
-  // Labels
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(vmax.toFixed(2), W + 14, 26);
-  ctx.fillText(((vmin + vmax) / 2).toFixed(2), W + 14, H / 2 + 16);
-  ctx.fillText(vmin.toFixed(2), W + 14, H + 14);
+  // --- Tick marks & labels (below bar) ---
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1;
+  ctx.font = `${FONT}px "Segoe UI", system-ui, sans-serif`;
+  ctx.textBaseline = 'top';
 
-  // Title
-  if (title) {
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(title, (W + 80) / 2, 12);
+  // Compact number formatter
+  const formatTick = (v: number): string => {
+    const abs = Math.abs(v);
+    if (abs >= 1e9) return (v / 1e9).toPrecision(3) + 'G';
+    if (abs >= 1e6) return (v / 1e6).toPrecision(3) + 'M';
+    if (abs >= 1e4) return (v / 1e3).toPrecision(3) + 'k';
+    if (abs >= 100) return v.toFixed(0);
+    if (abs >= 1) return v.toPrecision(3);
+    if (abs === 0) return '0';
+    return v.toPrecision(2);
+  };
+
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const frac = i / (TICK_COUNT - 1); // 0=left(min), 1=right(max)
+    const val = vmin + frac * (vmax - vmin);
+    const x = BAR_X + frac * BAR_W;
+
+    // Tick line
+    ctx.beginPath();
+    ctx.moveTo(x, BAR_Y + BAR_H);
+    ctx.lineTo(x, BAR_Y + BAR_H + 4);
+    ctx.stroke();
+
+    // Label
+    ctx.textAlign = i === 0 ? 'left' : i === TICK_COUNT - 1 ? 'right' : 'center';
+    ctx.fillText(formatTick(val), x, BAR_Y + BAR_H + 5);
   }
 
   return { canvas, title, vmin, vmax };
@@ -397,7 +487,7 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
         const overlay = document.createElement('div');
         overlay.style.position = 'absolute';
         overlay.style.right = '16px';
-        overlay.style.top = '16px';
+        overlay.style.bottom = '16px';
         overlay.style.pointerEvents = 'none';
         overlay.style.zIndex = '10';
         overlay.appendChild(cb.canvas);
