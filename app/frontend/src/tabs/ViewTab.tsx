@@ -1,31 +1,14 @@
 import React, { useState } from 'react';
 import { runView } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
+import ColorSettings from '../components/ColorSettings';
+import SamplingSettings from '../components/SamplingSettings';
+import VoxelClassVisibility from '../components/VoxelClassVisibility';
+import { CUSTOM_CLASSES } from '../constants';
 
 interface ViewTabProps {
   hasModel: boolean;
 }
-
-const COLORMAPS = [
-  'viridis', 'plasma', 'magma', 'inferno', 'cividis', 'turbo',
-  'Greens', 'Blues', 'BuPu_r', 'coolwarm', 'RdYlBu_r', 'gray',
-];
-
-const CUSTOM_CLASSES = [
-  { id: -3, label: 'Building' },
-  { id: -2, label: 'Tree' },
-  { id: 1, label: 'Bareland' },
-  { id: 2, label: 'Rangeland' },
-  { id: 3, label: 'Shrub' },
-  { id: 4, label: 'Agriculture land' },
-  { id: 6, label: 'Moss and lichen' },
-  { id: 7, label: 'Wet land' },
-  { id: 8, label: 'Mangrove' },
-  { id: 9, label: 'Water' },
-  { id: 10, label: 'Snow and ice' },
-  { id: 11, label: 'Developed space' },
-  { id: 12, label: 'Road' },
-];
 
 const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
   const [viewType, setViewType] = useState('green');
@@ -40,11 +23,10 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
   const [colormap, setColormap] = useState('viridis');
   const [vmin, setVmin] = useState(0);
   const [vmax, setVmax] = useState(1);
+  const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showColor, setShowColor] = useState(false);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -73,7 +55,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
         colormap,
         vmin,
         vmax,
-        hidden_classes: [],
+        hidden_classes: Array.from(hiddenClasses),
       });
       setFigureJson(result.figure_json);
     } catch (err: any) {
@@ -140,63 +122,31 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
           <input type="number" value={viewPointHeight} min={0} max={10} step={0.5} onChange={(e) => setViewPointHeight(Number(e.target.value))} />
         </div>
 
-        <div className="expander">
-          <div className="expander-header" onClick={() => setShowAdvanced(!showAdvanced)}>
-            Sampling Settings <span>{showAdvanced ? '▲' : '▼'}</span>
-          </div>
-          {showAdvanced && (
-            <div className="expander-body">
-              <div className="form-row">
-                <div>
-                  <label>N_azimuth</label>
-                  <input type="number" value={nAzimuth} min={1} max={360} onChange={(e) => setNAzimuth(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label>N_elevation</label>
-                  <input type="number" value={nElevation} min={1} max={180} onChange={(e) => setNElevation(Number(e.target.value))} />
-                </div>
-              </div>
-              {analysisTarget === 'ground' && (
-                <div className="form-row">
-                  <div>
-                    <label>Elev min (°)</label>
-                    <input type="number" value={elevMin} onChange={(e) => setElevMin(Number(e.target.value))} />
-                  </div>
-                  <div>
-                    <label>Elev max (°)</label>
-                    <input type="number" value={elevMax} onChange={(e) => setElevMax(Number(e.target.value))} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <SamplingSettings
+          nAzimuth={nAzimuth}
+          onNAzimuthChange={setNAzimuth}
+          nElevation={nElevation}
+          onNElevationChange={setNElevation}
+          elevMin={elevMin}
+          onElevMinChange={setElevMin}
+          elevMax={elevMax}
+          onElevMaxChange={setElevMax}
+          showElevationRange={analysisTarget === 'ground'}
+        />
 
-        <div className="expander">
-          <div className="expander-header" onClick={() => setShowColor(!showColor)}>
-            Color Settings <span>{showColor ? '▲' : '▼'}</span>
-          </div>
-          {showColor && (
-            <div className="expander-body">
-              <div className="form-group">
-                <label>Colormap</label>
-                <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-                  {COLORMAPS.map((cm) => <option key={cm} value={cm}>{cm}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <div>
-                  <label>vmin</label>
-                  <input type="number" value={vmin} step={0.1} onChange={(e) => setVmin(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label>vmax</label>
-                  <input type="number" value={vmax} step={0.1} onChange={(e) => setVmax(Number(e.target.value))} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <ColorSettings
+          colormap={colormap}
+          onColormapChange={setColormap}
+          vmin={vmin}
+          onVminChange={setVmin}
+          vmax={vmax}
+          onVmaxChange={(v) => setVmax(Number(v))}
+        />
+
+        <VoxelClassVisibility
+          hiddenClasses={hiddenClasses}
+          onHiddenClassesChange={setHiddenClasses}
+        />
 
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}

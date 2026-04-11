@@ -20,6 +20,9 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import matplotlib
+matplotlib.use("Agg")
+
 import geopandas as gpd
 import numpy as np
 import requests
@@ -480,10 +483,10 @@ async def run_solar(req: SolarRequest):
             }
 
             if req.calc_type == "instantaneous":
-                irradiance_kwargs["temporal_mode"] = "instantaneous"
+                irradiance_kwargs["calc_type"] = "instantaneous"
                 irradiance_kwargs["calc_time"] = req.calc_time or "01-01 12:00:00"
             else:
-                irradiance_kwargs["temporal_mode"] = "cumulative"
+                irradiance_kwargs["calc_type"] = "cumulative"
                 irradiance_kwargs["period_start"] = req.start_time
                 irradiance_kwargs["period_end"] = req.end_time
 

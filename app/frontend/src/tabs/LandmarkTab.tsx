@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
 import { runLandmark } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
+import ColorSettings from '../components/ColorSettings';
+import SamplingSettings from '../components/SamplingSettings';
+import VoxelClassVisibility from '../components/VoxelClassVisibility';
 
 interface LandmarkTabProps {
   hasModel: boolean;
 }
-
-const COLORMAPS = [
-  'viridis', 'plasma', 'magma', 'inferno', 'cividis', 'turbo',
-  'Greens', 'Blues', 'coolwarm', 'RdYlBu_r', 'gray',
-];
 
 const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
@@ -21,11 +19,10 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
   const [colormap, setColormap] = useState('viridis');
   const [vmin, setVmin] = useState(0);
   const [vmax, setVmax] = useState(1);
+  const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showColor, setShowColor] = useState(false);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -51,7 +48,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
         colormap,
         vmin,
         vmax,
-        hidden_classes: [],
+        hidden_classes: Array.from(hiddenClasses),
       });
       setFigureJson(result.figure_json);
     } catch (err: any) {
@@ -89,63 +86,31 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
           />
         </div>
 
-        <div className="expander">
-          <div className="expander-header" onClick={() => setShowAdvanced(!showAdvanced)}>
-            Sampling Settings <span>{showAdvanced ? '▲' : '▼'}</span>
-          </div>
-          {showAdvanced && (
-            <div className="expander-body">
-              <div className="form-row">
-                <div>
-                  <label>N_azimuth</label>
-                  <input type="number" value={nAzimuth} min={1} max={360} onChange={(e) => setNAzimuth(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label>N_elevation</label>
-                  <input type="number" value={nElevation} min={1} max={180} onChange={(e) => setNElevation(Number(e.target.value))} />
-                </div>
-              </div>
-              {analysisTarget === 'ground' && (
-                <div className="form-row">
-                  <div>
-                    <label>Elev min (°)</label>
-                    <input type="number" value={elevMin} onChange={(e) => setElevMin(Number(e.target.value))} />
-                  </div>
-                  <div>
-                    <label>Elev max (°)</label>
-                    <input type="number" value={elevMax} onChange={(e) => setElevMax(Number(e.target.value))} />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <SamplingSettings
+          nAzimuth={nAzimuth}
+          onNAzimuthChange={setNAzimuth}
+          nElevation={nElevation}
+          onNElevationChange={setNElevation}
+          elevMin={elevMin}
+          onElevMinChange={setElevMin}
+          elevMax={elevMax}
+          onElevMaxChange={setElevMax}
+          showElevationRange={analysisTarget === 'ground'}
+        />
 
-        <div className="expander">
-          <div className="expander-header" onClick={() => setShowColor(!showColor)}>
-            Color Settings <span>{showColor ? '▲' : '▼'}</span>
-          </div>
-          {showColor && (
-            <div className="expander-body">
-              <div className="form-group">
-                <label>Colormap</label>
-                <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-                  {COLORMAPS.map((cm) => <option key={cm} value={cm}>{cm}</option>)}
-                </select>
-              </div>
-              <div className="form-row">
-                <div>
-                  <label>vmin</label>
-                  <input type="number" value={vmin} step={0.1} onChange={(e) => setVmin(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label>vmax</label>
-                  <input type="number" value={vmax} step={0.1} onChange={(e) => setVmax(Number(e.target.value))} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <ColorSettings
+          colormap={colormap}
+          onColormapChange={setColormap}
+          vmin={vmin}
+          onVminChange={setVmin}
+          vmax={vmax}
+          onVmaxChange={(v) => setVmax(Number(v))}
+        />
+
+        <VoxelClassVisibility
+          hiddenClasses={hiddenClasses}
+          onHiddenClassesChange={setHiddenClasses}
+        />
 
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}

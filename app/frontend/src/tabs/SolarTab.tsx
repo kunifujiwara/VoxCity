@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
 import { runSolar } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
+import ColorSettings from '../components/ColorSettings';
+import VoxelClassVisibility from '../components/VoxelClassVisibility';
 
 interface SolarTabProps {
   hasModel: boolean;
 }
-
-const COLORMAPS = [
-  'magma', 'viridis', 'plasma', 'inferno', 'cividis', 'turbo',
-  'Greens', 'Blues', 'coolwarm', 'RdYlBu_r', 'Spectral', 'gray',
-];
 
 const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
   const [calcType, setCalcType] = useState<'instantaneous' | 'cumulative'>('instantaneous');
@@ -21,10 +18,10 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
   const [colormap, setColormap] = useState('magma');
   const [vmin, setVmin] = useState<number>(0);
   const [vmax, setVmax] = useState<string>('');
+  const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
-  const [showColorSettings, setShowColorSettings] = useState(false);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -41,7 +38,7 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
         colormap,
         vmin,
         vmax: vmax ? parseFloat(vmax) : null,
-        hidden_classes: [],
+        hidden_classes: Array.from(hiddenClasses),
       };
       if (calcType === 'instantaneous') {
         params.calc_time = `${calcDate} ${calcTime}`;
@@ -114,33 +111,20 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
           </>
         )}
 
-        <div className="expander">
-          <div className="expander-header" onClick={() => setShowColorSettings(!showColorSettings)}>
-            Color Settings <span>{showColorSettings ? '▲' : '▼'}</span>
-          </div>
-          {showColorSettings && (
-            <div className="expander-body">
-              <div className="form-group">
-                <label>Colormap</label>
-                <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-                  {COLORMAPS.map((cm) => (
-                    <option key={cm} value={cm}>{cm}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-row">
-                <div>
-                  <label>vmin</label>
-                  <input type="number" value={vmin} onChange={(e) => setVmin(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label>vmax (empty = auto)</label>
-                  <input type="text" value={vmax} onChange={(e) => setVmax(e.target.value)} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <ColorSettings
+          colormap={colormap}
+          onColormapChange={setColormap}
+          vmin={vmin}
+          onVminChange={setVmin}
+          vmax={vmax}
+          onVmaxChange={(v) => setVmax(String(v))}
+          vmaxAsText
+        />
+
+        <VoxelClassVisibility
+          hiddenClasses={hiddenClasses}
+          onHiddenClassesChange={setHiddenClasses}
+        />
 
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}

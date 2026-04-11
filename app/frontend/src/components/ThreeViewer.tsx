@@ -93,13 +93,13 @@ function buildMesh3d(trace: any): THREE.Mesh | null {
   const nVerts = x.length;
   const nFaces = ti.length;
 
-  // --- Build geometry (swap Y↔Z: Plotly is Z-up, Three.js is Y-up) ---
+  // --- Build geometry (Z-up → Y-up): (x,y,z) → (x, z, -y) ---
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(nVerts * 3);
   for (let v = 0; v < nVerts; v++) {
     positions[v * 3] = x[v];
     positions[v * 3 + 1] = z[v];
-    positions[v * 3 + 2] = y[v];
+    positions[v * 3 + 2] = -y[v];
   }
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
@@ -405,13 +405,6 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
         colorbarOverlayRef.current = overlay;
       }
     }
-
-    // --- Axes helper ---
-    const axesSize = maxDim * 0.2;
-    const axes = new THREE.AxesHelper(axesSize);
-    // Move axes to the bottom-left-back corner of the bounding box (after centering)
-    axes.position.set(-size.x / 2, -size.y / 2, -size.z / 2);
-    scene.add(axes);
 
     // --- Render loop ---
     const animate = () => {

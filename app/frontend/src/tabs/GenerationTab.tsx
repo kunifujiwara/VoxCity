@@ -1,56 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
-
-// Available data source options for each category
-const BUILDING_SOURCES = [
-  'OpenStreetMap',
-  'Microsoft Building Footprints',
-  'Open Building 2.5D Temporal',
-  'EUBUCCO v0.1',
-  'Overture',
-  'GBA',
-];
-
-const BUILDING_COMPLEMENTARY_SOURCES = [
-  'None',
-  'OpenStreetMap',
-  'Microsoft Building Footprints',
-  'Open Building 2.5D Temporal',
-  'EUBUCCO v0.1',
-  'Overture',
-  'GBA',
-  'England 1m DSM - DTM',
-  'Netherlands 0.5m DSM - DTM',
-];
-
-const LAND_COVER_SOURCES = [
-  'OpenStreetMap',
-  'OpenEarthMapJapan',
-  'Urbanwatch',
-  'ESA WorldCover',
-  'ESRI 10m Annual Land Cover',
-  'Dynamic World V1',
-];
-
-const CANOPY_HEIGHT_SOURCES = [
-  'Static',
-  'OpenStreetMap',
-  'High Resolution 1m Global Canopy Height Maps',
-  'ETH Global Sentinel-2 10m Canopy Height (2020)',
-];
-
-const DEM_SOURCES = [
-  'Flat',
-  'FABDEM',
-  'DeltaDTM',
-  'USGS 3DEP 1m',
-  'England 1m DTM',
-  'DEM France 1m',
-  'DEM France 5m',
-  'AUSTRALIA 5M DEM',
-  'Netherlands 0.5m DTM',
-];
+import {
+  BUILDING_SOURCES,
+  BUILDING_COMPLEMENTARY_SOURCES,
+  LAND_COVER_SOURCES,
+  CANOPY_HEIGHT_SOURCES,
+  DEM_SOURCES,
+} from '../constants';
 
 interface GenerationTabProps {
   rectangle: number[][] | null;
