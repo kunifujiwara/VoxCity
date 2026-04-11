@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import TargetAreaTab from './tabs/TargetAreaTab';
 import GenerationTab from './tabs/GenerationTab';
 import SolarTab from './tabs/SolarTab';
 import ViewTab from './tabs/ViewTab';
 import LandmarkTab from './tabs/LandmarkTab';
 import ExportTab from './tabs/ExportTab';
+import { healthCheck, resetSession } from './api';
 
 const TABS = [
   { id: 'area', label: 'Target Area' },
@@ -22,6 +23,19 @@ const App: React.FC = () => {
   const [rectangle, setRectangle] = useState<number[][] | null>(null);
   const [figureJson, setFigureJson] = useState('');
   const [hasModel, setHasModel] = useState(false);
+
+  // On page load, reset the backend so Taichi caches are cleared and a
+  // new target area / model / simulation cycle can run cleanly.
+  // Also check whether a model already exists (backend may still hold one).
+  const didReset = useRef(false);
+  useEffect(() => {
+    if (didReset.current) return;
+    didReset.current = true;
+    resetSession()
+      .then(() => healthCheck())
+      .then((h) => setHasModel(h.has_model))
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="app-container">

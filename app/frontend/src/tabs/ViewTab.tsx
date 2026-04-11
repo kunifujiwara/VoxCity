@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { runView } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import { CUSTOM_CLASSES } from '../constants';
+import { useDebouncedRerender } from '../hooks/useDebouncedRerender';
 
 interface ViewTabProps {
   hasModel: boolean;
@@ -25,8 +26,12 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
   const [vmax, setVmax] = useState(1);
   const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
+  const hasSimResult = useRef(false);
+
+  useDebouncedRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -58,6 +63,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
         hidden_classes: Array.from(hiddenClasses),
       });
       setFigureJson(result.figure_json);
+      hasSimResult.current = true;
     } catch (err: any) {
       setError(err.message);
     }

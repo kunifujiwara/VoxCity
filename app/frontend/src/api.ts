@@ -92,6 +92,10 @@ export async function healthCheck() {
   return request<{ status: string; has_model: boolean }>('/health');
 }
 
+export async function resetSession() {
+  return request<{ status: string }>('/reset', { method: 'POST' });
+}
+
 export async function autoDetectSources(rectangleVertices: number[][]) {
   return request<AutoDetectResult>('/auto-detect-sources', {
     method: 'POST',
@@ -244,4 +248,16 @@ export async function getModelPreview() {
 
 export async function getModelInfo() {
   return request<ModelInfo>('/model/info');
+}
+
+export async function rerenderSimulation(params: {
+  colormap: string;
+  vmin: number | null;
+  vmax: number | null;
+  hidden_classes: number[];
+}) {
+  return request<SimulationResult>('/rerender', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
 }

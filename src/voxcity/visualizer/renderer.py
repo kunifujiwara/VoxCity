@@ -353,6 +353,12 @@ def visualize_voxcity_plotly(
             z_off = float(meshsize) + z_off
         except Exception:
             pass
+        # When voxels are downsampled (stride > 1) the displayed voxel
+        # tops can be up to (stride-1)*meshsize higher than the original
+        # grid positions used for the DEM.  Add extra offset to prevent
+        # the sim surface from clipping into the coarser displayed voxels.
+        if stride > 1:
+            z_off += (stride - 1) * float(meshsize)
 
         # Derive DEM from the actual voxel grid so that sim-surface z
         # aligns exactly with the terrain voxel tops.  The raw

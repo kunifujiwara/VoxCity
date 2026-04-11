@@ -96,10 +96,17 @@ def _get_or_create_domain(
     # we need to reset Taichi to free the old fields
     if _domain_cache is not None and _domain_cache.shape != shape:
         import taichi as ti
+        from ..init_taichi import reset as reset_init_flag
         try:
             ti.reset()
         except Exception:
             pass  # Ignore reset errors
+        # Clear the init tracking flag so ti.init() will be called again
+        reset_init_flag()
+        try:
+            ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
+        except Exception:
+            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
     
     domain = Domain(
         nx=nx, ny=ny, nz=nz,
@@ -136,8 +143,10 @@ def reset_visibility_taichi_cache():
     _domain_cache = None
     
     import taichi as ti
+    from ..init_taichi import reset as reset_init_flag
     try:
         ti.reset()
+        reset_init_flag()
         # Reinitialize Taichi after reset
         ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
     except Exception:

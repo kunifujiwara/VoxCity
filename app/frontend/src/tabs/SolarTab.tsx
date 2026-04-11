@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { runSolar } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import ColorSettings from '../components/ColorSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
+import { useDebouncedRerender } from '../hooks/useDebouncedRerender';
 
 interface SolarTabProps {
   hasModel: boolean;
@@ -20,8 +21,12 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
   const [vmax, setVmax] = useState<string>('');
   const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
+  const hasSimResult = useRef(false);
+
+  useDebouncedRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -48,6 +53,7 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
       }
       const result = await runSolar(params);
       setFigureJson(result.figure_json);
+      hasSimResult.current = true;
     } catch (err: any) {
       setError(err.message);
     }

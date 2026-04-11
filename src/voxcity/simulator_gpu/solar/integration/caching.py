@@ -201,8 +201,10 @@ def reset_solar_taichi_cache():
     _volumetric_flux_cache = None
     
     import taichi as ti
+    from ...init_taichi import reset as reset_init_flag
     try:
         ti.reset()
+        reset_init_flag()
         ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
     except Exception:
         try:
@@ -900,8 +902,10 @@ def reset_solar_taichi_cache():
     _volumetric_flux_cache = None
     
     import taichi as ti
+    from ...init_taichi import reset as reset_init_flag
     try:
         ti.reset()
+        reset_init_flag()
         # Reinitialize Taichi after reset
         ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
     except Exception:

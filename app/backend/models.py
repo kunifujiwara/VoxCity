@@ -116,6 +116,14 @@ class ExportObjRequest(BaseModel):
     export_netcdf: bool = False
 
 
+class RerenderRequest(BaseModel):
+    """Re-render the last simulation with new visualization parameters."""
+    colormap: str = "viridis"
+    vmin: Optional[float] = 0.0
+    vmax: Optional[float] = None
+    hidden_classes: List[int] = Field(default_factory=list)
+
+
 class PlotlyFigureResponse(BaseModel):
     """JSON-serialized Plotly figure for rendering in the React frontend."""
     figure_json: str

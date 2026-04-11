@@ -56,9 +56,6 @@ def run_backend():
             "0.0.0.0",
             "--port",
             "8000",
-            "--reload",
-            "--reload-dir",
-            "backend",
         ],
         cwd=str(APP_DIR),
     )

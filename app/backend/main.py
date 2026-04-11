@@ -39,6 +39,7 @@ from .models import (
     GeocodeResponse,
     LandmarkRequest,
     RectangleFromDimensions,
+    RerenderRequest,
     SolarRequest,
     StatusResponse,
     ViewRequest,
@@ -76,7 +77,7 @@ from voxcity.utils.lc import get_land_cover_classes
 # Ensure Taichi is initialized early (before any simulation calls).
 # This must happen at module-import time so that reloaded worker
 # processes always have a valid Taichi runtime.
-from voxcity.simulator_gpu.init_taichi import ensure_initialized
+from voxcity.simulator_gpu.init_taichi import ensure_initialized, reset as reset_taichi_flag
 ensure_initialized()
 
 # Attempt to initialize Google Earth Engine for background users.
@@ -228,12 +229,62 @@ def _make_plotly_json(
 
 
 # ---------------------------------------------------------------------------
+# Helpers – Taichi / GPU cache management
+# ---------------------------------------------------------------------------
+
+def _reset_taichi_and_caches():
+    """Reset all Taichi fields and GPU caches so a new model can be simulated."""
+    import taichi as ti
+    from voxcity.simulator_gpu.visibility.integration import clear_visibility_cache
+    from voxcity.simulator_gpu.solar.integration.caching import clear_all_caches as clear_all_solar_caches
+
+    # Clear domain / radiation model caches (does not touch ti runtime)
+    clear_visibility_cache()
+    try:
+        clear_all_solar_caches()
+    except Exception:
+        pass
+
+    # Reset Taichi runtime and re-initialise
+    try:
+        ti.reset()
+    except Exception:
+        pass
+    reset_taichi_flag()
+    try:
+        ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
+    except Exception:
+        try:
+            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
+        except Exception:
+            pass
+
+    # Clear last-sim state
+    app_state.last_sim_type = None
+    app_state.last_sim_target = None
+    app_state.last_sim_grid = None
+    app_state.last_sim_mesh = None
+    app_state.last_sim_voxcity_grid = None
+    app_state.last_sim_view_point_height = 1.5
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "has_model": app_state.has_model}
+
+
+@app.post("/api/reset")
+async def reset_session():
+    """Reset backend state so the user can start fresh (e.g. after page reload)."""
+    try:
+        _reset_taichi_and_caches()
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/geocode", response_model=GeocodeResponse)
@@ -301,6 +352,10 @@ async def generate_model(req: GenerateRequest):
     dataclass directly (no longer a tuple of arrays).
     """
     try:
+        # Reset Taichi & GPU caches so fields from the previous model don't
+        # conflict with the new grid dimensions.
+        _reset_taichi_and_caches()
+
         rectangle_vertices = _vertices_to_tuples(req.rectangle_vertices)
         output_dir = os.path.join(BASE_OUTPUT_DIR, "test")
         os.makedirs(output_dir, exist_ok=True)
@@ -451,6 +506,14 @@ async def run_solar(req: SolarRequest):
                 **solar_kwargs,
             )
 
+            # Store for re-rendering
+            app_state.last_sim_type = "solar"
+            app_state.last_sim_target = "ground"
+            app_state.last_sim_grid = solar_grid
+            app_state.last_sim_mesh = None
+            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
+            app_state.last_sim_view_point_height = req.view_point_height
+
             # Build overlay figure
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -465,7 +528,7 @@ async def run_solar(req: SolarRequest):
                     "ground_sim_grid": solar_grid,
                     "ground_dem_grid": voxcity.dem.elevation,
                     "ground_view_point_height": req.view_point_height,
-                    "ground_z_offset": app_state.meshsize,
+                    "ground_z_offset": max(req.view_point_height, app_state.meshsize),
                     "ground_colormap": req.colormap,
                     "ground_vmin": req.vmin,
                     "ground_vmax": req.vmax,
@@ -493,6 +556,13 @@ async def run_solar(req: SolarRequest):
             irradiance = get_building_global_solar_irradiance_using_epw(
                 voxcity, **irradiance_kwargs
             )
+
+            # Store for re-rendering
+            app_state.last_sim_type = "solar"
+            app_state.last_sim_target = "building"
+            app_state.last_sim_grid = None
+            app_state.last_sim_mesh = irradiance
+            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -565,6 +635,14 @@ async def run_view(req: ViewRequest):
                 mode = "green" if req.view_type == "green" else "sky"
                 view_grid = get_view_index(voxcity, mode=mode, **view_kwargs)
 
+            # Store for re-rendering
+            app_state.last_sim_type = "view"
+            app_state.last_sim_target = "ground"
+            app_state.last_sim_grid = view_grid
+            app_state.last_sim_mesh = None
+            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
+            app_state.last_sim_view_point_height = req.view_point_height
+
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
@@ -578,7 +656,7 @@ async def run_view(req: ViewRequest):
                     "ground_sim_grid": view_grid,
                     "ground_dem_grid": voxcity.dem.elevation,
                     "ground_view_point_height": req.view_point_height,
-                    "ground_z_offset": app_state.meshsize,
+                    "ground_z_offset": max(req.view_point_height, app_state.meshsize),
                     "ground_colormap": req.colormap,
                     "ground_vmin": req.vmin,
                     "ground_vmax": req.vmax,
@@ -614,6 +692,13 @@ async def run_view(req: ViewRequest):
 
             if mesh is None:
                 raise HTTPException(status_code=500, detail="No building surfaces found")
+
+            # Store for re-rendering
+            app_state.last_sim_type = "view"
+            app_state.last_sim_target = "building"
+            app_state.last_sim_grid = None
+            app_state.last_sim_mesh = mesh
+            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -702,6 +787,14 @@ async def run_landmark(req: LandmarkRequest):
             lg = np.asarray(landmark_grid, dtype=float)
             lg[lg == 0.0] = np.nan
 
+            # Store for re-rendering
+            app_state.last_sim_type = "landmark"
+            app_state.last_sim_target = "ground"
+            app_state.last_sim_grid = lg
+            app_state.last_sim_mesh = None
+            app_state.last_sim_voxcity_grid = voxcity_grid
+            app_state.last_sim_view_point_height = req.view_point_height
+
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
@@ -714,7 +807,7 @@ async def run_landmark(req: LandmarkRequest):
                     "ground_sim_grid": lg,
                     "ground_dem_grid": voxcity.dem.elevation,
                     "ground_view_point_height": req.view_point_height,
-                    "ground_z_offset": app_state.meshsize,
+                    "ground_z_offset": max(req.view_point_height, app_state.meshsize),
                     "ground_colormap": req.colormap,
                     "ground_vmin": req.vmin,
                     "ground_vmax": req.vmax,
@@ -754,6 +847,13 @@ async def run_landmark(req: LandmarkRequest):
             if landmark_mesh is None:
                 raise HTTPException(status_code=500, detail="No surfaces generated")
 
+            # Store for re-rendering
+            app_state.last_sim_type = "landmark"
+            app_state.last_sim_target = "building"
+            app_state.last_sim_grid = None
+            app_state.last_sim_mesh = landmark_mesh
+            app_state.last_sim_voxcity_grid = voxcity_grid
+
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
@@ -774,6 +874,81 @@ async def run_landmark(req: LandmarkRequest):
             )
 
             return {"status": "ok", "figure_json": fig_json}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/rerender")
+async def rerender(req: RerenderRequest):
+    """Re-render the last simulation result with new visualization settings.
+
+    This avoids re-running the expensive simulation when only the colormap,
+    value range, or hidden classes change.
+    """
+    if app_state.last_sim_type is None:
+        raise HTTPException(status_code=400, detail="No simulation result to re-render")
+
+    try:
+        voxcity_grid = app_state.last_sim_voxcity_grid
+        meshsize = app_state.meshsize
+        present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
+        classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
+
+        if app_state.last_sim_target == "ground":
+            sim_grid = app_state.last_sim_grid
+            title_map = {
+                "solar": "Solar overlay",
+                "view": "View Index",
+                "landmark": "Landmark Visibility (Ground)",
+            }
+            fig_json = _make_plotly_json(
+                voxcity_grid,
+                meshsize,
+                {
+                    "classes": classes_include,
+                    "voxel_color_map": "grayscale",
+                    "ground_sim_grid": sim_grid,
+                    "ground_dem_grid": app_state.voxcity.dem.elevation,
+                    "ground_view_point_height": app_state.last_sim_view_point_height,
+                    "ground_z_offset": max(app_state.last_sim_view_point_height, meshsize),
+                    "ground_colormap": req.colormap,
+                    "ground_vmin": req.vmin,
+                    "ground_vmax": req.vmax,
+                    "sim_surface_opacity": 0.95,
+                    "title": title_map.get(app_state.last_sim_type, "Simulation"),
+                },
+            )
+        else:
+            sim_mesh = app_state.last_sim_mesh
+            value_name = (
+                "global" if app_state.last_sim_type == "solar" else "view_factor_values"
+            )
+            title_map = {
+                "solar": "Building Surface Solar (Global)",
+                "view": "Surface View Factor",
+                "landmark": "Landmark Visibility (Surface)",
+            }
+            plot_kwargs: Dict[str, Any] = {
+                "classes": classes_include,
+                "voxel_color_map": "grayscale",
+                "building_sim_mesh": sim_mesh,
+                "building_value_name": value_name,
+                "building_colormap": req.colormap,
+                "building_vmin": req.vmin,
+                "building_vmax": req.vmax,
+                "render_voxel_buildings": False,
+                "title": title_map.get(app_state.last_sim_type, "Simulation"),
+            }
+            if app_state.last_sim_type == "solar":
+                plot_kwargs["building_opacity"] = 1.0
+                plot_kwargs["building_shaded"] = False
+            fig_json = _make_plotly_json(voxcity_grid, meshsize, plot_kwargs)
+
+        return {"status": "ok", "figure_json": fig_json}
 
     except HTTPException:
         raise
