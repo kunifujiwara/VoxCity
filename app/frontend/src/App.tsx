@@ -41,7 +41,7 @@ const App: React.FC = () => {
     <div className="app-container">
       {/* Header */}
       <header className="app-header">
-        <h1>VoxCity Web App</h1>
+        <img src="/logo.png" alt="VoxCity" className="logo" />
       </header>
 
       {/* Tab bar */}

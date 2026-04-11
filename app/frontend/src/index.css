@@ -5,7 +5,7 @@
   --vc-surface: #FFFFFF;
   --vc-muted: #6B7280;
   --vc-ring: #E5E7EB;
-  --vc-accent: #3B82F6;
+  --vc-accent: #6666FF;
   --vc-danger: #EF4444;
   --vc-success: #22C55E;
 }
@@ -19,6 +19,7 @@ html, body, #root {
   font-size: 14px;
   color: #1F2937;
   background: var(--vc-bg);
+  accent-color: var(--vc-accent);
 }
 
 /* ── Layout ───────────────────────────────────────── */
@@ -40,7 +41,7 @@ html, body, #root {
 }
 
 .app-header .logo {
-  height: 30px;
+  height: 40px;
   width: auto;
 }
 
@@ -169,14 +170,14 @@ input:focus, select:focus {
   background: var(--vc-accent);
   border-color: var(--vc-accent);
 }
-.btn-primary:hover { background: #2563EB; }
+.btn-primary:hover { background: #5252CC; }
 
 .btn-secondary {
   background: transparent;
   border-color: var(--vc-accent);
   color: var(--vc-accent);
 }
-.btn-secondary:hover { background: rgba(59, 130, 246, 0.12); }
+.btn-secondary:hover { background: rgba(102, 102, 255, 0.12); }
 
 .btn-sm {
   padding: 0.35rem 0.75rem;
@@ -204,15 +205,15 @@ input:focus, select:focus {
 }
 
 .alert-info {
-  background: #DBEAFE;
-  border: 1px solid #3B82F6;
-  color: #1E40AF;
+  background: #E8E8FF;
+  border: 1px solid #6666FF;
+  color: #3333AA;
 }
 
 .alert-success {
-  background: #DCFCE7;
-  border: 1px solid #22C55E;
-  color: #166534;
+  background: #EDEDFF;
+  border: 1px solid #8888FF;
+  color: #3333AA;
 }
 
 .spinner {
