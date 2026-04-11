@@ -3,7 +3,7 @@ import { runSolar } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import ColorSettings from '../components/ColorSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
-import { useDebouncedRerender } from '../hooks/useDebouncedRerender';
+import { useManualRerender } from '../hooks/useDebouncedRerender';
 
 interface SolarTabProps {
   hasModel: boolean;
@@ -24,9 +24,10 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
   const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
+  const [simDone, setSimDone] = useState(false);
   const hasSimResult = useRef(false);
 
-  useDebouncedRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
+  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -52,8 +53,13 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
         params.end_time = endTime;
       }
       const result = await runSolar(params);
-      setFigureJson(result.figure_json);
-      hasSimResult.current = true;
+      if (!result.figure_json || result.figure_json === '{}') {
+        setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
+      } else {
+        setFigureJson(result.figure_json);
+        hasSimResult.current = true;
+        setSimDone(true);
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -131,6 +137,13 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel }) => {
           hiddenClasses={hiddenClasses}
           onHiddenClassesChange={setHiddenClasses}
         />
+
+        {simDone && (
+          <button className="btn btn-secondary" onClick={handleUpdate} disabled={loading || rerendering} style={{ marginBottom: '0.5rem' }}>
+            {rerendering && <span className="spinner" />}
+            {rerendering ? 'Updating...' : 'Update View'}
+          </button>
+        )}
 
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}

@@ -13,12 +13,13 @@ All heavy lifting delegates to the *current* voxcity package API.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -199,13 +200,23 @@ def _load_citygml_cache(rectangle_vertices):
         return None
 
 
+def _clear_sim_caches() -> None:
+    """Free old simulation results and cached figure JSON before a new run."""
+    app_state.last_sim_grid = None
+    app_state.last_sim_mesh = None
+    app_state.last_base_fig_json = None
+    app_state.last_sim_voxcity_grid = None
+    gc.collect()
+
+
 def _make_plotly_json(
     voxcity_grid: np.ndarray,
     meshsize: float,
     plot_kwargs: dict,
-) -> str:
-    """Render a voxcity plotly figure and return its JSON string."""
-    candidates = (1, 2, 3, 4, 5, 8, 10)
+    forced_downsample: Optional[int] = None,
+) -> Tuple[str, int]:
+    """Render a voxcity plotly figure and return (JSON string, downsample stride)."""
+    candidates = (forced_downsample,) if forced_downsample else (1, 2, 3, 4, 5, 8, 10)
     for ds in candidates:
         try:
             fig = visualize_voxcity_plotly(
@@ -217,15 +228,199 @@ def _make_plotly_json(
                 **plot_kwargs,
             )
             if fig is None:
+                print(f"[_make_plotly_json] ds={ds}: visualize returned None")
                 continue
             fig_json = fig.to_json()
             approx_mb = len(fig_json.encode("utf-8")) / (1024.0 * 1024.0)
-            if approx_mb > 50:
+            print(f"[_make_plotly_json] ds={ds}: {approx_mb:.1f} MB")
+            if approx_mb > 200:
                 continue
-            return fig_json
-        except Exception:
+            return fig_json, ds
+        except Exception as exc:
+            print(f"[_make_plotly_json] ds={ds}: exception: {exc}")
             continue
-    return "{}"
+    print("[_make_plotly_json] WARNING: all candidates failed, returning empty JSON")
+    return "{}", 1
+
+
+# ---------------------------------------------------------------------------
+# Helpers – fast rerender (sim overlay only, skip voxel face extraction)
+# ---------------------------------------------------------------------------
+
+_VOXEL_TRACE_NAMES = frozenset({'+x', '-x', '+y', '-y', '+z', '-z'})
+
+
+def _mpl_cmap_to_plotly_colorscale(cmap_name: str, n: int = 256) -> list:
+    """Convert a matplotlib colormap name to a Plotly colorscale list."""
+    import matplotlib.cm as mcm
+    try:
+        cmap = mcm.get_cmap(cmap_name)
+    except Exception:
+        cmap = mcm.get_cmap('viridis')
+    scale = []
+    for i in range(n):
+        x = i / (n - 1)
+        r, g, b, _ = cmap(x)
+        scale.append([x, f"rgb({int(255*r)},{int(255*g)},{int(255*b)})"])
+    return scale
+
+
+def _build_sim_overlay_traces(
+    sim_target: str,
+    sim_type: str,
+    sim_grid,
+    sim_mesh,
+    voxcity_grid: np.ndarray,
+    meshsize: float,
+    colormap: str,
+    vmin: Optional[float],
+    vmax: Optional[float],
+    view_point_height: float,
+    downsample: int,
+) -> list:
+    """Build only the simulation overlay Plotly traces (no voxels).
+
+    Returns a list of trace dicts ready to splice into a cached figure.
+    """
+    import plotly.graph_objects as go
+    import matplotlib.cm as mcm
+    import matplotlib.colors as mcolors
+    from voxcity.geoprocessor.mesh import create_sim_surface_mesh
+
+    fig = go.Figure()
+
+    if sim_target == "ground" and sim_grid is not None:
+        # -- Derive DEM from voxel grid (same logic as renderer.py) --
+        if voxcity_grid is not None and voxcity_grid.ndim == 3:
+            lc_mask = (voxcity_grid >= 1)
+            k_indices = np.arange(voxcity_grid.shape[2])
+            masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+            k_top_grid = np.max(masked_k, axis=2)
+            k_top_grid = np.maximum(k_top_grid, 0)
+            dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+        else:
+            dem_norm = np.zeros_like(sim_grid, dtype=float)
+
+        # -- z-offset (same as renderer.py) --
+        z_off = float(meshsize) + max(float(view_point_height), float(meshsize))
+        if downsample > 1:
+            z_off += (downsample - 1) * float(meshsize)
+
+        sim_vals = np.asarray(sim_grid, dtype=float)
+        finite = np.isfinite(sim_vals)
+        vmin_g = vmin if vmin is not None else (float(np.nanmin(sim_vals[finite])) if np.any(finite) else 0.0)
+        vmax_g = vmax if vmax is not None else (float(np.nanmax(sim_vals[finite])) if np.any(finite) else 1.0)
+
+        sim_mesh_obj = create_sim_surface_mesh(
+            sim_grid, dem_norm,
+            meshsize=meshsize, z_offset=z_off,
+            cmap_name=colormap, vmin=vmin_g, vmax=vmax_g,
+        )
+
+        if sim_mesh_obj is not None and getattr(sim_mesh_obj, 'vertices', None) is not None:
+            V = np.asarray(sim_mesh_obj.vertices)
+            F = np.asarray(sim_mesh_obj.faces)
+            facecolor = None
+            try:
+                colors_rgba = np.asarray(sim_mesh_obj.visual.face_colors)
+                if colors_rgba.ndim == 2 and colors_rgba.shape[0] == len(F):
+                    facecolor = [f"rgb({int(c[0])},{int(c[1])},{int(c[2])})" for c in colors_rgba]
+            except Exception:
+                pass
+
+            lighting = dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=0.0, fresnel=0.0)
+            cx = float((V[:, 0].min() + V[:, 0].max()) * 0.5)
+            cy = float((V[:, 1].min() + V[:, 1].max()) * 0.5)
+            lx = cx + (V[:, 0].max() - V[:, 0].min() + meshsize) * 0.9
+            ly = cy + (V[:, 1].max() - V[:, 1].min() + meshsize) * 0.6
+            lz = float((V[:, 2].min() + V[:, 2].max()) * 0.5) + (V[:, 2].max() - V[:, 2].min() + meshsize) * 1.4
+
+            fig.add_trace(go.Mesh3d(
+                x=V[:, 0], y=V[:, 1], z=V[:, 2],
+                i=F[:, 0], j=F[:, 1], k=F[:, 2],
+                facecolor=facecolor,
+                color=None if facecolor is not None else 'rgb(200,200,200)',
+                opacity=0.95, flatshading=False,
+                lighting=lighting,
+                lightposition=dict(x=lx, y=ly, z=lz),
+                name='sim_surface',
+            ))
+
+            colorscale_g = _mpl_cmap_to_plotly_colorscale(colormap)
+            fig.add_trace(go.Scatter3d(
+                x=[None], y=[None], z=[None], mode='markers',
+                marker=dict(
+                    size=0.1, color=[vmin_g, vmax_g],
+                    colorscale=colorscale_g, cmin=vmin_g, cmax=vmax_g,
+                    colorbar=dict(title='ground', len=0.5, y=0.2), showscale=True,
+                ),
+                showlegend=False, hoverinfo='skip',
+            ))
+
+    elif sim_target == "building" and sim_mesh is not None:
+        if getattr(sim_mesh, 'vertices', None) is not None:
+            Vb = np.asarray(sim_mesh.vertices)
+            Fb = np.asarray(sim_mesh.faces)
+            value_name = "global" if sim_type == "solar" else "view_factor_values"
+
+            values = None
+            if hasattr(sim_mesh, 'metadata') and isinstance(sim_mesh.metadata, dict):
+                values = sim_mesh.metadata.get(value_name)
+            if values is not None:
+                values = np.asarray(values)
+
+            face_vals = None
+            if values is not None and len(values) == len(Fb):
+                face_vals = values.astype(float)
+            elif values is not None and len(values) == len(Vb):
+                vals_v = values.astype(float)
+                face_vals = np.nanmean(vals_v[Fb], axis=1)
+
+            facecolor = None
+            vmin_b, vmax_b = 0.0, 1.0
+            if face_vals is not None:
+                finite = np.isfinite(face_vals)
+                vmin_b = vmin if vmin is not None else (float(np.nanmin(face_vals[finite])) if np.any(finite) else 0.0)
+                vmax_b = vmax if vmax is not None else (float(np.nanmax(face_vals[finite])) if np.any(finite) else 1.0)
+                norm_b = mcolors.Normalize(vmin=vmin_b, vmax=vmax_b)
+                cmap_b = mcm.get_cmap(colormap)
+                colors_rgba = np.zeros((len(Fb), 4), dtype=float)
+                colors_rgba[finite] = cmap_b(norm_b(face_vals[finite]))
+                nan_rgba = np.array(mcolors.to_rgba('gray'))
+                colors_rgba[~finite] = nan_rgba
+                facecolor = [f"rgb({int(255*c[0])},{int(255*c[1])},{int(255*c[2])})" for c in colors_rgba]
+
+            lighting_b = dict(ambient=1.0, diffuse=0.0, specular=0.0, roughness=0.0, fresnel=0.0)
+            cx = float((Vb[:, 0].min() + Vb[:, 0].max()) * 0.5)
+            cy = float((Vb[:, 1].min() + Vb[:, 1].max()) * 0.5)
+            lx = cx + (Vb[:, 0].max() - Vb[:, 0].min() + meshsize) * 0.9
+            ly = cy + (Vb[:, 1].max() - Vb[:, 1].min() + meshsize) * 0.6
+            lz = float((Vb[:, 2].min() + Vb[:, 2].max()) * 0.5) + (Vb[:, 2].max() - Vb[:, 2].min() + meshsize) * 1.4
+
+            fig.add_trace(go.Mesh3d(
+                x=Vb[:, 0], y=Vb[:, 1], z=Vb[:, 2],
+                i=Fb[:, 0], j=Fb[:, 1], k=Fb[:, 2],
+                facecolor=facecolor if facecolor is not None else None,
+                color=None if facecolor is not None else 'rgb(200,200,200)',
+                opacity=1.0, flatshading=False,
+                lighting=lighting_b,
+                lightposition=dict(x=lx, y=ly, z=lz),
+                name=value_name if facecolor is not None else 'building_mesh',
+            ))
+
+            colorscale_b = _mpl_cmap_to_plotly_colorscale(colormap)
+            fig.add_trace(go.Scatter3d(
+                x=[None], y=[None], z=[None], mode='markers',
+                marker=dict(
+                    size=0.1, color=[vmin_b, vmax_b],
+                    colorscale=colorscale_b, cmin=vmin_b, cmax=vmax_b,
+                    colorbar=dict(title=value_name, len=0.5, y=0.8), showscale=True,
+                ),
+                showlegend=False, hoverinfo='skip',
+            ))
+
+    # Extract trace dicts from the temporary figure
+    return json.loads(fig.to_json()).get('data', [])
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +461,9 @@ def _reset_taichi_and_caches():
     app_state.last_sim_mesh = None
     app_state.last_sim_voxcity_grid = None
     app_state.last_sim_view_point_height = 1.5
+    app_state.last_base_fig_json = None
+    app_state.last_downsample = None
+    app_state.last_hidden_classes = None
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +636,7 @@ async def generate_model(req: GenerateRequest):
         )
 
         # Build 3D preview
-        fig_json = _make_plotly_json(
+        fig_json, _ = _make_plotly_json(
             app_state.voxcity.voxels.classes,
             req.meshsize,
             {"title": "VoxCity 3D"},
@@ -461,6 +659,8 @@ async def run_solar(req: SolarRequest):
     """Run solar radiation analysis."""
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
+
+    _clear_sim_caches()
 
     try:
         voxcity = app_state.voxcity
@@ -519,7 +719,7 @@ async def run_solar(req: SolarRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -536,6 +736,9 @@ async def run_solar(req: SolarRequest):
                     "title": "Solar overlay",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -557,6 +760,12 @@ async def run_solar(req: SolarRequest):
                 voxcity, **irradiance_kwargs
             )
 
+            if irradiance is None or getattr(irradiance, 'vertices', None) is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Building solar simulation returned no mesh – the model may lack building geometry.",
+                )
+
             # Store for re-rendering
             app_state.last_sim_type = "solar"
             app_state.last_sim_target = "building"
@@ -568,7 +777,7 @@ async def run_solar(req: SolarRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -585,6 +794,9 @@ async def run_solar(req: SolarRequest):
                     "title": "Building Surface Solar (Global)",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -600,6 +812,8 @@ async def run_view(req: ViewRequest):
     """Run view index analysis."""
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
+
+    _clear_sim_caches()
 
     try:
         voxcity = app_state.voxcity
@@ -647,7 +861,7 @@ async def run_view(req: ViewRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -664,6 +878,9 @@ async def run_view(req: ViewRequest):
                     "title": req.view_type.replace("_", " ").title() + " View Index",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -704,7 +921,7 @@ async def run_view(req: ViewRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -719,6 +936,9 @@ async def run_view(req: ViewRequest):
                     "title": "Surface View Factor",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -734,6 +954,8 @@ async def run_landmark(req: LandmarkRequest):
     """Run landmark visibility analysis."""
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
+
+    _clear_sim_caches()
 
     try:
         voxcity = app_state.voxcity
@@ -798,7 +1020,7 @@ async def run_landmark(req: LandmarkRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -815,6 +1037,9 @@ async def run_landmark(req: LandmarkRequest):
                     "title": "Landmark Visibility (Ground)",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -857,7 +1082,7 @@ async def run_landmark(req: LandmarkRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -872,6 +1097,9 @@ async def run_landmark(req: LandmarkRequest):
                     "title": "Landmark Visibility (Surface)",
                 },
             )
+            app_state.last_base_fig_json = fig_json
+            app_state.last_downsample = ds
+            app_state.last_hidden_classes = list(req.hidden_classes)
 
             return {"status": "ok", "figure_json": fig_json}
 
@@ -895,6 +1123,35 @@ async def rerender(req: RerenderRequest):
     try:
         voxcity_grid = app_state.last_sim_voxcity_grid
         meshsize = app_state.meshsize
+
+        hidden_set = set(req.hidden_classes)
+        cached_hidden = set(app_state.last_hidden_classes or [])
+
+        # --- Fast path: hidden classes unchanged → rebuild only sim overlay ---
+        if hidden_set == cached_hidden and app_state.last_base_fig_json and app_state.last_base_fig_json != "{}":
+            fig_dict = json.loads(app_state.last_base_fig_json)
+            voxel_traces = [t for t in fig_dict.get('data', [])
+                           if t.get('name') in _VOXEL_TRACE_NAMES]
+
+            sim_traces = _build_sim_overlay_traces(
+                sim_target=app_state.last_sim_target,
+                sim_type=app_state.last_sim_type,
+                sim_grid=app_state.last_sim_grid,
+                sim_mesh=app_state.last_sim_mesh,
+                voxcity_grid=voxcity_grid,
+                meshsize=meshsize,
+                colormap=req.colormap,
+                vmin=req.vmin,
+                vmax=req.vmax,
+                view_point_height=app_state.last_sim_view_point_height,
+                downsample=app_state.last_downsample or 1,
+            )
+
+            fig_dict['data'] = voxel_traces + sim_traces
+            fig_json = json.dumps(fig_dict)
+            return {"status": "ok", "figure_json": fig_json}
+
+        # --- Slow path: hidden classes changed → re-render voxels at cached stride ---
         present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
         classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
@@ -905,7 +1162,7 @@ async def rerender(req: RerenderRequest):
                 "view": "View Index",
                 "landmark": "Landmark Visibility (Ground)",
             }
-            fig_json = _make_plotly_json(
+            fig_json, ds = _make_plotly_json(
                 voxcity_grid,
                 meshsize,
                 {
@@ -921,6 +1178,7 @@ async def rerender(req: RerenderRequest):
                     "sim_surface_opacity": 0.95,
                     "title": title_map.get(app_state.last_sim_type, "Simulation"),
                 },
+                forced_downsample=app_state.last_downsample,
             )
         else:
             sim_mesh = app_state.last_sim_mesh
@@ -946,7 +1204,15 @@ async def rerender(req: RerenderRequest):
             if app_state.last_sim_type == "solar":
                 plot_kwargs["building_opacity"] = 1.0
                 plot_kwargs["building_shaded"] = False
-            fig_json = _make_plotly_json(voxcity_grid, meshsize, plot_kwargs)
+            fig_json, ds = _make_plotly_json(
+                voxcity_grid, meshsize, plot_kwargs,
+                forced_downsample=app_state.last_downsample,
+            )
+
+        # Update cache for next rerender
+        app_state.last_base_fig_json = fig_json
+        app_state.last_downsample = ds
+        app_state.last_hidden_classes = list(req.hidden_classes)
 
         return {"status": "ok", "figure_json": fig_json}
 
@@ -1071,7 +1337,7 @@ async def model_preview():
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
 
-    fig_json = _make_plotly_json(
+    fig_json, _ = _make_plotly_json(
         app_state.voxcity.voxels.classes,
         app_state.meshsize,
         {"title": "VoxCity 3D"},

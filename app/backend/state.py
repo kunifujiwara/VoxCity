@@ -45,6 +45,11 @@ class AppState:
     last_sim_voxcity_grid: Optional[Any] = None  # voxcity_grid used (may be marked)
     last_sim_view_point_height: float = 1.5      # view_point_height used in last sim
 
+    # Render cache for fast rerender (skip voxel face extraction)
+    last_base_fig_json: Optional[str] = None     # Full Plotly figure JSON from last sim render
+    last_downsample: Optional[int] = None        # Downsample stride used in last render
+    last_hidden_classes: Optional[List[int]] = None  # Hidden classes used in last render
+
     # ------------------------------------------------------------------
     # Construction helpers
     # ------------------------------------------------------------------

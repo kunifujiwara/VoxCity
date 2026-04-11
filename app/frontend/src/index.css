@@ -171,6 +171,13 @@ input:focus, select:focus {
 }
 .btn-primary:hover { background: #2563EB; }
 
+.btn-secondary {
+  background: transparent;
+  border-color: var(--vc-accent);
+  color: var(--vc-accent);
+}
+.btn-secondary:hover { background: rgba(59, 130, 246, 0.12); }
+
 .btn-sm {
   padding: 0.35rem 0.75rem;
   font-size: 0.8rem;

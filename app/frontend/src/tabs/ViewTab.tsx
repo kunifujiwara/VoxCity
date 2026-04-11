@@ -5,7 +5,7 @@ import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import { CUSTOM_CLASSES } from '../constants';
-import { useDebouncedRerender } from '../hooks/useDebouncedRerender';
+import { useManualRerender } from '../hooks/useDebouncedRerender';
 
 interface ViewTabProps {
   hasModel: boolean;
@@ -29,9 +29,10 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
   const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [figureJson, setFigureJson] = useState('');
+  const [simDone, setSimDone] = useState(false);
   const hasSimResult = useRef(false);
 
-  useDebouncedRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
+  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -62,8 +63,13 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
         vmax,
         hidden_classes: Array.from(hiddenClasses),
       });
-      setFigureJson(result.figure_json);
-      hasSimResult.current = true;
+      if (!result.figure_json || result.figure_json === '{}') {
+        setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
+      } else {
+        setFigureJson(result.figure_json);
+        hasSimResult.current = true;
+        setSimDone(true);
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -153,6 +159,13 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel }) => {
           hiddenClasses={hiddenClasses}
           onHiddenClassesChange={setHiddenClasses}
         />
+
+        {simDone && (
+          <button className="btn btn-secondary" onClick={handleUpdate} disabled={loading || rerendering} style={{ marginBottom: '0.5rem' }}>
+            {rerendering && <span className="spinner" />}
+            {rerendering ? 'Updating...' : 'Update View'}
+          </button>
+        )}
 
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}
