@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { Check } from 'lucide-react';
 import MapPicker from '../components/MapPicker';
 import { geocodeCity } from '../api';
 
@@ -177,8 +178,8 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
         )}
 
         {rectangle && (
-          <div className="alert alert-success" style={{ marginTop: '0.75rem' }}>
-            Rectangle set ✓
+          <div className="alert alert-success" style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Check size={16} /> Rectangle set
           </div>
         )}
       </div>

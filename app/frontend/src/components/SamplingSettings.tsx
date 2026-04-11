@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 interface SamplingSettingsProps {
   nAzimuth: number;
@@ -29,7 +30,7 @@ const SamplingSettings: React.FC<SamplingSettingsProps> = ({
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Sampling Settings <span>{open ? '▲' : '▼'}</span>
+        Sampling Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { COLORMAPS } from '../constants';
 
 interface ColorSettingsProps {
@@ -26,7 +27,7 @@ const ColorSettings: React.FC<ColorSettingsProps> = ({
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Color Settings <span>{open ? '▲' : '▼'}</span>
+        Color Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">

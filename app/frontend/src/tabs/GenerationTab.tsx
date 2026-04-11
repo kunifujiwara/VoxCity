@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Globe, Building2, ChevronDown } from 'lucide-react';
 import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import {
@@ -125,13 +126,13 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
             className={`mode-btn ${mode === 'normal' ? 'active' : ''}`}
             onClick={() => setMode('normal')}
           >
-            🌍 Normal
+            <Globe size={16} /> Normal
           </button>
           <button
             className={`mode-btn ${mode === 'plateau' ? 'active' : ''}`}
             onClick={() => setMode('plateau')}
           >
-            🏯 PLATEAU
+            <Building2 size={16} /> PLATEAU
           </button>
         </div>
 
@@ -264,7 +265,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         <div className="expander">
           <div className="expander-header" onClick={() => setShowAdvanced(!showAdvanced)}>
             Advanced Parameters
-            <span>{showAdvanced ? '▲' : '▼'}</span>
+            <span className={`expander-chevron ${showAdvanced ? 'open' : ''}`}><ChevronDown size={16} /></span>
           </div>
           {showAdvanced && (
             <div className="expander-body">

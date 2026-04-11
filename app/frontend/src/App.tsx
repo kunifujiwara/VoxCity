@@ -76,14 +76,6 @@ const App: React.FC = () => {
         {activeTab === 'export' && <ExportTab hasModel={hasModel} />}
       </main>
 
-      {/* Footer */}
-      <footer className="app-footer">
-        VoxCity Web App | Based on{' '}
-        <a href="https://github.com/kunifujiwara/VoxCity" target="_blank" rel="noreferrer">
-          VoxCity
-        </a>{' '}
-        by Kunihiko Fujiwara
-      </footer>
     </div>
   );
 };

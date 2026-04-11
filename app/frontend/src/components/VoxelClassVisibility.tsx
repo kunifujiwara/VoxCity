@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { VOXEL_CLASSES } from '../constants';
 
 interface VoxelClassVisibilityProps {
@@ -21,7 +22,7 @@ const VoxelClassVisibility: React.FC<VoxelClassVisibilityProps> = ({
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Visualization Settings <span>{open ? '▲' : '▼'}</span>
+        Visualization Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">
