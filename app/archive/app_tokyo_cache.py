@@ -23,7 +23,7 @@ import rasterio
 from rasterio.enums import Resampling
 from rasterio.windows import from_bounds, Window
 try:
-    from tokyo_las import (
+    from app.preprocessing.tokyo_las import (
         get_ndsm_grid,
         align_ndsm_to_landcover,
         build_canopy_from_ndsm,
