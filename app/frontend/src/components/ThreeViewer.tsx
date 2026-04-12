@@ -446,9 +446,20 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
     // Center the group at origin
     meshGroup.position.sub(center);
 
-    // Camera position
-    const cameraDistance = maxDim * 1.6;
-    camera.position.set(cameraDistance * 0.8, cameraDistance * 0.8, cameraDistance * 0.6);
+    // Camera position — fit the entire model in view using bounding sphere
+    const bSphere = new THREE.Sphere();
+    bbox.getBoundingSphere(bSphere);
+    const radius = bSphere.radius || 1;
+    const fovRad = camera.fov * Math.PI / 180;
+    const aspect = width / height;
+    // Distance needed so the sphere fits in the frustum
+    const distV = radius / Math.sin(fovRad / 2);
+    const hFov = Math.atan(Math.tan(fovRad / 2) * aspect);
+    const distH = radius / Math.sin(hFov);
+    const fitDist = Math.max(distV, distH) * 1.0;
+    // Direction: oblique view angle (normalized)
+    const dir = new THREE.Vector3(0.65, 0.65, 0.5).normalize();
+    camera.position.copy(dir.multiplyScalar(fitDist));
     camera.lookAt(0, 0, 0);
     camera.near = maxDim * 0.001;
     camera.far = maxDim * 20;

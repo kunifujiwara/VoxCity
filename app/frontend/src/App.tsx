@@ -22,6 +22,9 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('area');
   const [rectangle, setRectangle] = useState<number[][] | null>(null);
   const [figureJson, setFigureJson] = useState('');
+  const [solarFigureJson, setSolarFigureJson] = useState('');
+  const [viewFigureJson, setViewFigureJson] = useState('');
+  const [landmarkFigureJson, setLandmarkFigureJson] = useState('');
   const [hasModel, setHasModel] = useState(false);
 
   // On page load, reset the backend so Taichi caches are cleared and a
@@ -67,12 +70,17 @@ const App: React.FC = () => {
             rectangle={rectangle}
             figureJson={figureJson}
             onFigureChange={setFigureJson}
-            onModelReady={() => setHasModel(true)}
+            onModelReady={() => {
+              setHasModel(true);
+              setSolarFigureJson('');
+              setViewFigureJson('');
+              setLandmarkFigureJson('');
+            }}
           />
         )}
-        {activeTab === 'solar' && <SolarTab hasModel={hasModel} />}
-        {activeTab === 'view' && <ViewTab hasModel={hasModel} />}
-        {activeTab === 'landmark' && <LandmarkTab hasModel={hasModel} />}
+        {activeTab === 'solar' && <SolarTab hasModel={hasModel} figureJson={solarFigureJson} onFigureChange={setSolarFigureJson} />}
+        {activeTab === 'view' && <ViewTab hasModel={hasModel} figureJson={viewFigureJson} onFigureChange={setViewFigureJson} />}
+        {activeTab === 'landmark' && <LandmarkTab hasModel={hasModel} figureJson={landmarkFigureJson} onFigureChange={setLandmarkFigureJson} />}
         {activeTab === 'export' && <ExportTab hasModel={hasModel} />}
       </main>
 

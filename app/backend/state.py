@@ -48,7 +48,6 @@ class AppState:
 
     # Render cache for fast rerender (skip voxel face extraction)
     last_base_fig_json: Optional[str] = None     # Full Plotly figure JSON from last sim render
-    last_downsample: Optional[int] = None        # Downsample stride used in last render
     last_hidden_classes: Optional[List[int]] = None  # Hidden classes used in last render
 
     # ------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { runLandmark } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import ColorSettings from '../components/ColorSettings';
@@ -8,9 +8,11 @@ import { useManualRerender } from '../hooks/useDebouncedRerender';
 
 interface LandmarkTabProps {
   hasModel: boolean;
+  figureJson: string;
+  onFigureChange: (json: string) => void;
 }
 
-const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
+const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigureChange }) => {
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [landmarkIdsText, setLandmarkIdsText] = useState('');
   const [nAzimuth, setNAzimuth] = useState(60);
@@ -24,11 +26,14 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
   const [loading, setLoading] = useState(false);
   const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [figureJson, setFigureJson] = useState('');
-  const [simDone, setSimDone] = useState(false);
   const hasSimResult = useRef(false);
+  const simDone = figureJson !== '';
 
-  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, setFigureJson, setRerendering);
+  useEffect(() => {
+    if (figureJson) hasSimResult.current = true;
+  }, []);
+
+  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, onFigureChange, setRerendering);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -59,9 +64,8 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel }) => {
       if (!result.figure_json || result.figure_json === '{}') {
         setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
       } else {
-        setFigureJson(result.figure_json);
+        onFigureChange(result.figure_json);
         hasSimResult.current = true;
-        setSimDone(true);
       }
     } catch (err: any) {
       setError(err.message);
