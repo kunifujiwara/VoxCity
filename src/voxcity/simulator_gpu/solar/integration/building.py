@@ -213,7 +213,7 @@ def get_building_solar_irradiance(
     else:
         grid_bounds_real = np.array([
             [0.0, 0.0, 0.0],
-            [nx_vc * meshsize, ny_vc * meshsize, nz * meshsize]
+            [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
         ], dtype=np.float64)
         boundary_epsilon = meshsize * 0.05
         

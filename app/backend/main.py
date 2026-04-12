@@ -782,6 +782,7 @@ async def run_solar(req: SolarRequest):
                 irradiance_kwargs["calc_type"] = "cumulative"
                 irradiance_kwargs["period_start"] = req.start_time
                 irradiance_kwargs["period_end"] = req.end_time
+                irradiance_kwargs["use_sky_patches"] = True
 
             irradiance = get_building_global_solar_irradiance_using_epw(
                 voxcity, **irradiance_kwargs
