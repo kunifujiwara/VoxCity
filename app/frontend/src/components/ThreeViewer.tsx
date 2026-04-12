@@ -119,6 +119,9 @@ function buildMesh3d(trace: any): THREE.Mesh | null {
 
   let material: THREE.Material;
 
+  // Detect simulation overlay traces (tagged by backend)
+  const isSimOverlay = trace.meta?.sim_overlay === true;
+
   if (hasFaceColor) {
     // Non-indexed geometry so we can set per-face vertex colors
     const nonIndexed = geometry.toNonIndexed();
@@ -134,19 +137,27 @@ function buildMesh3d(trace: any): THREE.Mesh | null {
     nonIndexed.setAttribute('color', new THREE.BufferAttribute(faceColors, 3));
     nonIndexed.computeVertexNormals();
 
-    material = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      opacity,
-      transparent,
-      side: THREE.DoubleSide,
-      flatShading: true,
-      roughness: 0.75,
-      metalness: 0.0,
-    });
+    // Use unlit material for simulation overlays to preserve colormap fidelity
+    material = isSimOverlay
+      ? new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          opacity,
+          transparent,
+          side: THREE.DoubleSide,
+        })
+      : new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          opacity,
+          transparent,
+          side: THREE.DoubleSide,
+          flatShading: true,
+          roughness: 0.75,
+          metalness: 0.0,
+        });
 
     const mesh = new THREE.Mesh(nonIndexed, material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.castShadow = !isSimOverlay;
+    mesh.receiveShadow = !isSimOverlay;
     return mesh;
   } else {
     // Uniform color
@@ -379,8 +390,7 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
     renderer.setClearColor(0x1a1a2e, 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -395,15 +405,15 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
 
     // --- Lights (realistic outdoor sun + sky) ---
     // Hemisphere light: sky blue above, warm ground bounce below
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.4);
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.25);
     scene.add(hemiLight);
 
     // Ambient fill for shadow areas
-    const ambientLight = new THREE.AmbientLight(0xd0d8e8, 0.35);
+    const ambientLight = new THREE.AmbientLight(0xd0d8e8, 0.15);
     scene.add(ambientLight);
 
     // Main sun light (warm directional with shadows)
-    const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.2);
+    const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.5);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
@@ -412,7 +422,7 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
     scene.add(sunLight);
 
     // Fill light from opposite side (cool sky bounce)
-    const fillLight = new THREE.DirectionalLight(0xb0c4de, 0.3);
+    const fillLight = new THREE.DirectionalLight(0xb0c4de, 0.15);
     scene.add(fillLight);
 
     // Subtle rim/back light for depth

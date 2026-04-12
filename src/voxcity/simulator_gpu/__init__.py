@@ -20,46 +20,60 @@ Example:
 """
 
 import os
+import warnings
 
 # Disable Numba caching to prevent stale cache issues
 os.environ.setdefault("NUMBA_CACHE_DIR", "")
 os.environ.setdefault("NUMBA_DISABLE_JIT", "0")
 
-# Taichi initialization
-from .init_taichi import init_taichi, ensure_initialized, is_initialized
+# Taichi-dependent imports are optional; pure-Python utilities (e.g.
+# solar.integration.utils) can be used without taichi installed.
+try:
+    # Taichi initialization
+    from .init_taichi import init_taichi, ensure_initialized, is_initialized
 
-# Core utilities
-from .core import (
-    Vector3, Point3,
-    PI, TWO_PI, DEG_TO_RAD, RAD_TO_DEG,
-    SOLAR_CONSTANT, EXT_COEF,
-)
+    # Core utilities
+    from .core import (
+        Vector3, Point3,
+        PI, TWO_PI, DEG_TO_RAD, RAD_TO_DEG,
+        SOLAR_CONSTANT, EXT_COEF,
+    )
 
-# Domain (shared between solar and visibility)
-from .domain import Domain, Surfaces, extract_surfaces_from_domain
-from .domain import IUP, IDOWN, INORTH, ISOUTH, IEAST, IWEST
+    # Domain (shared between solar and visibility)
+    from .domain import Domain, Surfaces, extract_surfaces_from_domain
+    from .domain import IUP, IDOWN, INORTH, ISOUTH, IEAST, IWEST
 
-# Submodules
-from . import solar
-from . import visibility
+    # Submodules
+    from . import solar
+    from . import visibility
 
-# Convenience imports from solar
-from .solar import (
-    get_global_solar_irradiance_using_epw,
-    get_building_global_solar_irradiance_using_epw,
-    get_direct_solar_irradiance_map,
-    get_diffuse_solar_irradiance_map,
-    get_global_solar_irradiance_map,
-)
+    # Convenience imports from solar
+    from .solar import (
+        get_global_solar_irradiance_using_epw,
+        get_building_global_solar_irradiance_using_epw,
+        get_direct_solar_irradiance_map,
+        get_diffuse_solar_irradiance_map,
+        get_global_solar_irradiance_map,
+    )
 
-# Convenience imports from visibility
-from .visibility import (
-    get_view_index,
-    get_sky_view_factor_map,
-    get_surface_view_factor,
-    get_landmark_visibility_map,
-    get_surface_landmark_visibility,
-)
+    # Convenience imports from visibility
+    from .visibility import (
+        get_view_index,
+        get_sky_view_factor_map,
+        get_surface_view_factor,
+        get_landmark_visibility_map,
+        get_surface_landmark_visibility,
+    )
+
+    _TAICHI_AVAILABLE = True
+except ImportError:
+    _TAICHI_AVAILABLE = False
+    warnings.warn(
+        "taichi is not installed; GPU-accelerated features in "
+        "voxcity.simulator_gpu are unavailable.",
+        ImportWarning,
+        stacklevel=2,
+    )
 
 __version__ = "0.1.0"
 

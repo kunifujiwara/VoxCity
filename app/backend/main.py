@@ -367,6 +367,7 @@ def _build_sim_overlay_traces(
                 lighting=lighting,
                 lightposition=dict(x=lx, y=ly, z=lz),
                 name='sim_surface',
+                meta=dict(sim_overlay=True),
             ))
 
             colorscale_g = _mpl_cmap_to_plotly_colorscale(colormap)
@@ -429,6 +430,7 @@ def _build_sim_overlay_traces(
                 lighting=lighting_b,
                 lightposition=dict(x=lx, y=ly, z=lz),
                 name=value_name if facecolor is not None else 'building_mesh',
+                meta=dict(sim_overlay=True),
             ))
 
             colorscale_b = _mpl_cmap_to_plotly_colorscale(colormap)

@@ -326,7 +326,8 @@ def visualize_voxcity_plotly(
                 flatshading=False,
                 lighting=lighting_b,
                 lightposition=dict(x=lx, y=ly, z=lz),
-                name=building_value_name if facecolor is not None else 'building_mesh'
+                name=building_value_name if facecolor is not None else 'building_mesh',
+                meta=dict(sim_overlay=True),
             )
         )
 
@@ -426,7 +427,8 @@ def visualize_voxcity_plotly(
                     flatshading=False,
                     lighting=lighting,
                     lightposition=dict(x=lx, y=ly, z=lz),
-                    name='sim_surface'
+                    name='sim_surface',
+                    meta=dict(sim_overlay=True),
                 )
             )
 

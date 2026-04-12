@@ -34,7 +34,7 @@ Public API:
 
 from __future__ import annotations
 
-# Re-export utility functions
+# Re-export utility functions (pure Python, no taichi dependency)
 from .utils import (
     get_location_from_voxcity,
     convert_voxel_data_to_arrays,
@@ -51,66 +51,70 @@ from .utils import (
     apply_computation_mask_to_faces,
 )
 
-# Re-export caching infrastructure
-from .caching import (
-    # Dataclasses
-    LandCoverAlbedo,
-    VoxCityDomainResult,
-    CachedRadiationModel,
-    CachedBuildingRadiationModel,
-    CachedGPURayTracer,
-    # Cache management
-    clear_radiation_model_cache,
-    clear_building_radiation_model_cache,
-    clear_gpu_ray_tracer_cache,
-    clear_volumetric_flux_cache,
-    clear_all_caches,
-    clear_all_radiation_caches,
-    reset_solar_taichi_cache,
-    get_radiation_model_cache,
-    get_building_radiation_model_cache,
-    set_radiation_model_cache,
-    set_building_radiation_model_cache,
-    # Creator functions
-    get_or_create_radiation_model,
-    get_or_create_building_radiation_model,
-    get_or_create_gpu_ray_tracer,
-    get_or_create_volumetric_calculator,
-    # Low-level GPU helpers
-    compute_direct_transmittance_map_gpu,
-    # VoxCity load/convert utilities
-    load_voxcity,
-    convert_voxcity_to_domain,
-    apply_voxcity_albedo,
-    create_radiation_config_for_voxcity,
-)
+# Taichi-dependent re-exports are optional
+try:
+    # Re-export caching infrastructure
+    from .caching import (
+        # Dataclasses
+        LandCoverAlbedo,
+        VoxCityDomainResult,
+        CachedRadiationModel,
+        CachedBuildingRadiationModel,
+        CachedGPURayTracer,
+        # Cache management
+        clear_radiation_model_cache,
+        clear_building_radiation_model_cache,
+        clear_gpu_ray_tracer_cache,
+        clear_volumetric_flux_cache,
+        clear_all_caches,
+        clear_all_radiation_caches,
+        reset_solar_taichi_cache,
+        get_radiation_model_cache,
+        get_building_radiation_model_cache,
+        set_radiation_model_cache,
+        set_building_radiation_model_cache,
+        # Creator functions
+        get_or_create_radiation_model,
+        get_or_create_building_radiation_model,
+        get_or_create_gpu_ray_tracer,
+        get_or_create_volumetric_calculator,
+        # Low-level GPU helpers
+        compute_direct_transmittance_map_gpu,
+        # VoxCity load/convert utilities
+        load_voxcity,
+        convert_voxcity_to_domain,
+        apply_voxcity_albedo,
+        create_radiation_config_for_voxcity,
+    )
 
-# Re-export ground-level irradiance functions
-from .ground import (
-    get_direct_solar_irradiance_map,
-    get_diffuse_solar_irradiance_map,
-    get_global_solar_irradiance_map,
-    get_cumulative_global_solar_irradiance,
-    get_sunlight_hours,
-)
+    # Re-export ground-level irradiance functions
+    from .ground import (
+        get_direct_solar_irradiance_map,
+        get_diffuse_solar_irradiance_map,
+        get_global_solar_irradiance_map,
+        get_cumulative_global_solar_irradiance,
+        get_sunlight_hours,
+    )
 
-# Re-export building surface irradiance functions
-from .building import (
-    get_building_solar_irradiance,
-    get_cumulative_building_solar_irradiance,
-    get_building_sunlight_hours,
-    get_building_global_solar_irradiance_using_epw,
-)
+    # Re-export building surface irradiance functions
+    from .building import (
+        get_building_solar_irradiance,
+        get_cumulative_building_solar_irradiance,
+        get_building_sunlight_hours,
+        get_building_global_solar_irradiance_using_epw,
+    )
 
-# Re-export volumetric irradiance functions
-from .volumetric import (
-    get_volumetric_solar_irradiance_map,
-    get_cumulative_volumetric_solar_irradiance,
-    get_volumetric_solar_irradiance_using_epw,
-    get_global_solar_irradiance_using_epw,
-    save_irradiance_mesh,
-    load_irradiance_mesh,
-)
+    # Re-export volumetric irradiance functions
+    from .volumetric import (
+        get_volumetric_solar_irradiance_map,
+        get_cumulative_volumetric_solar_irradiance,
+        get_volumetric_solar_irradiance_using_epw,
+        get_global_solar_irradiance_using_epw,
+        save_irradiance_mesh,
+        load_irradiance_mesh,
+    )
+except ImportError:
+    pass
 
 
 # Voxel class codes - expose for external use
