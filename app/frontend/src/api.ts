@@ -261,3 +261,27 @@ export async function rerenderSimulation(params: {
     body: JSON.stringify(params),
   });
 }
+
+export interface BuildingInfo {
+  id: number;
+  cx: number;
+  cy: number;
+  cz: number;
+  top_z: number;
+}
+
+export interface BuildingsListResult {
+  buildings: BuildingInfo[];
+}
+
+export async function getBuildingsList() {
+  return request<BuildingsListResult>('/buildings/list');
+}
+
+export interface LandmarkPreviewResult {
+  figure_json: string;
+}
+
+export async function getLandmarkPreview() {
+  return request<LandmarkPreviewResult>('/landmark/preview');
+}

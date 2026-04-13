@@ -1399,3 +1399,87 @@ async def model_info():
         "rectangle_vertices": app_state.rectangle_vertices,
         "land_cover_source": app_state.land_cover_source,
     }
+
+
+@app.get("/api/buildings/list")
+async def buildings_list():
+    """Return a list of building IDs with centroid positions (in local voxel coords)."""
+    if not app_state.has_model:
+        raise HTTPException(status_code=400, detail="No model generated yet")
+
+    vc = app_state.voxcity
+    bid_grid = vc.buildings.ids  # 2D (nx, ny)
+    meshsize = app_state.meshsize
+    voxcity_grid = vc.voxels.classes  # 3D (nx, ny, nz)
+
+    if bid_grid is None:
+        return {"buildings": []}
+
+    # Flip building ID grid to match voxcity_grid orientation (same as mark_building_by_id)
+    from voxcity.utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+
+    unique_ids = np.unique(bid_aligned)
+    unique_ids = unique_ids[unique_ids != 0]  # exclude 0 (no building)
+
+    buildings = []
+    for bid in unique_ids:
+        mask_2d = (bid_aligned == bid)
+        xs, ys = np.where(mask_2d)
+        if len(xs) == 0:
+            continue
+        # Centroid in voxel index space → local coords
+        cx = (float(xs.mean()) + 0.5) * meshsize
+        cy = (float(ys.mean()) + 0.5) * meshsize
+        # Find building top z from voxel grid
+        max_z = 0.0
+        for xi, yi in zip(xs, ys):
+            col = voxcity_grid[xi, yi, :]
+            bz = np.where(col == -3)[0]
+            if len(bz) > 0:
+                max_z = max(max_z, float(bz.max() + 1) * meshsize)
+        cz = max_z / 2.0
+        buildings.append({
+            "id": int(bid),
+            "cx": round(cx, 2),
+            "cy": round(cy, 2),
+            "cz": round(cz, 2),
+            "top_z": round(max_z, 2),
+        })
+
+    return {"buildings": buildings}
+
+
+@app.get("/api/landmark/preview")
+async def landmark_preview():
+    """Return a 3D preview figure with per-face building ID metadata for interactive selection."""
+    if not app_state.has_model:
+        raise HTTPException(status_code=400, detail="No model generated yet")
+
+    try:
+        vc = app_state.voxcity
+        voxcity_grid = vc.voxels.classes
+        meshsize = app_state.meshsize
+        bid_grid = vc.buildings.ids
+
+        fig = visualize_voxcity_plotly(
+            voxcity_grid,
+            meshsize,
+            downsample=1,
+            show=False,
+            return_fig=True,
+            building_id_grid=bid_grid,
+            title="Landmark Selection",
+        )
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Visualization engine returned no figure.")
+
+        fig_json = _compact_fig_json(fig)
+
+        return {"figure_json": fig_json}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

@@ -368,3 +368,107 @@ input:focus, select:focus {
   line-height: 1.4;
   margin-bottom: 0.5rem;
 }
+
+/* ── Selection toolbar ────────────────────────────── */
+.selection-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--vc-bg);
+  border: 1px solid var(--vc-ring);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 0.5rem;
+}
+
+.selection-toolbar-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--vc-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+}
+
+.selection-toolbar-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--vc-primary);
+}
+
+.selection-toolbar-btn.active {
+  background: var(--vc-accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(102, 102, 255, 0.3);
+}
+
+.selection-toolbar-btn.clear-btn {
+  flex: none;
+  padding: 0.35rem 0.65rem;
+  color: var(--vc-danger);
+}
+
+.selection-toolbar-btn.clear-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.selection-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Building chips ───────────────────────────────── */
+.building-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.25rem;
+}
+
+.building-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(207, 245, 39, 0.15);
+  border: 1px solid rgba(207, 245, 39, 0.4);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #8ba600;
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: #8ba600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  line-height: 1;
+}
+
+.chip-remove:hover {
+  background: rgba(255, 102, 0, 0.2);
+}
+
+/* ── Box selection overlay ────────────────────────── */
+.selection-box-overlay {
+  position: absolute;
+  border: 2px solid var(--vc-accent);
+  background: rgba(102, 102, 255, 0.12);
+  pointer-events: none;
+  z-index: 20;
+  display: none;
+}

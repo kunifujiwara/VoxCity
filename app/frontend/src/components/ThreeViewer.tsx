@@ -2,8 +2,25 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+export type SelectionMode = 'none' | 'click' | 'box';
+
+export interface BuildingCentroid {
+  id: number;
+  cx: number;
+  cy: number;
+  cz: number;
+}
+
 interface ThreeViewerProps {
   figureJson: string;
+  /** Enable interactive building selection */
+  selectionMode?: SelectionMode;
+  /** Currently selected building IDs (controlled) */
+  selectedBuildingIds?: number[];
+  /** Callback when selection changes */
+  onBuildingSelect?: (ids: number[]) => void;
+  /** Building centroids for box selection (local coords, will be transformed) */
+  buildingCentroids?: BuildingCentroid[];
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -160,8 +177,62 @@ function buildMesh3d(trace: any): THREE.Mesh | null {
     mesh.receiveShadow = !isSimOverlay;
     return mesh;
   } else {
-    // Uniform color
+    // Uniform color — but if this is a building trace for selection,
+    // convert to non-indexed with per-vertex colors so we can highlight individual faces
+    const isBuildingTrace = trace.meta?.is_building_trace === true;
     const color = parseColor(trace.color);
+
+    if (isBuildingTrace) {
+      const nonIndexed = geometry.toNonIndexed();
+      const vertCount = nonIndexed.getAttribute('position').count;
+      const faceColors = new Float32Array(vertCount * 3);
+      for (let vi = 0; vi < vertCount; vi++) {
+        faceColors[vi * 3] = color.r;
+        faceColors[vi * 3 + 1] = color.g;
+        faceColors[vi * 3 + 2] = color.b;
+      }
+      nonIndexed.setAttribute('color', new THREE.BufferAttribute(faceColors, 3));
+      // Per-vertex emissive flag: 0.0 = normal lit, 1.0 = self-luminous
+      const emissiveFlag = new Float32Array(vertCount);
+      nonIndexed.setAttribute('aEmissive', new THREE.BufferAttribute(emissiveFlag, 1));
+      nonIndexed.computeVertexNormals();
+
+      material = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        opacity,
+        transparent,
+        side: THREE.DoubleSide,
+        flatShading: true,
+        roughness: 0.75,
+        metalness: 0.0,
+      });
+
+      // Patch shader: when aEmissive > 0, use vertex color as emissive (self-luminous)
+      material.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader.replace(
+          'void main() {',
+          'attribute float aEmissive;\nvarying float vEmissive;\nvoid main() {\n  vEmissive = aEmissive;',
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          'void main() {',
+          'varying float vEmissive;\nvoid main() {',
+        );
+        // After Three.js computes the lit fragment color, blend in self-luminous vertex color
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          `if (vEmissive > 0.5) {
+            gl_FragColor = vec4(vColor, gl_FragColor.a);
+          }
+          #include <dithering_fragment>`,
+        );
+      };
+
+      const mesh = new THREE.Mesh(nonIndexed, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
     geometry.computeVertexNormals();
 
     material = new THREE.MeshStandardMaterial({
@@ -327,7 +398,15 @@ function buildColorbar(trace: any): {
    Main component
    ────────────────────────────────────────────────────────────── */
 
-const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
+const HIGHLIGHT_COLOR = new THREE.Color(0xCFF527); // bright yellow-green #CFF527
+
+const ThreeViewer: React.FC<ThreeViewerProps> = ({
+  figureJson,
+  selectionMode = 'none',
+  selectedBuildingIds,
+  onBuildingSelect,
+  buildingCentroids,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -335,6 +414,208 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const animFrameRef = useRef<number>(0);
   const colorbarOverlayRef = useRef<HTMLDivElement | null>(null);
+
+  // Selection state refs
+  const buildingMeshesRef = useRef<THREE.Mesh[]>([]);
+  const meshGroupRef = useRef<THREE.Group | null>(null);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const selectionModeRef = useRef<SelectionMode>(selectionMode);
+  const selectedIdsRef = useRef<Set<number>>(new Set());
+  const onBuildingSelectRef = useRef(onBuildingSelect);
+  const buildingCentroidsRef = useRef(buildingCentroids);
+
+  // Box selection state
+  const boxStartRef = useRef<{ x: number; y: number } | null>(null);
+  const boxOverlayRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
+
+  // Keep refs in sync
+  useEffect(() => { selectionModeRef.current = selectionMode; }, [selectionMode]);
+  useEffect(() => { onBuildingSelectRef.current = onBuildingSelect; }, [onBuildingSelect]);
+  useEffect(() => { buildingCentroidsRef.current = buildingCentroids; }, [buildingCentroids]);
+  useEffect(() => {
+    selectedIdsRef.current = new Set(selectedBuildingIds || []);
+    updateBuildingHighlights();
+  }, [selectedBuildingIds]);
+
+  /** Update vertex colors and emissive flags on building meshes to reflect selection */
+  const updateBuildingHighlights = useCallback(() => {
+    const selected = selectedIdsRef.current;
+    for (const mesh of buildingMeshesRef.current) {
+      const bidMap = mesh.userData.buildingIdToFaceVertices as Map<number, number[]> | undefined;
+      const origColors = mesh.userData.originalColors as Float32Array | undefined;
+      const colorAttr = mesh.geometry.getAttribute('color') as THREE.BufferAttribute | null;
+      const emissiveAttr = mesh.geometry.getAttribute('aEmissive') as THREE.BufferAttribute | null;
+      if (!bidMap || !origColors || !colorAttr) continue;
+
+      // Restore all to original colors and zero emissive
+      const arr = colorAttr.array as Float32Array;
+      arr.set(origColors);
+      if (emissiveAttr) {
+        const em = emissiveAttr.array as Float32Array;
+        em.fill(0);
+      }
+
+      // Apply highlight to selected buildings
+      for (const bid of selected) {
+        const indices = bidMap.get(bid);
+        if (!indices) continue;
+        for (const vi of indices) {
+          arr[vi * 3] = HIGHLIGHT_COLOR.r;
+          arr[vi * 3 + 1] = HIGHLIGHT_COLOR.g;
+          arr[vi * 3 + 2] = HIGHLIGHT_COLOR.b;
+          if (emissiveAttr) {
+            (emissiveAttr.array as Float32Array)[vi] = 1.0;
+          }
+        }
+      }
+      colorAttr.needsUpdate = true;
+      if (emissiveAttr) emissiveAttr.needsUpdate = true;
+    }
+  }, []);
+
+  /** Handle click-to-select a building */
+  const handleBuildingClick = useCallback((event: MouseEvent) => {
+    if (selectionModeRef.current !== 'click') return;
+    const container = containerRef.current;
+    const camera = cameraRef.current;
+    if (!container || !camera) return;
+
+    const rect = container.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+
+    raycasterRef.current.setFromCamera(mouse, camera);
+    const intersects = raycasterRef.current.intersectObjects(buildingMeshesRef.current, false);
+    if (intersects.length === 0) return;
+
+    const hit = intersects[0];
+    const mesh = hit.object as THREE.Mesh;
+    const faceIndex = hit.faceIndex;
+    if (faceIndex == null) return;
+
+    const faceIds = mesh.userData.buildingFaceIds as number[] | undefined;
+    if (!faceIds || faceIndex >= faceIds.length) return;
+
+    const bid = faceIds[faceIndex];
+    if (bid === 0) return; // no building
+
+    const newSet = new Set(selectedIdsRef.current);
+    if (newSet.has(bid)) {
+      newSet.delete(bid);
+    } else {
+      newSet.add(bid);
+    }
+    selectedIdsRef.current = newSet;
+    onBuildingSelectRef.current?.(Array.from(newSet));
+  }, []);
+
+  /** Box selection helpers */
+  const handleBoxMouseDown = useCallback((event: MouseEvent) => {
+    if (selectionModeRef.current !== 'box') return;
+    if (event.button !== 0) return; // left button only
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Disable orbit for left-click drag
+    if (controlsRef.current) controlsRef.current.enabled = false;
+
+    const rect = container.getBoundingClientRect();
+    boxStartRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    isDraggingRef.current = false;
+
+    // Create box overlay
+    if (!boxOverlayRef.current) {
+      const box = document.createElement('div');
+      box.className = 'selection-box-overlay';
+      container.appendChild(box);
+      boxOverlayRef.current = box;
+    }
+    const box = boxOverlayRef.current;
+    box.style.left = `${boxStartRef.current.x}px`;
+    box.style.top = `${boxStartRef.current.y}px`;
+    box.style.width = '0px';
+    box.style.height = '0px';
+    box.style.display = 'block';
+  }, []);
+
+  const handleBoxMouseMove = useCallback((event: MouseEvent) => {
+    if (selectionModeRef.current !== 'box' || !boxStartRef.current) return;
+    const container = containerRef.current;
+    if (!container || !boxOverlayRef.current) return;
+
+    isDraggingRef.current = true;
+    const rect = container.getBoundingClientRect();
+    const curX = event.clientX - rect.left;
+    const curY = event.clientY - rect.top;
+
+    const x0 = Math.min(boxStartRef.current.x, curX);
+    const y0 = Math.min(boxStartRef.current.y, curY);
+    const w = Math.abs(curX - boxStartRef.current.x);
+    const h = Math.abs(curY - boxStartRef.current.y);
+
+    boxOverlayRef.current.style.left = `${x0}px`;
+    boxOverlayRef.current.style.top = `${y0}px`;
+    boxOverlayRef.current.style.width = `${w}px`;
+    boxOverlayRef.current.style.height = `${h}px`;
+  }, []);
+
+  const handleBoxMouseUp = useCallback((event: MouseEvent) => {
+    if (selectionModeRef.current !== 'box' || !boxStartRef.current) return;
+    const container = containerRef.current;
+    const camera = cameraRef.current;
+    const group = meshGroupRef.current;
+    if (!container || !camera || !group) return;
+
+    // Re-enable orbit controls
+    if (controlsRef.current) controlsRef.current.enabled = true;
+
+    // Hide box overlay
+    if (boxOverlayRef.current) boxOverlayRef.current.style.display = 'none';
+
+    if (!isDraggingRef.current) {
+      boxStartRef.current = null;
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const endX = event.clientX - rect.left;
+    const endY = event.clientY - rect.top;
+
+    const boxLeft = Math.min(boxStartRef.current.x, endX);
+    const boxTop = Math.min(boxStartRef.current.y, endY);
+    const boxRight = Math.max(boxStartRef.current.x, endX);
+    const boxBottom = Math.max(boxStartRef.current.y, endY);
+
+    boxStartRef.current = null;
+    isDraggingRef.current = false;
+
+    // Project building centroids to screen and find those inside the box
+    const centroids = buildingCentroidsRef.current;
+    if (!centroids || centroids.length === 0) return;
+
+    const newSet = new Set(selectedIdsRef.current);
+    const widthPx = rect.width;
+    const heightPx = rect.height;
+
+    for (const b of centroids) {
+      // Transform: Z-up → Y-up: (cx, cy, cz) → (cx, cz, -cy), then apply group offset
+      const worldPos = new THREE.Vector3(b.cx, b.cz, -b.cy);
+      worldPos.add(group.position); // group is shifted by -center
+      const ndc = worldPos.project(camera);
+      const sx = ((ndc.x + 1) / 2) * widthPx;
+      const sy = ((1 - ndc.y) / 2) * heightPx;
+
+      if (sx >= boxLeft && sx <= boxRight && sy >= boxTop && sy <= boxBottom) {
+        newSet.add(b.id);
+      }
+    }
+
+    selectedIdsRef.current = newSet;
+    onBuildingSelectRef.current?.(Array.from(newSet));
+  }, []);
 
   /** Dispose everything */
   const cleanup = useCallback(() => {
@@ -354,11 +635,18 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
     sceneRef.current = null;
     cameraRef.current = null;
     controlsRef.current = null;
+    buildingMeshesRef.current = [];
+    meshGroupRef.current = null;
 
     // Remove colorbar overlay
     if (colorbarOverlayRef.current && containerRef.current) {
       try { containerRef.current.removeChild(colorbarOverlayRef.current); } catch { /* */ }
       colorbarOverlayRef.current = null;
+    }
+    // Remove box overlay
+    if (boxOverlayRef.current && containerRef.current) {
+      try { containerRef.current.removeChild(boxOverlayRef.current); } catch { /* */ }
+      boxOverlayRef.current = null;
     }
   }, []);
 
@@ -432,11 +720,41 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
     // --- Parse traces and add meshes ---
     const meshGroup = new THREE.Group();
     let colorbarTrace: any = null;
+    const buildingMeshes: THREE.Mesh[] = [];
 
     for (const trace of data) {
       if (trace.type === 'mesh3d') {
         const mesh = buildMesh3d(trace);
-        if (mesh) meshGroup.add(mesh);
+        if (mesh) {
+          meshGroup.add(mesh);
+
+          // Check if this is a building trace with face IDs for selection
+          const meta = trace.meta;
+          if (meta?.is_building_trace && meta?.building_face_ids) {
+            const faceIds: number[] = meta.building_face_ids;
+            mesh.userData.buildingFaceIds = faceIds;
+
+            // Build a map: buildingId → list of vertex indices in the non-indexed geometry
+            // The mesh was converted to non-indexed (toNonIndexed), so face i has vertices 3i, 3i+1, 3i+2
+            const bidToVerts = new Map<number, number[]>();
+            for (let f = 0; f < faceIds.length; f++) {
+              const bid = faceIds[f];
+              if (bid === 0) continue;
+              let arr = bidToVerts.get(bid);
+              if (!arr) { arr = []; bidToVerts.set(bid, arr); }
+              arr.push(f * 3, f * 3 + 1, f * 3 + 2);
+            }
+            mesh.userData.buildingIdToFaceVertices = bidToVerts;
+
+            // Save a copy of original vertex colors for restoration
+            const colorAttr = mesh.geometry.getAttribute('color');
+            if (colorAttr) {
+              mesh.userData.originalColors = new Float32Array(colorAttr.array as Float32Array);
+            }
+
+            buildingMeshes.push(mesh);
+          }
+        }
       } else if (trace.type === 'scatter3d') {
         // Colorbar-only trace
         if (trace.marker?.showscale) {
@@ -445,6 +763,8 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
       }
     }
 
+    buildingMeshesRef.current = buildingMeshes;
+    meshGroupRef.current = meshGroup;
     scene.add(meshGroup);
 
     // --- Compute bounding box & center the scene ---
@@ -517,6 +837,36 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
       }
     }
 
+    // --- Selection event listeners ---
+    // Click handler: differentiate click (no drag) from orbit drag
+    let mouseDownPos = { x: 0, y: 0 };
+    let mouseDownTime = 0;
+    const onMouseDownClick = (e: MouseEvent) => {
+      mouseDownPos = { x: e.clientX, y: e.clientY };
+      mouseDownTime = Date.now();
+    };
+    const onMouseUpClick = (e: MouseEvent) => {
+      const dx = e.clientX - mouseDownPos.x;
+      const dy = e.clientY - mouseDownPos.y;
+      const dt = Date.now() - mouseDownTime;
+      // Only treat as click if mouse barely moved and was quick
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 300) {
+        handleBuildingClick(e);
+      }
+    };
+    container.addEventListener('mousedown', onMouseDownClick);
+    container.addEventListener('mouseup', onMouseUpClick);
+
+    // Box selection handlers
+    container.addEventListener('mousedown', handleBoxMouseDown);
+    container.addEventListener('mousemove', handleBoxMouseMove);
+    container.addEventListener('mouseup', handleBoxMouseUp);
+
+    // Apply initial highlights if there are already selected IDs
+    if (buildingMeshes.length > 0) {
+      updateBuildingHighlights();
+    }
+
     // --- Render loop ---
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
@@ -539,13 +889,18 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({ figureJson }) => {
 
     return () => {
       resizeObserver.disconnect();
+      container.removeEventListener('mousedown', onMouseDownClick);
+      container.removeEventListener('mouseup', onMouseUpClick);
+      container.removeEventListener('mousedown', handleBoxMouseDown);
+      container.removeEventListener('mousemove', handleBoxMouseMove);
+      container.removeEventListener('mouseup', handleBoxMouseUp);
       cleanup();
       // Remove the WebGL canvas
       if (renderer.domElement && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [figureJson, cleanup]);
+  }, [figureJson, cleanup, handleBuildingClick, handleBoxMouseDown, handleBoxMouseMove, handleBoxMouseUp, updateBuildingHighlights]);
 
   if (!figureJson || figureJson === '{}') {
     return <div className="alert alert-info">No 3D visualization available.</div>;

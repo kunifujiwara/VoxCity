@@ -88,6 +88,8 @@ def visualize_voxcity_plotly(
     # Custom colorbar titles
     building_colorbar_title=None,
     ground_colorbar_title=None,
+    # Building ID grid for interactive selection (per-face building IDs)
+    building_id_grid=None,
 ):
     """
     Interactive 3D visualization using Plotly Mesh3d of voxel faces and optional overlays.
@@ -191,7 +193,20 @@ def visualize_voxcity_plotly(
 
     fig = go.Figure()
 
-    def add_faces(mask, plane, color_rgb):
+    # Prepare building ID grid for per-face tracking (if provided)
+    _bid_aligned = None
+    if building_id_grid is not None and vox is not None:
+        try:
+            from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+            _bid_aligned = ensure_orientation(building_id_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+        except Exception:
+            _bid_aligned = np.flipud(building_id_grid)
+
+    def add_faces(mask, plane, color_rgb, track_building_ids=False):
+        """Create a Plotly Mesh3d trace for faces of a single plane direction.
+        
+        When track_building_ids=True, also embeds per-triangle building IDs in trace meta.
+        """
         idx = np.argwhere(mask)
         if idx.size == 0:
             return
@@ -244,6 +259,15 @@ def visualize_voxcity_plotly(
         ly = cy + (y.max() - y.min() + dy) * 0.6
         lz = cz + (z.max() - z.min() + dz) * 1.4
 
+        trace_meta = None
+        if track_building_ids and _bid_aligned is not None:
+            # Extract building ID for each quad from (x,y) position
+            bid_per_quad = _bid_aligned[idx[:, 0], idx[:, 1]]
+            # tris is vstack([first_tris_of_all_quads, second_tris_of_all_quads])
+            # so face ordering is: quad0_tri1, quad1_tri1, ..., quad0_tri2, quad1_tri2, ...
+            bid_per_tri = np.concatenate([bid_per_quad, bid_per_quad])
+            trace_meta = dict(building_face_ids=bid_per_tri.tolist(), is_building_trace=True)
+
         fig.add_trace(
             go.Mesh3d(
                 x=V[:,0], y=V[:,1], z=V[:,2],
@@ -253,7 +277,8 @@ def visualize_voxcity_plotly(
                 flatshading=False,
                 lighting=lighting,
                 lightposition=dict(x=lx, y=ly, z=lx),
-                name=f"{plane}"
+                name=f"{plane}",
+                meta=trace_meta,
             )
         )
 
@@ -270,12 +295,14 @@ def visualize_voxcity_plotly(
             p = np.pad(occluder, ((0,0),(0,0),(0,1)), constant_values=False); posz = occ & (~p[:,:,1:])
             p = np.pad(occluder, ((0,0),(0,0),(1,0)), constant_values=False); negz = occ & (~p[:,:,:-1])
             color_rgb = vox_dict.get(int(cls), [128,128,128])
-            add_faces(posx, '+x', color_rgb)
-            add_faces(negx, '-x', color_rgb)
-            add_faces(posy, '+y', color_rgb)
-            add_faces(negy, '-y', color_rgb)
-            add_faces(posz, '+z', color_rgb)
-            add_faces(negz, '-z', color_rgb)
+            # Track building IDs for building class when building_id_grid is provided
+            track_bids = (int(cls) == -3 and _bid_aligned is not None)
+            add_faces(posx, '+x', color_rgb, track_building_ids=track_bids)
+            add_faces(negx, '-x', color_rgb, track_building_ids=track_bids)
+            add_faces(posy, '+y', color_rgb, track_building_ids=track_bids)
+            add_faces(negy, '-y', color_rgb, track_building_ids=track_bids)
+            add_faces(posz, '+z', color_rgb, track_building_ids=track_bids)
+            add_faces(negz, '-z', color_rgb, track_building_ids=track_bids)
 
     # Building overlay
     if building_sim_mesh is not None and getattr(building_sim_mesh, 'vertices', None) is not None:
