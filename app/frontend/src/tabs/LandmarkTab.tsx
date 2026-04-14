@@ -43,22 +43,24 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
     }
   }, []);
 
-  // Load preview and buildings list when tab opens with a model
-  useEffect(() => {
-    if (!hasModel || previewJson || simDone) return;
-    let cancelled = false;
+  // Load preview and buildings list (reusable, guards against duplicate fetches)
+  const loadPreview = useCallback(() => {
+    if (!hasModel || previewJson || previewLoading) return;
     setPreviewLoading(true);
     Promise.all([getLandmarkPreview(), getBuildingsList()])
       .then(([preview, bList]) => {
-        if (cancelled) return;
         setPreviewJson(preview.figure_json);
         setBuildings(bList.buildings);
       })
       .catch((err) => {
-        if (!cancelled) setError(`Failed to load preview: ${err.message}`);
+        setError(`Failed to load preview: ${err.message}`);
       })
-      .finally(() => { if (!cancelled) setPreviewLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => { setPreviewLoading(false); });
+  }, [hasModel, previewJson, previewLoading]);
+
+  // Auto-load preview on mount when no sim result exists yet
+  useEffect(() => {
+    if (!simDone) loadPreview();
   }, [hasModel]);
 
   const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, onFigureChange, setRerendering);
@@ -86,7 +88,8 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
 
   const handleBackToSelection = useCallback(() => {
     setShowingSimResult(false);
-  }, []);
+    loadPreview();
+  }, [loadPreview]);
 
   // Build centroids for box selection
   const buildingCentroids: BuildingCentroid[] = buildings.map((b) => ({
