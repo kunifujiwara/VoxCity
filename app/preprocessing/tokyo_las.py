@@ -29,7 +29,10 @@ from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
 import rasterio.crs
 
-import laspy
+try:
+    import laspy
+except ImportError:
+    laspy = None  # Lazy: only needed for LAS file reading functions
 from shapely.geometry import Polygon, mapping
 from shapely.ops import transform as shp_transform
 from pyproj import Transformer, Geod
@@ -156,6 +159,8 @@ def read_las_bounds_and_crs(las_path):
     """Return ((xmin, ymin, xmax, ymax), crs) from LAS/LAZ header.
     Falls back gracefully if CRS is missing.
     """
+    if laspy is None:
+        raise ImportError("laspy is required for LAS file reading")
     try:
         with laspy.open(las_path) as f:
             hdr = f.header
@@ -269,6 +274,8 @@ def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_clas
     Build DSM (max Z) and DTM (min Z) on a regular grid aligned to LAS extents.
     Returns dicts: {'array','transform','bounds','nodata'}
     """
+    if laspy is None:
+        raise ImportError("laspy is required for LAS file reading")
     try:
         las = laspy.read(las_path)
 

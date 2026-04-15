@@ -51,6 +51,7 @@ from .state import app_state
 # VoxCity imports (validated against current package)
 # ---------------------------------------------------------------------------
 from voxcity.generator import get_voxcity, get_voxcity_CityGML, Voxelizer, auto_select_data_sources
+from voxcity.generator.update import regenerate_voxels
 from voxcity.models import (
     BuildingGrid,
     CanopyGrid,
@@ -108,6 +109,9 @@ CITYGML_PATH = os.environ.get(
     "CITYGML_PATH",
     r"C:\Users\kunih\OneDrive\00_Codes\python\VoxelCity\app\data\plateau\13100_tokyo23-ku_2020_citygml_3_2_op",
 )
+
+# nDSM cache path (Cloud-Optimized GeoTIFF for canopy refinement in plateau/Japan mode)
+NDSM_COG_PATH = os.path.join(APP_DIR, "data", "temp", "ndsm_cog.tif")
 
 app = FastAPI(title="VoxCity Web API", version="1.0.0")
 
@@ -198,6 +202,180 @@ def _load_citygml_cache(rectangle_vertices):
         return (gdf, t_gdf)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# nDSM canopy refinement helpers (pure numpy, no external dependencies)
+# ---------------------------------------------------------------------------
+
+def _load_ndsm_grid(rectangle_vertices, meshsize: float):
+    """Load nDSM grid from the cached COG GeoTIFF.
+
+    Returns the nDSM 2-D numpy array, or None if the file is unavailable.
+    """
+    if not os.path.exists(NDSM_COG_PATH):
+        return None
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.windows import from_bounds
+    from pyproj import Transformer
+
+    with rasterio.open(NDSM_COG_PATH) as src:
+        if src.crs is None:
+            raise ValueError("nDSM COG has no CRS")
+        to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+        minx, miny = to_src.transform(
+            float(min(v[0] for v in rectangle_vertices)),
+            float(min(v[1] for v in rectangle_vertices)),
+        )
+        maxx, maxy = to_src.transform(
+            float(max(v[0] for v in rectangle_vertices)),
+            float(max(v[1] for v in rectangle_vertices)),
+        )
+        minx, maxx = min(minx, maxx), max(minx, maxx)
+        miny, maxy = min(miny, maxy), max(miny, maxy)
+
+        win = from_bounds(minx, miny, maxx, maxy, src.transform)
+        win = win.round_offsets().round_lengths()
+
+        width_m = maxx - minx
+        height_m = maxy - miny
+        out_w = max(1, int(round(width_m / float(meshsize))))
+        out_h = max(1, int(round(height_m / float(meshsize))))
+
+        arr = src.read(1, window=win, out_shape=(out_h, out_w), resampling=Resampling.average)
+        nodata = src.nodata
+        arr = arr.astype(float, copy=False)
+        if nodata is not None:
+            arr = np.where(arr == float(nodata), np.nan, arr)
+        # Normalize orientation to VoxCity convention (south-up, row 0 = south)
+        if float(src.transform.e) < 0:
+            arr = np.flipud(arr)
+        return arr
+
+
+def _align_ndsm_to_grid(ndsm_grid: np.ndarray, target_shape: tuple) -> np.ndarray:
+    """Nearest-neighbor resize nDSM to match target grid shape."""
+    if ndsm_grid.shape == target_shape:
+        return ndsm_grid
+    H, W = ndsm_grid.shape
+    Hn, Wn = target_shape
+    r_idx = np.clip(np.round(np.linspace(0, H - 1, Hn)).astype(int), 0, H - 1)
+    c_idx = np.clip(np.round(np.linspace(0, W - 1, Wn)).astype(int), 0, W - 1)
+    return ndsm_grid[np.ix_(r_idx, c_idx)]
+
+
+def _build_canopy_from_ndsm(
+    ndsm_grid: np.ndarray,
+    land_cover_grid: np.ndarray,
+    tree_id: int,
+) -> np.ndarray:
+    """Extract canopy heights at tree cells; NaN elsewhere. Clamp negatives to 0."""
+    canopy = np.full(ndsm_grid.shape, np.nan, dtype=float)
+    tree_mask = land_cover_grid == tree_id
+    ndsm = np.where(np.isnan(ndsm_grid), np.nan, np.maximum(ndsm_grid.astype(float), 0.0))
+    valid = tree_mask & ~np.isnan(ndsm)
+    canopy[valid] = ndsm[valid]
+    return canopy
+
+
+def _fix_building_leakage(
+    canopy: np.ndarray,
+    building_heights: np.ndarray,
+    tree_mask: np.ndarray,
+    tolerance_m: float = 5.0,
+    replacement_m: float = 10.0,
+) -> np.ndarray:
+    """Fix nDSM leakage where tree cells pick up neighboring building roof heights.
+
+    For each tree cell adjacent to a building, compare its canopy value against
+    the maximum building height in a 3×3 neighborhood.  If they match within
+    *tolerance_m*, the nDSM value is assumed to be building-roof leakage and is
+    replaced with *replacement_m* (static tree height).
+    """
+    can = canopy.astype(float, copy=True)
+    bh = np.asarray(building_heights, dtype=float)
+
+    # 3×3 max-filter of building heights (vectorized, no Python loops)
+    H, W = bh.shape
+    padded = np.pad(bh, 1, mode="constant", constant_values=0.0)
+    nearby_bld_h = np.zeros((H, W), dtype=float)
+    for dr in range(3):
+        for dc in range(3):
+            np.maximum(nearby_bld_h, padded[dr:dr + H, dc:dc + W], out=nearby_bld_h)
+
+    suspect = (
+        tree_mask
+        & np.isfinite(can)
+        & (nearby_bld_h > 0)                            # adjacent to a building
+        & (np.abs(can - nearby_bld_h) < tolerance_m)    # height ≈ building roof
+    )
+    n_fixed = int(np.count_nonzero(suspect))
+    if n_fixed:
+        can[suspect] = replacement_m
+        print(f"[nDSM] Fixed {n_fixed} tree cells with building-height leakage")
+    return can
+
+
+def _refine_canopy_with_ndsm(
+    voxcity_obj,
+    rectangle_vertices,
+    meshsize: float,
+    land_cover_source: str,
+    static_tree_height: float = 10.0,
+) -> bool:
+    """Refine canopy heights using cached nDSM COG, then regenerate voxels in-place."""
+    land_cover_grid = voxcity_obj.land_cover.classes
+    lc_classes = get_land_cover_classes(land_cover_source)
+    name_to_id = {name: i for i, name in enumerate(lc_classes.values())}
+    tree_id = name_to_id.get("Tree") or name_to_id.get("Trees") or name_to_id.get("Tree Canopy") or 4
+
+    ndsm_grid = _load_ndsm_grid(rectangle_vertices, meshsize)
+    if ndsm_grid is None:
+        print("[nDSM] No nDSM COG cache found — skipping canopy refinement")
+        return False
+
+    # Align to land cover grid shape
+    ndsm_aligned = _align_ndsm_to_grid(ndsm_grid, land_cover_grid.shape)
+    print(f"[nDSM] Grid loaded: nDSM {ndsm_grid.shape} → aligned {ndsm_aligned.shape}")
+
+    # Build canopy from nDSM (tree cells only)
+    canopy = _build_canopy_from_ndsm(ndsm_aligned, land_cover_grid, tree_id)
+
+    # Fill missing tree cells with static height
+    tree_mask = land_cover_grid == tree_id
+    missing = tree_mask & np.isnan(canopy)
+    if np.any(missing):
+        canopy[missing] = float(static_tree_height)
+
+    # Fix nDSM leakage: tree cells that picked up building roof heights
+    canopy = _fix_building_leakage(
+        canopy,
+        building_heights=voxcity_obj.buildings.heights,
+        tree_mask=tree_mask,
+        tolerance_m=5.0,
+        replacement_m=float(static_tree_height),
+    )
+
+    # NaN → 0
+    canopy = np.nan_to_num(canopy, nan=0.0)
+
+    # Compute canopy bottom from trunk height ratio
+    trunk_ratio = 11.76 / 19.98
+    canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
+
+    # Update in-place
+    voxcity_obj.tree_canopy.top[:] = canopy
+    if voxcity_obj.tree_canopy.bottom is not None:
+        voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
+    else:
+        voxcity_obj.tree_canopy.bottom = canopy_bottom
+
+    # Regenerate voxels with the refined canopy
+    regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
+
+    print(f"[nDSM] Canopy refinement applied — tree cells: {int(np.count_nonzero(canopy > 0))}")
+    return True
 
 
 def _clear_sim_caches() -> None:
@@ -610,13 +788,16 @@ async def generate_model(req: GenerateRequest):
                 cached_buildings, cached_terrain = (
                     cached if isinstance(cached, tuple) else (cached, None)
                 )
+                # Use terrain GeoDataFrame for DEM when available;
+                # fall back to flat DEM when no terrain cache exists.
+                _dem_src = "GeoDataFrame" if cached_terrain is not None else "Flat"
                 voxcity_result = get_voxcity(
                     rectangle_vertices,
                     meshsize=req.meshsize,
                     building_source="GeoDataFrame",
                     land_cover_source=land_cover_source,
                     canopy_height_source=req.canopy_height_source or "Static",
-                    dem_source="Flat",
+                    dem_source=_dem_src,
                     building_gdf=cached_buildings,
                     terrain_gdf=cached_terrain,
                     **kwargs,
@@ -651,6 +832,30 @@ async def generate_model(req: GenerateRequest):
             or req.land_cover_source
             or "OpenStreetMap"
         )
+
+        # Optional nDSM canopy refinement (plateau mode, Japan, OpenEarthMapJapan)
+        _ndsm_conditions = {
+            "mode==plateau": req.mode == "plateau",
+            "use_ndsm_canopy": req.use_ndsm_canopy,
+            "is_japan": _is_japan(req.rectangle_vertices),
+            "OEMJ_lc": "OpenEarthMapJapan" in str(effective_lc),
+        }
+        if all(_ndsm_conditions.values()):
+            try:
+                applied = _refine_canopy_with_ndsm(
+                    voxcity_result,
+                    rectangle_vertices,
+                    meshsize=req.meshsize,
+                    land_cover_source=effective_lc,
+                    static_tree_height=req.static_tree_height,
+                )
+                if not applied:
+                    print("[nDSM] _refine_canopy_with_ndsm returned False (see above for reason)")
+            except Exception as ndsm_err:
+                print(f"[nDSM] Canopy refinement failed (non-fatal): {ndsm_err}")
+        else:
+            _failed = [k for k, v in _ndsm_conditions.items() if not v]
+            print(f"[nDSM] Skipping canopy refinement — conditions not met: {_failed}")
 
         # Store in app state
         app_state.store_generation_result(
