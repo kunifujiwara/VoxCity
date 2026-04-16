@@ -189,7 +189,7 @@ class VoxCityPipeline:
         
         # Build extras dict
         extras_dict = {
-            "building_gdf": building_gdf_out,
+            "building_gdf": self._patch_building_gdf(building_gdf_out, cfg.building_options, kwargs),
             "land_cover_source": lc_src_effective,
             "building_source": cfg.building_source,
             "dem_source": cfg.dem_source,
@@ -211,6 +211,27 @@ class VoxCityPipeline:
             canopy_height_bottom=canopy_bottom,
             extras=extras_dict,
         )
+
+    @staticmethod
+    def _patch_building_gdf(gdf, building_options, kwargs):
+        """Apply complement_height to NaN/zero-height rows and mark them."""
+        if gdf is None or len(gdf) == 0:
+            return gdf
+        import pandas as pd
+        gdf = gdf.copy()
+        complement_height = (
+            kwargs.get("building_complement_height")
+            or building_options.get("building_complement_height")
+        )
+        if complement_height is None:
+            complement_height = 10
+        if "height" in gdf.columns:
+            mask = gdf["height"].isna() | (gdf["height"] == 0)
+            gdf["height_estimated"] = mask
+            gdf.loc[mask, "height"] = complement_height
+        else:
+            gdf["height_estimated"] = False
+        return gdf
 
     def _visualize_grids_after_parallel(
         self, land_cover_grid, building_height_grid, canopy_top, dem_grid,

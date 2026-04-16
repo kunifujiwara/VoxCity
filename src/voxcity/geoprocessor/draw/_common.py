@@ -200,7 +200,8 @@ def build_building_geojson(
             if include_height:
                 h = row.get("height", 0)
                 h = 0.0 if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
-                props = {"idx": int(idx), "height": h}
+                estimated = bool(row.get("height_estimated", False))
+                props = {"idx": int(idx), "height": h, "height_estimated": estimated}
             features.append({
                 "type": "Feature",
                 "id": str(idx),

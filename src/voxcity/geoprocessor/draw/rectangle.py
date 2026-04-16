@@ -730,7 +730,7 @@ def rectangle_map(center=(40, -100), zoom=15, width=500, height=500, cityname=""
         layout=Layout(width="100px"),
     )
     rotation_slider = FloatSlider(
-        value=0, min=-90.0, max=90.0, step=1.0,
+        value=0, min=-90.0, max=90.0, step=0.1,
         readout_format=".1f",
         continuous_update=True,
         style={"description_width": "0px"},

@@ -185,7 +185,7 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
     for idx_b, row in filtered_gdf.iterrows():
         polygon = row.geometry
         height = row.get('height', None)
-        if complement_height is not None and (height == 0 or height is None):
+        if complement_height is not None and (height == 0 or height is None or pd.isna(height)):
             height = complement_height
         min_height = row.get('min_height', 0)
         if pd.isna(min_height):

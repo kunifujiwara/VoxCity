@@ -93,6 +93,67 @@ class TestUpdateWithBuildingGdf:
         with pytest.raises(ValueError, match="rectangle_vertices"):
             update_voxcity(city, building_gdf=MagicMock())
 
+    @patch("voxcity.generator.update.Voxelizer")
+    @patch("voxcity.geoprocessor.raster.create_building_height_grid_from_gdf_polygon")
+    def test_complement_height_forwarded(self, mock_create, mock_vox):
+        """update_voxcity forwards complement_height from extras to rasterization."""
+        from voxcity.generator.update import update_voxcity
+
+        city = _make_city()
+        city.extras["selected_sources"] = {
+            "land_cover_source": "OpenStreetMap",
+            "building_complement_height": 8,
+        }
+        shape = city.buildings.heights.shape
+
+        new_bh = np.full(shape, 8.0)
+        new_bmin = np.empty(shape, dtype=object)
+        for i in range(shape[0]):
+            for j in range(shape[1]):
+                new_bmin[i, j] = []
+        new_bid = np.ones(shape, dtype=int)
+        mock_create.return_value = (new_bh, new_bmin, new_bid, None)
+
+        vox_instance = MagicMock()
+        vox_instance.generate_combined.return_value = np.zeros((*shape, 10), dtype=np.int8)
+        mock_vox.return_value = vox_instance
+
+        building_gdf = MagicMock()
+        update_voxcity(city, building_gdf=building_gdf)
+
+        # Verify complement_height=8 was forwarded
+        call_kwargs = mock_create.call_args
+        assert call_kwargs.kwargs.get("complement_height") == 8
+
+    @patch("voxcity.generator.update.Voxelizer")
+    @patch("voxcity.geoprocessor.raster.create_building_height_grid_from_gdf_polygon")
+    def test_complement_height_defaults_to_10(self, mock_create, mock_vox):
+        """Fallback complement_height=10 when extras has no building_complement_height."""
+        from voxcity.generator.update import update_voxcity
+
+        city = _make_city()
+        # selected_sources exists but without building_complement_height
+        city.extras["selected_sources"] = {"land_cover_source": "OpenStreetMap"}
+        shape = city.buildings.heights.shape
+
+        new_bh = np.full(shape, 10.0)
+        new_bmin = np.empty(shape, dtype=object)
+        for i in range(shape[0]):
+            for j in range(shape[1]):
+                new_bmin[i, j] = []
+        new_bid = np.ones(shape, dtype=int)
+        mock_create.return_value = (new_bh, new_bmin, new_bid, None)
+
+        vox_instance = MagicMock()
+        vox_instance.generate_combined.return_value = np.zeros((*shape, 10), dtype=np.int8)
+        mock_vox.return_value = vox_instance
+
+        building_gdf = MagicMock()
+        update_voxcity(city, building_gdf=building_gdf)
+
+        call_kwargs = mock_create.call_args
+        assert call_kwargs.kwargs.get("complement_height") == 10
+
 
 # ===========================================================================
 # Tests for update_voxcity – tree_gdf auto-generation path
@@ -304,3 +365,70 @@ class TestUpdateWithModelObjects:
         result = update_voxcity(city, tree_canopy=new_canopy)
         np.testing.assert_array_equal(result.tree_canopy.top, np.full(shape, 12.0))
         np.testing.assert_array_equal(result.tree_canopy.bottom, np.full(shape, 4.0))
+
+
+# ===========================================================================
+# Tests for VoxCityPipeline._patch_building_gdf
+# ===========================================================================
+
+class TestPatchBuildingGdf:
+    """Tests for the _patch_building_gdf static method in VoxCityPipeline."""
+
+    def test_nan_heights_filled_and_flagged(self):
+        import geopandas as gpd
+        from shapely.geometry import box
+        from voxcity.generator.pipeline import VoxCityPipeline
+
+        gdf = gpd.GeoDataFrame({
+            "height": [10.0, float("nan"), 0.0, 5.0],
+            "geometry": [box(0, 0, 1, 1)] * 4,
+        })
+        result = VoxCityPipeline._patch_building_gdf(gdf, {}, {"building_complement_height": 7})
+
+        # NaN and 0 should be filled with 7
+        assert result["height"].iloc[1] == 7.0
+        assert result["height"].iloc[2] == 7.0
+        # Known heights untouched
+        assert result["height"].iloc[0] == 10.0
+        assert result["height"].iloc[3] == 5.0
+        # Estimated flag
+        assert result["height_estimated"].iloc[0] is False or result["height_estimated"].iloc[0] == False
+        assert result["height_estimated"].iloc[1] == True
+        assert result["height_estimated"].iloc[2] == True
+        assert result["height_estimated"].iloc[3] is False or result["height_estimated"].iloc[3] == False
+
+    def test_defaults_to_10_when_no_complement_height(self):
+        import geopandas as gpd
+        from shapely.geometry import box
+        from voxcity.generator.pipeline import VoxCityPipeline
+
+        gdf = gpd.GeoDataFrame({
+            "height": [float("nan")],
+            "geometry": [box(0, 0, 1, 1)],
+        })
+        result = VoxCityPipeline._patch_building_gdf(gdf, {}, {})
+        assert result["height"].iloc[0] == 10.0
+
+    def test_none_gdf_returns_none(self):
+        from voxcity.generator.pipeline import VoxCityPipeline
+        assert VoxCityPipeline._patch_building_gdf(None, {}, {}) is None
+
+    def test_empty_gdf_returns_empty(self):
+        import geopandas as gpd
+        from voxcity.generator.pipeline import VoxCityPipeline
+        gdf = gpd.GeoDataFrame(columns=["height", "geometry"])
+        result = VoxCityPipeline._patch_building_gdf(gdf, {}, {})
+        assert len(result) == 0
+
+    def test_does_not_mutate_input(self):
+        import geopandas as gpd
+        from shapely.geometry import box
+        from voxcity.generator.pipeline import VoxCityPipeline
+
+        gdf = gpd.GeoDataFrame({
+            "height": [float("nan"), 5.0],
+            "geometry": [box(0, 0, 1, 1)] * 2,
+        })
+        VoxCityPipeline._patch_building_gdf(gdf, {}, {"building_complement_height": 8})
+        # Original should still have NaN
+        assert np.isnan(gdf["height"].iloc[0])

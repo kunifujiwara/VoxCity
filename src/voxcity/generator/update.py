@@ -187,11 +187,18 @@ def update_voxcity(
                 "Provide building_heights, building_min_heights, and building_ids explicitly."
             )
         
+        # Retrieve complement_height so NaN/zero-height footprints are preserved
+        _selected = city.extras.get("selected_sources") or {}
+        _complement_height = _selected.get("building_complement_height")
+        if _complement_height is None:
+            _complement_height = 10
+
         building_heights, building_min_heights, building_ids, _ = (
             create_building_height_grid_from_gdf_polygon(
                 building_gdf,
                 meshsize,
                 rectangle_vertices,
+                complement_height=_complement_height,
             )
         )
 

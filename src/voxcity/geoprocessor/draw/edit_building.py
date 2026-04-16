@@ -326,9 +326,16 @@ def edit_building(
         "color": "#2196F3", "fillColor": "#2196F3", "fillOpacity": 0.4, "weight": 1,
     }
 
+    def _building_style_callback(feature):
+        props = feature.get("properties", {})
+        if props.get("height_estimated"):
+            return {"color": "#FF9800", "fillColor": "#FF9800", "fillOpacity": 0.4, "weight": 1}
+        return _geojson_style
+
     buildings_geojson = GeoJSON(
         data=_build_geojson_data(),
         style=_geojson_style,
+        style_callback=_building_style_callback,
         hover_style={"fillOpacity": 0.6},
     )
 
@@ -798,6 +805,7 @@ def edit_building(
                 "min_height": mh_in.value,
                 "building_id": new_idx,
                 "id": new_idx,
+                "height_estimated": False,
             }
             buildings_geojson.data = _build_geojson_data()
             clear_preview()

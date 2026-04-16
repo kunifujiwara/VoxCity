@@ -35,7 +35,7 @@ OVERPASS_ENDPOINTS = [
 ]
 
 
-def _fetch_overpass_with_retry(query, timeout=30, max_retries=3, initial_delay=5.0, 
+def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5.0, 
                                  backoff_factor=2.0, endpoints=None):
     """Fetch data from Overpass API with retry logic and exponential backoff.
     
@@ -513,7 +513,7 @@ def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     """
     
     # Fetch data from Overpass API with retry logic
-    data = _fetch_overpass_with_retry(overpass_query, timeout=30)
+    data = _fetch_overpass_with_retry(overpass_query, timeout=60)
     
     # Build a mapping from (type, id) to element
     id_map = {}
@@ -1028,7 +1028,7 @@ def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
 
     # Fetch data from Overpass API with retry logic
     print("Fetching data from Overpass API...")
-    data = _fetch_overpass_with_retry(query, timeout=30)
+    data = _fetch_overpass_with_retry(query, timeout=60)
 
     # Convert OSM data to GeoJSON format using our custom converter instead of json2geojson
     print("Converting data to GeoJSON format...")
