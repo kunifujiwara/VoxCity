@@ -194,6 +194,7 @@ class VoxCityPipeline:
             "building_source": cfg.building_source,
             "dem_source": cfg.dem_source,
             "canopy_height_source": cfg.canopy_height_source,
+            "trunk_height_ratio": cfg.trunk_height_ratio,
         }
         
         # Include tree_gdf if the canopy strategy created one (e.g., OSM source)

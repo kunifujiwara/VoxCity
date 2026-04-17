@@ -311,6 +311,10 @@ def update_voxcity(
             selected = city.extras.get("selected_sources", {})
             land_cover_source = selected.get("land_cover_source", "OpenStreetMap")
 
+    # --- Determine trunk height ratio ---
+    if trunk_height_ratio is None:
+        trunk_height_ratio = city.extras.get("trunk_height_ratio")
+
     # --- Build updated extras ---
     new_extras = dict(city.extras)
     if building_gdf is not None:
@@ -319,6 +323,8 @@ def update_voxcity(
         new_extras["tree_gdf"] = tree_gdf
     new_extras["canopy_top"] = final_canopy_top
     new_extras["canopy_bottom"] = final_canopy_bottom
+    new_extras["land_cover_source"] = land_cover_source
+    new_extras["trunk_height_ratio"] = trunk_height_ratio
 
     # --- Shape validation ---
     expected_shape = final_land_cover.shape

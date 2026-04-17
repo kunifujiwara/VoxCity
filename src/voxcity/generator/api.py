@@ -691,7 +691,10 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         )
         save_voxcity(save_path, city)
 
-    # Attach selected sources (final resolved) to extras for downstream consumers
+    # Attach selected sources (final resolved) to extras for downstream consumers.
+    # NOTE: These are set AFTER save_voxcity, so they only exist in the in-memory
+    # object. The critical parameters (land_cover_source, trunk_height_ratio) are
+    # already stored via PipelineConfig extras before save.
     try:
         city.extras['selected_sources'] = {
             'building_source': building_source,
@@ -969,7 +972,11 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
         dem_grid=dem_grid,
         canopy_height_top=canopy_height_grid,
         canopy_height_bottom=locals().get("canopy_bottom_height_grid"),
-        extras={"building_gdf": building_gdf},
+        extras={
+            "building_gdf": building_gdf,
+            "land_cover_source": land_cover_source,
+            "trunk_height_ratio": kwargs.get("trunk_height_ratio"),
+        },
     )
 
     # Backwards compatible save flag: prefer correct key, fallback to legacy misspelling
