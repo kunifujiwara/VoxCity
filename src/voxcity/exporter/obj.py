@@ -36,10 +36,36 @@ import numpy as np
 import os
 from numba import njit, prange
 import matplotlib.pyplot as plt
-import trimesh
-import numpy as np
+try:
+    import trimesh
+    _HAS_TRIMESH = True
+except ImportError:  # optional dependency
+    trimesh = None  # type: ignore
+    _HAS_TRIMESH = False
 from ..visualizer import get_voxel_color_map
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+from ..errors import ConfigurationError
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
+
+__all__ = [
+    "OBJExporter",
+    "export_obj",
+    "grid_to_obj",
+    "export_netcdf_to_obj",
+    "convert_colormap_indices",
+    "mesh_faces",
+    "create_face_vertices",
+]
+
+
+def _require_trimesh():
+    if not _HAS_TRIMESH:
+        raise ConfigurationError(
+            "This operation requires the optional dependency 'trimesh'. "
+            "Install it via 'pip install trimesh'."
+        )
 
 def convert_colormap_indices(original_map):
     """
@@ -60,7 +86,7 @@ def convert_colormap_indices(original_map):
     Example:
         >>> original = {5: [255, 0, 0], 10: [0, 255, 0], 15: [0, 0, 255]}
         >>> new_map = convert_colormap_indices(original)
-        >>> print(new_map)
+        >>> _logger.info(new_map)
         {0: [255, 0, 0], 1: [0, 255, 0], 2: [0, 0, 255]}
     """
     # Sort the original keys to maintain consistent ordering
@@ -72,15 +98,15 @@ def convert_colormap_indices(original_map):
         new_map[new_idx] = original_map[old_idx]
     
     # Print the new colormap for debugging/reference
-    print("new_colormap = {")
+    _logger.info("new_colormap = {")
     for key, value in new_map.items():
         original_key = keys[key]
         original_line = str(original_map[original_key])
         comment = ""
         if "#" in original_line:
             comment = "#" + original_line.split("#")[1].strip()
-        print(f"    {key}: {value},  {comment}")
-    print("}")
+        _logger.info(f"    {key}: {value},  {comment}")
+    _logger.info("}")
     
     return new_map
 
@@ -438,26 +464,24 @@ def export_obj(array, output_dir, file_name, voxel_size=None, voxel_color_map=No
         
         # Write normal vectors
         f.write('# normals\n')
-        for nx, ny, nz in normals:
-            f.write(f'vn {nx:.6f} {ny:.6f} {nz:.6f}\n')
+        f.write(''.join(f'vn {nx:.6f} {ny:.6f} {nz:.6f}\n' for nx, ny, nz in normals))
         f.write('\n')
-        
+
         # Write vertex coordinates
         f.write('# verts\n')
-        for vx, vy, vz in vertex_list:
-            f.write(f'v {vx:.6f} {vy:.6f} {vz:.6f}\n')
+        f.write(''.join(f'v {vx:.6f} {vy:.6f} {vz:.6f}\n' for vx, vy, vz in vertex_list))
         f.write('\n')
-        
+
         # Write faces grouped by material
         f.write('# faces\n')
         for material_name, faces in faces_per_material.items():
-            f.write(f'usemtl {material_name}\n')
+            lines = [f'usemtl {material_name}\n']
             for face in faces:
-                v_indices = [str(vi) for vi in face['vertices']]
-                normal_idx = face['normal_idx']
-                face_str = ' '.join([f'{vi}//{normal_idx}' for vi in face['vertices']])
-                f.write(f'f {face_str}\n')
-            f.write('\n')
+                ni = face['normal_idx']
+                a, b, c = face['vertices']
+                lines.append(f'f {a}//{ni} {b}//{ni} {c}//{ni}\n')
+            lines.append('\n')
+            f.write(''.join(lines))
 
     # Write MTL file with material definitions
     with open(mtl_file_path, 'w') as f:
@@ -474,7 +498,7 @@ def export_obj(array, output_dir, file_name, voxel_size=None, voxel_color_map=No
             f.write('Ns 50.000000\n')                   # Specular exponent
             f.write('illum 2\n\n')                      # Illumination model
 
-    print(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
+    _logger.info(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
 
 def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size, offset,
                  colormap_name='viridis', num_colors=256, alpha=1.0, vmin=None, vmax=None):
@@ -669,7 +693,7 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
             f.write(f'd {a:.6f}\n')                     # Transparency (alpha)
             f.write('\n')
 
-    print(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
+    _logger.info(f'OBJ and MTL files have been generated in {output_dir} with the base name "{file_name}".')
 
 
 def export_netcdf_to_obj(
@@ -742,11 +766,11 @@ def export_netcdf_to_obj(
     Returns:
         dict: Paths of written files: keys 'vox_obj','vox_mtl','tm_obj','tm_mtl' (values may be None).
     """
+    _require_trimesh()
     import json
     import numpy as np
     import os
     import xarray as xr
-    import trimesh
 
     try:
         from skimage import measure as skim
@@ -917,7 +941,7 @@ def export_netcdf_to_obj(
         if total_faces == 0:
             return None, 0
         if total_faces > max_faces_warn:
-            print(f"  Warning: {name} faces={total_faces:,} (> {max_faces_warn:,}). Consider increasing stride.")
+            _logger.info(f"  Warning: {name} faces={total_faces:,} (> {max_faces_warn:,}). Consider increasing stride.")
 
         verts_all, tris_all, start_idx = [], [], 0
         for plane, mask in (("+x", posx), ("-x", negx), ("+y", posy), ("-y", negy), ("+z", posz), ("-z", negz)):
@@ -1128,7 +1152,7 @@ def export_netcdf_to_obj(
             )
             m.visual.face_colors = np.tile(np.array(rgba, dtype=np.uint8), (len(m.faces), 1))
             meshes.append((iso, m, rgba))
-            print(f"Iso {iso:.4f}: faces={len(m.faces):,}, alpha={alpha:.4f}")
+            _logger.info(f"Iso {iso:.4f}: faces={len(m.faces):,}, alpha={alpha:.4f}")
         return meshes
 
     def save_obj_with_mtl_and_normals(meshes_dict, output_path, base_filename):
@@ -1200,8 +1224,9 @@ def export_netcdf_to_obj(
                     continue
                 obj.write(f"o {name}\n")
                 obj.write("s off\n")
-                for vx, vy, vz in V:
-                    obj.write(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+                obj.write(''.join(
+                    f"v {vx:.6f} {vy:.6f} {vz:.6f}\n" for vx, vy, vz in V
+                ))
 
                 fc = getattr(m.visual, "face_colors", None)
                 if fc is None or len(fc) != len(F):
@@ -1209,22 +1234,29 @@ def export_netcdf_to_obj(
                 else:
                     fc = to_uint8_rgba(fc)
                 uniq, inv = np.unique(fc, axis=0, return_inverse=True)
-                color2mid = {tuple(int(x) for x in c.tolist()): mid_of(tuple(int(x) for x in c.tolist())) for c in uniq}
+                # Map unique-color index → material id (avoids per-face tuple conversion)
+                uniq_to_mid = np.array([
+                    mid_of(tuple(int(x) for x in c.tolist())) for c in uniq
+                ], dtype=np.int64)
+                face_mids = uniq_to_mid[inv]  # shape (n_faces,)
 
                 FN = face_normals(V, F)
-                for nx, ny, nz in FN:
-                    obj.write(f"vn {float(nx):.6f} {float(ny):.6f} {float(nz):.6f}\n")
+                obj.write(''.join(
+                    f"vn {float(nx):.6f} {float(ny):.6f} {float(nz):.6f}\n"
+                    for nx, ny, nz in FN
+                ))
 
+                lines = []
                 current_mid = None
                 for i_face, face in enumerate(F):
-                    key = tuple(int(x) for x in uniq[inv[i_face]].tolist())
-                    mid = color2mid[key]
+                    mid = int(face_mids[i_face])
                     if current_mid != mid:
-                        obj.write(f"usemtl material_{mid}\n")
+                        lines.append(f"usemtl material_{mid}\n")
                         current_mid = mid
-                    a, b, c = face + 1 + v_offset
+                    a, b, c_ = face + 1 + v_offset
                     ni = n_offset + i_face + 1
-                    obj.write(f"f {a}//{ni} {b}//{ni} {c}//{ni}\n")
+                    lines.append(f"f {a}//{ni} {b}//{ni} {c_}//{ni}\n")
+                obj.write(''.join(lines))
 
                 v_offset += len(V)
                 n_offset += len(F)
@@ -1292,7 +1324,7 @@ def export_netcdf_to_obj(
     Jc = min(J0, J_ll)
     Ic = min(I0, I_ll)
     if (Jc != J0) or (Ic != I0):
-        print(
+        _logger.info(
             f"Warning: scalar (J,I)=({J0},{I0}) vs lonlat ({J_ll},{I_ll}); using common ({Jc},{Ic})."
         )
     A = A[:, :Jc, :Ic]
@@ -1386,7 +1418,7 @@ def export_netcdf_to_obj(
             if m_cls is not None:
                 vox_meshes[f"voxclass_{int(cls)}"] = m_cls
                 faces_total += faces
-        print(f"[VoxCity] total voxel faces: {faces_total:,}")
+        _logger.info(f"[VoxCity] total voxel faces: {faces_total:,}")
 
     iso_meshes = build_tm_isosurfaces_regular_grid(
         A_scalar=A_s,
@@ -1416,13 +1448,13 @@ def export_netcdf_to_obj(
     if tm_meshes:
         obj_tm, mtl_tm = save_obj_with_mtl_and_normals(tm_meshes, output_dir, tm_base_filename)
 
-    print("Export finished.")
+    _logger.info("Export finished.")
     if obj_vox:
-        print(f"VoxCity OBJ: {obj_vox}")
-        print(f"VoxCity MTL: {mtl_vox}")
+        _logger.info(f"VoxCity OBJ: {obj_vox}")
+        _logger.info(f"VoxCity MTL: {mtl_vox}")
     if obj_tm:
-        print(f"Scalar Iso OBJ: {obj_tm}")
-        print(f"Scalar Iso MTL: {mtl_tm}")
+        _logger.info(f"Scalar Iso OBJ: {obj_tm}")
+        _logger.info(f"Scalar Iso MTL: {mtl_tm}")
 
     return {"vox_obj": obj_vox, "vox_mtl": mtl_vox, "tm_obj": obj_tm, "tm_mtl": mtl_tm}
 
@@ -1448,6 +1480,7 @@ class OBJExporter:
                     voxel_color_map=kwargs.get("voxel_color_map"),
                 )
                 return os.path.join(output_directory, f"{base_filename}.obj")
+            _require_trimesh()
             is_collection = isinstance(obj, MeshCollection)
         except Exception:
             is_collection = False

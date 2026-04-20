@@ -24,6 +24,15 @@ from pyvox.models import Vox
 from pyvox.writer import VoxWriter
 import os
 from ..visualizer import get_voxel_color_map
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
+
+__all__ = [
+    "MagicaVoxelExporter",
+    "export_magicavoxel_vox",
+    "export_large_voxel_model",
+]
 
 def convert_colormap_and_array(original_map, original_array):
     """
@@ -50,7 +59,7 @@ def convert_colormap_and_array(original_map, original_array):
         >>> color_map = {5: [255,0,0], 10: [0,255,0]}
         >>> array = np.array([[[5,10],[10,5]]])
         >>> new_map, new_array = convert_colormap_and_array(color_map, array)
-        >>> print(new_map)
+        >>> _logger.info(new_map)
         {0: [255,0,0], 1: [0,255,0]}
     """
     # Get all the keys and sort them
@@ -148,7 +157,7 @@ def split_array(array, max_size=255):
     Example:
         >>> array = np.ones((300, 300, 300))
         >>> for chunk, (i,j,k) in split_array(array):
-        ...     print(f"Chunk at position {i},{j},{k} has shape {chunk.shape}")
+        ...     _logger.info(f"Chunk at position {i},{j},{k} has shape {chunk.shape}")
     """
     # Calculate number of splits needed in each dimension
     x, y, z = array.shape
@@ -254,8 +263,8 @@ def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base
     for sub_array, (i, j, k) in split_array(array, max_size):
         output_file = f"{output_prefix}/{base_filename}_{i}_{j}_{k}.vox"
         value_mapping, palette, shape = numpy_to_vox(sub_array, color_map, output_file)
-        print(f"Chunk {i}_{j}_{k} saved as {output_file}")
-        print(f"Shape: {shape}")
+        _logger.info(f"Chunk {i}_{j}_{k} saved as {output_file}")
+        _logger.info(f"Shape: {shape}")
 
     return value_mapping, palette
 
@@ -302,7 +311,7 @@ def export_magicavoxel_vox(array, output_dir, base_filename='chunk', voxel_color
 
     # Export the model and print confirmation
     value_mapping, palette = export_large_voxel_model(converted_array, converted_voxel_color_map, output_dir, base_filename=base_filename)
-    print(f"\tvox files was successfully exported in {output_dir}")
+    _logger.info(f"\tvox files was successfully exported in {output_dir}")
 
 
 class MagicaVoxelExporter:

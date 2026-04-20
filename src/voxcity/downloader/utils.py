@@ -3,6 +3,8 @@ import time
 import requests
 from ..utils.logging import get_logger
 
+__all__ = ["download_file"]
+
 _logger = get_logger(__name__)
 
 

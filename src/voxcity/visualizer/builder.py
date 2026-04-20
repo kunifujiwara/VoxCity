@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import trimesh
 
 from ..models import MeshModel, MeshCollection, VoxelGrid
 from ..geoprocessor.mesh import create_city_meshes

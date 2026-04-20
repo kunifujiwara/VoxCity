@@ -7,8 +7,24 @@ from shapely.geometry import Polygon, Point
 from pyproj import CRS, Transformer
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
-from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords
+from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords, normalize_gdf_crs
 from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+from ...utils.logging import get_logger
+
+_logger = get_logger(__name__)
+
+
+def _validate_meshsize(meshsize: float) -> None:
+    if meshsize < 0.1:
+        warnings.warn(
+            f"meshsize={meshsize} is very small (< 0.1 m). Check that you are not passing degrees.",
+            UserWarning, stacklevel=3,
+        )
+    elif meshsize > 1000:
+        warnings.warn(
+            f"meshsize={meshsize} is very large (> 1000 m). Check units.",
+            UserWarning, stacklevel=3,
+        )
 
 
 def _ensure_active_geometry(gdf):
@@ -31,13 +47,8 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
     """
-    veg_gdf = _ensure_active_geometry(veg_gdf)
-    if veg_gdf.crs is None:
-        warnings.warn("veg_gdf has no CRS. Assuming EPSG:4326. ")
-        veg_gdf = veg_gdf.set_crs(epsg=4326)
-    else:
-        if veg_gdf.crs.to_epsg() != 4326:
-            veg_gdf = veg_gdf.to_crs(epsg=4326)
+    _validate_meshsize(mesh_size)
+    veg_gdf = normalize_gdf_crs(_ensure_active_geometry(veg_gdf))
 
     if 'height' not in veg_gdf.columns:
         raise ValueError("Vegetation GeoDataFrame must have a 'height' column.")
@@ -96,13 +107,8 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
     """
-    terrain_gdf = _ensure_active_geometry(terrain_gdf)
-    if terrain_gdf.crs is None:
-        warnings.warn("terrain_gdf has no CRS. Assuming EPSG:4326. ")
-        terrain_gdf = terrain_gdf.set_crs(epsg=4326)
-    else:
-        if terrain_gdf.crs.to_epsg() != 4326:
-            terrain_gdf = terrain_gdf.to_crs(epsg=4326)
+    _validate_meshsize(mesh_size)
+    terrain_gdf = normalize_gdf_crs(_ensure_active_geometry(terrain_gdf))
 
     if isinstance(polygon, Polygon):
         rectangle_vertices = list(polygon.exterior.coords[:-1])
@@ -148,7 +154,8 @@ def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
             distance_col="dist_to_terrain"
         )
         grid_points_elev.index = grid_points.index
-    except Exception:
+    except Exception:  # pyproj CRS transform can fail for edge-case zones; fall back to unprojected join
+        _logger.debug("Projected sjoin_nearest failed; retrying in original CRS", exc_info=True)
         grid_points_elev = gpd.sjoin_nearest(
             grid_points,
             terrain_gdf[['elevation', 'geometry']],
@@ -187,17 +194,13 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
     if tree_gdf is None or len(tree_gdf) == 0:
         return np.array([]), np.array([])
 
+    _validate_meshsize(meshsize)
     required_cols = ['top_height', 'bottom_height', 'crown_diameter', 'geometry']
     for col in required_cols:
         if col not in tree_gdf.columns:
             raise ValueError(f"tree_gdf must contain '{col}' column.")
 
-    tree_gdf = _ensure_active_geometry(tree_gdf)
-    if tree_gdf.crs is None:
-        warnings.warn("tree_gdf has no CRS. Assuming EPSG:4326.")
-        tree_gdf = tree_gdf.set_crs(epsg=4326)
-    elif tree_gdf.crs.to_epsg() != 4326:
-        tree_gdf = tree_gdf.to_crs(epsg=4326)
+    tree_gdf = normalize_gdf_crs(_ensure_active_geometry(tree_gdf))
 
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     origin = geom["origin"]
@@ -313,8 +316,8 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                     bot_h,
                     canopy_bottom
                 )
-            except Exception:
-                # Skip this height group if rasterization fails
+            except (ValueError, RuntimeError):
+                _logger.debug("Skipping height group during canopy rasterization", exc_info=True)
                 continue
 
     # Process point geometries (individual trees with ellipsoid crowns)

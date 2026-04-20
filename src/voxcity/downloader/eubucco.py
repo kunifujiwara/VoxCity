@@ -39,7 +39,11 @@ import logging
 import shapely
 import geopandas as gpd
 
+from ..errors import DownloaderError
+
 from ..geoprocessor.utils import get_country_name
+
+__all__ = ["load_gdf_from_eubucco", "get_gdf_from_eubucco"]
 
 EUBUCCO_BASE_URL = "https://api.eubucco.com/v0.1"
 
@@ -264,7 +268,7 @@ def download_extract_open_gpkg_from_eubucco(url, output_dir):
     response = requests.get(url)
     if response.status_code != 200:
         logging.error(f"Failed to download file. Status code: {response.status_code}")
-        raise Exception(f"Failed to download file. Status code: {response.status_code}")
+        raise DownloaderError(f"Failed to download file. Status code: {response.status_code}")
 
     # Extract contents of ZIP file
     logging.info("Extracting ZIP file...")
@@ -283,7 +287,7 @@ def download_extract_open_gpkg_from_eubucco(url, output_dir):
 
     if not gpkg_file:
         logging.error("No GPKG file found in the extracted files.")
-        raise Exception("No GPKG file found in the extracted files.")
+        raise DownloaderError("No GPKG file found in the extracted files.")
 
     logging.info(f"GeoPackage file found: {gpkg_file}")
     return gpkg_file

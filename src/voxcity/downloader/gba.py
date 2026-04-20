@@ -32,6 +32,8 @@ import pandas as pd
 import requests
 from shapely.geometry import Polygon
 
+__all__ = ["load_gdf_from_gba"]
+
 
 def _bbox_from_rectangle_vertices(vertices: Sequence[Tuple[float, float]]) -> Tuple[float, float, float, float]:
     """

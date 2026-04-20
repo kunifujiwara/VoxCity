@@ -37,7 +37,10 @@ from ..utils.lc import convert_land_cover_array, get_land_cover_classes, get_sou
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+from ..utils.logging import get_logger
+from ..errors import ProcessingError
 
+_logger = get_logger(__name__)
 
 # Track last effective land cover source to help downstream components (e.g., voxelizer)
 _LAST_EFFECTIVE_LC_SOURCE = None
@@ -49,17 +52,17 @@ def get_last_effective_land_cover_source():
 def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_class_info=True, **kwargs):
     quiet = kwargs.get('quiet', False)
     if not quiet:
-        print("Creating Land Use Land Cover grid\n ")
-        print(f"Data source: {source}")
+        _logger.info("Creating Land Use Land Cover grid\n ")
+        _logger.info(f"Data source: {source}")
         if print_class_info:
-            print(get_source_class_descriptions(source))
+            _logger.info(get_source_class_descriptions(source))
 
     if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
         try:
             initialize_earth_engine()
         except Exception as e:
             if not quiet:
-                print("Earth Engine unavailable (", str(e), ") — falling back to OpenStreetMap for land cover.")
+                _logger.info("Earth Engine unavailable (%s) — falling back to OpenStreetMap for land cover.", e)
             source = 'OpenStreetMap'
 
     os.makedirs(output_dir, exist_ok=True)
@@ -76,10 +79,10 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             # If collection is empty, image operations may fail; guard with try/except
             save_geotiff(image, geotiff_path, scale=meshsize, region=roi, crs='EPSG:4326')
             if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
-                raise RuntimeError("Urbanwatch export produced no file")
+                raise ProcessingError("Urbanwatch export produced no file")
         except Exception as e:
             if not quiet:
-                print("Urbanwatch coverage not found for AOI; falling back to OpenStreetMap (reason:", str(e), ")")
+                _logger.info("Urbanwatch coverage not found for AOI; falling back to OpenStreetMap (reason: %s)", e)
             effective_source = 'OpenStreetMap'
             land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
     elif source == 'ESA WorldCover':
@@ -148,15 +151,15 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
 
     quiet = kwargs.get('quiet', False)
     if not quiet:
-        print("Creating Building Height grid\n ")
-        print(f"Base data source: {source}")
+        _logger.info("Creating Building Height grid\n ")
+        _logger.info(f"Base data source: {source}")
 
     os.makedirs(output_dir, exist_ok=True)
 
     if building_gdf is not None:
         gdf = building_gdf
         if not quiet:
-            print("Using provided GeoDataFrame for building data")
+            _logger.info("Using provided GeoDataFrame for building data")
     else:
         floor_height = kwargs.get("floor_height", 3.0)
         if source == 'Microsoft Building Footprints':
@@ -184,7 +187,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     try:
         comp_label = building_complementary_source if building_complementary_source not in (None, "") else "None"
         if not quiet:
-            print(f"Complementary data source: {comp_label}")
+            _logger.info(f"Complementary data source: {comp_label}")
     except Exception:
         pass
     building_complement_height = kwargs.get("building_complement_height")
@@ -203,7 +206,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
                 building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
             except Exception as e:
                 if not quiet:
-                    print("Open Building 2.5D Temporal requires Earth Engine (", str(e), ") — proceeding without complementary raster.")
+                    _logger.info("Open Building 2.5D Temporal requires Earth Engine (%s) — proceeding without complementary raster.", e)
                 building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         elif building_complementary_source in ["England 1m DSM - DTM", "Netherlands 0.5m DSM - DTM"]:
             try:
@@ -214,7 +217,7 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
                 building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, geotiff_path_comp=geotiff_path_comp, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
             except Exception as e:
                 if not quiet:
-                    print("DSM-DTM complementary raster requires Earth Engine (", str(e), ") — proceeding without complementary raster.")
+                    _logger.info("DSM-DTM complementary raster requires Earth Engine (%s) — proceeding without complementary raster.", e)
                 building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         else:
             if building_complementary_source == 'Microsoft Building Footprints':
@@ -249,8 +252,8 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     quiet = kwargs.get('quiet', False)
     if not quiet:
-        print("Creating Canopy Height grid\n ")
-        print(f"Data source: {source}")
+        _logger.info("Creating Canopy Height grid\n ")
+        _logger.info(f"Data source: {source}")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -315,7 +318,7 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
         initialize_earth_engine()
     except Exception as e:
         if not quiet:
-            print("Earth Engine unavailable (", str(e), ") — falling back to Static canopy heights.")
+            _logger.info("Earth Engine unavailable (%s) — falling back to Static canopy heights.", e)
         # Re-enter with explicit Static logic using land cover mask
         return get_canopy_height_grid(rectangle_vertices, meshsize, 'Static', output_dir, **kwargs)
 
@@ -355,8 +358,8 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
     quiet = kwargs.get('quiet', False)
     if not quiet:
-        print("Creating Digital Elevation Model (DEM) grid\n ")
-        print(f"Data source: {source}")
+        _logger.info("Creating Digital Elevation Model (DEM) grid\n ")
+        _logger.info(f"Data source: {source}")
 
     if source == "Local file":
         geotiff_path = kwargs["dem_path"]
@@ -365,7 +368,7 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
             initialize_earth_engine()
         except Exception as e:
             if not quiet:
-                print("Earth Engine unavailable (", str(e), ") — falling back to flat DEM.")
+                _logger.info("Earth Engine unavailable (%s) — falling back to flat DEM.", e)
             # Compute grid shape directly from rectangle_vertices and meshsize
             from ..geoprocessor.raster.core import compute_grid_shape
             grid_shape = compute_grid_shape(rectangle_vertices, meshsize)

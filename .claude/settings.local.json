@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(NUMBA_DISABLE_JIT=1 /c/Users/kunih/miniconda3/envs/voxcity/python.exe -m pytest tests -m \"not integration and not gee\" --collect-only)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)",
+      "Bash(echo cwd=__TRACKED_VAR__)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/python.exe -m pytest tests -m \"not integration and not gee\" --collect-only -q)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/python.exe -m pytest \"c:/Users/kunih/OneDrive/00_Codes/python/VoxCity/tests\" -m \"not integration and not gee\" --collect-only -q)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/python.exe -m pytest --help)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/python.exe -c \"import pytest; print\\(pytest.__version__\\)\")",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/python.exe -m pytest)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/Scripts/pytest.exe --version)",
+      "Bash(export NUMBA_DISABLE_JIT=1)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/Scripts/pytest.exe \"c:/Users/kunih/OneDrive/00_Codes/python/VoxCity/tests\" -m \"not integration and not gee\" --collect-only -q)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/Scripts/pytest.exe tests *)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/Scripts/pytest.exe tests/test_errors.py -q)",
+      "Bash(/c/Users/kunih/miniconda3/envs/voxcity/Scripts/pytest.exe tests/test_errors.py)",
+      "Bash(export PATH=\"/c/Users/kunih/miniconda3/envs/voxcity:/c/Users/kunih/miniconda3/envs/voxcity/Scripts:/c/Users/kunih/miniconda3/envs/voxcity/Library/bin:$PATH\")",
+      "Bash(pytest tests/test_errors.py)"
+    ]
+  }
+}

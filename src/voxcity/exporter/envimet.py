@@ -32,6 +32,16 @@ from ..geoprocessor.utils import get_city_country_name_from_rectangle, get_timez
 from ..utils.lc import convert_land_cover
 from ..models import VoxCity
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
+
+__all__ = [
+    "EnvimetExporter",
+    "export_inx",
+    "generate_edb_file",
+    "generate_lad_profile",
+]
 
 def array_to_string(arr):
     """Convert a 2D numpy array to a string representation with comma-separated values.
@@ -49,7 +59,7 @@ def array_to_string(arr):
         
     Example:
         >>> arr = np.array([[1, 2], [3, 4]])
-        >>> print(array_to_string(arr))
+        >>> _logger.info(array_to_string(arr))
              1,2
              3,4
     """
@@ -70,7 +80,7 @@ def array_to_string_with_value(arr, value):
         
     Example:
         >>> arr = np.zeros((2, 2))
-        >>> print(array_to_string_with_value(arr, '0'))
+        >>> _logger.info(array_to_string_with_value(arr, '0'))
              0,0
              0,0
     """
@@ -90,7 +100,7 @@ def array_to_string_int(arr):
         
     Example:
         >>> arr = np.array([[1.6, 2.3], [3.7, 4.1]])
-        >>> print(array_to_string_int(arr))
+        >>> _logger.info(array_to_string_int(arr))
              2,2
              4,4
     """
@@ -367,7 +377,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     # Ensure no None values are passed to replace()
     for placeholder, value in placeholders.items():
         if value is None:
-            print(f"Warning: {placeholder} is None, using fallback value")
+            _logger.warning(f"Warning: {placeholder} is None, using fallback value")
             if placeholder == "$locationName$":
                 value = "Unknown Location/ Unknown Country"
             elif placeholder == "$locationTimeZone_Name$":
@@ -418,7 +428,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         min_n = find_min_n(a, r, S_target, max_n=1000000)
         if min_n is None:
             # Fallback to non-telescoping grid if calculation fails
-            print("Warning: Telescoping grid calculation failed, using uniform grid")
+            _logger.warning("Warning: Telescoping grid calculation failed, using uniform grid")
             grids_Z = max(int(np.max(building_on_dem_grid)/meshsize + 0.5) * domain_building_max_height_ratio, min_grids_Z)
         else:
             grids_Z_tent = int(np.max(building_on_dem_grid)/meshsize + 0.5) + min_n

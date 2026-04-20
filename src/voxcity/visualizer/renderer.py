@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import os
 import numpy as np
-import trimesh
+try:
+    import trimesh
+    _HAS_TRIMESH = True
+except ImportError:  # optional dependency
+    trimesh = None  # type: ignore
+    _HAS_TRIMESH = False
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 try:
@@ -14,10 +19,19 @@ from ..models import VoxCity
 from .builder import MeshBuilder
 from .palette import get_voxel_color_map
 from ..geoprocessor.mesh import create_sim_surface_mesh
+from ..errors import ConfigurationError
 try:
     import pyvista as pv
 except ImportError:  # optional dependency
     pv = None  # type: ignore
+
+
+def _require_trimesh():
+    if not _HAS_TRIMESH:
+        raise ConfigurationError(
+            "This operation requires the optional dependency 'trimesh'. "
+            "Install it via 'pip install trimesh'."
+        )
 
 
 def _rgb_tuple_to_plotly_color(rgb_tuple):
@@ -797,7 +811,8 @@ class PyVistaRenderer:
         """
         if pv is None:
             raise ImportError("PyVista is required for static rendering. Install with: pip install pyvista")
-        
+        _require_trimesh()
+
         meshsize = city.voxels.meta.meshsize
         trimesh_dict = {}
         

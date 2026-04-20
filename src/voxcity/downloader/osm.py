@@ -27,6 +27,17 @@ import pyproj
 import pandas as pd
 import geopandas as gpd
 
+from ..errors import DownloaderError
+
+__all__ = [
+    "load_gdf_from_openstreetmap",
+    "load_land_cover_gdf_from_osm",
+    "load_tree_gdf_from_osm",
+    "OVERPASS_ENDPOINTS",
+    "tag_osm_key_value_mapping",
+    "classification_mapping",
+]
+
 # Default Overpass API endpoints
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
@@ -122,7 +133,7 @@ def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5
                 last_error = e
                 continue
     
-    raise RuntimeError(
+    raise DownloaderError(
         f"Failed to fetch OSM data from Overpass endpoints after {max_retries} attempts. "
         f"Last error: {last_error}"
     )

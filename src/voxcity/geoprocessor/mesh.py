@@ -9,11 +9,25 @@ Orientation contract:
 
 import numpy as np
 import os
-import trimesh
+try:
+    import trimesh
+    _HAS_TRIMESH = True
+except ImportError:  # optional dependency
+    trimesh = None  # type: ignore
+    _HAS_TRIMESH = False
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
+from ..errors import ConfigurationError
+
+
+def _require_trimesh():
+    if not _HAS_TRIMESH:
+        raise ConfigurationError(
+            "This operation requires the optional dependency 'trimesh'. "
+            "Install it via 'pip install trimesh'."
+        )
 
 def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
@@ -87,6 +101,7 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     - For buildings (class_id=-3), building IDs are tracked to maintain building identity.
     - The mesh preserves sharp edges, which is important for architectural visualization.
     """
+    _require_trimesh()
     # Find voxels of the current class
     voxel_coords = np.argwhere(voxel_array == class_id)
 
@@ -303,6 +318,7 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
     - The mesh is positioned at dem_grid + z_offset to float above the terrain
     - Face colors are interpolated from the colormap based on sim_grid values
     """
+    _require_trimesh()
     # Flip arrays vertically using orientation helper
     sim_grid_flipped = ensure_orientation(sim_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
     dem_grid_flipped = ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
@@ -556,6 +572,7 @@ def export_meshes(meshes, output_directory, base_filename):
     - The OBJ file combines all meshes while preserving their materials
     - File extensions are automatically added to the base filename
     """
+    _require_trimesh()
     # Export combined mesh as OBJ with materials
     combined_mesh = trimesh.util.concatenate(list(meshes.values()))
     combined_mesh.export(f"{output_directory}/{base_filename}.obj")
@@ -617,8 +634,9 @@ def split_vertices_manual(mesh):
         - Creating sharp edges in architectural models
     - Memory usage increases as vertices are duplicated
     """
+    _require_trimesh()
     new_meshes = []
-    
+
     # For each face, build a small, one-face mesh
     for face_idx, face in enumerate(mesh.faces):
         face_coords = mesh.vertices[face]

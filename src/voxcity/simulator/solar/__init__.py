@@ -65,6 +65,46 @@ from .integration import (  # noqa: F401
     load_irradiance_mesh,
 )
 
+__all__ = [
+    # Kernels
+    "compute_direct_solar_irradiance_map_binary",
+    # Solar positions
+    "get_solar_positions_astral",
+    # Sky patches
+    "generate_tregenza_patches",
+    "get_tregenza_patch_index",
+    "get_tregenza_patch_index_fast",
+    "TREGENZA_BANDS",
+    "TREGENZA_BAND_BOUNDARIES",
+    "generate_reinhart_patches",
+    "generate_uniform_grid_patches",
+    "generate_fibonacci_patches",
+    "bin_sun_positions_to_patches",
+    "bin_sun_positions_to_tregenza_fast",
+    "get_patch_info",
+    "visualize_sky_patches",
+    # Radiation
+    "get_direct_solar_irradiance_map",
+    "get_diffuse_solar_irradiance_map",
+    "get_global_solar_irradiance_map",
+    "compute_solar_irradiance_for_all_faces",
+    "get_building_solar_irradiance",
+    # Temporal
+    "get_cumulative_global_solar_irradiance",
+    "get_cumulative_building_solar_irradiance",
+    # Integration
+    "get_global_solar_irradiance_using_epw",
+    "get_building_global_solar_irradiance_using_epw",
+    "save_irradiance_mesh",
+    "load_irradiance_mesh",
+    # Computation masks (available if simulator_gpu is installed)
+    "create_computation_mask",
+    "draw_computation_mask",
+    "get_mask_from_drawing",
+    "visualize_computation_mask",
+    "get_mask_info",
+]
+
 # Computation mask utilities (re-export from simulator_gpu for convenience)
 try:
     from voxcity.simulator_gpu.solar.mask import (  # noqa: F401

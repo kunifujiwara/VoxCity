@@ -27,6 +27,8 @@ import numpy as np
 from osgeo import gdal, osr
 import pyproj
 
+__all__ = ["save_oemj_as_geotiff"]
+
 def deg2num(lon_deg, lat_deg, zoom):
     """Convert longitude/latitude coordinates to tile coordinates using Web Mercator projection.
     

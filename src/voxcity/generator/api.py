@@ -766,7 +766,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     land_cover_grid = get_land_cover_grid(rectangle_vertices, meshsize, land_cover_source, output_dir, **kwargs)
 
-    print("Creating building height grid")
+    _logger.info("Creating building height grid")
     building_complementary_source = kwargs.get("building_complementary_source")
     gdf_comp = None
     geotiff_path_comp = None
@@ -880,7 +880,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
     if kwargs.pop('flat_dem', None):
         dem_grid = np.zeros_like(land_cover_grid)
     else:
-        print("Creating Digital Elevation Model (DEM) grid")
+        _logger.info("Creating Digital Elevation Model (DEM) grid")
         dem_grid = create_dem_grid_from_gdf_polygon(terrain_gdf, meshsize, rectangle_vertices)
         grid_vis = kwargs.get("gridvis", True)
         if grid_vis:
@@ -893,7 +893,7 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     remove_perimeter_object = kwargs.get("remove_perimeter_object")
     if (remove_perimeter_object is not None) and (remove_perimeter_object > 0):
-        print("apply perimeter removal")
+        _logger.info("apply perimeter removal")
         w_peri = int(remove_perimeter_object * building_height_grid.shape[0] + 0.5)
         h_peri = int(remove_perimeter_object * building_height_grid.shape[1] + 0.5)
 

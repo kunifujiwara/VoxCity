@@ -15,7 +15,11 @@ import os
 import numpy as np
 from pathlib import Path
 from ..models import VoxCity
+from ..utils.logging import get_logger
 
+_logger = get_logger(__name__)
+
+__all__ = ["CityLesExporter", "export_cityles"]
 
 # VoxCity standard land cover classes after conversion
 # Based on convert_land_cover function output (1-based indices)
@@ -294,7 +298,7 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None,
     # Build per-source index mapping
     index_to_code, class_names = _build_index_to_cityles_map(land_cover_source)
 
-    print(f"Land cover source: {land_cover_source} (raw indices)")
+    _logger.info(f"Land cover source: {land_cover_source} (raw indices)")
 
     # Resolve the CityLES code to use under tree canopy
     under_tree_code = _resolve_under_tree_code(
@@ -338,13 +342,13 @@ def export_landuse(land_cover_grid, output_path, land_cover_source=None,
                 mapping_stats[idx][cityles_code] = mapping_stats[idx].get(cityles_code, 0) + 1
 
     # Print mapping summary
-    print("\nLand cover mapping summary (by source class):")
+    _logger.info("\nLand cover mapping summary (by source class):")
     total = ny * nx
     for idx in sorted(mapping_stats.keys()):
         class_name = class_names[idx] if 0 <= idx < len(class_names) else 'Unknown'
         for code, count in sorted(mapping_stats[idx].items()):
             percentage = (count / total) * 100
-            print(f"  {idx}: {class_name} -> CityLES {code}: {count} cells ({percentage:.1f}%)")
+            _logger.info(f"  {idx}: {class_name} -> CityLES {code}: {count} cells ({percentage:.1f}%)")
     
     return cityles_landuse_grid
 
@@ -520,7 +524,7 @@ def export_cityles(city: VoxCity,
     # Create output directory
     output_path = create_cityles_directories(output_directory)
     
-    print(f"Exporting CityLES files to: {output_path}")
+    _logger.info(f"Exporting CityLES files to: {output_path}")
     # Resolve data from VoxCity
     building_height_grid = city.buildings.heights
     building_id_grid = city.buildings.ids if city.buildings.ids is not None else np.zeros_like(building_height_grid, dtype=int)
@@ -539,18 +543,18 @@ def export_cityles(city: VoxCity,
     if _user_specified_ratio:
         # User explicitly asked for a ratio → recompute from canopy top
         canopy_bottom_height_grid = canopy_height_grid * float(trunk_height_ratio)
-        print(f"Canopy bottom heights recomputed with trunk_height_ratio={trunk_height_ratio}")
+        _logger.info(f"Canopy bottom heights recomputed with trunk_height_ratio={trunk_height_ratio}")
     elif canopy_bottom_height_grid is None:
         # Nothing explicit – try the VoxCity model's stored bottom grid
         if city.tree_canopy is not None and city.tree_canopy.bottom is not None:
             canopy_bottom_height_grid = city.tree_canopy.bottom
-            print("Using canopy bottom heights from VoxCity model")
+            _logger.info("Using canopy bottom heights from VoxCity model")
         # else stays None → export_vmap will use trunk_height_ratio internally
 
-    print(f"Land cover source: {land_cover_source}")
+    _logger.info(f"Land cover source: {land_cover_source}")
     
     # Export individual files
-    print("\nExporting landuse.txt...")
+    _logger.info("\nExporting landuse.txt...")
     cityles_landuse_grid = export_landuse(
         land_cover_grid,
         output_path,
@@ -561,7 +565,7 @@ def export_cityles(city: VoxCity,
         under_tree_cityles_code=under_tree_cityles_code,
     )
 
-    print("\nExporting topog.txt...")
+    _logger.info("\nExporting topog.txt...")
     export_topog(
         building_height_grid,
         building_id_grid,
@@ -570,13 +574,13 @@ def export_cityles(city: VoxCity,
         cityles_landuse_grid=cityles_landuse_grid,
     )
     
-    print("\nExporting dem.txt...")
+    _logger.info("\nExporting dem.txt...")
     export_dem(dem_grid, output_path)
     
-    print("\nExporting vmap.txt...")
+    _logger.info("\nExporting vmap.txt...")
     export_vmap(canopy_height_grid, output_path, trunk_height_ratio, tree_type, building_height_grid=building_height_grid, canopy_bottom_height_grid=canopy_bottom_height_grid)
     
-    print("\nExporting lonlat.txt...")
+    _logger.info("\nExporting lonlat.txt...")
     export_lonlat(rectangle_vertices, building_height_grid.shape, output_path)
     
     # Create metadata file for reference
@@ -606,7 +610,7 @@ def export_cityles(city: VoxCity,
         unique_values = np.unique(land_cover_grid)
         f.write(f"Unique land cover values: {unique_values}\n")
     
-    print(f"\nCityLES export completed successfully!")
+    _logger.info(f"\nCityLES export completed successfully!")
     return str(output_path)
 
 
@@ -653,8 +657,8 @@ def ensure_converted_land_cover(land_cover_grid, land_cover_source):
         
         # Apply conversion
         converted_grid = convert_land_cover(land_cover_grid, land_cover_source)
-        print(f"Applied VoxCity land cover conversion for {land_cover_source}")
+        _logger.info(f"Applied VoxCity land cover conversion for {land_cover_source}")
         return converted_grid
     except ImportError:
-        print("Warning: Could not import VoxCity land cover utilities. Using direct mapping.")
+        _logger.warning("Warning: Could not import VoxCity land cover utilities. Using direct mapping.")
         return land_cover_grid

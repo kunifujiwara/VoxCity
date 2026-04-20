@@ -12,6 +12,13 @@ The main functionality includes:
 import numpy as np
 from .orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
+__all__ = [
+    "get_material_dict",
+    "get_modulo_numbers",
+    "set_building_material_by_id",
+    "set_building_material_by_gdf",
+]
+
 def get_material_dict():
     """
     Returns a dictionary mapping material names to their corresponding ID values.

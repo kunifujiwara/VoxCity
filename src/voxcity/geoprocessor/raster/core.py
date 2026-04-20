@@ -1,6 +1,7 @@
+import warnings
 import numpy as np
-from typing import Tuple, Dict, Any
-from shapely.geometry import Polygon
+from typing import List, Tuple, Dict, Any
+from shapely.geometry import Polygon, box
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
 
@@ -230,6 +231,29 @@ def compute_grid_shape(rectangle_vertices, meshsize: float) -> Tuple[int, int]:
     if geom is None:
         return (1, 1)
     return geom["grid_size"]
+
+
+def normalize_gdf_crs(gdf, assume_epsg: int = 4326):
+    """Return *gdf* re-projected to *assume_epsg*.
+
+    If the GeoDataFrame has no CRS, EPSG:4326 is assumed with a warning.
+    """
+    if gdf.crs is None:
+        warnings.warn(
+            f"GeoDataFrame has no CRS. Assuming EPSG:{assume_epsg}.",
+            UserWarning, stacklevel=2,
+        )
+        return gdf.set_crs(epsg=assume_epsg)
+    if gdf.crs.to_epsg() != assume_epsg:
+        return gdf.to_crs(epsg=assume_epsg)
+    return gdf
+
+
+def bbox_from_vertices(rectangle_vertices: List[Tuple[float, float]]) -> "box":
+    """Return a shapely box covering *rectangle_vertices* (lon, lat) pairs."""
+    lons = [c[0] for c in rectangle_vertices]
+    lats = [c[1] for c in rectangle_vertices]
+    return box(min(lons), min(lats), max(lons), max(lats))
 
 
 

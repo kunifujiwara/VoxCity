@@ -22,6 +22,8 @@ from .utils import download_file
 from ..geoprocessor.utils import tile_from_lat_lon, quadkey_to_tile
 from ..geoprocessor.io import load_gdf_from_multiple_gz
 
+__all__ = ["get_mbfp_gdf"]
+
 def get_geojson_links(output_dir):
     """Download and load the dataset links CSV file containing building footprint URLs.
     

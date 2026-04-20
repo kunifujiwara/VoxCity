@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 from shapely.geometry import mapping
 
+__all__ = ["load_gdf_from_overture"]
+
 def convert_numpy_to_python(obj):
     """
     Recursively convert numpy types to native Python types.

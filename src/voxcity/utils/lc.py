@@ -20,6 +20,17 @@ from shapely.geometry import Polygon
 from rtree import index
 from collections import Counter
 
+__all__ = [
+    "get_land_cover_classes",
+    "get_source_class_descriptions",
+    "convert_land_cover",
+    "convert_land_cover_array",
+    "get_class_priority",
+    "create_land_cover_polygons",
+    "get_nearest_class",
+    "get_dominant_class",
+]
+
 def rgb_distance(color1, color2):
     """
     Calculate the Euclidean distance between two RGB colors.

@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 from typing import List, Tuple, Dict, Any
 from shapely.geometry import Polygon
@@ -13,6 +14,22 @@ from ...utils.lc import (
     get_dominant_class,
 )
 from .core import translate_array
+from ...utils.logging import get_logger
+
+_logger = get_logger(__name__)
+
+
+def _validate_meshsize(meshsize: float) -> None:
+    if meshsize < 0.1:
+        warnings.warn(
+            f"meshsize={meshsize} is very small (< 0.1 m). Check that you are not passing degrees.",
+            UserWarning, stacklevel=3,
+        )
+    elif meshsize > 1000:
+        warnings.warn(
+            f"meshsize={meshsize} is very large (> 1000 m). Check units.",
+            UserWarning, stacklevel=3,
+        )
 
 
 def tree_height_grid_from_land_cover(land_cover_grid_ori: np.ndarray) -> np.ndarray:
@@ -40,6 +57,7 @@ def create_land_cover_grid_from_geotiff_polygon(
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
     """
+    _validate_meshsize(mesh_size)
     from .core import compute_cell_center_coords
 
     cc = compute_cell_center_coords(polygon, mesh_size)
@@ -106,6 +124,7 @@ def create_land_cover_grid_from_gdf_polygon(
     Returns:
         2D numpy array of land cover class names
     """
+    _validate_meshsize(meshsize)
     import numpy as np
     import geopandas as gpd
     from rasterio import features
@@ -250,10 +269,10 @@ def create_land_cover_grid_from_gdf_polygon(
                     if ocean_count > 0:
                         bb_grid[ocean_cells] = ocean_code
                         pct = 100 * ocean_count / bb_grid.size
-                        print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}'")
+                        _logger.info(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}'")
                         
                 except Exception as e:
-                    print(f"  Warning: Ocean rasterization failed: {e}")
+                    _logger.info(f"  Warning: Ocean rasterization failed: {e}")
             else:
                 from ...downloader.ocean import check_if_area_is_ocean_via_land_features
                 is_ocean = check_if_area_is_ocean_via_land_features(rectangle_vertices)
@@ -263,10 +282,10 @@ def create_land_cover_grid_from_gdf_polygon(
                     if ocean_count > 0:
                         bb_grid[ocean_cells] = ocean_code
                         pct = 100 * ocean_count / bb_grid.size
-                        print(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}' (open ocean)")
+                        _logger.info(f"  Ocean detection: {ocean_count:,} cells ({pct:.1f}%) classified as '{ocean_class}' (open ocean)")
                         
         except Exception as e:
-            print(f"  Warning: Ocean detection failed: {e}")
+            _logger.info(f"  Warning: Ocean detection failed: {e}")
 
     # Sample the bounding-box grid at rotated cell centre coordinates
     cc = compute_cell_center_coords(rectangle_vertices, meshsize)

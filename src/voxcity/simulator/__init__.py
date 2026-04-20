@@ -1,3 +1,46 @@
 from .view import *
 from .solar import *
 from .utils import *
+
+__all__ = [
+    # view
+    "get_view_index",
+    "get_sky_view_factor_map",
+    "get_surface_view_factor",
+    "mark_building_by_id",
+    "compute_landmark_visibility",
+    "get_landmark_visibility_map",
+    "get_surface_landmark_visibility",
+    "rotate_vector_axis_angle",
+    # solar (from solar/__init__.py __all__)
+    "compute_direct_solar_irradiance_map_binary",
+    "get_solar_positions_astral",
+    "generate_tregenza_patches",
+    "get_tregenza_patch_index",
+    "get_tregenza_patch_index_fast",
+    "TREGENZA_BANDS",
+    "TREGENZA_BAND_BOUNDARIES",
+    "generate_reinhart_patches",
+    "generate_uniform_grid_patches",
+    "generate_fibonacci_patches",
+    "bin_sun_positions_to_patches",
+    "bin_sun_positions_to_tregenza_fast",
+    "get_patch_info",
+    "visualize_sky_patches",
+    "get_direct_solar_irradiance_map",
+    "get_diffuse_solar_irradiance_map",
+    "get_global_solar_irradiance_map",
+    "compute_solar_irradiance_for_all_faces",
+    "get_building_solar_irradiance",
+    "get_cumulative_global_solar_irradiance",
+    "get_cumulative_building_solar_irradiance",
+    "get_global_solar_irradiance_using_epw",
+    "get_building_global_solar_irradiance_using_epw",
+    "save_irradiance_mesh",
+    "load_irradiance_mesh",
+    "create_computation_mask",
+    "draw_computation_mask",
+    "get_mask_from_drawing",
+    "visualize_computation_mask",
+    "get_mask_info",
+]
