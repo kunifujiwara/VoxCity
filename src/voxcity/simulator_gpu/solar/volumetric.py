@@ -52,15 +52,19 @@ class VolumetricFluxCalculator:
         self,
         domain,
         n_azimuth: int = 36,
-        min_opaque_lad: float = 0.5
+        min_opaque_lad: float = 0.5,
+        periodic_xy: bool = False,
     ):
         """
         Initialize volumetric flux calculator.
-        
+
         Args:
             domain: Domain object with grid geometry
             n_azimuth: Number of azimuthal directions for horizon tracing
             min_opaque_lad: Minimum LAD value considered opaque for shadow purposes
+            periodic_xy: Enable periodic boundary conditions in X and Y directions.
+                When True, rays that exit the domain wrap around to the opposite
+                side. Z is always non-periodic.
         """
         self.domain = domain
         self.nx = domain.nx
@@ -69,9 +73,10 @@ class VolumetricFluxCalculator:
         self.dx = domain.dx
         self.dy = domain.dy
         self.dz = domain.dz
-        
+
         self.n_azimuth = n_azimuth
         self.min_opaque_lad = min_opaque_lad
+        self.periodic_xy = 1 if periodic_xy else 0
         
         # Default mode
         self.mode = VolumetricFluxMode.DIRECT_DIFFUSE
@@ -359,41 +364,53 @@ class VolumetricFluxCalculator:
             cx = x + dir_x * dist
             cy = y + dir_y * dist
             cz = z + dir_z * dist
-            
-            # Check bounds
-            if cx < 0.0 or cx >= self.nx * self.dx:
-                break
-            if cy < 0.0 or cy >= self.ny * self.dy:
-                break
+
+            # Z is always non-periodic (sky / ground escape)
             if cz < 0.0 or cz >= self.nz * self.dz:
-                break  # Exited domain through top - reached sky
-            
+                break
+
+            # X/Y bounds: wrap if periodic, else exit
+            if self.periodic_xy == 1:
+                while cx < 0.0:
+                    cx += self.nx * self.dx
+                while cx >= self.nx * self.dx:
+                    cx -= self.nx * self.dx
+                while cy < 0.0:
+                    cy += self.ny * self.dy
+                while cy >= self.ny * self.dy:
+                    cy -= self.ny * self.dy
+            else:
+                if cx < 0.0 or cx >= self.nx * self.dx:
+                    break
+                if cy < 0.0 or cy >= self.ny * self.dy:
+                    break
+
             # Grid indices
             ix = ti.cast(ti.floor(cx / self.dx), ti.i32)
             iy = ti.cast(ti.floor(cy / self.dy), ti.i32)
             iz = ti.cast(ti.floor(cz / self.dz), ti.i32)
-            
+
             ix = ti.max(0, ti.min(self.nx - 1, ix))
             iy = ti.max(0, ti.min(self.ny - 1, iy))
             iz = ti.max(0, ti.min(self.nz - 1, iz))
-            
+
             # Check for solid obstacle - completely blocks
             if is_solid[ix, iy, iz] == 1:
                 transmissivity = 0.0
                 break
-            
+
             # Accumulate LAD for Beer-Lambert
             if has_lad == 1:
                 cell_lad = lad[ix, iy, iz]
                 if cell_lad > 0.0:
                     cumulative_lad_path += cell_lad * step_dist
-        
+
         # Apply Beer-Lambert if passed through vegetation
         if transmissivity > 0.0 and cumulative_lad_path > 0.0:
             transmissivity = ti.exp(-EXT_COEF * cumulative_lad_path)
-        
+
         return transmissivity
-    
+
     @ti.kernel
     def _compute_skyvf_vol_kernel(
         self,
