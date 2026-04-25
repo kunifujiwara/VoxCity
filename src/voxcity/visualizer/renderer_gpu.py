@@ -55,14 +55,18 @@ _ti = None
 try:
     import taichi as ti
     _ti = ti
-    # Initialize Taichi immediately so decorators work
-    try:
-        ti.init(arch=ti.gpu)
-    except Exception:
-        try:
-            ti.init(arch=ti.cpu)
-        except Exception:
-            pass
+    # NOTE: Do NOT call ``ti.init`` at module-import time. Doing so binds
+    # Taichi's CUDA context to whatever thread happens to import this module
+    # (almost always the main thread). When the host application later wants
+    # to drive Taichi from a different thread (for example a dedicated worker
+    # thread that owns the CUDA context for the whole process), the eager
+    # init left behind by this module would cause ``CUDA_ERROR_INVALID_CONTEXT``
+    # on the first ``ti.reset()``/``ti.init()`` from the other thread.
+    #
+    # Taichi's ``@ti.func`` / ``@ti.kernel`` / ``@ti.data_oriented`` decorators
+    # do not require an active runtime to be evaluated, so deferring the init
+    # is safe. Renderer code below calls ``ensure_initialized()`` lazily when
+    # an instance is actually constructed.
     _HAS_TAICHI = True
 except ImportError:
     pass
@@ -293,6 +297,9 @@ if _HAS_TAICHI:
             emissive : np.ndarray, optional
                 (M,) array of emissive intensity per face (0-inf, used for Emissive materials)
             """
+            # Lazy Taichi init: deferred from module import (see top of file).
+            from ..simulator_gpu.init_taichi import ensure_initialized
+            ensure_initialized()
             self.n_vertices = len(vertices)
             self.n_triangles = len(indices)
             
@@ -646,6 +653,9 @@ if _HAS_TAICHI:
             max_depth : int
                 Maximum ray bounce depth
             """
+            # Lazy Taichi init: deferred from module import (see top of file).
+            from ..simulator_gpu.init_taichi import ensure_initialized
+            ensure_initialized()
             self.width = width
             self.height = height
             self.samples_per_pixel = samples_per_pixel
@@ -1244,6 +1254,9 @@ class GPURenderer:
         """
         if not _HAS_TAICHI:
             raise ImportError("Taichi is required for GPU rendering. Install with: pip install taichi")
+        # Lazy Taichi init: deferred from module import (see top of file).
+        from ..simulator_gpu.init_taichi import ensure_initialized
+        ensure_initialized()
         
         self.taichi_renderer = TaichiRenderer(
             width=width,
