@@ -15,6 +15,7 @@ a simple heuristic based on nearby land features.
 import os
 import tempfile
 import hashlib
+import time
 from pathlib import Path
 from typing import List, Tuple, Optional
 import requests
@@ -47,8 +48,12 @@ def get_land_polygon_for_area(rectangle_vertices: List[Tuple[float, float]], use
     bbox = (min_lon, min_lat, max_lon, max_lat)
     
     # Query coastlines from Overpass API
-    overpass_data = query_coastlines_from_overpass(min_lat, min_lon, max_lat, max_lon)
-    
+    overpass_data, ok = query_coastlines_from_overpass(min_lat, min_lon, max_lat, max_lon)
+
+    if not ok:
+        # API failure - signal to caller; do not silently treat as "no coastlines"
+        return None
+
     # Count coastlines
     coastline_count = sum(1 for e in overpass_data.get('elements', []) 
                          if e.get('type') == 'way' and e.get('tags', {}).get('natural') == 'coastline')
@@ -78,17 +83,22 @@ def get_cache_path(rectangle_vertices: List[Tuple[float, float]], grid_shape: Tu
 
 def query_coastlines_from_overpass(
     min_lat: float, min_lon: float, max_lat: float, max_lon: float,
-    buffer_deg: float = 0.1
-) -> List[dict]:
+    buffer_deg: float = 0.1,
+    max_retries: int = 2,
+) -> Tuple[dict, bool]:
     """
     Query coastline ways from Overpass API.
-    
+
     Args:
         min_lat, min_lon, max_lat, max_lon: Bounding box
         buffer_deg: Buffer around bbox to catch coastlines that might affect the area
-        
+        max_retries: Per-endpoint retry count for transient errors (e.g., 429/5xx)
+
     Returns:
-        List of coastline way dictionaries with node coordinates
+        Tuple ``(data, ok)`` where ``data`` is the Overpass JSON response
+        (``{'elements': []}`` on failure) and ``ok`` is True only if the API
+        actually returned a successful response. Callers should treat
+        ``ok == False`` as "API failure" rather than "no coastlines in area".
     """
     # Expand bbox slightly to catch nearby coastlines
     query_min_lat = min_lat - buffer_deg
@@ -112,16 +122,47 @@ def query_coastlines_from_overpass(
     ]
     
     headers = {"User-Agent": "voxcity/1.0 (https://github.com/kunifujiwara/voxcity)"}
-    
+
+    last_error = None
     for endpoint in overpass_endpoints:
-        try:
-            response = requests.get(endpoint, params={'data': query}, headers=headers, timeout=30)
-            if response.status_code == 200:
-                return response.json()
-        except Exception:
-            continue
-    
-    return {'elements': []}
+        for attempt in range(max_retries + 1):
+            try:
+                response = requests.get(
+                    endpoint, params={'data': query}, headers=headers, timeout=60
+                )
+                if response.status_code == 200:
+                    try:
+                        return response.json(), True
+                    except ValueError as e:
+                        last_error = f"invalid JSON from {endpoint}: {e}"
+                        break  # don't retry on bad JSON; try next endpoint
+
+                # Transient errors: retry with backoff (honor Retry-After if present)
+                if response.status_code in (429, 502, 503, 504):
+                    last_error = f"{endpoint} returned HTTP {response.status_code}"
+                    if attempt < max_retries:
+                        retry_after = response.headers.get("Retry-After")
+                        try:
+                            delay = float(retry_after) if retry_after else 2.0 * (attempt + 1)
+                        except ValueError:
+                            delay = 2.0 * (attempt + 1)
+                        time.sleep(min(delay, 30.0))
+                        continue
+                    break  # exhausted retries; try next endpoint
+
+                # Other non-200: don't retry, try next endpoint
+                last_error = f"{endpoint} returned HTTP {response.status_code}"
+                break
+            except requests.RequestException as e:
+                last_error = f"{endpoint} request error: {e}"
+                if attempt < max_retries:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                break
+
+    if last_error:
+        print(f"  Warning: Overpass coastline query failed ({last_error}).")
+    return {'elements': []}, False
 
 
 def build_coastline_polygons(overpass_data: dict, bbox: Tuple[float, float, float, float]):
@@ -243,80 +284,91 @@ def build_coastline_polygons(overpass_data: dict, bbox: Tuple[float, float, floa
 def is_polygon_land(polygon, coastline_segments):
     """
     Determine if a polygon is land based on coastline orientation.
-    
+
     OSM Rule: Land is on the LEFT of the coastline direction.
-    
-    For a point to be on land, when standing on the nearest coastline
-    and facing the direction of the coastline, the point should be on your left.
-    
-    This improved version checks against coastlines that actually BOUND the polygon,
-    not just the globally nearest coastline.
+
+    Algorithm (orientation-match, robust to non-convex / harbor-shaped polygons):
+      1. Force the polygon's exterior to CCW orientation. With CCW orientation,
+         the polygon's interior lies on the LEFT of every exterior edge as you
+         walk around it.
+      2. Walk consecutive vertex pairs ``(a, b)`` of the exterior.
+      3. For each edge whose midpoint lies on a coastline (within a tiny
+         tolerance), look up the coastline segment containing that midpoint
+         and compare its direction to the polygon edge direction via dot
+         product:
+            - dot > 0  -> edge follows coastline forward -> interior on
+              LEFT of coastline -> LAND vote.
+            - dot < 0  -> edge runs against coastline -> interior on
+              RIGHT of coastline -> WATER vote.
+      4. Majority vote across all coastline-coincident edges. Defaults to
+         land on tie or when no coastline-coincident edges exist (e.g., a
+         polygon bounded entirely by the bbox boundary).
     """
-    from shapely.geometry import Point, LineString
-    import math
-    
-    # Get a representative point inside the polygon
+    from shapely.geometry import LineString
+    from shapely.geometry.polygon import orient
+
     try:
-        test_point = polygon.representative_point()
-    except:
-        test_point = polygon.centroid
-    
-    if test_point.is_empty:
-        return True  # Default to land if we can't determine
-    
-    px, py = test_point.x, test_point.y
-    
-    # Find coastlines that actually touch/bound this polygon
-    bounding_coastlines = []
-    for coastline in coastline_segments:
-        # Check if coastline touches or is very close to polygon boundary
-        if polygon.exterior.distance(coastline) < 1e-8:
-            bounding_coastlines.append(coastline)
-    
-    # If no bounding coastlines found, fall back to nearest
-    if not bounding_coastlines:
-        bounding_coastlines = coastline_segments
-    
-    # Check all bounding coastlines and vote
+        polygon = orient(polygon, sign=1.0)  # CCW exterior
+    except Exception:
+        pass
+
+    try:
+        coords = list(polygon.exterior.coords)
+    except Exception:
+        return True
+
+    if len(coords) < 2:
+        return True
+
+    # Tolerance: roughly the polygonize/snap precision in degrees.
+    tol = 1e-9
+
     votes_land = 0
     votes_water = 0
-    
-    for coastline in bounding_coastlines:
-        # Find the closest point on the coastline and determine the direction
-        coords = list(coastline.coords)
-        
-        # Find which segment of the coastline is closest to the test point
-        closest_seg_idx = 0
-        closest_seg_dist = float('inf')
-        
-        for i in range(len(coords) - 1):
-            seg = LineString([coords[i], coords[i + 1]])
-            seg_dist = seg.distance(test_point)
-            if seg_dist < closest_seg_dist:
-                closest_seg_dist = seg_dist
-                closest_seg_idx = i
-        
-        # Get the direction vector of the closest segment
-        x1, y1 = coords[closest_seg_idx]
-        x2, y2 = coords[closest_seg_idx + 1]
-        
-        # Direction vector of coastline
-        dx = x2 - x1
-        dy = y2 - y1
-        
-        # Vector from segment start to test point
-        vx = px - x1
-        vy = py - y1
-        
-        # Cross product: if positive, point is on the left; if negative, on the right
-        cross = dx * vy - dy * vx
-        
-        if cross > 0:
+
+    for i in range(len(coords) - 1):
+        ax, ay = coords[i]
+        bx, by = coords[i + 1]
+        edx = bx - ax
+        edy = by - ay
+        if edx == 0 and edy == 0:
+            continue
+        mx = (ax + bx) / 2.0
+        my = (ay + by) / 2.0
+
+        # Find a coastline whose geometry passes through this edge midpoint.
+        matching_coastline = None
+        for cl in coastline_segments:
+            try:
+                if cl.distance(LineString([(ax, ay), (bx, by)])) <= tol:
+                    matching_coastline = cl
+                    break
+            except Exception:
+                continue
+        if matching_coastline is None:
+            continue  # bbox-boundary edge or unrelated edge
+
+        # Locate the coastline segment containing the midpoint.
+        cl_coords = list(matching_coastline.coords)
+        best_dist = float('inf')
+        best_k = 0
+        for k in range(len(cl_coords) - 1):
+            seg = LineString([cl_coords[k], cl_coords[k + 1]])
+            d = seg.distance(LineString([(ax, ay), (bx, by)]))
+            if d < best_dist:
+                best_dist = d
+                best_k = k
+        cdx = cl_coords[best_k + 1][0] - cl_coords[best_k][0]
+        cdy = cl_coords[best_k + 1][1] - cl_coords[best_k][1]
+
+        dot = cdx * edx + cdy * edy
+        if dot > 0:
             votes_land += 1
-        else:
+        elif dot < 0:
             votes_water += 1
-    
-    # Majority vote (default to land on tie)
+
+    if votes_land == 0 and votes_water == 0:
+        return True  # no coastline-coincident edges; default to land
     return votes_land >= votes_water
 
 
@@ -407,9 +459,20 @@ def get_land_mask_from_coastlines(
     
     # Query coastlines
     print("  Querying coastlines from Overpass API...")
-    overpass_data = query_coastlines_from_overpass(min_lat, min_lon, max_lat, max_lon)
-    
-    coastline_count = sum(1 for e in overpass_data.get('elements', []) 
+    overpass_data, ok = query_coastlines_from_overpass(min_lat, min_lon, max_lat, max_lon)
+
+    if not ok:
+        # API failure - do not silently mislabel the area via heuristic.
+        print("  Warning: Overpass API failed; skipping ocean detection (treating area as land).")
+        land_mask = np.ones(grid_shape, dtype=bool)
+        if use_cache:
+            try:
+                np.save(cache_path, land_mask)
+            except Exception:
+                pass
+        return land_mask
+
+    coastline_count = sum(1 for e in overpass_data.get('elements', [])
                          if e.get('type') == 'way' and e.get('tags', {}).get('natural') == 'coastline')
     
     if coastline_count == 0:
