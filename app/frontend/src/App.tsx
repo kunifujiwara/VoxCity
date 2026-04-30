@@ -6,12 +6,15 @@ import SolarTab from './tabs/SolarTab';
 import ViewTab from './tabs/ViewTab';
 import LandmarkTab from './tabs/LandmarkTab';
 import ExportTab from './tabs/ExportTab';
+import ZoningTab from './tabs/ZoningTab';
+import type { Zone } from './types/zones';
 import { healthCheck, resetSession } from './api';
 
 const TABS = [
   { id: 'area', label: 'Target Area' },
   { id: 'generation', label: 'Generation' },
   { id: 'edit', label: 'Edit' },
+  { id: 'zoning', label: 'Zoning' },
   { id: 'solar', label: 'Solar' },
   { id: 'view', label: 'View' },
   { id: 'landmark', label: 'Landmark' },
@@ -29,6 +32,24 @@ const App: React.FC = () => {
   const [viewFigureJson, setViewFigureJson] = useState('');
   const [landmarkFigureJson, setLandmarkFigureJson] = useState('');
   const [hasModel, setHasModel] = useState(false);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [solarRunNonce, setSolarRunNonce] = useState(0);
+  const [viewRunNonce, setViewRunNonce] = useState(0);
+  const [landmarkRunNonce, setLandmarkRunNonce] = useState(0);
+
+  // When the user changes the target rectangle, the previous zones and any
+  // cached simulation figures no longer correspond to the area on screen.
+  useEffect(() => {
+    setZones([]);
+    setFigureJson('');
+    setEditFigureJson('');
+    setSolarFigureJson('');
+    setViewFigureJson('');
+    setLandmarkFigureJson('');
+    setSolarRunNonce(0);
+    setViewRunNonce(0);
+    setLandmarkRunNonce(0);
+  }, [rectangle]);
 
   // After an edit commit, the cached Solar / View / Landmark figures and the
   // Generation tab's preview are stale (they referenced the old voxel grid).
@@ -100,9 +121,44 @@ const App: React.FC = () => {
             onModelEdited={handleModelEdited}
           />
         )}
-        {activeTab === 'solar' && <SolarTab hasModel={hasModel} figureJson={solarFigureJson} onFigureChange={setSolarFigureJson} />}
-        {activeTab === 'view' && <ViewTab hasModel={hasModel} figureJson={viewFigureJson} onFigureChange={setViewFigureJson} />}
-        {activeTab === 'landmark' && <LandmarkTab hasModel={hasModel} figureJson={landmarkFigureJson} onFigureChange={setLandmarkFigureJson} />}
+        {activeTab === 'zoning' && (
+          <ZoningTab
+            hasModel={hasModel}
+            figureJson={figureJson}
+            zones={zones}
+            onZonesChange={setZones}
+          />
+        )}
+        {activeTab === 'solar' && (
+          <SolarTab
+            hasModel={hasModel}
+            figureJson={solarFigureJson}
+            onFigureChange={setSolarFigureJson}
+            zones={zones}
+            simRunNonce={solarRunNonce}
+            onSimRun={() => setSolarRunNonce((n) => n + 1)}
+          />
+        )}
+        {activeTab === 'view' && (
+          <ViewTab
+            hasModel={hasModel}
+            figureJson={viewFigureJson}
+            onFigureChange={setViewFigureJson}
+            zones={zones}
+            simRunNonce={viewRunNonce}
+            onSimRun={() => setViewRunNonce((n) => n + 1)}
+          />
+        )}
+        {activeTab === 'landmark' && (
+          <LandmarkTab
+            hasModel={hasModel}
+            figureJson={landmarkFigureJson}
+            onFigureChange={setLandmarkFigureJson}
+            zones={zones}
+            simRunNonce={landmarkRunNonce}
+            onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
+          />
+        )}
         {activeTab === 'export' && <ExportTab hasModel={hasModel} />}
       </main>
 
