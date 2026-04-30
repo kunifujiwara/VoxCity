@@ -347,3 +347,35 @@ export async function applyEdits(edits: PendingEditDto[]) {
     body: JSON.stringify({ edits }),
   });
 }
+
+// ── Zones ────────────────────────────────────────────────────
+export interface ZoneStat {
+  zone_id: string;
+  cell_count: number;
+  valid_count: number;
+  mean: number | null;
+  min:  number | null;
+  max:  number | null;
+  std:  number | null;
+}
+
+export interface ZoneStatsResponse {
+  target: 'ground' | 'building';
+  sim_type: 'solar' | 'view' | 'landmark' | null;
+  unit_label: string | null;
+  stats: ZoneStat[];
+}
+
+export interface ZoneSpecDto {
+  id: string;
+  name: string;
+  ring_lonlat: [number, number][];
+}
+
+export async function getZoneStats(zones: ZoneSpecDto[]) {
+  return request<ZoneStatsResponse>('/zones/stats', {
+    method: 'POST',
+    body: JSON.stringify({ zones }),
+  });
+}
+
