@@ -135,3 +135,70 @@ def test_zone_stats_ground_basic(client, monkeypatch):
     assert by_id["z2"]["cell_count"] == 0
     assert by_id["z2"]["mean"] is None
 
+
+# ---- Building-surface adapter ---------------------------------------------
+
+from types import SimpleNamespace
+
+from app.backend.zoning import grid_xy_to_lonlat, mesh_face_data
+
+
+def _make_fake_mesh(value_key: str):
+    """Two right triangles sharing an edge, in z=0 plane.
+
+    Tri 0: (0,0,0)-(2,0,0)-(0,2,0) -> centroid (2/3, 2/3), area 2.0
+    Tri 1: (2,0,0)-(2,2,0)-(0,2,0) -> centroid (4/3, 4/3), area 2.0
+    """
+    V = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0], [2, 2, 0]], dtype=float)
+    F = np.array([[0, 1, 2], [1, 3, 2]], dtype=int)
+    metadata = {value_key: np.array([10.0, 30.0])}
+    return SimpleNamespace(vertices=V, faces=F, metadata=metadata)
+
+
+def test_mesh_face_data_solar():
+    mesh = _make_fake_mesh("global")
+    centroids, values, areas = mesh_face_data(mesh, "solar")
+    assert centroids.shape == (2, 2)
+    assert values.tolist() == [10.0, 30.0]
+    assert areas == pytest.approx([2.0, 2.0])
+    assert centroids[0] == pytest.approx([2 / 3, 2 / 3])
+
+
+def test_grid_xy_to_lonlat_axis_aligned():
+    geom = {"origin": [10.0, 20.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+            "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]}
+    out = grid_xy_to_lonlat(np.array([[1.0, 2.0], [3.0, 0.0]]), geom)
+    assert out.tolist() == [[11.0, 22.0], [13.0, 20.0]]
+
+
+def test_zone_stats_building_basic(client, monkeypatch):
+    """Polygon containing only the second triangle -> area-weighted mean = 30."""
+    mesh = _make_fake_mesh("view_factor_values")
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "building")
+    monkeypatch.setattr(app_state, "last_sim_grid", None)
+    monkeypatch.setattr(app_state, "last_sim_mesh", mesh)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Factor")
+    import app.backend.main as main_mod
+    # Identity mapping so grid xy == lon/lat for easy reasoning.
+    monkeypatch.setattr(
+        main_mod, "_grid_geom_for_zoning",
+        lambda: {"origin": [0.0, 0.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+                 "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]},
+        raising=True,
+    )
+    # Polygon covers (1.1..2, 1.1..2): only tri 1 centroid (4/3, 4/3) is inside.
+    r = client.post("/api/zones/stats", json={"zones": [
+        {"id": "z1", "name": "tri1", "ring_lonlat": [[1.1, 1.1], [2.0, 1.1], [2.0, 2.0], [1.1, 2.0]]},
+        {"id": "z2", "name": "all",  "ring_lonlat": [[-1, -1], [3, -1], [3, 3], [-1, 3]]},
+    ]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_id = {s["zone_id"]: s for s in body["stats"]}
+    assert by_id["z1"]["cell_count"] == 1
+    assert by_id["z1"]["mean"] == pytest.approx(30.0)
+    # Area-weighted mean of [10, 30] with equal areas = 20.
+    assert by_id["z2"]["cell_count"] == 2
+    assert by_id["z2"]["mean"] == pytest.approx(20.0)
+

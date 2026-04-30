@@ -51,6 +51,8 @@ from .models import (
 )
 from .state import app_state
 from .zoning import (
+    grid_xy_to_lonlat,
+    mesh_face_data,
     points_in_polygon_lonlat,
     polygon_lonlat_to_cells,
     stats_from_values,
@@ -2199,8 +2201,19 @@ def _zone_stats_ground(zones: List[ZoneSpec]) -> List[ZoneStat]:
 
 
 def _zone_stats_building(zones: List[ZoneSpec]) -> List[ZoneStat]:
-    """Building-surface aggregation. Implemented in Task 1.5."""
-    raise HTTPException(status_code=501, detail="building-surface zoning not yet implemented")
+    mesh = app_state.last_sim_mesh
+    if mesh is None:
+        raise HTTPException(status_code=400, detail="No cached building-surface simulation result")
+    centroids_xy, values, areas = mesh_face_data(mesh, app_state.last_sim_type or "")
+    grid_geom = _grid_geom_for_zoning()
+    centroids_lonlat = grid_xy_to_lonlat(centroids_xy, grid_geom)
+    out: List[ZoneStat] = []
+    for z in zones:
+        mask = points_in_polygon_lonlat(centroids_lonlat, z.ring_lonlat)
+        v = values[mask]
+        a = areas[mask]
+        out.append(stats_from_values(z.id, int(mask.sum()), v, weights=a))
+    return out
 
 
 @app.post("/api/zones/stats", response_model=ZoneStatsResponse)
