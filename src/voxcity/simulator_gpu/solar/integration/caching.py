@@ -630,19 +630,93 @@ def get_or_create_volumetric_calculator(
     meshsize = voxcity.voxels.meta.meshsize
     ni, nj, nk = voxel_data.shape
     
-    # Check if cache is valid
+
+    # Check if cache is valid.
+    # Bugfix (Defect 4a, see reference/BUGFIX_SESSION_pareto_collapse.md):
+    # the cache key must include voxel *content*, not just shape. Optimization
+    # loops (e.g. NSGA-II) call this function with a fresh voxel grid per
+    # individual; if we only key on shape/mesh/n_azimuth, every call after
+    # the first reuses the cached domain (with stale is_solid/lad) and the
+    # downstream swflux/SVF kernels never see the new tree placement →
+    # objective values become bit-identical across individuals (Pareto
+    # collapses to one point). Mirror the content-aware refresh that
+    # ``get_or_create_gpu_ray_tracer`` already does via id(voxel_data).
     cache_valid = False
+    needs_refresh = False
     if _volumetric_flux_cache is not None:
         cache = _volumetric_flux_cache
         if (cache.get('voxcity_shape') == voxel_data.shape and
             cache.get('meshsize') == meshsize and
-            cache.get('n_azimuth') == n_azimuth):
-            cache_valid = True
-            if progress_report:
-                print("Using cached VolumetricFluxCalculator (SVF already computed)")
-    
+            cache.get('n_azimuth') == n_azimuth and
+            cache.get('n_zenith') == n_zenith):
+            if cache.get('voxel_data_id') == id(voxel_data):
+                cache_valid = True
+                if progress_report:
+                    print("Using cached VolumetricFluxCalculator (SVF already computed)")
+            else:
+                needs_refresh = True
+    print(f"[CACHE-CHECK] cache_present={_volumetric_flux_cache is not None} cache_valid={cache_valid} needs_refresh={needs_refresh} cur_id={id(voxel_data)} cached_id={(_volumetric_flux_cache or {}).get('voxel_data_id')}")
+
     if cache_valid:
         return _volumetric_flux_cache['calculator'], _volumetric_flux_cache['domain']
+
+    if needs_refresh:
+        # Same geometry/parameters, just new voxel content: refresh in place
+        # and recompute SVF (vegetation transmissivity depends on the new
+        # LAD field). This avoids reallocating Taichi fields every call.
+        cache = _volumetric_flux_cache
+        calculator = cache['calculator']
+        domain = cache['domain']
+
+        default_lad = kwargs.get('default_lad', 1.0)
+        _, lad_np = convert_voxel_data_to_arrays(voxel_data, default_lad)
+
+        # Refresh domain content via Domain's own @ti.kernel methods.
+        # We avoid `_set_solid_array` / `_update_topo_from_solid` here because
+        # those helpers define their @ti.kernel inside a regular function body
+        # (closure). Taichi 1.7.4 fails to JIT a re-invoked closure kernel
+        # ("'NoneType' object is not iterable" in transform_as_kernel because
+        # ctx.func.return_type is None on the second call), which broke the
+        # per-individual refresh loop. Using class-level kernels works because
+        # they are registered once during Domain.__init__.
+        # `set_from_voxel_data` updates is_solid + is_tree from the voxel code
+        # array; LAD is then loaded from `lad_np`. Topography (`topo_top`) is
+        # set once during initial domain creation and doesn't change across
+        # tree-placement individuals, so no topo refresh is needed.
+        # DIAG: log content fingerprint BEFORE refresh
+        try:
+            _vd_sum = int((voxel_data == -2).sum())
+            _lad_sum_np = float(lad_np.sum())
+            _solid_before = float(domain.is_solid.to_numpy().sum())
+            _lad_before = float(domain.lad.to_numpy().sum())
+        except Exception:
+            _vd_sum = -1; _lad_sum_np = -1; _solid_before = -1; _lad_before = -1
+        domain.set_from_voxel_data(voxel_data, tree_code=-2)
+        domain.set_lad_from_array(lad_np)
+        try:
+            _solid_after = float(domain.is_solid.to_numpy().sum())
+            _lad_after = float(domain.lad.to_numpy().sum())
+        except Exception:
+            _solid_after = -1; _lad_after = -1
+        print(f"[CACHE-REFRESH] voxel_id={id(voxel_data)} vd_tree_count={_vd_sum} lad_np_sum={_lad_sum_np:.3f} | is_solid {_solid_before:.0f}->{_solid_after:.0f} | lad {_lad_before:.3f}->{_lad_after:.3f}")
+
+        # SVF depends on both is_solid and lad → must recompute. Reset the
+        # internal flag so compute_swflux_vol/compute_shadow_top see fresh
+        # opaque_top / skyvf_vol fields rather than the previous individual's.
+        calculator._skyvf_computed = False
+        if progress_report:
+            print("Refreshing cached VolumetricFluxCalculator with new voxel content...")
+        calculator.compute_skyvf_vol(n_zenith=n_zenith)
+        try:
+            _svf_sum = float(calculator.skyvf_vol.to_numpy().sum())
+            _opaque_sum = float(calculator.opaque_top.to_numpy().sum())
+            _domain_lad_sum = float(domain.lad.to_numpy().sum())
+        except Exception as _e:
+            _svf_sum = -1; _opaque_sum = -1; _domain_lad_sum = -1
+        print(f"[CACHE-REFRESH-POST] svf_sum={_svf_sum:.3f} opaque_top_sum={_opaque_sum:.0f} domain.lad_sum={_domain_lad_sum:.3f}")
+
+        cache['voxel_data_id'] = id(voxel_data)
+        return calculator, domain
     
     if progress_report:
         print("Creating new VolumetricFluxCalculator...")
@@ -685,7 +759,9 @@ def get_or_create_volumetric_calculator(
         'domain': domain,
         'voxcity_shape': voxel_data.shape,
         'meshsize': meshsize,
-        'n_azimuth': n_azimuth
+        'n_azimuth': n_azimuth,
+        'n_zenith': n_zenith,
+        'voxel_data_id': id(voxel_data),
     }
     
     if progress_report:
