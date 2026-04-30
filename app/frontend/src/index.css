@@ -626,3 +626,19 @@ input:focus, select:focus {
   color: var(--vc-muted);
   margin-top: 0.25rem;
 }
+
+/* ── Zoning ─────────────────────────────────────────────── */
+.zone-list { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.zone-row  { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.zone-row.selected { background: rgba(0, 0, 0, 0.06); }
+.zone-row .swatch  { width: 14px; height: 14px; border-radius: 3px; flex: 0 0 14px; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; }
+.zone-row .name    { flex: 1; }
+.zone-row button   { background: none; border: none; cursor: pointer; padding: 2px 4px; }
+
+.zone-stats-table { margin-top: 12px; font-size: 13px; }
+.zone-stats-table .header { font-weight: 600; margin-bottom: 4px; }
+.zone-stats-table table { width: 100%; border-collapse: collapse; }
+.zone-stats-table th, .zone-stats-table td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.zone-stats-table th:first-child, .zone-stats-table td:first-child { text-align: left; }
+.zone-stats-table tr.muted td { color: #888; }
+.zone-stats-table .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
