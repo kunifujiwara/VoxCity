@@ -44,8 +44,17 @@ from .models import (
     SolarRequest,
     StatusResponse,
     ViewRequest,
+    ZoneSpec,
+    ZoneStat,
+    ZoneStatsRequest,
+    ZoneStatsResponse,
 )
 from .state import app_state
+from .zoning import (
+    points_in_polygon_lonlat,
+    polygon_lonlat_to_cells,
+    stats_from_values,
+)
 
 # ---------------------------------------------------------------------------
 # VoxCity imports (validated against current package)
@@ -2139,6 +2148,82 @@ async def model_geo():
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Zoning
+# ---------------------------------------------------------------------------
+
+def _grid_geom_for_zoning() -> dict:
+    """Build the same grid_geom dict that /api/model/geo returns."""
+    from voxcity.geoprocessor.draw._common import compute_grid_geometry
+    rect = app_state.rectangle_vertices
+    if rect is None:
+        vc = app_state.voxcity
+        if vc is not None and isinstance(vc.extras, dict):
+            rect = vc.extras.get("rectangle_vertices")
+    if rect is None:
+        raise HTTPException(status_code=400, detail="Model has no rectangle_vertices")
+    gg = compute_grid_geometry(rect, float(app_state.meshsize))
+    if gg is None:
+        raise HTTPException(status_code=500, detail="compute_grid_geometry returned None")
+    return {
+        "origin":    [float(gg["origin"][0]),  float(gg["origin"][1])],
+        "u_vec":     [float(gg["u_vec"][0]),   float(gg["u_vec"][1])],
+        "v_vec":     [float(gg["v_vec"][0]),   float(gg["v_vec"][1])],
+        "adj_mesh":  [float(gg["adj_mesh"][0]),float(gg["adj_mesh"][1])],
+        "grid_size": [int(gg["grid_size"][0]), int(gg["grid_size"][1])],
+    }
+
+
+def _zone_stats_ground(zones: List[ZoneSpec]) -> List[ZoneStat]:
+    sim = app_state.last_sim_grid
+    if sim is None:
+        raise HTTPException(status_code=400, detail="No cached ground simulation result")
+    grid_geom = _grid_geom_for_zoning()
+    sim_arr = np.asarray(sim)
+    nx, ny = sim_arr.shape
+    out: List[ZoneStat] = []
+    for z in zones:
+        cells = polygon_lonlat_to_cells(z.ring_lonlat, grid_geom)
+        if not cells:
+            out.append(stats_from_values(z.id, 0, np.array([], dtype=float)))
+            continue
+        ii = np.fromiter((c[0] for c in cells), dtype=int, count=len(cells))
+        jj = np.fromiter((c[1] for c in cells), dtype=int, count=len(cells))
+        valid_idx = (ii >= 0) & (ii < nx) & (jj >= 0) & (jj < ny)
+        ii = ii[valid_idx]; jj = jj[valid_idx]
+        vals = sim_arr[ii, jj].astype(float, copy=False)
+        out.append(stats_from_values(z.id, len(cells), vals))
+    return out
+
+
+def _zone_stats_building(zones: List[ZoneSpec]) -> List[ZoneStat]:
+    """Building-surface aggregation. Implemented in Task 1.5."""
+    raise HTTPException(status_code=501, detail="building-surface zoning not yet implemented")
+
+
+@app.post("/api/zones/stats", response_model=ZoneStatsResponse)
+def zone_stats(req: ZoneStatsRequest) -> ZoneStatsResponse:
+    if app_state.voxcity is None:
+        raise HTTPException(status_code=400, detail="No model loaded")
+    if app_state.last_sim_type is None:
+        raise HTTPException(status_code=400, detail="Run a simulation first")
+
+    target = app_state.last_sim_target
+    if target == "ground":
+        stats = _zone_stats_ground(req.zones)
+    elif target == "building":
+        stats = _zone_stats_building(req.zones)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported target: {target}")
+
+    return ZoneStatsResponse(
+        target=target,
+        sim_type=app_state.last_sim_type,
+        unit_label=app_state.last_colorbar_title,
+        stats=stats,
+    )
 
 
 @app.post("/api/model/apply_edits")

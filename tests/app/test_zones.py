@@ -75,3 +75,63 @@ def test_points_in_polygon():
     pts = np.array([[5.0, 5.0], [-1.0, 5.0], [11.0, 5.0]])
     mask = points_in_polygon_lonlat(pts, ring)
     assert mask.tolist() == [True, False, False]
+
+
+# ---- Endpoint tests --------------------------------------------------------
+
+from fastapi.testclient import TestClient
+
+from app.backend.main import app
+from app.backend.state import app_state
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+def test_zone_stats_no_model(client, monkeypatch):
+    monkeypatch.setattr(app_state, "voxcity", None)
+    r = client.post("/api/zones/stats", json={"zones": []})
+    assert r.status_code == 400
+    assert "No model" in r.json()["detail"]
+
+
+def test_zone_stats_no_sim(client, monkeypatch):
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", None)
+    r = client.post("/api/zones/stats", json={"zones": []})
+    assert r.status_code == 400
+    assert "simulation" in r.json()["detail"].lower()
+
+
+def test_zone_stats_ground_basic(client, monkeypatch):
+    """A 4x4 ramp grid + 2 zones (one inside, one outside)."""
+    grid = np.arange(16, dtype=float).reshape(4, 4)
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", "solar")
+    monkeypatch.setattr(app_state, "last_sim_target", "ground")
+    monkeypatch.setattr(app_state, "last_sim_grid", grid)
+    monkeypatch.setattr(app_state, "last_sim_mesh", None)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "W/m2")
+    import app.backend.main as main_mod
+    monkeypatch.setattr(
+        main_mod, "_grid_geom_for_zoning",
+        lambda: {"origin": [0.0, 0.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+                 "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]},
+        raising=True,
+    )
+    r = client.post("/api/zones/stats", json={"zones": [
+        {"id": "z1", "name": "all",     "ring_lonlat": [[0, 0], [4, 0], [4, 4], [0, 4]]},
+        {"id": "z2", "name": "outside", "ring_lonlat": [[100, 100], [101, 100], [101, 101]]},
+    ]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["target"] == "ground"
+    assert body["unit_label"] == "W/m2"
+    by_id = {s["zone_id"]: s for s in body["stats"]}
+    assert by_id["z1"]["cell_count"] == 16
+    assert by_id["z1"]["mean"] == pytest.approx(grid.mean())
+    assert by_id["z2"]["cell_count"] == 0
+    assert by_id["z2"]["mean"] is None
+
