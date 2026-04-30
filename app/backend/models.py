@@ -134,3 +134,35 @@ class StatusResponse(BaseModel):
     status: str
     message: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# Zoning
+# ---------------------------------------------------------------------------
+
+class ZoneSpec(BaseModel):
+    """A 2D zone footprint as a lon/lat ring (does not need to be closed)."""
+    id: str
+    name: str
+    ring_lonlat: List[List[float]] = Field(..., min_length=3)
+
+
+class ZoneStatsRequest(BaseModel):
+    zones: List[ZoneSpec]
+
+
+class ZoneStat(BaseModel):
+    zone_id: str
+    cell_count: int            # cells/faces inside the zone
+    valid_count: int           # of those, with finite values
+    mean: Optional[float] = None
+    min:  Optional[float] = None
+    max:  Optional[float] = None
+    std:  Optional[float] = None
+
+
+class ZoneStatsResponse(BaseModel):
+    target:     str            # "ground" | "building"
+    sim_type:   Optional[str] = None  # "solar" | "view" | "landmark"
+    unit_label: Optional[str] = None
+    stats:      List[ZoneStat]
