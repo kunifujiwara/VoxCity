@@ -1688,3 +1688,575 @@ async def landmark_preview():
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Edit-tab helpers (ported from reference/optree_app/backend/main.py)
+# ---------------------------------------------------------------------------
+
+def _require_model() -> None:
+    if not app_state.has_model:
+        raise HTTPException(status_code=400, detail="No model generated yet")
+
+
+def _parse_cells(payload: dict) -> List[List[int]]:
+    """Pull a list of [i, j] integer cells from request JSON. NORTH_UP."""
+    raw = payload.get("cells")
+    if not isinstance(raw, list) or len(raw) == 0:
+        raise HTTPException(status_code=400, detail="cells must be a non-empty list of [i,j]")
+    cells: List[List[int]] = []
+    for entry in raw:
+        try:
+            i = int(entry[0])
+            j = int(entry[1])
+        except (TypeError, ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="each cell must be [i, j] integers")
+        cells.append([i, j])
+    return cells
+
+
+def _cells_to_native_mask(cells: List[List[int]], shape_native: tuple) -> np.ndarray:
+    nx, ny = shape_native
+    mask = np.zeros(shape_native, dtype=bool)
+    for i, j in cells:
+        if 0 <= i < nx and 0 <= j < ny:
+            mask[i, j] = True
+    return mask
+
+
+def _cells_to_polygon(cells: List[List[int]], grid_geom: dict):
+    """Build a shapely (Multi)Polygon covering the given (i, j) cells."""
+    from shapely.geometry import Polygon as ShapelyPolygon
+    from shapely.ops import unary_union
+
+    if not cells:
+        return None
+    origin = np.asarray(grid_geom["origin"], dtype=float)
+    u = np.asarray(grid_geom["u_vec"], dtype=float)
+    v = np.asarray(grid_geom["v_vec"], dtype=float)
+    dx = float(grid_geom["adj_mesh"][0])
+    dy = float(grid_geom["adj_mesh"][1])
+    polys = []
+    for i, j in cells:
+        bl = origin + (i       * dx) * u + (j       * dy) * v
+        br = origin + ((i + 1) * dx) * u + (j       * dy) * v
+        tr = origin + ((i + 1) * dx) * u + ((j + 1) * dy) * v
+        tl = origin + (i       * dx) * u + ((j + 1) * dy) * v
+        polys.append(ShapelyPolygon([bl, br, tr, tl]))
+    if not polys:
+        return None
+    merged = unary_union(polys)
+    return merged if not merged.is_empty else None
+
+
+def _append_building_to_gdf(vc, polygon, building_id: int, height_m: float, min_height_m: float) -> None:
+    """Append a footprint to ``vc.extras['building_gdf']`` (creating it if needed)."""
+    if not isinstance(vc.extras, dict):
+        vc.extras = {}
+    gdf = vc.extras.get("building_gdf")
+    new_row = {
+        "geometry":         polygon,
+        "height":           float(height_m),
+        "min_height":       float(min_height_m),
+        "building_id":      int(building_id),
+        "id":               int(building_id),
+        "height_estimated": False,
+    }
+    if gdf is None or len(gdf) == 0:
+        vc.extras["building_gdf"] = gpd.GeoDataFrame([new_row], geometry="geometry", crs="EPSG:4326")
+        return
+    crs = getattr(gdf, "crs", None) or "EPSG:4326"
+    appended = gpd.GeoDataFrame(
+        [*gdf.to_dict("records"), new_row],
+        geometry="geometry",
+        crs=crs,
+    )
+    vc.extras["building_gdf"] = appended
+
+
+def _apply_add_building(
+    vc,
+    cells: List[List[int]],
+    height_m: float,
+    min_height_m: float,
+    ring: Optional[List[List[float]]] = None,
+) -> dict:
+    """Stamp a new building footprint into the grids + ``building_gdf``."""
+    bld = vc.buildings
+    mask_n = _cells_to_native_mask(cells, bld.heights.shape)
+    if not mask_n.any():
+        return {"n_changed": 0, "building_id": None}
+
+    new_id = int(bld.ids.max()) + 1 if bld.ids.size else 1
+    if new_id <= 0:
+        new_id = 1
+
+    bld.heights[mask_n] = float(height_m)
+    bld.ids[mask_n] = new_id
+    if bld.min_heights is not None:
+        mh_pair = [[float(min_height_m), float(height_m)]]
+        for r, c in np.argwhere(mask_n):
+            bld.min_heights[int(r), int(c)] = list(mh_pair)
+
+    try:
+        poly = None
+        if ring is not None and len(ring) >= 3:
+            from shapely.geometry import Polygon as ShapelyPolygon
+            try:
+                poly = ShapelyPolygon([(float(p[0]), float(p[1])) for p in ring])
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                if poly.is_empty:
+                    poly = None
+            except Exception:
+                poly = None
+
+        if poly is None:
+            from voxcity.geoprocessor.draw._common import compute_grid_geometry
+            rect = app_state.rectangle_vertices
+            if rect is None and isinstance(vc.extras, dict):
+                rect = vc.extras.get("rectangle_vertices")
+            if rect is not None:
+                gg = compute_grid_geometry(rect, float(app_state.meshsize))
+                if gg is not None:
+                    cells_native = [[int(r), int(c)] for r, c in np.argwhere(mask_n)]
+                    poly = _cells_to_polygon(cells_native, gg)
+
+        if poly is not None:
+            if poly.geom_type == "MultiPolygon":
+                poly = max(poly.geoms, key=lambda p: p.area)
+            _append_building_to_gdf(vc, poly, new_id, height_m, min_height_m)
+    except Exception:
+        traceback.print_exc()
+
+    return {"n_changed": int(mask_n.sum()), "building_id": new_id}
+
+
+def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
+    """Remove the listed buildings from grids + GeoDataFrame.
+
+    ``building_ids`` are the **row positions** the frontend sees, exactly as
+    emitted by ``build_building_geojson`` (``properties.idx = int(idx)`` from
+    ``building_gdf.iterrows()``). Those positions are *not* guaranteed to
+    equal the source feature ids stored in ``buildings.ids`` and
+    ``building_gdf['id']``: in Plateau (CityGML) mode they happen to align,
+    but in Normal mode (e.g. OSM) the grid stores OSM way ids while the
+    frontend sends 0-based row indices, so a naive ``np.isin`` matched
+    nothing and silently returned ``n_deleted=0``.
+
+    We therefore translate row positions → source ids via the current
+    ``building_gdf`` before touching the grid.
+    """
+    from voxcity.utils.orientation import (
+        ensure_orientation,
+        ORIENTATION_NORTH_UP,
+        ORIENTATION_SOUTH_UP,
+    )
+
+    bld = vc.buildings
+    gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
+
+    # Row positions (0..N-1) coming from the frontend.
+    row_positions = [int(i) for i in building_ids]
+    if not row_positions:
+        n_buildings = int(len(gdf)) if gdf is not None else 0
+        return {"n_deleted": 0, "n_buildings": n_buildings}
+
+    # Translate row position -> source id stored in the grid.
+    delete_set: set[int] = set()
+    if gdf is not None and "id" in getattr(gdf, "columns", []) and len(gdf) > 0:
+        id_values = gdf["id"].tolist()
+        n_rows = len(id_values)
+        for pos in row_positions:
+            if 0 <= pos < n_rows:
+                try:
+                    delete_set.add(int(id_values[pos]))
+                except (TypeError, ValueError):
+                    continue
+    else:
+        # No id column to translate through – fall back to identity, which
+        # matches the historical Plateau-mode behaviour.
+        delete_set = {pos for pos in row_positions if pos > 0}
+
+    if not delete_set:
+        n_buildings = int(len(gdf)) if gdf is not None else 0
+        return {"n_deleted": 0, "n_buildings": n_buildings}
+
+    ids_grid = ensure_orientation(bld.ids, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    mask_south = np.isin(ids_grid, list(delete_set))
+    if not mask_south.any():
+        print(
+            f"[delete_buildings] no grid cells matched ids={sorted(delete_set)} "
+            f"(row positions {row_positions}); model unchanged."
+        )
+        n_buildings = int(len(gdf)) if gdf is not None else 0
+        return {"n_deleted": 0, "n_buildings": n_buildings}
+
+    mask_north = ensure_orientation(mask_south, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    bld.heights[mask_north] = 0.0
+    bld.ids[mask_north] = 0
+    if bld.min_heights is not None:
+        it = np.nditer(mask_north, flags=["multi_index"])
+        for hit in it:
+            if bool(hit):
+                r, c = it.multi_index
+                bld.min_heights[r, c] = []
+
+    if gdf is not None and "id" in getattr(gdf, "columns", []):
+        try:
+            vc.extras["building_gdf"] = gdf[~gdf["id"].isin(delete_set)].copy()
+        except Exception:
+            pass
+
+    final_gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
+    n_buildings = int(len(final_gdf)) if final_gdf is not None else 0
+    return {"n_deleted": int(len(delete_set)), "n_buildings": n_buildings}
+
+
+def _apply_add_trees(
+    vc,
+    cells: List[List[int]],
+    height_m: float,
+    bottom_m: float,
+    tops: Optional[List[float]] = None,
+    bottoms: Optional[List[float]] = None,
+) -> dict:
+    tc = vc.tree_canopy
+    if tc is None or tc.top is None:
+        return {"n_changed": 0}
+    mask_n = _cells_to_native_mask(cells, tc.top.shape)
+    if not mask_n.any():
+        return {"n_changed": 0}
+    if tc.bottom is None:
+        tc.bottom = np.zeros_like(tc.top)
+
+    if tops is not None and bottoms is not None:
+        if len(tops) != len(cells) or len(bottoms) != len(cells):
+            raise ValueError("tops/bottoms must have the same length as cells")
+        nx, ny = tc.top.shape
+        rows: list[int] = []
+        cols: list[int] = []
+        ts: list[float] = []
+        bs: list[float] = []
+        for (i, j), t, b in zip(cells, tops, bottoms):
+            ii = int(i); jj = int(j)
+            if ii < 0 or ii >= nx or jj < 0 or jj >= ny:
+                continue
+            rows.append(ii)
+            cols.append(jj)
+            ts.append(float(t))
+            bs.append(float(b))
+        if rows:
+            r_arr = np.asarray(rows, dtype=np.intp)
+            c_arr = np.asarray(cols, dtype=np.intp)
+            tc.top[r_arr, c_arr]    = np.asarray(ts, dtype=tc.top.dtype)
+            tc.bottom[r_arr, c_arr] = np.asarray(bs, dtype=tc.bottom.dtype)
+        return {"n_changed": int(len(rows))}
+
+    tc.top[mask_n] = float(height_m)
+    tc.bottom[mask_n] = float(bottom_m)
+    return {"n_changed": int(mask_n.sum())}
+
+
+def _apply_delete_trees(vc, cells: List[List[int]]) -> dict:
+    tc = vc.tree_canopy
+    if tc is None or tc.top is None:
+        return {"n_changed": 0}
+    mask_n = _cells_to_native_mask(cells, tc.top.shape)
+    if not mask_n.any():
+        return {"n_changed": 0}
+    tc.top[mask_n] = 0.0
+    if tc.bottom is not None:
+        tc.bottom[mask_n] = 0.0
+    return {"n_changed": int(mask_n.sum())}
+
+
+def _source_lc_class_names(source: str | None) -> list[str]:
+    if source is None:
+        return []
+    src_classes = get_land_cover_classes(source)
+    return list(dict.fromkeys(src_classes.values()))
+
+
+def _standard_to_source_lc_index(class_index: int, source: str | None) -> int | None:
+    """Translate the standard 1-based ``LAND_COVER_CLASSES`` index → per-source 0-based index."""
+    from voxcity.utils.classes import LAND_COVER_CLASSES
+
+    name = LAND_COVER_CLASSES.get(int(class_index))
+    if name is None:
+        return None
+    names = _source_lc_class_names(source)
+    try:
+        return names.index(name)
+    except ValueError:
+        return None
+
+
+def _apply_paint_lc(vc, cells: List[List[int]], class_index: int) -> dict:
+    lc = vc.land_cover
+    if lc is None or lc.classes is None:
+        return {"n_changed": 0}
+    mask_n = _cells_to_native_mask(cells, lc.classes.shape)
+    if not mask_n.any():
+        return {"n_changed": 0}
+    src_idx = _standard_to_source_lc_index(class_index, app_state.land_cover_source)
+    if src_idx is None:
+        src_idx = int(class_index)
+    lc.classes[mask_n] = int(src_idx)
+    return {"n_changed": int(mask_n.sum())}
+
+
+def _render_edit_preview(vc, title: str = "Edit Model") -> str:
+    """Render the standard edit-tab Plotly figure (with building IDs).
+
+    Reuses ``_make_plotly_json`` so the existing 500 MB safeguard applies.
+    """
+    return _make_plotly_json(
+        vc.voxels.classes,
+        app_state.meshsize,
+        {"building_id_grid": vc.buildings.ids, "title": title},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edit-tab endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/land-cover/classes")
+async def land_cover_classes():
+    """Return the editable land cover class palette for the editor."""
+    from voxcity.utils.classes import LAND_COVER_CLASSES
+    from voxcity.geoprocessor.draw._common import get_lc_source_colors
+
+    palette = {
+        1:  "#c2b280",  # Bareland
+        2:  "#9acd32",  # Rangeland
+        3:  "#6b8e23",  # Shrub
+        4:  "#daa520",  # Agriculture land
+        5:  "#228b22",  # Tree
+        6:  "#8fbc8f",  # Moss and lichen
+        7:  "#5f9ea0",  # Wet land
+        8:  "#2e8b57",  # Mangrove
+        9:  "#1e90ff",  # Water
+        10: "#f0ffff",  # Snow and ice
+        11: "#a9a9a9",  # Developed space
+        12: "#696969",  # Road
+        13: "#8b0000",  # Building
+        14: "#000000",  # No Data
+    }
+    non_editable = {"Tree", "Tree Canopy", "Trees", "Building", "Built Area", "Built-up", "Built"}
+
+    src = app_state.land_cover_source
+    src_names: set[str] | None = None
+    src_colors: dict[str, str] = {}
+    if src:
+        try:
+            src_names = set(_source_lc_class_names(src))
+            src_colors = get_lc_source_colors(src)
+        except Exception:
+            src_names = None
+            src_colors = {}
+
+    classes_out = []
+    for k in sorted(LAND_COVER_CLASSES.keys()):
+        name = LAND_COVER_CLASSES[k]
+        if src_names is not None and name not in src_names:
+            continue
+        color = src_colors.get(name) or palette.get(k, "#808080")
+        classes_out.append({
+            "index": k,
+            "name": name,
+            "color": color,
+            "editable": name not in non_editable,
+        })
+    return {"classes": classes_out}
+
+
+@app.get("/api/model/geo")
+async def model_geo():
+    """Return geo-anchored overlays + grid geometry for the basemap editor."""
+    _require_model()
+    try:
+        from voxcity.geoprocessor.draw._common import (
+            build_building_geojson,
+            build_canopy_geojson,
+            build_lc_geojson,
+            compute_grid_geometry,
+        )
+
+        vc = app_state.voxcity
+        rect = app_state.rectangle_vertices
+        if rect is None:
+            extras = vc.extras if isinstance(vc.extras, dict) else {}
+            rect = extras.get("rectangle_vertices")
+        if rect is None:
+            raise HTTPException(status_code=400, detail="Model has no rectangle_vertices")
+
+        meshsize = float(app_state.meshsize)
+        grid_geom = compute_grid_geometry(rect, meshsize)
+        if grid_geom is None:
+            raise HTTPException(status_code=500, detail="compute_grid_geometry returned None")
+
+        building_gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
+        lc_source = app_state.land_cover_source
+        if lc_source is None and isinstance(vc.extras, dict):
+            lc_source = vc.extras.get("land_cover_source")
+
+        canopy_top = vc.tree_canopy.top if vc.tree_canopy is not None else None
+        land_cover = vc.land_cover.classes if vc.land_cover is not None else None
+
+        building_fc   = build_building_geojson(building_gdf, include_height=True)
+        canopy_fc     = build_canopy_geojson(canopy_top, grid_geom)
+        land_cover_fc = build_lc_geojson(land_cover, grid_geom, lc_source)
+
+        nx, ny = vc.buildings.heights.shape
+        lons = [v[0] for v in rect]
+        lats = [v[1] for v in rect]
+        center = [float(sum(lats) / len(lats)), float(sum(lons) / len(lons))]
+
+        return {
+            "rectangle_vertices": [[float(v[0]), float(v[1])] for v in rect],
+            "meshsize_m": meshsize,
+            "grid_shape": [int(nx), int(ny)],
+            "center": center,
+            "grid_geom": {
+                "origin":    [float(grid_geom["origin"][0]),  float(grid_geom["origin"][1])],
+                "side_1":    [float(grid_geom["side_1"][0]),  float(grid_geom["side_1"][1])],
+                "side_2":    [float(grid_geom["side_2"][0]),  float(grid_geom["side_2"][1])],
+                "u_vec":     [float(grid_geom["u_vec"][0]),   float(grid_geom["u_vec"][1])],
+                "v_vec":     [float(grid_geom["v_vec"][0]),   float(grid_geom["v_vec"][1])],
+                "adj_mesh":  [float(grid_geom["adj_mesh"][0]),float(grid_geom["adj_mesh"][1])],
+                "grid_size": [int(grid_geom["grid_size"][0]), int(grid_geom["grid_size"][1])],
+            },
+            "land_cover_source": lc_source,
+            "building_geojson": building_fc,
+            "canopy_geojson": canopy_fc,
+            "land_cover_geojson": land_cover_fc,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/model/apply_edits")
+async def apply_edits(payload: dict):
+    """Apply a batch of vector edits, then voxelize once and render the figure.
+
+    Body: ``{"edits": [...]}``. Each edit has a ``kind`` and operation-specific
+    fields. After all edits are applied, ``regenerate_voxels`` runs once, the
+    raw cache is refreshed, and the standard edit-tab Plotly figure is rendered.
+    """
+    _require_model()
+    edits = payload.get("edits")
+    if not isinstance(edits, list):
+        raise HTTPException(status_code=400, detail="edits must be a list")
+
+    try:
+        vc = app_state.voxcity
+        n_changed_total = 0
+        building_ids: List[int] = []
+
+        for idx, edit in enumerate(edits):
+            if not isinstance(edit, dict):
+                raise HTTPException(status_code=400, detail=f"edit #{idx} must be an object")
+            kind = edit.get("kind")
+
+            if kind == "add_building":
+                cells = _parse_cells(edit)
+                try:
+                    height_m = float(edit.get("height_m"))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
+                if height_m <= 0:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m must be > 0")
+                min_height_m = float(edit.get("min_height_m") or 0.0)
+                if min_height_m < 0 or min_height_m >= height_m:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: min_height_m must be in [0, height_m)")
+                ring_raw = edit.get("ring")
+                ring_arg: Optional[List[List[float]]] = None
+                if ring_raw is not None:
+                    if not isinstance(ring_raw, list) or len(ring_raw) < 3:
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: ring must be a list of >=3 [lon, lat] pairs")
+                    try:
+                        ring_arg = [[float(p[0]), float(p[1])] for p in ring_raw]
+                    except (TypeError, ValueError, IndexError):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: ring entries must be [lon, lat] numbers")
+                r = _apply_add_building(vc, cells, height_m, min_height_m, ring_arg)
+                n_changed_total += int(r["n_changed"])
+                if r["building_id"] is not None:
+                    building_ids.append(int(r["building_id"]))
+
+            elif kind == "delete_building":
+                ids_raw = edit.get("building_ids") or []
+                try:
+                    ids_to_delete = [int(v) for v in ids_raw]
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: building_ids must be integers")
+                r = _apply_delete_buildings(vc, ids_to_delete)
+                n_changed_total += int(r.get("n_deleted", 0))
+
+            elif kind == "add_trees":
+                cells = _parse_cells(edit)
+                try:
+                    height_m = float(edit.get("height_m"))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
+                if height_m <= 0:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m must be > 0")
+                bottom_m = float(edit.get("bottom_m") or 0.0)
+                if bottom_m < 0 or bottom_m >= height_m:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: bottom_m must be in [0, height_m)")
+                tops_raw = edit.get("tops")
+                bottoms_raw = edit.get("bottoms")
+                tops_arg: Optional[List[float]] = None
+                bottoms_arg: Optional[List[float]] = None
+                if tops_raw is not None or bottoms_raw is not None:
+                    if not isinstance(tops_raw, list) or not isinstance(bottoms_raw, list):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: tops and bottoms must both be lists")
+                    if len(tops_raw) != len(cells) or len(bottoms_raw) != len(cells):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: tops/bottoms length must match cells")
+                    try:
+                        tops_arg = [float(v) for v in tops_raw]
+                        bottoms_arg = [float(v) for v in bottoms_raw]
+                    except (TypeError, ValueError):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: tops/bottoms must be numbers")
+                r = _apply_add_trees(vc, cells, height_m, bottom_m, tops_arg, bottoms_arg)
+                n_changed_total += int(r["n_changed"])
+
+            elif kind == "delete_trees":
+                cells = _parse_cells(edit)
+                r = _apply_delete_trees(vc, cells)
+                n_changed_total += int(r["n_changed"])
+
+            elif kind == "paint_lc":
+                cells = _parse_cells(edit)
+                try:
+                    class_index = int(edit.get("class_index"))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: class_index must be an integer")
+                if class_index < 1 or class_index > 14:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: class_index must be 1..14")
+                r = _apply_paint_lc(vc, cells, class_index)
+                n_changed_total += int(r["n_changed"])
+
+            else:
+                raise HTTPException(status_code=400, detail=f"edit #{idx}: unknown kind {kind!r}")
+
+        # Single voxelization + render after the whole batch.
+        regenerate_voxels(vc, inplace=True)
+        app_state.refresh_raw_cache()
+        return {
+            "figure_json": _render_edit_preview(vc),
+            "n_edits": len(edits),
+            "n_changed_total": n_changed_total,
+            "building_ids": building_ids,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

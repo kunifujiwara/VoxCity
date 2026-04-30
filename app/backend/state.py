@@ -93,6 +93,26 @@ class AppState:
     def has_model(self) -> bool:
         return self.voxcity is not None
 
+    def refresh_raw_cache(self) -> None:
+        """Re-publish freshly-edited grids into ``raw_data`` so downstream
+        tabs (Solar / View / Landmark / Export) see the latest state."""
+        vc = self.voxcity
+        if vc is None:
+            return
+        if self.raw_data is None:
+            self.raw_data = {}
+        self.raw_data["voxcity_grid"] = vc.voxels.classes
+        self.raw_data["building_height_grid"] = vc.buildings.heights
+        self.raw_data["building_min_height_grid"] = vc.buildings.min_heights
+        self.raw_data["building_id_grid"] = vc.buildings.ids
+        if vc.tree_canopy is not None:
+            self.raw_data["canopy_height_grid"] = vc.tree_canopy.top
+            self.raw_data["canopy_bottom_height_grid"] = vc.tree_canopy.bottom
+        if vc.land_cover is not None:
+            self.raw_data["land_cover_grid"] = vc.land_cover.classes
+        if isinstance(vc.extras, dict):
+            self.raw_data["building_gdf"] = vc.extras.get("building_gdf")
+
     # ------------------------------------------------------------------
     # Export helpers
     # ------------------------------------------------------------------

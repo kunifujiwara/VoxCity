@@ -285,3 +285,65 @@ export interface LandmarkPreviewResult {
 export async function getLandmarkPreview() {
   return request<LandmarkPreviewResult>('/landmark/preview');
 }
+
+// ── Edit tab ──────────────────────────────────────────────────
+
+export interface ModelGeoResult {
+  rectangle_vertices: [number, number][];
+  meshsize_m: number;
+  grid_shape: [number, number];
+  center: [number, number];
+  grid_geom: {
+    origin: [number, number];
+    side_1: [number, number];
+    side_2: [number, number];
+    u_vec: [number, number];
+    v_vec: [number, number];
+    adj_mesh: [number, number];
+    grid_size: [number, number];
+  };
+  land_cover_source: string | null;
+  building_geojson: any;
+  canopy_geojson: any;
+  land_cover_geojson: any;
+}
+
+export async function getModelGeo() {
+  return request<ModelGeoResult>('/model/geo');
+}
+
+export interface LandCoverClass {
+  index: number;
+  name: string;
+  color: string;
+  editable: boolean;
+}
+
+export interface LandCoverClassesResult {
+  classes: LandCoverClass[];
+}
+
+export async function listLandCoverClasses() {
+  return request<LandCoverClassesResult>('/land-cover/classes');
+}
+
+export type PendingEditDto =
+  | { kind: 'add_building';   cells: [number, number][]; height_m: number; min_height_m: number; ring?: [number, number][] }
+  | { kind: 'delete_building'; building_ids: number[] }
+  | { kind: 'add_trees';      cells: [number, number][]; height_m: number; bottom_m: number; tops?: number[]; bottoms?: number[] }
+  | { kind: 'delete_trees';   cells: [number, number][] }
+  | { kind: 'paint_lc';       cells: [number, number][]; class_index: number };
+
+export interface ApplyEditsResult {
+  figure_json: string;
+  n_edits: number;
+  n_changed_total: number;
+  building_ids: number[];
+}
+
+export async function applyEdits(edits: PendingEditDto[]) {
+  return request<ApplyEditsResult>('/model/apply_edits', {
+    method: 'POST',
+    body: JSON.stringify({ edits }),
+  });
+}

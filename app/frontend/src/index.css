@@ -472,3 +472,157 @@ input:focus, select:focus {
   z-index: 20;
   display: none;
 }
+
+/* ── Edit tab: 3-column layout ────────────────────── */
+.three-col {
+  display: grid;
+  grid-template-columns: 280px minmax(360px, 1fr) minmax(360px, 1.2fr);
+  gap: 1rem;
+  height: 100%;
+}
+
+@media (max-width: 1200px) {
+  .three-col {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(300px, auto);
+  }
+}
+
+.plan-map-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 520px;
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Override Leaflet's per-path cursor inheritance so the chosen draw
+ * cursor wins even when hovering colored overlay polygons. */
+.leaflet-container.cursor-crosshair,
+.leaflet-container.cursor-crosshair .leaflet-interactive {
+  cursor: crosshair !important;
+}
+.leaflet-container.cursor-pointer,
+.leaflet-container.cursor-pointer .leaflet-interactive {
+  cursor: pointer !important;
+}
+
+/* ── Edit tab: mode tabs ──────────────────────────── */
+.mode-tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--vc-bg);
+  border: 1px solid var(--vc-ring);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 0.75rem;
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--vc-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+}
+
+.mode-tab:hover { color: var(--vc-primary); }
+
+.mode-tab.active {
+  background: var(--vc-accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(102, 102, 255, 0.3);
+}
+
+.mode-section {
+  border-top: 1px solid var(--vc-ring);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.mode-section h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vc-muted);
+  margin: 0 0 0.5rem 0;
+}
+
+.draw-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--vc-bg);
+  border: 1px solid var(--vc-ring);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 0.6rem;
+}
+
+.draw-toolbar-btn {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--vc-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+}
+
+.draw-toolbar-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--vc-primary);
+}
+
+.draw-toolbar-btn.active {
+  background: var(--vc-accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(102, 102, 255, 0.3);
+}
+
+.draw-toolbar-btn.danger.active {
+  background: var(--vc-danger);
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
+}
+
+.draw-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.land-cover-swatches {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 0.5rem;
+}
+
+.lc-swatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lc-swatch.active {
+  border-color: var(--vc-accent, #cff527);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.lc-active-name {
+  font-size: 0.8rem;
+  color: var(--vc-muted);
+  margin-top: 0.25rem;
+}
