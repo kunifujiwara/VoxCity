@@ -75,7 +75,25 @@ State lifted into `App.tsx` next to `rectangle` / `figureJson`:
 const [zones, setZones] = useState<Zone[]>([]);
 ```
 
-Cleared whenever `rectangle` changes.
+Wired with an explicit effect that also fixes a pre-existing UX bug (cached
+sim figures currently survive a target-rectangle change until the next
+`/generate`):
+
+```ts
+// Clear zones AND any cached sim figures when the target rectangle changes.
+// The old results no longer correspond to the new area.
+useEffect(() => {
+  setZones([]);
+  setFigureJson('');
+  setEditFigureJson('');
+  setSolarFigureJson('');
+  setViewFigureJson('');
+  setLandmarkFigureJson('');
+}, [rectangle]);
+```
+
+`zones` is then passed read-only into `<ZoningTab>`, `<SolarTab>`,
+`<ViewTab>`, and `<LandmarkTab>`.
 
 ### 5.2 Backend (`app/backend/models.py`)
 
@@ -297,10 +315,10 @@ above the table toggles their visibility (client-side, no refetch).
 | Event | Effect on `zones` |
 | --- | --- |
 | Page load | `[]` (default) |
-| `setRectangle(...)` (Target Area tab edit) | Cleared to `[]` |
+| `setRectangle(...)` (Target Area tab edit) | Cleared to `[]`. Also clears all cached sim figures (`figureJson`, `editFigureJson`, `solarFigureJson`, `viewFigureJson`, `landmarkFigureJson`) via a `useEffect([rectangle])` in `App.tsx` — see §5.1. |
 | Generation completes | Untouched (zones lon/lat valid for the same area) |
 | Edit-tab commit → `onModelEdited` | Untouched (rectangle unchanged) |
-| `resetSession()` | Cleared to `[]` |
+| `resetSession()` | Cleared to `[]` (page-load reset path already runs this) |
 
 ## 10. Testing
 
@@ -340,9 +358,15 @@ above the table toggles their visibility (client-side, no refetch).
 
 ## 12. Open items to confirm during implementation
 
-1. Does `ModelGeoResult` already expose `max_building_height_m`? If not,
-   compute on tab mount from `building_height_grid`.
-2. Each simulator's mesh return shape — confirm or write adapters.
+1. `ModelGeoResult` does **not** currently expose `max_building_height_m`
+   (verified). Implementation will compute it on Zoning-tab mount from
+   `voxcity.buildings.heights.max()` (or the equivalent already in the
+   client-side `geo` payload's `building_height_grid`).
+2. Each simulator's mesh return shape — verified to vary by sim type and
+   target. `app/backend/zoning.py` will normalize to a uniform
+   `(centroids_xy, values, areas)` tuple via per-sim adapters; first
+   implementation step is a dry-run inspection of solar/view/landmark
+   building-target mesh outputs.
 
 ## 13. File touch list
 
