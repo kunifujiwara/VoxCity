@@ -166,3 +166,69 @@ class ZoneStatsResponse(BaseModel):
     sim_type:   Optional[str] = None  # "solar" | "view" | "landmark"
     unit_label: Optional[str] = None
     stats:      List[ZoneStat]
+
+
+# ---------------------------------------------------------------------------
+# Three.js raw geometry (R3F migration)
+# ---------------------------------------------------------------------------
+
+class MeshChunk(BaseModel):
+    """One BufferGeometry-friendly chunk.
+
+    Attributes
+    ----------
+    name : Logical name (e.g. ``"buildings+x"``, ``"ground_overlay"``).
+    positions : Flat XYZ vertex array, length ``= 3 * vertex_count``.
+    indices : Flat triangle indices, length ``= 3 * triangle_count``.
+    color : Optional uniform RGB ``[r, g, b]`` in ``[0, 1]``.
+    colors : Optional per-vertex RGB array, length ``= 3 * vertex_count``.
+        When set, overrides ``color``.
+    opacity : Material opacity in ``[0, 1]``.
+    flat_shading : Whether to use ``flatShading`` on the material.
+    metadata : Free-form per-chunk metadata (e.g. building IDs per face).
+    """
+    name: str
+    positions: List[float]
+    indices: List[int]
+    color: Optional[List[float]] = None
+    colors: Optional[List[float]] = None
+    opacity: float = 1.0
+    flat_shading: bool = False
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SceneGeometryResponse(BaseModel):
+    """Static city geometry payload for the R3F viewer."""
+    chunks: List[MeshChunk]
+    bbox_min: List[float]
+    bbox_max: List[float]
+    meshsize_m: float
+    # Topmost ground (land-cover) elevation in metres across the whole scene.
+    # Used by the frontend to render zone outlines slightly above ground level
+    # so they don't get hidden inside the terrain.
+    ground_top_m: float = 0.0
+
+
+class SimGeometryRequest(BaseModel):
+    """Body for ``POST /api/sim/{kind}/geometry``."""
+    colormap: str = "viridis"
+    vmin: Optional[float] = None
+    vmax: Optional[float] = None
+
+
+class OverlayGeometryResponse(BaseModel):
+    """Per-tab simulation overlay payload for the R3F viewer.
+
+    The single ``chunk`` carries per-vertex colors that match the requested
+    colormap. ``face_to_cell`` (ground sims) or ``face_to_building``
+    (building sims) provide click-pick metadata for the frontend ``Picker``.
+    """
+    target: str                                  # "ground" | "building"
+    sim_type: str                                # "solar" | "view" | "landmark"
+    chunk: MeshChunk
+    face_to_cell: Optional[List[List[int]]] = None
+    face_to_building: Optional[List[int]] = None
+    value_min: float
+    value_max: float
+    colormap: str
+    unit_label: str = ""

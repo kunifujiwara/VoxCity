@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@types/leaflet": "^1.9.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.8.0",

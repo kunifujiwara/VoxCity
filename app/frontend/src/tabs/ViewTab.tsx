@@ -1,28 +1,35 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { runView } from '../api';
-import ThreeViewer from '../components/ThreeViewer';
+/**
+ * View tab — runs a view-index simulation (sky/green/custom) and previews
+ * the result on the new R3F `<SceneViewer>`.
+ *
+ * Migrated from the legacy `figureJson` + `<ThreeViewer>` flow during
+ * Chunk 4 of the Three.js migration.
+ */
+import React, { useEffect, useMemo, useState } from 'react';
+import { getModelGeo, ModelGeoResult, runView } from '../api';
+import { SceneViewer } from '../three';
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
 import { CUSTOM_CLASSES } from '../constants';
-import { useManualRerender } from '../hooks/useDebouncedRerender';
-import { useZoneOverlay } from '../hooks/useZoneOverlay';
+import { lonLatToWorldXY } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { Zone } from '../types/zones';
 
 interface ViewTabProps {
   hasModel: boolean;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   figureJson: string;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   onFigureChange: (json: string) => void;
   zones: Zone[];
   simRunNonce: number;
   onSimRun: () => void;
 }
 
-const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange, zones, simRunNonce, onSimRun }) => {
+const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun }) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { figure: viewerFigure } = useZoneOverlay(hasModel, figureJson, zones, showZones3D);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [viewType, setViewType] = useState('green');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
@@ -38,16 +45,22 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange,
   const [vmax, setVmax] = useState(1);
   const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasSimResult = useRef(false);
-  const simDone = figureJson !== '';
+  const [hasSimResult, setHasSimResult] = useState(false);
 
+  const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   useEffect(() => {
-    if (figureJson) hasSimResult.current = true;
-  }, []);
-
-  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, onFigureChange, setRerendering);
+    if (!hasModel) {
+      setGeo(null);
+      return;
+    }
+    let cancelled = false;
+    getModelGeo()
+      .then((g) => { if (!cancelled) setGeo(g); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [hasModel]);
+  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -63,7 +76,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange,
     setLoading(true);
     setError(null);
     try {
-      const result = await runView({
+      await runView({
         view_type: viewType,
         analysis_target: analysisTarget,
         view_point_height: viewPointHeight,
@@ -78,13 +91,8 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange,
         vmax,
         hidden_classes: Array.from(hiddenClasses),
       });
-      if (!result.figure_json || result.figure_json === '{}') {
-        setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
-      } else {
-        onFigureChange(result.figure_json);
-        hasSimResult.current = true;
-        onSimRun();
-      }
+      setHasSimResult(true);
+      onSimRun();
     } catch (err: any) {
       setError(err.message);
     }
@@ -175,13 +183,6 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange,
           onHiddenClassesChange={setHiddenClasses}
         />
 
-        {simDone && (
-          <button className="btn btn-secondary" onClick={handleUpdate} disabled={loading || rerendering} style={{ marginBottom: '0.5rem' }}>
-            {rerendering && <span className="spinner" />}
-            {rerendering ? 'Updating...' : 'Update View'}
-          </button>
-        )}
-
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}
           {loading ? 'Running...' : 'Run Simulation'}
@@ -206,8 +207,21 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, figureJson, onFigureChange,
         )}
       </div>
 
-      <div className="panel">
-        <ThreeViewer figureJson={viewerFigure} />
+      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
+        <SceneViewer
+          geometryToken={hasModel ? 'loaded' : 'none'}
+          downsample={1}
+          colorScheme="grayscale"
+          simKind={hasSimResult ? 'view' : null}
+          simToken={simRunNonce}
+          colormap={colormap}
+          vmin={vmin}
+          vmax={vmax}
+          zones={zones}
+          lonLatToXY={lonLatToXY}
+          showZones={showZones3D}
+          hiddenClasses={hiddenClasses}
+        />
       </div>
     </div>
   );

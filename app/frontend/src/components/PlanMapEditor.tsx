@@ -53,7 +53,7 @@ export type PendingEdit =
    *  the role styling: evaluation zones get a denser dashed outline and a
    *  higher fill opacity than placement zones, so the two are visually
    *  distinct even when they share neighbouring cells. */
-  | { kind: 'paint_zone';     cells: [number, number][]; color: string; roof?: boolean; target?: 'placement' | 'evaluation' };
+  | { kind: 'paint_zone';     cells: [number, number][]; color: string; roof?: boolean; target?: 'placement' | 'evaluation'; ring?: [number, number][]; selected?: boolean };
 
 export interface PlanMapEditorProps {
   geo: ModelGeoResult;
@@ -658,17 +658,26 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
           break;
         case 'paint_zone': {
           const isEval = edit.target === 'evaluation';
-          // Evaluation zones: thicker, denser hatched outline so they pop
-          // against placement zones. Roof modifier reduces fill opacity
-          // because the underlying building footprint already carries
-          // visual weight.
-          renderCells(edit.cells, {
-            color: edit.color,
-            weight: isEval ? 1.6 : (edit.roof ? 1.2 : 0.5),
-            fillColor: edit.color,
-            fillOpacity: edit.roof ? 0.35 : (isEval ? 0.5 : 0.55),
-            dashArray: isEval ? '2,3' : (edit.roof ? '4,3' : undefined),
-          });
+          // Prefer rendering the polygon outline directly (closer to how
+          // the zone shows up on the 3D viewer) and only fall back to the
+          // rasterised cell quads when no ring is provided.
+          if (edit.ring && edit.ring.length >= 3) {
+            renderRing(edit.ring, {
+              color: edit.color,
+              weight: edit.selected ? 3.5 : 2,
+              fillColor: edit.color,
+              fillOpacity: edit.selected ? 0.35 : 0.22,
+              dashArray: isEval ? '4,3' : undefined,
+            });
+          } else {
+            renderCells(edit.cells, {
+              color: edit.color,
+              weight: isEval ? 1.6 : (edit.roof ? 1.2 : 0.5),
+              fillColor: edit.color,
+              fillOpacity: edit.roof ? 0.35 : (isEval ? 0.5 : 0.55),
+              dashArray: isEval ? '2,3' : (edit.roof ? '4,3' : undefined),
+            });
+          }
           break;
         }
         // delete_building is rendered via the buildings backdrop re-style.

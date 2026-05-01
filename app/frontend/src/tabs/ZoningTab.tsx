@@ -6,15 +6,14 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getModelGeo, ModelGeoResult } from '../api';
-import ThreeViewer from '../components/ThreeViewer';
+import { SceneViewer } from '../three';
 import PlanMapEditor, {
   Backdrop,
   BasemapKey,
   MapInteraction,
   PendingEdit,
 } from '../components/PlanMapEditor';
-import { polygonToCells } from '../lib/grid';
-import { buildZoneTraces } from '../lib/zoneTraces';
+import { lonLatToWorldXY, polygonToCells } from '../lib/grid';
 import {
   Zone,
   ZoneShape,
@@ -67,6 +66,13 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
   const maxH = useMemo(() => maxBuildingHeight(geo), [geo]);
 
+  /**
+   * Project (lon, lat) into voxel-world metres so zone outlines align with
+   * the city geometry returned by `/api/scene/geometry`. Locked-in projection
+   * is `(nx - u, v)` (see `lonLatToWorldXY` doc).
+   */
+  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
+
   const interaction: MapInteraction = shape === 'rect' ? 'draw_rect_3pt' : 'draw_polygon';
 
   // Render existing zones as paint_zone overlays.
@@ -75,10 +81,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     return zones.map((z) => ({
       kind: 'paint_zone' as const,
       cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
+      ring: z.ring_lonlat,
+      selected: z.id === selectedId,
       color: z.color,
       target: 'evaluation' as const,
     }));
-  }, [geo, zones]);
+  }, [geo, zones, selectedId]);
 
   const handlePolygonComplete = useCallback(
     (ring: [number, number][]) => {
@@ -112,25 +120,9 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     setSelectedId(null);
   };
 
-  // Build figure with zone curtain traces appended.
-  const figureWithZones = useMemo(() => {
-    if (!figureJson) return '';
-    if (!geo || zones.length === 0) return figureJson;
-    try {
-      const fig = JSON.parse(figureJson);
-      fig.data = [
-        ...(fig.data ?? []),
-        ...buildZoneTraces(zones, { grid_geom: geo.grid_geom }, {
-          meshsize: geo.meshsize_m,
-          ceilingM: Math.max(0.1 * maxH, 3),
-          selectedZoneId: selectedId,
-        }),
-      ];
-      return JSON.stringify(fig);
-    } catch {
-      return figureJson;
-    }
-  }, [figureJson, geo, zones, maxH, selectedId]);
+  // Use each zone's own colour in 3D so the right-hand viewer matches the
+  // left-hand 2D editor exactly. Selection emphasis happens on the 2D side.
+  const colorOverride = undefined;
 
   if (!hasModel) {
     return (
@@ -287,11 +279,18 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <h2>3D preview</h2>
         <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {figureWithZones ? (
-            <ThreeViewer figureJson={figureWithZones} />
+          {hasModel ? (
+            <SceneViewer
+              geometryToken={hasModel ? 'loaded' : 'none'}
+              downsample={1}
+              zones={zones}
+              lonLatToXY={lonLatToXY}
+              showZones
+              colorOverride={colorOverride}
+            />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>
-              Generate a 3D figure (e.g. on the Generation tab) to preview zones in 3D.
+              Generate a model on the Generation tab to preview zones in 3D.
             </div>
           )}
         </div>

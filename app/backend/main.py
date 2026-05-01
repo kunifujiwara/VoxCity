@@ -39,8 +39,11 @@ from .models import (
     GeocodeRequest,
     GeocodeResponse,
     LandmarkRequest,
+    OverlayGeometryResponse,
     RectangleFromDimensions,
     RerenderRequest,
+    SceneGeometryResponse,
+    SimGeometryRequest,
     SolarRequest,
     StatusResponse,
     ViewRequest,
@@ -48,6 +51,11 @@ from .models import (
     ZoneStat,
     ZoneStatsRequest,
     ZoneStatsResponse,
+)
+from .scene_geometry import (
+    build_building_overlay_buffers,
+    build_ground_overlay_buffers,
+    build_voxel_buffers,
 )
 from .state import app_state
 from .zoning import (
@@ -2237,6 +2245,84 @@ def zone_stats(req: ZoneStatsRequest) -> ZoneStatsResponse:
         unit_label=app_state.last_colorbar_title,
         stats=stats,
     )
+
+
+# ---------------------------------------------------------------------------
+# Three.js raw geometry endpoints (R3F migration)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/scene/geometry", response_model=SceneGeometryResponse)
+def scene_geometry(
+    downsample: int = 1,
+    color_scheme: str = "default",
+) -> SceneGeometryResponse:
+    """Return the static city voxel geometry as raw BufferGeometry chunks.
+
+    ``color_scheme`` is forwarded to
+    :func:`voxcity.visualizer.palette.get_voxel_color_map`. The simulation
+    tabs request ``"grayscale"`` so the per-class voxel colours don't
+    compete with the coloured sim overlay.
+    """
+    if app_state.voxcity is None:
+        raise HTTPException(status_code=400, detail="No model loaded")
+    grid = app_state.voxcity.voxels.classes
+    meshsize = app_state.meshsize
+    return build_voxel_buffers(
+        grid,
+        meshsize,
+        downsample=max(1, int(downsample)),
+        color_scheme=color_scheme,
+    )
+
+
+@app.post("/api/sim/{kind}/geometry", response_model=OverlayGeometryResponse)
+def sim_geometry(kind: str, req: SimGeometryRequest) -> OverlayGeometryResponse:
+    """Return the most recent sim result as a coloured Three.js overlay.
+
+    ``kind`` is one of ``solar``, ``view``, ``landmark`` and must match the
+    last simulation that was run; otherwise a 400 is returned.
+    """
+    if kind not in {"solar", "view", "landmark"}:
+        raise HTTPException(status_code=404, detail=f"Unknown sim kind: {kind}")
+    if app_state.last_sim_type is None:
+        raise HTTPException(status_code=400, detail="Run a simulation first")
+    if app_state.last_sim_type != kind:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Last sim was '{app_state.last_sim_type}', not '{kind}'",
+        )
+
+    target = app_state.last_sim_target
+    unit = app_state.last_colorbar_title or ""
+
+    if target == "ground":
+        if app_state.last_sim_grid is None:
+            raise HTTPException(status_code=400, detail="No ground sim grid cached")
+        return build_ground_overlay_buffers(
+            np.asarray(app_state.last_sim_grid),
+            np.asarray(app_state.last_sim_voxcity_grid)
+            if app_state.last_sim_voxcity_grid is not None
+            else None,
+            app_state.meshsize,
+            app_state.last_sim_view_point_height,
+            sim_type=kind,
+            colormap=req.colormap,
+            vmin=req.vmin,
+            vmax=req.vmax,
+            unit_label=unit,
+        )
+    elif target == "building":
+        if app_state.last_sim_mesh is None:
+            raise HTTPException(status_code=400, detail="No building sim mesh cached")
+        return build_building_overlay_buffers(
+            app_state.last_sim_mesh,
+            sim_type=kind,
+            colormap=req.colormap,
+            vmin=req.vmin,
+            vmax=req.vmax,
+            unit_label=unit,
+        )
+    raise HTTPException(status_code=400, detail=f"Unsupported target: {target}")
 
 
 @app.post("/api/model/apply_edits")

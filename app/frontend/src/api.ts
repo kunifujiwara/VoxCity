@@ -379,3 +379,58 @@ export async function getZoneStats(zones: ZoneSpecDto[]) {
   });
 }
 
+// ── Three.js raw geometry (R3F migration) ──────────────────────
+
+export interface MeshChunkDto {
+  name: string;
+  positions: number[];          // flat XYZ
+  indices:   number[];          // flat tris
+  color?:    [number, number, number] | null;
+  colors?:   number[] | null;   // per-vertex RGB
+  opacity:   number;
+  flat_shading: boolean;
+  metadata:  Record<string, any>;
+}
+
+export interface SceneGeometryResponse {
+  chunks:        MeshChunkDto[];
+  bbox_min:      [number, number, number];
+  bbox_max:      [number, number, number];
+  meshsize_m:    number;
+  ground_top_m?: number;
+}
+
+export interface OverlayGeometryResponse {
+  target:    'ground' | 'building';
+  sim_type:  'solar' | 'view' | 'landmark';
+  chunk:     MeshChunkDto;
+  face_to_cell?:     [number, number][] | null;
+  face_to_building?: number[] | null;
+  value_min: number;
+  value_max: number;
+  colormap:  string;
+  unit_label: string;
+}
+
+export async function getSceneGeometry(downsample = 1, colorScheme = 'default') {
+  const params = new URLSearchParams({
+    downsample: String(downsample),
+    color_scheme: colorScheme,
+  });
+  return request<SceneGeometryResponse>(`/scene/geometry?${params.toString()}`);
+}
+
+export async function getSimGeometry(
+  kind: 'solar' | 'view' | 'landmark',
+  body: { colormap?: string; vmin?: number | null; vmax?: number | null } = {},
+) {
+  return request<OverlayGeometryResponse>(`/sim/${kind}/geometry`, {
+    method: 'POST',
+    body: JSON.stringify({
+      colormap: body.colormap ?? 'viridis',
+      vmin: body.vmin ?? null,
+      vmax: body.vmax ?? null,
+    }),
+  });
+}
+

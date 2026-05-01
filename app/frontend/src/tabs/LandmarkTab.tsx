@@ -1,27 +1,52 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { runLandmark, getLandmarkPreview, getBuildingsList, BuildingInfo } from '../api';
-import ThreeViewer, { SelectionMode, BuildingCentroid } from '../components/ThreeViewer';
+/**
+ * Landmark tab — runs a landmark-visibility simulation and previews the
+ * result on the new R3F `<SceneViewer>`.
+ *
+ * Migrated from the legacy `figureJson` + `<ThreeViewer>` flow during
+ * Chunk 4 of the Three.js migration.
+ *
+ * Building selection: while no sim result is shown the user can click
+ * anywhere in the scene; the click hit point is matched (by 2D XY
+ * proximity) against the cached building centroid list to toggle a
+ * landmark id. Box selection from the legacy viewer is intentionally
+ * out of scope for this chunk.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  BuildingInfo,
+  getBuildingsList,
+  getModelGeo,
+  ModelGeoResult,
+  runLandmark,
+} from '../api';
+import { SceneViewer } from '../three';
+import type { PickResult } from '../three/types';
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
-import { useManualRerender } from '../hooks/useDebouncedRerender';
-import { useZoneOverlay } from '../hooks/useZoneOverlay';
+import { lonLatToWorldXY } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { Zone } from '../types/zones';
 
 interface LandmarkTabProps {
   hasModel: boolean;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   figureJson: string;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   onFigureChange: (json: string) => void;
   zones: Zone[];
   simRunNonce: number;
   onSimRun: () => void;
 }
 
-const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigureChange, zones, simRunNonce, onSimRun }) => {
+const LandmarkTab: React.FC<LandmarkTabProps> = ({
+  hasModel,
+  zones,
+  simRunNonce,
+  onSimRun,
+}) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { figure: figureWithZones } = useZoneOverlay(hasModel, figureJson, zones, showZones3D);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [landmarkIdsText, setLandmarkIdsText] = useState('');
@@ -34,48 +59,34 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
   const [vmax, setVmax] = useState(1);
   const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasSimResult = useRef(false);
-  const simDone = figureJson !== '';
+  const [hasSimResult, setHasSimResult] = useState(false);
+  const [showingSimResult, setShowingSimResult] = useState(false);
 
   // Selection state
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>('click');
   const [selectedBuildingIds, setSelectedBuildingIds] = useState<number[]>([]);
-  const [previewJson, setPreviewJson] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [buildings, setBuildings] = useState<BuildingInfo[]>([]);
-  const [showingSimResult, setShowingSimResult] = useState(!!figureJson);
 
+  // Geometry for zone projection.
+  const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   useEffect(() => {
-    if (figureJson) {
-      hasSimResult.current = true;
+    if (!hasModel) {
+      setGeo(null);
+      setBuildings([]);
+      return;
     }
-  }, []);
-
-  // Load preview and buildings list (reusable, guards against duplicate fetches)
-  const loadPreview = useCallback(() => {
-    if (!hasModel || previewJson || previewLoading) return;
-    setPreviewLoading(true);
-    Promise.all([getLandmarkPreview(), getBuildingsList()])
-      .then(([preview, bList]) => {
-        setPreviewJson(preview.figure_json);
-        setBuildings(bList.buildings);
-      })
-      .catch((err) => {
-        setError(`Failed to load preview: ${err.message}`);
-      })
-      .finally(() => { setPreviewLoading(false); });
-  }, [hasModel, previewJson, previewLoading]);
-
-  // Auto-load preview on mount when no sim result exists yet
-  useEffect(() => {
-    if (!simDone) loadPreview();
+    let cancelled = false;
+    getModelGeo()
+      .then((g) => { if (!cancelled) setGeo(g); })
+      .catch(() => {});
+    getBuildingsList()
+      .then((r) => { if (!cancelled) setBuildings(r.buildings); })
+      .catch((err) => { if (!cancelled) setError(`Failed to load buildings: ${err.message}`); });
+    return () => { cancelled = true; };
   }, [hasModel]);
+  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
 
-  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, onFigureChange, setRerendering);
-
-  // Bidirectional sync: text → selection
+  // Bidirectional sync: text -> selection
   const handleIdsTextChange = useCallback((text: string) => {
     setLandmarkIdsText(text);
     const ids = text
@@ -85,29 +96,47 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
     setSelectedBuildingIds(ids);
   }, []);
 
-  // Bidirectional sync: selection → text
-  const handleBuildingSelect = useCallback((ids: number[]) => {
+  // Bidirectional sync: selection -> text
+  const setSelection = useCallback((ids: number[]) => {
     setSelectedBuildingIds(ids);
     setLandmarkIdsText(ids.join(', '));
   }, []);
 
-  const handleClearSelection = useCallback(() => {
-    setSelectedBuildingIds([]);
-    setLandmarkIdsText('');
-  }, []);
+  const handleClearSelection = useCallback(() => setSelection([]), [setSelection]);
 
   const handleBackToSelection = useCallback(() => {
     setShowingSimResult(false);
-    loadPreview();
-  }, [loadPreview]);
+  }, []);
 
-  // Build centroids for box selection
-  const buildingCentroids: BuildingCentroid[] = buildings.map((b) => ({
-    id: b.id,
-    cx: b.cx,
-    cy: b.cy,
-    cz: b.cz,
-  }));
+  // Click pick: find nearest building centroid in 2D and toggle it.
+  const handlePick = useCallback((hit: PickResult | null) => {
+    if (showingSimResult) return;
+    if (!hit || buildings.length === 0) return;
+    const [px, py] = hit.point;
+    let bestId = -1;
+    let bestDist = Infinity;
+    for (const b of buildings) {
+      const dx = b.cx - px;
+      const dy = b.cy - py;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist) {
+        bestDist = d;
+        bestId = b.id;
+      }
+    }
+    // Reject pick if more than ~30 m away (ambient miss).
+    const meshsize = geo?.meshsize_m ?? 5;
+    const maxDist = (meshsize * 6) ** 2;
+    if (bestId < 0 || bestDist > maxDist) return;
+
+    setSelectedBuildingIds((prev) => {
+      const next = prev.includes(bestId)
+        ? prev.filter((i) => i !== bestId)
+        : [...prev, bestId];
+      setLandmarkIdsText(next.join(', '));
+      return next;
+    });
+  }, [showingSimResult, buildings, geo]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -122,7 +151,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
         .map((s) => parseInt(s.trim(), 10))
         .filter((n) => !isNaN(n));
 
-      const result = await runLandmark({
+      await runLandmark({
         analysis_target: analysisTarget,
         landmark_ids: ids,
         view_point_height: 1.5,
@@ -135,23 +164,14 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
         vmax,
         hidden_classes: Array.from(hiddenClasses),
       });
-      if (!result.figure_json || result.figure_json === '{}') {
-        setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
-      } else {
-        onFigureChange(result.figure_json);
-        hasSimResult.current = true;
-        setShowingSimResult(true);
-        onSimRun();
-      }
+      setHasSimResult(true);
+      setShowingSimResult(true);
+      onSimRun();
     } catch (err: any) {
       setError(err.message);
     }
     setLoading(false);
   };
-
-  // Determine which figure to show in the viewer
-  const viewerFigure = showingSimResult && figureJson ? figureWithZones : previewJson;
-  const isSelecting = !showingSimResult || !figureJson;
 
   return (
     <div className="two-col">
@@ -172,32 +192,11 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
           </div>
         </div>
 
-        {/* Selection toolbar */}
         <div className="form-group">
           <label>Select Landmark Buildings</label>
-          {isSelecting && (
+          {!showingSimResult && (
             <div className="selection-toolbar">
-              <button
-                className={`selection-toolbar-btn ${selectionMode === 'click' ? 'active' : ''}`}
-                onClick={() => setSelectionMode('click')}
-                title="Click buildings to select/deselect"
-              >
-                Click
-              </button>
-              <button
-                className={`selection-toolbar-btn ${selectionMode === 'box' ? 'active' : ''}`}
-                onClick={() => setSelectionMode('box')}
-                title="Drag a box to select multiple buildings"
-              >
-                Box
-              </button>
-              <button
-                className={`selection-toolbar-btn ${selectionMode === 'none' ? 'active' : ''}`}
-                onClick={() => setSelectionMode('none')}
-                title="Orbit mode (rotate/pan/zoom only)"
-              >
-                Orbit
-              </button>
+              <span className="hint">Click a building in the 3D viewer to toggle it.</span>
               <button
                 className="selection-toolbar-btn clear-btn"
                 onClick={handleClearSelection}
@@ -210,7 +209,6 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
           )}
         </div>
 
-        {/* Selected buildings chips */}
         {selectedBuildingIds.length > 0 && (
           <div className="form-group">
             <label>Selected Buildings ({selectedBuildingIds.length})</label>
@@ -220,7 +218,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
                   {id}
                   <button
                     className="chip-remove"
-                    onClick={() => handleBuildingSelect(selectedBuildingIds.filter((i) => i !== id))}
+                    onClick={() => setSelection(selectedBuildingIds.filter((i) => i !== id))}
                   >
                     ×
                   </button>
@@ -266,16 +264,9 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
           onHiddenClassesChange={setHiddenClasses}
         />
 
-        {showingSimResult && figureJson && (
+        {showingSimResult && hasSimResult && (
           <button className="btn btn-secondary" onClick={handleBackToSelection} disabled={loading} style={{ marginBottom: '0.5rem' }}>
             Back to Selection
-          </button>
-        )}
-
-        {simDone && showingSimResult && (
-          <button className="btn btn-secondary" onClick={handleUpdate} disabled={loading || rerendering} style={{ marginBottom: '0.5rem' }}>
-            {rerendering && <span className="spinner" />}
-            {rerendering ? 'Updating...' : 'Update View'}
           </button>
         )}
 
@@ -303,14 +294,21 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
         )}
       </div>
 
-      <div className="panel">
-        {previewLoading && <div className="alert alert-info">Loading 3D preview...</div>}
-        <ThreeViewer
-          figureJson={viewerFigure}
-          selectionMode={isSelecting ? selectionMode : 'none'}
-          selectedBuildingIds={selectedBuildingIds}
-          onBuildingSelect={handleBuildingSelect}
-          buildingCentroids={buildingCentroids}
+      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
+        <SceneViewer
+          geometryToken={hasModel ? 'loaded' : 'none'}
+          downsample={1}
+          colorScheme="grayscale"
+          simKind={showingSimResult ? 'landmark' : null}
+          simToken={simRunNonce}
+          colormap={colormap}
+          vmin={vmin}
+          vmax={vmax}
+          zones={zones}
+          lonLatToXY={lonLatToXY}
+          showZones={showZones3D}
+          hiddenClasses={hiddenClasses}
+          onPick={!showingSimResult ? handlePick : undefined}
         />
       </div>
     </div>

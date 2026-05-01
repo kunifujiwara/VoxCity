@@ -1,26 +1,40 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { runSolar } from '../api';
-import ThreeViewer from '../components/ThreeViewer';
+/**
+ * Solar tab — runs a solar-radiation simulation and previews the result on
+ * the new R3F `<SceneViewer>` (overlay + zone outlines + colorbar).
+ *
+ * The legacy `figureJson` / `useZoneOverlay` / `<ThreeViewer>` path was
+ * removed during the Three.js migration (Chunk 4). The tab still accepts
+ * `figureJson` / `onFigureChange` props for App-level state compatibility,
+ * but they are intentionally unused.
+ */
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { getModelGeo, ModelGeoResult, runSolar } from '../api';
+import { SceneViewer } from '../three';
 import ColorSettings from '../components/ColorSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
-import { useManualRerender } from '../hooks/useDebouncedRerender';
-import { useZoneOverlay } from '../hooks/useZoneOverlay';
+import { lonLatToWorldXY } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { Zone } from '../types/zones';
 
 interface SolarTabProps {
   hasModel: boolean;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   figureJson: string;
+  /** @deprecated kept for App-level state compatibility, unused here. */
   onFigureChange: (json: string) => void;
   zones: Zone[];
   simRunNonce: number;
   onSimRun: () => void;
 }
 
-const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChange, zones, simRunNonce, onSimRun }) => {
+const SolarTab: React.FC<SolarTabProps> = ({
+  hasModel,
+  zones,
+  simRunNonce,
+  onSimRun,
+}) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { figure: viewerFigure } = useZoneOverlay(hasModel, figureJson, zones, showZones3D);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [calcType, setCalcType] = useState<'instantaneous' | 'cumulative'>('instantaneous');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
@@ -33,16 +47,23 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
   const [vmax, setVmax] = useState<string>('');
   const [hiddenClasses, setHiddenClasses] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [rerendering, setRerendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasSimResult = useRef(false);
-  const simDone = figureJson !== '';
+  const [hasSimResult, setHasSimResult] = useState(false);
 
+  // Geometry for the lon/lat -> world projection used by zone outlines.
+  const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   useEffect(() => {
-    if (figureJson) hasSimResult.current = true;
-  }, []);
-
-  const handleUpdate = useManualRerender(hasSimResult, { colormap, vmin, vmax, hiddenClasses }, onFigureChange, setRerendering);
+    if (!hasModel) {
+      setGeo(null);
+      return;
+    }
+    let cancelled = false;
+    getModelGeo()
+      .then((g) => { if (!cancelled) setGeo(g); })
+      .catch(() => { /* ignore — zones just won't project */ });
+    return () => { cancelled = true; };
+  }, [hasModel]);
+  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -67,19 +88,16 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
         params.start_time = startTime;
         params.end_time = endTime;
       }
-      const result = await runSolar(params);
-      if (!result.figure_json || result.figure_json === '{}') {
-        setError('Visualization failed – the generated figure was empty. Check the backend logs for details.');
-      } else {
-        onFigureChange(result.figure_json);
-        hasSimResult.current = true;
-        onSimRun();
-      }
+      await runSolar(params);
+      setHasSimResult(true);
+      onSimRun();
     } catch (err: any) {
       setError(err.message);
     }
     setLoading(false);
   };
+
+  const vmaxNum = vmax ? parseFloat(vmax) : null;
 
   return (
     <div className="two-col">
@@ -153,13 +171,6 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
           onHiddenClassesChange={setHiddenClasses}
         />
 
-        {simDone && (
-          <button className="btn btn-secondary" onClick={handleUpdate} disabled={loading || rerendering} style={{ marginBottom: '0.5rem' }}>
-            {rerendering && <span className="spinner" />}
-            {rerendering ? 'Updating...' : 'Update View'}
-          </button>
-        )}
-
         <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
           {loading && <span className="spinner" />}
           {loading ? 'Running...' : 'Run Simulation'}
@@ -184,8 +195,21 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
         )}
       </div>
 
-      <div className="panel">
-        <ThreeViewer figureJson={viewerFigure} />
+      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
+        <SceneViewer
+          geometryToken={hasModel ? 'loaded' : 'none'}
+          downsample={1}
+          colorScheme="grayscale"
+          simKind={hasSimResult ? 'solar' : null}
+          simToken={simRunNonce}
+          colormap={colormap}
+          vmin={vmin}
+          vmax={vmaxNum}
+          zones={zones}
+          lonLatToXY={lonLatToXY}
+          showZones={showZones3D}
+          hiddenClasses={hiddenClasses}
+        />
       </div>
     </div>
   );
