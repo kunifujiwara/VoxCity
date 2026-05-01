@@ -129,7 +129,46 @@ const App: React.FC = () => {
             onZonesChange={setZones}
           />
         )}
-        {activeTab === 'solar' && (
+        {/*
+          Sim tabs are kept mounted (once a model exists) so their internal
+          overlay/result state survives tab switches. Inactive tabs are hidden
+          via CSS rather than unmounted.
+        */}
+        {hasModel && (
+          <>
+            <div style={{ display: activeTab === 'solar' ? 'contents' : 'none' }}>
+              <SolarTab
+                hasModel={hasModel}
+                figureJson={solarFigureJson}
+                onFigureChange={setSolarFigureJson}
+                zones={zones}
+                simRunNonce={solarRunNonce}
+                onSimRun={() => setSolarRunNonce((n) => n + 1)}
+              />
+            </div>
+            <div style={{ display: activeTab === 'view' ? 'contents' : 'none' }}>
+              <ViewTab
+                hasModel={hasModel}
+                figureJson={viewFigureJson}
+                onFigureChange={setViewFigureJson}
+                zones={zones}
+                simRunNonce={viewRunNonce}
+                onSimRun={() => setViewRunNonce((n) => n + 1)}
+              />
+            </div>
+            <div style={{ display: activeTab === 'landmark' ? 'contents' : 'none' }}>
+              <LandmarkTab
+                hasModel={hasModel}
+                figureJson={landmarkFigureJson}
+                onFigureChange={setLandmarkFigureJson}
+                zones={zones}
+                simRunNonce={landmarkRunNonce}
+                onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
+              />
+            </div>
+          </>
+        )}
+        {!hasModel && activeTab === 'solar' && (
           <SolarTab
             hasModel={hasModel}
             figureJson={solarFigureJson}
@@ -139,7 +178,7 @@ const App: React.FC = () => {
             onSimRun={() => setSolarRunNonce((n) => n + 1)}
           />
         )}
-        {activeTab === 'view' && (
+        {!hasModel && activeTab === 'view' && (
           <ViewTab
             hasModel={hasModel}
             figureJson={viewFigureJson}
@@ -149,7 +188,7 @@ const App: React.FC = () => {
             onSimRun={() => setViewRunNonce((n) => n + 1)}
           />
         )}
-        {activeTab === 'landmark' && (
+        {!hasModel && activeTab === 'landmark' && (
           <LandmarkTab
             hasModel={hasModel}
             figureJson={landmarkFigureJson}
