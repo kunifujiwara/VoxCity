@@ -3,15 +3,25 @@ import { runSolar } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import ColorSettings from '../components/ColorSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
+import ZoneStatsTable from '../components/ZoneStatsTable';
 import { useManualRerender } from '../hooks/useDebouncedRerender';
+import { useZoneOverlay } from '../hooks/useZoneOverlay';
+import { useZoneStats } from '../hooks/useZoneStats';
+import { Zone } from '../types/zones';
 
 interface SolarTabProps {
   hasModel: boolean;
   figureJson: string;
   onFigureChange: (json: string) => void;
+  zones: Zone[];
+  simRunNonce: number;
+  onSimRun: () => void;
 }
 
-const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChange }) => {
+const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChange, zones, simRunNonce, onSimRun }) => {
+  const [showZones3D, setShowZones3D] = useState(true);
+  const { figure: viewerFigure } = useZoneOverlay(hasModel, figureJson, zones, showZones3D);
+  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [calcType, setCalcType] = useState<'instantaneous' | 'cumulative'>('instantaneous');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [calcDate, setCalcDate] = useState('01-01');
@@ -63,6 +73,7 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
       } else {
         onFigureChange(result.figure_json);
         hasSimResult.current = true;
+        onSimRun();
       }
     } catch (err: any) {
       setError(err.message);
@@ -155,10 +166,26 @@ const SolarTab: React.FC<SolarTabProps> = ({ hasModel, figureJson, onFigureChang
         </button>
 
         {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
+
+        {zones.length > 0 && (
+          <>
+            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showZones3D}
+                  onChange={(e) => setShowZones3D(e.target.checked)}
+                />{' '}
+                Show zones in 3D
+              </label>
+            </div>
+            <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
+          </>
+        )}
       </div>
 
       <div className="panel">
-        <ThreeViewer figureJson={figureJson} />
+        <ThreeViewer figureJson={viewerFigure} />
       </div>
     </div>
   );

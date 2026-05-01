@@ -4,15 +4,25 @@ import ThreeViewer, { SelectionMode, BuildingCentroid } from '../components/Thre
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
+import ZoneStatsTable from '../components/ZoneStatsTable';
 import { useManualRerender } from '../hooks/useDebouncedRerender';
+import { useZoneOverlay } from '../hooks/useZoneOverlay';
+import { useZoneStats } from '../hooks/useZoneStats';
+import { Zone } from '../types/zones';
 
 interface LandmarkTabProps {
   hasModel: boolean;
   figureJson: string;
   onFigureChange: (json: string) => void;
+  zones: Zone[];
+  simRunNonce: number;
+  onSimRun: () => void;
 }
 
-const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigureChange }) => {
+const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigureChange, zones, simRunNonce, onSimRun }) => {
+  const [showZones3D, setShowZones3D] = useState(true);
+  const { figure: figureWithZones } = useZoneOverlay(hasModel, figureJson, zones, showZones3D);
+  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [landmarkIdsText, setLandmarkIdsText] = useState('');
   const [nAzimuth, setNAzimuth] = useState(60);
@@ -131,6 +141,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
         onFigureChange(result.figure_json);
         hasSimResult.current = true;
         setShowingSimResult(true);
+        onSimRun();
       }
     } catch (err: any) {
       setError(err.message);
@@ -139,7 +150,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
   };
 
   // Determine which figure to show in the viewer
-  const viewerFigure = showingSimResult && figureJson ? figureJson : previewJson;
+  const viewerFigure = showingSimResult && figureJson ? figureWithZones : previewJson;
   const isSelecting = !showingSimResult || !figureJson;
 
   return (
@@ -274,6 +285,22 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({ hasModel, figureJson, onFigur
         </button>
 
         {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
+
+        {zones.length > 0 && (
+          <>
+            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showZones3D}
+                  onChange={(e) => setShowZones3D(e.target.checked)}
+                />{' '}
+                Show zones in 3D
+              </label>
+            </div>
+            <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
+          </>
+        )}
       </div>
 
       <div className="panel">
