@@ -202,3 +202,26 @@ def test_zone_stats_building_basic(client, monkeypatch):
     assert by_id["z2"]["cell_count"] == 2
     assert by_id["z2"]["mean"] == pytest.approx(20.0)
 
+
+# ---- Cross-stack rasterizer parity snapshot --------------------------------
+# JS counterpart: app/frontend/src/lib/grid.ts `polygonToCells`.
+# Uses ray-casting; matches matplotlib.path.Path.contains_points for polygons
+# whose edges do not pass through any cell centre. The diamond below is chosen
+# so that no cell centre lies exactly on a boundary edge (vertices at half
+# integers, edges on the lines |x-5| + |y-5| = 4.5 — no integer pairs i+j
+# satisfy i+j = 4.5).
+#
+# Manually verified cell count: 2+4+6+8+8+6+4+2 = 40.
+
+def test_polygon_to_cells_snapshot_diamond(grid_geom_axis_aligned):
+    ring = [[0.5, 5.0], [5.0, 0.5], [9.5, 5.0], [5.0, 9.5]]
+    cells = polygon_lonlat_to_cells(ring, grid_geom_axis_aligned)
+    expected = set()
+    for i in range(10):
+        for j in range(10):
+            cx, cy = i + 0.5, j + 0.5
+            if abs(cx - 5.0) + abs(cy - 5.0) <= 4.5:
+                expected.add((i, j))
+    assert len(expected) == 40
+    assert set(cells) == expected
+
