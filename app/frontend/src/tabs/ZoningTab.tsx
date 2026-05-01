@@ -18,6 +18,7 @@ import {
   Zone,
   ZoneShape,
   ZONE_PALETTE,
+  makeZoneGroupId,
   makeZoneId,
   nextZoneColor,
   nextZoneName,
@@ -52,6 +53,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const [colorPickerId, setColorPickerId] = useState<string | null>(null);
   const [backdrop, setBackdrop] = useState<Backdrop>('buildings');
   const [basemap, setBasemap] = useState<BasemapKey>('CartoDB Positron');
+  /**
+   * Group id that subsequent drawn polygons attach to. Null means
+   * "attach to the most recently used group" (or create the first one
+   * implicitly).
+   */
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
   // Initial fetch
   useEffect(() => {
@@ -82,42 +89,95 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       kind: 'paint_zone' as const,
       cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
       ring: z.ring_lonlat,
-      selected: z.id === selectedId,
+      selected:
+        z.id === selectedId ||
+        (activeGroupId != null && (z.groupId ?? z.id) === activeGroupId),
       color: z.color,
       target: 'evaluation' as const,
     }));
-  }, [geo, zones, selectedId]);
+  }, [geo, zones, selectedId, activeGroupId]);
+
+  /**
+   * Group sibling zones (same `groupId`) together so the zone list shows
+   * one row per logical zone. The first member's metadata acts as the
+   * group's name/colour/shape.
+   */
+  const groups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string; members: Zone[] }>();
+    for (const z of zones) {
+      const key = z.groupId ?? z.id;
+      const g = map.get(key);
+      if (g) {
+        g.members.push(z);
+      } else {
+        map.set(key, { id: key, name: z.name, color: z.color, members: [z] });
+      }
+    }
+    return Array.from(map.values());
+  }, [zones]);
+
+  // Resolve which group new polygons attach to: explicit `activeGroupId`,
+  // else the most recent group, else "start a new one".
+  const effectiveActiveGroupId =
+    activeGroupId ?? (groups.length > 0 ? groups[groups.length - 1].id : null);
+
+  const handleAddZone = useCallback(() => {
+    setActiveGroupId(makeZoneGroupId());
+  }, []);
 
   const handlePolygonComplete = useCallback(
     (ring: [number, number][]) => {
-      const newZone: Zone = {
-        id: makeZoneId(),
-        name: nextZoneName(zones),
-        color: nextZoneColor(zones),
-        shape,
-        ring_lonlat: ring,
-      };
+      // Look up the active group, if any.
+      const targetGroupId = effectiveActiveGroupId;
+      const groupMembers = targetGroupId
+        ? zones.filter((z) => (z.groupId ?? z.id) === targetGroupId)
+        : [];
+      const head = groupMembers[0];
+      const newZone: Zone = head
+        ? {
+            id: makeZoneId(),
+            name: head.name,
+            color: head.color,
+            shape,
+            ring_lonlat: ring,
+            groupId: head.groupId ?? head.id,
+          }
+        : {
+            id: makeZoneId(),
+            name: nextZoneName(zones),
+            color: nextZoneColor(zones),
+            shape,
+            ring_lonlat: ring,
+            groupId: targetGroupId ?? makeZoneGroupId(),
+          };
       onZonesChange([...zones, newZone]);
       setSelectedId(newZone.id);
+      setActiveGroupId(newZone.groupId ?? null);
     },
-    [zones, shape, onZonesChange],
+    [zones, shape, onZonesChange, effectiveActiveGroupId],
   );
 
-  const updateZone = (id: string, patch: Partial<Zone>) => {
-    onZonesChange(zones.map((z) => (z.id === id ? { ...z, ...patch } : z)));
+  const updateGroup = (groupId: string, patch: Partial<Pick<Zone, 'name' | 'color'>>) => {
+    onZonesChange(
+      zones.map((z) => ((z.groupId ?? z.id) === groupId ? { ...z, ...patch } : z)),
+    );
   };
 
-  const deleteZone = (id: string) => {
-    if (!window.confirm('Delete this zone?')) return;
-    onZonesChange(zones.filter((z) => z.id !== id));
-    if (selectedId === id) setSelectedId(null);
+  const deleteGroup = (groupId: string) => {
+    if (!window.confirm('Delete this zone (all its rings)?')) return;
+    onZonesChange(zones.filter((z) => (z.groupId ?? z.id) !== groupId));
+    if (selectedId && zones.find((z) => z.id === selectedId)?.groupId === groupId) {
+      setSelectedId(null);
+    }
+    if (activeGroupId === groupId) setActiveGroupId(null);
   };
 
   const clearAll = () => {
     if (zones.length === 0) return;
-    if (!window.confirm(`Delete all ${zones.length} zones?`)) return;
+    if (!window.confirm(`Delete all ${groups.length} zones?`)) return;
     onZonesChange([]);
     setSelectedId(null);
+    setActiveGroupId(null);
   };
 
   // Use each zone's own colour in 3D so the right-hand viewer matches the
@@ -177,69 +237,92 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           </select>
         </div>
 
-        <button className="btn btn-secondary" onClick={clearAll} disabled={zones.length === 0}>
-          Clear all zones
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleAddZone}
+            title="Start a new zone. Subsequent polygons join the active zone."
+          >
+            + Add a zone
+          </button>
+          <button className="btn btn-secondary" onClick={clearAll} disabled={zones.length === 0}>
+            Clear all zones
+          </button>
+        </div>
 
         <div className="zone-list">
-          {zones.length === 0 && (
+          {groups.length === 0 && (
             <div className="alert alert-info" style={{ marginTop: 8 }}>
               Draw a {shape === 'rect' ? 'rectangle' : 'polygon'} on the map to add a zone.
             </div>
           )}
-          {zones.map((z) => (
-            <div
-              key={z.id}
-              className={`zone-row${selectedId === z.id ? ' selected' : ''}`}
-              onClick={() => setSelectedId(z.id)}
-            >
-              <span
-                className="swatch"
-                style={{ background: z.color }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setColorPickerId(colorPickerId === z.id ? null : z.id);
+          {groups.map((g) => {
+            const isActive = (effectiveActiveGroupId ?? null) === g.id;
+            return (
+              <div
+                key={g.id}
+                className={`zone-row${isActive ? ' selected' : ''}`}
+                onClick={() => {
+                  setActiveGroupId(g.id);
+                  setSelectedId(g.members[0]?.id ?? null);
                 }}
-              />
-              {renamingId === z.id ? (
-                <input
-                  className="name"
-                  autoFocus
-                  value={renameBuf}
-                  onChange={(e) => setRenameBuf(e.target.value)}
-                  onBlur={() => {
-                    if (renameBuf.trim()) updateZone(z.id, { name: renameBuf.trim() });
-                    setRenamingId(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    if (e.key === 'Escape') setRenamingId(null);
+              >
+                <span
+                  className="swatch"
+                  style={{ background: g.color }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setColorPickerId(colorPickerId === g.id ? null : g.id);
                   }}
                 />
-              ) : (
-                <span className="name">{z.name}</span>
-              )}
-              <button
-                title="Rename"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenamingId(z.id);
-                  setRenameBuf(z.name);
-                }}
-              >
-                ✎
-              </button>
-              <button
-                title="Delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteZone(z.id);
-                }}
-              >
-                🗑
-              </button>
-            </div>
-          ))}
+                {renamingId === g.id ? (
+                  <input
+                    className="name"
+                    autoFocus
+                    value={renameBuf}
+                    onChange={(e) => setRenameBuf(e.target.value)}
+                    onBlur={() => {
+                      if (renameBuf.trim()) updateGroup(g.id, { name: renameBuf.trim() });
+                      setRenamingId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                  />
+                ) : (
+                  <span className="name">
+                    {g.name}
+                    {g.members.length > 1 && (
+                      <span style={{ opacity: 0.6, marginLeft: 6, fontSize: '0.85em' }}>
+                        ×{g.members.length}
+                      </span>
+                    )}
+                  </span>
+                )}
+                <button
+                  title="Rename"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingId(g.id);
+                    setRenameBuf(g.name);
+                  }}
+                >
+                  ✎
+                </button>
+                <button
+                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteGroup(g.id);
+                  }}
+                >
+                  🗑
+                </button>
+              </div>
+            );
+          })}
           {colorPickerId && (
             <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
               {ZONE_PALETTE.map((c) => (
@@ -248,7 +331,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                   className="swatch"
                   style={{ background: c, width: 20, height: 20 }}
                   onClick={() => {
-                    updateZone(colorPickerId, { color: c });
+                    updateGroup(colorPickerId, { color: c });
                     setColorPickerId(null);
                   }}
                 />
