@@ -263,6 +263,73 @@ def build_voxel_buffers(
     )
 
 
+def build_building_highlight_buffers(
+    voxcity_grid: np.ndarray,
+    bid_grid_aligned: np.ndarray,
+    building_ids: Sequence[int],
+    meshsize: float,
+    *,
+    color_rgb: Sequence[float] = (0.81, 0.96, 0.15),  # #CFF527, matches legacy
+    opacity: float = 0.85,
+) -> List[MeshChunk]:
+    """Return one ``MeshChunk`` per face plane covering only the voxels of the
+    given ``building_ids``.
+
+    ``bid_grid_aligned`` must already be in the same orientation as
+    ``voxcity_grid`` (i.e. ``ensure_orientation(bid_grid, NORTH_UP, SOUTH_UP)``).
+    """
+    if voxcity_grid is None or voxcity_grid.ndim != 3:
+        return []
+    if bid_grid_aligned is None or bid_grid_aligned.ndim != 2:
+        return []
+    ids = [int(b) for b in building_ids if int(b) != 0]
+    if not ids:
+        return []
+
+    # Building voxels for the requested IDs.
+    bid_mask_2d = np.isin(bid_grid_aligned, np.asarray(ids, dtype=bid_grid_aligned.dtype))
+    if not bid_mask_2d.any():
+        return []
+    occ = (voxcity_grid == -3) & bid_mask_2d[:, :, None]
+    if not occ.any():
+        return []
+
+    # Highlight voxels are exposed against *all* non-empty voxels in the city,
+    # so faces hidden inside neighbouring buildings/trees aren't emitted.
+    occluder = voxcity_grid != 0
+    masks = _exposed_face_masks(occ, occluder)
+
+    nx, ny, nz = voxcity_grid.shape
+    dx = dy = dz = float(meshsize)
+    x = np.arange(nx, dtype=float) * dx + dx / 2.0
+    y = np.arange(ny, dtype=float) * dy + dy / 2.0
+    z = np.arange(nz, dtype=float) * dz + dz / 2.0
+
+    color01 = [float(c) for c in color_rgb[:3]]
+
+    chunks: List[MeshChunk] = []
+    for mask, plane in zip(masks, ("+x", "-x", "+y", "-y", "+z", "-z")):
+        if not mask.any():
+            continue
+        positions, indices, _ = _voxel_face_arrays(
+            mask, plane, meshsize, x, y, z, dx, dy, dz
+        )
+        if indices.size == 0:
+            continue
+        chunks.append(
+            MeshChunk(
+                name=f"highlight{plane}",
+                positions=positions.tolist(),
+                indices=indices.tolist(),
+                color=color01,
+                opacity=float(opacity),
+                flat_shading=False,
+                metadata={"highlight": True, "plane": plane},
+            )
+        )
+    return chunks
+
+
 def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np.ndarray:
     """DEM in metres (north-up flipped to match ``create_sim_surface_mesh``).
 

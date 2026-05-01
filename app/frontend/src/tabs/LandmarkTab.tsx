@@ -14,10 +14,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BuildingInfo,
+  getBuildingAt,
   getBuildingsList,
+  getBuildingHighlight,
   getModelGeo,
   ModelGeoResult,
   runLandmark,
+  type MeshChunkDto,
 } from '../api';
 import { SceneViewer } from '../three';
 import type { PickResult } from '../three/types';
@@ -108,35 +111,41 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
     setShowingSimResult(false);
   }, []);
 
-  // Click pick: find nearest building centroid in 2D and toggle it.
+  // Click pick: ask the backend for the building id at the clicked world XY.
+  // This works for any face (roof OR walls), unlike a 2-D centroid lookup
+  // which fails when the wall is closer to a neighbour's centroid.
   const handlePick = useCallback((hit: PickResult | null) => {
     if (showingSimResult) return;
-    if (!hit || buildings.length === 0) return;
+    if (!hit) return;
     const [px, py] = hit.point;
-    let bestId = -1;
-    let bestDist = Infinity;
-    for (const b of buildings) {
-      const dx = b.cx - px;
-      const dy = b.cy - py;
-      const d = dx * dx + dy * dy;
-      if (d < bestDist) {
-        bestDist = d;
-        bestId = b.id;
-      }
-    }
-    // Reject pick if more than ~30 m away (ambient miss).
-    const meshsize = geo?.meshsize_m ?? 5;
-    const maxDist = (meshsize * 6) ** 2;
-    if (bestId < 0 || bestDist > maxDist) return;
+    getBuildingAt(px, py)
+      .then((r) => {
+        const bid = r.building_id;
+        if (bid == null) return;
+        setSelectedBuildingIds((prev) => {
+          const next = prev.includes(bid)
+            ? prev.filter((i) => i !== bid)
+            : [...prev, bid];
+          setLandmarkIdsText(next.join(', '));
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, [showingSimResult]);
 
-    setSelectedBuildingIds((prev) => {
-      const next = prev.includes(bestId)
-        ? prev.filter((i) => i !== bestId)
-        : [...prev, bestId];
-      setLandmarkIdsText(next.join(', '));
-      return next;
-    });
-  }, [showingSimResult, buildings, geo]);
+  // Fetch highlight geometry whenever the selection changes.
+  const [highlightChunks, setHighlightChunks] = useState<MeshChunkDto[] | null>(null);
+  useEffect(() => {
+    if (!hasModel || selectedBuildingIds.length === 0) {
+      setHighlightChunks(null);
+      return;
+    }
+    let cancelled = false;
+    getBuildingHighlight(selectedBuildingIds)
+      .then((r) => { if (!cancelled) setHighlightChunks(r.chunks); })
+      .catch(() => { if (!cancelled) setHighlightChunks(null); });
+    return () => { cancelled = true; };
+  }, [hasModel, selectedBuildingIds]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -309,6 +318,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           showZones={showZones3D}
           hiddenClasses={hiddenClasses}
           onPick={!showingSimResult ? handlePick : undefined}
+          highlightChunks={!showingSimResult ? highlightChunks : null}
         />
       </div>
     </div>

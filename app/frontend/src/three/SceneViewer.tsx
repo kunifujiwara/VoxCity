@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import {
   getSceneGeometry,
   getSimGeometry,
+  type MeshChunkDto,
   type OverlayGeometryResponse,
   type SceneGeometryResponse,
 } from '../api';
@@ -71,6 +72,9 @@ export interface SceneViewerProps {
   /** Click pick callback. Set to ``undefined`` to disable picking. */
   onPick?: (hit: PickResult | null) => void;
 
+  /** Extra mesh chunks rendered on top of the scene (e.g. building highlights). */
+  highlightChunks?: MeshChunkDto[] | null;
+
   /** Inline canvas style overrides. */
   style?: React.CSSProperties;
   /** Background colour for the canvas (CSS string). */
@@ -95,6 +99,7 @@ export function SceneViewer({
   debugProjections,
   hiddenClasses,
   onPick,
+  highlightChunks,
   style,
   background = DEFAULT_BG,
 }: SceneViewerProps) {
@@ -193,6 +198,9 @@ export function SceneViewer({
                   renderOrder={10}
                 />
               )}
+              {highlightChunks && highlightChunks.map((c, i) => (
+                <MeshLayer key={`highlight-${c.name}-${i}`} chunk={c} renderOrder={20} />
+              ))}
             </Picker>
           )}
 

@@ -53,6 +53,7 @@ from .models import (
     ZoneStatsResponse,
 )
 from .scene_geometry import (
+    build_building_highlight_buffers,
     build_building_overlay_buffers,
     build_ground_overlay_buffers,
     build_voxel_buffers,
@@ -1674,6 +1675,57 @@ async def buildings_list():
     return {"buildings": buildings}
 
 
+@app.get("/api/buildings/at")
+async def building_at(x: float, y: float):
+    """Return the building id at world XY (in metres), or ``null`` if none.
+
+    Uses the orientation-aligned building id grid (the same one used by the
+    highlight endpoint), so the result matches what the user sees in 3D.
+    """
+    if not app_state.has_model:
+        raise HTTPException(status_code=400, detail="No model generated yet")
+    vc = app_state.voxcity
+    bid_grid = getattr(vc.buildings, "ids", None)
+    if bid_grid is None:
+        return {"building_id": None}
+
+    from voxcity.utils.orientation import (
+        ORIENTATION_NORTH_UP,
+        ORIENTATION_SOUTH_UP,
+        ensure_orientation,
+    )
+    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+
+    meshsize = app_state.meshsize
+    nx, ny = bid_aligned.shape
+    # The click XY can land exactly on a voxel boundary (wall hit), so the
+    # naive floor() can fall into an empty neighbour cell. Probe the centre
+    # cell plus its 8 immediate neighbours and return the closest building.
+    fx = float(x) / meshsize
+    fy = float(y) / meshsize
+    ci = int(fx)
+    cj = int(fy)
+    best_bid = 0
+    best_d2 = float("inf")
+    for di in (-1, 0, 1):
+        for dj in (-1, 0, 1):
+            i = ci + di
+            j = cj + dj
+            if i < 0 or j < 0 or i >= nx or j >= ny:
+                continue
+            bid = int(bid_aligned[i, j])
+            if bid == 0:
+                continue
+            # Distance from click XY to cell centre, in voxel units.
+            cx = i + 0.5
+            cy = j + 0.5
+            d2 = (cx - fx) ** 2 + (cy - fy) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best_bid = bid
+    return {"building_id": best_bid if best_bid != 0 else None}
+
+
 @app.get("/api/landmark/preview")
 async def landmark_preview():
     """Return a 3D preview figure with per-face building ID metadata for interactive selection."""
@@ -2273,6 +2325,51 @@ def scene_geometry(
         downsample=max(1, int(downsample)),
         color_scheme=color_scheme,
     )
+
+
+@app.get("/api/buildings/highlight")
+def buildings_highlight(ids: str = "") -> dict:
+    """Return raw mesh chunks highlighting the given building IDs.
+
+    ``ids`` is a comma-separated list of integer building IDs (the same IDs
+    returned by ``/api/buildings/list``). The response is a list of
+    ``MeshChunk`` records (one per face plane) tagged with a bright highlight
+    colour, ready to be rendered as a translucent overlay on top of the
+    grayscale city scene.
+    """
+    if app_state.voxcity is None:
+        raise HTTPException(status_code=400, detail="No model loaded")
+    parsed: List[int] = []
+    for tok in (ids or "").split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            parsed.append(int(tok))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid building id: {tok!r}")
+    if not parsed:
+        return {"chunks": []}
+
+    vc = app_state.voxcity
+    bid_grid = getattr(vc.buildings, "ids", None)
+    if bid_grid is None:
+        return {"chunks": []}
+
+    from voxcity.utils.orientation import (
+        ORIENTATION_NORTH_UP,
+        ORIENTATION_SOUTH_UP,
+        ensure_orientation,
+    )
+    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+
+    chunks = build_building_highlight_buffers(
+        vc.voxels.classes,
+        bid_aligned,
+        parsed,
+        app_state.meshsize,
+    )
+    return {"chunks": [c.model_dump() for c in chunks]}
 
 
 @app.post("/api/sim/{kind}/geometry", response_model=OverlayGeometryResponse)

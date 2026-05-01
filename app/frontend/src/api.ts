@@ -278,6 +278,20 @@ export async function getBuildingsList() {
   return request<BuildingsListResult>('/buildings/list');
 }
 
+export async function getBuildingAt(x: number, y: number) {
+  const params = new URLSearchParams({ x: String(x), y: String(y) });
+  return request<{ building_id: number | null }>(`/buildings/at?${params.toString()}`);
+}
+
+export interface BuildingHighlightResult {
+  chunks: MeshChunkDto[];
+}
+
+export async function getBuildingHighlight(ids: number[]) {
+  const q = ids.length ? `?ids=${ids.join(',')}` : '';
+  return request<BuildingHighlightResult>(`/buildings/highlight${q}`);
+}
+
 export interface LandmarkPreviewResult {
   figure_json: string;
 }

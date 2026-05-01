@@ -26,22 +26,20 @@ export function Picker({ enabled = true, onPick, children }: PickerProps) {
       const faceToBuilding: number[] | undefined = ud.faceToBuilding;
       const target: 'ground' | 'building' | undefined = ud.target;
 
-      if (faceIdx < 0 || !target) {
-        onPick(null);
-        return;
-      }
-
       let cell: [number, number] | null = null;
       let buildingId: number | null = null;
-      if (target === 'ground' && faceToCell && faceToCell[faceIdx]) {
+      if (faceIdx >= 0 && target === 'ground' && faceToCell && faceToCell[faceIdx]) {
         const [i, j] = faceToCell[faceIdx];
         cell = [i, j];
-      } else if (target === 'building' && faceToBuilding) {
+      } else if (faceIdx >= 0 && target === 'building' && faceToBuilding) {
         buildingId = faceToBuilding[faceIdx] ?? null;
       }
 
+      // Always emit a hit so consumers (e.g. LandmarkTab's nearest-centroid
+      // lookup) can use the world-space click point even when the picked mesh
+      // has no target/face metadata. Default `target` to 'ground' for typing.
       onPick({
-        target,
+        target: target ?? 'ground',
         cell,
         buildingId,
         point: [e.point.x, e.point.y, e.point.z],
