@@ -183,6 +183,15 @@ export function SceneViewer({
             <Picker enabled={!!onPick} onPick={onPick}>
               {scene.chunks
                 .filter((chunk) => {
+                  // Hide background building meshes when a building-target sim
+                  // overlay is active so the colored sim faces don't z-fight
+                  // with the underlying voxel building chunks.
+                  if (
+                    overlay?.target === 'building' &&
+                    chunk.metadata?.class === -3
+                  ) {
+                    return false;
+                  }
                   if (!hiddenClasses || hiddenClasses.size === 0) return true;
                   const cls = chunk.metadata?.class;
                   return typeof cls !== 'number' || !hiddenClasses.has(cls);

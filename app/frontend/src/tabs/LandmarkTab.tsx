@@ -133,7 +133,12 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
       .catch(() => {});
   }, [showingSimResult]);
 
-  // Fetch highlight geometry whenever the selection changes.
+  // Fetch highlight geometry whenever the selection (or rendering style) changes.
+  // Once a sim has been run we colour the highlights with the *max* value of
+  // the active colormap and ask the renderer to make them emissive, so the
+  // selected landmarks stand out alongside the simulation overlay (both for
+  // ground-level and building-surface analyses).
+  const highlightAsSimResult = showingSimResult || hasSimResult;
   const [highlightChunks, setHighlightChunks] = useState<MeshChunkDto[] | null>(null);
   useEffect(() => {
     if (!hasModel || selectedBuildingIds.length === 0) {
@@ -141,11 +146,14 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
       return;
     }
     let cancelled = false;
-    getBuildingHighlight(selectedBuildingIds)
+    const opts = highlightAsSimResult
+      ? { colormap, emissive: true }
+      : undefined;
+    getBuildingHighlight(selectedBuildingIds, opts)
       .then((r) => { if (!cancelled) setHighlightChunks(r.chunks); })
       .catch(() => { if (!cancelled) setHighlightChunks(null); });
     return () => { cancelled = true; };
-  }, [hasModel, selectedBuildingIds]);
+  }, [hasModel, selectedBuildingIds, highlightAsSimResult, colormap]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
@@ -318,7 +326,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           showZones={showZones3D}
           hiddenClasses={hiddenClasses}
           onPick={!showingSimResult ? handlePick : undefined}
-          highlightChunks={!showingSimResult ? highlightChunks : null}
+          highlightChunks={highlightChunks}
         />
       </div>
     </div>

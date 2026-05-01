@@ -287,9 +287,16 @@ export interface BuildingHighlightResult {
   chunks: MeshChunkDto[];
 }
 
-export async function getBuildingHighlight(ids: number[]) {
-  const q = ids.length ? `?ids=${ids.join(',')}` : '';
-  return request<BuildingHighlightResult>(`/buildings/highlight${q}`);
+export async function getBuildingHighlight(
+  ids: number[],
+  options?: { colormap?: string; emissive?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (ids.length) params.set('ids', ids.join(','));
+  if (options?.colormap) params.set('colormap', options.colormap);
+  if (options?.emissive) params.set('emissive', 'true');
+  const q = params.toString();
+  return request<BuildingHighlightResult>(`/buildings/highlight${q ? `?${q}` : ''}`);
 }
 
 export interface LandmarkPreviewResult {

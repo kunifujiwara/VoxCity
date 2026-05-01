@@ -2328,7 +2328,11 @@ def scene_geometry(
 
 
 @app.get("/api/buildings/highlight")
-def buildings_highlight(ids: str = "") -> dict:
+def buildings_highlight(
+    ids: str = "",
+    colormap: Optional[str] = None,
+    emissive: bool = False,
+) -> dict:
     """Return raw mesh chunks highlighting the given building IDs.
 
     ``ids`` is a comma-separated list of integer building IDs (the same IDs
@@ -2336,6 +2340,10 @@ def buildings_highlight(ids: str = "") -> dict:
     ``MeshChunk`` records (one per face plane) tagged with a bright highlight
     colour, ready to be rendered as a translucent overlay on top of the
     grayscale city scene.
+
+    Optional ``colormap`` makes the highlight colour match the maximum value
+    of that matplotlib colormap; ``emissive=true`` tags the chunks so the
+    frontend renders them with self-illumination.
     """
     if app_state.voxcity is None:
         raise HTTPException(status_code=400, detail="No model loaded")
@@ -2368,6 +2376,8 @@ def buildings_highlight(ids: str = "") -> dict:
         bid_aligned,
         parsed,
         app_state.meshsize,
+        colormap=colormap,
+        emissive=bool(emissive),
     )
     return {"chunks": [c.model_dump() for c in chunks]}
 
@@ -2418,6 +2428,7 @@ def sim_geometry(kind: str, req: SimGeometryRequest) -> OverlayGeometryResponse:
             vmin=req.vmin,
             vmax=req.vmax,
             unit_label=unit,
+            zero_as_nan=(kind == "landmark"),
         )
     raise HTTPException(status_code=400, detail=f"Unsupported target: {target}")
 

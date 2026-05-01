@@ -41,10 +41,12 @@ export function MeshLayer({ chunk, userData, renderOrder = 0 }: MeshLayerProps) 
 
   // Build material per-chunk; React-Three-Fiber will dispose for us.
   const material = useMemo(() => {
+    const baseColor = hasVertexColors
+      ? new THREE.Color(0xffffff)
+      : new THREE.Color(...(chunk.color ?? [0.7, 0.7, 0.7]));
+    const isEmissive = !!chunk.metadata?.emissive;
     const mat = new THREE.MeshStandardMaterial({
-      color: hasVertexColors
-        ? 0xffffff
-        : new THREE.Color(...(chunk.color ?? [0.7, 0.7, 0.7])),
+      color: baseColor,
       vertexColors: hasVertexColors,
       flatShading: !!chunk.flat_shading,
       transparent: chunk.opacity < 1,
@@ -52,6 +54,8 @@ export function MeshLayer({ chunk, userData, renderOrder = 0 }: MeshLayerProps) 
       metalness: 0.0,
       roughness: 0.85,
       side: THREE.DoubleSide,
+      emissive: isEmissive ? baseColor.clone() : new THREE.Color(0x000000),
+      emissiveIntensity: isEmissive ? 0.3 : 0.0,
     });
     return mat;
   }, [chunk, hasVertexColors]);

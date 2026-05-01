@@ -271,12 +271,19 @@ def build_building_highlight_buffers(
     *,
     color_rgb: Sequence[float] = (0.81, 0.96, 0.15),  # #CFF527, matches legacy
     opacity: float = 0.85,
+    colormap: Optional[str] = None,
+    emissive: bool = False,
 ) -> List[MeshChunk]:
     """Return one ``MeshChunk`` per face plane covering only the voxels of the
     given ``building_ids``.
 
     ``bid_grid_aligned`` must already be in the same orientation as
     ``voxcity_grid`` (i.e. ``ensure_orientation(bid_grid, NORTH_UP, SOUTH_UP)``).
+
+    If ``colormap`` is given, the highlight colour is taken from the maximum
+    value of that colormap (so it visually matches the top of a sim overlay).
+    Set ``emissive=True`` to tag the chunks for self-illuminated rendering on
+    the frontend.
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return []
@@ -305,7 +312,14 @@ def build_building_highlight_buffers(
     y = np.arange(ny, dtype=float) * dy + dy / 2.0
     z = np.arange(nz, dtype=float) * dz + dz / 2.0
 
-    color01 = [float(c) for c in color_rgb[:3]]
+    if colormap:
+        try:
+            rgba_max = mcm.get_cmap(colormap)(1.0)
+            color01 = [float(c) for c in rgba_max[:3]]
+        except Exception:
+            color01 = [float(c) for c in color_rgb[:3]]
+    else:
+        color01 = [float(c) for c in color_rgb[:3]]
 
     chunks: List[MeshChunk] = []
     for mask, plane in zip(masks, ("+x", "-x", "+y", "-y", "+z", "-z")):
@@ -324,7 +338,11 @@ def build_building_highlight_buffers(
                 color=color01,
                 opacity=float(opacity),
                 flat_shading=False,
-                metadata={"highlight": True, "plane": plane},
+                metadata={
+                    "highlight": True,
+                    "plane": plane,
+                    "emissive": bool(emissive),
+                },
             )
         )
     return chunks
@@ -487,6 +505,7 @@ def build_building_overlay_buffers(
     vmax: Optional[float] = None,
     unit_label: str = "",
     nan_color: str = "gray",
+    zero_as_nan: bool = False,
 ) -> OverlayGeometryResponse:
     """Build a coloured per-face overlay from a trimesh-like building sim mesh.
 
@@ -517,6 +536,9 @@ def build_building_overlay_buffers(
 
     if face_vals is None:
         face_vals = np.zeros(n_faces, dtype=float)
+
+    if zero_as_nan:
+        face_vals = np.where(face_vals == 0, np.nan, face_vals)
 
     finite = np.isfinite(face_vals)
     if np.any(finite):
