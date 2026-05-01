@@ -99,7 +99,11 @@ const App: React.FC = () => {
         {activeTab === 'area' && (
           <TargetAreaTab rectangle={rectangle} onRectangleChange={setRectangle} />
         )}
-        {activeTab === 'generation' && (
+        {/*
+          Generation tab is kept mounted so the 3D viewer's WebGL context
+          (and any rendered model) survives tab switches.
+        */}
+        <div style={{ display: activeTab === 'generation' ? 'contents' : 'none' }}>
           <GenerationTab
             rectangle={rectangle}
             figureJson={figureJson}
@@ -112,7 +116,7 @@ const App: React.FC = () => {
               setLandmarkFigureJson('');
             }}
           />
-        )}
+        </div>
         {activeTab === 'edit' && (
           <EditTab
             hasModel={hasModel}

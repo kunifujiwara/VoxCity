@@ -691,17 +691,15 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100000);
     cameraRef.current = camera;
 
-    // --- Lights (realistic outdoor sun + sky) ---
-    // Hemisphere light: sky blue above, warm ground bounce below
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.25);
-    scene.add(hemiLight);
-
-    // Ambient fill for shadow areas
-    const ambientLight = new THREE.AmbientLight(0xd0d8e8, 0.15);
+    // --- Lights ---
+    // Match the softer, mostly-ambient lighting used by the new R3F
+    // <SceneViewer/> so all 3D viewers (Generation/Edit/Zoning/sim tabs)
+    // look consistent. Direct sun is intentionally low so per-class voxel
+    // colours (and the colormap on sim tabs) stay readable.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);
 
-    // Main sun light (warm directional with shadows)
-    const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.5);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.75);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
@@ -709,12 +707,13 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({
     sunLight.shadow.normalBias = 0.02;
     scene.add(sunLight);
 
-    // Fill light from opposite side (cool sky bounce)
-    const fillLight = new THREE.DirectionalLight(0xb0c4de, 0.15);
-    scene.add(fillLight);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444466, 0.35);
+    scene.add(hemiLight);
 
-    // Subtle rim/back light for depth
-    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.15);
+    // Kept for shadow-camera setup below; intensity 0 → no extra direct light.
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.0);
+    scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.0);
     scene.add(rimLight);
 
     // --- Parse traces and add meshes ---
