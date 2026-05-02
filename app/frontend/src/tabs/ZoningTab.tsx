@@ -13,7 +13,7 @@ import PlanMapEditor, {
   MapInteraction,
   PendingEdit,
 } from '../components/PlanMapEditor';
-import { lonLatToWorldXY, polygonToCells } from '../lib/grid';
+import { lonLatToUvM, polygonToCells } from '../lib/grid';
 import {
   Zone,
   ZoneShape,
@@ -76,9 +76,9 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   /**
    * Project (lon, lat) into voxel-world metres so zone outlines align with
    * the city geometry returned by `/api/scene/geometry`. Locked-in projection
-   * is `(nx - u, v)` (see `lonLatToWorldXY` doc).
+   * is `(u*du, v*dv)` (see `lonLatToUvM` doc).
    */
-  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
+  const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
 
   const interaction: MapInteraction = shape === 'rect' ? 'draw_rect_3pt' : 'draw_polygon';
 

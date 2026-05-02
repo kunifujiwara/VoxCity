@@ -11,7 +11,7 @@ from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIEN
 
 def mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark):
     voxcity_grid = voxcity_grid_ori.copy()
-    building_id_grid = ensure_orientation(building_id_grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    building_id_grid = building_id_grid_ori  # uv_m layout, no flip needed
     positions = np.where(np.isin(building_id_grid, ids))
     for i in range(len(positions[0])):
         x, y = positions[0][i], positions[1][i]
@@ -138,7 +138,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
             bbox_to_anchor=(1.0, 0.5))
     plt.axis('off')
     plt.show()
-    return ensure_orientation(visibility_map, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    return visibility_map  # already in uv_m layout
 
 
 def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):

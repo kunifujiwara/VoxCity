@@ -13,7 +13,7 @@ import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
 import { CUSTOM_CLASSES } from '../constants';
-import { lonLatToWorldXY } from '../lib/grid';
+import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { Zone } from '../types/zones';
 
@@ -60,7 +60,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
       .catch(() => {});
     return () => { cancelled = true; };
   }, [hasModel]);
-  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
+  const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
 
   if (!hasModel) {
     return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;

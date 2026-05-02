@@ -28,7 +28,7 @@ import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
-import { lonLatToWorldXY } from '../lib/grid';
+import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { Zone } from '../types/zones';
 
@@ -87,7 +87,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
       .catch((err) => { if (!cancelled) setError(`Failed to load buildings: ${err.message}`); });
     return () => { cancelled = true; };
   }, [hasModel]);
-  const lonLatToXY = useMemo(() => lonLatToWorldXY(geo), [geo]);
+  const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
 
   // Bidirectional sync: text -> selection
   const handleIdsTextChange = useCallback((text: string) => {

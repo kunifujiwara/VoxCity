@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import gc
 import json
+import math
 import os
 import tempfile
 import traceback
@@ -1644,10 +1645,7 @@ async def buildings_list():
     if bid_grid is None:
         return {"buildings": []}
 
-    # Flip to SOUTH_UP to match the voxel-rendering frame (build_voxel_buffers
-    # places cell (i,j) at world (i*ms, j*ms) in SOUTH_UP order).
-    from voxcity.utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
-    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    bid_aligned = bid_grid  # uv_m layout after Phase 3; no flip needed
 
     unique_ids = np.unique(bid_aligned)
     unique_ids = unique_ids[unique_ids != 0]  # exclude 0 (no building)
@@ -1694,27 +1692,16 @@ async def building_at(x: float, y: float):
     if bid_grid is None:
         return {"building_id": None}
 
-    from voxcity.utils.orientation import (
-        ORIENTATION_NORTH_UP,
-        ORIENTATION_SOUTH_UP,
-        ensure_orientation,
-    )
-    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # After Phase 3: bid_grid is in uv_m layout (no flip needed).
+    # build_voxel_buffers places voxel[i,j] at world (i*ms, j*ms) — see scene_geometry.py ~203-205.
+    bid_aligned = bid_grid
 
     meshsize = app_state.meshsize
     nx, ny = bid_aligned.shape
-    # World XY → SOUTH_UP cell index: build_voxel_buffers places voxel (i, j)
-    # at world (i*ms, j*ms) — see scene_geometry.py lines ~203-205.
-    # So i_south = floor(x/ms), j_south = floor(y/ms).
-    # bid_aligned is already SOUTH_UP (converted above), so indexing matches.
-    #
-    # The click XY can land exactly on a voxel boundary (wall hit), so the
-    # naive floor() can fall into an empty neighbour cell. Probe the centre
-    # cell plus its 8 immediate neighbours and return the closest building.
     fx = float(x) / meshsize
     fy = float(y) / meshsize
-    ci = int(fx)
-    cj = int(fy)
+    ci = math.floor(fx)   # floor, not int(), for boundary safety
+    cj = math.floor(fy)
     best_bid = 0
     best_d2 = float("inf")
     for di in (-1, 0, 1):
