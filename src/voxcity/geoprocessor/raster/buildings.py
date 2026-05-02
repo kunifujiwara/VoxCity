@@ -408,6 +408,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                     dtype=np.float64
                 )
 
+    # rasterio produces (ny, nx) north-up arrays (row 0 = max latitude).
+    # Flip to south-up, then transpose to (nx, ny) to match the internal
+    # (u-axis, v-axis) layout used by the geometry-intersection path.
     building_height_grid = ensure_orientation(height_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
     building_id_grid = ensure_orientation(id_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
     min_heights = ensure_orientation(min_heights_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T

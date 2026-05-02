@@ -4,6 +4,7 @@ from typing import List, Tuple, Dict, Any
 from shapely.geometry import Polygon, box
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
+from voxcity.utils.projector import GridGeom
 
 
 def apply_operation(arr: np.ndarray, meshsize: float) -> np.ndarray:
@@ -149,12 +150,13 @@ def create_cell_polygon(
     return Polygon([bottom_left, bottom_right, top_right, top_left])
 
 
-def compute_grid_geometry(rectangle_vertices, meshsize: float) -> dict:
+def compute_grid_geometry(rectangle_vertices, meshsize: float) -> GridGeom | None:
     """
     Compute full grid geometry from rectangle vertices and mesh size.
 
-    Returns a dict with keys: origin, side_1, side_2, u_vec, v_vec,
-    grid_size, adj_mesh — or *None* if inputs are insufficient.
+    Returns a :class:`~voxcity.utils.projector.GridGeom` dict with keys:
+    origin, side_1, side_2, u_vec, v_vec, grid_size, adj_mesh, meshsize_m —
+    or *None* if inputs are insufficient.
     """
     if rectangle_vertices is None or len(rectangle_vertices) < 4:
         return None
@@ -180,6 +182,7 @@ def compute_grid_geometry(rectangle_vertices, meshsize: float) -> dict:
         "v_vec": v_vec,
         "grid_size": grid_size,
         "adj_mesh": adj_mesh,
+        "meshsize_m": float(meshsize),
     }
 
 

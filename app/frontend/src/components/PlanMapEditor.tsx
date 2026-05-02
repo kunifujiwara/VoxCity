@@ -1,6 +1,12 @@
 /**
  * Leaflet-based 2D plan editor for the Edit Model tab.
  *
+ * Coordinate convention note:
+ *   - Voxcity / grid.ts use [lon, lat] order (east-west, north-south).
+ *   - Leaflet uses [lat, lon] order (north-south, east-west).
+ *   - Conversions between the two swap the tuple; search for `[lat, lon]`
+ *     or `[lon, lat]` to find all conversion sites in this file.
+ *
  * Mirrors the interaction primitives of voxcity's draw editors
  * (`voxcity.geoprocessor.draw.{edit_building, edit_tree, edit_landcover}`):
  *
@@ -110,6 +116,14 @@ function makeTile(key: BasemapKey): L.TileLayer {
    Geo ↔ cell helpers
    ────────────────────────────────────────────────────────────── */
 
+/**
+ * lon/lat → ij_north integer cell index (i along u_vec, j along v_vec).
+ *
+ * Uses Cramer's rule on the side_1/side_2 basis — mathematically equivalent
+ * to GridProjector.lon_lat_to_ij_north() in src/voxcity/utils/projector.py
+ * and the Python geo_to_cell() in geoprocessor/draw/_common.py.
+ * Keep these three implementations in sync if the grid-geometry convention changes.
+ */
 function geoToCell(
   lon: number,
   lat: number,
@@ -119,10 +133,10 @@ function geoToCell(
   const dy = lat - g.origin[1];
   const det = g.side_1[0] * g.side_2[1] - g.side_1[1] * g.side_2[0];
   if (Math.abs(det) < 1e-15) return null;
-  const alpha = (dx * g.side_2[1] - dy * g.side_2[0]) / det;
-  const beta  = (g.side_1[0] * dy - g.side_1[1] * dx) / det;
-  const i = Math.floor(alpha * g.grid_size[0]);
-  const j = Math.floor(beta  * g.grid_size[1]);
+  const alpha = (dx * g.side_2[1] - dy * g.side_2[0]) / det;  // fraction along side_1
+  const beta  = (g.side_1[0] * dy - g.side_1[1] * dx) / det;  // fraction along side_2
+  const i = Math.floor(alpha * g.grid_size[0]);  // ij_north_i
+  const j = Math.floor(beta  * g.grid_size[1]);  // ij_north_j
   if (i < 0 || i >= g.grid_size[0] || j < 0 || j >= g.grid_size[1]) return null;
   return [i, j];
 }

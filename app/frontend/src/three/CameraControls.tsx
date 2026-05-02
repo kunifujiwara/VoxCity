@@ -38,10 +38,10 @@ export function CameraControls({
       const isPersp = camera instanceof THREE.PerspectiveCamera;
       const fovRad = isPersp ? (camera as THREE.PerspectiveCamera).fov * Math.PI / 180 : 50 * Math.PI / 180;
       const fitDist = radius / Math.sin(fovRad / 2);
-      // Direction: legacy ThreeViewer uses (0.65, 0.65, 0.5).normalize() in
-      // its Y-up local space, where (x,y,z) world is mapped to (x, z, -y).
-      // Inverting that mapping gives the equivalent Z-up world direction
-      // (0.65, -0.5, 0.65).normalize() — east, south, up.
+      // The new SceneViewer uses Z-up (camera.up = [0,0,1]).
+      // The legacy ThreeViewer used Y-up with mapping (x,y,z)→(x,z,-y).
+      // Legacy view direction was (0.65, 0.65, 0.5) in Y-up space.
+      // Inverting the Y-up→Z-up mapping gives (0.65, -0.5, 0.65) — east, south, up.
       const dir = new THREE.Vector3(0.65, -0.5, 0.65).normalize();
       camera.position.set(
         cx + dir.x * fitDist,

@@ -97,6 +97,15 @@ function decodePlotlyArray(val: any): number[] | null {
    Build Three.js meshes from a single Plotly Mesh3d trace
    ────────────────────────────────────────────────────────────── */
 
+/**
+ * Convert a Plotly Mesh3d trace to a Three.js Mesh.
+ *
+ * Frame transform: Plotly uses Z-up (x, y, z) where z is elevation.
+ * Three.js uses Y-up. The mapping applied is (x, y, z) → (x, z, −y),
+ * so Plotly's vertical z becomes Three.js Y and Plotly's horizontal y
+ * becomes Three.js −Z. The same transform must be used wherever Plotly
+ * centroids are projected back to screen space (see box-selection below).
+ */
 function buildMesh3d(trace: any): THREE.Mesh | null {
   const x = decodePlotlyArray(trace.x);
   const y = decodePlotlyArray(trace.y);
@@ -601,7 +610,7 @@ const ThreeViewer: React.FC<ThreeViewerProps> = ({
     const heightPx = rect.height;
 
     for (const b of centroids) {
-      // Transform: Z-up → Y-up: (cx, cy, cz) → (cx, cz, -cy), then apply group offset
+      // Same (x,y,z)→(x,z,-y) transform as buildMesh3d, then apply group offset.
       const worldPos = new THREE.Vector3(b.cx, b.cz, -b.cy);
       worldPos.add(group.position); // group is shifted by -center
       const ndc = worldPos.project(camera);

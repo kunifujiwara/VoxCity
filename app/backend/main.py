@@ -513,7 +513,8 @@ def _build_sim_overlay_traces(
     fig = go.Figure()
 
     if sim_target == "ground" and sim_grid is not None:
-        # -- Derive DEM from voxel grid (same logic as renderer.py) --
+        # -- Derive DEM from voxel grid (same logic as _derive_dem_norm in scene_geometry.py) --
+        # voxcity_grid is NORTH_UP; np.flipud gives SOUTH_UP to match sim_grid row iteration.
         if voxcity_grid is not None and voxcity_grid.ndim == 3:
             lc_mask = (voxcity_grid >= 1)
             k_indices = np.arange(voxcity_grid.shape[2])
@@ -524,7 +525,7 @@ def _build_sim_overlay_traces(
         else:
             dem_norm = np.zeros_like(sim_grid, dtype=float)
 
-        # -- z-offset (same as renderer.py) --
+        # -- z-offset (same as _derive_dem_norm / build_ground_overlay_buffers) --
         z_off = float(meshsize) + max(float(view_point_height), float(meshsize))
 
         sim_vals = np.asarray(sim_grid, dtype=float)
@@ -956,7 +957,8 @@ async def run_solar(req: SolarRequest):
                 **solar_kwargs,
             )
 
-            # Store for re-rendering
+            # Store for re-rendering.
+            # solar_grid is NORTH_UP (row 0 = north), matching voxcity convention.
             app_state.last_sim_type = "solar"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = solar_grid
@@ -1108,7 +1110,8 @@ async def run_view(req: ViewRequest):
                 mode = "green" if req.view_type == "green" else "sky"
                 view_grid = get_view_index(voxcity, mode=mode, **view_kwargs)
 
-            # Store for re-rendering
+            # Store for re-rendering.
+            # view_grid is NORTH_UP (row 0 = north), matching voxcity convention.
             app_state.last_sim_type = "view"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = view_grid
@@ -1270,7 +1273,8 @@ async def run_landmark(req: LandmarkRequest):
             lg = np.asarray(landmark_grid, dtype=float)
             lg[lg == 0.0] = np.nan
 
-            # Store for re-rendering
+            # Store for re-rendering.
+            # lg is NORTH_UP (row 0 = north), matching voxcity convention.
             app_state.last_sim_type = "landmark"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = lg
@@ -1640,7 +1644,8 @@ async def buildings_list():
     if bid_grid is None:
         return {"buildings": []}
 
-    # Flip building ID grid to match voxcity_grid orientation (same as mark_building_by_id)
+    # Flip to SOUTH_UP to match the voxel-rendering frame (build_voxel_buffers
+    # places cell (i,j) at world (i*ms, j*ms) in SOUTH_UP order).
     from voxcity.utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
     bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
 
@@ -1698,6 +1703,11 @@ async def building_at(x: float, y: float):
 
     meshsize = app_state.meshsize
     nx, ny = bid_aligned.shape
+    # World XY → SOUTH_UP cell index: build_voxel_buffers places voxel (i, j)
+    # at world (i*ms, j*ms) — see scene_geometry.py lines ~203-205.
+    # So i_south = floor(x/ms), j_south = floor(y/ms).
+    # bid_aligned is already SOUTH_UP (converted above), so indexing matches.
+    #
     # The click XY can land exactly on a voxel boundary (wall hit), so the
     # naive floor() can fall into an empty neighbour cell. Probe the centre
     # cell plus its 8 immediate neighbours and return the closest building.

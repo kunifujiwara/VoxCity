@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 
 interface MapPickerProps {
-  center: [number, number]; // [lat, lon]
+  center: [number, number]; // [lat, lon] — Leaflet convention (reversed from voxcity [lon, lat])
   zoom: number;
   rectangle: number[][] | null; // [[lon,lat], ...] or null
   selectionMode: 'draw' | 'dimensions';

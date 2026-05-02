@@ -200,8 +200,8 @@ class MeshChunk(BaseModel):
 class SceneGeometryResponse(BaseModel):
     """Static city geometry payload for the R3F viewer."""
     chunks: List[MeshChunk]
-    bbox_min: List[float]
-    bbox_max: List[float]
+    bbox_min: List[float]   # [x, y, z] world metres — always [0, 0, 0]
+    bbox_max: List[float]   # [nx*ms, ny*ms, nz*ms] world metres (SOUTH_UP cell layout)
     meshsize_m: float
     # Topmost ground (land-cover) elevation in metres across the whole scene.
     # Used by the frontend to render zone outlines slightly above ground level
@@ -226,7 +226,7 @@ class OverlayGeometryResponse(BaseModel):
     target: str                                  # "ground" | "building"
     sim_type: str                                # "solar" | "view" | "landmark"
     chunk: MeshChunk
-    face_to_cell: Optional[List[List[int]]] = None
+    face_to_cell: Optional[List[List[int]]] = None  # [[i, j], ...] ij_north (NORTH_UP) per triangle
     face_to_building: Optional[List[int]] = None
     value_min: float
     value_max: float

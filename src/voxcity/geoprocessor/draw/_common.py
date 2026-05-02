@@ -131,8 +131,9 @@ def create_basemap_tiles() -> dict[str, TileLayer]:
 def compute_grid_geometry(rectangle_vertices: list, meshsize: float) -> dict | None:
     """Compute grid geometry dict from rectangle vertices and mesh size.
 
-    Returns a dict with keys: origin, side_1, side_2, u_vec, v_vec,
-    grid_size, adj_mesh — or *None* if inputs are insufficient.
+    Returns a :class:`~voxcity.utils.projector.GridGeom` dict with keys:
+    origin, side_1, side_2, u_vec, v_vec, grid_size, adj_mesh, meshsize_m —
+    or *None* if inputs are insufficient.
 
     Delegates to :func:`geoprocessor.raster.core.compute_grid_geometry`.
     """
@@ -149,21 +150,21 @@ def geo_to_cell(
     grid_geom: dict | None,
     array_shape: tuple[int, int] | None,
 ) -> tuple[int | None, int | None]:
-    """Convert geographic (lon, lat) to grid indices (i, j)."""
+    """lon_lat → ij_north integer cell index, clamped to array_shape.
+
+    Returns (None, None) when the point is outside the grid or inputs are
+    missing. Uses :class:`~voxcity.utils.projector.GridProjector` internally.
+    """
     if grid_geom is None or array_shape is None:
         return None, None
-    origin = grid_geom["origin"]
-    s1 = grid_geom["side_1"]
-    s2 = grid_geom["side_2"]
-    nx, ny = grid_geom["grid_size"]
-    delta = np.array([lon, lat]) - origin
-    det = s1[0] * s2[1] - s1[1] * s2[0]
-    if abs(det) < 1e-15:
+    from voxcity.utils.projector import GridProjector
+    try:
+        proj = GridProjector(grid_geom)
+    except (KeyError, ValueError):
         return None, None
-    alpha = (delta[0] * s2[1] - delta[1] * s2[0]) / det
-    beta = (s1[0] * delta[1] - s1[1] * delta[0]) / det
-    i = int(math.floor(alpha * nx))
-    j = int(math.floor(beta * ny))
+    u, v = proj.lon_lat_to_ij_north(lon, lat)
+    i = int(math.floor(u))
+    j = int(math.floor(v))
     if 0 <= i < array_shape[0] and 0 <= j < array_shape[1]:
         return i, j
     return None, None
@@ -300,8 +301,11 @@ def build_lc_geojson(
     origin = grid_geom["origin"]
     u = grid_geom["u_vec"]
     v = grid_geom["v_vec"]
-    dx = grid_geom["adj_mesh"][0]
-    dy = grid_geom["adj_mesh"][1]
+    # du/dv = cell size in metres along u_vec/v_vec (not Cartesian x/y).
+    # For a rotated rectangle these axes may not be axis-aligned.
+    du = grid_geom["adj_mesh"][0]
+    dv = grid_geom["adj_mesh"][1]
+    dx, dy = du, dv  # local aliases used in corner-point formulas below
 
     nx, ny = land_cover.shape
     features: list[dict] = []

@@ -248,10 +248,12 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
         min_lat = min(coord[1] for coord in rectangle_vertices)
         max_lat = max(coord[1] for coord in rectangle_vertices)
         
-        # Create affine transform (top-left origin for rasterio convention)
-        # Rasterio produces a north-up grid (row 0 = north/max_lat)
-        pixel_width = (max_lon - min_lon) / ny  # ny = columns (x direction)
-        pixel_height = (max_lat - min_lat) / nx  # nx = rows (y direction)
+        # Build a rasterio affine for a north-up grid (row 0 = north = max_lat).
+        # ny cells span longitude (x), nx cells span latitude (y) — the axis
+        # assignment looks swapped vs intuition because rasterio uses (cols, rows).
+        # Negative pixel_height: rasterio encodes north-up as a negative row step.
+        pixel_width  = (max_lon - min_lon) / ny   # degrees per column (x / lon)
+        pixel_height = (max_lat - min_lat) / nx   # degrees per row    (y / lat)
         raster_transform = Affine(pixel_width, 0, min_lon, 0, -pixel_height, max_lat)
         
         # OPTIMIZATION: Group polygons by height to batch rasterize
@@ -302,7 +304,8 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                 # CRITICAL: Flip the mask vertically to match the grid coordinate system
                 # Rasterio produces north-up (row 0 = north), but the grid uses
                 # origin at rectangle_vertices[0] (typically SW, so row 0 = south)
-                mask = ensure_orientation(mask, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+                mask_south_up = ensure_orientation(mask, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+                mask = mask_south_up
                 
                 # Apply heights where mask is set (using maximum to preserve higher trees)
                 polygon_cells = mask == 1
@@ -371,8 +374,10 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                 
                 du_cells = int(R / adjusted_meshsize[0] + 2)
                 dv_cells = int(R / adjusted_meshsize[1] + 2)
-                i_center_idx = int(alpha_m / adjusted_meshsize[0])
-                j_center_idx = int(beta_m / adjusted_meshsize[1])
+                # alpha_m / beta_m are continuous metres along u / v axes;
+                # floor-divide by cell size to get integer ij_north indices.
+                i_center_idx = int(alpha_m / adjusted_meshsize[0])  # ij_north i
+                j_center_idx = int(beta_m  / adjusted_meshsize[1])  # ij_north j
                 i_min = max(0, i_center_idx - du_cells)
                 i_max = min(nx - 1, i_center_idx + du_cells)
                 j_min = max(0, j_center_idx - dv_cells)

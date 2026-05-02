@@ -349,9 +349,11 @@ def build_building_highlight_buffers(
 
 
 def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np.ndarray:
-    """DEM in metres (north-up flipped to match ``create_sim_surface_mesh``).
+    """Return ground-level elevation in metres, SOUTH_UP (row 0 = south).
 
-    Mirrors the logic from ``main._build_sim_overlay_traces`` (ground branch).
+    voxcity_grid is NORTH_UP; np.flipud converts to SOUTH_UP to match the
+    row iteration order used by build_ground_overlay_buffers (which also
+    flips sim_grid to SOUTH_UP before building quads).
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return np.zeros(ref_shape, dtype=float)

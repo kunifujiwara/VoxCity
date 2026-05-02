@@ -10,7 +10,13 @@ from .models import ZoneStat
 
 
 def _cell_centres_lonlat(grid_geom: dict):
-    """Return ((nx*ny, 2) centres, ii flat, jj flat)."""
+    """Return ((nx*ny, 2) centres, ii flat, jj flat) in ij_north frame.
+
+    ii ∈ [0, nx), jj ∈ [0, ny) are NORTH_UP cell indices (i along u_vec,
+    j along v_vec, origin corner = (0, 0)).
+    indexing="ij" makes the first index vary along u_vec (nx dimension) and
+    the second along v_vec (ny dimension), which is the ij_north convention.
+    """
     nx, ny = grid_geom["grid_size"]
     dx, dy = grid_geom["adj_mesh"]
     o = np.asarray(grid_geom["origin"], dtype=float)
@@ -31,7 +37,9 @@ def polygon_lonlat_to_cells(
 ) -> List[Tuple[int, int]]:
     """Rasterize a closed lon/lat ring to NORTH_UP (i, j) cells.
 
-    Mirrors the JS `polygonToCells` in `app/frontend/src/lib/grid.ts`.
+    Returns ij_north indices — same frame as _cell_centres_lonlat, which
+    uses indexing='ij' with u_vec/v_vec as the grid axes.
+    Mirrors the JS ``polygonToCells`` in ``app/frontend/src/lib/grid.ts``.
     """
     if len(ring) < 3:
         return []
@@ -134,11 +142,14 @@ def mesh_face_data(mesh: object, sim_type: str):
 
 
 def grid_xy_to_lonlat(xy_local: np.ndarray, grid_geom: dict) -> np.ndarray:
-    """Convert (N, 2) grid-local meter coords into (N, 2) lon/lat coords.
+    """Convert (N, 2) grid-local metre coords into (N, 2) lon/lat coords.
 
-    Inverse of the cell-centre formula used by :func:`_cell_centres_lonlat`:
-    ``lonlat = origin + x_m * u + y_m * v`` (because ``x_m = i*dx`` and the
-    forward mapping is ``origin + i*dx*u + j*dy*v``).
+    Frame: ``xy_local[:, 0]`` is metres along u_vec (ij_north i-axis),
+    ``xy_local[:, 1]`` is metres along v_vec (ij_north j-axis).
+    This is NOT the same as world-XY (xy_world_m), which has the (nx-u) flip.
+
+    Inverse of :func:`_cell_centres_lonlat`:
+    ``lonlat = origin + x_m * u_vec + y_m * v_vec``
     """
     o = np.asarray(grid_geom["origin"], dtype=float)
     u = np.asarray(grid_geom["u_vec"],  dtype=float)

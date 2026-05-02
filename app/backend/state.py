@@ -34,15 +34,15 @@ class AppState:
 
     voxcity: Optional[VoxCity] = None
     raw_data: Dict[str, Any] = field(default_factory=dict)
-    rectangle_vertices: Optional[List[List[float]]] = None
+    rectangle_vertices: Optional[List[List[float]]] = None  # [[lon, lat], ...] WGS84
     land_cover_source: str = "OpenStreetMap"
 
     # Last simulation results (kept for re-rendering without re-running)
     last_sim_type: Optional[str] = None          # "solar" | "view" | "landmark"
     last_sim_target: Optional[str] = None        # "ground" | "building"
-    last_sim_grid: Optional[Any] = None          # 2D ndarray for ground-level
+    last_sim_grid: Optional[Any] = None          # 2D ndarray (NORTH_UP, row 0 = north) for ground-level
     last_sim_mesh: Optional[Any] = None          # mesh object for building surfaces
-    last_sim_voxcity_grid: Optional[Any] = None  # voxcity_grid used (may be marked)
+    last_sim_voxcity_grid: Optional[Any] = None  # voxcity_grid at sim time; NORTH_UP (may have marked buildings)
     last_sim_view_point_height: float = 1.5      # view_point_height used in last sim
     last_colorbar_title: Optional[str] = None     # Colorbar title (with unit) for last sim
 

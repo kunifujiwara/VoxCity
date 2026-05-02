@@ -148,7 +148,8 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         - DEM is normalized to minimum elevation
         - Land cover is converted based on source-specific mapping
     """
-    # Flip building height grid vertically and replace NaN with 10m height
+    # Flip building height grid to SOUTH_UP (for ENVI-met XML array sections)
+    # and replace NaN with 10 m default height.
     building_height_grid = ensure_orientation(np.nan_to_num(building_height_grid_ori, nan=10.0), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).copy()
     building_id_grid = ensure_orientation(building_id_grid_ori, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
     
@@ -487,12 +488,17 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
 
     # Generate and add 3D plant data
     tree_content = ""
-    building_height_flipped = ensure_orientation(building_height_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    # prepare_grids() flipped building_height_grid to SOUTH_UP for the XML
+    # array sections above. The tree-placement loop below uses canopy_height_grid
+    # which is NORTH_UP, so flip building_height_grid back to NORTH_UP for
+    # the per-cell comparison. Without this re-flip, trees would be blocked by
+    # buildings on the opposite (mirrored) side of the city.
+    building_height_north_up = ensure_orientation(building_height_grid, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
     for i in range(grids_I):
         for j in range(grids_J):
             canopy_height = int(canopy_height_grid[j, i] + 0.5)
             # Only add trees where there are no buildings
-            if canopy_height_grid[j, i] > 0 and building_height_flipped[j, i]==0:
+            if canopy_height_grid[j, i] > 0 and building_height_north_up[j, i]==0:
                 plantid = f'H{canopy_height:02d}W01'
                 tree_ij = f"""  <3Dplants>
      <rootcell_i> {i+1} </rootcell_i>

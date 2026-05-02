@@ -214,6 +214,7 @@ def visualize_voxcity_plotly(
             from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
             _bid_aligned = ensure_orientation(building_id_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
         except Exception:
+            # ensure_orientation unavailable; replicate its NORTH_UP→SOUTH_UP flip manually.
             _bid_aligned = np.flipud(building_id_grid)
 
     def add_faces(mask, plane, color_rgb, track_building_ids=False):

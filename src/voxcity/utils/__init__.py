@@ -1,3 +1,4 @@
+from .projector import GridGeom, GridProjector
 from .lc import *
 from .weather import *
 from .material import *
@@ -14,6 +15,9 @@ from .classes import (
 )
 
 __all__ = [
+    # projector
+    "GridGeom",
+    "GridProjector",
     # lc
     "get_land_cover_classes",
     "get_source_class_descriptions",

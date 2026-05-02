@@ -67,7 +67,10 @@ function buildQuadCentroids(
   return { cx, cy, cz };
 }
 
-/** Ray-casting point-in-polygon test (xy ring is closed). */
+/**
+ * Ray-casting point-in-polygon for world XY metres (closed ring).
+ * Distinct from grid.ts `pointInRing`, which operates on lon/lat degrees.
+ */
 function pointInRing(x: number, y: number, ring: [number, number][]): boolean {
   let inside = false;
   const n = ring.length;
@@ -82,13 +85,17 @@ function pointInRing(x: number, y: number, ring: [number, number][]): boolean {
   return inside;
 }
 
-/** Project a ring of lon/lat to world XY (closed). */
+/** Project a ring of lon/lat to world XY metres (closed).
+ *  `lonLatToXY` must be provided — the fallback to raw lon/lat is only for
+ *  graceful no-op rendering before the scene geometry has loaded. */
 function projectRing(
   ring: [number, number][],
   lonLatToXY?: (lon: number, lat: number) => [number, number],
 ): [number, number][] {
   if (ring.length < 3) return [];
   const xy = ring.map(([lon, lat]) =>
+    // Without lonLatToXY the coordinates are degrees, not metres — zone
+    // outlines will be invisible or in the wrong position until it loads.
     lonLatToXY ? lonLatToXY(lon, lat) : ([lon, lat] as [number, number]),
   );
   // Close the ring.

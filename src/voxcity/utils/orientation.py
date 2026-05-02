@@ -12,6 +12,11 @@ Contract:
 Utilities here are intentionally minimal to avoid introducing hidden behavior.
 They can be used at I/O boundaries (e.g., when reading rasters with south_up
 conventions) to normalize to the internal orientation.
+
+Coordinate-frame vocabulary (see also voxcity.utils.projector):
+  ij_north — cell index (i, j) in ORIENTATION_NORTH_UP; row 0 is north/top.
+  ij_south — cell index (i, j) in ORIENTATION_SOUTH_UP; row 0 is south/bottom.
+  ensure_orientation() is the only legitimate place to convert between the two.
 """
 
 from __future__ import annotations
