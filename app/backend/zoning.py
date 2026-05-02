@@ -7,48 +7,31 @@ import numpy as np
 from matplotlib.path import Path as MplPath
 
 from .models import ZoneStat
-
-
-def _cell_centres_lonlat(grid_geom: dict):
-    """Return ((nx*ny, 2) centres, ii flat, jj flat) in ij_north frame.
-
-    ii ∈ [0, nx), jj ∈ [0, ny) are NORTH_UP cell indices (i along u_vec,
-    j along v_vec, origin corner = (0, 0)).
-    indexing="ij" makes the first index vary along u_vec (nx dimension) and
-    the second along v_vec (ny dimension), which is the ij_north convention.
-    """
-    nx, ny = grid_geom["grid_size"]
-    dx, dy = grid_geom["adj_mesh"]
-    o = np.asarray(grid_geom["origin"], dtype=float)
-    u = np.asarray(grid_geom["u_vec"], dtype=float)
-    v = np.asarray(grid_geom["v_vec"], dtype=float)
-    ii, jj = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
-    centres = (
-        o[None, None, :]
-        + (ii[..., None] + 0.5) * dx * u[None, None, :]
-        + (jj[..., None] + 0.5) * dy * v[None, None, :]
-    )
-    return centres.reshape(-1, 2), ii.ravel(), jj.ravel()
+from voxcity.utils.projector import GridProjector
 
 
 def polygon_lonlat_to_cells(
     ring: Sequence[Sequence[float]],
     grid_geom: dict,
 ) -> List[Tuple[int, int]]:
-    """Rasterize a closed lon/lat ring to NORTH_UP (i, j) cells.
+    """Rasterize a closed lon/lat ring to (i, j) cell indices in uv_m frame.
 
-    Returns ij_north indices — same frame as _cell_centres_lonlat, which
-    uses indexing='ij' with u_vec/v_vec as the grid axes.
+    i = u-axis index (0 = grid origin), j = v-axis index.
+    Returns ij_north-equivalent indices via GridProjector.cell_to_lon_lat.
     Mirrors the JS ``polygonToCells`` in ``app/frontend/src/lib/grid.ts``.
     """
     if len(ring) < 3:
         return []
-    centres, ii, jj = _cell_centres_lonlat(grid_geom)
+    proj = GridProjector(grid_geom)
+    nx, ny = grid_geom["grid_size"]
+    ii, jj = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
+    lons, lats = proj.cell_to_lon_lat(ii.ravel(), jj.ravel())
+    centres = np.stack([np.asarray(lons), np.asarray(lats)], axis=1)
     path = MplPath(np.asarray(ring, dtype=float))
     inside = path.contains_points(centres)
     if not inside.any():
         return []
-    return list(zip(ii[inside].tolist(), jj[inside].tolist()))
+    return list(zip(ii.ravel()[inside].tolist(), jj.ravel()[inside].tolist()))
 
 
 def points_in_polygon_lonlat(
@@ -142,16 +125,13 @@ def mesh_face_data(mesh: object, sim_type: str):
 
 
 def grid_xy_to_lonlat(xy_local: np.ndarray, grid_geom: dict) -> np.ndarray:
-    """Convert (N, 2) grid-local metre coords into (N, 2) lon/lat coords.
+    """Convert (N, 2) uv_m coordinates [u_m, v_m] to (N, 2) lon/lat.
 
-    Frame: ``xy_local[:, 0]`` is metres along u_vec (ij_north i-axis),
-    ``xy_local[:, 1]`` is metres along v_vec (ij_north j-axis).
-    This is NOT the same as world-XY (xy_world_m), which has the (nx-u) flip.
-
-    Inverse of :func:`_cell_centres_lonlat`:
-    ``lonlat = origin + x_m * u_vec + y_m * v_vec``
+    u_m is metres along u_vec, v_m is metres along v_vec from grid origin.
+    This is uv_m → lon_lat via GridProjector.uv_m_to_lon_lat.
     """
-    o = np.asarray(grid_geom["origin"], dtype=float)
-    u = np.asarray(grid_geom["u_vec"],  dtype=float)
-    v = np.asarray(grid_geom["v_vec"],  dtype=float)
-    return o[None, :] + xy_local[:, 0:1] * u[None, :] + xy_local[:, 1:2] * v[None, :]
+    proj = GridProjector(grid_geom)
+    u_m = xy_local[:, 0]
+    v_m = xy_local[:, 1]
+    lons, lats = proj.uv_m_to_lon_lat(u_m, v_m)
+    return np.stack([np.asarray(lons), np.asarray(lats)], axis=1)
