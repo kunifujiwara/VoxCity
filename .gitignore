@@ -125,3 +125,6 @@ app/frontend/package-lock.json
 app/output/
 app/cache/
 
+
+# Git worktrees
+.worktrees/
