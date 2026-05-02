@@ -8,7 +8,6 @@ from pyproj import CRS, Transformer
 
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
 from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords, normalize_gdf_crs
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ...utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -242,19 +241,13 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
         from rasterio import features
         from affine import Affine
         
-        # Get bounding box
-        min_lon = min(coord[0] for coord in rectangle_vertices)
-        max_lon = max(coord[0] for coord in rectangle_vertices)
-        min_lat = min(coord[1] for coord in rectangle_vertices)
-        max_lat = max(coord[1] for coord in rectangle_vertices)
-        
-        # Build a rasterio affine for a north-up grid (row 0 = north = max_lat).
-        # ny cells span longitude (x), nx cells span latitude (y) — the axis
-        # assignment looks swapped vs intuition because rasterio uses (cols, rows).
-        # Negative pixel_height: rasterio encodes north-up as a negative row step.
-        pixel_width  = (max_lon - min_lon) / ny   # degrees per column (x / lon)
-        pixel_height = (max_lat - min_lat) / nx   # degrees per row    (y / lat)
-        raster_transform = Affine(pixel_width, 0, min_lon, 0, -pixel_height, max_lat)
+        # Build a rasterio Affine that maps (col=u_axis, row=v_axis) → (lon, lat).
+        # Works for axis-aligned and rotated rectangles via grid_geom u_vec/v_vec.
+        du, dv = adjusted_meshsize[0], adjusted_meshsize[1]
+        raster_transform = Affine(
+            du * u_vec[0], dv * v_vec[0], float(origin[0]),
+            du * u_vec[1], dv * v_vec[1], float(origin[1]),
+        )
         
         # OPTIMIZATION: Group polygons by height to batch rasterize
         # This reduces the number of rasterization calls significantly
@@ -293,19 +286,16 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                 # Create shapes list with value 1 for all geometries in this group
                 shapes = [(geom, 1) for geom in geometries]
                 
-                mask = np.zeros((nx, ny), dtype=np.uint8)
+                # Rasterio writes (rows=v_axis, cols=u_axis) → shape (ny, nx).
+                # Transpose to (nx, ny) = uv_m layout.
+                raw = np.zeros((ny, nx), dtype=np.uint8)
                 features.rasterize(
                     shapes=shapes,
-                    out=mask,
+                    out=raw,
                     transform=raster_transform,
                     all_touched=False
                 )
-                
-                # CRITICAL: Flip the mask vertically to match the grid coordinate system
-                # Rasterio produces north-up (row 0 = north), but the grid uses
-                # origin at rectangle_vertices[0] (typically SW, so row 0 = south)
-                mask_south_up = ensure_orientation(mask, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-                mask = mask_south_up
+                mask = np.ascontiguousarray(raw.T)  # shape (nx, ny), uv_m layout
                 
                 # Apply heights where mask is set (using maximum to preserve higher trees)
                 polygon_cells = mask == 1

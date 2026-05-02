@@ -30,7 +30,6 @@ from ...downloader.gee import (
     save_geotiff_open_buildings_temporal,
 )
 from .core import calculate_grid_size, create_cell_polygon, compute_grid_geometry, bbox_from_vertices
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ...utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -320,11 +319,11 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
 
 
 def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, rectangle_vertices, complement_height):
-    u_step = adjusted_meshsize[0] * u_vec
-    v_step = adjusted_meshsize[1] * v_vec
-    top_left = origin + grid_size[1] * v_step
-    transform = Affine(u_step[0], -v_step[0], top_left[0],
-                       u_step[1], -v_step[1], top_left[1])
+    # Build a rasterio Affine that maps (col=u_axis, row=v_axis) → (lon, lat).
+    # Works for both axis-aligned and rotated rectangles.
+    du, dv = adjusted_meshsize[0], adjusted_meshsize[1]
+    transform = Affine(du * u_vec[0], dv * v_vec[0], float(origin[0]),
+                       du * u_vec[1], dv * v_vec[1], float(origin[1]))
 
     filtered_gdf = filtered_gdf.copy()
     if complement_height is not None:
@@ -408,12 +407,12 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                     dtype=np.float64
                 )
 
-    # rasterio produces (ny, nx) north-up arrays (row 0 = max latitude).
-    # Flip to south-up, then transpose to (nx, ny) to match the internal
-    # (u-axis, v-axis) layout used by the geometry-intersection path.
-    building_height_grid = ensure_orientation(height_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
-    building_id_grid = ensure_orientation(id_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
-    min_heights = ensure_orientation(min_heights_raster, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP).T
+    # Rasterio writes (rows=v_axis, cols=u_axis) → shape (ny, nx).
+    # Transpose to (nx, ny) = (u_axis, v_axis) uv_m layout.
+    # ascontiguousarray prevents silent performance degradation in Numba JIT.
+    building_height_grid = np.ascontiguousarray(height_raster.T)
+    building_id_grid     = np.ascontiguousarray(id_raster.T)
+    min_heights          = np.ascontiguousarray(min_heights_raster.T)
 
     flat_bmh = building_min_height_grid.reshape(-1)
     flat_height = building_height_grid.reshape(-1)
