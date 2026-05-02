@@ -49,10 +49,9 @@ export interface SceneViewerProps {
   /** Zones drawn as through-occlusion outlines. */
   zones?: Zone[];
   /**
-   * Project zone lon/lat to world XY metres for ZoneOutlines.
-   * Typically the function returned by lonLatToWorldXY() in lib/grid.ts,
-   * which maps cell (i,j) → world (i*meshsize, j*meshsize) with the
-   * (nx-u) x-axis flip that aligns zone polygons with the voxel mesh.
+   * Project zone lon/lat to uv_m metres for ZoneOutlines.
+   * Typically the function returned by lonLatToUvM() in lib/grid.ts,
+   * which maps cell (i,j) → scene (i*du, j*dv) — no x-axis flip needed.
    */
   lonLatToXY?: (lon: number, lat: number) => [number, number];
   /** Hide zone outlines without unmounting the scene. */
