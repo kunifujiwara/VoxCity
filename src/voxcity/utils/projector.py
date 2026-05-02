@@ -1,21 +1,28 @@
 """Coordinate-frame projector for VoxCity grids.
 
-Three frames this module understands:
+Two frames this module understands:
 
-  lon_lat    — geographic (lon°, lat°), WGS84
-  ij_north   — continuous cell coordinate (i, j); i along u_vec, j along v_vec
-  xy_world_m — Three.js world metres (x, y), Z-up, (0, 0) at SW voxel corner
+  lon_lat — geographic (lon°, lat°), WGS84
+  uv_m    — local grid metres from the grid origin (rectangle_vertices[0]):
+              u_m = metres along u_vec (side_1 direction)
+              v_m = metres along v_vec (side_2 direction)
 
-The north→south orientation flip used by mesh builders is handled separately
-by ensure_orientation() in orientation.py and is invisible here — it is already
-folded into the (nx - u) term of lon_lat_to_xy_world_m.
+Key invariant:
+  voxcity_grid[i, j, k]  ↔  scene position (i×meshsize_m, j×meshsize_m, k×meshsize_m)
+
+No orientation flip, no (nx−u) compensation. The voxel array index IS the
+scene coordinate (divided by meshsize_m).
 """
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import TypedDict, Union
+import math
 
 import numpy as np
+
+Scalar = Union[float, int]
+ArrayLike = Union[Scalar, np.ndarray]
 
 
 class GridGeom(TypedDict):
@@ -40,92 +47,103 @@ class GridGeom(TypedDict):
     """(nx, ny) — number of cells along the u and v axes."""
 
     adj_mesh: tuple[float, float]
-    """(dx_m, dy_m) — adjusted cell size in metres along each axis."""
+    """(du_m, dv_m) — adjusted cell size in metres along u and v axes."""
 
     meshsize_m: float
-    """Nominal cell size in metres; used by lon_lat_to_xy_world_m and xy_world_m_to_lon_lat."""
+    """Nominal cell size in metres."""
 
 
 class GridProjector:
-    """Projects coordinates between lon_lat and ij_north frames.
+    """Projects between lon_lat (WGS84) and uv_m (local grid metres).
 
-    The 2×2 affine matrix A maps cell coordinates (ij_north_i, ij_north_j)
-    to lon/lat offsets (dlon, dlat) from the grid origin::
+    The 2×2 affine A maps (u_cell, v_cell) → (dlon, dlat)::
 
-        A = [[u_vec[0]*dx_m, v_vec[0]*dy_m],
-             [u_vec[1]*dx_m, v_vec[1]*dy_m]]
+        A = [[u_vec[0]*du_m, v_vec[0]*dv_m],
+             [u_vec[1]*du_m, v_vec[1]*dv_m]]
 
-        [dlon, dlat]^T = A · [ij_north_i, ij_north_j]^T
-
-    A⁻¹ is pre-computed in __init__ so each projection call is O(1).
-
-    This mirrors the matrix inversion in lonLatToWorldXY (grid.ts) and the
-    forward formula in _cell_centres_lonlat (zoning.py).
+    where (du_m, dv_m) = adj_mesh.  A⁻¹ is pre-computed for O(1) calls.
+    Accepts both scalars and numpy arrays.
     """
 
     def __init__(self, geom: GridGeom) -> None:
         self._origin = np.asarray(geom["origin"], dtype=float)
-        dx_m, dy_m = geom["adj_mesh"]
+        du_m, dv_m = geom["adj_mesh"]
+        self._du_m = float(du_m)
+        self._dv_m = float(dv_m)
         u = np.asarray(geom["u_vec"], dtype=float)
         v = np.asarray(geom["v_vec"], dtype=float)
-        self._nx = int(geom["grid_size"][0])
-        self._meshsize_m = float(geom["meshsize_m"])
 
-        # Forward affine coefficients (lon/lat offset per cell step)
-        self._a = float(u[0] * dx_m)  # dlon per ij_north_i step
-        self._b = float(v[0] * dy_m)  # dlon per ij_north_j step
-        self._c = float(u[1] * dx_m)  # dlat per ij_north_i step
-        self._d = float(v[1] * dy_m)  # dlat per ij_north_j step
+        # Forward affine: (u_cell, v_cell) → (dlon, dlat)
+        self._a = float(u[0] * du_m)
+        self._b = float(v[0] * dv_m)
+        self._c = float(u[1] * du_m)
+        self._d = float(v[1] * dv_m)
 
         det = self._a * self._d - self._b * self._c
         if abs(det) < 1e-30:
             raise ValueError("GridGeom is degenerate (zero-area rectangle).")
 
-        # Inverse affine coefficients
         self._inv00 = self._d / det
         self._inv01 = -self._b / det
         self._inv10 = -self._c / det
         self._inv11 = self._a / det
 
-    def lon_lat_to_ij_north(
-        self, lon: float, lat: float
-    ) -> tuple[float, float]:
-        """lon_lat → ij_north.
+    # ------------------------------------------------------------------
+    # Primary: lon_lat ↔ uv_m
+    # ------------------------------------------------------------------
 
-        Returns continuous (ij_north_i, ij_north_j) cell coordinates.
-        The integer floor gives the cell index; (0.5, 0.5) is the centre of
-        cell (0, 0). The origin corner maps to exactly (0.0, 0.0).
+    def lon_lat_to_uv_m(
+        self,
+        lon: ArrayLike,
+        lat: ArrayLike,
+    ) -> tuple[ArrayLike, ArrayLike]:
+        """lon_lat → uv_m.  Accepts scalars or numpy arrays.
+
+        Returns (u_m, v_m) where u_m = metres along u_vec from grid origin,
+        v_m = metres along v_vec from grid origin.
+        Cell (i, j) occupies uv_m in [i*du_m, (i+1)*du_m) × [j*dv_m, (j+1)*dv_m).
         """
-        dlon = lon - float(self._origin[0])
-        dlat = lat - float(self._origin[1])
-        ij_north_i = self._inv00 * dlon + self._inv01 * dlat
-        ij_north_j = self._inv10 * dlon + self._inv11 * dlat
-        return ij_north_i, ij_north_j
+        dlon = lon - self._origin[0]
+        dlat = lat - self._origin[1]
+        u_cell = self._inv00 * dlon + self._inv01 * dlat
+        v_cell = self._inv10 * dlon + self._inv11 * dlat
+        return u_cell * self._du_m, v_cell * self._dv_m
 
-    def ij_north_to_lon_lat(
-        self, ij_north_i: float, ij_north_j: float
-    ) -> tuple[float, float]:
-        """ij_north → lon_lat. Exact inverse of lon_lat_to_ij_north."""
-        dlon = self._a * ij_north_i + self._b * ij_north_j
-        dlat = self._c * ij_north_i + self._d * ij_north_j
-        return float(self._origin[0] + dlon), float(self._origin[1] + dlat)
+    def uv_m_to_lon_lat(
+        self,
+        u_m: ArrayLike,
+        v_m: ArrayLike,
+    ) -> tuple[ArrayLike, ArrayLike]:
+        """uv_m → lon_lat. Exact inverse of lon_lat_to_uv_m."""
+        u_cell = u_m / self._du_m
+        v_cell = v_m / self._dv_m
+        dlon = self._a * u_cell + self._b * v_cell
+        dlat = self._c * u_cell + self._d * v_cell
+        return self._origin[0] + dlon, self._origin[1] + dlat
 
-    def lon_lat_to_xy_world_m(
-        self, lon: float, lat: float
-    ) -> tuple[float, float]:
-        """lon_lat → xy_world_m.
+    # ------------------------------------------------------------------
+    # Convenience: integer cell index
+    # ------------------------------------------------------------------
 
-        Mirrors lonLatToWorldXY in app/frontend/src/lib/grid.ts.
-        The (nx - u) flip aligns the projector's ij_north u-axis with the
-        x-axis emitted by build_voxel_buffers (which places voxel i at x=i*ms).
+    def lon_lat_to_cell(
+        self,
+        lon: ArrayLike,
+        lat: ArrayLike,
+    ) -> tuple:
+        """lon_lat → (i, j) integer cell index.
+
+        Uses floor division — safe for boundary points and negative coordinates.
+        Scalar inputs return Python ints; array inputs return int ndarrays.
         """
-        u, v = self.lon_lat_to_ij_north(lon, lat)
-        return (self._nx - u) * self._meshsize_m, v * self._meshsize_m
+        u_m, v_m = self.lon_lat_to_uv_m(lon, lat)
+        if isinstance(u_m, np.ndarray):
+            return np.floor(u_m / self._du_m).astype(int), np.floor(v_m / self._dv_m).astype(int)
+        return int(math.floor(u_m / self._du_m)), int(math.floor(v_m / self._dv_m))
 
-    def xy_world_m_to_lon_lat(
-        self, x_world_m: float, y_world_m: float
-    ) -> tuple[float, float]:
-        """xy_world_m → lon_lat. Exact inverse of lon_lat_to_xy_world_m."""
-        u = self._nx - x_world_m / self._meshsize_m
-        v = y_world_m / self._meshsize_m
-        return self.ij_north_to_lon_lat(u, v)
+    def cell_to_lon_lat(
+        self,
+        i: ArrayLike,
+        j: ArrayLike,
+    ) -> tuple[ArrayLike, ArrayLike]:
+        """Cell centre (i+0.5, j+0.5) → lon_lat."""
+        return self.uv_m_to_lon_lat((i + 0.5) * self._du_m, (j + 0.5) * self._dv_m)
