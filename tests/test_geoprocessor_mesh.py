@@ -137,6 +137,20 @@ class TestCreateVoxelMesh:
         
         result = create_voxel_mesh(voxel_array, class_id=1)
         assert result is not None
+
+    def test_uv_layout_renders_x_east_y_north(self):
+        """Test uv-layout arrays render as scene X=east, Y=north."""
+        voxel_array = np.zeros((2, 3, 1), dtype=np.int32)
+        voxel_array[1, 0, 0] = 1  # north/u axis
+        voxel_array[0, 2, 0] = 2  # east/v axis
+
+        north_mesh = create_voxel_mesh(voxel_array, class_id=1, meshsize=1.0)
+        east_mesh = create_voxel_mesh(voxel_array, class_id=2, meshsize=1.0)
+
+        assert north_mesh.bounds[:, 0] == pytest.approx([0.0, 1.0])
+        assert north_mesh.bounds[:, 1] == pytest.approx([1.0, 2.0])
+        assert east_mesh.bounds[:, 0] == pytest.approx([2.0, 3.0])
+        assert east_mesh.bounds[:, 1] == pytest.approx([0.0, 1.0])
         
         # Interior faces should not exist, only boundary faces
         # This is a solid block, so faces should only be on exterior
@@ -311,6 +325,17 @@ class TestCreateSimSurfaceMesh:
         
         assert result is not None
         assert len(result.faces) > 0
+
+    def test_uv_layout_preserves_cell_zero(self):
+        """Test uv-layout simulation cell [0, 0] renders at scene origin."""
+        sim_grid = np.array([[1.0, np.nan], [np.nan, np.nan]])
+        dem_grid = np.zeros((2, 2))
+
+        mesh = create_sim_surface_mesh(sim_grid, dem_grid, meshsize=1.0, z_offset=0.0)
+
+        assert mesh is not None
+        assert mesh.bounds[:, 0] == pytest.approx([0.0, 1.0])
+        assert mesh.bounds[:, 1] == pytest.approx([0.0, 1.0])
 
 
 class TestCreateCityMeshes:

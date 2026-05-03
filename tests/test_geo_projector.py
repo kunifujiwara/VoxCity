@@ -7,12 +7,12 @@ from voxcity.utils.projector import GridGeom, GridProjector
 from voxcity.geoprocessor.raster.core import compute_grid_geometry
 
 
-# Axis-aligned ~4 km × 4 km rectangle in Tokyo, vertex order SW/SE/NE/NW.
+# Axis-aligned ~4 km × 4 km rectangle in Tokyo, vertex order SW/NW/NE/SE.
 _RECT = [
     [139.680, 35.680],  # 0 SW
-    [139.716, 35.680],  # 1 SE
-    [139.716, 35.716],  # 2 NE (unused by compute_grid_geometry)
-    [139.680, 35.716],  # 3 NW
+    [139.680, 35.716],  # 1 NW
+    [139.716, 35.716],  # 2 NE
+    [139.716, 35.680],  # 3 SE
 ]
 _MESHSIZE = 50.0
 
@@ -125,6 +125,20 @@ class TestScenePositionInvariant:
         u_m, _ = proj.lon_lat_to_uv_m(geom["origin"][0], geom["origin"][1])
         assert abs(u_m) < 1e-6            # NEW: origin → 0
         assert abs(u_m - nx * ms) > 1.0   # OLD formula would give nx*ms
+
+
+class TestPackageRectangleConvention:
+    def test_u_axis_is_north_for_drawn_rectangles(self, proj, geom):
+        u_m, v_m = proj.lon_lat_to_uv_m(_RECT[1][0], _RECT[1][1])
+        width_u = geom["grid_size"][0] * geom["adj_mesh"][0]
+        assert u_m == pytest.approx(width_u, abs=1.0)
+        assert v_m == pytest.approx(0.0, abs=1e-6)
+
+    def test_v_axis_is_east_for_drawn_rectangles(self, proj, geom):
+        u_m, v_m = proj.lon_lat_to_uv_m(_RECT[3][0], _RECT[3][1])
+        width_v = geom["grid_size"][1] * geom["adj_mesh"][1]
+        assert u_m == pytest.approx(0.0, abs=1e-6)
+        assert v_m == pytest.approx(width_v, abs=1.0)
 
 
 # ── Cell index ───────────────────────────────────────────────────────────────

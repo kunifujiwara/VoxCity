@@ -136,9 +136,10 @@ class GridProjector:
         Scalar inputs return Python ints; array inputs return int ndarrays.
         """
         u_m, v_m = self.lon_lat_to_uv_m(lon, lat)
+        eps = 1e-12
         if isinstance(u_m, np.ndarray):
-            return np.floor(u_m / self._du_m).astype(int), np.floor(v_m / self._dv_m).astype(int)
-        return int(math.floor(u_m / self._du_m)), int(math.floor(v_m / self._dv_m))
+            return np.floor(u_m / self._du_m + eps).astype(int), np.floor(v_m / self._dv_m + eps).astype(int)
+        return int(math.floor(u_m / self._du_m + eps)), int(math.floor(v_m / self._dv_m + eps))
 
     def cell_to_lon_lat(
         self,

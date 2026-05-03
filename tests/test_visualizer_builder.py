@@ -94,3 +94,22 @@ class TestMeshBuilder:
         assert isinstance(result, MeshCollection)
         # Should be empty (no classes to render)
         assert len(result.meshes) == 0
+
+    def test_from_voxel_grid_maps_uv_to_scene_x_east_y_north(self):
+        """Test MeshBuilder maps uv-layout arrays to scene X=east, Y=north."""
+        meta = {"meshsize": 1.0, "bounds": (0, 0, 3, 2)}
+        classes = np.zeros((2, 3, 1), dtype=np.int32)
+        classes[1, 0, 0] = -3
+        grid = VoxelGrid(classes=classes, meta=meta)
+
+        result = MeshBuilder.from_voxel_grid(
+            grid,
+            meshsize=1.0,
+            voxel_color_map={-3: [255, 0, 0]},
+        )
+        mesh = result.meshes["-3"]
+
+        assert mesh.vertices[:, 0].min() == pytest.approx(0.0)
+        assert mesh.vertices[:, 0].max() == pytest.approx(1.0)
+        assert mesh.vertices[:, 1].min() == pytest.approx(1.0)
+        assert mesh.vertices[:, 1].max() == pytest.approx(2.0)

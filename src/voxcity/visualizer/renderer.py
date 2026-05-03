@@ -163,8 +163,10 @@ def visualize_voxcity_plotly(
         # Use edge-aligned coordinates: voxel at index i spans from i*dx to (i+1)*dx.
         # This aligns with mesh coordinate conventions where cell i is at [i*meshsize, (i+1)*meshsize].
         # We store the voxel center position, so add half a cell offset.
-        x = np.arange(nx, dtype=float) * dx + dx / 2.0
-        y = np.arange(ny, dtype=float) * dy + dy / 2.0
+        # VoxCity grids are uv layout: axis 0 is u/north, axis 1 is v/east.
+        # Render local scene coordinates as X=east (v), Y=north (u).
+        x = np.arange(ny, dtype=float) * dy + dy / 2.0
+        y = np.arange(nx, dtype=float) * dx + dx / 2.0
         z = np.arange(nz, dtype=float) * dz + dz / 2.0
 
         # Choose classes
@@ -192,30 +194,25 @@ def visualize_voxcity_plotly(
 
         def exposed_face_masks(occ, occ_any):
             p = np.pad(occ_any, ((0,1),(0,0),(0,0)), constant_values=False)
-            posx = occ & (~p[1:,:,:])
+            posu = occ & (~p[1:,:,:])
             p = np.pad(occ_any, ((1,0),(0,0),(0,0)), constant_values=False)
-            negx = occ & (~p[:-1,:,:])
+            negu = occ & (~p[:-1,:,:])
             p = np.pad(occ_any, ((0,0),(0,1),(0,0)), constant_values=False)
-            posy = occ & (~p[:,1:,:])
+            posv = occ & (~p[:,1:,:])
             p = np.pad(occ_any, ((0,0),(1,0),(0,0)), constant_values=False)
-            negy = occ & (~p[:,:-1,:])
+            negv = occ & (~p[:,:-1,:])
             p = np.pad(occ_any, ((0,0),(0,0),(0,1)), constant_values=False)
             posz = occ & (~p[:,:,1:])
             p = np.pad(occ_any, ((0,0),(0,0),(1,0)), constant_values=False)
             negz = occ & (~p[:,:,:-1])
-            return posx, negx, posy, negy, posz, negz
+            return posu, negu, posv, negv, posz, negz
 
     fig = go.Figure()
 
     # Prepare building ID grid for per-face tracking (if provided)
     _bid_aligned = None
     if building_id_grid is not None and vox is not None:
-        try:
-            from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
-            _bid_aligned = ensure_orientation(building_id_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-        except Exception:
-            # ensure_orientation unavailable; replicate its NORTH_UP→SOUTH_UP flip manually.
-            _bid_aligned = np.flipud(building_id_grid)
+        _bid_aligned = np.asarray(building_id_grid)
 
     def add_faces(mask, plane, color_rgb, track_building_ids=False):
         """Create a Plotly Mesh3d trace for faces of a single plane direction.
@@ -225,8 +222,8 @@ def visualize_voxcity_plotly(
         idx = np.argwhere(mask)
         if idx.size == 0:
             return
-        xi, yi, zi = idx[:,0], idx[:,1], idx[:,2]
-        xc = x[xi]; yc = y[yi]; zc = z[zi]
+        ui, vi, zi = idx[:,0], idx[:,1], idx[:,2]
+        xc = x[vi]; yc = y[ui]; zc = z[zi]
         x0, x1 = xc - dx/2.0, xc + dx/2.0
         y0, y1 = yc - dy/2.0, yc + dy/2.0
         z0, z1 = zc - dz/2.0, zc + dz/2.0
@@ -291,7 +288,7 @@ def visualize_voxcity_plotly(
                 opacity=float(opacity),
                 flatshading=False,
                 lighting=lighting,
-                lightposition=dict(x=lx, y=ly, z=lx),
+                lightposition=dict(x=lx, y=ly, z=lz),
                 name=f"{plane}",
                 meta=trace_meta,
             )
@@ -303,19 +300,19 @@ def visualize_voxcity_plotly(
             if not np.any(vox == cls):
                 continue
             occ = (vox == cls)
-            p = np.pad(occluder, ((0,1),(0,0),(0,0)), constant_values=False); posx = occ & (~p[1:,:,:])
-            p = np.pad(occluder, ((1,0),(0,0),(0,0)), constant_values=False); negx = occ & (~p[:-1,:,:])
-            p = np.pad(occluder, ((0,0),(0,1),(0,0)), constant_values=False); posy = occ & (~p[:,1:,:])
-            p = np.pad(occluder, ((0,0),(1,0),(0,0)), constant_values=False); negy = occ & (~p[:,:-1,:])
+            p = np.pad(occluder, ((0,1),(0,0),(0,0)), constant_values=False); posu = occ & (~p[1:,:,:])
+            p = np.pad(occluder, ((1,0),(0,0),(0,0)), constant_values=False); negu = occ & (~p[:-1,:,:])
+            p = np.pad(occluder, ((0,0),(0,1),(0,0)), constant_values=False); posv = occ & (~p[:,1:,:])
+            p = np.pad(occluder, ((0,0),(1,0),(0,0)), constant_values=False); negv = occ & (~p[:,:-1,:])
             p = np.pad(occluder, ((0,0),(0,0),(0,1)), constant_values=False); posz = occ & (~p[:,:,1:])
             p = np.pad(occluder, ((0,0),(0,0),(1,0)), constant_values=False); negz = occ & (~p[:,:,:-1])
             color_rgb = vox_dict.get(int(cls), [128,128,128])
             # Track building IDs for building class when building_id_grid is provided
             track_bids = (int(cls) == -3 and _bid_aligned is not None)
-            add_faces(posx, '+x', color_rgb, track_building_ids=track_bids)
-            add_faces(negx, '-x', color_rgb, track_building_ids=track_bids)
-            add_faces(posy, '+y', color_rgb, track_building_ids=track_bids)
-            add_faces(negy, '-y', color_rgb, track_building_ids=track_bids)
+            add_faces(posv, '+x', color_rgb, track_building_ids=track_bids)
+            add_faces(negv, '-x', color_rgb, track_building_ids=track_bids)
+            add_faces(posu, '+y', color_rgb, track_building_ids=track_bids)
+            add_faces(negu, '-y', color_rgb, track_building_ids=track_bids)
             add_faces(posz, '+z', color_rgb, track_building_ids=track_bids)
             add_faces(negz, '-z', color_rgb, track_building_ids=track_bids)
 
@@ -419,9 +416,8 @@ def visualize_voxcity_plotly(
             masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
             k_top_grid = np.max(masked_k, axis=2)           # (nx, ny)
             k_top_grid = np.maximum(k_top_grid, 0)
-            # Voxel array is SOUTH_UP; flip to NORTH_UP for
-            # create_sim_surface_mesh which flips back internally.
-            dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+            # Derived DEM is already in uv layout, matching create_sim_surface_mesh.
+            dem_norm = k_top_grid.astype(float) * float(meshsize)
         else:
             try:
                 dem_norm = np.asarray(ground_dem_grid, dtype=float)
@@ -493,7 +489,7 @@ def visualize_voxcity_plotly(
             yaxis_title="Y (m)",
             zaxis_title="Z (m)",
             aspectmode="data",
-            camera=dict(eye=dict(x=1.6, y=1.6, z=1.0)),
+            camera=dict(eye=dict(x=-1.6, y=-1.6, z=1.0)),
         )
     )
 
@@ -899,7 +895,7 @@ class PyVistaRenderer:
                 masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
                 k_top_grid = np.max(masked_k, axis=2)
                 k_top_grid = np.maximum(k_top_grid, 0)
-                dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                dem_norm = k_top_grid.astype(float) * float(meshsize)
             else:
                 try:
                     dem_norm = np.asarray(ground_dem_grid, dtype=float)

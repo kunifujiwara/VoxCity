@@ -1,10 +1,12 @@
 """Mesh generation utilities for voxel and 2D grid visualization.
 
 Orientation contract:
-- Mesh builders expect 2D inputs (e.g., simulation grids, building_id grids)
-  to be provided in north_up orientation (row 0 = north/top) with columns
-  increasing eastward (col 0 = west/left). Any internal flips are
-  implementation details to match mesh coordinates.
+- Mesh builders expect VoxCity uv-layout arrays: axis 0 = u/north-ish,
+    axis 1 = v/east/right, axis 2 = z/up.
+- Rendered scene coordinates are GIS/CAD local coordinates: X = v/east,
+    Y = u/north, Z = up.
+- Do not flip arrays at this boundary. Only remap axes from array (u, v, z)
+    to scene (x=v, y=u, z).
 """
 
 import numpy as np
@@ -18,7 +20,6 @@ except ImportError:  # optional dependency
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
-from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ..errors import ConfigurationError
 
 
@@ -106,39 +107,35 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     voxel_coords = np.argwhere(voxel_array == class_id)
 
     if building_id_grid is not None:
-        building_id_grid_flipud = ensure_orientation(
-            building_id_grid,
-            ORIENTATION_NORTH_UP,
-            ORIENTATION_SOUTH_UP,
-        )
+        building_id_grid_uv = np.asarray(building_id_grid)
 
     if len(voxel_coords) == 0:
         return None
 
     nx, ny, nz = voxel_array.shape
 
-    # 6 face direction offsets: Front(z+1), Back(z-1), Right(x+1), Left(x-1), Top(y+1), Bottom(y-1)
+    # Array offsets paired with scene-space face planes.
     direction_offsets = np.array([
-        [0, 0, 1],   # Front
-        [0, 0, -1],  # Back
-        [1, 0, 0],   # Right
-        [-1, 0, 0],  # Left
-        [0, 1, 0],   # Top
-        [0, -1, 0],  # Bottom
+        [0, 1, 0],   # +v / east / scene +x
+        [0, -1, 0],  # -v / west / scene -x
+        [1, 0, 0],   # +u / north / scene +y
+        [-1, 0, 0],  # -u / south / scene -y
+        [0, 0, 1],   # +z / up
+        [0, 0, -1],  # -z / down
     ], dtype=np.intp)
 
-    # Unit face vertices (6 faces × 4 vertices × 3 coords)
+    # Unit face vertices in scene coordinates (x=east/v, y=north/u, z=up).
     unit_faces = np.array([
-        [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],  # Front
-        [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]],  # Back
-        [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],  # Right
-        [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],  # Left
-        [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],  # Top
-        [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],  # Bottom
+        [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],  # +x / east
+        [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]],  # -x / west
+        [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]],  # +y / north
+        [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],  # -y / south
+        [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],  # +z / up
+        [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]],  # -z / down
     ], dtype=np.float64)
 
     face_normal_vectors = np.array([
-        [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+        [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
     ], dtype=np.float64)
 
     # Whether to use solar/open_air boundary logic
@@ -176,8 +173,9 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         if len(face_coords) == 0:
             continue
 
-        # Generate 4 vertices per face: (M, 4, 3)
-        verts = (unit_faces[d][np.newaxis, :, :] + face_coords[:, np.newaxis, :]) * meshsize
+        # Generate 4 vertices per face: array (u, v, z) maps to scene (x=v, y=u, z).
+        scene_coords = np.column_stack([face_coords[:, 1], face_coords[:, 0], face_coords[:, 2]])
+        verts = (unit_faces[d][np.newaxis, :, :] + scene_coords[:, np.newaxis, :]) * meshsize
         all_face_verts.append(verts)
 
         # Normal repeated M times
@@ -185,7 +183,7 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         all_face_normals.append(normals_d)
 
         if track_ids:
-            ids = building_id_grid_flipud[face_coords[:, 0], face_coords[:, 1]]
+            ids = building_id_grid_uv[face_coords[:, 0], face_coords[:, 1]]
             all_building_ids_list.append(ids)
 
     if not all_face_verts:
@@ -313,19 +311,18 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
     Notes
     -----
     - The function automatically creates a matplotlib colorbar figure for visualization
-    - Both input grids are flipped vertically to match the voxel_array orientation
+    - Input grids are expected in uv layout and are not flipped at this boundary
     - Each grid cell is converted to two triangles for compatibility with 3D engines
     - The mesh is positioned at dem_grid + z_offset to float above the terrain
     - Face colors are interpolated from the colormap based on sim_grid values
     """
     _require_trimesh()
-    # Flip arrays vertically using orientation helper
-    sim_grid_flipped = ensure_orientation(sim_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-    dem_grid_flipped = ensure_orientation(dem_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    sim_grid_uv = np.asarray(sim_grid)
+    dem_grid_uv = np.asarray(dem_grid)
 
     # Identify valid (non-NaN) values
-    valid_mask = ~np.isnan(sim_grid_flipped)
-    valid_values = sim_grid_flipped[valid_mask]
+    valid_mask = ~np.isnan(sim_grid_uv)
+    valid_values = sim_grid_uv[valid_mask]
     if valid_values.size == 0:
         return None
 
@@ -350,24 +347,27 @@ def create_sim_surface_mesh(sim_grid, dem_grid,
     face_colors = []
 
     vert_index = 0
-    nrows, ncols = sim_grid_flipped.shape
+    nu, nv = sim_grid_uv.shape
 
     # Build a quad (two triangles) for each valid cell
-    for x in range(nrows):
-        for y in range(ncols):
-            val = sim_grid_flipped[x, y]
+    for u_idx in range(nu):
+        for v_idx in range(nv):
+            val = sim_grid_uv[u_idx, v_idx]
             if np.isnan(val):
                 continue
 
             # Match voxel ground rounding: int(dem/mesh + 0.5) + 1 == int(dem/mesh + 1.5)
             # Then lower the plane by one mesh layer as requested
-            z_base = meshsize * int(dem_grid_flipped[x, y] / meshsize + 1.5) + z_offset - meshsize            
+            z_base = meshsize * int(dem_grid_uv[u_idx, v_idx] / meshsize + 1.5) + z_offset - meshsize
 
-            # 4 corners in (x,y)*meshsize
-            v0 = [ x      * meshsize,  y      * meshsize, z_base ]
-            v1 = [(x + 1) * meshsize,  y      * meshsize, z_base ]
-            v2 = [(x + 1) * meshsize, (y + 1) * meshsize, z_base ]
-            v3 = [ x      * meshsize, (y + 1) * meshsize, z_base ]
+            x0 = v_idx * meshsize
+            x1 = (v_idx + 1) * meshsize
+            y0 = u_idx * meshsize
+            y1 = (u_idx + 1) * meshsize
+            v0 = [x0, y0, z_base]
+            v1 = [x1, y0, z_base]
+            v2 = [x1, y1, z_base]
+            v3 = [x0, y1, z_base]
 
             vertices.extend([v0, v1, v2, v3])
             faces.extend([
