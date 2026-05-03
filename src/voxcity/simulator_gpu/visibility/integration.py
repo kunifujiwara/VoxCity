@@ -31,6 +31,10 @@ from ..domain import Domain
 from .view import ViewCalculator, SurfaceViewFactorCalculator
 from .landmark import LandmarkVisibilityCalculator, SurfaceLandmarkVisibilityCalculator
 from .landmark import mark_building_by_id
+from voxcity.simulator.common.coordinates import (
+    scene_points_to_uv_domain,
+    scene_vectors_to_uv_domain,
+)
 
 
 # VoxCity voxel class codes
@@ -460,13 +464,13 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     
     if progress_report:
         print(f"Processing view factor for {len(building_mesh.faces)} faces...")
-    
-    face_centers = building_mesh.triangles_center.astype(np.float32)
-    face_normals = building_mesh.face_normals.astype(np.float32)
-    
+
+    face_centers = scene_points_to_uv_domain(building_mesh.triangles_center).astype(np.float32)
+    face_normals = scene_vectors_to_uv_domain(building_mesh.face_normals).astype(np.float32)
+
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
-    
+
     calc = SurfaceViewFactorCalculator(
         domain,
         n_azimuth=n_azimuth,
@@ -725,13 +729,13 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
     
     if progress_report:
         print(f"Processing landmark visibility for {len(building_mesh.faces)} faces...")
-    
-    face_centers = building_mesh.triangles_center.astype(np.float32)
-    face_normals = building_mesh.face_normals.astype(np.float32)
-    
+
+    face_centers = scene_points_to_uv_domain(building_mesh.triangles_center).astype(np.float32)
+    face_normals = scene_vectors_to_uv_domain(building_mesh.face_normals).astype(np.float32)
+
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
-    
+
     calc = SurfaceLandmarkVisibilityCalculator(domain)
     calc.set_landmarks_from_positions(landmark_positions)
     

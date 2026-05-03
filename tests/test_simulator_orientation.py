@@ -167,3 +167,55 @@ def test_cpu_building_solar_diffuse_uses_sky_hemisphere_factor():
     assert np.nanmax(result.metadata["diffuse"][roof_faces]) == pytest.approx(100.0, abs=10.0)
     assert np.nanmax(result.metadata["diffuse"][vertical_faces]) == pytest.approx(50.0, abs=15.0)
     assert np.nanmax(np.nan_to_num(result.metadata["diffuse"][bottom_faces], nan=0.0)) == pytest.approx(0.0)
+
+
+def test_cpu_landmark_visibility_imshow_preserves_uv_layout(monkeypatch):
+    """`compute_landmark_visibility` plots its result via `plt.imshow`. The
+    array passed to `imshow` must keep uv layout (axis 0 = u = north) so that
+    `origin='lower'` puts north at the top of the figure. A stale `flipud`
+    here mirrors the displayed map north-south.
+    """
+    import matplotlib.pyplot as plt
+    from voxcity.simulator.visibility.landmark import compute_landmark_visibility
+
+    # Layout: landmark at the north end (u=7), tall blocker at u=4 spanning all v.
+    # Observers south of the blocker (u in [0, 3]) cannot see the landmark; observers
+    # north of it (u in [5, 6]) can. So the visibility map (uv layout) holds:
+    #   visibility[0..3, :] = 0   (south, blocked)
+    #   visibility[5..6, :] = 1   (north of blocker, visible)
+    voxel_data = np.zeros((8, 4, 4), dtype=np.int32)
+    voxel_data[:, :, 0] = 1                  # ground
+    voxel_data[4, :, 1:4] = -3               # tall blocker spanning all v
+    voxel_data[7, 1:3, 1:3] = -30            # landmark at the far north
+
+    captured = {}
+
+    def _capture_imshow(arr, *args, **kwargs):
+        captured["arr"] = np.asarray(arr).copy()
+
+        class _AxesImage:
+            def set_clim(self, *_a, **_kw):
+                pass
+
+            def set_cmap(self, *_a, **_kw):
+                pass
+
+        return _AxesImage()
+
+    monkeypatch.setattr(plt, "imshow", _capture_imshow)
+    monkeypatch.setattr(plt, "show", lambda: None)
+    monkeypatch.setattr(plt, "figure", lambda *a, **kw: None)
+    monkeypatch.setattr(plt, "legend", lambda *a, **kw: None)
+    monkeypatch.setattr(plt, "axis", lambda *a, **kw: None)
+
+    compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0)
+
+    arr = captured["arr"]
+    assert arr.shape == voxel_data.shape[:2]
+
+    # North-of-blocker observers should be visible (1.0); south-of-blocker should
+    # be blocked (0.0). With origin='lower', high axis-0 indices render at the
+    # top of the figure, so north-up means arr[6, 0] == 1 and arr[0, 0] == 0.
+    # A stale flipud would invert this.
+    assert arr[6, 0] == 1.0
+    assert arr[0, 0] == 0.0

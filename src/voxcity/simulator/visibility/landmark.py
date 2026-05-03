@@ -6,7 +6,6 @@ from numba import njit, prange
 from ...geoprocessor.selection import find_building_containing_point, get_buildings_in_drawn_polygon
 from ...geoprocessor.mesh import create_voxel_mesh
 from ...exporter.obj import grid_to_obj, export_obj
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark):
@@ -130,7 +129,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
     cmap = plt.cm.get_cmap(colormap, 2).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
-    plt.imshow(ensure_orientation(visibility_map, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP), origin='lower', cmap=cmap, vmin=0, vmax=1)
+    plt.imshow(visibility_map, origin='lower', cmap=cmap, vmin=0, vmax=1)
     visible_patch = mpatches.Patch(color=cmap(1.0), label='Visible (1)')
     not_visible_patch = mpatches.Patch(color=cmap(0.0), label='Not Visible (0)')
     plt.legend(handles=[visible_patch, not_visible_patch], 
