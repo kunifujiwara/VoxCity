@@ -88,7 +88,7 @@ class RayTracer:
             
             # Check if surface normal faces toward sun (dot product > 0)
             # Direction indices: 0=Up, 1=Down, 2=INORTH(+y), 3=ISOUTH(-y), 4=IEAST(+x), 5=IWEST(-x)
-            # In VoxCity grid: +x = South, +y = East, +z = Up
+            # In VoxCity grid: +x/+u = North, +y/+v = East, +z = Up
             face_sun = 1
             normal = Vector3(0.0, 0.0, 0.0)
             if direction == 0:  # Up (+z normal)
@@ -103,10 +103,10 @@ class RayTracer:
             elif direction == 3:  # ISOUTH (-y normal, West-facing in VoxCity)
                 face_sun = 1 if sun_dir[1] < 0 else 0
                 normal = Vector3(0.0, -1.0, 0.0)
-            elif direction == 4:  # IEAST (+x normal, South-facing in VoxCity)
+            elif direction == 4:  # IEAST (+x/+u normal, North-facing; legacy PALM label)
                 face_sun = 1 if sun_dir[0] > 0 else 0
                 normal = Vector3(1.0, 0.0, 0.0)
-            elif direction == 5:  # IWEST (-x normal, North-facing in VoxCity)
+            elif direction == 5:  # IWEST (-x/-u normal, South-facing; legacy PALM label)
                 face_sun = 1 if sun_dir[0] < 0 else 0
                 normal = Vector3(-1.0, 0.0, 0.0)
             
@@ -151,7 +151,7 @@ class RayTracer:
             direction = surf_dir[i]
             
             # Check if surface normal faces toward sun (dot product > 0)
-            # In VoxCity grid: +x = South, +y = East, +z = Up
+            # In VoxCity grid: +x/+u = North, +y/+v = East, +z = Up
             face_sun = 1
             normal = Vector3(0.0, 0.0, 0.0)
             if direction == 0:  # Up (+z)
@@ -166,7 +166,7 @@ class RayTracer:
             elif direction == 3:  # ISOUTH (-y, West-facing)
                 face_sun = 1 if sun_dir[1] < 0 else 0
                 normal = Vector3(0.0, -1.0, 0.0)
-            elif direction == 4:  # IEAST (+x, South-facing)
+            elif direction == 4:  # IEAST (+x/+u, North-facing; legacy PALM label)
                 face_sun = 1 if sun_dir[0] > 0 else 0
                 normal = Vector3(1.0, 0.0, 0.0)
             elif direction == 5:  # IWEST (-x, North-facing)

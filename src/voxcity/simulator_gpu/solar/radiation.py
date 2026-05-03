@@ -43,16 +43,16 @@ from .volumetric import VolumetricFluxCalculator
 # Direction indices (matching PALM convention from radiation_model_mod.f90)
 # PALM naming: iup=0, idown=1, inorth=2, isouth=3, ieast=4, iwest=5
 # 
-# In VoxCity grid coordinates: x=South, y=East, z=Up
-# So the PALM names don't match geographic directions:
-#   - IEAST (+x) is South-facing in geographic terms
+# In VoxCity grid coordinates: x/u=North, y/v=East, z=Up.
+# Some PALM direction names are compatibility labels:
+#   - IEAST (+x) is North-facing in geographic terms
 #   - INORTH (+y) is East-facing in geographic terms
 IUP = 0      # +z, upward-facing
 IDOWN = 1    # -z, downward-facing
 INORTH = 2   # +y normal (East-facing in geographic terms)
 ISOUTH = 3   # -y normal (West-facing in geographic terms)
-IEAST = 4    # +x normal (South-facing in geographic terms)
-IWEST = 5    # -x normal (North-facing in geographic terms)
+IEAST = 4    # +x/+u normal (North-facing; legacy PALM label)
+IWEST = 5    # -x/-u normal (South-facing; legacy PALM label)
 
 
 @dataclass

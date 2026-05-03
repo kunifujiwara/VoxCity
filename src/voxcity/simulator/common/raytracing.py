@@ -197,7 +197,7 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
                         break
             if not found_observer:
                 vi_map[x, y] = np.nan
-    return np.flipud(vi_map)
+    return vi_map
 
 
 def _prepare_masks_for_vi(voxel_data: np.ndarray, hit_values, inclusion_mode: bool):
@@ -365,7 +365,7 @@ def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, 
                     if not hit:
                         visibility_sum += value
             vi_map[x, y] = visibility_sum / n_rays
-    return np.flipud(vi_map)
+    return vi_map
 
 
 @njit(cache=True, fastmath=True)

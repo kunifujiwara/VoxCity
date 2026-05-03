@@ -240,20 +240,15 @@ def get_volumetric_solar_irradiance_map(
                 continue
             volumetric_map[i, j] = swflux_3d[i, j, k_extract]
     
-    # Flip to match VoxCity coordinate system
-    volumetric_map = np.flipud(volumetric_map)
-    
     # Apply computation_mask if provided
     if computation_mask is not None:
         if computation_mask.shape == volumetric_map.shape:
-            flipped_mask = np.flipud(computation_mask)
-            volumetric_map = np.where(flipped_mask, volumetric_map, np.nan)
-        elif computation_mask.T.shape == volumetric_map.shape:
-            flipped_mask = np.flipud(computation_mask.T)
-            volumetric_map = np.where(flipped_mask, volumetric_map, np.nan)
+            volumetric_map = np.where(computation_mask, volumetric_map, np.nan)
         else:
-            if computation_mask.shape == volumetric_map.shape:
-                volumetric_map = np.where(computation_mask, volumetric_map, np.nan)
+            raise ValueError(
+                "computation_mask must match result shape in uv layout: "
+                f"expected {volumetric_map.shape}, got {computation_mask.shape}"
+            )
         
         if progress_report:
             n_masked = np.sum(np.isnan(volumetric_map))
@@ -634,20 +629,15 @@ def get_cumulative_volumetric_solar_irradiance(
     # Get final cumulative map from GPU with NaN masking
     cumulative_map = calculator.finalize_cumulative_map(apply_nan_mask=True)
     
-    # Flip to match VoxCity coordinate system
-    cumulative_map = np.flipud(cumulative_map)
-    
     # Apply computation_mask if provided
     if computation_mask is not None:
         if computation_mask.shape == cumulative_map.shape:
-            flipped_mask = np.flipud(computation_mask)
-            cumulative_map = np.where(flipped_mask, cumulative_map, np.nan)
-        elif computation_mask.T.shape == cumulative_map.shape:
-            flipped_mask = np.flipud(computation_mask.T)
-            cumulative_map = np.where(flipped_mask, cumulative_map, np.nan)
+            cumulative_map = np.where(computation_mask, cumulative_map, np.nan)
         else:
-            if computation_mask.shape == cumulative_map.shape:
-                cumulative_map = np.where(computation_mask, cumulative_map, np.nan)
+            raise ValueError(
+                "computation_mask must match result shape in uv layout: "
+                f"expected {cumulative_map.shape}, got {computation_mask.shape}"
+            )
         
         if progress_report:
             n_masked = np.sum(np.isnan(cumulative_map))

@@ -158,11 +158,6 @@ def _compute_ground_irradiance_with_reflections(
                             direct_map[ii, jj] = sw_in_direct[idx]
                             diffuse_map[ii, jj] = sw_in_diffuse[idx]
     
-    # Flip to match VoxCity coordinate system
-    direct_map = np.flipud(direct_map)
-    diffuse_map = np.flipud(diffuse_map)
-    reflected_map = np.flipud(reflected_map)
-    
     return direct_map, diffuse_map, reflected_map
 
 
@@ -238,13 +233,10 @@ def get_direct_solar_irradiance_map(
         if isinstance(extras, dict):
             rotation_angle = extras.get('rotation_angle', 0)
 
-        azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
-        azimuth_radians = np.deg2rad(azimuth_degrees)
+        dx_dir, dy_dir, dz_dir, _ = compute_sun_direction(
+            azimuth_degrees_ori, elevation_degrees, rotation_angle
+        )
         elevation_radians = np.deg2rad(elevation_degrees)
-        
-        dx_dir = np.cos(elevation_radians) * np.cos(azimuth_radians)
-        dy_dir = np.cos(elevation_radians) * np.sin(azimuth_radians)
-        dz_dir = np.sin(elevation_radians)
         
         # Compute transmittance map using ray tracing
         transmittance_map = compute_direct_transmittance_map_gpu(
@@ -260,8 +252,6 @@ def get_direct_solar_irradiance_map(
         sin_elev = np.sin(elevation_radians)
         direct_map = transmittance_map * direct_normal_irradiance * sin_elev
         
-        # Flip to match VoxCity coordinate system
-        direct_map = np.flipud(direct_map)
     
     if show_plot:
         try:
@@ -458,12 +448,12 @@ def get_global_solar_irradiance_map(
     # Apply computation mask if provided
     if computation_mask is not None:
         if computation_mask.shape == global_map.shape:
-            global_map = np.where(np.flipud(computation_mask), global_map, np.nan)
-        elif computation_mask.T.shape == global_map.shape:
-            global_map = np.where(np.flipud(computation_mask.T), global_map, np.nan)
+            global_map = np.where(computation_mask, global_map, np.nan)
         else:
-            if computation_mask.shape == global_map.shape:
-                global_map = np.where(computation_mask, global_map, np.nan)
+            raise ValueError(
+                "computation_mask must match result shape in uv layout: "
+                f"expected {global_map.shape}, got {computation_mask.shape}"
+            )
     
     return global_map
 
@@ -735,9 +725,12 @@ def get_cumulative_global_solar_irradiance(
     # Apply computation mask
     if computation_mask is not None:
         if computation_mask.shape == cumulative_map.shape:
-            cumulative_map = np.where(np.flipud(computation_mask), cumulative_map, np.nan)
-        elif computation_mask.T.shape == cumulative_map.shape:
-            cumulative_map = np.where(np.flipud(computation_mask.T), cumulative_map, np.nan)
+            cumulative_map = np.where(computation_mask, cumulative_map, np.nan)
+        else:
+            raise ValueError(
+                "computation_mask must match result shape in uv layout: "
+                f"expected {cumulative_map.shape}, got {computation_mask.shape}"
+            )
     
     if show_plot:
         vmax = kwargs.get('vmax', float(np.nanmax(cumulative_map)) if not np.all(np.isnan(cumulative_map)) else 1.0)
@@ -1026,9 +1019,12 @@ def get_sunlight_hours(
     # Apply computation mask
     if computation_mask is not None:
         if computation_mask.shape == sunlight_hours_map.shape:
-            sunlight_hours_map = np.where(np.flipud(computation_mask), sunlight_hours_map, np.nan)
-        elif computation_mask.T.shape == sunlight_hours_map.shape:
-            sunlight_hours_map = np.where(np.flipud(computation_mask.T), sunlight_hours_map, np.nan)
+            sunlight_hours_map = np.where(computation_mask, sunlight_hours_map, np.nan)
+        else:
+            raise ValueError(
+                "computation_mask must match result shape in uv layout: "
+                f"expected {sunlight_hours_map.shape}, got {computation_mask.shape}"
+            )
     
     if progress_report:
         print(f"Sunlight hours complete:")

@@ -12,24 +12,24 @@ GPU acceleration. It computes:
 Coordinate System
 -----------------
 VoxCity uses a grid-index coordinate system where:
-- x (index i): Row direction, increases from North to South
-- y (index j): Column direction, increases from West to East  
+- x (index i/u): Row direction, increases toward North
+- y (index j/v): Column direction, increases toward East
 - z (index k): Vertical direction, increases upward
 
 This differs from standard ENU (East-North-Up) coordinates:
 - ENU: x=East, y=North, z=Up
-- VoxCity grid: x=South, y=East, z=Up
+- VoxCity grid: x=North, y=East, z=Up
 
 The relationship is:
-    grid_x = -enu_north
+    grid_x = +enu_north
     grid_y = +enu_east
     grid_z = +enu_up
 
 Sun Direction Vector
 --------------------
 Sun direction vectors in this module are in VoxCity grid coordinates:
-- sun_x > 0: Sun is in the South (azimuth ~180°)
-- sun_x < 0: Sun is in the North (azimuth ~0°)
+- sun_x > 0: Sun is in the North (azimuth ~0°)
+- sun_x < 0: Sun is in the South (azimuth ~180°)
 - sun_y > 0: Sun is in the East (azimuth ~90°)
 - sun_y < 0: Sun is in the West (azimuth ~270°)
 - sun_z > 0: Sun is above horizon
@@ -41,11 +41,11 @@ Direction indices follow PALM naming but map to VoxCity grid:
 - IDOWN (1): -z, downward-facing surfaces
 - INORTH (2): +y normal = East-facing in geographic terms
 - ISOUTH (3): -y normal = West-facing in geographic terms
-- IEAST (4): +x normal = South-facing in geographic terms
-- IWEST (5): -x normal = North-facing in geographic terms
+- IEAST (4): +x normal = North-facing in geographic terms (legacy PALM label)
+- IWEST (5): -x normal = South-facing in geographic terms (legacy PALM label)
 
 The naming (INORTH, ISOUTH, etc.) is legacy from PALM. In VoxCity's grid:
-- "IEAST" surfaces receive sun when sun_x > 0 (sun in South)
+- "IEAST" surfaces receive sun when sun_x > 0 (sun in North)
 - "INORTH" surfaces receive sun when sun_y > 0 (sun in East)
 
 References:

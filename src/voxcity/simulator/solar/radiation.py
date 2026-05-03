@@ -40,8 +40,7 @@ def get_direct_solar_irradiance_map(
     if isinstance(extras, dict):
         rotation_angle = extras.get('rotation_angle', 0)
 
-    azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
-    azimuth_radians = np.deg2rad(azimuth_degrees)
+    azimuth_radians = np.deg2rad(azimuth_degrees_ori - rotation_angle)
     elevation_radians = np.deg2rad(elevation_degrees)
     dx = np.cos(elevation_radians) * np.cos(azimuth_radians)
     dy = np.cos(elevation_radians) * np.sin(azimuth_radians)
@@ -569,7 +568,7 @@ def get_building_solar_irradiance(
         rotation_angle = extras.get('rotation_angle', 0)
 
     # Sun vector
-    az_rad = np.deg2rad(180 - (azimuth_degrees - rotation_angle))
+    az_rad = np.deg2rad(azimuth_degrees - rotation_angle)
     el_rad = np.deg2rad(elevation_degrees)
     sun_dx = np.cos(el_rad) * np.cos(az_rad)
     sun_dy = np.cos(el_rad) * np.sin(az_rad)

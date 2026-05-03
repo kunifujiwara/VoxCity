@@ -47,8 +47,8 @@ class SolarPosition:
         zenith_angle: Solar zenith angle in degrees
         azimuth_angle: Solar azimuth angle in degrees (0 = North, 90 = East)
         elevation_angle: Solar elevation angle in degrees (0 = horizon, 90 = zenith)
-        direction: Unit vector pointing towards the sun in VoxCity grid coordinates
-                   (x = row/South direction, y = col/East direction, z = up)
+        direction: Unit vector pointing towards the sun in VoxCity uv coordinates
+               (x/u = North, y/v = East, z = up)
         sun_up: True if sun is above horizon
     """
     cos_zenith: float
@@ -134,12 +134,10 @@ def calc_zenith(
     if azimuth_angle < 0:
         azimuth_angle += 360.0
     
-    # Convert direction from ENU to VoxCity grid-index coordinates:
-    # VoxCity grid: i (row) increases North->South, j (col) increases West->East
-    # Grid-index: x = i direction = South = -North, y = j direction = East
-    # Conversion: grid_x = -enu_y (North to South), grid_y = enu_x (East)
-    sun_x_std = -sun_y_enu  # Grid x = -North = South direction
-    sun_y_std = sun_x_enu   # Grid y = East direction
+    # Convert direction from ENU to VoxCity uv grid-index coordinates:
+    # grid x/u = North, grid y/v = East.
+    sun_x_std = sun_y_enu
+    sun_y_std = sun_x_enu
 
     # Apply grid rotation correction: when the grid is rotated CW by theta,
     # the sun direction in grid coordinates is rotated CCW by theta.
@@ -251,9 +249,9 @@ def calc_zenith_ti(
         sun_y_enu = 0.0
         sun_z = 1.0
     
-    # Convert from ENU to VoxCity grid-index coordinates:
-    # Grid x = -North = South direction, Grid y = East direction
-    sun_x = -sun_y_enu
+    # Convert from ENU to VoxCity uv grid-index coordinates:
+    # Grid x/u = North, Grid y/v = East.
+    sun_x = sun_y_enu
     sun_y = sun_x_enu
     
     return ti.math.vec4(cos_zenith, sun_x, sun_y, sun_z)

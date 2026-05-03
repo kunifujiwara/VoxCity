@@ -28,7 +28,7 @@ def compute_direct_solar_irradiance_map_binary(
     sd = np.array(sun_direction, dtype=np.float64)
     sd_len = np.sqrt(sd[0] ** 2 + sd[1] ** 2 + sd[2] ** 2)
     if sd_len == 0.0:
-        return np.flipud(irradiance_map)
+        return irradiance_map
     sd /= sd_len
 
     for x in prange(nx):
@@ -57,6 +57,6 @@ def compute_direct_solar_irradiance_map_binary(
                         break
             if not found_observer:
                 irradiance_map[x, y] = np.nan
-    return np.flipud(irradiance_map)
+    return irradiance_map
 
 

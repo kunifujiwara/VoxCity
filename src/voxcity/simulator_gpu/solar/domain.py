@@ -9,19 +9,19 @@ Represents the 3D computational domain with:
 
 Coordinate System Notes:
     VoxCity uses a grid where:
-    - i (row index) increases from North to South
+    - i/u (row index) increases toward North
     - j (column index) increases from West to East
     - k (layer index) increases upward
     
     The Domain class maps grid indices to coordinates as:
-    - x = i * dx (grid row direction, increases toward South)
-    - y = j * dy (grid column direction, increases toward East)
+    - x = i * dx (grid row/u direction, increases toward North)
+    - y = j * dy (grid column/v direction, increases toward East)
     - z = k * dz (vertical, increases upward)
     
     Surface direction labels (INORTH, ISOUTH, etc.) follow PALM conventions
     but in VoxCity's grid:
-    - IEAST (direction 4): surface at i+ boundary (South-facing in geographic terms)
-    - IWEST (direction 5): surface at i- boundary (North-facing in geographic terms)
+    - IEAST (direction 4): compatibility label for the +i/+u boundary (North-facing)
+    - IWEST (direction 5): compatibility label for the -i/-u boundary (South-facing)
     - INORTH (direction 2): surface at j+ boundary (East-facing in geographic terms)
     - ISOUTH (direction 3): surface at j- boundary (West-facing in geographic terms)
 """
@@ -34,13 +34,13 @@ from ..init_taichi import ensure_initialized
 
 
 # Surface direction indices (matching PALM convention)
-# Note: In VoxCity's grid, +x = South, +y = East (not the PALM labels)
+# Note: In VoxCity's grid, +x/+i/+u = North, +y/+j/+v = East.
 IUP = 0      # Upward facing (horizontal roof/ground)
 IDOWN = 1    # Downward facing
 INORTH = 2   # +y normal (East-facing in VoxCity geographic terms)
 ISOUTH = 3   # -y normal (West-facing in VoxCity geographic terms)
-IEAST = 4    # +x normal (South-facing in VoxCity geographic terms)
-IWEST = 5    # -x normal (North-facing in VoxCity geographic terms)
+IEAST = 4    # +x/+u normal (North-facing; legacy PALM label)
+IWEST = 5    # -x/-u normal (South-facing; legacy PALM label)
 
 # Direction normal vectors (x, y, z) in grid-index coordinates
 DIR_NORMALS = {
@@ -48,8 +48,8 @@ DIR_NORMALS = {
     IDOWN: (0.0, 0.0, -1.0),
     INORTH: (0.0, 1.0, 0.0),   # +y = +j = East
     ISOUTH: (0.0, -1.0, 0.0),  # -y = -j = West
-    IEAST: (1.0, 0.0, 0.0),    # +x = +i = South
-    IWEST: (-1.0, 0.0, 0.0),   # -x = -i = North
+    IEAST: (1.0, 0.0, 0.0),    # +x = +i/+u = North
+    IWEST: (-1.0, 0.0, 0.0),   # -x = -i/-u = South
 }
 
 
@@ -59,8 +59,8 @@ class Domain:
     3D computational domain for solar radiation simulation.
     
     The domain uses a regular grid aligned with VoxCity indices:
-    - x (first index i): Row direction, increases North to South
-    - y (second index j): Column direction, increases West to East
+    - x (first index i/u): Row direction, increases toward North
+    - y (second index j/v): Column direction, increases toward East
     - z (third index k): Vertical, increases Ground to Sky
     
     Attributes:

@@ -118,9 +118,8 @@ class LandmarkVisibilityCalculator:
             is_tree, is_solid, is_walkable, tree_att, att_cutoff
         )
         
-        # Return flipped result
         result = visibility_map.to_numpy()
-        return np.flipud(result)
+        return result
     
     def _setup_masks_from_voxel(
         self,
@@ -335,7 +334,7 @@ def mark_building_by_id(
     
     Args:
         voxcity_grid_ori: 3D voxel class array
-        building_id_grid_ori: 2D array of building IDs (VoxCity format - needs flipud to match voxel_data)
+        building_id_grid_ori: 2D array of building IDs in uv layout
         ids: List of building IDs to mark
         mark: Marker value to use
     
@@ -344,9 +343,7 @@ def mark_building_by_id(
     """
     voxel_data = voxcity_grid_ori.copy()
     
-    # VoxCity building_id_grid is flipped relative to voxel_data coordinate system
-    # We need to flip it to align with voxel_data
-    building_id_grid_aligned = np.flipud(building_id_grid_ori)
+    building_id_grid_aligned = np.asarray(building_id_grid_ori)
     
     # Find positions where building IDs match
     positions = np.where(np.isin(building_id_grid_aligned, ids))
@@ -370,7 +367,7 @@ def compute_landmark_visibility(
 
     Notes:
         - Uses Taichi GPU ray tracing underneath.
-        - Returns a 2D map flipped with `np.flipud`, consistent with VoxCity.
+        - Returns a 2D map in uv layout, consistent with voxel_data.
     """
     from ..domain import Domain
 

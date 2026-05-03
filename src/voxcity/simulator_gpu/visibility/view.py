@@ -183,9 +183,7 @@ class ViewCalculator:
             inclusion_mode, tree_att
         )
         
-        # Flip Y-axis to match VoxCity coordinate system
-        result = np.flipud(vi_map.to_numpy())
-        return result
+        return vi_map.to_numpy()
     
     @ti.kernel
     def _init_target_masks_from_domain(

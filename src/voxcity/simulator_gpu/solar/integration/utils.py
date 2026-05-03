@@ -184,9 +184,7 @@ def compute_sun_direction(
     Returns:
         Tuple of (sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith)
     """
-    # Convert from VoxCity convention to model coordinates, accounting for grid rotation
-    azimuth_degrees = 180 - (azimuth_degrees_ori - rotation_angle)
-    azimuth_radians = np.deg2rad(azimuth_degrees)
+    azimuth_radians = np.deg2rad(azimuth_degrees_ori - rotation_angle)
     elevation_radians = np.deg2rad(elevation_degrees)
     
     cos_elev = np.cos(elevation_radians)
@@ -643,7 +641,7 @@ def apply_computation_mask_to_faces(
     Args:
         values: (N,) array of face values
         mesh_face_centers: (N, 3) array of face center coordinates
-        computation_mask: 2D boolean mask (ny, nx)
+        computation_mask: 2D boolean mask matching grid_shape
         meshsize: Grid cell size
         grid_shape: (ny_vc, nx_vc) grid dimensions
         
@@ -659,22 +657,16 @@ def apply_computation_mask_to_faces(
     grid_i = (face_y / meshsize).astype(int)
     grid_j = (face_x / meshsize).astype(int)
     
-    # Handle mask shape orientation
-    if computation_mask.shape == (ny_vc, nx_vc):
-        mask_shape = computation_mask.shape
-    elif computation_mask.T.shape == (ny_vc, nx_vc):
-        computation_mask = computation_mask.T
-        mask_shape = computation_mask.shape
-    else:
-        mask_shape = computation_mask.shape
+    if computation_mask.shape != (ny_vc, nx_vc):
+        raise ValueError(
+            "computation_mask must match grid_shape in uv layout: "
+            f"expected {(ny_vc, nx_vc)}, got {computation_mask.shape}"
+        )
     
     # Clamp indices to valid range
-    grid_i = np.clip(grid_i, 0, mask_shape[0] - 1)
-    grid_j = np.clip(grid_j, 0, mask_shape[1] - 1)
-    
-    # Flip mask to match coordinate system
-    flipped_mask = np.flipud(computation_mask)
-    outside_mask = ~flipped_mask[grid_i, grid_j]
+    grid_i = np.clip(grid_i, 0, ny_vc - 1)
+    grid_j = np.clip(grid_j, 0, nx_vc - 1)
+    outside_mask = ~computation_mask[grid_i, grid_j]
     
     # Set values outside mask to NaN
     result = values.copy()
