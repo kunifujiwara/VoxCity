@@ -190,6 +190,7 @@ def get_building_global_solar_irradiance_using_epw(*args, **kwargs):
             'value_name': 'svf',
             'target_values': (0,),
             'inclusion_mode': False,
+            'sky_diffuse': True,
             'building_id_grid': building_id_grid,
             'progress_report': progress_report,
             'fast_path': fast_path,

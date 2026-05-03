@@ -62,6 +62,7 @@ class TestBuildingEpwInstantaneous:
         )
         assert result is not None
         mock_svf.assert_called_once()
+        assert mock_svf.call_args.kwargs["sky_diffuse"] is True
         mock_bld_irr.assert_called_once()
 
     @patch("voxcity.simulator.solar.integration.read_epw_for_solar_simulation")

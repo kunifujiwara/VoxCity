@@ -96,3 +96,35 @@ def test_plotly_default_camera_views_from_southwest_above():
     assert eye.x == pytest.approx(-1.6)
     assert eye.y == pytest.approx(-1.6)
     assert eye.z == pytest.approx(1.0)
+
+
+def test_plotly_building_overlay_preserves_scene_mesh_coordinates():
+    trimesh = pytest.importorskip("trimesh")
+
+    voxels = np.zeros((1, 1, 1), dtype=np.int16)
+    vertices = np.array(
+        [
+            [2.0, 4.0, 1.0],
+            [3.0, 4.0, 1.0],
+            [3.0, 5.0, 1.0],
+            [2.0, 5.0, 1.0],
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=int)
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    mesh.metadata["global"] = np.array([10.0, 20.0])
+
+    fig = visualize_voxcity_plotly(
+        voxels,
+        1.0,
+        building_sim_mesh=mesh,
+        building_value_name="global",
+        show=False,
+        return_fig=True,
+    )
+
+    overlay = next(trace for trace in fig.data if getattr(trace, "name", None) == "global")
+    x_bounds, y_bounds = _finite_bounds(overlay)
+    assert x_bounds == pytest.approx((2.0, 3.0))
+    assert y_bounds == pytest.approx((4.0, 5.0))

@@ -13,6 +13,9 @@ drop-in replacement with GPU acceleration.
 
 import numpy as np
 from typing import Optional, Tuple, Dict
+from scipy.spatial import cKDTree
+
+from voxcity.simulator.common.coordinates import uv_domain_points_to_scene
 
 from .utils import (
     VOXCITY_BUILDING_CODE,
@@ -33,6 +36,45 @@ from .caching import (
     get_or_create_building_radiation_model,
     CachedBuildingRadiationModel,
 )
+
+
+def _scene_grid_bounds(shape, meshsize):
+    ny_vc, nx_vc, nz = shape
+    return np.array([
+        [0.0, 0.0, 0.0],
+        [nx_vc * meshsize, ny_vc * meshsize, nz * meshsize],
+    ], dtype=np.float64)
+
+
+def _mesh_geometry_signature(mesh):
+    vertices = np.asarray(mesh.vertices)
+    if vertices.size == 0:
+        bounds = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    else:
+        bounds_arr = np.round(np.asarray(mesh.bounds, dtype=np.float64), 9)
+        bounds = (tuple(bounds_arr[0]), tuple(bounds_arr[1]))
+    return (id(mesh), len(mesh.faces), bounds)
+
+
+def _map_mesh_faces_to_surfaces(mesh_face_centers, mesh_face_normals, surface_centers_scene, surface_normals_scene, bldg_indices):
+    mesh_normals_key = np.rint(mesh_face_normals).astype(np.int8)
+    surface_normals_key = np.rint(surface_normals_scene).astype(np.int8)
+    result = np.empty(len(mesh_face_centers), dtype=np.int64)
+
+    for normal_key in np.unique(mesh_normals_key, axis=0):
+        face_mask = np.all(mesh_normals_key == normal_key, axis=1)
+        surface_mask = np.all(surface_normals_key[bldg_indices] == normal_key, axis=1)
+        candidate_indices = bldg_indices[surface_mask]
+
+        if candidate_indices.size == 0:
+            result[face_mask] = -1
+            continue
+
+        tree = cKDTree(surface_centers_scene[candidate_indices])
+        _, nearest_idx = tree.query(mesh_face_centers[face_mask], k=1)
+        result[face_mask] = candidate_indices[nearest_idx]
+
+    return result
 
 
 # =============================================================================
@@ -168,20 +210,25 @@ def get_building_solar_irradiance(
         face_svf = None
     
     n_mesh_faces = len(building_mesh.faces)
+    mesh_signature = _mesh_geometry_signature(building_mesh)
+    cache_matches_mesh = (
+        cache is not None and
+        cache.mesh_geometry_signature == mesh_signature
+    )
     
     # Map palm_solar values to mesh faces
     if len(bldg_indices) > 0:
         if (cache is not None and 
             cache.mesh_to_surface_idx is not None and 
-            len(cache.mesh_to_surface_idx) == n_mesh_faces):
+            len(cache.mesh_to_surface_idx) == n_mesh_faces and
+            cache_matches_mesh):
             mesh_to_surface_idx = cache.mesh_to_surface_idx
         else:
-            from scipy.spatial import cKDTree
-            
             surf_centers_all = model.surfaces.center.to_numpy()[:n_surfaces]
-            bldg_centers = surf_centers_all[bldg_indices]
+            surf_centers_scene = uv_domain_points_to_scene(surf_centers_all)
+            surf_normals_scene = uv_domain_points_to_scene(model.surfaces.normal.to_numpy()[:n_surfaces])
             
-            if cache is not None and cache.mesh_face_centers is not None:
+            if cache_matches_mesh and cache.mesh_face_centers is not None:
                 mesh_face_centers = cache.mesh_face_centers
             else:
                 mesh_face_centers = building_mesh.triangles_center
@@ -189,18 +236,27 @@ def get_building_solar_irradiance(
                     cache.mesh_face_centers = mesh_face_centers.copy()
                     cache.mesh_face_normals = building_mesh.face_normals.copy()
             
-            tree = cKDTree(bldg_centers)
-            distances, nearest_idx = tree.query(mesh_face_centers, k=1)
-            
-            mesh_to_surface_idx = bldg_indices[nearest_idx]
+            mesh_to_surface_idx = _map_mesh_faces_to_surfaces(
+                mesh_face_centers,
+                building_mesh.face_normals,
+                surf_centers_scene,
+                surf_normals_scene,
+                bldg_indices,
+            )
             
             if cache is not None:
                 cache.mesh_to_surface_idx = mesh_to_surface_idx
+                cache.mesh_geometry_signature = mesh_signature
         
-        sw_in_direct = sw_in_direct_all[mesh_to_surface_idx]
-        sw_in_diffuse = sw_in_diffuse_all[mesh_to_surface_idx]
-        sw_in_reflected = sw_in_reflected_all[mesh_to_surface_idx]
-        total_sw = total_sw_all[mesh_to_surface_idx]
+        valid_surface_mask = mesh_to_surface_idx >= 0
+        sw_in_direct = np.full(n_mesh_faces, np.nan, dtype=np.float64)
+        sw_in_diffuse = np.full(n_mesh_faces, np.nan, dtype=np.float64)
+        sw_in_reflected = np.full(n_mesh_faces, np.nan, dtype=np.float64)
+        total_sw = np.full(n_mesh_faces, np.nan, dtype=np.float64)
+        sw_in_direct[valid_surface_mask] = sw_in_direct_all[mesh_to_surface_idx[valid_surface_mask]]
+        sw_in_diffuse[valid_surface_mask] = sw_in_diffuse_all[mesh_to_surface_idx[valid_surface_mask]]
+        sw_in_reflected[valid_surface_mask] = sw_in_reflected_all[mesh_to_surface_idx[valid_surface_mask]]
+        total_sw[valid_surface_mask] = total_sw_all[mesh_to_surface_idx[valid_surface_mask]]
     else:
         sw_in_direct = np.zeros(n_mesh_faces, dtype=np.float32)
         sw_in_diffuse = np.zeros(n_mesh_faces, dtype=np.float32)
@@ -208,16 +264,14 @@ def get_building_solar_irradiance(
         total_sw = np.zeros(n_mesh_faces, dtype=np.float32)
     
     # Handle boundary faces
-    if cache is not None and cache.boundary_mask is not None and len(cache.boundary_mask) == n_mesh_faces:
+    if (cache is not None and cache.boundary_mask is not None and
+            len(cache.boundary_mask) == n_mesh_faces and cache_matches_mesh):
         is_boundary_vertical = cache.boundary_mask
     else:
-        grid_bounds_real = np.array([
-            [0.0, 0.0, 0.0],
-            [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
-        ], dtype=np.float64)
+        grid_bounds_real = _scene_grid_bounds(voxel_data.shape, meshsize)
         boundary_epsilon = meshsize * 0.05
         
-        if cache is not None and cache.mesh_face_centers is not None:
+        if cache_matches_mesh and cache.mesh_face_centers is not None:
             mesh_face_centers = cache.mesh_face_centers
             mesh_face_normals = cache.mesh_face_normals
         else:
@@ -230,6 +284,7 @@ def get_building_solar_irradiance(
         
         if cache is not None:
             cache.boundary_mask = is_boundary_vertical
+            cache.mesh_geometry_signature = mesh_signature
     
     sw_in_direct = np.where(is_boundary_vertical, np.nan, sw_in_direct)
     sw_in_diffuse = np.where(is_boundary_vertical, np.nan, sw_in_diffuse)
@@ -238,7 +293,7 @@ def get_building_solar_irradiance(
     
     # Apply computation mask
     if computation_mask is not None:
-        if cache is not None and cache.mesh_face_centers is not None:
+        if cache_matches_mesh and cache.mesh_face_centers is not None:
             mesh_face_centers = cache.mesh_face_centers
         else:
             mesh_face_centers = building_mesh.triangles_center
@@ -470,10 +525,7 @@ def get_cumulative_building_solar_irradiance(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ny_vc, nx_vc, nz = voxel_data.shape
-    grid_bounds_real = np.array([
-        [0.0, 0.0, 0.0],
-        [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
-    ], dtype=np.float64)
+    grid_bounds_real = _scene_grid_bounds(voxel_data.shape, meshsize)
     boundary_epsilon = meshsize * 0.05
     
     mesh_face_centers = result_mesh.triangles_center
@@ -753,10 +805,7 @@ def get_building_sunlight_hours(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ny_vc, nx_vc, nz = voxel_data.shape
-    grid_bounds_real = np.array([
-        [0.0, 0.0, 0.0],
-        [ny_vc * meshsize, nx_vc * meshsize, nz * meshsize]
-    ], dtype=np.float64)
+    grid_bounds_real = _scene_grid_bounds(voxel_data.shape, meshsize)
     
     mesh_face_centers = result_mesh.triangles_center
     mesh_face_normals = result_mesh.face_normals

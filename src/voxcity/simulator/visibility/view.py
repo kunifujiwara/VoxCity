@@ -13,6 +13,8 @@ from ..common.raytracing import (
 from ...exporter.obj import grid_to_obj
 import matplotlib.pyplot as plt
 
+from ..common.coordinates import scene_points_to_uv_domain, scene_vectors_to_uv_domain
+
 
 def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fast_path=True, **kwargs):
     voxel_data = voxcity.voxels.classes
@@ -300,6 +302,77 @@ def _compute_view_factor_faces_progress(face_centers, face_normals, hemisphere_d
     return results
 
 
+@njit(parallel=True, cache=True, fastmath=True, nogil=True)
+def _compute_sky_diffuse_factor_faces(face_centers, face_normals, sky_dirs, sky_weights, vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque, meshsize, att, att_cutoff, grid_bounds_real, boundary_epsilon):
+    n_faces = face_centers.shape[0]
+    out = np.empty(n_faces, dtype=np.float64)
+    for f in prange(n_faces):
+        center = face_centers[f]
+        normal = face_normals[f]
+        is_vertical = (abs(normal[2]) < 0.01)
+        on_x_min = (abs(center[0] - grid_bounds_real[0, 0]) < boundary_epsilon)
+        on_y_min = (abs(center[1] - grid_bounds_real[0, 1]) < boundary_epsilon)
+        on_x_max = (abs(center[0] - grid_bounds_real[1, 0]) < boundary_epsilon)
+        on_y_max = (abs(center[1] - grid_bounds_real[1, 1]) < boundary_epsilon)
+        if is_vertical and (on_x_min or on_y_min or on_x_max or on_y_max):
+            out[f] = np.nan
+            continue
+
+        nrm = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]) ** 0.5
+        if nrm < 1e-12:
+            out[f] = 0.0
+            continue
+        invn = 1.0 / nrm
+        nx = normal[0] * invn
+        ny = normal[1] * invn
+        nz = normal[2] * invn
+
+        ox = center[0] / meshsize + nx * 0.51
+        oy = center[1] / meshsize + ny * 0.51
+        oz = center[2] / meshsize + nz * 0.51
+        origin = np.array((ox, oy, oz), dtype=np.float64)
+
+        numerator = 0.0
+        denominator = 0.0
+        for i in range(sky_dirs.shape[0]):
+            dx = sky_dirs[i, 0]
+            dy = sky_dirs[i, 1]
+            dz = sky_dirs[i, 2]
+            if dz <= 0.0:
+                continue
+            weight = sky_weights[i]
+            horizontal_cos = dz
+            denominator += horizontal_cos * weight
+
+            surface_cos = nx * dx + ny * dy + nz * dz
+            if surface_cos <= 0.0:
+                continue
+
+            visible = _ray_visibility_contrib(
+                origin,
+                np.array((dx, dy, dz), dtype=np.float64),
+                vox_is_tree,
+                vox_is_target,
+                vox_is_allowed,
+                vox_is_opaque,
+                att,
+                att_cutoff,
+                False,
+                False,
+            )
+            numerator += visible * surface_cos * weight
+
+        out[f] = 0.0 if denominator <= 1e-12 else numerator / denominator
+    return out
+
+
+def _sky_diffuse_weights(ray_directions, ray_sampling):
+    if str(ray_sampling).lower() == "fibonacci":
+        return np.ones(len(ray_directions), dtype=np.float64)
+    weights = np.sqrt(np.clip(1.0 - ray_directions[:, 2] * ray_directions[:, 2], 0.0, 1.0))
+    return weights.astype(np.float64)
+
+
 def compute_view_factor_for_all_faces(face_centers, face_normals, hemisphere_dirs, voxel_data, meshsize, tree_k, tree_lad, target_values, inclusion_mode, grid_bounds_real, boundary_epsilon, offset_vox=0.51):
     n_faces = face_centers.shape[0]
     face_vf_values = np.zeros(n_faces, dtype=np.float64)
@@ -403,6 +476,7 @@ def get_surface_view_factor(voxcity, **kwargs):
     tree_lad = kwargs.get("tree_lad", 1.0)
     target_values = kwargs.get("target_values", (0,))
     inclusion_mode = kwargs.get("inclusion_mode", False)
+    sky_diffuse = bool(kwargs.get("sky_diffuse", False))
     building_class_id = kwargs.get("building_class_id", -3)
     try:
         building_mesh = create_voxel_mesh(
@@ -420,8 +494,8 @@ def get_surface_view_factor(voxcity, **kwargs):
         return None
     if progress_report:
         print(f"Processing view factor for {len(building_mesh.faces)} faces...")
-    face_centers = building_mesh.triangles_center
-    face_normals = building_mesh.face_normals
+    face_centers = scene_points_to_uv_domain(building_mesh.triangles_center)
+    face_normals = scene_vectors_to_uv_domain(building_mesh.face_normals)
     if str(ray_sampling).lower() == "fibonacci":
         hemisphere_dirs = _generate_ray_directions_fibonacci(int(N_rays), 0.0, 90.0)
     else:
@@ -432,7 +506,23 @@ def get_surface_view_factor(voxcity, **kwargs):
     boundary_epsilon = meshsize * 0.05
     fast_path = kwargs.get("fast_path", True)
     face_vf_values = None
-    if fast_path:
+    if sky_diffuse:
+        vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque = _prepare_masks_for_view(
+            voxel_data, (0,), False
+        )
+        att = float(np.exp(-tree_k * tree_lad * meshsize))
+        att_cutoff = 0.01
+        sky_weights = _sky_diffuse_weights(hemisphere_dirs, ray_sampling)
+        face_vf_values = _compute_sky_diffuse_factor_faces(
+            face_centers.astype(np.float64),
+            face_normals.astype(np.float64),
+            hemisphere_dirs.astype(np.float64),
+            sky_weights.astype(np.float64),
+            vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque,
+            float(meshsize), float(att), float(att_cutoff),
+            grid_bounds_real.astype(np.float64), float(boundary_epsilon),
+        )
+    elif fast_path:
         try:
             vox_is_tree, vox_is_target, vox_is_allowed, vox_is_opaque = _prepare_masks_for_view(voxel_data, target_values, inclusion_mode)
             att = float(np.exp(-tree_k * tree_lad * meshsize))
@@ -469,6 +559,8 @@ def get_surface_view_factor(voxcity, **kwargs):
     if not hasattr(building_mesh, 'metadata'):
         building_mesh.metadata = {}
     building_mesh.metadata[value_name] = face_vf_values
+    if sky_diffuse:
+        building_mesh.metadata['svf_kind'] = 'sky_diffuse_factor'
     obj_export = kwargs.get("obj_export", False)
     if obj_export:
         output_dir = kwargs.get("output_directory", "output")

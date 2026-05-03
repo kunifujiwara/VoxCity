@@ -186,6 +186,13 @@ class SVFCalculator:
             elif direction == 5:  # IWEST: -x normal (North-facing in geographic terms)
                 normal = Vector3(-1.0, 0.0, 0.0)
                 normal_azim = 3.0 * PI / 2.0  # -x is azimuth 3π/2
+
+            eps = ti.min(self.dx, ti.min(self.dy, self.dz)) * 1e-4
+            ray_origin = Vector3(
+                pos[0] + normal[0] * eps,
+                pos[1] + normal[1] * eps,
+                pos[2] + normal[2] * eps,
+            )
             
             visible_vf = 0.0
             total_vf = 0.0
@@ -215,10 +222,9 @@ class SVFCalculator:
                         azim_low = ti.cast(i_azim, ti.f32) * d_azim
                         azim_high = ti.cast(i_azim + 1, ti.f32) * d_azim
                         
-                        # Relative azimuth (measured from surface normal)
-                        # PALM shifts by -π/2 so that az=0 is at surface normal
-                        az1_rel = azim_low - normal_azim - PI / 2.0
-                        az2_rel = azim_high - normal_azim - PI / 2.0
+                        # Relative azimuth measured from the surface normal.
+                        az1_rel = azim_low - normal_azim
+                        az2_rel = azim_high - normal_azim
                         
                         # Elevation terms for vertical surface
                         # elev_terms = elev_high - elev_low + sin(elev_low)*cos(elev_low) - sin(elev_high)*cos(elev_high)
@@ -237,7 +243,7 @@ class SVFCalculator:
                     
                     # Trace ray
                     hit, _, _, _, _ = ray_voxel_first_hit(
-                        pos, ray_dir,
+                        ray_origin, ray_dir,
                         is_solid,
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,
@@ -320,6 +326,13 @@ class SVFCalculator:
             elif direction == 5:  # West
                 normal = Vector3(-1.0, 0.0, 0.0)
                 normal_azim = 3.0 * PI / 2.0
+
+            eps = ti.min(self.dx, ti.min(self.dy, self.dz)) * 1e-4
+            ray_origin = Vector3(
+                pos[0] + normal[0] * eps,
+                pos[1] + normal[1] * eps,
+                pos[2] + normal[2] * eps,
+            )
             
             visible_omega = 0.0
             visible_omega_urban = 0.0
@@ -344,9 +357,9 @@ class SVFCalculator:
                         azim_low = ti.cast(i_azim, ti.f32) * d_azim
                         azim_high = ti.cast(i_azim + 1, ti.f32) * d_azim
                         
-                        # Relative azimuth (measured from surface normal)
-                        az1_rel = azim_low - normal_azim - PI / 2.0
-                        az2_rel = azim_high - normal_azim - PI / 2.0
+                        # Relative azimuth measured from the surface normal.
+                        az1_rel = azim_low - normal_azim
+                        az2_rel = azim_high - normal_azim
                         
                         # Elevation terms
                         elev_terms = (elev_high - elev_low 
@@ -363,7 +376,7 @@ class SVFCalculator:
                     
                     # Trace with canopy absorption
                     trans, _ = ray_canopy_absorption(
-                        pos, ray_dir,
+                        ray_origin, ray_dir,
                         lad, is_solid,
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,
@@ -376,7 +389,7 @@ class SVFCalculator:
                     
                     # SVF urban (only solid obstacles, PALM's skyvf)
                     hit, _, _, _, _ = ray_voxel_first_hit(
-                        pos, ray_dir,
+                        ray_origin, ray_dir,
                         is_solid,
                         self.nx, self.ny, self.nz,
                         self.dx, self.dy, self.dz,

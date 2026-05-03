@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 
 def _fake_voxcity(voxel_data, meshsize=1.0):
@@ -12,6 +13,12 @@ def _fake_voxcity(voxel_data, meshsize=1.0):
         extras={"rotation_angle": 0},
         dem=None,
     )
+
+
+def _fake_voxcity_with_buildings(voxel_data, building_ids, meshsize=1.0):
+    voxcity = _fake_voxcity(voxel_data, meshsize=meshsize)
+    voxcity.buildings = SimpleNamespace(ids=building_ids)
+    return voxcity
 
 
 def _ground_grid(shape=(4, 1, 4)):
@@ -91,3 +98,72 @@ def test_cpu_visibility_maps_preserve_uv_layout():
         assert np.isnan(result[3, 0])
         assert result[2, 0] == 1.0
         assert result[0, 0] == 1.0
+
+
+def test_cpu_building_solar_interprets_scene_mesh_as_uv_layout():
+    from voxcity.geoprocessor.mesh import create_voxel_mesh
+    from voxcity.simulator.solar.radiation import get_building_solar_irradiance
+
+    voxel_data = np.zeros((5, 4, 4), dtype=np.int32)
+    voxel_data[2, 2, 1:3] = -3
+    building_ids = np.zeros((5, 4), dtype=np.int32)
+    building_ids[2, 2] = 1
+    voxcity = _fake_voxcity(voxel_data)
+    mesh = create_voxel_mesh(
+        voxel_data,
+        -3,
+        1.0,
+        building_id_grid=building_ids,
+        mesh_type="open_air",
+    )
+    mesh.metadata["svf"] = np.ones(len(mesh.faces), dtype=np.float64)
+
+    north = get_building_solar_irradiance(voxcity, mesh, 0, 45, 1000, 0)
+    east = get_building_solar_irradiance(voxcity, mesh, 90, 45, 1000, 0)
+
+    normals = mesh.face_normals
+    north_faces = normals[:, 1] > 0.9
+    east_faces = normals[:, 0] > 0.9
+    finite_north = north_faces & np.isfinite(north.metadata["direct"])
+    finite_east = east_faces & np.isfinite(east.metadata["direct"])
+
+    assert np.nanmax(north.metadata["direct"][finite_north]) > 0
+    assert np.nanmax(north.metadata["direct"][finite_east]) == 0
+    assert np.nanmax(east.metadata["direct"][finite_east]) > 0
+
+
+def test_cpu_building_solar_diffuse_uses_sky_hemisphere_factor():
+    from voxcity.simulator.solar.radiation import get_building_solar_irradiance
+    from voxcity.simulator.visibility import get_surface_view_factor
+
+    voxel_data = np.zeros((6, 6, 4), dtype=np.int32)
+    voxel_data[3, 3, 1:3] = -3
+    building_ids = np.zeros((6, 6), dtype=np.int32)
+    building_ids[3, 3] = 1
+    voxcity = _fake_voxcity_with_buildings(voxel_data, building_ids)
+
+    svf_mesh = get_surface_view_factor(
+        voxcity,
+        value_name="svf",
+        sky_diffuse=True,
+        N_azimuth=72,
+        N_elevation=18,
+        fast_path=True,
+    )
+    result = get_building_solar_irradiance(
+        voxcity,
+        svf_mesh,
+        azimuth_degrees=0,
+        elevation_degrees=5,
+        direct_normal_irradiance=0,
+        diffuse_irradiance=100,
+    )
+
+    normals = svf_mesh.face_normals
+    roof_faces = normals[:, 2] > 0.9
+    vertical_faces = np.abs(normals[:, 2]) < 0.1
+    bottom_faces = normals[:, 2] < -0.9
+
+    assert np.nanmax(result.metadata["diffuse"][roof_faces]) == pytest.approx(100.0, abs=10.0)
+    assert np.nanmax(result.metadata["diffuse"][vertical_faces]) == pytest.approx(50.0, abs=15.0)
+    assert np.nanmax(np.nan_to_num(result.metadata["diffuse"][bottom_faces], nan=0.0)) == pytest.approx(0.0)

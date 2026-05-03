@@ -1,4 +1,6 @@
 """Tests for temporal.py: sky-patch optimization path, fast-path batching, and remaining branches."""
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -36,6 +38,22 @@ def _make_building_mesh():
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
     mesh.metadata['svf'] = np.array([0.8, 0.6], dtype=np.float64)
     return mesh
+
+
+def _make_isolated_building_voxcity():
+    voxel_data = np.zeros((6, 6, 4), dtype=np.int32)
+    voxel_data[3, 3, 1:3] = -3
+    building_ids = np.zeros((6, 6), dtype=np.int32)
+    building_ids[3, 3] = 1
+    return SimpleNamespace(
+        voxels=SimpleNamespace(
+            classes=voxel_data,
+            meta=SimpleNamespace(meshsize=1.0),
+        ),
+        buildings=SimpleNamespace(ids=building_ids),
+        extras={"rotation_angle": 0},
+        dem=None,
+    )
 
 
 class TestCumulativeBuildingFastPathBatching:
@@ -103,6 +121,51 @@ class TestCumulativeBuildingFastPathBatching:
 
 class TestCumulativeBuildingWithSkyPatches:
     """Test the sky-patch optimization path for building irradiance."""
+
+    def test_diffuse_only_uses_sky_hemisphere_factor(self):
+        from voxcity.simulator.solar.temporal import get_cumulative_building_solar_irradiance
+        from voxcity.simulator.visibility import get_surface_view_factor
+
+        voxcity = _make_isolated_building_voxcity()
+        svf_mesh = get_surface_view_factor(
+            voxcity,
+            value_name="svf",
+            sky_diffuse=True,
+            N_azimuth=72,
+            N_elevation=18,
+            fast_path=True,
+        )
+        weather = pd.DataFrame(
+            {"DNI": [0.0, 0.0, 0.0], "DHI": [0.0, 50.0, 100.0]},
+            index=pd.date_range("2024-01-01 00:00:00", periods=3, freq="h"),
+        )
+        solar_positions = pd.DataFrame(
+            {"azimuth": [0.0, 0.0, 0.0], "elevation": [-10.0, -10.0, -10.0]},
+            index=weather.index,
+        )
+
+        result = get_cumulative_building_solar_irradiance(
+            voxcity,
+            svf_mesh,
+            weather,
+            lon=0.0,
+            lat=0.0,
+            tz=0.0,
+            period_start="01-01 00:00:00",
+            period_end="01-01 02:00:00",
+            time_step_hours=1.0,
+            use_sky_patches=True,
+            precomputed_solar_positions=solar_positions,
+        )
+
+        normals = svf_mesh.face_normals
+        roof_faces = normals[:, 2] > 0.9
+        vertical_faces = np.abs(normals[:, 2]) < 0.1
+        bottom_faces = normals[:, 2] < -0.9
+
+        assert np.nanmax(result.metadata["diffuse"][roof_faces]) == pytest.approx(150.0, abs=15.0)
+        assert np.nanmax(result.metadata["diffuse"][vertical_faces]) == pytest.approx(75.0, abs=20.0)
+        assert np.nanmax(np.nan_to_num(result.metadata["diffuse"][bottom_faces], nan=0.0)) == pytest.approx(0.0)
 
     @patch("voxcity.simulator.solar.temporal.get_solar_positions_astral")
     @patch("voxcity.simulator.solar.temporal.get_diffuse_solar_irradiance_map")

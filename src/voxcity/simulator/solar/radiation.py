@@ -9,6 +9,7 @@ from numba import njit, prange
 from ...models import VoxCity
 from ...exporter.obj import grid_to_obj
 from ..visibility import get_sky_view_factor_map
+from ..common.coordinates import scene_points_to_uv_domain, scene_vectors_to_uv_domain
 from ..common.raytracing import trace_ray_generic
 from .kernels import compute_direct_solar_irradiance_map_binary
 
@@ -593,6 +594,9 @@ def get_building_solar_irradiance(
         face_normals = building_svf_mesh.face_normals
         grid_bounds_real = None
         boundary_epsilon = None
+
+    face_centers = scene_points_to_uv_domain(face_centers)
+    face_normals = scene_vectors_to_uv_domain(face_normals)
 
     if grid_bounds_real is None or boundary_epsilon is None:
         grid_shape = voxel_data.shape

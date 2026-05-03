@@ -15,6 +15,12 @@ def _fake_voxcity(voxel_data, meshsize=1.0):
     )
 
 
+def _fake_voxcity_with_buildings(voxel_data, building_ids, meshsize=1.0):
+    voxcity = _fake_voxcity(voxel_data, meshsize=meshsize)
+    voxcity.buildings = SimpleNamespace(ids=building_ids)
+    return voxcity
+
+
 def _ground_grid(shape=(4, 1, 4)):
     voxel_data = np.zeros(shape, dtype=np.int32)
     voxel_data[:, :, 0] = 1
@@ -155,3 +161,49 @@ def test_gpu_global_solar_rejects_transposed_computation_mask(monkeypatch):
             diffuse_irradiance=100,
             computation_mask=np.ones((1, 4), dtype=bool),
         )
+
+
+def test_gpu_building_solar_maps_solver_surfaces_to_scene_mesh_coordinates():
+    from voxcity.simulator_gpu.solar.integration.building import get_building_solar_irradiance
+    from voxcity.simulator_gpu.solar.integration.caching import (
+        clear_all_caches,
+        get_building_radiation_model_cache,
+    )
+
+    voxel_data = np.zeros((4, 2, 4), dtype=np.int32)
+    voxel_data[3, 1, 1:3] = -3
+    building_ids = np.zeros((4, 2), dtype=np.int32)
+    building_ids[3, 1] = 99
+    voxcity = _fake_voxcity_with_buildings(voxel_data, building_ids)
+
+    clear_all_caches()
+    mesh = get_building_solar_irradiance(
+        voxcity,
+        azimuth_degrees_ori=0,
+        elevation_degrees=45,
+        direct_normal_irradiance=0,
+        diffuse_irradiance=100,
+        with_reflections=False,
+    )
+
+    cache = get_building_radiation_model_cache()
+    assert cache is not None
+    assert cache.mesh_to_surface_idx is not None
+
+    n_surfaces = cache.model.surfaces.count
+    solver_centers = cache.model.surfaces.center.to_numpy()[:n_surfaces]
+    solver_normals = cache.model.surfaces.normal.to_numpy()[:n_surfaces]
+
+    valid_mapping = cache.mesh_to_surface_idx >= 0
+    mapped_centers = solver_centers[cache.mesh_to_surface_idx[valid_mapping]].copy()
+    mapped_centers[:, [0, 1]] = mapped_centers[:, [1, 0]]
+    mapped_normals = solver_normals[cache.mesh_to_surface_idx[valid_mapping]].copy()
+    mapped_normals[:, [0, 1]] = mapped_normals[:, [1, 0]]
+
+    distances = np.linalg.norm(mapped_centers - mesh.triangles_center[valid_mapping], axis=1)
+    normal_dots = np.einsum("ij,ij->i", mapped_normals, mesh.face_normals[valid_mapping])
+
+    assert distances.max() < 0.75
+    assert np.nanmin(normal_dots) > 0.99
+    assert np.all(mesh.face_normals[~valid_mapping, 2] < -0.9)
+    assert np.all(np.isnan(mesh.metadata["global"][~valid_mapping]))

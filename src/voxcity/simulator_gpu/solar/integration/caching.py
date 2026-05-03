@@ -105,12 +105,15 @@ class CachedBuildingRadiationModel:
     voxcity_shape: Tuple[int, int, int]
     meshsize: float
     n_reflection_steps: int
+    n_azimuth: int
+    n_elevation: int
     is_building_surf: np.ndarray
     building_svf_mesh: object
     bldg_indices: Optional[np.ndarray] = None
     mesh_to_surface_idx: Optional[np.ndarray] = None
     mesh_face_centers: Optional[np.ndarray] = None
     mesh_face_normals: Optional[np.ndarray] = None
+    mesh_geometry_signature: Optional[object] = None
     boundary_mask: Optional[np.ndarray] = None
     cached_building_mesh: object = None
 
@@ -446,13 +449,17 @@ def get_or_create_building_radiation_model(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ny_vc, nx_vc, nz = voxel_data.shape
+    requested_n_azimuth = int(kwargs.get('n_azimuth', 40))
+    requested_n_elevation = int(kwargs.get('n_elevation', 10))
     
     # Check if cache is valid
     cache_valid = False
     if _building_radiation_model_cache is not None:
         cache = _building_radiation_model_cache
         if (cache.voxcity_shape == voxel_data.shape and
-            cache.meshsize == meshsize):
+            cache.meshsize == meshsize and
+            cache.n_azimuth == requested_n_azimuth and
+            cache.n_elevation == requested_n_elevation):
             if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
                 cache_valid = True
                 if progress_report:
@@ -499,8 +506,8 @@ def get_or_create_building_radiation_model(
     
     config = RadiationConfig(
         n_reflection_steps=n_reflection_steps,
-        n_azimuth=40,
-        n_elevation=10,
+        n_azimuth=requested_n_azimuth,
+        n_elevation=requested_n_elevation,
         surface_reflections=surface_reflections,
         cache_svf_matrix=surface_reflections,
     )
@@ -533,6 +540,8 @@ def get_or_create_building_radiation_model(
         voxcity_shape=voxel_data.shape,
         meshsize=meshsize,
         n_reflection_steps=n_reflection_steps,
+        n_azimuth=config.n_azimuth,
+        n_elevation=config.n_elevation,
         is_building_surf=is_building_surf,
         building_svf_mesh=None,
         bldg_indices=bldg_indices,

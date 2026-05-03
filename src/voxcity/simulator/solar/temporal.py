@@ -501,6 +501,7 @@ def get_cumulative_building_solar_irradiance(
         Mesh with cumulative irradiance in metadata (direct, diffuse, global in Wh/m²).
     """
     import numpy as _np
+    from ..common.coordinates import scene_points_to_uv_domain, scene_vectors_to_uv_domain
 
     period_start = kwargs.get("period_start", "01-01 00:00:00")
     period_end = kwargs.get("period_end", "12-31 23:59:59")
@@ -554,7 +555,7 @@ def get_cumulative_building_solar_irradiance(
     if isinstance(extras, dict):
         rotation_angle = extras.get('rotation_angle', 0)
 
-    az_rad_arr = _np.deg2rad(180.0 - (azimuth_deg_arr - rotation_angle))
+    az_rad_arr = _np.deg2rad(azimuth_deg_arr - rotation_angle)
     el_rad_arr = _np.deg2rad(elev_deg_arr)
     sun_dx_arr = _np.cos(el_rad_arr) * _np.cos(az_rad_arr)
     sun_dy_arr = _np.cos(el_rad_arr) * _np.sin(az_rad_arr)
@@ -588,6 +589,9 @@ def get_cumulative_building_solar_irradiance(
         face_svf = building_svf_mesh.metadata['svf'] if ('svf' in building_svf_mesh.metadata) else _np.zeros(n_faces, dtype=_np.float64)
         grid_bounds_real = None
         boundary_epsilon = None
+
+    face_centers = scene_points_to_uv_domain(face_centers)
+    face_normals = scene_vectors_to_uv_domain(face_normals)
 
     if grid_bounds_real is None or boundary_epsilon is None:
         grid_shape = voxel_data.shape
@@ -661,7 +665,7 @@ def get_cumulative_building_solar_irradiance(
             cumulative_dni_patch = float(patch_cumulative_dni[patch_idx])
             
             # Convert patch direction to sun vector
-            az_rad = _np.deg2rad(180.0 - (az_deg - rotation_angle))
+            az_rad = _np.deg2rad(az_deg - rotation_angle)
             el_rad = _np.deg2rad(el_deg)
             sun_dx = _np.cos(el_rad) * _np.cos(az_rad)
             sun_dy = _np.cos(el_rad) * _np.sin(az_rad)

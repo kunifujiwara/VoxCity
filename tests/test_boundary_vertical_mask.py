@@ -16,9 +16,9 @@ class TestBoundaryVerticalMaskNonSquare:
     def _make_grid(self, ny_vc=8, nx_vc=5, nz=6, meshsize=2.0):
         """Return grid parameters and correct grid bounds.
 
-        Mesh coordinates follow VoxCity convention:
-        - Mesh X = array axis 0 → range [0, ny_vc * meshsize]
-        - Mesh Y = array axis 1 → range [0, nx_vc * meshsize]
+        Solver coordinates follow VoxCity uv-domain convention:
+        - X = array axis 0/u → range [0, ny_vc * meshsize]
+        - Y = array axis 1/v → range [0, nx_vc * meshsize]
         """
         grid_bounds = np.array([
             [0.0, 0.0, 0.0],
