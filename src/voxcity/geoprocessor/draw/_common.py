@@ -150,7 +150,7 @@ def geo_to_cell(
     grid_geom: dict | None,
     array_shape: tuple[int, int] | None,
 ) -> tuple[int | None, int | None]:
-    """lon_lat → ij_north integer cell index, clamped to array_shape.
+    """lon_lat → (i, j) integer cell index, clamped to array_shape.
 
     Returns (None, None) when the point is outside the grid or inputs are
     missing. Uses :class:`~voxcity.utils.projector.GridProjector` internally.
@@ -162,9 +162,7 @@ def geo_to_cell(
         proj = GridProjector(grid_geom)
     except (KeyError, ValueError):
         return None, None
-    u, v = proj.lon_lat_to_ij_north(lon, lat)
-    i = int(math.floor(u))
-    j = int(math.floor(v))
+    i, j = proj.lon_lat_to_cell(lon, lat)
     if 0 <= i < array_shape[0] and 0 <= j < array_shape[1]:
         return i, j
     return None, None
