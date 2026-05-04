@@ -26,6 +26,7 @@ interface SolarTabProps {
   zones: Zone[];
   simRunNonce: number;
   onSimRun: () => void;
+  geometryToken?: string | number;
 }
 
 const SolarTab: React.FC<SolarTabProps> = ({
@@ -33,6 +34,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   zones,
   simRunNonce,
   onSimRun,
+  geometryToken,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
@@ -197,7 +199,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
 
       <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
         <SceneViewer
-          geometryToken={hasModel ? 'loaded' : 'none'}
+          geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
           downsample={1}
           colorScheme="grayscale"
           simKind={hasSimResult ? 'solar' : null}

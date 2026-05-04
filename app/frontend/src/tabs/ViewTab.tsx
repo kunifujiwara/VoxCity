@@ -26,9 +26,10 @@ interface ViewTabProps {
   zones: Zone[];
   simRunNonce: number;
   onSimRun: () => void;
+  geometryToken?: string | number;
 }
 
-const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun }) => {
+const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
   const [viewType, setViewType] = useState('green');
@@ -209,7 +210,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
 
       <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
         <SceneViewer
-          geometryToken={hasModel ? 'loaded' : 'none'}
+          geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
           downsample={1}
           colorScheme="grayscale"
           simKind={hasSimResult ? 'view' : null}

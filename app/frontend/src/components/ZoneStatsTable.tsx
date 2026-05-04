@@ -17,10 +17,15 @@ function downloadCsv(zones: Zone[], stats: ZoneStatsResponse): void {
     ['zone_id', 'name', 'cell_count', 'valid_count', 'mean', 'min', 'max', 'std'],
   ];
   const byId = new Map(stats.stats.map((s) => [s.zone_id, s]));
+  // De-duplicate: one row per logical zone group
+  const seen = new Set<string>();
   for (const z of zones) {
-    const s = byId.get(z.id);
+    const groupKey = z.groupId ?? z.id;
+    if (seen.has(groupKey)) continue;
+    seen.add(groupKey);
+    const s = byId.get(groupKey);
     rows.push([
-      z.id,
+      groupKey,
       JSON.stringify(z.name),
       String(s?.cell_count ?? 0),
       String(s?.valid_count ?? 0),
@@ -45,6 +50,15 @@ export const ZoneStatsTable: React.FC<Props> = ({ zones, stats, loading }) => {
   const unit = stats?.unit_label ? ` (${stats.unit_label})` : '';
   const byId = new Map((stats?.stats ?? []).map((s) => [s.zone_id, s]));
 
+  // De-duplicate: one row per logical zone group
+  const seen = new Set<string>();
+  const uniqueZones = zones.filter((z) => {
+    const key = z.groupId ?? z.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   return (
     <div className="zone-stats-table">
       <div className="header">
@@ -63,11 +77,12 @@ export const ZoneStatsTable: React.FC<Props> = ({ zones, stats, loading }) => {
           </tr>
         </thead>
         <tbody>
-          {zones.map((z) => {
-            const s = byId.get(z.id);
+          {uniqueZones.map((z) => {
+            const groupKey = z.groupId ?? z.id;
+            const s = byId.get(groupKey);
             const noData = !s || s.valid_count === 0;
             return (
-              <tr key={z.id} className={noData ? 'muted' : ''}>
+              <tr key={groupKey} className={noData ? 'muted' : ''}>
                 <td>
                   <span className="swatch" style={{ background: z.color }} />
                   {z.name}

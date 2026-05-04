@@ -168,7 +168,7 @@ export function SceneViewer({
       }}
     >
       <Canvas
-        camera={{ position: [200, -200, 200], up: [0, 0, 1], fov: 50 }}
+        camera={{ position: [200, -150, 200], up: [0, 0, 1], fov: 50 }}
         gl={{ antialias: true, preserveDrawingBuffer: false }}
         style={{ background }}
         onCreated={({ gl }) => {
@@ -178,7 +178,7 @@ export function SceneViewer({
         <Suspense fallback={null}>
           <ambientLight intensity={0.55} />
           <directionalLight
-            position={[bboxMax[0], bboxMin[1] - 100, bboxMax[2] + 200]}
+            position={[bboxMin[0] - 100, bboxMax[1], bboxMax[2] + 200]}
             intensity={0.75}
           />
           <hemisphereLight args={[0xffffff, 0x444466, 0.35]} />

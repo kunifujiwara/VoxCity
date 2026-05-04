@@ -362,7 +362,7 @@ export function lonLatToUvM(
     const dla = lat - oy;
     const u_cell = inv00 * dl + inv01 * dla;
     const v_cell = inv10 * dl + inv11 * dla;
-    // Direct scene position: no (nx - u) flip needed after Phase 3.
-    return [u_cell * du, v_cell * dv];
+    // Scene convention: X = east = v_metres, Y = north = u_metres.
+    return [v_cell * dv, u_cell * du];
   };
 }

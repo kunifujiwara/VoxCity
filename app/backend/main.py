@@ -679,7 +679,11 @@ def _reset_taichi_and_caches():
         except Exception:
             pass
 
-    # Clear last-sim state
+    # Clear model and all derived state so a browser refresh starts completely fresh.
+    app_state.voxcity = None
+    app_state.raw_data = {}
+    app_state.rectangle_vertices = None
+    app_state.land_cover_source = "OpenStreetMap"
     app_state.last_sim_type = None
     app_state.last_sim_target = None
     app_state.last_sim_grid = None
@@ -1903,17 +1907,14 @@ def _apply_add_building(
 def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
     """Remove the listed buildings from grids + GeoDataFrame.
 
-    ``building_ids`` are the **row positions** the frontend sees, exactly as
-    emitted by ``build_building_geojson`` (``properties.idx = int(idx)`` from
-    ``building_gdf.iterrows()``). Those positions are *not* guaranteed to
-    equal the source feature ids stored in ``buildings.ids`` and
-    ``building_gdf['id']``: in Plateau (CityGML) mode they happen to align,
-    but in Normal mode (e.g. OSM) the grid stores OSM way ids while the
-    frontend sends 0-based row indices, so a naive ``np.isin`` matched
-    nothing and silently returned ``n_deleted=0``.
-
-    We therefore translate row positions → source ids via the current
-    ``building_gdf`` before touching the grid.
+    ``building_ids`` are the **DataFrame index values** emitted by
+    ``build_building_geojson`` (``properties.idx = int(idx)`` from
+    ``building_gdf.iterrows()``).  These are *not* guaranteed to be a
+    contiguous 0-based sequence: after clipping a large cached GeoDataFrame
+    to the user's rectangle the DataFrame index can be sparse (e.g. [3, 7,
+    12, …]).  We build an explicit ``{df_index → source_id}`` map so the
+    translation is correct for both Normal mode (OSM way ids) and Plateau
+    (CityGML) mode with or without a cache.
     """
     bld = vc.buildings
     gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
@@ -1924,20 +1925,29 @@ def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
         n_buildings = int(len(gdf)) if gdf is not None else 0
         return {"n_deleted": 0, "n_buildings": n_buildings}
 
-    # Translate row position -> source id stored in the grid.
+    # Translate DataFrame-index → source id stored in the grid.
+    #
+    # build_building_geojson emits `"idx": int(idx)` where `idx` is the
+    # *DataFrame index* value from iterrows(), NOT a positional offset into
+    # the list.  When the DataFrame's index is non-contiguous (e.g. after
+    # clipping a large CityGML cache to the user's rectangle) the old
+    # positional lookup `id_values[pos]` silently mapped to the wrong row or
+    # fell outside the list entirely, so nothing was ever deleted in Plateau
+    # mode.  We now build an explicit {df_index → id} map so the lookup is
+    # correct regardless of index shape.
     delete_set: set[int] = set()
     if gdf is not None and "id" in getattr(gdf, "columns", []) and len(gdf) > 0:
-        id_values = gdf["id"].tolist()
-        n_rows = len(id_values)
+        df_idx_to_id: dict[int, int] = {}
+        for df_idx, id_val in zip(gdf.index.tolist(), gdf["id"].tolist()):
+            try:
+                df_idx_to_id[int(df_idx)] = int(id_val)
+            except (TypeError, ValueError):
+                continue
         for pos in row_positions:
-            if 0 <= pos < n_rows:
-                try:
-                    delete_set.add(int(id_values[pos]))
-                except (TypeError, ValueError):
-                    continue
+            if pos in df_idx_to_id:
+                delete_set.add(df_idx_to_id[pos])
     else:
-        # No id column to translate through – fall back to identity, which
-        # matches the historical Plateau-mode behaviour.
+        # No id column to translate through – fall back to identity.
         delete_set = {pos for pos in row_positions if pos > 0}
 
     if not delete_set:

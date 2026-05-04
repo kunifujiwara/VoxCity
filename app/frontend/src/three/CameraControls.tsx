@@ -39,9 +39,9 @@ export function CameraControls({
       const fovRad = isPersp ? (camera as THREE.PerspectiveCamera).fov * Math.PI / 180 : 50 * Math.PI / 180;
       const fitDist = radius / Math.sin(fovRad / 2);
       // The new SceneViewer uses Z-up (camera.up = [0,0,1]).
-      // The legacy ThreeViewer used Y-up with mapping (x,y,z)→(x,z,-y).
-      // Legacy view direction was (0.65, 0.65, 0.5) in Y-up space.
-      // Inverting the Y-up→Z-up mapping gives (0.65, -0.5, 0.65) — east, south, up.
+      // World: X = east, Y = north, Z = up (matches backend scene_geometry.py).
+      // Camera is placed to the east-south of the scene, looking northwest,
+      // matching the legacy ThreeViewer after its (plotly_x,y,z)->(x,z,-y) transform.
       const dir = new THREE.Vector3(0.65, -0.5, 0.65).normalize();
       camera.position.set(
         cx + dir.x * fitDist,

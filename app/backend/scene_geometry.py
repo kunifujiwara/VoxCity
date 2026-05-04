@@ -45,21 +45,48 @@ _PLANE_OFFSETS = {
 
 
 def _exposed_face_masks(occ: np.ndarray, occ_any: np.ndarray) -> Tuple[np.ndarray, ...]:
-    """Return ``(posx, negx, posy, negy, posz, negz)`` boolean masks of voxel
-    faces that touch empty space (any-class occluder)."""
+    """Return ``(posu, negu, posv, negv, posz, negz)`` boolean masks of voxel
+    faces that touch empty space.
+
+    Array layout: axis 0 = u = north, axis 1 = v = east.
+    ``posu`` / ``negu`` = cells exposed at their +/- north boundary.
+    ``posv`` / ``negv`` = cells exposed at their +/- east boundary.
+    ``posz`` / ``negz`` = cells exposed at their top / bottom boundary.
+    """
     p = np.pad(occ_any, ((0, 1), (0, 0), (0, 0)), constant_values=False)
-    posx = occ & (~p[1:, :, :])
+    posu = occ & (~p[1:, :, :])
     p = np.pad(occ_any, ((1, 0), (0, 0), (0, 0)), constant_values=False)
-    negx = occ & (~p[:-1, :, :])
+    negu = occ & (~p[:-1, :, :])
     p = np.pad(occ_any, ((0, 0), (0, 1), (0, 0)), constant_values=False)
-    posy = occ & (~p[:, 1:, :])
+    posv = occ & (~p[:, 1:, :])
     p = np.pad(occ_any, ((0, 0), (1, 0), (0, 0)), constant_values=False)
-    negy = occ & (~p[:, :-1, :])
+    negv = occ & (~p[:, :-1, :])
     p = np.pad(occ_any, ((0, 0), (0, 0), (0, 1)), constant_values=False)
     posz = occ & (~p[:, :, 1:])
     p = np.pad(occ_any, ((0, 0), (0, 0), (1, 0)), constant_values=False)
     negz = occ & (~p[:, :, :-1])
-    return posx, negx, posy, negy, posz, negz
+    return posu, negu, posv, negv, posz, negz
+
+
+def _scene_plane_masks(
+    occ: np.ndarray, occluder: np.ndarray
+) -> List[Tuple[np.ndarray, str]]:
+    """Return ``(mask, plane_name)`` pairs ordered by scene plane.
+
+    Scene convention: X = east = axis 1 (v), Y = north = axis 0 (u).
+    Matches the legacy renderer which maps:
+      posv / negv  →  '+x' / '-x'  (east-exposed cells = scene +X face)
+      posu / negu  →  '+y' / '-y'  (north-exposed cells = scene +Y face)
+    """
+    posu, negu, posv, negv, posz, negz = _exposed_face_masks(occ, occluder)
+    return [
+        (posv, "+x"),
+        (negv, "-x"),
+        (posu, "+y"),
+        (negu, "-y"),
+        (posz, "+z"),
+        (negz, "-z"),
+    ]
 
 
 def _voxel_face_arrays(
@@ -87,8 +114,9 @@ def _voxel_face_arrays(
         )
 
     xi, yi, zi = idx[:, 0], idx[:, 1], idx[:, 2]
-    xc = x[xi]
-    yc = y[yi]
+    # Scene convention: X = east = axis 1 (v), Y = north = axis 0 (u).
+    xc = x[yi]  # x array is sized for east (ny), indexed by v-axis (yi)
+    yc = y[xi]  # y array is sized for north (nx), indexed by u-axis (xi)
     zc = z[zi]
     x0, x1 = xc - dx / 2.0, xc + dx / 2.0
     y0, y1 = yc - dy / 2.0, yc + dy / 2.0
@@ -103,13 +131,15 @@ def _voxel_face_arrays(
         vy = np.stack([y0, y1, y1, y0], axis=1)
         vz = np.stack([z1, z1, z0, z0], axis=1)
     elif plane == "+y":
-        vx = np.stack([x0, x1, x1, x0], axis=1)
+        # North face: y = y1 (constant). Vertex order gives outward +y normal.
+        vx = np.stack([x1, x0, x0, x1], axis=1)
         vy = np.stack([y1, y1, y1, y1], axis=1)
         vz = np.stack([z0, z0, z1, z1], axis=1)
     elif plane == "-y":
+        # South face: y = y0 (constant). Vertex order gives outward -y normal.
         vx = np.stack([x0, x1, x1, x0], axis=1)
         vy = np.stack([y0, y0, y0, y0], axis=1)
-        vz = np.stack([z1, z1, z0, z0], axis=1)
+        vz = np.stack([z0, z0, z1, z1], axis=1)
     elif plane == "+z":
         vx = np.stack([x0, x1, x1, x0], axis=1)
         vy = np.stack([y0, y0, y1, y1], axis=1)
@@ -200,8 +230,9 @@ def build_voxel_buffers(
     dx = meshsize * stride
     dy = meshsize * stride
     dz = meshsize * stride
-    x = np.arange(nx, dtype=float) * dx + dx / 2.0
-    y = np.arange(ny, dtype=float) * dy + dy / 2.0
+    # Scene convention: X = east = axis 1 (v, size ny), Y = north = axis 0 (u, size nx).
+    x = np.arange(ny, dtype=float) * dy + dy / 2.0
+    y = np.arange(nx, dtype=float) * dx + dx / 2.0
     z = np.arange(nz, dtype=float) * dz + dz / 2.0
 
     if classes is None:
@@ -217,11 +248,10 @@ def build_voxel_buffers(
         if not np.any(vox == cls):
             continue
         occ = vox == cls
-        masks = _exposed_face_masks(occ, occluder)
         rgb = palette.get(cls, [128, 128, 128])
         color01 = [c / 255.0 for c in rgb[:3]]
 
-        for mask, plane in zip(masks, ("+x", "-x", "+y", "-y", "+z", "-z")):
+        for mask, plane in _scene_plane_masks(occ, occluder):
             if not mask.any():
                 continue
             positions, indices, _cell_idx = _voxel_face_arrays(
@@ -242,7 +272,8 @@ def build_voxel_buffers(
             )
 
     bbox_min = [0.0, 0.0, 0.0]
-    bbox_max = [float(nx * dx), float(ny * dy), float(nz * dz)]
+    # X = east (ny * dy), Y = north (nx * dx), Z = up (nz * dz).
+    bbox_max = [float(ny * dy), float(nx * dx), float(nz * dz)]
 
     # Topmost ground level: max k-index of any land-cover voxel (class >= 1)
     # converted to metres. Buildings (-3) and trees (-2) sit ON the ground so
@@ -276,7 +307,6 @@ def build_building_highlight_buffers(
 ) -> List[MeshChunk]:
     """Return one ``MeshChunk`` per face plane covering only the voxels of the
     given ``building_ids``.
-
     ``bid_grid_aligned`` must be uv layout (axis 0 = u = north), the same as
     ``voxcity_grid``, so the two arrays index 1:1 by ``(i, j)``.
 
@@ -304,12 +334,12 @@ def build_building_highlight_buffers(
     # Highlight voxels are exposed against *all* non-empty voxels in the city,
     # so faces hidden inside neighbouring buildings/trees aren't emitted.
     occluder = voxcity_grid != 0
-    masks = _exposed_face_masks(occ, occluder)
 
     nx, ny, nz = voxcity_grid.shape
     dx = dy = dz = float(meshsize)
-    x = np.arange(nx, dtype=float) * dx + dx / 2.0
-    y = np.arange(ny, dtype=float) * dy + dy / 2.0
+    # Scene convention: X = east = axis 1 (v, size ny), Y = north = axis 0 (u, size nx).
+    x = np.arange(ny, dtype=float) * dy + dy / 2.0
+    y = np.arange(nx, dtype=float) * dx + dx / 2.0
     z = np.arange(nz, dtype=float) * dz + dz / 2.0
 
     if colormap:
@@ -322,7 +352,7 @@ def build_building_highlight_buffers(
         color01 = [float(c) for c in color_rgb[:3]]
 
     chunks: List[MeshChunk] = []
-    for mask, plane in zip(masks, ("+x", "-x", "+y", "-y", "+z", "-z")):
+    for mask, plane in _scene_plane_masks(occ, occluder):
         if not mask.any():
             continue
         positions, indices, _ = _voxel_face_arrays(
@@ -429,10 +459,11 @@ def build_ground_overlay_buffers(
         - meshsize
     )
 
-    fx0 = cell_u.astype(np.float32) * meshsize
-    fx1 = (cell_u + 1).astype(np.float32) * meshsize
-    fy0 = cell_v.astype(np.float32) * meshsize
-    fy1 = (cell_v + 1).astype(np.float32) * meshsize
+    # Scene convention: X = east = v (axis 1), Y = north = u (axis 0).
+    fx0 = cell_v.astype(np.float32) * meshsize
+    fx1 = (cell_v + 1).astype(np.float32) * meshsize
+    fy0 = cell_u.astype(np.float32) * meshsize
+    fy1 = (cell_u + 1).astype(np.float32) * meshsize
     z32 = z_base.astype(np.float32)
 
     # 4 vertices per cell: v0 v1 v2 v3

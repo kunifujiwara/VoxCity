@@ -1,11 +1,12 @@
 """Coordinate-frame regression tests for backend overlay/highlight chunks.
 
-Phase 3 contract: ``voxcity_grid``, ``bid_grid`` and 2-D ``sim_grid`` arrays
-are uv layout (axis 0 = u = north). All scene-buffer builders place voxel
-``(u, v, k)`` at scene ``(u*ms, v*ms, k*ms)``. Stale ``np.flipud`` /
-``ensure_orientation(NORTH_UP, SOUTH_UP)`` calls on these arrays misalign the
-chunks with respect to ``build_voxel_buffers`` — visible N-S inversion in the
-Three.js scene.
+Scene convention (matches legacy renderer and mesh.py):
+  voxel ``(u, v, k)`` → scene ``(x = v*ms, y = u*ms, z = k*ms)``
+  i.e. ``X = east = axis 1 (v)``, ``Y = north = axis 0 (u)``, ``Z = up``.
+
+All scene-buffer builders in ``app/backend/scene_geometry.py`` must satisfy
+this contract so that zoning/simulation tabs agree with the Generation/Edit
+tabs (which use ``src/voxcity/geoprocessor/mesh.py`` directly).
 """
 import numpy as np
 import pytest
@@ -35,14 +36,17 @@ def test_highlight_chunks_align_with_uv_layout_voxcity_grid():
     assert len(chunks) > 0, "uv-aligned inputs should produce highlight chunks"
 
     # All chunk vertex positions must sit inside the voxel cell at uv(3, 1, 1):
-    # scene x in [3*ms, 4*ms], scene y in [1*ms, 2*ms], scene z in [1*ms, 2*ms].
+    # scene convention X=east=v, Y=north=u:
+    #   scene x in [1*ms, 2*ms]  (east = v = 1)
+    #   scene y in [3*ms, 4*ms]  (north = u = 3)
+    #   scene z in [1*ms, 2*ms]
     for chunk in chunks:
         positions = np.asarray(chunk.positions, dtype=float).reshape(-1, 3)
         assert positions.size > 0
-        assert positions[:, 0].min() >= 3.0 * meshsize - 1e-9
-        assert positions[:, 0].max() <= 4.0 * meshsize + 1e-9
-        assert positions[:, 1].min() >= 1.0 * meshsize - 1e-9
-        assert positions[:, 1].max() <= 2.0 * meshsize + 1e-9
+        assert positions[:, 0].min() >= 1.0 * meshsize - 1e-9
+        assert positions[:, 0].max() <= 2.0 * meshsize + 1e-9
+        assert positions[:, 1].min() >= 3.0 * meshsize - 1e-9
+        assert positions[:, 1].max() <= 4.0 * meshsize + 1e-9
 
 
 def test_highlight_chunks_match_voxel_buffers_for_same_cell():
@@ -89,8 +93,10 @@ def test_highlight_chunks_match_voxel_buffers_for_same_cell():
 
 def test_ground_overlay_quad_aligns_with_uv_cell():
     """A single non-NaN sim value at uv(u=3, v=1) must produce a ground-overlay
-    quad whose vertices sit inside scene rectangle x in [3*ms, 4*ms],
-    y in [1*ms, 2*ms]. A stale flipud places it at scene x in [0, 1*ms].
+    quad whose vertices sit inside scene rectangle:
+      x in [1*ms, 2*ms]  (east = v = 1)
+      y in [3*ms, 4*ms]  (north = u = 3)
+    A stale direct-uv mapping places it at scene x in [3, 4*ms], y in [1, 2*ms].
     """
     nx, ny, nz = 4, 4, 2
     meshsize = 1.0
@@ -109,10 +115,12 @@ def test_ground_overlay_quad_aligns_with_uv_cell():
 
     pos = np.asarray(resp.chunk.positions, dtype=float).reshape(-1, 3)
     assert pos.size > 0
-    assert pos[:, 0].min() == pytest.approx(3.0 * meshsize)
-    assert pos[:, 0].max() == pytest.approx(4.0 * meshsize)
-    assert pos[:, 1].min() == pytest.approx(1.0 * meshsize)
-    assert pos[:, 1].max() == pytest.approx(2.0 * meshsize)
+    # X = east = v = 1 → [1*ms, 2*ms]
+    assert pos[:, 0].min() == pytest.approx(1.0 * meshsize)
+    assert pos[:, 0].max() == pytest.approx(2.0 * meshsize)
+    # Y = north = u = 3 → [3*ms, 4*ms]
+    assert pos[:, 1].min() == pytest.approx(3.0 * meshsize)
+    assert pos[:, 1].max() == pytest.approx(4.0 * meshsize)
 
     # face_to_cell entries point back to original uv (3, 1).
     for i, j in resp.face_to_cell:
@@ -139,17 +147,18 @@ def test_ground_overlay_aligns_with_voxel_buffer_for_same_uv_cell():
 
     ground_pos = np.asarray(ground_resp.chunk.positions, dtype=float).reshape(-1, 3)
 
-    # +z faces of the ground class for the (2, 3) cell only.
+    # +z faces of the ground class for the (u=2, v=3) cell only.
+    # Scene convention: X = east = v = 3 → [3*ms, 4*ms]; Y = north = u = 2 → [2*ms, 3*ms].
     plus_z = next(
         c for c in voxel_resp.chunks
         if c.metadata.get("class") == 1 and c.metadata.get("plane") == "+z"
     )
     voxel_pos_all = np.asarray(plus_z.positions, dtype=float).reshape(-1, 3)
     cell_pos = voxel_pos_all[
-        (voxel_pos_all[:, 0] >= 2.0 * meshsize - 1e-6)
-        & (voxel_pos_all[:, 0] <= 3.0 * meshsize + 1e-6)
-        & (voxel_pos_all[:, 1] >= 3.0 * meshsize - 1e-6)
-        & (voxel_pos_all[:, 1] <= 4.0 * meshsize + 1e-6)
+        (voxel_pos_all[:, 0] >= 3.0 * meshsize - 1e-6)
+        & (voxel_pos_all[:, 0] <= 4.0 * meshsize + 1e-6)
+        & (voxel_pos_all[:, 1] >= 2.0 * meshsize - 1e-6)
+        & (voxel_pos_all[:, 1] <= 3.0 * meshsize + 1e-6)
     ]
     assert cell_pos.shape[0] >= 4
 

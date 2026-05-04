@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [viewFigureJson, setViewFigureJson] = useState('');
   const [landmarkFigureJson, setLandmarkFigureJson] = useState('');
   const [hasModel, setHasModel] = useState(false);
+  const [geometryToken, setGeometryToken] = useState(0);
   const [zones, setZones] = useState<Zone[]>([]);
   const [solarRunNonce, setSolarRunNonce] = useState(0);
   const [viewRunNonce, setViewRunNonce] = useState(0);
@@ -53,12 +54,13 @@ const App: React.FC = () => {
 
   // After an edit commit, the cached Solar / View / Landmark figures and the
   // Generation tab's preview are stale (they referenced the old voxel grid).
-  // Reset them so the user re-runs simulations on the edited model.
+  // Also bump geometryToken so SceneViewer re-fetches city geometry.
   const handleModelEdited = useCallback(() => {
     setFigureJson('');
     setSolarFigureJson('');
     setViewFigureJson('');
     setLandmarkFigureJson('');
+    setGeometryToken((t) => t + 1);
   }, []);
 
   // On page load, reset the backend so Taichi caches are cleared and a
@@ -131,6 +133,7 @@ const App: React.FC = () => {
             figureJson={figureJson}
             zones={zones}
             onZonesChange={setZones}
+            geometryToken={geometryToken}
           />
         )}
         {/*
@@ -148,6 +151,7 @@ const App: React.FC = () => {
                 zones={zones}
                 simRunNonce={solarRunNonce}
                 onSimRun={() => setSolarRunNonce((n) => n + 1)}
+                geometryToken={geometryToken}
               />
             </div>
             <div style={{ display: activeTab === 'view' ? 'contents' : 'none' }}>
@@ -158,6 +162,7 @@ const App: React.FC = () => {
                 zones={zones}
                 simRunNonce={viewRunNonce}
                 onSimRun={() => setViewRunNonce((n) => n + 1)}
+                geometryToken={geometryToken}
               />
             </div>
             <div style={{ display: activeTab === 'landmark' ? 'contents' : 'none' }}>
@@ -168,6 +173,7 @@ const App: React.FC = () => {
                 zones={zones}
                 simRunNonce={landmarkRunNonce}
                 onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
+                geometryToken={geometryToken}
               />
             </div>
           </>
@@ -180,6 +186,7 @@ const App: React.FC = () => {
             zones={zones}
             simRunNonce={solarRunNonce}
             onSimRun={() => setSolarRunNonce((n) => n + 1)}
+            geometryToken={geometryToken}
           />
         )}
         {!hasModel && activeTab === 'view' && (
@@ -190,6 +197,7 @@ const App: React.FC = () => {
             zones={zones}
             simRunNonce={viewRunNonce}
             onSimRun={() => setViewRunNonce((n) => n + 1)}
+            geometryToken={geometryToken}
           />
         )}
         {!hasModel && activeTab === 'landmark' && (
@@ -200,6 +208,7 @@ const App: React.FC = () => {
             zones={zones}
             simRunNonce={landmarkRunNonce}
             onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
+            geometryToken={geometryToken}
           />
         )}
         {activeTab === 'export' && <ExportTab hasModel={hasModel} />}

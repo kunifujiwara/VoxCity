@@ -29,6 +29,7 @@ interface ZoningTabProps {
   figureJson: string;
   zones: Zone[];
   onZonesChange: (z: Zone[]) => void;
+  geometryToken?: string | number;
 }
 
 function maxBuildingHeight(geo: ModelGeoResult | null): number {
@@ -41,7 +42,7 @@ function maxBuildingHeight(geo: ModelGeoResult | null): number {
   return m > 0 ? m : 30;
 }
 
-const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange }) => {
+const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange, geometryToken }) => {
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -364,7 +365,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {hasModel ? (
             <SceneViewer
-              geometryToken={hasModel ? 'loaded' : 'none'}
+              geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
               downsample={1}
               zones={zones}
               lonLatToXY={lonLatToXY}
