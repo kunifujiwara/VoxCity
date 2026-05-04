@@ -3,9 +3,9 @@ Raster processing package.
 
 Orientation contract:
 - All public functions accept and return 2D grids using the canonical internal
-  orientation "north_up": row 0 is the northern/top row.
+  orientation "uv_m/SOUTH_UP": axis 0 = u/north (row 0 = southern origin edge), axis 1 = v/east.
 - Where data sources use south_up, conversions are performed internally; outputs
-  are always north_up unless explicitly documented otherwise.
+  are uv_m/SOUTH_UP unless explicitly documented otherwise.
 - Columns increase eastward (col 0 = west/left), indices increase to the east.
 """
 

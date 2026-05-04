@@ -4,7 +4,7 @@ This package organizes the voxel city generation pipeline into focused modules
 while preserving the original public API under `voxcity.generator`.
 
 Orientation contract:
-- All 2D grids use north_up orientation (row 0 = north/top; columns increase eastward).
+- All 2D grids use uv_m/SOUTH_UP orientation (axis 0 = u/north, row 0 = southern origin edge; axis 1 = v/east).
 - 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
 """
 

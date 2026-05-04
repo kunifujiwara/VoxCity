@@ -2,7 +2,7 @@
  * Grid helpers for the basemap-backed plan editor.
  *
  * `polygonToCells` rasterises a closed lon/lat polygon to the set of
- * NORTH_UP `(i, j)` cells whose centres lie inside, mirroring voxcity's
+ * uv `(i, j)` cell indices whose centres lie inside, mirroring voxcity's
  * `matplotlib.path.Path.contains_points` approach in
  * `voxcity.geoprocessor.draw.edit_landcover` / `edit_tree`.
  *
@@ -57,7 +57,7 @@ export function cellCentre(i: number, j: number, g: GridGeom): [number, number] 
 
 /**
  * Rasterise a closed polygon (ring of `[lon, lat]` pairs, no need to repeat
- * the first vertex at the end) into the set of NORTH_UP `(i, j)` cells whose
+ * the first vertex at the end) into the set of uv `(i, j)` cell indices whose
  * centres lie inside.
  *
  * For typical voxcity grids (≤200 × 200) this is a few-tens-of-thousands

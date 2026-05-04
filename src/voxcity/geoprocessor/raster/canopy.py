@@ -41,7 +41,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
     """
     Create a vegetation height grid from a GeoDataFrame of vegetation polygons/objects.
     Cells with vegetation take the max height of intersecting features.
-    Returns north-up grid (row 0 = north).
+    Returns uv_m/SOUTH_UP grid (axis 0 = u/north, row 0 = southern origin edge).
 
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
@@ -101,7 +101,7 @@ def create_vegetation_height_grid_from_gdf_polygon(veg_gdf, mesh_size, polygon):
 def create_dem_grid_from_gdf_polygon(terrain_gdf, mesh_size, polygon):
     """
     Create a height grid from a terrain GeoDataFrame using nearest-neighbor sampling.
-    Returns north-up grid.
+    Returns uv_m/SOUTH_UP grid (axis 0 = u/north, row 0 = southern origin edge).
 
     Uses :func:`compute_cell_center_coords` so rotated rectangles are handled
     correctly.
@@ -365,9 +365,9 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                 du_cells = int(R / adjusted_meshsize[0] + 2)
                 dv_cells = int(R / adjusted_meshsize[1] + 2)
                 # alpha_m / beta_m are continuous metres along u / v axes;
-                # floor-divide by cell size to get integer ij_north indices.
-                i_center_idx = int(alpha_m / adjusted_meshsize[0])  # ij_north i
-                j_center_idx = int(beta_m  / adjusted_meshsize[1])  # ij_north j
+                # floor-divide by cell size to get integer (i, j) uv cell indices.
+                i_center_idx = int(alpha_m / adjusted_meshsize[0])  # uv cell i (axis 0 = north/u)
+                j_center_idx = int(beta_m  / adjusted_meshsize[1])  # uv cell j (axis 1 = east/v)
                 i_min = max(0, i_center_idx - du_cells)
                 i_max = min(nx - 1, i_center_idx + du_cells)
                 j_min = max(0, j_center_idx - dv_cells)

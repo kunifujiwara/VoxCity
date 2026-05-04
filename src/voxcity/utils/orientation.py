@@ -1,8 +1,8 @@
 """Grid orientation helpers.
 
 Contract:
-- Canonical internal orientation is "north_up": row 0 is the northern/top row,
-  increasing row index moves south/down. Columns increase eastward: column 0 is
+- Core Phase 3 processing uses uv_m/SOUTH_UP: axis 0 = u/north (row 0 = southern origin edge),
+  increasing row index moves north. Columns increase eastward: column 0 is
   west/left and indices increase toward the east/right. All processing functions
   accept and return 2D grids in this orientation unless explicitly documented
   otherwise.
@@ -14,8 +14,8 @@ They can be used at I/O boundaries (e.g., when reading rasters with south_up
 conventions) to normalize to the internal orientation.
 
 Coordinate-frame vocabulary (see also voxcity.utils.projector):
-  ij_north — cell index (i, j) in ORIENTATION_NORTH_UP; row 0 is north/top.
-  ij_south — cell index (i, j) in ORIENTATION_SOUTH_UP; row 0 is south/bottom.
+  uv cell — cell index (i, j) in uv_m/SOUTH_UP (Phase 3); row 0 is south/origin.
+  legacy ij_south — same layout as uv_m/SOUTH_UP; kept for backward compatibility.
   ensure_orientation() is the only legitimate place to convert between the two.
 """
 

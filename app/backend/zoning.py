@@ -17,7 +17,7 @@ def polygon_lonlat_to_cells(
     """Rasterize a closed lon/lat ring to (i, j) cell indices in uv_m frame.
 
     i = u-axis index (0 = grid origin), j = v-axis index.
-    Returns ij_north-equivalent indices via GridProjector.cell_to_lon_lat.
+    Returns uv cell indices (i, j) via GridProjector.cell_to_lon_lat.
     Mirrors the JS ``polygonToCells`` in ``app/frontend/src/lib/grid.ts``.
     """
     if len(ring) < 3:

@@ -380,7 +380,7 @@ def build_ground_overlay_buffers(
 
     Returns per-vertex colours (4 verts per quad, all the same colour) plus a
     ``face_to_cell`` array of length ``= triangle_count`` mapping each triangle
-    back to its source ``(i, j)`` cell in the *original* (north-up) grid.
+    back to its source ``(i, j)`` cell in the uv_m/SOUTH_UP grid (Phase 3).
     """
     sim = np.asarray(sim_grid, dtype=float)
     if sim.ndim != 2:

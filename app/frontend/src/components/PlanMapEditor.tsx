@@ -117,10 +117,10 @@ function makeTile(key: BasemapKey): L.TileLayer {
    ────────────────────────────────────────────────────────────── */
 
 /**
- * lon/lat → ij_north integer cell index (i along u_vec, j along v_vec).
+ * lon/lat → (i, j) integer uv cell index (i along u_vec/north, j along v_vec/east).
  *
  * Uses Cramer's rule on the side_1/side_2 basis — mathematically equivalent
- * to GridProjector.lon_lat_to_ij_north() in src/voxcity/utils/projector.py
+ * to GridProjector.lon_lat_to_cell() in src/voxcity/utils/projector.py
  * and the Python geo_to_cell() in geoprocessor/draw/_common.py.
  * Keep these three implementations in sync if the grid-geometry convention changes.
  */
@@ -135,8 +135,8 @@ function geoToCell(
   if (Math.abs(det) < 1e-15) return null;
   const alpha = (dx * g.side_2[1] - dy * g.side_2[0]) / det;  // fraction along side_1
   const beta  = (g.side_1[0] * dy - g.side_1[1] * dx) / det;  // fraction along side_2
-  const i = Math.floor(alpha * g.grid_size[0]);  // ij_north_i
-  const j = Math.floor(beta  * g.grid_size[1]);  // ij_north_j
+  const i = Math.floor(alpha * g.grid_size[0]);  // uv cell i (axis 0 = north/u)
+  const j = Math.floor(beta  * g.grid_size[1]);  // uv cell j (axis 1 = east/v)
   if (i < 0 || i >= g.grid_size[0] || j < 0 || j >= g.grid_size[1]) return null;
   return [i, j];
 }

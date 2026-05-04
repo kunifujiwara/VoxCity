@@ -226,7 +226,7 @@ class OverlayGeometryResponse(BaseModel):
     target: str                                  # "ground" | "building"
     sim_type: str                                # "solar" | "view" | "landmark"
     chunk: MeshChunk
-    face_to_cell: Optional[List[List[int]]] = None  # [[i, j], ...] ij_north (NORTH_UP) per triangle
+    face_to_cell: Optional[List[List[int]]] = None  # [[i, j], ...] uv cell indices (Phase 3) per triangle
     face_to_building: Optional[List[int]] = None
     value_min: float
     value_max: float

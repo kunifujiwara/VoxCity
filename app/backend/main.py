@@ -959,7 +959,7 @@ async def run_solar(req: SolarRequest):
             )
 
             # Store for re-rendering.
-            # solar_grid is NORTH_UP (row 0 = north), matching voxcity convention.
+            # solar_grid is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
             app_state.last_sim_type = "solar"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = solar_grid
@@ -1112,7 +1112,7 @@ async def run_view(req: ViewRequest):
                 view_grid = get_view_index(voxcity, mode=mode, **view_kwargs)
 
             # Store for re-rendering.
-            # view_grid is NORTH_UP (row 0 = north), matching voxcity convention.
+            # view_grid is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
             app_state.last_sim_type = "view"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = view_grid
@@ -1275,7 +1275,7 @@ async def run_landmark(req: LandmarkRequest):
             lg[lg == 0.0] = np.nan
 
             # Store for re-rendering.
-            # lg is NORTH_UP (row 0 = north), matching voxcity convention.
+            # lg is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
             app_state.last_sim_type = "landmark"
             app_state.last_sim_target = "ground"
             app_state.last_sim_grid = lg
@@ -1768,7 +1768,7 @@ def _require_model() -> None:
 
 
 def _parse_cells(payload: dict) -> List[List[int]]:
-    """Pull a list of [i, j] integer cells from request JSON. NORTH_UP."""
+    """Pull a list of [i, j] integer cells from request JSON. uv/Phase 3 cell indices."""
     raw = payload.get("cells")
     if not isinstance(raw, list) or len(raw) == 0:
         raise HTTPException(status_code=400, detail="cells must be a non-empty list of [i,j]")
