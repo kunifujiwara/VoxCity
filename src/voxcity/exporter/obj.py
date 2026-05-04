@@ -45,7 +45,6 @@ except ImportError:  # optional dependency
     trimesh = None  # type: ignore
     _HAS_TRIMESH = False
 from ..visualizer import get_voxel_color_map
-from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ..errors import ConfigurationError
 from ..utils.logging import get_logger
 
@@ -553,6 +552,10 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
     Raises:
         ValueError: If vmin equals vmax or if colormap_name is invalid
     """
+    # Validate input arrays
+    if value_array_ori.shape != dem_array_ori.shape:
+        raise ValueError("The value array and DEM array must have the same shape.")
+
     # Phase 3 uv_m layout: axis 0 = north/u (row 0 = origin = south); no flip needed.
     value_array = value_array_ori.copy()
     dem_array = dem_array_ori.copy() - np.min(dem_array_ori)
