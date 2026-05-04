@@ -52,7 +52,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   geometryToken,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
+  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'landmark', simRunNonce);
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [landmarkIdsText, setLandmarkIdsText] = useState('');
   const [nAzimuth, setNAzimuth] = useState(60);
@@ -113,12 +113,31 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
     setShowingSimResult(false);
   }, []);
 
-  // Click pick: ask the backend for the building id at the clicked world XY.
-  // This works for any face (roof OR walls), unlike a 2-D centroid lookup
-  // which fails when the wall is closer to a neighbour's centroid.
+  // Click pick: select the building that was clicked.
+  // Prefer the direct buildingId from face metadata (set when a building-surface
+  // overlay is active), which avoids the backend coordinate lookup entirely.
+  // Fall back to getBuildingAt() for static scene geometry (base chunks) where
+  // per-face building IDs are not available.
   const handlePick = useCallback((hit: PickResult | null) => {
     if (showingSimResult) return;
     if (!hit) return;
+
+    if (hit.buildingId != null) {
+      // Direct face metadata path — always correct, no backend round-trip.
+      const bid = hit.buildingId;
+      setSelectedBuildingIds((prev) => {
+        const next = prev.includes(bid)
+          ? prev.filter((i) => i !== bid)
+          : [...prev, bid];
+        setLandmarkIdsText(next.join(', '));
+        return next;
+      });
+      return;
+    }
+
+    // Fallback: ask the backend for the building id at the clicked world XY.
+    // Needed for static voxel geometry (roof/wall faces) which do not carry
+    // per-face building IDs in their userData.
     const [px, py] = hit.point;
     getBuildingAt(px, py)
       .then((r) => {

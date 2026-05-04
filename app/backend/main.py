@@ -59,7 +59,7 @@ from .scene_geometry import (
     build_ground_overlay_buffers,
     build_voxel_buffers,
 )
-from .state import app_state
+from .state import app_state, SimulationResultCache
 from .zoning import (
     grid_xy_to_lonlat,
     mesh_face_data,
@@ -400,11 +400,14 @@ def _refine_canopy_with_ndsm(
 
 
 def _clear_sim_caches() -> None:
-    """Free old simulation results and cached figure JSON before a new run."""
-    app_state.last_sim_grid = None
-    app_state.last_sim_mesh = None
+    """Free transient render caches before a new simulation run.
+
+    Intentionally does *not* clear ``sim_results_by_type`` so that results
+    from other tabs remain accessible while a new simulation is running.
+    The per-type entry is overwritten by ``store_sim_result`` once the run
+    completes.
+    """
     app_state.last_base_fig_json = None
-    app_state.last_sim_voxcity_grid = None
     gc.collect()
 
 
@@ -684,15 +687,9 @@ def _reset_taichi_and_caches():
     app_state.raw_data = {}
     app_state.rectangle_vertices = None
     app_state.land_cover_source = "OpenStreetMap"
-    app_state.last_sim_type = None
-    app_state.last_sim_target = None
-    app_state.last_sim_grid = None
-    app_state.last_sim_mesh = None
-    app_state.last_sim_voxcity_grid = None
-    app_state.last_sim_view_point_height = 1.5
+    app_state.clear_sim_results()
     app_state.last_base_fig_json = None
     app_state.last_hidden_classes = None
-    app_state.last_colorbar_title = None
 
 
 # ---------------------------------------------------------------------------
@@ -964,15 +961,18 @@ async def run_solar(req: SolarRequest):
 
             # Store for re-rendering.
             # solar_grid is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
-            app_state.last_sim_type = "solar"
-            app_state.last_sim_target = "ground"
-            app_state.last_sim_grid = solar_grid
-            app_state.last_sim_mesh = None
-            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
-            app_state.last_sim_view_point_height = req.view_point_height
-            app_state.last_colorbar_title = (
+            _colorbar_title = (
                 "Inst. Solar Irradiance (W/m²)" if req.calc_type == "instantaneous"
                 else "Cum. Solar Irradiance (Wh/m²)"
+            )
+            app_state.store_sim_result(
+                sim_type="solar",
+                target="ground",
+                grid=solar_grid,
+                mesh=None,
+                voxcity_grid=voxcity.voxels.classes,
+                view_point_height=req.view_point_height,
+                colorbar_title=_colorbar_title,
             )
 
             # Build overlay figure
@@ -1029,14 +1029,17 @@ async def run_solar(req: SolarRequest):
                 )
 
             # Store for re-rendering
-            app_state.last_sim_type = "solar"
-            app_state.last_sim_target = "building"
-            app_state.last_sim_grid = None
-            app_state.last_sim_mesh = irradiance
-            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
-            app_state.last_colorbar_title = (
+            _colorbar_title = (
                 "Inst. Global Irradiance (W/m²)" if req.calc_type == "instantaneous"
                 else "Cum. Global Irradiance (Wh/m²)"
+            )
+            app_state.store_sim_result(
+                sim_type="solar",
+                target="building",
+                grid=None,
+                mesh=irradiance,
+                voxcity_grid=voxcity.voxels.classes,
+                colorbar_title=_colorbar_title,
             )
 
             voxcity_grid = voxcity.voxels.classes
@@ -1117,13 +1120,15 @@ async def run_view(req: ViewRequest):
 
             # Store for re-rendering.
             # view_grid is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
-            app_state.last_sim_type = "view"
-            app_state.last_sim_target = "ground"
-            app_state.last_sim_grid = view_grid
-            app_state.last_sim_mesh = None
-            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
-            app_state.last_sim_view_point_height = req.view_point_height
-            app_state.last_colorbar_title = "View Index"
+            app_state.store_sim_result(
+                sim_type="view",
+                target="ground",
+                grid=view_grid,
+                mesh=None,
+                voxcity_grid=voxcity.voxels.classes,
+                view_point_height=req.view_point_height,
+                colorbar_title="View Index",
+            )
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -1179,12 +1184,14 @@ async def run_view(req: ViewRequest):
                 raise HTTPException(status_code=500, detail="No building surfaces found")
 
             # Store for re-rendering
-            app_state.last_sim_type = "view"
-            app_state.last_sim_target = "building"
-            app_state.last_sim_grid = None
-            app_state.last_sim_mesh = mesh
-            app_state.last_sim_voxcity_grid = voxcity.voxels.classes
-            app_state.last_colorbar_title = "View Factor"
+            app_state.store_sim_result(
+                sim_type="view",
+                target="building",
+                grid=None,
+                mesh=mesh,
+                voxcity_grid=voxcity.voxels.classes,
+                colorbar_title="View Factor",
+            )
 
             voxcity_grid = voxcity.voxels.classes
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -1280,13 +1287,15 @@ async def run_landmark(req: LandmarkRequest):
 
             # Store for re-rendering.
             # lg is uv_m/SOUTH_UP (axis 0 = north/u from origin), matching Phase 3.
-            app_state.last_sim_type = "landmark"
-            app_state.last_sim_target = "ground"
-            app_state.last_sim_grid = lg
-            app_state.last_sim_mesh = None
-            app_state.last_sim_voxcity_grid = voxcity_grid
-            app_state.last_sim_view_point_height = req.view_point_height
-            app_state.last_colorbar_title = "Visibility"
+            app_state.store_sim_result(
+                sim_type="landmark",
+                target="ground",
+                grid=lg,
+                mesh=None,
+                voxcity_grid=voxcity_grid,
+                view_point_height=req.view_point_height,
+                colorbar_title="Visibility",
+            )
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
@@ -1344,12 +1353,14 @@ async def run_landmark(req: LandmarkRequest):
                 raise HTTPException(status_code=500, detail="No surfaces generated")
 
             # Store for re-rendering
-            app_state.last_sim_type = "landmark"
-            app_state.last_sim_target = "building"
-            app_state.last_sim_grid = None
-            app_state.last_sim_mesh = landmark_mesh
-            app_state.last_sim_voxcity_grid = voxcity_grid
-            app_state.last_colorbar_title = "Visibility"
+            app_state.store_sim_result(
+                sim_type="landmark",
+                target="building",
+                grid=None,
+                mesh=landmark_mesh,
+                voxcity_grid=voxcity_grid,
+                colorbar_title="Visibility",
+            )
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
@@ -1697,30 +1708,33 @@ async def building_at(x: float, y: float):
         return {"building_id": None}
 
     # After Phase 3: bid_grid is in uv_m layout (no flip needed).
-    # build_voxel_buffers places voxel[i,j] at world (i*ms, j*ms) — see scene_geometry.py ~203-205.
+    # Scene convention (scene_geometry.py): X = east = axis 1 (v), Y = north = axis 0 (u).
+    # So grid u = floor(scene_y / ms), grid v = floor(scene_x / ms).
     bid_aligned = bid_grid
 
     meshsize = app_state.meshsize
     nx, ny = bid_aligned.shape
-    fx = float(x) / meshsize
-    fy = float(y) / meshsize
-    ci = math.floor(fx)   # floor, not int(), for boundary safety
-    cj = math.floor(fy)
+    # u = north = axis 0, v = east = axis 1
+    fu = float(y) / meshsize   # scene Y → grid axis 0 (north)
+    fv = float(x) / meshsize   # scene X → grid axis 1 (east)
+    cu = math.floor(fu)        # floor, not int(), for boundary safety
+    cv = math.floor(fv)
     best_bid = 0
     best_d2 = float("inf")
-    for di in (-1, 0, 1):
-        for dj in (-1, 0, 1):
-            i = ci + di
-            j = cj + dj
-            if i < 0 or j < 0 or i >= nx or j >= ny:
+    for du in (-1, 0, 1):
+        for dv in (-1, 0, 1):
+            ui = cu + du
+            vj = cv + dv
+            if ui < 0 or vj < 0 or ui >= nx or vj >= ny:
                 continue
-            bid = int(bid_aligned[i, j])
+            bid = int(bid_aligned[ui, vj])
             if bid == 0:
                 continue
-            # Distance from click XY to cell centre, in voxel units.
-            cx = i + 0.5
-            cy = j + 0.5
-            d2 = (cx - fx) ** 2 + (cy - fy) ** 2
+            # Distance from click to cell centre, in scene/voxel units.
+            # Cell (ui, vj) has scene centre (vj+0.5, ui+0.5).
+            scene_cx = vj + 0.5   # east
+            scene_cy = ui + 0.5   # north
+            d2 = (scene_cx - fv) ** 2 + (scene_cy - fu) ** 2
             if d2 < best_d2:
                 best_d2 = d2
                 best_bid = bid
@@ -2238,8 +2252,8 @@ def _grid_geom_for_zoning() -> dict:
     }
 
 
-def _zone_stats_ground(zones: List[ZoneSpec]) -> List[ZoneStat]:
-    sim = app_state.last_sim_grid
+def _zone_stats_ground(zones: List[ZoneSpec], cached: SimulationResultCache) -> List[ZoneStat]:
+    sim = cached.grid
     if sim is None:
         raise HTTPException(status_code=400, detail="No cached ground simulation result")
     grid_geom = _grid_geom_for_zoning()
@@ -2260,11 +2274,11 @@ def _zone_stats_ground(zones: List[ZoneSpec]) -> List[ZoneStat]:
     return out
 
 
-def _zone_stats_building(zones: List[ZoneSpec]) -> List[ZoneStat]:
-    mesh = app_state.last_sim_mesh
+def _zone_stats_building(zones: List[ZoneSpec], cached: SimulationResultCache) -> List[ZoneStat]:
+    mesh = cached.mesh
     if mesh is None:
         raise HTTPException(status_code=400, detail="No cached building-surface simulation result")
-    centroids_xy, values, areas = mesh_face_data(mesh, app_state.last_sim_type or "")
+    centroids_xy, values, areas = mesh_face_data(mesh, cached.sim_type)
     grid_geom = _grid_geom_for_zoning()
     centroids_lonlat = grid_xy_to_lonlat(centroids_xy, grid_geom)
     out: List[ZoneStat] = []
@@ -2280,21 +2294,28 @@ def _zone_stats_building(zones: List[ZoneSpec]) -> List[ZoneStat]:
 def zone_stats(req: ZoneStatsRequest) -> ZoneStatsResponse:
     if app_state.voxcity is None:
         raise HTTPException(status_code=400, detail="No model loaded")
-    if app_state.last_sim_type is None:
+
+    cached = app_state.get_sim_result(req.sim_type)
+    if cached is None:
+        if req.sim_type is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No cached result for simulation type '{req.sim_type}'. Run {req.sim_type} first.",
+            )
         raise HTTPException(status_code=400, detail="Run a simulation first")
 
-    target = app_state.last_sim_target
+    target = cached.target
     if target == "ground":
-        stats = _zone_stats_ground(req.zones)
+        stats = _zone_stats_ground(req.zones, cached)
     elif target == "building":
-        stats = _zone_stats_building(req.zones)
+        stats = _zone_stats_building(req.zones, cached)
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported target: {target}")
 
     return ZoneStatsResponse(
         target=target,
-        sim_type=app_state.last_sim_type,
-        unit_label=app_state.last_colorbar_title,
+        sim_type=cached.sim_type,
+        unit_label=cached.colorbar_title,
         stats=stats,
     )
 
@@ -2380,32 +2401,29 @@ def buildings_highlight(
 def sim_geometry(kind: str, req: SimGeometryRequest) -> OverlayGeometryResponse:
     """Return the most recent sim result as a coloured Three.js overlay.
 
-    ``kind`` is one of ``solar``, ``view``, ``landmark`` and must match the
-    last simulation that was run; otherwise a 400 is returned.
+    ``kind`` is one of ``solar``, ``view``, ``landmark``. Each tab's own
+    cached result is returned independently of whichever simulation ran last.
     """
     if kind not in {"solar", "view", "landmark"}:
         raise HTTPException(status_code=404, detail=f"Unknown sim kind: {kind}")
-    if app_state.last_sim_type is None:
-        raise HTTPException(status_code=400, detail="Run a simulation first")
-    if app_state.last_sim_type != kind:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Last sim was '{app_state.last_sim_type}', not '{kind}'",
-        )
 
-    target = app_state.last_sim_target
-    unit = app_state.last_colorbar_title or ""
+    cached = app_state.get_sim_result(kind)
+    if cached is None:
+        raise HTTPException(status_code=400, detail=f"No cached result for '{kind}'. Run {kind} first.")
+
+    target = cached.target
+    unit = cached.colorbar_title or ""
 
     if target == "ground":
-        if app_state.last_sim_grid is None:
+        if cached.grid is None:
             raise HTTPException(status_code=400, detail="No ground sim grid cached")
         return build_ground_overlay_buffers(
-            np.asarray(app_state.last_sim_grid),
-            np.asarray(app_state.last_sim_voxcity_grid)
-            if app_state.last_sim_voxcity_grid is not None
+            np.asarray(cached.grid),
+            np.asarray(cached.voxcity_grid)
+            if cached.voxcity_grid is not None
             else None,
             app_state.meshsize,
-            app_state.last_sim_view_point_height,
+            cached.view_point_height,
             sim_type=kind,
             colormap=req.colormap,
             vmin=req.vmin,
@@ -2413,10 +2431,10 @@ def sim_geometry(kind: str, req: SimGeometryRequest) -> OverlayGeometryResponse:
             unit_label=unit,
         )
     elif target == "building":
-        if app_state.last_sim_mesh is None:
+        if cached.mesh is None:
             raise HTTPException(status_code=400, detail="No building sim mesh cached")
         return build_building_overlay_buffers(
-            app_state.last_sim_mesh,
+            cached.mesh,
             sim_type=kind,
             colormap=req.colormap,
             vmin=req.vmin,

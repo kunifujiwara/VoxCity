@@ -29,6 +29,19 @@ from voxcity.models import (
 
 
 @dataclass
+class SimulationResultCache:
+    """Cached result for a single simulation type (solar / view / landmark)."""
+
+    sim_type: str                               # "solar" | "view" | "landmark"
+    target: str                                 # "ground" | "building"
+    grid: Optional[Any] = None                  # 2D ndarray for ground-level sims
+    mesh: Optional[Any] = None                  # mesh object for building-surface sims
+    voxcity_grid: Optional[Any] = None          # voxcity_grid snapshot at sim time
+    view_point_height: float = 1.5              # relevant for view sims
+    colorbar_title: Optional[str] = None        # unit label for the colorbar
+
+
+@dataclass
 class AppState:
     """In-memory singleton holding the current session data."""
 
@@ -46,9 +59,67 @@ class AppState:
     last_sim_view_point_height: float = 1.5      # view_point_height used in last sim
     last_colorbar_title: Optional[str] = None     # Colorbar title (with unit) for last sim
 
+    # Per-type simulation cache (one entry per sim kind, keyed by sim_type string)
+    sim_results_by_type: Dict[str, SimulationResultCache] = field(default_factory=dict)
+
     # Render cache for fast rerender (skip voxel face extraction)
     last_base_fig_json: Optional[str] = None     # Full Plotly figure JSON from last sim render
     last_hidden_classes: Optional[List[int]] = None  # Hidden classes used in last render
+
+    # ------------------------------------------------------------------
+    # Per-type simulation cache helpers
+    # ------------------------------------------------------------------
+    def store_sim_result(
+        self,
+        sim_type: str,
+        target: str,
+        grid: Optional[Any] = None,
+        mesh: Optional[Any] = None,
+        voxcity_grid: Optional[Any] = None,
+        view_point_height: float = 1.5,
+        colorbar_title: Optional[str] = None,
+    ) -> None:
+        """Persist a simulation result both in the per-type dict and the legacy
+        last_sim_* fields so existing render/export paths keep working."""
+        entry = SimulationResultCache(
+            sim_type=sim_type,
+            target=target,
+            grid=grid,
+            mesh=mesh,
+            voxcity_grid=voxcity_grid,
+            view_point_height=view_point_height,
+            colorbar_title=colorbar_title,
+        )
+        self.sim_results_by_type[sim_type] = entry
+        # Update legacy fields
+        self.last_sim_type = sim_type
+        self.last_sim_target = target
+        self.last_sim_grid = grid
+        self.last_sim_mesh = mesh
+        self.last_sim_voxcity_grid = voxcity_grid
+        self.last_sim_view_point_height = view_point_height
+        self.last_colorbar_title = colorbar_title
+
+    def get_sim_result(self, sim_type: Optional[str]) -> Optional[SimulationResultCache]:
+        """Return the cached result for the requested *sim_type*, or the most
+        recent result when *sim_type* is None/absent (backward-compat)."""
+        if sim_type is not None:
+            return self.sim_results_by_type.get(sim_type)
+        # Fall back to "latest overall" via legacy last_sim_type
+        if self.last_sim_type is not None:
+            return self.sim_results_by_type.get(self.last_sim_type)
+        return None
+
+    def clear_sim_results(self) -> None:
+        """Clear all per-type caches and legacy last_sim_* fields (full reset)."""
+        self.sim_results_by_type.clear()
+        self.last_sim_type = None
+        self.last_sim_target = None
+        self.last_sim_grid = None
+        self.last_sim_mesh = None
+        self.last_sim_voxcity_grid = None
+        self.last_sim_view_point_height = 1.5
+        self.last_colorbar_title = None
 
     # ------------------------------------------------------------------
     # Construction helpers

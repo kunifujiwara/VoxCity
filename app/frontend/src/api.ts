@@ -393,10 +393,10 @@ export interface ZoneSpecDto {
   ring_lonlat: [number, number][];
 }
 
-export async function getZoneStats(zones: ZoneSpecDto[]) {
+export async function getZoneStats(zones: ZoneSpecDto[], simType?: string) {
   return request<ZoneStatsResponse>('/zones/stats', {
     method: 'POST',
-    body: JSON.stringify({ zones }),
+    body: JSON.stringify({ zones, sim_type: simType }),
   });
 }
 

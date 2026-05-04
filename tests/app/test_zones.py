@@ -114,6 +114,13 @@ def test_zone_stats_ground_basic(client, monkeypatch):
     monkeypatch.setattr(app_state, "last_sim_grid", grid)
     monkeypatch.setattr(app_state, "last_sim_mesh", None)
     monkeypatch.setattr(app_state, "last_colorbar_title", "W/m2")
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "solar": SimulationResultCache(
+            sim_type="solar", target="ground", grid=grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="W/m2",
+        )
+    })
     import app.backend.main as main_mod
     monkeypatch.setattr(
         main_mod, "_grid_geom_for_zoning",
@@ -180,6 +187,13 @@ def test_zone_stats_building_basic(client, monkeypatch):
     monkeypatch.setattr(app_state, "last_sim_grid", None)
     monkeypatch.setattr(app_state, "last_sim_mesh", mesh)
     monkeypatch.setattr(app_state, "last_colorbar_title", "View Factor")
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "view": SimulationResultCache(
+            sim_type="view", target="building", grid=None, mesh=mesh,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Factor",
+        )
+    })
     import app.backend.main as main_mod
     # Identity mapping so grid xy == lon/lat for easy reasoning.
     monkeypatch.setattr(
@@ -224,4 +238,225 @@ def test_polygon_to_cells_snapshot_diamond(grid_geom_axis_aligned):
                 expected.add((i, j))
     assert len(expected) == 40
     assert set(cells) == expected
+
+
+# ---- Cross-tab isolation ---------------------------------------------------
+
+def _patch_grid_geom(monkeypatch):
+    import app.backend.main as main_mod
+    monkeypatch.setattr(
+        main_mod, "_grid_geom_for_zoning",
+        lambda: {"origin": [0.0, 0.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+                 "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]},
+        raising=True,
+    )
+
+
+def test_zone_stats_isolation_solar_after_view(client, monkeypatch):
+    """When the global latest-sim is 'view', requesting sim_type='solar' must
+    return the solar values, not the view values."""
+    solar_grid = np.full((4, 4), 100.0)
+    view_grid  = np.full((4, 4), 0.5)
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type",   "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "ground")
+    monkeypatch.setattr(app_state, "last_sim_grid",   view_grid)
+    monkeypatch.setattr(app_state, "last_sim_mesh",   None)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Index")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "solar": SimulationResultCache(
+            sim_type="solar", target="ground", grid=solar_grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="W/m2",
+        ),
+        "view": SimulationResultCache(
+            sim_type="view", target="ground", grid=view_grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Index",
+        ),
+    })
+    _patch_grid_geom(monkeypatch)
+
+    r = client.post("/api/zones/stats", json={
+        "sim_type": "solar",
+        "zones": [{"id": "z1", "name": "all", "ring_lonlat": [[0, 0], [4, 0], [4, 4], [0, 4]]}],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["sim_type"] == "solar"
+    assert body["unit_label"] == "W/m2"
+    by_id = {s["zone_id"]: s for s in body["stats"]}
+    # Must return the solar mean (100), NOT the view mean (0.5).
+    assert by_id["z1"]["mean"] == pytest.approx(100.0)
+
+
+def test_zone_stats_isolation_view_after_solar(client, monkeypatch):
+    """Symmetric: requesting sim_type='view' when global latest is 'solar'
+    must return the view values."""
+    solar_grid = np.full((4, 4), 100.0)
+    view_grid  = np.full((4, 4), 0.5)
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type",   "solar")
+    monkeypatch.setattr(app_state, "last_sim_target", "ground")
+    monkeypatch.setattr(app_state, "last_sim_grid",   solar_grid)
+    monkeypatch.setattr(app_state, "last_sim_mesh",   None)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "W/m2")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "solar": SimulationResultCache(
+            sim_type="solar", target="ground", grid=solar_grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="W/m2",
+        ),
+        "view": SimulationResultCache(
+            sim_type="view", target="ground", grid=view_grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Index",
+        ),
+    })
+    _patch_grid_geom(monkeypatch)
+
+    r = client.post("/api/zones/stats", json={
+        "sim_type": "view",
+        "zones": [{"id": "z1", "name": "all", "ring_lonlat": [[0, 0], [4, 0], [4, 4], [0, 4]]}],
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["sim_type"] == "view"
+    assert body["unit_label"] == "View Index"
+    by_id = {s["zone_id"]: s for s in body["stats"]}
+    assert by_id["z1"]["mean"] == pytest.approx(0.5)
+
+
+def test_zone_stats_requested_but_missing(client, monkeypatch):
+    """Requesting solar stats when only view has been cached should return 400."""
+    view_grid = np.full((4, 4), 0.5)
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type",   "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "ground")
+    monkeypatch.setattr(app_state, "last_sim_grid",   view_grid)
+    monkeypatch.setattr(app_state, "last_sim_mesh",   None)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Index")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "view": SimulationResultCache(
+            sim_type="view", target="ground", grid=view_grid, mesh=None,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Index",
+        ),
+    })
+    _patch_grid_geom(monkeypatch)
+
+    r = client.post("/api/zones/stats", json={
+        "sim_type": "solar",
+        "zones": [{"id": "z1", "name": "all", "ring_lonlat": [[0, 0], [4, 0], [4, 4], [0, 4]]}],
+    })
+    assert r.status_code == 400
+    assert "solar" in r.json()["detail"].lower()
+
+
+# ---- Solar geometry endpoint regression ------------------------------------
+
+def test_solar_ground_geometry_endpoint_fails_without_per_type_cache(client, monkeypatch):
+    """Regression: legacy last_sim_* fields alone do NOT satisfy the geometry
+    endpoint — it must return 400 when sim_results_by_type['solar'] is missing.
+    This documents the pre-fix failure mode that occurred when run_solar()
+    skipped store_sim_result() for the ground branch.
+    """
+    solar_grid = np.full((4, 4), 500.0)
+    monkeypatch.setattr(app_state, "last_sim_type", "solar")
+    monkeypatch.setattr(app_state, "last_sim_target", "ground")
+    monkeypatch.setattr(app_state, "last_sim_grid", solar_grid)
+    monkeypatch.setattr(app_state, "last_sim_mesh", None)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "Cum. Solar Irradiance (Wh/m\u00b2)")
+    # Deliberately NOT populating sim_results_by_type["solar"].
+    monkeypatch.setattr(app_state, "sim_results_by_type", {})
+
+    r = client.post("/api/sim/solar/geometry", json={"colormap": "viridis"})
+    assert r.status_code == 400
+    assert "solar" in r.json()["detail"].lower()
+
+
+def test_solar_ground_geometry_endpoint_returns_200_with_cache(client, monkeypatch):
+    """Contract: when sim_results_by_type['solar'] is seeded (as store_sim_result
+    does after the solar-ground fix), the geometry endpoint must return 200
+    with correct target and sim_type fields.
+    """
+    solar_grid = np.full((4, 4), 500.0)
+    voxcity_grid = np.zeros((4, 4, 2), dtype=np.int32)
+    voxcity_grid[:, :, 0] = 1
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "solar": SimulationResultCache(
+            sim_type="solar",
+            target="ground",
+            grid=solar_grid,
+            mesh=None,
+            voxcity_grid=voxcity_grid,
+            view_point_height=1.5,
+            colorbar_title="Cum. Solar Irradiance (Wh/m\u00b2)",
+        ),
+    })
+
+    r = client.post("/api/sim/solar/geometry", json={"colormap": "viridis"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["target"] == "ground"
+    assert body["sim_type"] == "solar"
+    assert body["unit_label"] == "Cum. Solar Irradiance (Wh/m\u00b2)"
+
+
+# ---- /api/buildings/at axis mapping regression ------------------------------
+
+class _MockBuildings:
+    def __init__(self, ids):
+        self.ids = ids
+
+
+class _MockVoxels:
+    class _Meta:
+        meshsize = 1.0
+    meta = _Meta()
+
+
+class _MockVoxcity:
+    def __init__(self, bid_grid):
+        self.buildings = _MockBuildings(bid_grid)
+        self.voxels = _MockVoxels()
+
+
+def test_buildings_at_returns_correct_building_for_scene_xy(client, monkeypatch):
+    """Regression: /api/buildings/at used to swap scene X and Y axes.
+
+    Grid layout (axis 0 = u = north, axis 1 = v = east), meshsize=1.0:
+        row 0: [1, 2]   <- u=0: north row
+        row 1: [3, 4]   <- u=1
+
+    Scene convention: X = east = v (axis 1), Y = north = u (axis 0).
+    So scene (x=0.5, y=0.5) -> u=0, v=0 -> building_id=1
+       scene (x=1.5, y=0.5) -> u=0, v=1 -> building_id=2
+       scene (x=0.5, y=1.5) -> u=1, v=0 -> building_id=3
+       scene (x=1.5, y=1.5) -> u=1, v=1 -> building_id=4
+
+    The old (buggy) code used ci=floor(x) for axis 0 and cj=floor(y) for
+    axis 1, which would have returned building_id=1 at (x=1.5, y=0.5) instead
+    of the correct building_id=2.
+    """
+    bid_grid = np.array([[1, 2], [3, 4]], dtype=np.int32)
+    vc_mock = _MockVoxcity(bid_grid)
+    monkeypatch.setattr(app_state, "voxcity", vc_mock)
+
+    cases = [
+        (0.5, 0.5, 1),   # north-west cell
+        (1.5, 0.5, 2),   # north-east cell  (was wrong before fix)
+        (0.5, 1.5, 3),   # south-west cell  (was wrong before fix)
+        (1.5, 1.5, 4),   # south-east cell
+    ]
+    for x, y, expected_bid in cases:
+        r = client.get(f"/api/buildings/at?x={x}&y={y}")
+        assert r.status_code == 200, r.text
+        assert r.json()["building_id"] == expected_bid, (
+            f"At scene (x={x}, y={y}) expected building_id={expected_bid} "
+            f"but got {r.json()['building_id']}"
+        )
 

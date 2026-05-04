@@ -59,24 +59,26 @@ function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): ZoneStats
 }
 
 /**
- * Fetch per-zone statistics for the most recent simulation cached in the
+ * Fetch per-zone statistics for the specified simulation type cached in the
  * backend. Re-fetches when:
  *   - `simRunNonce` changes (a new simulation has produced fresh values)
  *   - the set / shape / order of zones changes
+ *   - `simType` changes
  *
  * Stats are aggregated by `groupId` so multi-ring logical zones produce a
- * single row.  Returns `stats = null` when there are no zones or no
- * simulation has been run.
+ * single row.  Returns `stats = null` when there are no zones or the
+ * requested simulation has not been run yet.
  */
 export function useZoneStats(
   zones: Zone[],
+  simType: 'solar' | 'view' | 'landmark',
   simRunNonce: number,
 ): { stats: ZoneStatsResponse | null; loading: boolean; error: string | null } {
   const [stats, setStats] = useState<ZoneStatsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const key = `${simRunNonce}|${hashZones(zones)}`;
+  const key = `${simType}|${simRunNonce}|${hashZones(zones)}`;
 
   useEffect(() => {
     if (zones.length === 0 || simRunNonce === 0) {
@@ -90,6 +92,7 @@ export function useZoneStats(
     const handle = window.setTimeout(() => {
       getZoneStats(
         zones.map((z) => ({ id: z.id, name: z.name, ring_lonlat: z.ring_lonlat })),
+        simType,
       )
         .then((r) => {
           if (!cancelled) setStats(aggregateByGroup(zones, r));

@@ -149,6 +149,7 @@ class ZoneSpec(BaseModel):
 
 class ZoneStatsRequest(BaseModel):
     zones: List[ZoneSpec]
+    sim_type: Optional[str] = None  # "solar" | "view" | "landmark"; if absent, uses latest
 
 
 class ZoneStat(BaseModel):

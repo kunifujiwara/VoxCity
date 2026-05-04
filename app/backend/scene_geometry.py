@@ -587,10 +587,12 @@ def build_building_overlay_buffers(
     per_vert_colors = np.repeat(face_rgb, 3, axis=0)  # (n_faces*3, 3)
     indices = np.arange(tri_positions.shape[0], dtype=np.int32)
 
-    # Per-face building IDs (if metadata supplies them)
+    # Per-face building IDs (if metadata supplies them).
+    # Accept both 'building_face_ids' (Plotly-renderer path) and 'building_id'
+    # (create_voxel_mesh() / geoprocessor path); prefer the former for compat.
     face_to_building: Optional[List[int]] = None
     if hasattr(sim_mesh, "metadata") and isinstance(sim_mesh.metadata, dict):
-        bids = sim_mesh.metadata.get("building_face_ids")
+        bids = sim_mesh.metadata.get("building_face_ids") or sim_mesh.metadata.get("building_id")
         if bids is not None:
             arr = np.asarray(bids).reshape(-1)
             if arr.size == n_faces:

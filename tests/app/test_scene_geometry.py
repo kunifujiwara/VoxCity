@@ -162,6 +162,46 @@ def test_building_overlay_view_uses_view_factor_values():
     assert resp.value_min == pytest.approx(0.5)
 
 
+def test_building_overlay_accepts_building_id_metadata_key():
+    """Regression: create_voxel_mesh() stores building IDs as 'building_id',
+    not 'building_face_ids'. The overlay builder must accept both so that
+    face_to_building is populated for building-surface landmark selections."""
+    verts = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
+    faces = [[0, 1, 2], [0, 2, 3]]
+    # Use 'building_id' key (geoprocessor.mesh convention), not 'building_face_ids'
+    mesh = _FakeMesh(verts, faces, metadata={
+        "view_factor_values": [0.3, 0.7],
+        "building_id": [42, 42],
+    })
+
+    resp = build_building_overlay_buffers(
+        mesh, sim_type="landmark", colormap="viridis"
+    )
+    assert resp.face_to_building == [42, 42], (
+        "face_to_building must be populated from 'building_id' when "
+        "'building_face_ids' is absent in mesh metadata"
+    )
+
+
+def test_building_overlay_prefers_building_face_ids_over_building_id():
+    """When both metadata keys are present, 'building_face_ids' takes precedence
+    for backward compatibility with the Plotly-renderer path."""
+    verts = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
+    faces = [[0, 1, 2]]
+    mesh = _FakeMesh(verts, faces, metadata={
+        "view_factor_values": [0.5],
+        "building_face_ids": [99],   # Plotly path
+        "building_id": [77],         # geoprocessor path
+    })
+
+    resp = build_building_overlay_buffers(
+        mesh, sim_type="landmark", colormap="viridis"
+    )
+    assert resp.face_to_building == [99], (
+        "'building_face_ids' must take precedence over 'building_id'"
+    )
+
+
 # ---- Scene-plane mapping correctness ----------------------------------------
 
 def _tri_normal(positions_flat, indices_flat, tri_idx: int) -> np.ndarray:

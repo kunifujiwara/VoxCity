@@ -31,7 +31,7 @@ interface ViewTabProps {
 
 const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken }) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
+  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'view', simRunNonce);
   const [viewType, setViewType] = useState('green');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [viewPointHeight, setViewPointHeight] = useState(1.5);

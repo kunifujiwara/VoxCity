@@ -37,7 +37,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   geometryToken,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
-  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, simRunNonce);
+  const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'solar', simRunNonce);
   const [calcType, setCalcType] = useState<'instantaneous' | 'cumulative'>('instantaneous');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [calcDate, setCalcDate] = useState('01-01');
