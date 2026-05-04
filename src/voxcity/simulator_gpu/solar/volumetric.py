@@ -340,8 +340,8 @@ class VolumetricFluxCalculator:
         # Direction vector (pointing toward sky)
         sin_zen = ti.sin(zenith_angle)
         cos_zen = ti.cos(zenith_angle)
-        dir_x = sin_zen * ti.sin(azimuth)  # East component
-        dir_y = sin_zen * ti.cos(azimuth)  # North component
+        dir_x = sin_zen * ti.sin(azimuth)  # North/u component (axis 0)
+        dir_y = sin_zen * ti.cos(azimuth)  # East/v component (axis 1)
         dir_z = cos_zen                     # Up component
         
         # Starting position
