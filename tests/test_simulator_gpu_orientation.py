@@ -241,6 +241,15 @@ class _FakeVolumetricCalculator:
     def get_swflux_vol(self):
         return np.ones(self.shape, dtype=np.float32)
 
+    def init_cumulative_accumulation(self, **kwargs):
+        pass
+
+    def accumulate_terrain_following_slice_gpu(self, weight=1.0):
+        pass
+
+    def finalize_cumulative_map(self, apply_nan_mask=True):
+        return np.ones(self.shape[:2], dtype=np.float32)
+
 
 def test_gpu_volumetric_sun_direction_uses_u_north_v_east(monkeypatch):
     from voxcity.simulator_gpu.solar.integration import volumetric
@@ -290,6 +299,64 @@ def test_gpu_volumetric_sun_direction_applies_grid_rotation(monkeypatch):
         diffuse_irradiance=0,
         volumetric_height=1.0,
         with_reflections=False,
+    )
+
+    sun_direction = calc.calls[0]["sun_direction"]
+    assert sun_direction[0] > 0
+    assert abs(sun_direction[1]) < 1e-12
+
+
+# ---------------------------------------------------------------------------
+# Cumulative volumetric coverage tests
+# ---------------------------------------------------------------------------
+
+def test_gpu_volumetric_sun_direction_helper_cardinals():
+    from voxcity.simulator_gpu.solar.integration.volumetric import _compute_volumetric_sun_direction
+
+    voxel_data = _ground_grid(shape=(4, 3, 4))
+    voxcity = _fake_voxcity(voxel_data)
+
+    north, _ = _compute_volumetric_sun_direction(voxcity, 0, 45)
+    east, _ = _compute_volumetric_sun_direction(voxcity, 90, 45)
+    south, _ = _compute_volumetric_sun_direction(voxcity, 180, 45)
+    west, _ = _compute_volumetric_sun_direction(voxcity, 270, 45)
+
+    assert north[0] > 0 and abs(north[1]) < 1e-12
+    assert east[1] > 0 and abs(east[0]) < 1e-12
+    assert south[0] < 0 and abs(south[1]) < 1e-12
+    assert west[1] < 0 and abs(west[0]) < 1e-12
+
+
+def test_gpu_cumulative_volumetric_reuses_phase3_sun_direction(monkeypatch):
+    import pandas as pd
+    from voxcity.simulator_gpu.solar.integration import volumetric
+
+    voxel_data = _ground_grid(shape=(4, 3, 4))
+    voxcity = _fake_voxcity(voxel_data)
+    calc = _FakeVolumetricCalculator(voxel_data.shape)
+    domain = SimpleNamespace(is_solid=_FakeSolidField(voxel_data.shape), lad=None)
+
+    def fake_solar_positions(index, lon, lat):
+        return pd.DataFrame({"azimuth": [0.0], "elevation": [45.0]}, index=index)
+
+    monkeypatch.setattr(volumetric, "get_or_create_volumetric_calculator", lambda *args, **kwargs: (calc, domain))
+    monkeypatch.setattr(volumetric, "get_solar_positions_astral", fake_solar_positions)
+    monkeypatch.setattr(volumetric, "_compute_ground_k_from_voxels", lambda _voxel_data: np.zeros(_voxel_data.shape[:2], dtype=np.int32))
+
+    df = pd.DataFrame(
+        {"DNI": [1000.0], "DHI": [0.0]},
+        index=pd.DatetimeIndex(["2026-01-01 12:00:00"]),
+    )
+
+    volumetric.get_cumulative_volumetric_solar_irradiance(
+        voxcity,
+        df,
+        lon=0.0,
+        lat=0.0,
+        tz=0.0,
+        volumetric_height=1.0,
+        with_reflections=False,
+        use_sky_patches=False,
     )
 
     sun_direction = calc.calls[0]["sun_direction"]
