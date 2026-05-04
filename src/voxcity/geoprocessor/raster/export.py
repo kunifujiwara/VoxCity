@@ -11,7 +11,9 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     Converts a 2D grid to a GeoDataFrame with cell polygons and values.
     Output CRS: EPSG:4326
     """
-    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # Grids arrive in uv_m (SOUTH_UP) after Phase 3. Convert to NORTH_UP so that
+    # row 0 = north, matching the max_y-based coordinate math below.
+    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)
@@ -62,7 +64,9 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     """
     from shapely.geometry import Point
 
-    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # Grids arrive in uv_m (SOUTH_UP) after Phase 3. Convert to NORTH_UP so that
+    # row 0 = north, matching the max_y-based coordinate math below.
+    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)
