@@ -39,8 +39,9 @@ class TestComputeDirectSolarIrradianceMapBinary:
         result = compute_direct_solar_irradiance_map_binary(
             vox, sun_dir, 1.5, (0,), 1.0, 0.6, 1.0, False
         )
-        # The building cell itself should be NaN (building ground, code < 0)
-        assert np.isnan(result[6 - 1 - 3, 3])  # flipud
+        # The building cell itself should be NaN (building ground, code < 0).
+        # Phase 3: result is in uv layout (no flip).
+        assert np.isnan(result[3, 3])
 
     def test_tree_transmittance(self):
         """Tree voxels should cause partial transmittance."""

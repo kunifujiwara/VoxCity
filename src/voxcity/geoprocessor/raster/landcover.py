@@ -6,8 +6,6 @@ from affine import Affine
 import rasterio
 
 from ..utils import initialize_geod
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
-
 from ...utils.lc import (
     get_class_priority,
     create_land_cover_polygons,

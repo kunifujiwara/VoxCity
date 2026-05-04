@@ -515,14 +515,14 @@ def _build_sim_overlay_traces(
 
     if sim_target == "ground" and sim_grid is not None:
         # -- Derive DEM from voxel grid (same logic as _derive_dem_norm in scene_geometry.py) --
-        # voxcity_grid is NORTH_UP; np.flipud gives SOUTH_UP to match sim_grid row iteration.
+        # voxcity_grid and sim_grid are uv layout (Phase 3); no flip.
         if voxcity_grid is not None and voxcity_grid.ndim == 3:
             lc_mask = (voxcity_grid >= 1)
             k_indices = np.arange(voxcity_grid.shape[2])
             masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
             k_top_grid = np.max(masked_k, axis=2)
             k_top_grid = np.maximum(k_top_grid, 0)
-            dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+            dem_norm = k_top_grid.astype(float) * float(meshsize)
         else:
             dem_norm = np.zeros_like(sim_grid, dtype=float)
 
@@ -1915,12 +1915,6 @@ def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
     We therefore translate row positions → source ids via the current
     ``building_gdf`` before touching the grid.
     """
-    from voxcity.utils.orientation import (
-        ensure_orientation,
-        ORIENTATION_NORTH_UP,
-        ORIENTATION_SOUTH_UP,
-    )
-
     bld = vc.buildings
     gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
 
@@ -1950,9 +1944,9 @@ def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
         n_buildings = int(len(gdf)) if gdf is not None else 0
         return {"n_deleted": 0, "n_buildings": n_buildings}
 
-    ids_grid = ensure_orientation(bld.ids, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-    mask_south = np.isin(ids_grid, list(delete_set))
-    if not mask_south.any():
+    # bld.ids is uv layout (Phase 3); index uniformly with bld.heights/min_heights.
+    mask = np.isin(bld.ids, list(delete_set))
+    if not mask.any():
         print(
             f"[delete_buildings] no grid cells matched ids={sorted(delete_set)} "
             f"(row positions {row_positions}); model unchanged."
@@ -1960,11 +1954,10 @@ def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
         n_buildings = int(len(gdf)) if gdf is not None else 0
         return {"n_deleted": 0, "n_buildings": n_buildings}
 
-    mask_north = ensure_orientation(mask_south, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
-    bld.heights[mask_north] = 0.0
-    bld.ids[mask_north] = 0
+    bld.heights[mask] = 0.0
+    bld.ids[mask] = 0
     if bld.min_heights is not None:
-        it = np.nditer(mask_north, flags=["multi_index"])
+        it = np.nditer(mask, flags=["multi_index"])
         for hit in it:
             if bool(hit):
                 r, c = it.multi_index
@@ -2361,16 +2354,10 @@ def buildings_highlight(
     if bid_grid is None:
         return {"chunks": []}
 
-    from voxcity.utils.orientation import (
-        ORIENTATION_NORTH_UP,
-        ORIENTATION_SOUTH_UP,
-        ensure_orientation,
-    )
-    bid_aligned = ensure_orientation(bid_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-
+    # vc.voxels.classes and bid_grid are both uv layout (Phase 3); no flip.
     chunks = build_building_highlight_buffers(
         vc.voxels.classes,
-        bid_aligned,
+        bid_grid,
         parsed,
         app_state.meshsize,
         colormap=colormap,

@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 import requests
 import numpy as np
-from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 # Cache directory for ocean detection results (optional)
 CACHE_DIR = Path(tempfile.gettempdir()) / "voxcity_ocean_cache"
@@ -597,14 +596,14 @@ def apply_ocean_mask_to_grid(
     }
     default_class = default_classes.get(source, "Developed space")
     
-    # Get land mask
+    # Get land mask. get_land_mask_from_coastlines uses a rasterio north-up
+    # affine (row 0 = max_lat), so flipud here brings it into the uv layout
+    # used by `grid` (row 0 = south, axis 0 = u increasing northwards).
     land_mask = get_land_mask_from_osm_land_polygons(
-        rectangle_vertices, 
+        rectangle_vertices,
         grid.shape
     )
-    
-    # Flip land mask to match grid orientation (grid is flipped at the end of creation)
-    land_mask = ensure_orientation(land_mask, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    land_mask = np.flipud(land_mask)
     
     # Apply ocean class to cells that are:
     # 1. Not land (ocean according to OSM land polygons)

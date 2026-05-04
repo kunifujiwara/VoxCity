@@ -1487,7 +1487,7 @@ class GPURenderer:
                     masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
                     k_top_grid = np.max(masked_k, axis=2)
                     k_top_grid = np.maximum(k_top_grid, 0)
-                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                    dem_norm = k_top_grid.astype(float) * float(meshsize)
                 else:
                     try:
                         dem_norm = np.asarray(ground_dem_grid, dtype=float)
@@ -1804,7 +1804,7 @@ class GPURenderer:
                     masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
                     k_top_grid = np.max(masked_k, axis=2)
                     k_top_grid = np.maximum(k_top_grid, 0)
-                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                    dem_norm = k_top_grid.astype(float) * float(meshsize)
                 else:
                     try:
                         dem_norm = np.asarray(ground_dem_grid, dtype=float)
@@ -2097,7 +2097,7 @@ class GPURenderer:
                     masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
                     k_top_grid = np.max(masked_k, axis=2)
                     k_top_grid = np.maximum(k_top_grid, 0)
-                    dem_norm = np.flipud(k_top_grid.astype(float) * float(meshsize))
+                    dem_norm = k_top_grid.astype(float) * float(meshsize)
                 else:
                     try:
                         dem_norm = np.asarray(dem_grid, dtype=float)

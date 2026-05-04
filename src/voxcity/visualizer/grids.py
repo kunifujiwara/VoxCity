@@ -120,7 +120,7 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     class_to_num = {cls: i for i, cls in enumerate(unique_classes)}
     numeric_grid = np.vectorize(class_to_num.get)(grid)
     plt.figure(figsize=(10, 10))
-    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest')
+    im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest', origin='lower')
     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
     cbar.set_ticklabels(unique_classes)
     plt.title(f'Land Use/Land Cover Grid (Mesh Size: {mesh_size}m)')
@@ -131,7 +131,7 @@ def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
 
 def visualize_numerical_grid(grid, mesh_size, title, cmap='viridis', label='Value', vmin=None, vmax=None):
     plt.figure(figsize=(10, 10))
-    plt.imshow(grid, cmap=cmap, vmin=vmin, vmax=vmax)
+    plt.imshow(grid, cmap=cmap, vmin=vmin, vmax=vmax, origin='lower')
     plt.colorbar(label=label)
     plt.title(f'{title} (Mesh Size: {mesh_size}m)')
     plt.xlabel('Grid Cells (X)')

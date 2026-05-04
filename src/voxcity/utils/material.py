@@ -10,7 +10,6 @@ The main functionality includes:
 """
 
 import numpy as np
-from .orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 __all__ = [
     "get_material_dict",
@@ -111,8 +110,9 @@ def set_building_material_by_id(voxelcity_grid, building_id_grid_ori, ids, mark,
     Returns:
         numpy.ndarray: Modified voxelcity_grid with building materials and windows applied
     """
-    # Flip the building ID grid vertically to match coordinate system
-    building_id_grid = ensure_orientation(building_id_grid_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # Both voxelcity_grid and building_id_grid arrive in uv layout (Phase 3),
+    # so they index 1:1 — no flip.
+    building_id_grid = building_id_grid_ori
     
     # Get modulo numbers based on window_ratio for pattern generation
     x_mod, y_mod, z_mod = get_modulo_numbers(window_ratio)

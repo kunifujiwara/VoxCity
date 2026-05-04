@@ -277,8 +277,8 @@ def build_building_highlight_buffers(
     """Return one ``MeshChunk`` per face plane covering only the voxels of the
     given ``building_ids``.
 
-    ``bid_grid_aligned`` must already be in the same orientation as
-    ``voxcity_grid`` (i.e. ``ensure_orientation(bid_grid, NORTH_UP, SOUTH_UP)``).
+    ``bid_grid_aligned`` must be uv layout (axis 0 = u = north), the same as
+    ``voxcity_grid``, so the two arrays index 1:1 by ``(i, j)``.
 
     If ``colormap`` is given, the highlight colour is taken from the maximum
     value of that colormap (so it visually matches the top of a sim overlay).
@@ -349,11 +349,10 @@ def build_building_highlight_buffers(
 
 
 def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np.ndarray:
-    """Return ground-level elevation in metres, SOUTH_UP (row 0 = south).
+    """Return ground-level elevation in metres, in uv layout (axis 0 = u = north).
 
-    voxcity_grid is NORTH_UP; np.flipud converts to SOUTH_UP to match the
-    row iteration order used by build_ground_overlay_buffers (which also
-    flips sim_grid to SOUTH_UP before building quads).
+    Both ``voxcity_grid`` and the consumer ``build_ground_overlay_buffers`` use
+    uv layout, so no orientation conversion is needed at this boundary.
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return np.zeros(ref_shape, dtype=float)
@@ -362,7 +361,7 @@ def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np
     masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
     k_top = np.max(masked_k, axis=2)
     k_top = np.maximum(k_top, 0)
-    return np.flipud(k_top.astype(float) * float(meshsize))
+    return k_top.astype(float) * float(meshsize)
 
 
 def build_ground_overlay_buffers(
@@ -387,18 +386,12 @@ def build_ground_overlay_buffers(
     if sim.ndim != 2:
         raise ValueError("sim_grid must be 2-D")
 
-    # Match create_sim_surface_mesh: flip N-up -> S-up so iteration order
-    # corresponds to the on-screen mesh layout.
-    from voxcity.utils.orientation import (
-        ORIENTATION_NORTH_UP,
-        ORIENTATION_SOUTH_UP,
-        ensure_orientation,
-    )
+    # Both sim_grid and voxcity_grid arrive in uv layout (Phase 3); the scene
+    # mesh places voxel (u, v) at scene (u*ms, v*ms), so iterate (u, v) directly.
+    sim_uv = sim
+    dem_uv = _derive_dem_norm(voxcity_grid, meshsize, sim.shape)
 
-    sim_flipped = ensure_orientation(sim, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-    dem_flipped = _derive_dem_norm(voxcity_grid, meshsize, sim.shape)
-
-    finite = np.isfinite(sim_flipped) & ~np.isnan(sim_flipped)
+    finite = np.isfinite(sim_uv) & ~np.isnan(sim_uv)
     if not np.any(finite):
         empty = MeshChunk(
             name="ground_overlay",
@@ -418,7 +411,7 @@ def build_ground_overlay_buffers(
             unit_label=unit_label,
         )
 
-    finite_vals = sim_flipped[finite]
+    finite_vals = sim_uv[finite]
     vmin_f = float(np.nanmin(finite_vals)) if vmin is None else float(vmin)
     vmax_f = float(np.nanmax(finite_vals)) if vmax is None else float(vmax)
     if vmax_f <= vmin_f:
@@ -426,21 +419,20 @@ def build_ground_overlay_buffers(
 
     z_off = float(meshsize) + max(float(view_point_height), float(meshsize))
 
-    nrows, ncols = sim_flipped.shape
-    cell_x, cell_y = np.where(finite)  # row=x in flipped frame
-    n_cells = cell_x.size
+    cell_u, cell_v = np.where(finite)  # uv-axis indices
+    n_cells = cell_u.size
 
     # z per cell, matching create_sim_surface_mesh formula
     z_base = (
-        meshsize * (dem_flipped[cell_x, cell_y] / meshsize + 1.5).astype(int)
+        meshsize * (dem_uv[cell_u, cell_v] / meshsize + 1.5).astype(int)
         + z_off
         - meshsize
     )
 
-    fx0 = cell_x.astype(np.float32) * meshsize
-    fx1 = (cell_x + 1).astype(np.float32) * meshsize
-    fy0 = cell_y.astype(np.float32) * meshsize
-    fy1 = (cell_y + 1).astype(np.float32) * meshsize
+    fx0 = cell_u.astype(np.float32) * meshsize
+    fx1 = (cell_u + 1).astype(np.float32) * meshsize
+    fy0 = cell_v.astype(np.float32) * meshsize
+    fy1 = (cell_v + 1).astype(np.float32) * meshsize
     z32 = z_base.astype(np.float32)
 
     # 4 vertices per cell: v0 v1 v2 v3
@@ -463,16 +455,13 @@ def build_ground_overlay_buffers(
     # Per-vertex colors
     norm = mcolors.Normalize(vmin=vmin_f, vmax=vmax_f)
     cmap = mcm.get_cmap(colormap)
-    rgba = cmap(norm(sim_flipped[cell_x, cell_y]))  # (n_cells, 4)
+    rgba = cmap(norm(sim_uv[cell_u, cell_v]))  # (n_cells, 4)
     rgb = rgba[:, :3].astype(np.float32)
     # Replicate per cell to 4 vertices
     per_vert_colors = np.repeat(rgb, 4, axis=0).reshape(-1)
 
-    # Map each triangle back to source (i_orig, j_orig) in the *original*
-    # north-up grid. The orientation flip swaps row 0 <-> row (nrows-1).
-    i_orig = (nrows - 1 - cell_x).astype(int)
-    j_orig = cell_y.astype(int)
-    cell_pairs = np.stack([i_orig, j_orig], axis=1)  # (n_cells, 2)
+    # face_to_cell maps each triangle back to source uv (u, v).
+    cell_pairs = np.stack([cell_u.astype(int), cell_v.astype(int)], axis=1)
     # Triangle order is [first-tri-of-each-cell, second-tri-of-each-cell].
     face_to_cell = np.concatenate([cell_pairs, cell_pairs], axis=0)
 

@@ -24,12 +24,14 @@ Dependencies:
 - matplotlib: For colormap handling
 - trimesh: For mesh operations
 
-Orientation contract:
-- Export functions assume input 2D grids are north_up (row 0 = north/top) with
-  columns increasing eastward (col 0 = west/left), and voxel arrays use
-  (row, col, z) = (north→south, west→east, ground→up).
-- Internal flips may be applied to match OBJ coordinate conventions; these do
-  not change the semantic orientation of the data.
+Orientation contract (Phase 3):
+- Input voxel arrays must be in uv-domain layout: axis 0 = u (north/forward),
+  axis 1 = v (east/right), axis 2 = height (up). This matches the output of the
+  Phase 3 voxelizer (no ensure_orientation flip).
+- Output OBJ scene coordinates: X = v/east, Y = u/north, Z = height/up.
+  Consistent with visualize_voxcity and src/voxcity/simulator/common/coordinates.py.
+- No internal orientation flip is applied; data flows through as-isty/simulator/common/coordinates.py.
+- No internal orientation flip is applied; data flows through as-is.
 """
 
 import numpy as np
@@ -370,24 +372,30 @@ def export_obj(array, output_dir, file_name, voxel_size=None, voxel_color_map=No
         (0.0, 0.0, -1.0),  # 6: -Z Back face
     ]
 
-    # Map direction names to normal indices
+    # Map direction names to normal indices (scene: X=east/v, Y=north/u, Z=height).
+    # 'x' faces are perpendicular to the height axis  -> +/-Z normals.
+    # 'y' faces are perpendicular to the north axis   -> +/-Y normals (unchanged).
+    # 'z' faces are perpendicular to the east axis    -> +/-X normals.
     normal_indices = {
-        'nx': 2,
-        'px': 1,
-        'ny': 4,
-        'py': 3,
-        'nz': 6,
-        'pz': 5,
+        'nx': 6,   # bottom face  -> normal (0, 0, -1) = -Z
+        'px': 5,   # top face     -> normal (0, 0,  1) = +Z
+        'ny': 4,   # south face   -> normal (0, -1, 0) = -Y
+        'py': 3,   # north face   -> normal (0,  1, 0) = +Y
+        'nz': 2,   # west face    -> normal (-1, 0, 0) = -X
+        'pz': 1,   # east face    -> normal ( 1, 0, 0) = +X
     }
 
-    # Initialize data structures
-    vertex_list = []
-    vertex_dict = {}
-    faces_per_material = {}
+    # Reorder axes to (height, north/u, east/v) so the meshing loop produces
+    # scene-space vertices: X = v/east (axis 1 of original), Y = u/north (axis 0),
+    # Z = height (axis 2). Consistent with the Phase 3 uv-domain contract in
+    # src/voxcity/simulator/common/coordinates.py.
+    array = array.transpose(2, 0, 1)  # (nk=height, ni=north/u, nj=east/v)
+    size_x, size_y, size_z = array.shape  # size_x=height, size_y=north, size_z=east
 
-    # Transpose array for correct orientation in output
-    array = array.transpose(2, 1, 0)  # Now array[x, y, z]
-    size_x, size_y, size_z = array.shape
+    # Initialize data structures
+    vertex_dict = {}
+    vertex_list = []
+    faces_per_material = {}
 
     # Define processing directions and their normals
     directions = [
@@ -545,16 +553,12 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
     Raises:
         ValueError: If vmin equals vmax or if colormap_name is invalid
     """
-    # Validate input arrays
-    if value_array_ori.shape != dem_array_ori.shape:
-        raise ValueError("The value array and DEM array must have the same shape.")
-    
+    # Phase 3 uv_m layout: axis 0 = north/u (row 0 = origin = south); no flip needed.
+    value_array = value_array_ori.copy()
+    dem_array = dem_array_ori.copy() - np.min(dem_array_ori)
+
     # Get the dimensions
     rows, cols = value_array_ori.shape
-
-    # Flip arrays vertically and normalize DEM values
-    value_array = ensure_orientation(value_array_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
-    dem_array = ensure_orientation(dem_array_ori.copy(), ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP) - np.min(dem_array_ori)
 
     # Get valid indices (non-NaN)
     valid_indices = np.argwhere(~np.isnan(value_array))

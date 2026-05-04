@@ -49,9 +49,8 @@ class TestKernelsBranchCoverage:
         result = compute_direct_solar_irradiance_map_binary(
             vd, (0.0, 0.0, 1.0), 1.5, (0,), 1.0, 0.6, 1.0, False
         )
-        # Water cells should be NaN
-        # result is flipped, so (2,2) in original -> (3,2) in flipped (ny=6)
-        assert np.isnan(result[6 - 1 - 2, 2])
+        # Water cells should be NaN. Phase 3: result is in uv layout (no flip).
+        assert np.isnan(result[2, 2])
 
     def test_observer_on_building_excluded(self):
         """Cells with voxel_data[x,y,z-1] < 0 should produce NaN."""
@@ -61,7 +60,7 @@ class TestKernelsBranchCoverage:
         result = compute_direct_solar_irradiance_map_binary(
             vd, (0.0, 0.0, 1.0), 1.5, (0,), 1.0, 0.6, 1.0, False
         )
-        assert np.isnan(result[6 - 1 - 2, 2])
+        assert np.isnan(result[2, 2])
 
     def test_no_surface_found_nan(self):
         """Column of all air should produce NaN."""

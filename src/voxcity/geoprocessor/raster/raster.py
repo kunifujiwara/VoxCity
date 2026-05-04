@@ -8,7 +8,6 @@ from scipy.interpolate import griddata
 
 from ..utils import initialize_geod
 from .core import compute_cell_center_coords
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def create_height_grid_from_geotiff_polygon(

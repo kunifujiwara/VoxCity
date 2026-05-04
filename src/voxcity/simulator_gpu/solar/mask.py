@@ -419,14 +419,14 @@ def visualize_computation_mask(
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         
         # Left: Ground level view
-        axes[0].imshow(np.flipud(ground_level.T), cmap='gray', alpha=0.5)
+        axes[0].imshow(ground_level.T, cmap='gray', alpha=0.5, origin='lower')
         axes[0].set_title('Voxcity Grid')
         axes[0].axis('off')
-        
+
         # Right: Mask overlay
-        axes[1].imshow(np.flipud(ground_level.T), cmap='gray', alpha=0.3)
+        axes[1].imshow(ground_level.T, cmap='gray', alpha=0.3, origin='lower')
         mask_display = np.ma.masked_where(~mask.T, np.ones_like(mask.T))
-        axes[1].imshow(np.flipud(mask_display), cmap='Reds', alpha=0.5)
+        axes[1].imshow(mask_display, cmap='Reds', alpha=0.5, origin='lower')
         axes[1].set_title(f'Computation Mask ({np.sum(mask)} of {mask.size} cells)')
         axes[1].axis('off')
         
