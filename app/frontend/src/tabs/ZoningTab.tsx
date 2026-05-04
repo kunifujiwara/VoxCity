@@ -42,6 +42,13 @@ function maxBuildingHeight(geo: ModelGeoResult | null): number {
   return m > 0 ? m : 30;
 }
 
+interface DraftZoneGroup {
+  id: string;
+  name: string;
+  color: string;
+  shape: ZoneShape;
+}
+
 const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange, geometryToken }) => {
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,6 +67,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
    * implicitly).
    */
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [draftGroups, setDraftGroups] = useState<DraftZoneGroup[]>([]);
 
   // Initial fetch
   useEffect(() => {
@@ -73,6 +81,15 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   }, [hasModel]);
 
   const maxH = useMemo(() => maxBuildingHeight(geo), [geo]);
+
+  // Ensure there is always at least one visible row when the tab is empty.
+  useEffect(() => {
+    if (zones.length === 0 && draftGroups.length === 0) {
+      const id = makeZoneGroupId();
+      setDraftGroups([{ id, name: 'Zone 1', color: ZONE_PALETTE[0], shape }]);
+      setActiveGroupId(id);
+    }
+  }, [zones.length, draftGroups.length, shape]);
 
   /**
    * Project (lon, lat) into voxel-world metres so zone outlines align with
@@ -103,7 +120,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
    * one row per logical zone. The first member's metadata acts as the
    * group's name/colour/shape.
    */
-  const groups = useMemo(() => {
+  const committedGroups = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string; members: Zone[] }>();
     for (const z of zones) {
       const key = z.groupId ?? z.id;
@@ -117,23 +134,48 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     return Array.from(map.values());
   }, [zones]);
 
+  const groups = useMemo(() => {
+    const committed = committedGroups.map((g) => ({ ...g, draft: false as const }));
+    const committedIds = new Set(committedGroups.map((g) => g.id));
+    const drafts = draftGroups
+      .filter((g) => !committedIds.has(g.id))
+      .map((g) => ({ ...g, members: [] as Zone[], draft: true as const }));
+    return [...committed, ...drafts];
+  }, [committedGroups, draftGroups]);
+
   // Resolve which group new polygons attach to: explicit `activeGroupId`,
   // else the most recent group, else "start a new one".
   const effectiveActiveGroupId =
     activeGroupId ?? (groups.length > 0 ? groups[groups.length - 1].id : null);
 
+  const nextDraftMeta = useCallback(() => {
+    const usedNames = new Set([...zones.map((z) => z.name), ...draftGroups.map((g) => g.name)]);
+    let n = committedGroups.length + draftGroups.length + 1;
+    while (usedNames.has(`Zone ${n}`)) n += 1;
+    return {
+      name: `Zone ${n}`,
+      color: ZONE_PALETTE[(committedGroups.length + draftGroups.length) % ZONE_PALETTE.length],
+    };
+  }, [zones, committedGroups.length, draftGroups]);
+
   const handleAddZone = useCallback(() => {
-    setActiveGroupId(makeZoneGroupId());
-  }, []);
+    const id = makeZoneGroupId();
+    const { name, color } = nextDraftMeta();
+    setDraftGroups((prev) => [...prev, { id, name, color, shape }]);
+    setActiveGroupId(id);
+    setSelectedId(null);
+  }, [nextDraftMeta, shape]);
 
   const handlePolygonComplete = useCallback(
     (ring: [number, number][]) => {
       // Look up the active group, if any.
       const targetGroupId = effectiveActiveGroupId;
+      const draft = targetGroupId ? draftGroups.find((g) => g.id === targetGroupId) : undefined;
       const groupMembers = targetGroupId
         ? zones.filter((z) => (z.groupId ?? z.id) === targetGroupId)
         : [];
       const head = groupMembers[0];
+      const fallbackGroupId = targetGroupId ?? makeZoneGroupId();
       const newZone: Zone = head
         ? {
             id: makeZoneId(),
@@ -145,28 +187,34 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           }
         : {
             id: makeZoneId(),
-            name: nextZoneName(zones),
-            color: nextZoneColor(zones),
+            name: draft?.name ?? nextZoneName(zones),
+            color: draft?.color ?? nextZoneColor(zones),
             shape,
             ring_lonlat: ring,
-            groupId: targetGroupId ?? makeZoneGroupId(),
+            groupId: draft?.id ?? fallbackGroupId,
           };
       onZonesChange([...zones, newZone]);
+      if (draft) {
+        setDraftGroups((prev) => prev.filter((g) => g.id !== draft.id));
+      }
       setSelectedId(newZone.id);
       setActiveGroupId(newZone.groupId ?? null);
     },
-    [zones, shape, onZonesChange, effectiveActiveGroupId],
+    [zones, shape, onZonesChange, effectiveActiveGroupId, draftGroups],
   );
 
   const updateGroup = (groupId: string, patch: Partial<Pick<Zone, 'name' | 'color'>>) => {
     onZonesChange(
       zones.map((z) => ((z.groupId ?? z.id) === groupId ? { ...z, ...patch } : z)),
     );
+    setDraftGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...patch } : g)));
   };
 
   const deleteGroup = (groupId: string) => {
-    if (!window.confirm('Delete this zone (all its rings)?')) return;
+    const hasCommittedMembers = zones.some((z) => (z.groupId ?? z.id) === groupId);
+    if (hasCommittedMembers && !window.confirm('Delete this zone (all its rings)?')) return;
     onZonesChange(zones.filter((z) => (z.groupId ?? z.id) !== groupId));
+    setDraftGroups((prev) => prev.filter((g) => g.id !== groupId));
     if (selectedId && zones.find((z) => z.id === selectedId)?.groupId === groupId) {
       setSelectedId(null);
     }
@@ -174,9 +222,10 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   };
 
   const clearAll = () => {
-    if (zones.length === 0) return;
-    if (!window.confirm(`Delete all ${groups.length} zones?`)) return;
+    if (zones.length === 0 && draftGroups.length === 0) return;
+    if (zones.length > 0 && !window.confirm(`Delete all ${committedGroups.length} zones?`)) return;
     onZonesChange([]);
+    setDraftGroups([]);
     setSelectedId(null);
     setActiveGroupId(null);
   };
@@ -243,11 +292,11 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             type="button"
             className="btn btn-primary"
             onClick={handleAddZone}
-            title="Start a new zone. Subsequent polygons join the active zone."
+            title="Add a new zone row. Draw on the map to set its boundary."
           >
             + Add a zone
           </button>
-          <button className="btn btn-secondary" onClick={clearAll} disabled={zones.length === 0}>
+          <button className="btn btn-secondary" onClick={clearAll} disabled={zones.length === 0 && draftGroups.length === 0}>
             Clear all zones
           </button>
         </div>
@@ -295,7 +344,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                 ) : (
                   <span className="name">
                     {g.name}
-                    {g.members.length > 1 && (
+                    {g.draft && (
+                      <span style={{ opacity: 0.6, marginLeft: 6, fontSize: '0.85em' }}>
+                        pending
+                      </span>
+                    )}
+                    {!g.draft && g.members.length > 1 && (
                       <span style={{ opacity: 0.6, marginLeft: 6, fontSize: '0.85em' }}>
                         ×{g.members.length}
                       </span>
