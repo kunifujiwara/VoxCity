@@ -9,6 +9,8 @@ from voxcity.exporter.envimet import (
     array_to_string,
     array_to_string_with_value,
     array_to_string_int,
+    create_xml_content,
+    prepare_grids,
 )
 
 
@@ -96,3 +98,106 @@ class TestArrayToStringInt:
         arr = np.array([[5]])
         result = array_to_string_int(arr)
         assert result.startswith('     ')
+
+
+def fail_if_orientation_conversion_is_used(*args, **kwargs):
+    raise AssertionError("ENVI-met exporter should process SOUTH_UP grids directly")
+
+
+class TestEnvimetSouthUpProcessing:
+    def test_prepare_grids_preserves_south_up_layout_without_conversion(self, monkeypatch):
+        from voxcity.exporter import envimet
+
+        monkeypatch.setattr(envimet, "ensure_orientation", fail_if_orientation_conversion_is_used, raising=False)
+
+        building_height = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 5.0, 0.0],
+                [0.0, 7.0, 0.0],
+                [0.0, 10.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ]
+        )
+        building_id = np.array(
+            [
+                [0, 0, 0],
+                [0, 2, 0],
+                [0, 7, 0],
+                [0, 3, 0],
+                [0, 0, 0],
+            ]
+        )
+        canopy_height = np.zeros_like(building_height)
+        land_cover = np.zeros_like(building_id)
+        dem = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 1.5, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ]
+        )
+
+        bh, bid, _, _, _, dem_out = prepare_grids(
+            building_height,
+            building_id,
+            canopy_height,
+            land_cover,
+            dem,
+            meshsize=1.0,
+            land_cover_source="OpenStreetMap",
+        )
+
+        assert bh[1, 1] == pytest.approx(5.0)
+        assert bh[3, 1] == pytest.approx(10.0)
+        assert bid[1, 1] == 2
+        assert bid[3, 1] == 3
+        assert dem_out[1, 1] == pytest.approx(1.0)
+        assert dem_out[3, 1] == pytest.approx(2.0)
+
+    def test_create_xml_content_writes_matrices_north_first_from_south_up_inputs(self, monkeypatch):
+        from voxcity.exporter import envimet
+
+        monkeypatch.setattr(envimet, "ensure_orientation", fail_if_orientation_conversion_is_used, raising=False)
+
+        building_height = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 5.0, 0.0],
+                [0.0, 7.0, 0.0],
+                [0.0, 10.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ]
+        )
+        building_id = np.array(
+            [
+                [0, 0, 0],
+                [0, 2, 0],
+                [0, 7, 0],
+                [0, 3, 0],
+                [0, 0, 0],
+            ]
+        )
+        land_cover_veg = np.full(building_height.shape, "", dtype=object)
+        land_cover_mat = np.full(building_height.shape, "000000", dtype=object)
+        canopy_height = np.zeros_like(building_height)
+        dem = np.zeros_like(building_height)
+
+        xml = create_xml_content(
+            building_height,
+            building_id,
+            land_cover_veg,
+            land_cover_mat,
+            canopy_height,
+            dem,
+            meshsize=1.0,
+            rectangle_vertices=[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+            min_grids_Z=3,
+        )
+
+        ztop = xml.split("<zTop", 1)[1].split("</zTop>", 1)[0]
+        rows = [line.strip() for line in ztop.splitlines() if line.strip() and "," in line]
+        assert rows[1] == "0.0,10.0,0.0"
+        assert rows[-2] == "0.0,5.0,0.0"

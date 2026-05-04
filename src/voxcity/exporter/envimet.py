@@ -31,7 +31,6 @@ from ..geoprocessor.raster import apply_operation, translate_array, group_and_la
 from ..geoprocessor.utils import get_city_country_name_from_rectangle, get_timezone_info
 from ..utils.lc import convert_land_cover
 from ..models import VoxCity
-from ..utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -106,11 +105,21 @@ def array_to_string_int(arr):
     """
     return '\n'.join('     ' + ','.join(str(int(cell+0.5)) for cell in row) for row in arr)
 
+
+def envimet_matrix_to_string(arr):
+    """Serialize a SOUTH_UP grid as ENVI-met north-first matrix-data."""
+    return array_to_string(arr[::-1])
+
+
+def envimet_matrix_to_string_int(arr):
+    """Serialize a SOUTH_UP numeric grid as ENVI-met north-first matrix-data."""
+    return array_to_string_int(arr[::-1])
+
 def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_grid_ori, land_cover_grid_ori, dem_grid_ori, meshsize, land_cover_source, envimet_mapping=None):
     """Prepare and process input grids for ENVI-met model.
     
     This function performs several key transformations on input grids:
-    1. Flips grids vertically to match ENVI-met coordinate system
+    1. Keeps grids in uv_m/SOUTH_UP layout for internal processing
     2. Handles missing values and border conditions
     3. Converts land cover classes to ENVI-met vegetation and material codes
     4. Processes building IDs and heights
@@ -148,10 +157,9 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         - DEM is normalized to minimum elevation
         - Land cover is converted based on source-specific mapping
     """
-    # Inputs arrive in uv_m (SOUTH_UP) layout after Phase 3. Convert to NORTH_UP because
-    # ENVI-met matrix-data is read north-first (first row in file = j=grids_J = northernmost).
-    building_height_grid = ensure_orientation(np.nan_to_num(building_height_grid_ori, nan=10.0), ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP).copy()
-    building_id_grid = ensure_orientation(building_id_grid_ori, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    # Inputs arrive in uv_m (SOUTH_UP) layout after Phase 3.
+    building_height_grid = np.nan_to_num(building_height_grid_ori, nan=10.0).copy()
+    building_id_grid = building_id_grid_ori.copy()
     
     # Set border cells to 0 height
     building_height_grid[0, :] = building_height_grid[-1, :] = building_height_grid[:, 0] = building_height_grid[:, -1] = 0
@@ -165,7 +173,7 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
         # All other sources need remapping to standard indices
         land_cover_grid_converted = convert_land_cover(land_cover_grid_ori, land_cover_source=land_cover_source)        
 
-    land_cover_grid = ensure_orientation(land_cover_grid_converted, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP).copy()
+    land_cover_grid = land_cover_grid_converted.copy()
 
     # Dictionary mapping land cover types to vegetation codes
     # Standard 1-based indices: 1=Bareland, 2=Rangeland, 3=Shrub, 4=Agriculture, 5=Tree, 
@@ -213,7 +221,7 @@ def prepare_grids(building_height_grid_ori, building_id_grid_ori, canopy_height_
 
     # Process canopy and DEM grids
     canopy_height_grid = canopy_height_grid_ori.copy()
-    dem_grid = ensure_orientation(dem_grid_ori, ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP).copy() - np.min(dem_grid_ori)
+    dem_grid = dem_grid_ori.copy() - np.min(dem_grid_ori)
 
     return building_height_grid, building_id_grid, land_cover_veg_grid, land_cover_mat_grid, canopy_height_grid, dem_grid
 
@@ -468,13 +476,13 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
         xml_template = xml_template.replace(placeholder, value)
 
     # Replace matrix data placeholders with actual grid data
-    xml_template = xml_template.replace("$zTop$", array_to_string(building_height_grid))
+    xml_template = xml_template.replace("$zTop$", envimet_matrix_to_string(building_height_grid))
     xml_template = xml_template.replace("$zBottom$", array_to_string_with_value(building_height_grid, '0'))
     xml_template = xml_template.replace("$fixedheight$", array_to_string_with_value(building_height_grid, '0'))
 
     # Process and add building numbers
     building_nr_grid = group_and_label_cells(building_id_grid)
-    xml_template = xml_template.replace("$buildingNr$", array_to_string(building_nr_grid))
+    xml_template = xml_template.replace("$buildingNr$", envimet_matrix_to_string(building_nr_grid))
 
     # Add vegetation data
     # Optionally remove 1D vegetation from building cells
@@ -482,21 +490,18 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     if not rooftop_vegetation:
         veg_grid = land_cover_veg_grid.copy()
         veg_grid[building_height_grid > 0] = ''
-        xml_template = xml_template.replace("$ID_plants1D$", array_to_string(veg_grid))
+        xml_template = xml_template.replace("$ID_plants1D$", envimet_matrix_to_string(veg_grid))
     else:
-        xml_template = xml_template.replace("$ID_plants1D$", array_to_string(land_cover_veg_grid))
+        xml_template = xml_template.replace("$ID_plants1D$", envimet_matrix_to_string(land_cover_veg_grid))
 
     # Generate and add 3D plant data
     tree_content = ""
-    # building_height_grid is NORTH_UP after prepare_grids. Flip to SOUTH_UP to match
-    # canopy_height_grid (which was not flipped and remains SOUTH_UP). Both must be in
-    # the same layout for the per-cell tree-suppression comparison.
-    building_height_south_up = ensure_orientation(building_height_grid, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
+    # building_height_grid and canopy_height_grid are both SOUTH_UP here.
     for i in range(grids_I):
         for j in range(grids_J):
             canopy_height = int(canopy_height_grid[j, i] + 0.5)
             # Only add trees where there are no buildings
-            if canopy_height_grid[j, i] > 0 and building_height_south_up[j, i]==0:
+            if canopy_height_grid[j, i] > 0 and building_height_grid[j, i]==0:
                 plantid = f'H{canopy_height:02d}W01'
                 tree_ij = f"""  <3Dplants>
      <rootcell_i> {i+1} </rootcell_i>
@@ -510,10 +515,10 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
 
     # Add remaining data
     xml_template = xml_template.replace("$3Dplants$", tree_content)
-    xml_template = xml_template.replace("$ID_soilprofile$", array_to_string(land_cover_mat_grid))
+    xml_template = xml_template.replace("$ID_soilprofile$", envimet_matrix_to_string(land_cover_mat_grid))
     dem_grid = process_grid(building_nr_grid, dem_grid)
     xml_template = xml_template.replace("$DEMReference$", '0')
-    xml_template = xml_template.replace("$terrainheight$", array_to_string_int(dem_grid))
+    xml_template = xml_template.replace("$terrainheight$", envimet_matrix_to_string_int(dem_grid))
     xml_template = xml_template.replace("$ID_sources$", array_to_string_with_value(land_cover_mat_grid, ''))
 
     return xml_template
