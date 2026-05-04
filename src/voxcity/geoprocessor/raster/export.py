@@ -3,7 +3,6 @@ import geopandas as gpd
 from shapely.geometry import box
 from pyproj import CRS
 from ..utils import setup_transformer
-from ...utils.orientation import ensure_orientation, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP
 
 
 def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
@@ -11,9 +10,8 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     Converts a 2D grid to a GeoDataFrame with cell polygons and values.
     Output CRS: EPSG:4326
     """
-    # Grids arrive in uv_m (SOUTH_UP) after Phase 3. Convert to NORTH_UP so that
-    # row 0 = north, matching the max_y-based coordinate math below.
-    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    # Grids arrive in uv_m (SOUTH_UP) after Phase 3: row 0 is the southern edge.
+    grid = grid_ori.copy()
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)
@@ -36,8 +34,8 @@ def grid_to_geodataframe(grid_ori, rectangle_vertices, meshsize):
     i_idx = np.arange(rows)
     cell_min_xs = min_x + j_idx * cell_size_x
     cell_max_xs = min_x + (j_idx + 1) * cell_size_x
-    cell_max_ys = max_y - i_idx * cell_size_y
-    cell_min_ys = max_y - (i_idx + 1) * cell_size_y
+    cell_min_ys = min_y + i_idx * cell_size_y
+    cell_max_ys = min_y + (i_idx + 1) * cell_size_y
 
     # Meshgrid for all cells (row-major: i varies slowest)
     jj, ii = np.meshgrid(j_idx, i_idx)
@@ -64,9 +62,8 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     """
     from shapely.geometry import Point
 
-    # Grids arrive in uv_m (SOUTH_UP) after Phase 3. Convert to NORTH_UP so that
-    # row 0 = north, matching the max_y-based coordinate math below.
-    grid = ensure_orientation(grid_ori.copy(), ORIENTATION_SOUTH_UP, ORIENTATION_NORTH_UP)
+    # Grids arrive in uv_m (SOUTH_UP) after Phase 3: row 0 is the southern edge.
+    grid = grid_ori.copy()
 
     min_lon = min(v[0] for v in rectangle_vertices)
     max_lon = max(v[0] for v in rectangle_vertices)
@@ -88,7 +85,7 @@ def grid_to_point_geodataframe(grid_ori, rectangle_vertices, meshsize):
     j_idx = np.arange(cols)
     i_idx = np.arange(rows)
     center_xs = min_x + (j_idx + 0.5) * cell_size_x
-    center_ys = max_y - (i_idx + 0.5) * cell_size_y
+    center_ys = min_y + (i_idx + 0.5) * cell_size_y
 
     jj, ii = np.meshgrid(j_idx, i_idx)
     cx_flat = center_xs[jj.ravel()]
