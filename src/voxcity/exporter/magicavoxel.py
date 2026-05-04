@@ -203,17 +203,20 @@ def numpy_to_vox(array, color_map, output_file):
             - shape: tuple of (width, height, depth) of the output model
     
     Note:
-        - Coordinates are transformed to match MagicaVoxel's coordinate system
-        - Z-axis is flipped and axes are reordered in the process
+        - VoxCity arrays are (north, east, height)
+        - pyvox dense arrays are (y=north, z=height, x=east)
+        - Height is pre-flipped because pyvox inverts dense z when creating voxels
     """
     # Create color palette and value mapping
     palette = create_custom_palette(color_map)
     value_mapping = create_mapping(color_map)
     value_mapping[0] = 0  # Ensure 0 maps to 0 (void)
 
-    # Transform array to match MagicaVoxel coordinate system
-    array_flipped = np.flip(array, axis=2)  # Flip Z axis
-    array_transposed = np.transpose(array_flipped, (1, 2, 0))  # Reorder axes
+    # VoxCity arrays use (north, east, height). pyvox expects dense arrays as
+    # (y, z, x), and pyvox flips dense z internally when writing MagicaVoxel
+    # voxels. Pre-flip height so MagicaVoxel receives z=height.
+    array_flipped = np.flip(array, axis=2)
+    array_transposed = np.transpose(array_flipped, (0, 2, 1))  # (north, height, east)
     mapped_array = np.vectorize(value_mapping.get)(array_transposed, 0)
 
     # Create and save vox file
@@ -221,7 +224,8 @@ def numpy_to_vox(array, color_map, output_file):
     vox.palette = palette
     VoxWriter(output_file, vox).write()
 
-    return value_mapping, palette, array_transposed.shape
+    model_size = (array.shape[1], array.shape[0], array.shape[2])  # (x=east, y=north, z=height)
+    return value_mapping, palette, model_size
 
 def export_large_voxel_model(array, color_map, output_prefix, max_size=255, base_filename='chunk'):
     """

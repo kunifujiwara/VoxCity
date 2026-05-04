@@ -12,6 +12,7 @@ from voxcity.exporter.magicavoxel import (
     create_custom_palette,
     create_mapping,
     split_array,
+    numpy_to_vox,
 )
 
 
@@ -147,3 +148,37 @@ class TestSplitArray:
             assert chunk.shape[0] <= 255
             assert chunk.shape[1] <= 255
             assert chunk.shape[2] <= 255
+
+
+class TestNumpyToVoxAxisOrder:
+    """Verify VoxCity (north, east, height) maps to pyvox dense (y=north, z=height, x=east)."""
+
+    def test_voxcity_axes_map_to_pyvox_dense_y_z_x(self, monkeypatch, tmp_path):
+        from pyvox.models import Vox
+
+        captured = {}
+        original_from_dense = Vox.from_dense
+
+        def capture_from_dense(dense):
+            captured["dense"] = dense.copy()
+            return original_from_dense(dense)
+
+        monkeypatch.setattr(Vox, "from_dense", staticmethod(capture_from_dense))
+
+        array = np.zeros((3, 4, 5), dtype=np.uint8)  # (north=3, east=4, height=5)
+        array[2, 1, 3] = 1
+
+        numpy_to_vox(array, {1: [255, 0, 0]}, str(tmp_path / "axis.vox"))
+
+        dense = captured["dense"]
+        assert dense.shape == (3, 5, 4)  # pyvox dense: (y=north, z=height, x=east)
+        # Marker at north=2, flipped_height=5-3-1=1, east=1
+        assert dense[2, 1, 1] == 2  # create_mapping maps value 1 -> palette index 2
+
+    def test_returns_magicavoxel_model_size_x_y_z(self, tmp_path):
+        array = np.zeros((3, 4, 5), dtype=np.uint8)  # (north, east, height)
+        array[2, 1, 3] = 1
+
+        _, _, shape = numpy_to_vox(array, {1: [255, 0, 0]}, str(tmp_path / "axis.vox"))
+
+        assert shape == (4, 3, 5)  # MagicaVoxel model size: (x=east, y=north, z=height)
