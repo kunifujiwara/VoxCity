@@ -105,6 +105,29 @@ class TestGridToObj:
                      num_colors=8)
         assert (tmp_path / "nc.obj").exists()
 
+    def test_axis_orientation(self, tmp_path):
+        """X = east/v (j*cell_size), Y = north/u (i*cell_size) per Phase 3 contract."""
+        from voxcity.exporter.obj import grid_to_obj
+        # 3x3 grid: only cell (i=1, j=0) has a non-NaN value
+        values = np.full((3, 3), np.nan)
+        values[1, 0] = 5.0
+        dem = np.zeros((3, 3))
+        grid_to_obj(values, dem, str(tmp_path), "axis_test", cell_size=1.0, offset=0.0,
+                     vmin=0.0, vmax=10.0)
+        content = (tmp_path / "axis_test.obj").read_text()
+        # Parse all vertices from the OBJ file
+        xs, ys = [], []
+        for line in content.splitlines():
+            if line.startswith("v "):
+                parts = line.split()
+                xs.append(float(parts[1]))
+                ys.append(float(parts[2]))
+        assert len(xs) > 0, "No vertices found in OBJ"
+        # X = east/v = j*cell_size: j=0 → X in [0, 1]
+        assert all(0.0 <= x <= 1.0 for x in xs), f"X coords should be in [0,1] (j=0 range), got {xs}"
+        # Y = north/u = i*cell_size: i=1 → Y in [1, 2]
+        assert all(1.0 <= y <= 2.0 for y in ys), f"Y coords should be in [1,2] (i=1 range), got {ys}"
+
 
 class TestExportObjVoxCity:
     """Test export_obj accepting a VoxCity instance."""

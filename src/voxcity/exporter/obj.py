@@ -30,7 +30,6 @@ Orientation contract (Phase 3):
   Phase 3 voxelizer (no ensure_orientation flip).
 - Output OBJ scene coordinates: X = v/east, Y = u/north, Z = height/up.
   Consistent with visualize_voxcity and src/voxcity/simulator/common/coordinates.py.
-- No internal orientation flip is applied; data flows through as-isty/simulator/common/coordinates.py.
 - No internal orientation flip is applied; data flows through as-is.
 """
 
@@ -623,11 +622,11 @@ def grid_to_obj(value_array_ori, dem_array_ori, output_dir, file_name, cell_size
             }
             materials.append(material_name)
 
-        # Calculate cell vertices
-        x0 = i * cell_size
-        x1 = (i + 1) * cell_size
-        y0 = j * cell_size
-        y1 = (j + 1) * cell_size
+        # Calculate cell vertices (X = east/v = j*cell_size, Y = north/u = i*cell_size)
+        x0 = j * cell_size
+        x1 = (j + 1) * cell_size
+        y0 = i * cell_size
+        y1 = (i + 1) * cell_size
 
         # Calculate elevation with quantization and offset
         z = cell_size * int(dem_array[i, j] / cell_size + 1.5) + offset
