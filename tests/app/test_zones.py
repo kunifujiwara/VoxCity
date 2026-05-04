@@ -172,7 +172,10 @@ def test_mesh_face_data_solar():
 
 
 def test_grid_xy_to_lonlat_axis_aligned():
-    geom = {"origin": [10.0, 20.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+    # Real VoxCity north-up geometry: u_vec=[0,1] (north/lat), v_vec=[1,0] (east/lon).
+    # grid_xy_to_lonlat maps scene_x=east → v_m and scene_y=north → u_m.
+    # For origin=[10,20], scene (x=1,y=2) → lon=10+v_m=10+1=11, lat=20+u_m=20+2=22.
+    geom = {"origin": [10.0, 20.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
             "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]}
     out = grid_xy_to_lonlat(np.array([[1.0, 2.0], [3.0, 0.0]]), geom)
     assert out.tolist() == [[11.0, 22.0], [13.0, 20.0]]
@@ -195,10 +198,12 @@ def test_zone_stats_building_basic(client, monkeypatch):
         )
     })
     import app.backend.main as main_mod
-    # Identity mapping so grid xy == lon/lat for easy reasoning.
+    # Real VoxCity north-up geometry: u_vec=[0,1] (north), v_vec=[1,0] (east).
+    # With fixed grid_xy_to_lonlat: scene_x=east→v_m, scene_y=north→u_m.
+    # Centroids: Tri0=(2/3,2/3), Tri1=(4/3,4/3) → lon=scene_x, lat=scene_y (symmetric).
     monkeypatch.setattr(
         main_mod, "_grid_geom_for_zoning",
-        lambda: {"origin": [0.0, 0.0], "u_vec": [1.0, 0.0], "v_vec": [0.0, 1.0],
+        lambda: {"origin": [0.0, 0.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
                  "adj_mesh": [1.0, 1.0], "grid_size": [4, 4]},
         raising=True,
     )
@@ -459,4 +464,240 @@ def test_buildings_at_returns_correct_building_for_scene_xy(client, monkeypatch)
             f"At scene (x={x}, y={y}) expected building_id={expected_bid} "
             f"but got {r.json()['building_id']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Coordinate convention: grid_xy_to_lonlat north-up non-symmetric regression
+# ---------------------------------------------------------------------------
+
+def test_grid_xy_to_lonlat_north_up_grid_non_symmetric():
+    """For a north-up VoxCity grid, scene_x (east) must map to longitude and
+    scene_y (north) to latitude — NOT the other way around.
+
+    The non-symmetric input (scene_x=3, scene_y=1) distinguishes correct from
+    swapped behaviour: correct gives lon=3, lat=1; swapped gives lon=1, lat=3.
+    """
+    # Real VoxCity north-up geometry: u_vec=[0,1] (north/lat), v_vec=[1,0] (east/lon)
+    geom = {
+        "origin": [0.0, 0.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
+        "adj_mesh": [1.0, 1.0], "grid_size": [4, 4],
+    }
+    # Symmetric case: same result regardless of column order
+    out_sym = grid_xy_to_lonlat(np.array([[2.0, 2.0]]), geom)
+    assert out_sym[0] == pytest.approx([2.0, 2.0])
+
+    # Non-symmetric: scene (east=3, north=1) → lon=3, lat=1
+    out = grid_xy_to_lonlat(np.array([[3.0, 1.0]]), geom)
+    assert out[0] == pytest.approx([3.0, 1.0]), (
+        f"Expected lon=3.0 lat=1.0 but got {out[0].tolist()} — "
+        "columns in grid_xy_to_lonlat may be swapped"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Building-ID helpers
+# ---------------------------------------------------------------------------
+
+def test_building_ids_in_zone_basic():
+    """building_ids_in_zone returns nonzero IDs from rasterised zone cells."""
+    from app.backend.zoning import building_ids_in_zone
+
+    grid = np.array(
+        [[42, 0, 0, 0],
+         [0, 99, 0, 0],
+         [0,  0, 0, 0],
+         [0,  0, 0, 0]],
+        dtype=np.int32,
+    )
+    # u_vec=[0,1] (north), v_vec=[1,0] (east): cell (i,j) centre at lon=j+0.5, lat=i+0.5
+    geom = {
+        "origin": [0.0, 0.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
+        "adj_mesh": [1.0, 1.0], "grid_size": [4, 4],
+    }
+    # Zone covers cells (0,0) [lon=0.5,lat=0.5] and (0,1) [lon=1.5,lat=0.5].
+    # Cell (1,1) [lon=1.5,lat=1.5] is outside (lat > 0.8).
+    zone_ring = [[0.0, 0.0], [2.0, 0.0], [2.0, 0.8], [0.0, 0.8]]
+    bids = building_ids_in_zone(zone_ring, grid, geom)
+    assert 42 in bids
+    assert 99 not in bids
+    assert 0 not in bids
+
+
+def test_building_ids_in_zone_empty_polygon():
+    """Empty polygon (degenerate) returns empty set."""
+    from app.backend.zoning import building_ids_in_zone
+
+    grid = np.ones((4, 4), dtype=np.int32)
+    geom = {
+        "origin": [0.0, 0.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
+        "adj_mesh": [1.0, 1.0], "grid_size": [4, 4],
+    }
+    bids = building_ids_in_zone([[0.0, 0.0], [1.0, 0.0]], grid, geom)
+    assert bids == set()
+
+
+# ---------------------------------------------------------------------------
+# Building-surface zone stats: ownership gating regression
+# ---------------------------------------------------------------------------
+
+# Real VoxCity north-up geometry used by all ownership-gate tests.
+# u_vec=[0,1] (north/lat), v_vec=[1,0] (east/lon).
+# Cell (i,j) centre: lon=j+0.5, lat=i+0.5.
+# grid_xy_to_lonlat: scene_x=east → lon, scene_y=north → lat.
+_NORTH_UP_GEOM = {
+    "origin": [0.0, 0.0], "u_vec": [0.0, 1.0], "v_vec": [1.0, 0.0],
+    "adj_mesh": [1.0, 1.0], "grid_size": [4, 4],
+}
+
+
+def _patch_north_up_geom(monkeypatch):
+    import app.backend.main as main_mod
+    monkeypatch.setattr(
+        main_mod, "_grid_geom_for_zoning",
+        lambda: dict(_NORTH_UP_GEOM),
+        raising=True,
+    )
+
+
+def test_zone_stats_building_no_footprint_shows_no_values(client, monkeypatch):
+    """Regression: zone with no building footprint cells must return zero stats.
+
+    Building 42 lives at grid cell (3,3) — far corner.  One simulated face has
+    building_id=42 and a centroid at scene (x=2.0, y≈1.83) which projects to
+    lon≈2.0, lat≈1.83 — inside the test zone [[1.5,1.5],[2.5,2.5]].
+    But cell (3,3) sits at lon=3.5, lat=3.5 which is outside the zone, so
+    building_ids_in_zone returns an empty set and the ownership gate suppresses
+    all face values.
+    """
+    from types import SimpleNamespace
+
+    # Face centroid: scene (x=(1.5+2.5+2.0)/3=2.0, y=(1.5+1.5+2.5)/3≈1.833)
+    V = np.array([[1.5, 1.5, 0.0], [2.5, 1.5, 0.0], [2.0, 2.5, 0.0]], dtype=float)
+    F = np.array([[0, 1, 2]], dtype=int)
+    mesh = SimpleNamespace(
+        vertices=V,
+        faces=F,
+        metadata={
+            "view_factor_values": np.array([25.0]),
+            "building_id":        np.array([42]),
+        },
+    )
+
+    building_id_grid = np.zeros((4, 4), dtype=np.int32)
+    building_id_grid[3, 3] = 42  # building footprint only at far corner
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "building")
+    monkeypatch.setattr(app_state, "last_sim_grid", None)
+    monkeypatch.setattr(app_state, "last_sim_mesh", mesh)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Factor")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "view": SimulationResultCache(
+            sim_type="view", target="building", grid=None, mesh=mesh,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Factor",
+            building_id_grid=building_id_grid,
+        ),
+    })
+    _patch_north_up_geom(monkeypatch)
+
+    # Zone covers the face centroid (lon≈2, lat≈1.83) but NOT cell (3,3).
+    r = client.post("/api/zones/stats", json={"zones": [
+        {"id": "no_bld", "name": "no_building_zone",
+         "ring_lonlat": [[1.4, 1.4], [2.6, 1.4], [2.6, 2.6], [1.4, 2.6]]},
+    ]})
+    assert r.status_code == 200, r.text
+    s = {stat["zone_id"]: stat for stat in r.json()["stats"]}["no_bld"]
+    assert s["cell_count"] == 0, (
+        "Expected zero cell_count when building footprint is outside zone, "
+        f"got cell_count={s['cell_count']} mean={s['mean']}"
+    )
+    assert s["valid_count"] == 0
+    assert s["mean"] is None
+
+
+def test_zone_stats_building_with_footprint_returns_values(client, monkeypatch):
+    """Positive case: when the zone contains building footprint cells AND the
+    face centroid, stats must be reported correctly.
+
+    Building 99 at cell (1,1) (lon=1.5, lat=1.5).  One face with value=30
+    and centroid at scene (x≈1.5, y≈1.33) → lon≈1.5, lat≈1.33 — inside
+    zone [[1.1,1.1],[1.9,1.9]].  Cell (1,1) is also inside that zone.
+    """
+    from types import SimpleNamespace
+
+    # Face centroid: scene (x=(1.0+2.0+1.5)/3=1.5, y=(1.0+1.0+2.0)/3≈1.333)
+    V = np.array([[1.0, 1.0, 0.0], [2.0, 1.0, 0.0], [1.5, 2.0, 0.0]], dtype=float)
+    F = np.array([[0, 1, 2]], dtype=int)
+    mesh = SimpleNamespace(
+        vertices=V,
+        faces=F,
+        metadata={
+            "view_factor_values": np.array([30.0]),
+            "building_id":        np.array([99]),
+        },
+    )
+
+    building_id_grid = np.zeros((4, 4), dtype=np.int32)
+    building_id_grid[1, 1] = 99  # cell (1,1) → lon=1.5, lat=1.5 → inside zone
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "building")
+    monkeypatch.setattr(app_state, "last_sim_grid", None)
+    monkeypatch.setattr(app_state, "last_sim_mesh", mesh)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Factor")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "view": SimulationResultCache(
+            sim_type="view", target="building", grid=None, mesh=mesh,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Factor",
+            building_id_grid=building_id_grid,
+        ),
+    })
+    _patch_north_up_geom(monkeypatch)
+
+    # Zone covers both the face centroid and cell (1,1).
+    r = client.post("/api/zones/stats", json={"zones": [
+        {"id": "has_bld", "name": "has_building",
+         "ring_lonlat": [[1.1, 1.1], [1.9, 1.1], [1.9, 1.9], [1.1, 1.9]]},
+    ]})
+    assert r.status_code == 200, r.text
+    s = {stat["zone_id"]: stat for stat in r.json()["stats"]}["has_bld"]
+    assert s["cell_count"] == 1
+    assert s["valid_count"] == 1
+    assert s["mean"] == pytest.approx(30.0)
+
+
+def test_zone_stats_building_no_bid_metadata_falls_back_to_centroid(client, monkeypatch):
+    """Fallback: when mesh has no building_id metadata and cache has no
+    building_id_grid, centroid-only masking is used (backward compat)."""
+    mesh = _make_fake_mesh("view_factor_values")
+    # _make_fake_mesh does NOT add building_id to metadata.
+
+    from app.backend.state import SimulationResultCache
+    monkeypatch.setattr(app_state, "voxcity", object())
+    monkeypatch.setattr(app_state, "last_sim_type", "view")
+    monkeypatch.setattr(app_state, "last_sim_target", "building")
+    monkeypatch.setattr(app_state, "last_sim_grid", None)
+    monkeypatch.setattr(app_state, "last_sim_mesh", mesh)
+    monkeypatch.setattr(app_state, "last_colorbar_title", "View Factor")
+    monkeypatch.setattr(app_state, "sim_results_by_type", {
+        "view": SimulationResultCache(
+            sim_type="view", target="building", grid=None, mesh=mesh,
+            voxcity_grid=None, view_point_height=1.5, colorbar_title="View Factor",
+            # building_id_grid intentionally omitted (None)
+        ),
+    })
+    _patch_north_up_geom(monkeypatch)
+
+    # Both centroids inside large zone → both counted (centroid-only fallback).
+    r = client.post("/api/zones/stats", json={"zones": [
+        {"id": "all", "name": "all", "ring_lonlat": [[-1, -1], [3, -1], [3, 3], [-1, 3]]},
+    ]})
+    assert r.status_code == 200, r.text
+    s = {stat["zone_id"]: stat for stat in r.json()["stats"]}["all"]
+    assert s["cell_count"] == 2
+    assert s["mean"] == pytest.approx(20.0)  # area-weighted mean of [10, 30]
 

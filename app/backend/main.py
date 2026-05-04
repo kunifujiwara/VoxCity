@@ -61,7 +61,9 @@ from .scene_geometry import (
 )
 from .state import app_state, SimulationResultCache
 from .zoning import (
+    building_ids_in_zone,
     grid_xy_to_lonlat,
+    mesh_face_building_ids,
     mesh_face_data,
     points_in_polygon_lonlat,
     polygon_lonlat_to_cells,
@@ -1040,6 +1042,7 @@ async def run_solar(req: SolarRequest):
                 mesh=irradiance,
                 voxcity_grid=voxcity.voxels.classes,
                 colorbar_title=_colorbar_title,
+                building_id_grid=voxcity.buildings.ids,
             )
 
             voxcity_grid = voxcity.voxels.classes
@@ -1191,6 +1194,7 @@ async def run_view(req: ViewRequest):
                 mesh=mesh,
                 voxcity_grid=voxcity.voxels.classes,
                 colorbar_title="View Factor",
+                building_id_grid=voxcity.buildings.ids,
             )
 
             voxcity_grid = voxcity.voxels.classes
@@ -1360,6 +1364,7 @@ async def run_landmark(req: LandmarkRequest):
                 mesh=landmark_mesh,
                 voxcity_grid=voxcity_grid,
                 colorbar_title="Visibility",
+                building_id_grid=voxcity.buildings.ids,
             )
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -2279,14 +2284,26 @@ def _zone_stats_building(zones: List[ZoneSpec], cached: SimulationResultCache) -
     if mesh is None:
         raise HTTPException(status_code=400, detail="No cached building-surface simulation result")
     centroids_xy, values, areas = mesh_face_data(mesh, cached.sim_type)
+    face_bids = mesh_face_building_ids(mesh)
     grid_geom = _grid_geom_for_zoning()
     centroids_lonlat = grid_xy_to_lonlat(centroids_xy, grid_geom)
     out: List[ZoneStat] = []
     for z in zones:
-        mask = points_in_polygon_lonlat(centroids_lonlat, z.ring_lonlat)
-        v = values[mask]
-        a = areas[mask]
-        out.append(stats_from_values(z.id, int(mask.sum()), v, weights=a))
+        centroid_mask = points_in_polygon_lonlat(centroids_lonlat, z.ring_lonlat)
+        if cached.building_id_grid is not None and face_bids is not None:
+            zone_bids = building_ids_in_zone(z.ring_lonlat, cached.building_id_grid, grid_geom)
+            if not zone_bids:
+                # No building footprint in zone → no building-surface values.
+                out.append(stats_from_values(z.id, 0, np.array([], dtype=float)))
+                continue
+            ownership_mask = np.isin(face_bids, np.array(sorted(zone_bids)))
+            final_mask = centroid_mask & ownership_mask
+        else:
+            # Fallback: centroid-only masking for meshes without building-ID metadata.
+            final_mask = centroid_mask
+        v = values[final_mask]
+        a = areas[final_mask]
+        out.append(stats_from_values(z.id, int(final_mask.sum()), v, weights=a))
     return out
 
 

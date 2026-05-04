@@ -125,13 +125,65 @@ def mesh_face_data(mesh: object, sim_type: str):
 
 
 def grid_xy_to_lonlat(xy_local: np.ndarray, grid_geom: dict) -> np.ndarray:
-    """Convert (N, 2) uv_m coordinates [u_m, v_m] to (N, 2) lon/lat.
+    """Convert (N, 2) scene-XY coordinates [x=east, y=north] to (N, 2) lon/lat.
 
-    u_m is metres along u_vec, v_m is metres along v_vec from grid origin.
-    This is uv_m → lon_lat via GridProjector.uv_m_to_lon_lat.
+    Scene convention (from create_voxel_mesh): xy_local[:, 0] = scene_x = east
+    (v direction) and xy_local[:, 1] = scene_y = north (u direction). The
+    GridProjector expects u_m along the u/north direction and v_m along the
+    v/east direction, so the columns are swapped here.
     """
     proj = GridProjector(grid_geom)
-    u_m = xy_local[:, 0]
-    v_m = xy_local[:, 1]
+    u_m = xy_local[:, 1]   # scene_y = north = u direction
+    v_m = xy_local[:, 0]   # scene_x = east  = v direction
     lons, lats = proj.uv_m_to_lon_lat(u_m, v_m)
     return np.stack([np.asarray(lons), np.asarray(lats)], axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Building-ID helpers for ownership-gated zone statistics
+# ---------------------------------------------------------------------------
+
+def mesh_face_building_ids(mesh: object) -> "np.ndarray | None":
+    """Return per-face building IDs from mesh metadata, or *None* if unavailable.
+
+    Tries ``building_face_ids`` first (used by overlay builders), then falls
+    back to ``building_id`` (used by ``create_voxel_mesh``). Returns *None*
+    when neither key is present or the array length does not match the face
+    count.
+    """
+    if mesh is None or not hasattr(mesh, "metadata") or not isinstance(mesh.metadata, dict):
+        return None
+    raw = mesh.metadata.get("building_face_ids") or mesh.metadata.get("building_id")
+    if raw is None:
+        return None
+    arr = np.asarray(raw)
+    if hasattr(mesh, "faces"):
+        nf = len(np.asarray(mesh.faces))
+        if arr.shape[0] != nf:
+            return None
+    return arr
+
+
+def building_ids_in_zone(
+    ring: Sequence[Sequence[float]],
+    building_id_grid: np.ndarray,
+    grid_geom: dict,
+) -> set:
+    """Return the set of nonzero building IDs whose footprint cells lie inside *ring*.
+
+    Uses :func:`polygon_lonlat_to_cells` to rasterize the lon/lat polygon, then
+    reads building IDs from *building_id_grid* at those cell indices. Returns an
+    empty :class:`set` when no footprint cells are found in the zone.
+    """
+    cells = polygon_lonlat_to_cells(ring, grid_geom)
+    if not cells:
+        return set()
+    grid = np.asarray(building_id_grid)
+    nx, ny = grid.shape
+    bids: set = set()
+    for i, j in cells:
+        if 0 <= i < nx and 0 <= j < ny:
+            bid = int(grid[i, j])
+            if bid != 0:
+                bids.add(bid)
+    return bids

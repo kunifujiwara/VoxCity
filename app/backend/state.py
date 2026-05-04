@@ -39,6 +39,7 @@ class SimulationResultCache:
     voxcity_grid: Optional[Any] = None          # voxcity_grid snapshot at sim time
     view_point_height: float = 1.5              # relevant for view sims
     colorbar_title: Optional[str] = None        # unit label for the colorbar
+    building_id_grid: Optional[Any] = None      # building_id_grid snapshot at sim time
 
 
 @dataclass
@@ -78,9 +79,11 @@ class AppState:
         voxcity_grid: Optional[Any] = None,
         view_point_height: float = 1.5,
         colorbar_title: Optional[str] = None,
+        building_id_grid: Optional[Any] = None,
     ) -> None:
         """Persist a simulation result both in the per-type dict and the legacy
         last_sim_* fields so existing render/export paths keep working."""
+        bid_snapshot = np.asarray(building_id_grid).copy() if building_id_grid is not None else None
         entry = SimulationResultCache(
             sim_type=sim_type,
             target=target,
@@ -89,6 +92,7 @@ class AppState:
             voxcity_grid=voxcity_grid,
             view_point_height=view_point_height,
             colorbar_title=colorbar_title,
+            building_id_grid=bid_snapshot,
         )
         self.sim_results_by_type[sim_type] = entry
         # Update legacy fields
