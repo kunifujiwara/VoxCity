@@ -207,3 +207,91 @@ def test_gpu_building_solar_maps_solver_surfaces_to_scene_mesh_coordinates():
     assert np.nanmin(normal_dots) > 0.99
     assert np.all(mesh.face_normals[~valid_mapping, 2] < -0.9)
     assert np.all(np.isnan(mesh.metadata["global"][~valid_mapping]))
+
+
+# ---------------------------------------------------------------------------
+# Volumetric sun-direction orientation tests
+# ---------------------------------------------------------------------------
+
+class _FakeSolidField:
+    def __init__(self, shape):
+        self._shape = shape
+
+    def to_numpy(self):
+        return np.zeros(self._shape, dtype=np.int32)
+
+
+class _FakeVolumetricCalculator:
+    def __init__(self, shape):
+        self.shape = shape
+        self.calls = []
+        self.c2s_matrix_cached = False
+
+    def compute_swflux_vol(self, *, sw_direct, sw_diffuse, cos_zenith, sun_direction, lad):
+        self.calls.append(
+            {
+                "sw_direct": sw_direct,
+                "sw_diffuse": sw_diffuse,
+                "cos_zenith": cos_zenith,
+                "sun_direction": sun_direction,
+                "lad": lad,
+            }
+        )
+
+    def get_swflux_vol(self):
+        return np.ones(self.shape, dtype=np.float32)
+
+
+def test_gpu_volumetric_sun_direction_uses_u_north_v_east(monkeypatch):
+    from voxcity.simulator_gpu.solar.integration import volumetric
+
+    voxel_data = _ground_grid(shape=(4, 3, 4))
+    voxcity = _fake_voxcity(voxel_data)
+    calc = _FakeVolumetricCalculator(voxel_data.shape)
+    domain = SimpleNamespace(is_solid=_FakeSolidField(voxel_data.shape), lad=None)
+
+    monkeypatch.setattr(volumetric, "get_or_create_volumetric_calculator", lambda *args, **kwargs: (calc, domain))
+    monkeypatch.setattr(volumetric, "_compute_ground_k_from_voxels", lambda _voxel_data: np.zeros(_voxel_data.shape[:2], dtype=np.int32))
+
+    result = volumetric.get_volumetric_solar_irradiance_map(
+        voxcity,
+        azimuth_degrees_ori=0,
+        elevation_degrees=45,
+        direct_normal_irradiance=1000,
+        diffuse_irradiance=0,
+        volumetric_height=1.0,
+        with_reflections=False,
+    )
+
+    assert result.shape == voxel_data.shape[:2]
+    sun_direction = calc.calls[0]["sun_direction"]
+    assert sun_direction[0] > 0
+    assert abs(sun_direction[1]) < 1e-12
+    assert sun_direction[2] > 0
+
+
+def test_gpu_volumetric_sun_direction_applies_grid_rotation(monkeypatch):
+    from voxcity.simulator_gpu.solar.integration import volumetric
+
+    voxel_data = _ground_grid(shape=(4, 3, 4))
+    voxcity = _fake_voxcity(voxel_data)
+    voxcity.extras["rotation_angle"] = 90
+    calc = _FakeVolumetricCalculator(voxel_data.shape)
+    domain = SimpleNamespace(is_solid=_FakeSolidField(voxel_data.shape), lad=None)
+
+    monkeypatch.setattr(volumetric, "get_or_create_volumetric_calculator", lambda *args, **kwargs: (calc, domain))
+    monkeypatch.setattr(volumetric, "_compute_ground_k_from_voxels", lambda _voxel_data: np.zeros(_voxel_data.shape[:2], dtype=np.int32))
+
+    volumetric.get_volumetric_solar_irradiance_map(
+        voxcity,
+        azimuth_degrees_ori=90,
+        elevation_degrees=45,
+        direct_normal_irradiance=1000,
+        diffuse_irradiance=0,
+        volumetric_height=1.0,
+        with_reflections=False,
+    )
+
+    sun_direction = calc.calls[0]["sun_direction"]
+    assert sun_direction[0] > 0
+    assert abs(sun_direction[1]) < 1e-12

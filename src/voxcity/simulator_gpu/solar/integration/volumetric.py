@@ -29,6 +29,7 @@ from .utils import (
     get_location_from_voxcity,
     convert_voxel_data_to_arrays,
     compute_valid_ground_vectorized,
+    compute_sun_direction,
     get_solar_positions_astral,
     load_epw_data,
 )
@@ -66,6 +67,26 @@ def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
     """
     _, ground_k = compute_valid_ground_vectorized(voxel_data)
     return ground_k
+
+
+def _compute_volumetric_sun_direction(voxcity, azimuth_degrees: float, elevation_degrees: float):
+    """Return ``(sun_direction, cos_zenith)`` in Phase 3 uv coordinates.
+
+    Delegates to :func:`compute_sun_direction` so the volumetric path uses
+    the same azimuth-to-vector convention as the ground and building paths.
+    Reads ``rotation_angle`` from ``voxcity.extras`` when present.
+    """
+    rotation_angle = 0
+    extras = getattr(voxcity, "extras", None)
+    if isinstance(extras, dict):
+        rotation_angle = extras.get("rotation_angle", 0)
+
+    sun_dir_x, sun_dir_y, sun_dir_z, cos_zenith = compute_sun_direction(
+        azimuth_degrees,
+        elevation_degrees,
+        rotation_angle,
+    )
+    return (sun_dir_x, sun_dir_y, sun_dir_z), cos_zenith
 
 
 def get_volumetric_solar_irradiance_map(
@@ -129,26 +150,13 @@ def get_volumetric_solar_irradiance_map(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ni, nj, nk = voxel_data.shape
-    
-    # Convert solar angles to direction vector
-    # Match the coordinate system used in ground-level functions:
-    # azimuth_degrees_ori: 0=North, 90=East (clockwise from North)
-    # Transform to model coordinates: 180 - azimuth_degrees_ori
-    azimuth_degrees = 180 - azimuth_degrees_ori
-    azimuth_rad = math.radians(azimuth_degrees)
-    elevation_rad = math.radians(elevation_degrees)
-    
-    cos_elev = math.cos(elevation_rad)
-    sin_elev = math.sin(elevation_rad)
-    
-    # Direction toward sun (matching ground-level function convention)
-    sun_dir_x = cos_elev * math.cos(azimuth_rad)
-    sun_dir_y = cos_elev * math.sin(azimuth_rad)
-    sun_dir_z = sin_elev
-    sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
-    
-    cos_zenith = sin_elev  # cos(zenith) = sin(elevation)
-    
+
+    # Convert solar angles to Phase 3 uv direction vector via shared helper.
+    # sun_direction[0] = north/u, [1] = east/v, [2] = up.
+    sun_direction, cos_zenith = _compute_volumetric_sun_direction(
+        voxcity, azimuth_degrees_ori, elevation_degrees
+    )
+
     # Compute ground_k for terrain-following extraction
     ground_k = _compute_ground_k_from_voxels(voxel_data)
     
@@ -497,24 +505,18 @@ def get_cumulative_volumetric_solar_irradiance(
             patch_dni = cumulative_dni[patch_idx]
             patch_dir = directions[patch_idx]
             
-            # Convert patch direction to azimuth/elevation
+            # Convert patch direction to azimuth/elevation.
+            # sky.py generates patch dirs as (east, north, up), so
+            # atan2(patch_dir[0], patch_dir[1]) gives 0=North/90=East azimuth.
             patch_azimuth_ori = math.degrees(math.atan2(patch_dir[0], patch_dir[1]))
             if patch_azimuth_ori < 0:
                 patch_azimuth_ori += 360
             patch_elevation = math.degrees(math.asin(patch_dir[2]))
-            
-            # Apply same coordinate transform as ground-level functions
-            patch_azimuth = 180 - patch_azimuth_ori
-            azimuth_rad = math.radians(patch_azimuth)
-            elevation_rad = math.radians(patch_elevation)
-            cos_elev = math.cos(elevation_rad)
-            sin_elev = math.sin(elevation_rad)
-            
-            cos_zenith = sin_elev
-            sun_dir_x = cos_elev * math.cos(azimuth_rad)
-            sun_dir_y = cos_elev * math.sin(azimuth_rad)
-            sun_dir_z = sin_elev
-            sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
+
+            # Convert to Phase 3 uv direction via shared helper.
+            sun_direction, cos_zenith = _compute_volumetric_sun_direction(
+                voxcity, patch_azimuth_ori, patch_elevation
+            )
             
             if with_reflections and model is not None:
                 model.solar_calc.cos_zenith[None] = cos_zenith
@@ -571,19 +573,10 @@ def get_cumulative_volumetric_solar_irradiance(
             
             if dni <= 0 and dhi <= 0:
                 continue
-            
-            azimuth_degrees = 180 - az
-            azimuth_rad = math.radians(azimuth_degrees)
-            elevation_rad = math.radians(elev)
-            cos_elev = math.cos(elevation_rad)
-            sin_elev = math.sin(elevation_rad)
-            
-            sun_dir_x = cos_elev * math.cos(azimuth_rad)
-            sun_dir_y = cos_elev * math.sin(azimuth_rad)
-            sun_dir_z = sin_elev
-            sun_direction = (sun_dir_x, sun_dir_y, sun_dir_z)
-            cos_zenith = sin_elev
-            
+
+            # Convert to Phase 3 uv direction via shared helper.
+            sun_direction, cos_zenith = _compute_volumetric_sun_direction(voxcity, az, elev)
+
             if with_reflections and model is not None:
                 model.solar_calc.cos_zenith[None] = cos_zenith
                 model.solar_calc.sun_direction[None] = [sun_direction[0], sun_direction[1], sun_direction[2]]
