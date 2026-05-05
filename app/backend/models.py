@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -140,11 +140,35 @@ class StatusResponse(BaseModel):
 # Zoning
 # ---------------------------------------------------------------------------
 
+ZoneType = Literal["horizontal", "building_surface"]
+SurfaceSelectorMode = Literal[
+    "whole", "roof", "all_walls", "wall_orientation", "faces", "exclude_faces"
+]
+WallOrientation = Literal["N", "E", "S", "W"]
+
+
+class SurfaceSelector(BaseModel):
+    building_id: int
+    mode: SurfaceSelectorMode
+    orientation: Optional[WallOrientation] = None
+    face_keys: Optional[List[str]] = None
+
+
+class SurfaceFaceMeta(BaseModel):
+    face_key: str
+    building_id: int
+    surface_kind: str
+    orientation: Optional[str] = None
+
+
 class ZoneSpec(BaseModel):
-    """A 2D zone footprint as a lon/lat ring (does not need to be closed)."""
+    """A zone specification — either a 2-D horizontal ring or a building-surface selector."""
     id: str
     name: str
-    ring_lonlat: List[List[float]] = Field(..., min_length=3)
+    group_id: Optional[str] = None
+    type: ZoneType = "horizontal"
+    ring_lonlat: Optional[List[List[float]]] = None
+    selectors: Optional[List[SurfaceSelector]] = None
 
 
 class ZoneStatsRequest(BaseModel):
@@ -196,6 +220,12 @@ class MeshChunk(BaseModel):
     opacity: float = 1.0
     flat_shading: bool = False
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BuildingSurfaceGeometryResponse(BaseModel):
+    chunk: MeshChunk
+    face_to_surface: List[SurfaceFaceMeta]
+    buildings: List[Dict[str, Any]]
 
 
 class SceneGeometryResponse(BaseModel):

@@ -2307,6 +2307,77 @@ def _zone_stats_building(zones: List[ZoneSpec], cached: SimulationResultCache) -
     return out
 
 
+# ---------------------------------------------------------------------------
+# Zone-stats request validation helpers
+# ---------------------------------------------------------------------------
+
+def _validate_surface_selector(zone_id: str, selector) -> None:
+    has_orientation = selector.orientation is not None
+    has_face_keys = selector.face_keys is not None and len(selector.face_keys) > 0
+    if selector.mode == "wall_orientation":
+        if not has_orientation:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone {zone_id} wall_orientation selector requires orientation",
+            )
+        if selector.face_keys is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone {zone_id} wall_orientation selector does not use face_keys",
+            )
+        return
+    if selector.mode in {"faces", "exclude_faces"}:
+        if not has_face_keys:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone {zone_id} {selector.mode} selector requires face_keys",
+            )
+        if has_orientation:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone {zone_id} {selector.mode} selector does not use orientation",
+            )
+        return
+    if has_orientation or selector.face_keys is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Zone {zone_id} {selector.mode} selector has unused fields",
+        )
+
+
+def _validate_surface_zone(zone) -> None:
+    if zone.selectors is None:
+        raise HTTPException(status_code=400, detail=f"Zone {zone.id} requires selectors")
+    for selector in zone.selectors:
+        _validate_surface_selector(zone.id, selector)
+
+
+def _validate_zone_stats_request(zones) -> None:
+    groups: dict[str, list] = {}
+    for zone in zones:
+        if zone.type == "horizontal":
+            if zone.ring_lonlat is None or len(zone.ring_lonlat) < 3:
+                raise HTTPException(status_code=400, detail=f"Zone {zone.id} requires ring_lonlat")
+        elif zone.type == "building_surface":
+            _validate_surface_zone(zone)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported zone type: {zone.type}")
+        groups.setdefault(zone.group_id or zone.id, []).append(zone)
+
+    for group_id, members in groups.items():
+        types = {member.type for member in members}
+        if len(types) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone group {group_id} has mixed zone types",
+            )
+        if "building_surface" in types and len(members) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone group {group_id} has multiple building_surface records",
+            )
+
+
 @app.post("/api/zones/stats", response_model=ZoneStatsResponse)
 def zone_stats(req: ZoneStatsRequest) -> ZoneStatsResponse:
     if app_state.voxcity is None:
@@ -2320,6 +2391,8 @@ def zone_stats(req: ZoneStatsRequest) -> ZoneStatsResponse:
                 detail=f"No cached result for simulation type '{req.sim_type}'. Run {req.sim_type} first.",
             )
         raise HTTPException(status_code=400, detail="Run a simulation first")
+
+    _validate_zone_stats_request(req.zones)
 
     target = cached.target
     if target == "ground":
