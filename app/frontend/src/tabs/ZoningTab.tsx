@@ -103,16 +103,19 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   // Render existing zones as paint_zone overlays.
   const pendingEdits: PendingEdit[] = useMemo(() => {
     if (!geo) return [];
-    return zones.map((z) => ({
-      kind: 'paint_zone' as const,
-      cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
-      ring: z.ring_lonlat,
-      selected:
-        z.id === selectedId ||
-        (activeGroupId != null && (z.groupId ?? z.id) === activeGroupId),
-      color: z.color,
-      target: 'evaluation' as const,
-    }));
+    return zones.flatMap((z) => {
+      if (z.type !== 'horizontal') return [];
+      return [{
+        kind: 'paint_zone' as const,
+        cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
+        ring: z.ring_lonlat,
+        selected:
+          z.id === selectedId ||
+          (activeGroupId != null && (z.groupId ?? z.id) === activeGroupId),
+        color: z.color,
+        target: 'evaluation' as const,
+      }];
+    });
   }, [geo, zones, selectedId, activeGroupId]);
 
   /**
@@ -178,6 +181,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       const fallbackGroupId = targetGroupId ?? makeZoneGroupId();
       const newZone: Zone = head
         ? {
+            type: 'horizontal' as const,
             id: makeZoneId(),
             name: head.name,
             color: head.color,
@@ -186,6 +190,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             groupId: head.groupId ?? head.id,
           }
         : {
+            type: 'horizontal' as const,
             id: makeZoneId(),
             name: draft?.name ?? nextZoneName(zones),
             color: draft?.color ?? nextZoneColor(zones),

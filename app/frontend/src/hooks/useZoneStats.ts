@@ -90,10 +90,7 @@ export function useZoneStats(
     setLoading(true);
     setError(null);
     const handle = window.setTimeout(() => {
-      getZoneStats(
-        zones.map((z) => ({ id: z.id, name: z.name, ring_lonlat: z.ring_lonlat })),
-        simType,
-      )
+      getZoneStats(zones, simType)
         .then((r) => {
           if (!cancelled) setStats(aggregateByGroup(zones, r));
         })

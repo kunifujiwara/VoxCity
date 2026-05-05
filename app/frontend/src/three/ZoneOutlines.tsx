@@ -213,7 +213,8 @@ export function ZoneOutlines({
 
     const out: (FlatLine | CurtainEntry)[] = [];
     for (const z of zones) {
-      const ring = z.ring_lonlat ?? [];
+      if (z.type !== 'horizontal') continue;
+      const ring = z.ring_lonlat;
       if (ring.length < 3) continue;
       const color = colorOverride?.[z.id] ?? z.color ?? DEFAULT_COLOR;
 
