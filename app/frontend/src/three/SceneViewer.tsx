@@ -25,8 +25,10 @@ import { CameraControls } from './CameraControls';
 import { ColorBar } from './ColorBar';
 import { MeshLayer } from './MeshLayer';
 import { Picker } from './Picker';
+import { SurfaceSelectionLayer } from './SurfaceSelectionLayer';
 import { ZoneOutlines } from './ZoneOutlines';
-import type { PickResult } from './types';
+import type { PickResult, SurfaceFaceMeta } from './types';
+import type { SurfaceSelector } from '../types/zones';
 
 export interface SceneViewerProps {
   /** Triggers re-fetch of city geometry whenever this changes. */
@@ -79,6 +81,15 @@ export interface SceneViewerProps {
   /** Extra mesh chunks rendered on top of the scene (e.g. building highlights). */
   highlightChunks?: MeshChunkDto[] | null;
 
+  /** Optional building surface selection state for surface zone mode. */
+  surfaceSelection?: {
+    surfaceChunk: MeshChunkDto | null;
+    faceToSurface: SurfaceFaceMeta[];
+    activeZoneColor: string | null;
+    selectedSelectors: SurfaceSelector[];
+    enabled: boolean;
+  } | null;
+
   /** Inline canvas style overrides. */
   style?: React.CSSProperties;
   /** Background colour for the canvas (CSS string). */
@@ -104,6 +115,7 @@ export function SceneViewer({
   hiddenClasses,
   onPick,
   highlightChunks,
+  surfaceSelection = null,
   style,
   background = DEFAULT_BG,
 }: SceneViewerProps) {
@@ -184,7 +196,7 @@ export function SceneViewer({
           <hemisphereLight args={[0xffffff, 0x444466, 0.35]} />
 
           {scene && (
-            <Picker enabled={!!onPick} onPick={onPick}>
+            <Picker enabled={!!onPick} preferSurface={!!(surfaceSelection?.enabled)} onPick={onPick}>
               {scene.chunks
                 .filter((chunk) => {
                   // Hide background building meshes when a building-target sim
@@ -214,7 +226,32 @@ export function SceneViewer({
               {highlightChunks && highlightChunks.map((c, i) => (
                 <MeshLayer key={`highlight-${c.name}-${i}`} chunk={c} renderOrder={20} />
               ))}
+              {surfaceSelection?.enabled && surfaceSelection.surfaceChunk && (
+                <MeshLayer
+                  key="surface-selectable"
+                  chunk={{
+                    ...surfaceSelection.surfaceChunk,
+                    opacity: 0.02,
+                  }}
+                  userData={{
+                    target: 'building' as const,
+                    faceToSurface: surfaceSelection.faceToSurface,
+                    faceToBuilding: surfaceSelection.faceToSurface.map((f) => f.buildingId),
+                  }}
+                  renderOrder={5}
+                />
+              )}
             </Picker>
+          )}
+
+          {surfaceSelection?.enabled && (
+            <SurfaceSelectionLayer
+              surfaceChunk={surfaceSelection.surfaceChunk}
+              faceToSurface={surfaceSelection.faceToSurface}
+              activeZoneColor={surfaceSelection.activeZoneColor}
+              selectedSelectors={surfaceSelection.selectedSelectors}
+              enabled={surfaceSelection.enabled}
+            />
           )}
 
           {showZones && zones && zones.length > 0 && (

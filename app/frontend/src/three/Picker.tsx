@@ -9,18 +9,19 @@
  */
 import { useCallback, useRef } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import type { PickResult } from './types';
+import type { PickResult, SurfaceFaceMeta } from './types';
 
 /** Maximum pointer travel (in CSS pixels) that is still treated as a click. */
 const DRAG_THRESHOLD_PX = 5;
 
 export interface PickerProps {
   enabled?: boolean;
+  preferSurface?: boolean;
   onPick?: (hit: PickResult | null) => void;
   children: React.ReactNode;
 }
 
-export function Picker({ enabled = true, onPick, children }: PickerProps) {
+export function Picker({ enabled = true, preferSurface = false, onPick, children }: PickerProps) {
   const downRef = useRef<{ x: number; y: number } | null>(null);
 
   const handlePointerDown = useCallback(
@@ -51,21 +52,31 @@ export function Picker({ enabled = true, onPick, children }: PickerProps) {
       }
 
       e.stopPropagation();
-      const obj = e.object as any;
-      const faceIdx = e.faceIndex ?? -1;
-      const ud = obj?.userData ?? {};
+
+      // When preferSurface is true, pick the first intersection with faceToSurface userData
+      const source = preferSurface
+        ? e.intersections.find((hit) => (hit.object as any)?.userData?.faceToSurface)
+        : null;
+      const pickedObject = source?.object ?? e.object;
+      const pickedFaceIndex = source?.faceIndex ?? e.faceIndex ?? -1;
+      const ud = (pickedObject as any)?.userData ?? {};
 
       const faceToCell: number[][] | undefined = ud.faceToCell;
       const faceToBuilding: number[] | undefined = ud.faceToBuilding;
+      const faceToSurface: SurfaceFaceMeta[] | undefined = ud.faceToSurface;
       const target: 'ground' | 'building' | undefined = ud.target;
 
       let cell: [number, number] | null = null;
       let buildingId: number | null = null;
-      if (faceIdx >= 0 && target === 'ground' && faceToCell && faceToCell[faceIdx]) {
-        const [i, j] = faceToCell[faceIdx];
+      const surface = pickedFaceIndex >= 0 ? faceToSurface?.[pickedFaceIndex] ?? null : null;
+
+      if (surface) {
+        buildingId = surface.buildingId;
+      } else if (pickedFaceIndex >= 0 && target === 'ground' && faceToCell && faceToCell[pickedFaceIndex]) {
+        const [i, j] = faceToCell[pickedFaceIndex];
         cell = [i, j];
-      } else if (faceIdx >= 0 && target === 'building' && faceToBuilding) {
-        buildingId = faceToBuilding[faceIdx] ?? null;
+      } else if (pickedFaceIndex >= 0 && target === 'building' && faceToBuilding) {
+        buildingId = faceToBuilding[pickedFaceIndex] ?? null;
       }
 
       // Always emit a hit so consumers (e.g. LandmarkTab's nearest-centroid
@@ -76,9 +87,10 @@ export function Picker({ enabled = true, onPick, children }: PickerProps) {
         cell,
         buildingId,
         point: [e.point.x, e.point.y, e.point.z],
+        surface,
       });
     },
-    [enabled, onPick],
+    [enabled, preferSurface, onPick],
   );
 
   return (

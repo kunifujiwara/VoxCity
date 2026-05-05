@@ -9,10 +9,19 @@ import type {
   OverlayGeometryResponse,
   SceneGeometryResponse,
 } from '../api';
+import type { WallOrientation } from '../types/zones';
 
 export type SceneGeometry = SceneGeometryResponse;
 export type OverlayGeometry = OverlayGeometryResponse;
 export type MeshChunk = MeshChunkDto;
+
+/** Metadata for a single picked building surface face. */
+export interface SurfaceFaceMeta {
+  faceKey: string;
+  buildingId: number;
+  surfaceKind: 'roof' | 'wall' | 'bottom' | 'other';
+  orientation?: WallOrientation | null;
+}
 
 /** A picked element returned by the `<Picker/>` overlay. */
 export interface PickResult {
@@ -24,4 +33,6 @@ export interface PickResult {
   buildingId: number | null;
   /** World-space hit point in metres (Z-up). */
   point: [number, number, number];
+  /** Surface face metadata when picking from a surface-tagged mesh. */
+  surface?: SurfaceFaceMeta | null;
 }
