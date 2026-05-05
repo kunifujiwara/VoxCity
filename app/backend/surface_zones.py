@@ -53,11 +53,11 @@ def wall_orientation(normal: Sequence[float]) -> Optional[str]:
     return "N" if ny > 0 else "S"
 
 
-def _get(meta: Any, key: str) -> Any:
+def _get(meta: Any, key: str, default: Any = None) -> Any:
     """Get a value from either a dict or an object with attributes."""
     if isinstance(meta, dict):
-        return meta[key]
-    return getattr(meta, key)
+        return meta.get(key, default)
+    return getattr(meta, key, default)
 
 
 def classify_surface_faces(mesh: Any) -> list[SurfaceFaceMeta]:

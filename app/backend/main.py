@@ -63,6 +63,7 @@ from .scene_geometry import (
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
+from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh
 from .zoning import (
     building_ids_in_zone,
     grid_xy_to_lonlat,
@@ -2345,6 +2346,9 @@ def _zone_stats_ground(zones: List[ZoneSpec], cached: SimulationResultCache) -> 
     nx, ny = sim_arr.shape
     out: List[ZoneStat] = []
     for z in zones:
+        if z.type == "building_surface":
+            out.append(stats_from_values(z.id, 0, np.array([], dtype=float)))
+            continue
         cells = polygon_lonlat_to_cells(z.ring_lonlat, grid_geom)
         if not cells:
             out.append(stats_from_values(z.id, 0, np.array([], dtype=float)))
@@ -2364,10 +2368,27 @@ def _zone_stats_building(zones: List[ZoneSpec], cached: SimulationResultCache) -
         raise HTTPException(status_code=400, detail="No cached building-surface simulation result")
     centroids_xy, values, areas = mesh_face_data(mesh, cached.sim_type)
     face_bids = mesh_face_building_ids(mesh)
-    grid_geom = _grid_geom_for_zoning()
-    centroids_lonlat = grid_xy_to_lonlat(centroids_xy, grid_geom)
+    # Lazily computed — only needed for horizontal polygon zones.
+    _grid_geom: list = []
+    _centroids_lonlat: list = []
+
+    def _get_centroids_lonlat():
+        if not _centroids_lonlat:
+            gg = _grid_geom_for_zoning()
+            _grid_geom.append(gg)
+            _centroids_lonlat.append(grid_xy_to_lonlat(centroids_xy, gg))
+        return _grid_geom[0], _centroids_lonlat[0]
+
     out: List[ZoneStat] = []
     for z in zones:
+        if z.type == "building_surface":
+            face_meta = _surface_meta_from_cached_mesh(mesh)
+            if not face_meta:
+                out.append(stats_from_values(z.id, 0, np.array([], dtype=float)))
+                continue
+            out.append(stats_for_surface_zone(z.id, face_meta, z.selectors or [], values, areas))
+            continue
+        grid_geom, centroids_lonlat = _get_centroids_lonlat()
         centroid_mask = points_in_polygon_lonlat(centroids_lonlat, z.ring_lonlat)
         if cached.building_id_grid is not None and face_bids is not None:
             zone_bids = building_ids_in_zone(z.ring_lonlat, cached.building_id_grid, grid_geom)

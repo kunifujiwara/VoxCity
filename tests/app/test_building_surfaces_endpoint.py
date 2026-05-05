@@ -223,3 +223,37 @@ def test_building_surfaces_returns_400_when_no_model(client, monkeypatch):
     monkeypatch.setattr(app_state, "voxcity", None)
     response = client.get("/api/buildings/surfaces")
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Stats branching tests (Task 4)
+# ---------------------------------------------------------------------------
+
+def test_ground_target_returns_no_data_for_surface_zone(client, monkeypatch):
+    _patch_ground_cache(monkeypatch)
+    response = client.post("/api/zones/stats", json={
+        "sim_type": "solar",
+        "zones": [{"id": "s1", "name": "Surface", "type": "building_surface", "selectors": []}],
+    })
+    assert response.status_code == 200, response.text
+    stat = response.json()["stats"][0]
+    assert stat["zone_id"] == "s1"
+    assert stat["cell_count"] == 0
+    assert stat["mean"] is None
+
+
+def test_building_target_uses_surface_selectors(client, monkeypatch):
+    _patch_building_cache_with_surface_meta(monkeypatch)
+    response = client.post("/api/zones/stats", json={
+        "sim_type": "view",
+        "zones": [{
+            "id": "s1",
+            "name": "Surface",
+            "type": "building_surface",
+            "selectors": [{"building_id": 1, "mode": "roof"}],
+        }],
+    })
+    assert response.status_code == 200, response.text
+    stat = response.json()["stats"][0]
+    assert stat["cell_count"] == 1
+    assert stat["mean"] == pytest.approx(10.0)
