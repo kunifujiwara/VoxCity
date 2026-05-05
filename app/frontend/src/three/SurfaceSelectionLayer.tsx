@@ -19,8 +19,12 @@ import type { SurfaceSelector } from '../types/zones';
 export interface SurfaceSelectionLayerProps {
   surfaceChunk: MeshChunk | null;
   faceToSurface: SurfaceFaceMeta[];
-  activeZoneColor: string | null;
-  selectedSelectors: SurfaceSelector[];
+  zones: Array<{
+    id: string;
+    color: string;
+    selectors: SurfaceSelector[];
+    active: boolean;
+  }>;
   enabled: boolean;
 }
 
@@ -50,69 +54,81 @@ function isFaceSelected(meta: SurfaceFaceMeta, selectors: SurfaceSelector[]): bo
   });
 }
 
+function buildZoneGeometry(
+  surfaceChunk: MeshChunk,
+  faceToSurface: SurfaceFaceMeta[],
+  selectors: SurfaceSelector[],
+): THREE.BufferGeometry | null {
+  const srcPositions = surfaceChunk.positions;
+  if (!srcPositions || srcPositions.length === 0) return null;
+
+  const selectedTriangleIndices: number[] = [];
+  for (let i = 0; i < faceToSurface.length; i++) {
+    const meta = faceToSurface[i];
+    if (meta && isFaceSelected(meta, selectors)) {
+      selectedTriangleIndices.push(i);
+    }
+  }
+
+  if (selectedTriangleIndices.length === 0) return null;
+
+  const floatsPerTriangle = 9; // 3 verts * 3 floats
+  const out = new Float32Array(selectedTriangleIndices.length * floatsPerTriangle);
+  let outOffset = 0;
+  for (const triIdx of selectedTriangleIndices) {
+    const srcOffset = triIdx * floatsPerTriangle;
+    out[outOffset++] = srcPositions[srcOffset];
+    out[outOffset++] = srcPositions[srcOffset + 1];
+    out[outOffset++] = srcPositions[srcOffset + 2];
+    out[outOffset++] = srcPositions[srcOffset + 3];
+    out[outOffset++] = srcPositions[srcOffset + 4];
+    out[outOffset++] = srcPositions[srcOffset + 5];
+    out[outOffset++] = srcPositions[srcOffset + 6];
+    out[outOffset++] = srcPositions[srcOffset + 7];
+    out[outOffset++] = srcPositions[srcOffset + 8];
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  geom.computeVertexNormals();
+  return geom;
+}
+
 export function SurfaceSelectionLayer({
   surfaceChunk,
   faceToSurface,
-  activeZoneColor,
-  selectedSelectors,
+  zones,
   enabled,
 }: SurfaceSelectionLayerProps) {
-  const geometry = useMemo(() => {
-    if (!enabled || !surfaceChunk || !activeZoneColor || selectedSelectors.length === 0) {
-      return null;
-    }
+  const zoneGeometries = useMemo(() => {
+    if (!enabled || !surfaceChunk) return [];
+    return zones.map((zone) => ({
+      id: zone.id,
+      color: zone.color,
+      active: zone.active,
+      geometry: buildZoneGeometry(surfaceChunk, faceToSurface, zone.selectors),
+    }));
+  }, [surfaceChunk, faceToSurface, zones, enabled]);
 
-    const srcPositions = surfaceChunk.positions;
-    if (!srcPositions || srcPositions.length === 0) return null;
-
-    // Non-indexed triangle soup: each face is 3 vertices * 3 floats = 9 floats
-    // faceToSurface[i] maps triangle i to its surface metadata
-    const selectedTriangleIndices: number[] = [];
-    for (let i = 0; i < faceToSurface.length; i++) {
-      const meta = faceToSurface[i];
-      if (meta && isFaceSelected(meta, selectedSelectors)) {
-        selectedTriangleIndices.push(i);
-      }
-    }
-
-    if (selectedTriangleIndices.length === 0) return null;
-
-    const floatsPerTriangle = 9; // 3 verts * 3 floats
-    const out = new Float32Array(selectedTriangleIndices.length * floatsPerTriangle);
-    let outOffset = 0;
-    for (const triIdx of selectedTriangleIndices) {
-      const srcOffset = triIdx * floatsPerTriangle;
-      out[outOffset++] = srcPositions[srcOffset];
-      out[outOffset++] = srcPositions[srcOffset + 1];
-      out[outOffset++] = srcPositions[srcOffset + 2];
-      out[outOffset++] = srcPositions[srcOffset + 3];
-      out[outOffset++] = srcPositions[srcOffset + 4];
-      out[outOffset++] = srcPositions[srcOffset + 5];
-      out[outOffset++] = srcPositions[srcOffset + 6];
-      out[outOffset++] = srcPositions[srcOffset + 7];
-      out[outOffset++] = srcPositions[srcOffset + 8];
-    }
-
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(out, 3));
-    geom.computeVertexNormals();
-    return geom;
-  }, [surfaceChunk, faceToSurface, activeZoneColor, selectedSelectors, enabled]);
-
-  if (!geometry) return null;
-
-  const color = new THREE.Color(activeZoneColor!);
+  if (!enabled || !surfaceChunk) return null;
 
   return (
-    <mesh geometry={geometry} renderOrder={15}>
-      <meshBasicMaterial
-        color={color}
-        transparent
-        opacity={0.5}
-        side={THREE.DoubleSide}
-        depthTest={false}
-        depthWrite={false}
-      />
-    </mesh>
+    <group>
+      {zoneGeometries.map(
+        (z) =>
+          z.geometry && (
+            <mesh key={z.id} geometry={z.geometry} renderOrder={15}>
+              <meshBasicMaterial
+                color={new THREE.Color(z.color)}
+                transparent
+                opacity={z.active ? 0.5 : 0.32}
+                side={THREE.DoubleSide}
+                depthTest={false}
+                depthWrite={false}
+              />
+            </mesh>
+          ),
+      )}
+    </group>
   );
 }

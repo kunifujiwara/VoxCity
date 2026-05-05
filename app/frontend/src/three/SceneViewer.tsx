@@ -28,7 +28,7 @@ import { Picker } from './Picker';
 import { SurfaceSelectionLayer } from './SurfaceSelectionLayer';
 import { ZoneOutlines } from './ZoneOutlines';
 import type { PickResult, SurfaceFaceMeta } from './types';
-import type { SurfaceSelector } from '../types/zones';
+
 
 export interface SceneViewerProps {
   /** Triggers re-fetch of city geometry whenever this changes. */
@@ -85,8 +85,12 @@ export interface SceneViewerProps {
   surfaceSelection?: {
     surfaceChunk: MeshChunkDto | null;
     faceToSurface: SurfaceFaceMeta[];
-    activeZoneColor: string | null;
-    selectedSelectors: SurfaceSelector[];
+    zones: Array<{
+      id: string;
+      color: string;
+      selectors: import('../types/zones').SurfaceSelector[];
+      active: boolean;
+    }>;
     enabled: boolean;
   } | null;
 
@@ -248,8 +252,7 @@ export function SceneViewer({
             <SurfaceSelectionLayer
               surfaceChunk={surfaceSelection.surfaceChunk}
               faceToSurface={surfaceSelection.faceToSurface}
-              activeZoneColor={surfaceSelection.activeZoneColor}
-              selectedSelectors={surfaceSelection.selectedSelectors}
+              zones={surfaceSelection.zones}
               enabled={surfaceSelection.enabled}
             />
           )}

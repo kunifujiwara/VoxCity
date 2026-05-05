@@ -190,6 +190,25 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const effectiveActiveGroupId =
     activeGroupId ?? (groups.length > 0 ? groups[groups.length - 1].id : null);
 
+  const activeSurfaceZone = useMemo(
+    () => zones.find(
+      (zone): zone is BuildingSurfaceZone =>
+        zone.type === 'building_surface' && (zone.groupId ?? zone.id) === effectiveActiveGroupId,
+    ),
+    [zones, effectiveActiveGroupId],
+  );
+
+  useEffect(() => {
+    if (refiningBuildingId == null) return;
+    if (
+      zoneType !== 'building_surface' ||
+      !activeSurfaceZone ||
+      !buildingHasPositiveSelection(activeSurfaceZone.selectors, refiningBuildingId)
+    ) {
+      setRefiningBuildingId(null);
+    }
+  }, [zoneType, activeSurfaceZone, refiningBuildingId]);
+
   const nextDraftMeta = useCallback(() => {
     const usedNames = new Set([...zones.map((z) => z.name), ...draftGroups.map((g) => g.name)]);
     let n = committedGroups.length + draftGroups.length + 1;
@@ -214,6 +233,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         groupId: id,
       };
       onZonesChange([...zones, newZone]);
+      setRefiningBuildingId(null);
       setActiveGroupId(id);
       setSelectedId(newZone.id);
     } else {
@@ -265,10 +285,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const handleSurfacePick = useCallback(
     async (hit: PickResult | null) => {
       if (!hit) return;
-      // Find the active building-surface zone
-      const activeSurfaceZone = zones.find(
-        (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
-      ) as BuildingSurfaceZone | undefined;
       if (!activeSurfaceZone) return;
 
       let buildingId = hit.buildingId;
@@ -314,7 +330,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         );
       }
     },
-    [zones, effectiveActiveGroupId, refiningBuildingId, onZonesChange],
+    [activeSurfaceZone, zones, refiningBuildingId, onZonesChange, activeGroupId],
   );
 
   const updateGroup = (groupId: string, patch: Partial<Pick<Zone, 'name' | 'color'>>) => {
@@ -332,6 +348,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     if (selectedId && zones.find((z) => z.id === selectedId)?.groupId === groupId) {
       setSelectedId(null);
     }
+    setRefiningBuildingId(null);
     if (activeGroupId === groupId) setActiveGroupId(null);
   };
 
@@ -452,6 +469,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                 onClick={() => {
                   setActiveGroupId(g.id);
                   setSelectedId(g.members[0]?.id ?? null);
+                  setRefiningBuildingId(null);
                 }}
               >
                 <span
@@ -530,10 +548,18 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             </div>
           )}
         </div>
+        {zoneType === 'building_surface' && refiningBuildingId != null && (
+          <div style={{ marginTop: 8 }}>
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85em' }}
+              onClick={() => setRefiningBuildingId(null)}
+            >
+              Cancel refine
+            </button>
+          </div>
+        )}
         {zoneType === 'building_surface' && (() => {
-          const activeSurfaceZone = zones.find(
-            (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
-          ) as BuildingSurfaceZone | undefined;
           if (!activeSurfaceZone) return null;
           const selectedBuildingIds = [
             ...new Set(
@@ -599,6 +625,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                         className="btn btn-secondary"
                         style={{ padding: '2px 6px', fontSize: '0.8em' }}
                         onClick={() => {
+                          setRefiningBuildingId(null);
                           const updated = activeSurfaceZone.selectors.filter((s) => s.buildingId !== bid);
                           onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
                         }}
@@ -647,14 +674,14 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                   ? {
                       surfaceChunk: surfaceGeometry?.chunk ?? null,
                       faceToSurface,
-                      activeZoneColor:
-                        (zones.find(
-                          (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
-                        ) as BuildingSurfaceZone | undefined)?.color ?? null,
-                      selectedSelectors:
-                        (zones.find(
-                          (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
-                        ) as BuildingSurfaceZone | undefined)?.selectors ?? [],
+                      zones: zones
+                        .filter((zone): zone is BuildingSurfaceZone => zone.type === 'building_surface')
+                        .map((zone) => ({
+                          id: zone.id,
+                          color: zone.color,
+                          selectors: zone.selectors,
+                          active: (zone.groupId ?? zone.id) === effectiveActiveGroupId,
+                        })),
                       enabled: true,
                     }
                   : null
