@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { getModelGeo, ModelGeoResult } from '../api';
+import { getModelGeo, ModelGeoResult, getBuildingSurfaces, getBuildingAt, type BuildingSurfacesResponse } from '../api';
 import { SceneViewer } from '../three';
 import PlanMapEditor, {
   Backdrop,
@@ -22,7 +22,16 @@ import {
   makeZoneId,
   nextZoneColor,
   nextZoneName,
+  ZoneType,
+  BuildingSurfaceZone,
+  SurfaceSelector,
+  toggleWholeBuilding,
+  toggleSurfaceFace,
+  toggleBulkSelector,
+  buildingHasPositiveSelection,
+  WallOrientation,
 } from '../types/zones';
+import type { SurfaceFaceMeta, PickResult } from '../three/types';
 
 interface ZoningTabProps {
   hasModel: boolean;
@@ -68,6 +77,10 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
    */
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [draftGroups, setDraftGroups] = useState<DraftZoneGroup[]>([]);
+  const [zoneType, setZoneType] = useState<ZoneType>('horizontal');
+  const [surfaceGeometry, setSurfaceGeometry] = useState<BuildingSurfacesResponse | null>(null);
+  const [faceToSurface, setFaceToSurface] = useState<SurfaceFaceMeta[]>([]);
+  const [refiningBuildingId, setRefiningBuildingId] = useState<number | null>(null);
 
   // Initial fetch
   useEffect(() => {
@@ -79,6 +92,32 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [hasModel]);
+
+  // Fetch surface geometry when model is ready or geometry changes
+  useEffect(() => {
+    if (!hasModel) {
+      setSurfaceGeometry(null);
+      setFaceToSurface([]);
+      return;
+    }
+    let cancelled = false;
+    getBuildingSurfaces()
+      .then((res) => {
+        if (cancelled) return;
+        setSurfaceGeometry(res);
+        const faceArray: SurfaceFaceMeta[] = Object.values(res.face_to_surface).map((f) => ({
+          faceKey: f.face_key,
+          buildingId: f.building_id,
+          surfaceKind: f.surface_kind as SurfaceFaceMeta['surfaceKind'],
+          orientation: f.orientation as WallOrientation | null | undefined,
+        }));
+        setFaceToSurface(faceArray);
+      })
+      .catch(() => {
+        // Surface endpoint may not have data yet (no model) — silently ignore
+      });
+    return () => { cancelled = true; };
+  }, [hasModel, geometryToken]);
 
   const maxH = useMemo(() => maxBuildingHeight(geo), [geo]);
 
@@ -164,10 +203,25 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const handleAddZone = useCallback(() => {
     const id = makeZoneGroupId();
     const { name, color } = nextDraftMeta();
-    setDraftGroups((prev) => [...prev, { id, name, color, shape }]);
-    setActiveGroupId(id);
-    setSelectedId(null);
-  }, [nextDraftMeta, shape]);
+    if (zoneType === 'building_surface') {
+      // Immediately commit as a BuildingSurfaceZone (no drawing needed)
+      const newZone: BuildingSurfaceZone = {
+        type: 'building_surface',
+        id: makeZoneId(),
+        name,
+        color,
+        selectors: [],
+        groupId: id,
+      };
+      onZonesChange([...zones, newZone]);
+      setActiveGroupId(id);
+      setSelectedId(newZone.id);
+    } else {
+      setDraftGroups((prev) => [...prev, { id, name, color, shape }]);
+      setActiveGroupId(id);
+      setSelectedId(null);
+    }
+  }, [nextDraftMeta, shape, zoneType, zones, onZonesChange]);
 
   const handlePolygonComplete = useCallback(
     (ring: [number, number][]) => {
@@ -206,6 +260,61 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       setActiveGroupId(newZone.groupId ?? null);
     },
     [zones, shape, onZonesChange, effectiveActiveGroupId, draftGroups],
+  );
+
+  const handleSurfacePick = useCallback(
+    async (hit: PickResult | null) => {
+      if (!hit) return;
+      // Find the active building-surface zone
+      const activeSurfaceZone = zones.find(
+        (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
+      ) as BuildingSurfaceZone | undefined;
+      if (!activeSurfaceZone) return;
+
+      let buildingId = hit.buildingId;
+      if (buildingId == null && hit.surface == null) {
+        // Try to resolve building from world coordinates
+        try {
+          const res = await getBuildingAt(hit.point[0], hit.point[1]);
+          buildingId = res.building_id;
+        } catch {
+          return;
+        }
+      }
+
+      if (refiningBuildingId != null) {
+        // Refining mode: face-level toggle
+        if (hit.surface && hit.surface.buildingId === refiningBuildingId) {
+          const updatedSelectors = toggleSurfaceFace(activeSurfaceZone.selectors, {
+            buildingId: hit.surface.buildingId,
+            faceKey: hit.surface.faceKey,
+            surfaceKind: hit.surface.surfaceKind,
+            orientation: hit.surface.orientation,
+          });
+          onZonesChange(
+            zones.map((z) =>
+              z.id === activeSurfaceZone.id
+                ? { ...activeSurfaceZone, selectors: updatedSelectors }
+                : z,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Idle mode: whole-building toggle
+      if (buildingId != null) {
+        const updatedSelectors = toggleWholeBuilding(activeSurfaceZone.selectors, buildingId);
+        onZonesChange(
+          zones.map((z) =>
+            z.id === activeSurfaceZone.id
+              ? { ...activeSurfaceZone, selectors: updatedSelectors }
+              : z,
+          ),
+        );
+      }
+    },
+    [zones, effectiveActiveGroupId, refiningBuildingId, onZonesChange],
   );
 
   const updateGroup = (groupId: string, patch: Partial<Pick<Zone, 'name' | 'color'>>) => {
@@ -254,6 +363,27 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         <h2>Zoning</h2>
         {error && <div className="alert alert-error">{error}</div>}
         <div className="form-group">
+          <label>Zone type</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className={`btn ${zoneType === 'horizontal' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setZoneType('horizontal')}
+            >
+              2D area
+            </button>
+            <button
+              type="button"
+              className={`btn ${zoneType === 'building_surface' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setZoneType('building_surface')}
+              disabled={!surfaceGeometry}
+            >
+              Building surfaces
+            </button>
+          </div>
+        </div>
+        {zoneType === 'horizontal' && (
+        <div className="form-group">
           <label>Shape</label>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -272,6 +402,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             </button>
           </div>
         </div>
+        )}
 
         <div className="form-group">
           <label>Backdrop</label>
@@ -399,6 +530,86 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             </div>
           )}
         </div>
+        {zoneType === 'building_surface' && (() => {
+          const activeSurfaceZone = zones.find(
+            (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
+          ) as BuildingSurfaceZone | undefined;
+          if (!activeSurfaceZone) return null;
+          const selectedBuildingIds = [
+            ...new Set(
+              activeSurfaceZone.selectors
+                .filter((s) => s.mode !== 'exclude_faces')
+                .map((s) => s.buildingId),
+            ),
+          ];
+          if (selectedBuildingIds.length === 0) return (
+            <div className="alert alert-info" style={{ marginTop: 8 }}>
+              Click buildings in the 3D viewer to select them.
+            </div>
+          );
+          return (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: '0.85em', opacity: 0.7, marginBottom: 4 }}>Selected buildings:</div>
+              {selectedBuildingIds.map((bid) => (
+                <div key={bid} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ flex: 1 }}>Building {bid}</span>
+                  {refiningBuildingId === bid ? (
+                    <>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => {
+                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'roof');
+                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                        }}
+                      >Roof</button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => {
+                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'all_walls');
+                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                        }}
+                      >All walls</button>
+                      {(['N', 'E', 'S', 'W'] as WallOrientation[]).map((dir) => (
+                        <button
+                          key={dir}
+                          className="btn btn-secondary"
+                          style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                          onClick={() => {
+                            const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'wall_orientation', dir);
+                            onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                          }}
+                        >{dir}</button>
+                      ))}
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => setRefiningBuildingId(null)}
+                      >Done</button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => setRefiningBuildingId(bid)}
+                      >Refine</button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => {
+                          const updated = activeSurfaceZone.selectors.filter((s) => s.buildingId !== bid);
+                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                        }}
+                      >✕</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Center: 2D editor */}
@@ -408,7 +619,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         {geo && (
           <PlanMapEditor
             geo={geo}
-            interaction={interaction}
+            interaction={zoneType === 'building_surface' ? 'none' : interaction}
             backdrop={backdrop}
             basemap={basemap}
             drawColor="blue"
@@ -426,10 +637,28 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             <SceneViewer
               geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
               downsample={1}
-              zones={zones}
+              zones={zones.filter((z) => z.type === 'horizontal')}
               lonLatToXY={lonLatToXY}
               showZones
               colorOverride={colorOverride}
+              onPick={zoneType === 'building_surface' ? handleSurfacePick : undefined}
+              surfaceSelection={
+                zoneType === 'building_surface'
+                  ? {
+                      surfaceChunk: surfaceGeometry?.chunk ?? null,
+                      faceToSurface,
+                      activeZoneColor:
+                        (zones.find(
+                          (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
+                        ) as BuildingSurfaceZone | undefined)?.color ?? null,
+                      selectedSelectors:
+                        (zones.find(
+                          (z) => z.type === 'building_surface' && (z.groupId ?? z.id) === effectiveActiveGroupId,
+                        ) as BuildingSurfaceZone | undefined)?.selectors ?? [],
+                      enabled: true,
+                    }
+                  : null
+              }
             />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>

@@ -61,6 +61,7 @@ const App: React.FC = () => {
     setViewFigureJson('');
     setLandmarkFigureJson('');
     setGeometryToken((t) => t + 1);
+    setZones((prev) => prev.filter((z) => z.type === 'horizontal'));
   }, []);
 
   // On page load, reset the backend so Taichi caches are cleared and a
@@ -112,6 +113,8 @@ const App: React.FC = () => {
             onFigureChange={setFigureJson}
             onModelReady={() => {
               setHasModel(true);
+              setZones([]);
+              setGeometryToken((t) => t + 1);
               setEditFigureJson('');
               setSolarFigureJson('');
               setViewFigureJson('');
