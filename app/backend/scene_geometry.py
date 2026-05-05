@@ -26,7 +26,7 @@ import matplotlib.colors as mcolors
 
 from voxcity.visualizer.palette import get_voxel_color_map
 
-from .models import MeshChunk, OverlayGeometryResponse, SceneGeometryResponse
+from .models import MeshChunk, OverlayGeometryResponse, SceneGeometryResponse, SurfaceFaceMeta
 
 
 # ---------------------------------------------------------------------------
@@ -618,3 +618,31 @@ def build_building_overlay_buffers(
         colormap=colormap,
         unit_label=unit_label,
     )
+
+
+def build_surface_selection_buffers(mesh: object) -> tuple:
+    """Build a triangle-soup MeshChunk from a selectable building mesh.
+
+    Returns (MeshChunk, list[SurfaceFaceMeta]) where the face_to_surface list
+    has exactly one entry per triangle in the chunk.
+    """
+    from .surface_zones import classify_surface_faces
+
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int32)
+    meta = classify_surface_faces(mesh)
+
+    # Build non-indexed triangle soup: each triangle has 3 unique vertices
+    positions = vertices[faces].reshape(-1, 3).astype(np.float32, copy=False)
+    indices = np.arange(len(faces) * 3, dtype=np.int32)
+
+    chunk = MeshChunk(
+        name="building_surfaces",
+        positions=positions.reshape(-1).tolist(),
+        indices=indices.tolist(),
+        color=[1.0, 1.0, 1.0],
+        opacity=0.02,
+        flat_shading=False,
+        metadata={"kind": "building_surfaces"},
+    )
+    return chunk, meta

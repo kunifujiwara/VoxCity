@@ -177,3 +177,49 @@ def test_zone_stats_rejects_malformed_surface_selector(client, monkeypatch):
     response = client.post("/api/zones/stats", json=payload)
     assert response.status_code == 400
     assert "orientation" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Endpoint tests (Task 3)
+# ---------------------------------------------------------------------------
+
+def test_building_surfaces_returns_chunk_and_aligned_metadata(client, monkeypatch):
+    mesh = _fake_surface_mesh(building_ids=[7, 7])
+    _patch_model_state(monkeypatch)
+    import app.backend.main as main_mod
+    monkeypatch.setattr(main_mod, "create_voxel_mesh", lambda voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None: mesh, raising=False)
+
+    response = client.get("/api/buildings/surfaces")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["chunk"]["name"] == "building_surfaces"
+    assert len(body["chunk"]["indices"]) // 3 == len(body["face_to_surface"])
+    assert body["face_to_surface"][0]["building_id"] == 7
+
+
+def test_building_surfaces_uses_real_create_voxel_mesh_signature(client, monkeypatch):
+    captured = {}
+    _patch_model_state(monkeypatch)
+    import app.backend.main as main_mod
+
+    def fake_create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
+        captured.update({
+            "voxel_array": voxel_array,
+            "class_id": class_id,
+            "meshsize": meshsize,
+            "building_id_grid": building_id_grid,
+            "mesh_type": mesh_type,
+        })
+        return _fake_surface_mesh(building_ids=[7, 7])
+
+    monkeypatch.setattr(main_mod, "create_voxel_mesh", fake_create_voxel_mesh, raising=False)
+    response = client.get("/api/buildings/surfaces")
+    assert response.status_code == 200
+    assert captured["class_id"] == -3
+    assert captured["mesh_type"] == "open_air"
+
+
+def test_building_surfaces_returns_400_when_no_model(client, monkeypatch):
+    monkeypatch.setattr(app_state, "voxcity", None)
+    response = client.get("/api/buildings/surfaces")
+    assert response.status_code == 400

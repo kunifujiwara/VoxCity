@@ -34,12 +34,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import (
     AutoDetectSourcesRequest,
+    BuildingSurfaceGeometryResponse,
     ExportCitylesRequest,
     ExportObjRequest,
     GenerateRequest,
     GeocodeRequest,
     GeocodeResponse,
     LandmarkRequest,
+    MeshChunk,
     OverlayGeometryResponse,
     RectangleFromDimensions,
     RerenderRequest,
@@ -57,6 +59,7 @@ from .scene_geometry import (
     build_building_highlight_buffers,
     build_building_overlay_buffers,
     build_ground_overlay_buffers,
+    build_surface_selection_buffers,
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
@@ -96,6 +99,7 @@ from voxcity.simulator_gpu.visibility import (
 )
 from voxcity.exporter.cityles import export_cityles
 from voxcity.exporter.obj import export_obj
+from voxcity.geoprocessor.mesh import create_voxel_mesh
 from voxcity.visualizer import visualize_voxcity_plotly
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -1696,6 +1700,81 @@ async def buildings_list():
         })
 
     return {"buildings": buildings}
+
+
+def _empty_surface_chunk() -> MeshChunk:
+    return MeshChunk(
+        name="building_surfaces",
+        positions=[],
+        indices=[],
+        color=None,
+        colors=None,
+        opacity=0.0,
+        flat_shading=False,
+        metadata={},
+    )
+
+
+def _building_info_list() -> list:
+    """Synchronous helper returning building list (same logic as buildings_list endpoint)."""
+    if not app_state.has_model:
+        return []
+    vc = app_state.voxcity
+    bid_grid = getattr(vc.buildings, "ids", None)
+    if bid_grid is None:
+        return []
+    meshsize = app_state.meshsize
+    voxcity_grid = vc.voxels.classes
+    bid_aligned = bid_grid
+    unique_ids = np.unique(bid_aligned)
+    unique_ids = unique_ids[unique_ids != 0]
+    buildings = []
+    for bid in unique_ids:
+        mask_2d = (bid_aligned == bid)
+        xs, ys = np.where(mask_2d)
+        if len(xs) == 0:
+            continue
+        cx = (float(xs.mean()) + 0.5) * meshsize
+        cy = (float(ys.mean()) + 0.5) * meshsize
+        max_z = 0.0
+        for xi, yi in zip(xs, ys):
+            col = voxcity_grid[xi, yi, :]
+            bz = np.where(col == -3)[0]
+            if len(bz) > 0:
+                max_z = max(max_z, float(bz.max() + 1) * meshsize)
+        cz = max_z / 2.0
+        buildings.append({
+            "id": int(bid),
+            "cx": round(cx, 2),
+            "cy": round(cy, 2),
+            "cz": round(cz, 2),
+            "top_z": round(max_z, 2),
+        })
+    return buildings
+
+
+@app.get("/api/buildings/surfaces", response_model=BuildingSurfaceGeometryResponse)
+def building_surfaces() -> BuildingSurfaceGeometryResponse:
+    """Return selectable building surface geometry with per-face classification metadata."""
+    if app_state.voxcity is None:
+        raise HTTPException(status_code=400, detail="No model loaded")
+    vc = app_state.voxcity
+    bid_grid = getattr(vc.buildings, "ids", None)
+    if bid_grid is None:
+        return BuildingSurfaceGeometryResponse(chunk=_empty_surface_chunk(), face_to_surface=[], buildings=[])
+
+    mesh = create_voxel_mesh(
+        vc.voxels.classes,
+        -3,
+        meshsize=app_state.meshsize,
+        building_id_grid=bid_grid,
+        mesh_type="open_air",
+    )
+    if mesh is None or getattr(mesh, "vertices", None) is None or len(getattr(mesh, "faces", [])) == 0:
+        return BuildingSurfaceGeometryResponse(chunk=_empty_surface_chunk(), face_to_surface=[], buildings=[])
+    chunk, face_meta = build_surface_selection_buffers(mesh)
+    building_info = _building_info_list()
+    return BuildingSurfaceGeometryResponse(chunk=chunk, face_to_surface=face_meta, buildings=building_info)
 
 
 @app.get("/api/buildings/at")
