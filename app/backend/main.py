@@ -63,7 +63,7 @@ from .scene_geometry import (
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
-from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh
+from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh, attach_surface_face_meta
 from .zoning import (
     building_ids_in_zone,
     grid_xy_to_lonlat,
@@ -1035,6 +1035,22 @@ async def run_solar(req: SolarRequest):
                     detail="Building solar simulation returned no mesh – the model may lack building geometry.",
                 )
 
+            # Attach surface metadata before caching
+            _bid_grid = getattr(voxcity.buildings, "ids", None)
+            _ref_mesh = create_voxel_mesh(
+                voxcity.voxels.classes,
+                -3,
+                meshsize=app_state.meshsize,
+                building_id_grid=_bid_grid,
+                mesh_type="open_air",
+            )
+            if _ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0:
+                attach_surface_face_meta(_ref_mesh)
+            attach_surface_face_meta(
+                irradiance,
+                reference_mesh=_ref_mesh if (_ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0) else None,
+            )
+
             # Store for re-rendering
             _colorbar_title = (
                 "Inst. Global Irradiance (W/m²)" if req.calc_type == "instantaneous"
@@ -1190,6 +1206,22 @@ async def run_view(req: ViewRequest):
 
             if mesh is None:
                 raise HTTPException(status_code=500, detail="No building surfaces found")
+
+            # Attach surface metadata before caching
+            _bid_grid = getattr(voxcity.buildings, "ids", None)
+            _ref_mesh = create_voxel_mesh(
+                voxcity.voxels.classes,
+                -3,
+                meshsize=app_state.meshsize,
+                building_id_grid=_bid_grid,
+                mesh_type="open_air",
+            )
+            if _ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0:
+                attach_surface_face_meta(_ref_mesh)
+            attach_surface_face_meta(
+                mesh,
+                reference_mesh=_ref_mesh if (_ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0) else None,
+            )
 
             # Store for re-rendering
             app_state.store_sim_result(
@@ -1360,6 +1392,22 @@ async def run_landmark(req: LandmarkRequest):
 
             if landmark_mesh is None:
                 raise HTTPException(status_code=500, detail="No surfaces generated")
+
+            # Attach surface metadata before caching
+            _bid_grid = getattr(voxcity.buildings, "ids", None)
+            _ref_mesh = create_voxel_mesh(
+                voxcity.voxels.classes,
+                -3,
+                meshsize=app_state.meshsize,
+                building_id_grid=_bid_grid,
+                mesh_type="open_air",
+            )
+            if _ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0:
+                attach_surface_face_meta(_ref_mesh)
+            attach_surface_face_meta(
+                landmark_mesh,
+                reference_mesh=_ref_mesh if (_ref_mesh is not None and len(getattr(_ref_mesh, "faces", [])) > 0) else None,
+            )
 
             # Store for re-rendering
             app_state.store_sim_result(

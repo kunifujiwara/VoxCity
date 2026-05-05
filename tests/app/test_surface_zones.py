@@ -4,7 +4,7 @@ import pytest
 from types import SimpleNamespace
 
 from app.backend.models import SurfaceSelector
-from app.backend.surface_zones import surface_zone_mask, stats_for_surface_zone
+from app.backend.surface_zones import surface_zone_mask, stats_for_surface_zone, attach_surface_face_meta
 
 
 FACE_META = [
@@ -75,3 +75,44 @@ def test_surface_stats_empty_selection():
     stat = stats_for_surface_zone("z1", FACE_META, selectors, values, areas)
     assert stat.cell_count == 0
     assert stat.mean is None
+
+
+# ---------------------------------------------------------------------------
+# attach_surface_face_meta tests
+# ---------------------------------------------------------------------------
+
+def _make_test_mesh(building_ids=(3, 3)):
+    """Two triangular faces with roof and east-wall normals."""
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0],
+                  [0, 0, 1], [1, 0, 1]], dtype=float)
+    F = np.array([[0, 1, 4], [1, 3, 5]], dtype=int)
+    normals = np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]])
+    metadata = {
+        "building_id": np.array(building_ids, dtype=int),
+        "provided_face_normals": normals,
+    }
+    return SimpleNamespace(vertices=V, faces=F, metadata=metadata)
+
+
+def test_attach_surface_face_meta_writes_versioned_metadata():
+    mesh = _make_test_mesh(building_ids=[3, 3])
+    attach_surface_face_meta(mesh)
+    assert mesh.metadata["surface_face_meta_version"] == 1
+    assert len(mesh.metadata["surface_face_meta"]) == len(mesh.faces)
+    assert mesh.metadata["surface_face_meta"][0]["building_id"] == 3
+
+
+def test_attach_surface_face_meta_copies_reference_keys_when_topology_matches():
+    mesh = _make_test_mesh(building_ids=[3, 3])
+    reference = _make_test_mesh(building_ids=[3, 3])
+    attach_surface_face_meta(reference)
+    attach_surface_face_meta(mesh, reference_mesh=reference)
+    assert mesh.metadata["surface_face_meta"][0]["face_key"] == reference.metadata["surface_face_meta"][0]["face_key"]
+
+
+def test_attach_surface_face_meta_is_idempotent():
+    mesh = _make_test_mesh(building_ids=[3, 3])
+    attach_surface_face_meta(mesh)
+    first_key = mesh.metadata["surface_face_meta"][0]["face_key"]
+    attach_surface_face_meta(mesh)  # second call
+    assert mesh.metadata["surface_face_meta"][0]["face_key"] == first_key
