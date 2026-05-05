@@ -2,6 +2,8 @@
  * API client for the VoxCity FastAPI backend.
  */
 
+import type { Zone, SurfaceSelector } from './types/zones';
+
 const BASE = '/api';
 
 /** Delay helper */
@@ -387,16 +389,59 @@ export interface ZoneStatsResponse {
   stats: ZoneStat[];
 }
 
+/** Backend shape for a surface selector (snake_case). */
+export interface SurfaceSelectorDto {
+  building_id: number;
+  mode: string;
+  orientation: string | null;
+  face_keys: string[] | null;
+}
+
+/** Backend DTO for a zone spec (snake_case). */
 export interface ZoneSpecDto {
   id: string;
   name: string;
-  ring_lonlat: [number, number][];
+  type: 'horizontal' | 'building_surface';
+  ring_lonlat: [number, number][] | null;
+  selectors: SurfaceSelectorDto[];
+  group_id: string | undefined;
 }
 
-export async function getZoneStats(zones: ZoneSpecDto[], simType?: string) {
+/**
+ * Convert a frontend Zone (camelCase) to the backend ZoneSpecDto (snake_case).
+ */
+export function toZoneSpecDto(zone: Zone): ZoneSpecDto {
+  if (zone.type === 'horizontal') {
+    return {
+      id: zone.id,
+      name: zone.name,
+      type: 'horizontal',
+      ring_lonlat: zone.ring_lonlat,
+      selectors: [],
+      group_id: zone.groupId,
+    };
+  }
+  // building_surface
+  const selectors: SurfaceSelectorDto[] = zone.selectors.map((s: SurfaceSelector) => ({
+    building_id: s.buildingId,
+    mode: s.mode,
+    orientation: 'orientation' in s ? (s.orientation ?? null) : null,
+    face_keys: 'faceKeys' in s ? (s.faceKeys ?? null) : null,
+  }));
+  return {
+    id: zone.id,
+    name: zone.name,
+    type: 'building_surface',
+    ring_lonlat: null,
+    selectors,
+    group_id: zone.groupId,
+  };
+}
+
+export async function getZoneStats(zones: Zone[], simType?: string) {
   return request<ZoneStatsResponse>('/zones/stats', {
     method: 'POST',
-    body: JSON.stringify({ zones, sim_type: simType }),
+    body: JSON.stringify({ zones: zones.map(toZoneSpecDto), sim_type: simType }),
   });
 }
 
@@ -453,5 +498,23 @@ export async function getSimGeometry(
       vmax: body.vmax ?? null,
     }),
   });
+}
+
+/** Response from GET /api/buildings/surfaces */
+export interface SurfaceFaceMetaDto {
+  face_key: string;
+  building_id: number;
+  surface_kind: string;
+  orientation: string | null;
+}
+
+export interface BuildingSurfacesResponse {
+  chunk: MeshChunkDto;
+  face_to_surface: Record<string, SurfaceFaceMetaDto>;
+  buildings: BuildingInfo[];
+}
+
+export async function getBuildingSurfaces() {
+  return request<BuildingSurfacesResponse>('/buildings/surfaces');
 }
 
