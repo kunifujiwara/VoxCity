@@ -445,6 +445,24 @@ export async function getZoneStats(zones: Zone[], simType?: string) {
   });
 }
 
+export type SurfaceZoneEdgeSegmentDto = [number, number, number, number, number, number];
+
+export interface SurfaceZoneEdgePayloadDto {
+  id: string;
+  segments: SurfaceZoneEdgeSegmentDto[];
+}
+
+export interface SurfaceZoneEdgesResponse {
+  zones: SurfaceZoneEdgePayloadDto[];
+}
+
+export async function getSurfaceZoneEdges(zones: Zone[]) {
+  return request<SurfaceZoneEdgesResponse>('/buildings/surface-zone-edges', {
+    method: 'POST',
+    body: JSON.stringify({ zones: zones.map(toZoneSpecDto) }),
+  });
+}
+
 // ── Three.js raw geometry (R3F migration) ──────────────────────
 
 export interface MeshChunkDto {
@@ -510,7 +528,7 @@ export interface SurfaceFaceMetaDto {
 
 export interface BuildingSurfacesResponse {
   chunk: MeshChunkDto;
-  face_to_surface: Record<string, SurfaceFaceMetaDto>;
+  face_to_surface: SurfaceFaceMetaDto[];
   buildings: BuildingInfo[];
 }
 
