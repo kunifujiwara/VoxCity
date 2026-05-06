@@ -35,6 +35,7 @@ class RectangleFromDimensions(BaseModel):
     center_lat: float
     width_m: float
     height_m: float
+    rotation_deg: float = 0.0
 
 
 class AutoDetectSourcesRequest(BaseModel):

@@ -767,8 +767,16 @@ async def geocode_city(req: GeocodeRequest):
 
 @app.post("/api/rectangle-from-dimensions")
 async def rectangle_from_dimensions(req: RectangleFromDimensions):
-    """Compute rectangle vertices from a center + width/height in meters."""
+    """Compute rectangle vertices from a center + width/height in meters.
+
+    When *rotation_deg* is non-zero the axis-aligned base rectangle is rotated
+    in Web Mercator (EPSG:3857) space around its centroid — matching the same
+    convention used by voxcity._rotate_vertices() in rectangle.py.
+    Vertices are returned in SW → NW → NE → SE order.
+    """
+    import math
     from geopy import distance
+    from pyproj import Transformer
 
     lat_c, lon_c = req.center_lat, req.center_lon
     north = distance.distance(meters=req.height_m / 2.0).destination((lat_c, lon_c), bearing=0)
@@ -776,12 +784,37 @@ async def rectangle_from_dimensions(req: RectangleFromDimensions):
     east = distance.distance(meters=req.width_m / 2.0).destination((lat_c, lon_c), bearing=90)
     west = distance.distance(meters=req.width_m / 2.0).destination((lat_c, lon_c), bearing=270)
 
-    vertices = [
+    # SW → NW → NE → SE
+    vertices: List[List[float]] = [
         [west.longitude, south.latitude],
         [west.longitude, north.latitude],
         [east.longitude, north.latitude],
         [east.longitude, south.latitude],
     ]
+
+    if req.rotation_deg != 0.0:
+        to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+        to_geo  = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+
+        # Project to Web Mercator
+        merc = [to_merc.transform(lon, lat) for lon, lat in vertices]
+
+        # Centroid in Mercator
+        cx = sum(x for x, _ in merc) / 4
+        cy = sum(y for _, y in merc) / 4
+
+        # Rotate: voxcity uses negative angle (positive deg = CCW in lon/lat frame)
+        angle_rad = -req.rotation_deg * math.pi / 180.0
+        cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+        rotated = []
+        for x, y in merc:
+            dx, dy = x - cx, y - cy
+            rx = dx * cos_a - dy * sin_a + cx
+            ry = dx * sin_a + dy * cos_a + cy
+            rotated.append(to_geo.transform(rx, ry))
+
+        vertices = [[lon, lat] for lon, lat in rotated]
+
     return {"vertices": vertices}
 
 

@@ -117,6 +117,7 @@ export async function rectangleFromDimensions(
   centerLat: number,
   widthM: number,
   heightM: number,
+  rotationDeg: number = 0,
 ) {
   return request<RectangleResult>('/rectangle-from-dimensions', {
     method: 'POST',
@@ -125,6 +126,7 @@ export async function rectangleFromDimensions(
       center_lat: centerLat,
       width_m: widthM,
       height_m: heightM,
+      rotation_deg: rotationDeg,
     }),
   });
 }

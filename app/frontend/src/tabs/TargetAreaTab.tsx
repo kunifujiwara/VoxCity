@@ -10,12 +10,13 @@ interface TargetAreaTabProps {
 
 const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleChange }) => {
   const [areaMethod, setAreaMethod] = useState<'draw' | 'coordinates'>('draw');
-  const [selectionMode, setSelectionMode] = useState<'draw' | 'dimensions'>('draw');
+  const [selectionMode, setSelectionMode] = useState<'draw' | 'dimensions' | 'rotated'>('draw');
   const [cityName, setCityName] = useState('Tokyo');
   const [mapCenter, setMapCenter] = useState<[number, number]>([35.681236, 139.767125]);
   const [mapZoom, setMapZoom] = useState(14);
   const [widthM, setWidthM] = useState(1250);
   const [heightM, setHeightM] = useState(1250);
+  const [rotationDeg, setRotationDeg] = useState(0);
   const [loading, setLoading] = useState(false);
   const [coords, setCoords] = useState({
     sw_lon: 139.761, sw_lat: 35.676,
@@ -100,6 +101,14 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                 <label>
                   <input
                     type="radio"
+                    checked={selectionMode === 'rotated'}
+                    onChange={() => setSelectionMode('rotated')}
+                  />
+                  Rotated free hand
+                </label>
+                <label>
+                  <input
+                    type="radio"
                     checked={selectionMode === 'dimensions'}
                     onChange={() => setSelectionMode('dimensions')}
                   />
@@ -130,6 +139,17 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                     max={20000}
                     step={50}
                     onChange={(e) => setHeightM(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label>Rotation (°)</label>
+                  <input
+                    type="number"
+                    value={rotationDeg}
+                    min={-90}
+                    max={90}
+                    step={1}
+                    onChange={(e) => setRotationDeg(Number(e.target.value))}
                   />
                 </div>
               </div>
@@ -194,6 +214,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
             selectionMode={selectionMode}
             widthM={widthM}
             heightM={heightM}
+            rotationDeg={rotationDeg}
             onRectangleChange={handleRectangleChange}
           />
         </div>
