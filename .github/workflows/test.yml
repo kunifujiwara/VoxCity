@@ -48,7 +48,7 @@ jobs:
         shell: bash -l {0}
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest pytest-cov
+          python -m pip install pytest pytest-cov fastapi httpx
           python -m pip install .
       
       - name: Setup Earth Engine authentication (if credentials available)

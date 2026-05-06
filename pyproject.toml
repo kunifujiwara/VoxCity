@@ -66,6 +66,8 @@ coverage = "*"
 mypy = "*"
 pytest = "*"
 ruff = "*"
+fastapi = "*"
+httpx = "*"
 
 [tool.poetry.extras]
 gpu = ["taichi"]
