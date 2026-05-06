@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 import numpy as np
 
-from .models import SurfaceSelector, ZoneSpec
+from .models import ZoneSpec
 from .surface_zones import make_surface_face_key
 
 AXIS_EPSILON_M = 1e-6
@@ -115,9 +114,11 @@ def _triangle_keys(building_id: int, corners, normal, first_face_index: int) -> 
 
 
 def extract_voxel_surface_records(voxels: np.ndarray, building_id_grid: np.ndarray, meshsize: float) -> list[VoxelSurfaceRecord]:
-    if voxels is None or getattr(voxels, "ndim", 0) != 3:
+    if getattr(voxels, "ndim", 0) != 3:
         return []
-    if building_id_grid is None or getattr(building_id_grid, "ndim", 0) != 2:
+    if getattr(building_id_grid, "ndim", 0) != 2:
+        return []
+    if building_id_grid.shape != voxels.shape[:2]:
         return []
 
     records: list[VoxelSurfaceRecord] = []
