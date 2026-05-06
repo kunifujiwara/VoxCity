@@ -212,7 +212,8 @@ def _dedupe_axis_segments(segments):
         if key in seen:
             continue
         seen.add(key)
-        out.append(tuple(float(value) for value in segment))
+        x1, y1, z1, x2, y2, z2 = (float(v) for v in segment)
+        out.append((x1, y1, z1, x2, y2, z2))
     return out
 
 
