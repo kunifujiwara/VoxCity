@@ -124,6 +124,7 @@ app/frontend/package-lock.json
 # App output / temp files
 app/output/
 app/cache/
+.superpowers/
 
 
 # Git worktrees
