@@ -80,3 +80,96 @@ def test_extract_records_treats_tree_as_exposed_and_landcover_as_blocking():
 
     assert "+x" in planes
     assert "-x" not in planes
+
+
+def test_select_records_for_whole_roof_walls_and_orientation():
+    voxels, ids = _single_building_voxels()
+    records = extract_voxel_surface_records(voxels, ids, meshsize=1.0)
+
+    whole = select_records_for_zone(records, _zone("whole", [SurfaceSelector(building_id=7, mode="whole")]))
+    roof = select_records_for_zone(records, _zone("roof", [SurfaceSelector(building_id=7, mode="roof")]))
+    walls = select_records_for_zone(records, _zone("walls", [SurfaceSelector(building_id=7, mode="all_walls")]))
+    east = select_records_for_zone(records, _zone("east", [SurfaceSelector(building_id=7, mode="wall_orientation", orientation="E")]))
+
+    assert {record.surface_kind for record in whole} == {"roof", "wall"}
+    assert [record.plane for record in roof] == ["+z"]
+    assert {record.plane for record in walls} == {"+x", "-x", "+y", "-y"}
+    assert [record.orientation for record in east] == ["E"]
+
+
+def test_faces_and_exclude_faces_promote_triangle_keys_to_full_rectangle():
+    voxels, ids = _single_building_voxels()
+    records = extract_voxel_surface_records(voxels, ids, meshsize=1.0)
+    roof_record = next(record for record in records if record.plane == "+z")
+
+    selected = select_records_for_zone(records, _zone("faces", [
+        SurfaceSelector(building_id=7, mode="faces", face_keys=[roof_record.face_keys[0]]),
+    ]))
+    assert selected == [roof_record]
+
+    excluded = select_records_for_zone(records, _zone("exclude", [
+        SurfaceSelector(building_id=7, mode="whole"),
+        SurfaceSelector(building_id=7, mode="exclude_faces", face_keys=[roof_record.face_keys[1]]),
+    ]))
+    assert roof_record not in excluded
+
+
+def test_two_voxel_east_wall_merges_to_one_rectangle_with_four_edges():
+    voxels = np.zeros((3, 3, 1), dtype=int)
+    ids = np.zeros((3, 3), dtype=int)
+    voxels[0:2, 1, 0] = -3
+    ids[0:2, 1] = 4
+
+    payloads = build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("east", [SurfaceSelector(building_id=4, mode="wall_orientation", orientation="E")]),
+    ])
+
+    assert len(payloads) == 1
+    assert payloads[0].id == "east"
+    assert len(payloads[0].segments) == 4
+    assert all(is_axis_aligned_segment(segment) for segment in payloads[0].segments)
+
+    expected = {
+        normalize_segment_key((2, 0, 0, 2, 2, 0)),
+        normalize_segment_key((2, 2, 0, 2, 2, 1)),
+        normalize_segment_key((2, 2, 1, 2, 0, 1)),
+        normalize_segment_key((2, 0, 1, 2, 0, 0)),
+    }
+    assert {normalize_segment_key(segment) for segment in payloads[0].segments} == expected
+
+
+def test_greedy_merge_is_deterministic():
+    voxels = np.zeros((3, 3, 1), dtype=int)
+    ids = np.zeros((3, 3), dtype=int)
+    voxels[0:2, 1, 0] = -3
+    ids[0:2, 1] = 4
+    zones = [_zone("east", [SurfaceSelector(building_id=4, mode="wall_orientation", orientation="E")])]
+
+    first = build_surface_zone_edge_payloads(voxels, ids, 1.0, zones)[0].segments
+    second = build_surface_zone_edge_payloads(voxels, ids, 1.0, zones)[0].segments
+
+    assert first == second
+
+
+def test_merge_does_not_cross_building_ids_or_zones():
+    voxels = np.zeros((2, 2, 1), dtype=int)
+    ids = np.zeros((2, 2), dtype=int)
+    voxels[0, 1, 0] = -3
+    voxels[1, 1, 0] = -3
+    ids[0, 1] = 4
+    ids[1, 1] = 5
+
+    payloads = build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("z4", [SurfaceSelector(building_id=4, mode="wall_orientation", orientation="E")]),
+        _zone("z5", [SurfaceSelector(building_id=5, mode="wall_orientation", orientation="E")]),
+    ])
+
+    assert [payload.id for payload in payloads] == ["z4", "z5"]
+    assert [len(payload.segments) for payload in payloads] == [4, 4]
+
+
+def test_axis_alignment_and_segment_normalization_drop_diagonals():
+    assert is_axis_aligned_segment((0, 0, 0, 1, 0, 0))
+    assert not is_axis_aligned_segment((0, 0, 0, 1, 1, 0))
+    assert not is_axis_aligned_segment((0, 0, 0, 0, 0, 0))
+    assert normalize_segment_key((1, 0, 0, 0, 0, 0)) == normalize_segment_key((0, 0, 0, 1, 0, 0))

@@ -145,20 +145,193 @@ def extract_voxel_surface_records(voxels: np.ndarray, building_id_grid: np.ndarr
 
 
 # ---------------------------------------------------------------------------
-# Stubs for Task 4 functions (imported by test file)
+# Task 4: response dataclass, selector helpers, segment builders
 # ---------------------------------------------------------------------------
 
-def select_records_for_zone(records, zone):
-    raise NotImplementedError("Implemented in Task 4")
+@dataclass(frozen=True)
+class SurfaceZoneEdgePayload:
+    id: str
+    segments: list[tuple[float, float, float, float, float, float]]
 
 
-def build_surface_zone_edge_payloads(voxels, building_id_grid, meshsize, zones):
-    raise NotImplementedError("Implemented in Task 4")
+def _record_matches_positive(record: VoxelSurfaceRecord, selector) -> bool:
+    if record.building_id != selector.building_id:
+        return False
+    if record.surface_kind not in {"roof", "wall"}:
+        return False
+    if selector.mode == "whole":
+        return True
+    if selector.mode == "roof":
+        return record.surface_kind == "roof"
+    if selector.mode == "all_walls":
+        return record.surface_kind == "wall"
+    if selector.mode == "wall_orientation":
+        return record.surface_kind == "wall" and record.orientation == selector.orientation
+    if selector.mode == "faces":
+        return any(key in set(selector.face_keys or []) for key in record.face_keys)
+    return False
 
 
-def is_axis_aligned_segment(segment):
-    raise NotImplementedError("Implemented in Task 4")
+def _record_is_excluded(record: VoxelSurfaceRecord, selector) -> bool:
+    return (
+        selector.mode == "exclude_faces"
+        and record.building_id == selector.building_id
+        and any(key in set(selector.face_keys or []) for key in record.face_keys)
+    )
+
+
+def select_records_for_zone(records: list[VoxelSurfaceRecord], zone) -> list[VoxelSurfaceRecord]:
+    selectors = zone.selectors or []
+    selected: list[VoxelSurfaceRecord] = []
+    for record in records:
+        if any(_record_matches_positive(record, selector) for selector in selectors):
+            selected.append(record)
+    return [record for record in selected if not any(_record_is_excluded(record, selector) for selector in selectors)]
+
+
+def is_axis_aligned_segment(segment) -> bool:
+    x1, y1, z1, x2, y2, z2 = [float(value) for value in segment]
+    deltas = [abs(x2 - x1), abs(y2 - y1), abs(z2 - z1)]
+    changed = sum(delta > AXIS_EPSILON_M for delta in deltas)
+    return changed == 1
 
 
 def normalize_segment_key(segment):
-    raise NotImplementedError("Implemented in Task 4")
+    point_a = tuple(round(float(value), 6) for value in segment[:3])
+    point_b = tuple(round(float(value), 6) for value in segment[3:])
+    return (point_a, point_b) if point_a <= point_b else (point_b, point_a)
+
+
+def _dedupe_axis_segments(segments):
+    seen = set()
+    out = []
+    for segment in segments:
+        if not is_axis_aligned_segment(segment):
+            continue
+        key = normalize_segment_key(segment)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(tuple(float(value) for value in segment))
+    return out
+
+
+def _group_key(record: VoxelSurfaceRecord):
+    if record.plane in {"+x", "-x"}:
+        return (record.building_id, record.plane, record.corners[0][0])
+    if record.plane in {"+y", "-y"}:
+        return (record.building_id, record.plane, record.corners[0][1])
+    return (record.building_id, record.plane, record.corners[0][2])
+
+
+def _mask_coords(record: VoxelSurfaceRecord):
+    u, v, k = record.voxel_uvw
+    if record.plane in {"+x", "-x"}:
+        return (u, k)
+    if record.plane in {"+y", "-y"}:
+        return (v, k)
+    return (u, v)
+
+
+def _records_by_cell(records):
+    by_cell: dict[tuple[int, int], VoxelSurfaceRecord] = {}
+    for record in records:
+        by_cell[_mask_coords(record)] = record
+    return by_cell
+
+
+def _rectangle_bounds(rect_records):
+    points = [point for record in rect_records for point in record.corners]
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    zs = [point[2] for point in points]
+    return min(xs), max(xs), min(ys), max(ys), min(zs), max(zs)
+
+
+def _rectangle_segments(plane: str, rect_records):
+    min_x, max_x, min_y, max_y, min_z, max_z = _rectangle_bounds(rect_records)
+    if plane in {"+x", "-x"}:
+        x = rect_records[0].corners[0][0]
+        return [
+            (x, min_y, min_z, x, max_y, min_z),
+            (x, max_y, min_z, x, max_y, max_z),
+            (x, max_y, max_z, x, min_y, max_z),
+            (x, min_y, max_z, x, min_y, min_z),
+        ]
+    if plane in {"+y", "-y"}:
+        y = rect_records[0].corners[0][1]
+        return [
+            (min_x, y, min_z, max_x, y, min_z),
+            (max_x, y, min_z, max_x, y, max_z),
+            (max_x, y, max_z, min_x, y, max_z),
+            (min_x, y, max_z, min_x, y, min_z),
+        ]
+    z = rect_records[0].corners[0][2]
+    return [
+        (min_x, min_y, z, max_x, min_y, z),
+        (max_x, min_y, z, max_x, max_y, z),
+        (max_x, max_y, z, min_x, max_y, z),
+        (min_x, max_y, z, min_x, min_y, z),
+    ]
+
+
+def _greedy_rectangles_for_group(records) -> list[list[VoxelSurfaceRecord]]:
+    by_cell = _records_by_cell(records)
+    selected = set(by_cell.keys())
+    visited: set[tuple[int, int]] = set()
+    rectangles: list[list[VoxelSurfaceRecord]] = []
+
+    for start in sorted(selected):
+        if start in visited:
+            continue
+        row, col = start
+        width = 1
+        while (row, col + width) in selected and (row, col + width) not in visited:
+            width += 1
+
+        height = 1
+        while True:
+            next_row = row + height
+            next_cells = [(next_row, col + offset) for offset in range(width)]
+            if all(cell in selected and cell not in visited for cell in next_cells):
+                height += 1
+                continue
+            break
+
+        cells = [(row + r, col + c) for r in range(height) for c in range(width)]
+        visited.update(cells)
+        rectangles.append([by_cell[cell] for cell in cells])
+
+    return rectangles
+
+
+def _segments_from_selected_records(records: list[VoxelSurfaceRecord]):
+    groups: dict[tuple, list[VoxelSurfaceRecord]] = {}
+    for record in records:
+        groups.setdefault(_group_key(record), []).append(record)
+
+    segments = []
+    for _key, group_records in sorted(groups.items(), key=lambda item: item[0]):
+        plane = group_records[0].plane
+        for rectangle in _greedy_rectangles_for_group(group_records):
+            segments.extend(_rectangle_segments(plane, rectangle))
+    return segments
+
+
+def build_surface_zone_edge_payloads(
+    voxels: np.ndarray,
+    building_id_grid: np.ndarray,
+    meshsize: float,
+    zones,
+) -> list[SurfaceZoneEdgePayload]:
+    records = extract_voxel_surface_records(voxels, building_id_grid, meshsize)
+    payloads: list[SurfaceZoneEdgePayload] = []
+    for zone in zones:
+        if zone.type != "building_surface":
+            continue
+        selected = select_records_for_zone(records, zone)
+        if not selected:
+            continue
+        segments = _segments_from_selected_records(selected)
+        payloads.append(SurfaceZoneEdgePayload(id=zone.id, segments=_dedupe_axis_segments(segments)))
+    return payloads
