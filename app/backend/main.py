@@ -92,16 +92,28 @@ from voxcity.models import (
     VoxCity as VoxCityModel,
     VoxelGrid,
 )
-from voxcity.simulator_gpu.solar import (
-    get_building_global_solar_irradiance_using_epw,
-    get_global_solar_irradiance_using_epw,
-)
-from voxcity.simulator_gpu.visibility import (
-    get_landmark_visibility_map,
-    get_surface_view_factor,
-    get_view_index,
-    mark_building_by_id,
-)
+try:
+    from voxcity.simulator_gpu.solar import (
+        get_building_global_solar_irradiance_using_epw,
+        get_global_solar_irradiance_using_epw,
+    )
+except ImportError:
+    get_building_global_solar_irradiance_using_epw = None  # type: ignore[assignment]
+    get_global_solar_irradiance_using_epw = None  # type: ignore[assignment]
+
+try:
+    from voxcity.simulator_gpu.visibility import (
+        get_landmark_visibility_map,
+        get_surface_view_factor,
+        get_view_index,
+        mark_building_by_id,
+    )
+except ImportError:
+    get_landmark_visibility_map = None  # type: ignore[assignment]
+    get_surface_view_factor = None  # type: ignore[assignment]
+    get_view_index = None  # type: ignore[assignment]
+    mark_building_by_id = None  # type: ignore[assignment]
+
 from voxcity.exporter.cityles import export_cityles
 from voxcity.exporter.obj import export_obj
 from voxcity.geoprocessor.mesh import create_voxel_mesh
@@ -111,8 +123,14 @@ from voxcity.utils.lc import get_land_cover_classes
 # Ensure Taichi is initialized early (before any simulation calls).
 # This must happen at module-import time so that reloaded worker
 # processes always have a valid Taichi runtime.
-from voxcity.simulator_gpu.init_taichi import ensure_initialized, reset as reset_taichi_flag
-ensure_initialized()
+try:
+    from voxcity.simulator_gpu.init_taichi import ensure_initialized, reset as reset_taichi_flag
+    ensure_initialized()
+except ImportError:
+    def ensure_initialized() -> None:  # type: ignore[misc]
+        pass
+    def reset_taichi_flag() -> None:  # type: ignore[misc]
+        pass
 
 # Attempt to initialize Google Earth Engine for background users.
 try:
