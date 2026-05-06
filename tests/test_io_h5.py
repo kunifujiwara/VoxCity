@@ -152,6 +152,65 @@ class TestSaveLoadResultsH5:
         assert data["ground"]["potential_sunlight_hours"] == pytest.approx(12.5)
         assert data["ground"]["mode"] == "annual"
 
+    def test_multiple_named_ground_results_round_trip(self, tmp_path):
+        """Multiple named ground-level simulation results survive the round-trip."""
+        city = _make_voxcity()
+        ny, nx = city.voxels.classes.shape[:2]
+        cumulative = np.random.rand(ny, nx)
+        sunlight = np.random.rand(ny, nx)
+        sunlight_fraction = np.random.rand(ny, nx)
+        path = str(tmp_path / "named_ground.h5")
+
+        save_results_h5(
+            path,
+            city,
+            simulation_results={
+                "ground": {
+                    "solar_cumulative": {
+                        "cumulative_global": cumulative,
+                        "period_start": "06-01 09:00:00",
+                    },
+                    "sunlight_hours_dsh": {
+                        "sunlight_hours": sunlight,
+                        "sunlight_fraction": sunlight_fraction,
+                        "mode": "DSH",
+                    },
+                }
+            },
+        )
+        data = load_results_h5(path)
+
+        ground_results = data["simulations"]["ground"]
+        np.testing.assert_array_almost_equal(
+            ground_results["solar_cumulative"]["cumulative_global"], cumulative
+        )
+        assert ground_results["solar_cumulative"]["period_start"] == "06-01 09:00:00"
+        np.testing.assert_array_almost_equal(
+            ground_results["sunlight_hours_dsh"]["sunlight_hours"], sunlight
+        )
+        np.testing.assert_array_almost_equal(
+            ground_results["sunlight_hours_dsh"]["sunlight_fraction"], sunlight_fraction
+        )
+        assert ground_results["sunlight_hours_dsh"]["mode"] == "DSH"
+
+    def test_named_ground_result_accepts_plain_array(self, tmp_path):
+        """A named ground-level result can be a plain 2D array."""
+        city = _make_voxcity()
+        ny, nx = city.voxels.classes.shape[:2]
+        solar = np.random.rand(ny, nx)
+        path = str(tmp_path / "plain_ground_array.h5")
+
+        save_results_h5(
+            path,
+            city,
+            simulation_results={"ground": {"solar": solar}},
+        )
+        data = load_results_h5(path)
+
+        np.testing.assert_array_almost_equal(
+            data["simulations"]["ground"]["solar"], solar
+        )
+
     def test_building_results_round_trip_dict(self, tmp_path):
         """Building results passed as dict with 'mesh' key."""
         city = _make_voxcity()
@@ -211,6 +270,59 @@ class TestSaveLoadResultsH5:
 
         np.testing.assert_array_almost_equal(data["building"]["irr"], mesh.metadata["irr"])
 
+    def test_multiple_named_building_surface_results_round_trip(self, tmp_path):
+        """Multiple named building-surface simulation results survive the round-trip."""
+        city = _make_voxcity()
+        solar_faces = 18
+        view_faces = 12
+        solar_mesh = _FakeMesh(
+            n_verts=30,
+            n_faces=solar_faces,
+            metadata={
+                "global": np.random.rand(solar_faces),
+                "direct": np.random.rand(solar_faces),
+            },
+        )
+        view_mesh = _FakeMesh(n_verts=24, n_faces=view_faces)
+        view_values = np.random.rand(view_faces)
+        path = str(tmp_path / "named_building_surface.h5")
+
+        save_results_h5(
+            path,
+            city,
+            simulation_results={
+                "building_surface": {
+                    "solar_cumulative": solar_mesh,
+                    "sky_view_factor": {
+                        "mesh": view_mesh,
+                        "metadata": {
+                            "view_factor_values": view_values,
+                            "mode": "sky",
+                        },
+                    },
+                }
+            },
+        )
+        data = load_results_h5(path)
+
+        building_results = data["simulations"]["building_surface"]
+        np.testing.assert_array_almost_equal(
+            building_results["solar_cumulative"]["mesh_vertices"], solar_mesh.vertices
+        )
+        np.testing.assert_array_equal(
+            building_results["solar_cumulative"]["mesh_faces"], solar_mesh.faces
+        )
+        np.testing.assert_array_almost_equal(
+            building_results["solar_cumulative"]["global"], solar_mesh.metadata["global"]
+        )
+        np.testing.assert_array_almost_equal(
+            building_results["sky_view_factor"]["mesh_vertices"], view_mesh.vertices
+        )
+        np.testing.assert_array_almost_equal(
+            building_results["sky_view_factor"]["view_factor_values"], view_values
+        )
+        assert building_results["sky_view_factor"]["mode"] == "sky"
+
     def test_full_round_trip(self, tmp_path):
         """Full save/load with model + ground + building results."""
         city = _make_voxcity()
@@ -236,6 +348,35 @@ class TestSaveLoadResultsH5:
         # Building
         np.testing.assert_array_almost_equal(
             data["building"]["global"], building["metadata"]["global"]
+        )
+
+    def test_legacy_result_arguments_exposed_as_default_simulations(self, tmp_path):
+        """Legacy single-result arguments also load through the nested simulations API."""
+        city = _make_voxcity()
+        ny, nx = city.voxels.classes.shape[:2]
+        ground = {"svf": np.random.rand(ny, nx), "mode": "sky"}
+        n_faces = 16
+        mesh = _FakeMesh(
+            n_verts=28,
+            n_faces=n_faces,
+            metadata={"view_factor_values": np.random.rand(n_faces)},
+        )
+        path = str(tmp_path / "legacy_default_simulations.h5")
+
+        save_results_h5(path, city, ground_results=ground, building_results=mesh)
+        data = load_results_h5(path)
+
+        np.testing.assert_array_almost_equal(data["ground"]["svf"], ground["svf"])
+        assert data["ground"]["mode"] == "sky"
+        np.testing.assert_array_almost_equal(
+            data["building"]["view_factor_values"], mesh.metadata["view_factor_values"]
+        )
+        np.testing.assert_array_almost_equal(
+            data["simulations"]["ground"]["default"]["svf"], ground["svf"]
+        )
+        np.testing.assert_array_almost_equal(
+            data["simulations"]["building_surface"]["default"]["view_factor_values"],
+            mesh.metadata["view_factor_values"],
         )
 
     def test_metadata_preserved(self, tmp_path):
@@ -518,6 +659,16 @@ class TestErrorHandling:
         path = str(tmp_path / "bad.h5")
         with pytest.raises(TypeError, match="expects a VoxCity instance"):
             save_results_h5(path, {"not": "VoxCity"})
+
+    def test_unknown_simulation_result_type_raises_value_error(self, tmp_path):
+        city = _make_voxcity()
+        path = str(tmp_path / "unknown_simulation_type.h5")
+        with pytest.raises(ValueError, match="Unsupported simulation result type"):
+            save_results_h5(
+                path,
+                city,
+                simulation_results={"volumetric": {"solar": {"values": np.ones((2, 2, 2))}}},
+            )
 
     def test_save_creates_directories(self, tmp_path):
         """Parent directories are created automatically."""

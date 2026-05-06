@@ -266,6 +266,7 @@ def save_results_h5(
     city,
     ground_results=None,
     building_results=None,
+    simulation_results=None,
 ):
     """Save a VoxCity model and simulation results to an HDF5 file.
 
@@ -316,6 +317,25 @@ def save_results_h5(
 
         If ``'metadata'`` is *not* provided explicitly, the function
         falls back to ``mesh.metadata``.
+    simulation_results : dict, optional
+        Multiple named simulation results grouped by simulation type.  The
+        recommended structure is::
+
+            {
+                'ground': {
+                    'solar_cumulative': {'cumulative_global': array, ...},
+                    'sunlight_hours_dsh': {'sunlight_hours': array, ...},
+                },
+                'building_surface': {
+                    'solar_cumulative': trimesh_obj,
+                    'sky_view_factor': {'mesh': trimesh_obj, 'metadata': {...}},
+                },
+            }
+
+        Supported simulation types are ``'ground'`` and
+        ``'building_surface'``.  The legacy ``ground_results`` and
+        ``building_results`` arguments remain supported for saving one
+        unnamed/default result of each type.
 
     Notes
     -----
@@ -338,12 +358,13 @@ def save_results_h5(
     from .models import VoxCity as _VoxCity
     if not isinstance(city, _VoxCity):
         raise TypeError("save_results_h5 expects a VoxCity instance as 'city'")
+    _validate_simulation_results(simulation_results)
 
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
 
     with h5py.File(output_path, 'w') as f:
         # -- Root attributes ---------------------------------------------------
-        f.attrs['__format__'] = 'voxcity_results.v1'
+        f.attrs['__format__'] = 'voxcity_results.v2' if simulation_results is not None else 'voxcity_results.v1'
         f.attrs['crs'] = city.voxels.meta.crs
         f.attrs['meshsize'] = city.voxels.meta.meshsize
         f.attrs['bounds'] = list(city.voxels.meta.bounds)
@@ -411,44 +432,28 @@ def save_results_h5(
         # -- Ground results group ----------------------------------------------
         if ground_results is not None:
             gr = f.create_group('ground')
-            for key, value in ground_results.items():
-                if isinstance(value, np.ndarray):
-                    gr.create_dataset(key, data=value, compression='gzip')
-                    # Persist .metadata from ArrayWithMetadata
-                    meta = getattr(value, 'metadata', None)
-                    if meta:
-                        _store_scalar_attrs(gr[key].attrs, meta, prefix='')
-                elif _is_attr_serializable(value):
-                    _store_attr(gr.attrs, key, value)
+            _write_ground_result_group(gr, ground_results)
 
         # -- Building results group --------------------------------------------
         if building_results is not None:
             bg = f.create_group('building')
+            _write_building_result_group(bg, building_results)
 
-            # Accept either a dict or a bare trimesh object
-            if hasattr(building_results, 'vertices'):
-                # Bare trimesh passed directly
-                mesh = building_results
-                meta_dict = getattr(mesh, 'metadata', {}) or {}
-            else:
-                mesh = building_results.get('mesh')
-                meta_dict = building_results.get('metadata') or {}
-                # Fall back to mesh.metadata if metadata not given explicitly
-                if not meta_dict and mesh is not None:
-                    meta_dict = getattr(mesh, 'metadata', {}) or {}
-
-            if mesh is not None:
-                mg = bg.create_group('mesh')
-                mg.create_dataset('vertices', data=np.asarray(mesh.vertices), compression='gzip')
-                mg.create_dataset('faces', data=np.asarray(mesh.faces), compression='gzip')
-                if hasattr(mesh, 'face_normals') and mesh.face_normals is not None:
-                    mg.create_dataset('face_normals', data=np.asarray(mesh.face_normals), compression='gzip')
-
-            for key, value in meta_dict.items():
-                if isinstance(value, np.ndarray):
-                    bg.create_dataset(key, data=value, compression='gzip')
-                elif _is_attr_serializable(value):
-                    _store_attr(bg.attrs, key, value)
+        # -- Multiple named simulation results --------------------------------
+        if simulation_results is not None:
+            sim_root = f.create_group('simulations')
+            ground_named = simulation_results.get('ground', {})
+            if ground_named:
+                ground_root = sim_root.create_group('ground')
+                for result_name, result in ground_named.items():
+                    result_group = ground_root.create_group(_validate_h5_result_name(result_name))
+                    _write_ground_result_group(result_group, result)
+            building_surface_named = simulation_results.get('building_surface', {})
+            if building_surface_named:
+                building_root = sim_root.create_group('building_surface')
+                for result_name, result in building_surface_named.items():
+                    result_group = building_root.create_group(_validate_h5_result_name(result_name))
+                    _write_building_result_group(result_group, result)
 
     print(f"VoxCity results saved to {output_path}")
 
@@ -475,6 +480,12 @@ def load_results_h5(input_path):
             dict with ``'mesh_vertices'``, ``'mesh_faces'``,
             ``'mesh_face_normals'`` (numpy arrays) and per-face data
             arrays / scalar metadata.
+        ``'simulations'`` *(if present)*
+            nested dict of named simulation results grouped by simulation
+            type, e.g. ``data['simulations']['ground']['solar_cumulative']``
+            or ``data['simulations']['building_surface']['sky_view_factor']``.
+            Legacy top-level ``'ground'`` and ``'building'`` groups are also
+            exposed as ``'default'`` entries in this nested structure.
         ``'meta'``
             dict with ``'crs'``, ``'meshsize'``, ``'bounds'``.
 
@@ -579,43 +590,156 @@ def load_results_h5(input_path):
 
         # -- Ground results ----------------------------------------------------
         if 'ground' in f:
-            ground = {}
             gr = f['ground']
-            # Datasets → numpy arrays
-            for key in gr:
-                if isinstance(gr[key], h5py.Dataset):
-                    ground[key] = gr[key][:]
-            # Group attributes → scalars
-            for key, value in gr.attrs.items():
-                ground[key] = _decode_attr(value)
-            results['ground'] = ground
+            results['ground'] = _read_ground_result_group(gr, h5py)
 
         # -- Building results --------------------------------------------------
         if 'building' in f:
-            building = {}
             bg = f['building']
+            results['building'] = _read_building_result_group(bg, h5py)
 
-            # Mesh geometry
-            if 'mesh' in bg:
-                building['mesh_vertices'] = bg['mesh']['vertices'][:]
-                building['mesh_faces'] = bg['mesh']['faces'][:]
-                if 'face_normals' in bg['mesh']:
-                    building['mesh_face_normals'] = bg['mesh']['face_normals'][:]
+        # -- Multiple named simulation results --------------------------------
+        if 'simulations' in f:
+            simulations = {}
+            sim_root = f['simulations']
+            if 'ground' in sim_root:
+                simulations['ground'] = {}
+                for result_name in sim_root['ground']:
+                    simulations['ground'][result_name] = _read_ground_result_group(
+                        sim_root['ground'][result_name], h5py
+                    )
+            if 'building_surface' in sim_root:
+                simulations['building_surface'] = {}
+                for result_name in sim_root['building_surface']:
+                    simulations['building_surface'][result_name] = _read_building_result_group(
+                        sim_root['building_surface'][result_name], h5py
+                    )
+            results['simulations'] = simulations
 
-            # Per-face datasets
-            for key in bg:
-                if key == 'mesh':
-                    continue
-                if isinstance(bg[key], h5py.Dataset):
-                    building[key] = bg[key][:]
-
-            # Scalar attributes
-            for key, value in bg.attrs.items():
-                building[key] = _decode_attr(value)
-
-            results['building'] = building
+        simulations = results.get('simulations', {})
+        if 'ground' in results:
+            simulations.setdefault('ground', {}).setdefault('default', results['ground'])
+        if 'building' in results:
+            simulations.setdefault('building_surface', {}).setdefault('default', results['building'])
+        if simulations:
+            results['simulations'] = simulations
 
     return results
+
+
+# =============================================================================
+# HDF5 simulation result helpers (private)
+# =============================================================================
+
+def _validate_h5_result_name(name):
+    """Validate a simulation result name for use as a single HDF5 group name."""
+    if not isinstance(name, str) or not name:
+        raise ValueError("Simulation result names must be non-empty strings")
+    if '/' in name or '\\' in name:
+        raise ValueError("Simulation result names cannot contain path separators")
+    return name
+
+
+def _validate_simulation_results(simulation_results):
+    """Validate the nested simulation_results mapping accepted by save_results_h5."""
+    if simulation_results is None:
+        return
+    if not isinstance(simulation_results, dict):
+        raise TypeError("simulation_results must be a dictionary")
+
+    supported_types = {'ground', 'building_surface'}
+    for simulation_type, named_results in simulation_results.items():
+        if simulation_type not in supported_types:
+            raise ValueError(f"Unsupported simulation result type: {simulation_type}")
+        if not isinstance(named_results, dict):
+            raise TypeError("Each simulation result type must map names to results")
+        for result_name in named_results:
+            _validate_h5_result_name(result_name)
+
+
+def _write_ground_result_group(group, result):
+    """Write one ground-level simulation result to an HDF5 group."""
+    import numpy as np
+
+    # Accept a plain ndarray by wrapping it in a single-key dict
+    if isinstance(result, np.ndarray):
+        meta = getattr(result, 'metadata', None)
+        group.create_dataset('values', data=result, compression='gzip')
+        if meta:
+            _store_scalar_attrs(group['values'].attrs, meta, prefix='')
+        return
+
+    for key, value in result.items():
+        if isinstance(value, np.ndarray):
+            group.create_dataset(key, data=value, compression='gzip')
+            meta = getattr(value, 'metadata', None)
+            if meta:
+                _store_scalar_attrs(group[key].attrs, meta, prefix='')
+        elif _is_attr_serializable(value):
+            _store_attr(group.attrs, key, value)
+
+
+def _read_ground_result_group(group, h5py_module):
+    """Read one ground-level simulation result from an HDF5 group."""
+    result = {}
+    for key in group:
+        if isinstance(group[key], h5py_module.Dataset):
+            result[key] = group[key][:]
+    for key, value in group.attrs.items():
+        result[key] = _decode_attr(value)
+    # If saved as a plain array (single 'values' key, no other attrs), unwrap it
+    if list(result.keys()) == ['values']:
+        return result['values']
+    return result
+
+
+def _write_building_result_group(group, result):
+    """Write one building-surface simulation result to an HDF5 group."""
+    import numpy as np
+
+    if hasattr(result, 'vertices'):
+        mesh = result
+        meta_dict = getattr(mesh, 'metadata', {}) or {}
+    elif isinstance(result, dict):
+        mesh = result.get('mesh')
+        meta_dict = result.get('metadata') or {}
+        if not meta_dict and mesh is not None:
+            meta_dict = getattr(mesh, 'metadata', {}) or {}
+    else:
+        raise TypeError("Building-surface results must be a mesh or a dict with a 'mesh' key")
+
+    if mesh is not None:
+        mesh_group = group.create_group('mesh')
+        mesh_group.create_dataset('vertices', data=np.asarray(mesh.vertices), compression='gzip')
+        mesh_group.create_dataset('faces', data=np.asarray(mesh.faces), compression='gzip')
+        if hasattr(mesh, 'face_normals') and mesh.face_normals is not None:
+            mesh_group.create_dataset('face_normals', data=np.asarray(mesh.face_normals), compression='gzip')
+
+    for key, value in meta_dict.items():
+        if isinstance(value, np.ndarray):
+            group.create_dataset(key, data=value, compression='gzip')
+        elif _is_attr_serializable(value):
+            _store_attr(group.attrs, key, value)
+
+
+def _read_building_result_group(group, h5py_module):
+    """Read one building-surface simulation result from an HDF5 group."""
+    result = {}
+    if 'mesh' in group:
+        result['mesh_vertices'] = group['mesh']['vertices'][:]
+        result['mesh_faces'] = group['mesh']['faces'][:]
+        if 'face_normals' in group['mesh']:
+            result['mesh_face_normals'] = group['mesh']['face_normals'][:]
+
+    for key in group:
+        if key == 'mesh':
+            continue
+        if isinstance(group[key], h5py_module.Dataset):
+            result[key] = group[key][:]
+
+    for key, value in group.attrs.items():
+        result[key] = _decode_attr(value)
+    return result
 
 
 # =============================================================================
