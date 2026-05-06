@@ -203,18 +203,24 @@ def normalize_segment_key(segment):
 
 
 def _dedupe_axis_segments(segments):
-    seen = set()
-    out = []
+    """Keep only boundary (outer envelope) segments.
+
+    Each segment is counted across all input rectangles.  Segments shared by
+    two adjacent rectangles appear twice and cancel (even count → interior
+    edge, dropped).  Unshared segments appear once (odd count → boundary
+    edge, kept).  This is the standard parity / XOR boundary algorithm.
+    """
+    counts: dict = {}
+    coords: dict = {}
     for segment in segments:
         if not is_axis_aligned_segment(segment):
             continue
         key = normalize_segment_key(segment)
-        if key in seen:
-            continue
-        seen.add(key)
-        x1, y1, z1, x2, y2, z2 = (float(v) for v in segment)
-        out.append((x1, y1, z1, x2, y2, z2))
-    return out
+        counts[key] = counts.get(key, 0) + 1
+        if key not in coords:
+            x1, y1, z1, x2, y2, z2 = (float(v) for v in segment)
+            coords[key] = (x1, y1, z1, x2, y2, z2)
+    return [coords[key] for key, count in counts.items() if count % 2 == 1]
 
 
 def _group_key(record: VoxelSurfaceRecord):

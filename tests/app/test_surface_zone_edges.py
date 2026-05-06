@@ -173,3 +173,30 @@ def test_axis_alignment_and_segment_normalization_drop_diagonals():
     assert not is_axis_aligned_segment((0, 0, 0, 1, 1, 0))
     assert not is_axis_aligned_segment((0, 0, 0, 0, 0, 0))
     assert normalize_segment_key((1, 0, 0, 0, 0, 0)) == normalize_segment_key((0, 0, 0, 1, 0, 0))
+
+
+def test_two_by_two_east_wall_returns_only_outer_boundary_four_edges():
+    """A 2×2 grid of east-wall voxels (2 rows × 2 heights) should produce only
+    the 4 outer boundary segments.  The shared horizontal mid-edge appears in
+    two adjacent greedy rectangles, so its count is even and it is cancelled."""
+    voxels = np.zeros((3, 3, 2), dtype=int)
+    ids = np.zeros((3, 3), dtype=int)
+    voxels[0:2, 1, 0:2] = -3  # 2 rows × 2 heights at column 1
+    ids[0:2, 1] = 7
+
+    payloads = build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("east", [SurfaceSelector(building_id=7, mode="wall_orientation", orientation="E")]),
+    ])
+
+    assert len(payloads) == 1
+    segs = payloads[0].segments
+    assert len(segs) == 4, f"Expected 4 boundary segments, got {len(segs)}: {segs}"
+
+    # Outer rectangle at x=2: y in [0,2], z in [0,2]
+    expected = {
+        normalize_segment_key((2, 0, 0, 2, 2, 0)),
+        normalize_segment_key((2, 2, 0, 2, 2, 2)),
+        normalize_segment_key((2, 2, 2, 2, 0, 2)),
+        normalize_segment_key((2, 0, 2, 2, 0, 0)),
+    }
+    assert {normalize_segment_key(segment) for segment in segs} == expected
