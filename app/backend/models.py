@@ -263,3 +263,20 @@ class OverlayGeometryResponse(BaseModel):
     value_max: float
     colormap: str
     unit_label: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Surface-zone edge payloads
+# ---------------------------------------------------------------------------
+
+class SurfaceZoneEdgesRequest(BaseModel):
+    zones: List[ZoneSpec]
+
+
+class SurfaceZoneEdgeZone(BaseModel):
+    id: str
+    segments: List[List[float]]
+
+
+class SurfaceZoneEdgesResponse(BaseModel):
+    zones: List[SurfaceZoneEdgeZone]

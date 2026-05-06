@@ -49,6 +49,9 @@ from .models import (
     SimGeometryRequest,
     SolarRequest,
     StatusResponse,
+    SurfaceZoneEdgesRequest,
+    SurfaceZoneEdgesResponse,
+    SurfaceZoneEdgeZone,
     ViewRequest,
     ZoneSpec,
     ZoneStat,
@@ -63,6 +66,7 @@ from .scene_geometry import (
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
+from .surface_zone_edges import build_surface_zone_edge_payloads
 from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh, attach_surface_face_meta
 from .zoning import (
     building_ids_in_zone,
@@ -1824,6 +1828,36 @@ def building_surfaces() -> BuildingSurfaceGeometryResponse:
     chunk, face_meta = build_surface_selection_buffers(mesh)
     building_info = _building_info_list()
     return BuildingSurfaceGeometryResponse(chunk=chunk, face_to_surface=face_meta, buildings=building_info)
+
+
+@app.post("/api/buildings/surface-zone-edges", response_model=SurfaceZoneEdgesResponse)
+def building_surface_zone_edges(req: SurfaceZoneEdgesRequest) -> SurfaceZoneEdgesResponse:
+    vc = app_state.voxcity
+    if vc is None:
+        return SurfaceZoneEdgesResponse(zones=[])
+
+    surface_zones = [zone for zone in req.zones if zone.type == "building_surface"]
+    for zone in surface_zones:
+        # Existing helper validates selectors: wall_orientation requires orientation,
+        # faces/exclude_faces require face_keys, and unused fields are rejected.
+        _validate_surface_zone(zone)
+    if not surface_zones:
+        return SurfaceZoneEdgesResponse(zones=[])
+
+    bid_grid = getattr(vc.buildings, "ids", None)
+    voxels = getattr(vc.voxels, "classes", None)
+    if bid_grid is None or voxels is None:
+        return SurfaceZoneEdgesResponse(zones=[])
+
+    payloads = build_surface_zone_edge_payloads(
+        voxels,
+        bid_grid,
+        app_state.meshsize,
+        surface_zones,
+    )
+    return SurfaceZoneEdgesResponse(
+        zones=[SurfaceZoneEdgeZone(id=payload.id, segments=[list(segment) for segment in payload.segments]) for payload in payloads]
+    )
 
 
 @app.get("/api/buildings/at")
