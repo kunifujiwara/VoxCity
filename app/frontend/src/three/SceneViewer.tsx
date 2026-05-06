@@ -26,6 +26,12 @@ import { ColorBar } from './ColorBar';
 import { MeshLayer } from './MeshLayer';
 import { Picker } from './Picker';
 import { SurfaceSelectionLayer } from './SurfaceSelectionLayer';
+import { SurfaceZoneEdgeLayer } from './SurfaceZoneEdgeLayer';
+import {
+  shouldMountPickableSurface,
+  type SceneSurfaceSelectionSpec,
+} from './surfaceSelection';
+import type { SurfaceZoneEdgeRenderSpec } from './surfaceZoneEdges';
 import { ZoneOutlines } from './ZoneOutlines';
 import type { PickResult, SurfaceFaceMeta } from './types';
 
@@ -82,17 +88,10 @@ export interface SceneViewerProps {
   highlightChunks?: MeshChunkDto[] | null;
 
   /** Optional building surface selection state for surface zone mode. */
-  surfaceSelection?: {
-    surfaceChunk: MeshChunkDto | null;
-    faceToSurface: SurfaceFaceMeta[];
-    zones: Array<{
-      id: string;
-      color: string;
-      selectors: import('../types/zones').SurfaceSelector[];
-      active: boolean;
-    }>;
-    enabled: boolean;
-  } | null;
+  surfaceSelection?: SceneSurfaceSelectionSpec | null;
+
+  /** Edge highlights for surface zones (halo + color pass). */
+  surfaceZoneEdges?: SurfaceZoneEdgeRenderSpec[] | null;
 
   /** Inline canvas style overrides. */
   style?: React.CSSProperties;
@@ -120,9 +119,11 @@ export function SceneViewer({
   onPick,
   highlightChunks,
   surfaceSelection = null,
+  surfaceZoneEdges = null,
   style,
   background = DEFAULT_BG,
 }: SceneViewerProps) {
+  const pickableSurfaceEnabled = shouldMountPickableSurface(onPick, surfaceSelection);
   const [scene, setScene] = useState<SceneGeometryResponse | null>(null);
   const [overlay, setOverlay] = useState<OverlayGeometryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +201,7 @@ export function SceneViewer({
           <hemisphereLight args={[0xffffff, 0x444466, 0.35]} />
 
           {scene && (
-            <Picker enabled={!!onPick} preferSurface={!!(surfaceSelection?.enabled)} onPick={onPick}>
+            <Picker enabled={!!onPick} preferSurface={pickableSurfaceEnabled} onPick={onPick}>
               {scene.chunks
                 .filter((chunk) => {
                   // Hide background building meshes when a building-target sim
@@ -230,7 +231,7 @@ export function SceneViewer({
               {highlightChunks && highlightChunks.map((c, i) => (
                 <MeshLayer key={`highlight-${c.name}-${i}`} chunk={c} renderOrder={20} />
               ))}
-              {surfaceSelection?.enabled && surfaceSelection.surfaceChunk && (
+              {pickableSurfaceEnabled && surfaceSelection?.surfaceChunk && (
                 <MeshLayer
                   key="surface-selectable"
                   chunk={{
@@ -248,13 +249,18 @@ export function SceneViewer({
             </Picker>
           )}
 
-          {surfaceSelection?.enabled && (
+          {surfaceSelection?.enabled && surfaceSelection.surfaceChunk ? (
             <SurfaceSelectionLayer
               surfaceChunk={surfaceSelection.surfaceChunk}
               faceToSurface={surfaceSelection.faceToSurface}
               zones={surfaceSelection.zones}
               enabled={surfaceSelection.enabled}
+              displayMode={surfaceSelection.displayMode}
             />
+          ) : null}
+
+          {surfaceZoneEdges && surfaceZoneEdges.length > 0 && (
+            <SurfaceZoneEdgeLayer zones={surfaceZoneEdges} />
           )}
 
           {showZones && zones && zones.length > 0 && (
