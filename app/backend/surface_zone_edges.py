@@ -113,7 +113,14 @@ def _triangle_keys(building_id: int, corners, normal, first_face_index: int) -> 
     )
 
 
-def extract_voxel_surface_records(voxels: np.ndarray, building_id_grid: np.ndarray, meshsize: float) -> list[VoxelSurfaceRecord]:
+def extract_voxel_surface_records(
+    voxels: np.ndarray,
+    building_id_grid: np.ndarray,
+    meshsize: float,
+    *,
+    building_ids: set[int] | None = None,
+    preserve_global_face_index: bool = True,
+) -> list[VoxelSurfaceRecord]:
     if getattr(voxels, "ndim", 0) != 3:
         return []
     if getattr(building_id_grid, "ndim", 0) != 2:
@@ -121,25 +128,36 @@ def extract_voxel_surface_records(voxels: np.ndarray, building_id_grid: np.ndarr
     if building_id_grid.shape != voxels.shape[:2]:
         return []
 
+    target_building_ids = {int(building_id) for building_id in building_ids} if building_ids is not None else None
+    if target_building_ids is not None and not target_building_ids:
+        return []
+
+    voxel_mask = voxels == BUILDING_CLASS
+    if target_building_ids is not None and not preserve_global_face_index:
+        selected_cells = np.isin(building_id_grid, list(target_building_ids))
+        voxel_mask = voxel_mask & selected_cells[:, :, np.newaxis]
+
     records: list[VoxelSurfaceRecord] = []
     face_index = 0
-    for u, v, k in np.argwhere(voxels == BUILDING_CLASS):
+    for u, v, k in np.argwhere(voxel_mask):
         building_id = int(building_id_grid[int(u), int(v)])
+        should_record = target_building_ids is None or building_id in target_building_ids
         for plane in PLANE_ORDER:
             if not _is_exposed(voxels, int(u), int(v), int(k), plane):
                 continue
-            corners = _corners_for_face(int(u), int(v), int(k), plane, float(meshsize))
-            normal = PLANE_NORMALS[plane]
-            keys = _triangle_keys(building_id, corners, normal, face_index)
-            records.append(VoxelSurfaceRecord(
-                building_id=building_id,
-                plane=plane,
-                voxel_uvw=(int(u), int(v), int(k)),
-                surface_kind=_surface_kind(plane),
-                orientation=_orientation(plane),
-                corners=corners,
-                face_keys=keys,
-            ))
+            if should_record:
+                corners = _corners_for_face(int(u), int(v), int(k), plane, float(meshsize))
+                normal = PLANE_NORMALS[plane]
+                keys = _triangle_keys(building_id, corners, normal, face_index)
+                records.append(VoxelSurfaceRecord(
+                    building_id=building_id,
+                    plane=plane,
+                    voxel_uvw=(int(u), int(v), int(k)),
+                    surface_kind=_surface_kind(plane),
+                    orientation=_orientation(plane),
+                    corners=corners,
+                    face_keys=keys,
+                ))
             face_index += 2
     return records
 
@@ -152,6 +170,27 @@ def extract_voxel_surface_records(voxels: np.ndarray, building_id_grid: np.ndarr
 class SurfaceZoneEdgePayload:
     id: str
     segments: list[tuple[float, float, float, float, float, float]]
+
+
+FACE_KEY_SELECTOR_MODES = {"faces", "exclude_faces"}
+
+
+def _selected_building_ids(zones) -> set[int]:
+    return {
+        int(selector.building_id)
+        for zone in zones
+        if zone.type == "building_surface"
+        for selector in (zone.selectors or [])
+    }
+
+
+def _zones_require_global_face_index(zones) -> bool:
+    return any(
+        selector.mode in FACE_KEY_SELECTOR_MODES
+        for zone in zones
+        if zone.type == "building_surface"
+        for selector in (zone.selectors or [])
+    )
 
 
 def _record_matches_positive(record: VoxelSurfaceRecord, selector) -> bool:
@@ -203,24 +242,92 @@ def normalize_segment_key(segment):
 
 
 def _dedupe_axis_segments(segments):
-    """Keep only boundary (outer envelope) segments.
-
-    Each segment is counted across all input rectangles.  Segments shared by
-    two adjacent rectangles appear twice and cancel (even count → interior
-    edge, dropped).  Unshared segments appear once (odd count → boundary
-    edge, kept).  This is the standard parity / XOR boundary algorithm.
-    """
-    counts: dict = {}
-    coords: dict = {}
+    seen = set()
+    out = []
     for segment in segments:
         if not is_axis_aligned_segment(segment):
             continue
         key = normalize_segment_key(segment)
-        counts[key] = counts.get(key, 0) + 1
-        if key not in coords:
-            x1, y1, z1, x2, y2, z2 = (float(v) for v in segment)
-            coords[key] = (x1, y1, z1, x2, y2, z2)
-    return [coords[key] for key, count in counts.items() if count % 2 == 1]
+        if key in seen:
+            continue
+        seen.add(key)
+        x1, y1, z1, x2, y2, z2 = (float(v) for v in segment)
+        out.append((x1, y1, z1, x2, y2, z2))
+    return out
+
+
+def _face_edge_segments(record: VoxelSurfaceRecord):
+    corners = record.corners
+    return [
+        (*corners[0], *corners[1]),
+        (*corners[1], *corners[2]),
+        (*corners[2], *corners[3]),
+        (*corners[3], *corners[0]),
+    ]
+
+
+def _segment_axis(segment) -> int | None:
+    x1, y1, z1, x2, y2, z2 = [float(value) for value in segment]
+    deltas = [abs(x2 - x1), abs(y2 - y1), abs(z2 - z1)]
+    changed_axes = [index for index, delta in enumerate(deltas) if delta > AXIS_EPSILON_M]
+    if len(changed_axes) != 1:
+        return None
+    return changed_axes[0]
+
+
+def _merge_collinear_axis_segments(segments):
+    groups: dict[tuple[int, float, float], list[tuple[float, float]]] = {}
+    for segment in segments:
+        axis = _segment_axis(segment)
+        if axis is None:
+            continue
+        values = [float(value) for value in segment]
+        start = values[axis]
+        end = values[axis + 3]
+        constants = [values[index] for index in range(3) if index != axis]
+        group_key = (axis, round(constants[0], 6), round(constants[1], 6))
+        groups.setdefault(group_key, []).append((min(start, end), max(start, end)))
+
+    merged_segments = []
+    for (axis, constant_a, constant_b), intervals in sorted(groups.items()):
+        current_start: float | None = None
+        current_end: float | None = None
+        for start, end in sorted(intervals):
+            if current_start is None or current_end is None:
+                current_start, current_end = start, end
+                continue
+            if start <= current_end + AXIS_EPSILON_M:
+                current_end = max(current_end, end)
+                continue
+            merged_segments.append(_segment_from_axis_interval(axis, constant_a, constant_b, current_start, current_end))
+            current_start, current_end = start, end
+        if current_start is not None and current_end is not None:
+            merged_segments.append(_segment_from_axis_interval(axis, constant_a, constant_b, current_start, current_end))
+    return merged_segments
+
+
+def _segment_from_axis_interval(axis: int, constant_a: float, constant_b: float, start: float, end: float):
+    if axis == 0:
+        return (start, constant_a, constant_b, end, constant_a, constant_b)
+    if axis == 1:
+        return (constant_a, start, constant_b, constant_a, end, constant_b)
+    return (constant_a, constant_b, start, constant_a, constant_b, end)
+
+
+def _boundary_segments_for_group(records):
+    counts: dict[tuple, int] = {}
+    coords: dict[tuple, tuple[float, float, float, float, float, float]] = {}
+    for record in records:
+        for segment in _face_edge_segments(record):
+            if not is_axis_aligned_segment(segment):
+                continue
+            key = normalize_segment_key(segment)
+            counts[key] = counts.get(key, 0) + 1
+            if key not in coords:
+                x1, y1, z1, x2, y2, z2 = (float(value) for value in segment)
+                coords[key] = (x1, y1, z1, x2, y2, z2)
+    boundary = [coords[key] for key, count in counts.items() if count % 2 == 1]
+    return _merge_collinear_axis_segments(boundary)
 
 
 def _group_key(record: VoxelSurfaceRecord):
@@ -319,9 +426,7 @@ def _segments_from_selected_records(records: list[VoxelSurfaceRecord]):
 
     segments = []
     for _key, group_records in sorted(groups.items(), key=lambda item: item[0]):
-        plane = group_records[0].plane
-        for rectangle in _greedy_rectangles_for_group(group_records):
-            segments.extend(_rectangle_segments(plane, rectangle))
+        segments.extend(_boundary_segments_for_group(group_records))
     return segments
 
 
@@ -331,7 +436,17 @@ def build_surface_zone_edge_payloads(
     meshsize: float,
     zones,
 ) -> list[SurfaceZoneEdgePayload]:
-    records = extract_voxel_surface_records(voxels, building_id_grid, meshsize)
+    selected_building_ids = _selected_building_ids(zones)
+    if not selected_building_ids:
+        return []
+    preserve_global_face_index = _zones_require_global_face_index(zones)
+    records = extract_voxel_surface_records(
+        voxels,
+        building_id_grid,
+        meshsize,
+        building_ids=selected_building_ids,
+        preserve_global_face_index=preserve_global_face_index,
+    )
     payloads: list[SurfaceZoneEdgePayload] = []
     for zone in zones:
         if zone.type != "building_surface":

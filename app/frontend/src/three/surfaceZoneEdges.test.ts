@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Zone } from '../types/zones';
 import {
+  getSurfaceZonesWithSelectors,
   shouldFetchSurfaceZoneEdges,
+  surfaceZoneEdgeRequestKey,
   toSurfaceZoneEdgeRenderSpecs,
   segmentsToLinePoints,
   buildSurfaceZoneEdgeLineSpecs,
@@ -33,6 +35,28 @@ describe('shouldFetchSurfaceZoneEdges', () => {
   });
 });
 
+describe('surface zone edge request helpers', () => {
+  it('keeps only building surface zones with selectors', () => {
+    const emptySurfaceZone: Zone = { ...surfaceZone, id: 'empty', selectors: [] };
+
+    expect(getSurfaceZonesWithSelectors([horizontalZone, emptySurfaceZone, surfaceZone])).toEqual([surfaceZone]);
+  });
+
+  it('does not change request key for unrelated horizontal zones or color edits', () => {
+    const renamedAndRecolored: Zone = { ...surfaceZone, name: 'Recolored', color: '#ffff00' };
+    const withHorizontal = [surfaceZone, horizontalZone];
+
+    expect(surfaceZoneEdgeRequestKey([surfaceZone])).toBe(surfaceZoneEdgeRequestKey(withHorizontal));
+    expect(surfaceZoneEdgeRequestKey([surfaceZone])).toBe(surfaceZoneEdgeRequestKey([renamedAndRecolored]));
+  });
+
+  it('changes request key when selected surface selectors change', () => {
+    const walls: Zone = { ...surfaceZone, selectors: [{ buildingId: 7, mode: 'all_walls' }] };
+
+    expect(surfaceZoneEdgeRequestKey([surfaceZone])).not.toBe(surfaceZoneEdgeRequestKey([walls]));
+  });
+});
+
 describe('toSurfaceZoneEdgeRenderSpecs', () => {
   it('attaches frontend zone colors and skips empty or unknown payloads', () => {
     const specs = toSurfaceZoneEdgeRenderSpecs([surfaceZone], {
@@ -47,14 +71,13 @@ describe('toSurfaceZoneEdgeRenderSpecs', () => {
 });
 
 describe('line conversion', () => {
-  it('converts segments to drei Line points and builds halo/color line specs', () => {
+  it('converts segments to drei Line points and builds colored line specs', () => {
     const points = segmentsToLinePoints([[0, 0, 0, 1, 0, 0], [1, 0, 0, 1, 1, 0]]);
     expect(points).toEqual([[0, 0, 0], [1, 0, 0], [1, 0, 0], [1, 1, 0]]);
 
     const lineSpecs = buildSurfaceZoneEdgeLineSpecs([{ id: 's1', color: '#ff0080', segments: [[0, 0, 0, 1, 0, 0]] }]);
     expect(lineSpecs).toEqual([
-      { id: 's1:halo', color: '#000000', lineWidth: 4, opacity: 0.6, points: [[0, 0, 0], [1, 0, 0]] },
-      { id: 's1:color', color: '#ff0080', lineWidth: 2, opacity: 1, points: [[0, 0, 0], [1, 0, 0]] },
+      { id: 's1', color: '#ff0080', lineWidth: 2, opacity: 1, points: [[0, 0, 0], [1, 0, 0]] },
     ]);
   });
 });

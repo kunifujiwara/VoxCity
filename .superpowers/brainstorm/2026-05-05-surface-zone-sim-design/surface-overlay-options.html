@@ -1,0 +1,87 @@
+<h2>Building Surface Zone Marks On Simulation Results</h2>
+<p class="subtitle">Which marking style preserves the simulation colormap best while still making zones discoverable?</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="height:220px;display:flex;align-items:center;justify-content:center;background:#10151f;overflow:hidden;">
+      <svg viewBox="0 0 320 220" width="100%" height="100%" role="img" aria-label="Translucent face tint option">
+        <defs>
+          <linearGradient id="simA" x1="0" x2="1" y1="1" y2="0">
+            <stop offset="0" stop-color="#2b83ba"/>
+            <stop offset="0.45" stop-color="#abdda4"/>
+            <stop offset="1" stop-color="#d7191c"/>
+          </linearGradient>
+        </defs>
+        <polygon points="68,160 150,112 150,45 68,90" fill="url(#simA)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="150,112 250,142 250,74 150,45" fill="url(#simA)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="68,90 150,45 250,74 168,120" fill="url(#simA)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="82,151 145,115 145,66 82,100" fill="#ff2f7d" opacity="0.38" stroke="#ff8fbd" stroke-width="2"/>
+        <polygon points="145,115 222,138 222,88 145,66" fill="#ff2f7d" opacity="0.38" stroke="#ff8fbd" stroke-width="2"/>
+        <text x="160" y="197" fill="#d7dce7" font-size="13" text-anchor="middle">Transparent color wash</text>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>A. Low-opacity face tint</h3>
+      <p>Easy to notice, but it mixes with the simulation colors and can hide exact values.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="height:220px;display:flex;align-items:center;justify-content:center;background:#10151f;overflow:hidden;">
+      <svg viewBox="0 0 320 220" width="100%" height="100%" role="img" aria-label="Boundary-only option">
+        <defs>
+          <linearGradient id="simB" x1="0" x2="1" y1="1" y2="0">
+            <stop offset="0" stop-color="#2b83ba"/>
+            <stop offset="0.45" stop-color="#abdda4"/>
+            <stop offset="1" stop-color="#d7191c"/>
+          </linearGradient>
+          <filter id="glowB"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <polygon points="68,160 150,112 150,45 68,90" fill="url(#simB)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="150,112 250,142 250,74 150,45" fill="url(#simB)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="68,90 150,45 250,74 168,120" fill="url(#simB)" stroke="#24303f" stroke-width="2"/>
+        <polyline points="82,151 145,115 222,138 222,88 145,66 82,100 82,151" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.35" filter="url(#glowB)"/>
+        <polyline points="82,151 145,115 222,138 222,88 145,66 82,100 82,151" fill="none" stroke="#111827" stroke-width="4" opacity="0.9"/>
+        <polyline points="82,151 145,115 222,138 222,88 145,66 82,100 82,151" fill="none" stroke="#ff2f7d" stroke-width="2.2" stroke-dasharray="7 5"/>
+        <circle cx="145" cy="115" r="3.5" fill="#ff2f7d" stroke="#fff" stroke-width="1"/>
+        <circle cx="222" cy="88" r="3.5" fill="#ff2f7d" stroke="#fff" stroke-width="1"/>
+        <text x="160" y="197" fill="#d7dce7" font-size="13" text-anchor="middle">Dashed boundary + sparse anchors</text>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>B. Boundary-only zone mark</h3>
+      <p>Recommended: leaves face colors untouched and marks only the selected surface boundary.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="height:220px;display:flex;align-items:center;justify-content:center;background:#10151f;overflow:hidden;">
+      <svg viewBox="0 0 320 220" width="100%" height="100%" role="img" aria-label="Subtle hatch option">
+        <defs>
+          <linearGradient id="simC" x1="0" x2="1" y1="1" y2="0">
+            <stop offset="0" stop-color="#2b83ba"/>
+            <stop offset="0.45" stop-color="#abdda4"/>
+            <stop offset="1" stop-color="#d7191c"/>
+          </linearGradient>
+          <pattern id="hatchC" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+            <line x1="0" y1="0" x2="0" y2="12" stroke="#ffffff" stroke-width="2" opacity="0.35"/>
+          </pattern>
+        </defs>
+        <polygon points="68,160 150,112 150,45 68,90" fill="url(#simC)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="150,112 250,142 250,74 150,45" fill="url(#simC)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="68,90 150,45 250,74 168,120" fill="url(#simC)" stroke="#24303f" stroke-width="2"/>
+        <polygon points="82,151 145,115 145,66 82,100" fill="url(#hatchC)" stroke="#ff2f7d" stroke-width="2" opacity="0.8"/>
+        <polygon points="145,115 222,138 222,88 145,66" fill="url(#hatchC)" stroke="#ff2f7d" stroke-width="2" opacity="0.8"/>
+        <text x="160" y="197" fill="#d7dce7" font-size="13" text-anchor="middle">Sparse hatch overlay</text>
+      </svg>
+    </div>
+    <div class="card-body">
+      <h3>C. Sparse hatch overlay</h3>
+      <p>More visible than boundary-only, but still adds texture over the simulation result.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p><strong>My recommendation:</strong> use B for simulation viewers, with A reserved only for the Zoning editor. For ground-level simulations, surface zones can use a slightly stronger translucent tint because they are context rather than the active data surface. For building-surface simulations, use boundary-only marks by default.</p>
+</div>

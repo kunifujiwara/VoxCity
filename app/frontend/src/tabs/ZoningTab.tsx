@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { getModelGeo, ModelGeoResult, getBuildingSurfaces, getBuildingAt, type BuildingSurfacesResponse } from '../api';
+import { getModelGeo, type ModelGeoResult, getBuildingAt } from '../api';
 import { SceneViewer } from '../three';
 import PlanMapEditor, {
   Backdrop,
@@ -31,7 +31,8 @@ import {
   buildingHasPositiveSelection,
   WallOrientation,
 } from '../types/zones';
-import type { SurfaceFaceMeta, PickResult } from '../three/types';
+import type { PickResult } from '../three/types';
+import { useSurfaceZoneSelection } from '../hooks/useSurfaceZoneSelection';
 
 interface ZoningTabProps {
   hasModel: boolean;
@@ -78,8 +79,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [draftGroups, setDraftGroups] = useState<DraftZoneGroup[]>([]);
   const [zoneType, setZoneType] = useState<ZoneType>('horizontal');
-  const [surfaceGeometry, setSurfaceGeometry] = useState<BuildingSurfacesResponse | null>(null);
-  const [faceToSurface, setFaceToSurface] = useState<SurfaceFaceMeta[]>([]);
   const [refiningBuildingId, setRefiningBuildingId] = useState<number | null>(null);
 
   // Initial fetch
@@ -93,31 +92,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       .finally(() => setLoading(false));
   }, [hasModel]);
 
-  // Fetch surface geometry when model is ready or geometry changes
-  useEffect(() => {
-    if (!hasModel) {
-      setSurfaceGeometry(null);
-      setFaceToSurface([]);
-      return;
-    }
-    let cancelled = false;
-    getBuildingSurfaces()
-      .then((res) => {
-        if (cancelled) return;
-        setSurfaceGeometry(res);
-        const faceArray: SurfaceFaceMeta[] = Object.values(res.face_to_surface).map((f) => ({
-          faceKey: f.face_key,
-          buildingId: f.building_id,
-          surfaceKind: f.surface_kind as SurfaceFaceMeta['surfaceKind'],
-          orientation: f.orientation as WallOrientation | null | undefined,
-        }));
-        setFaceToSurface(faceArray);
-      })
-      .catch(() => {
-        // Surface endpoint may not have data yet (no model) — silently ignore
-      });
-    return () => { cancelled = true; };
-  }, [hasModel, geometryToken]);
 
   const maxH = useMemo(() => maxBuildingHeight(geo), [geo]);
 
@@ -189,6 +163,18 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   // else the most recent group, else "start a new one".
   const effectiveActiveGroupId =
     activeGroupId ?? (groups.length > 0 ? groups[groups.length - 1].id : null);
+
+  const { surfaceSelection } = useSurfaceZoneSelection({
+    hasModel,
+    geometryToken,
+    zones,
+    enabled: zoneType === 'building_surface',
+    displayMode: 'fill',
+    activeGroupId: effectiveActiveGroupId,
+    requireSurfaceZones: false,
+    requireSelectors: false,
+    silentOnError: true,
+  });
 
   const activeSurfaceZone = useMemo(
     () => zones.find(
@@ -393,7 +379,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               type="button"
               className={`btn ${zoneType === 'building_surface' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setZoneType('building_surface')}
-              disabled={!surfaceGeometry}
             >
               Building surfaces
             </button>
@@ -669,23 +654,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               showZones
               colorOverride={colorOverride}
               onPick={zoneType === 'building_surface' ? handleSurfacePick : undefined}
-              surfaceSelection={
-                zoneType === 'building_surface'
-                  ? {
-                      surfaceChunk: surfaceGeometry?.chunk ?? null,
-                      faceToSurface,
-                      zones: zones
-                        .filter((zone): zone is BuildingSurfaceZone => zone.type === 'building_surface')
-                        .map((zone) => ({
-                          id: zone.id,
-                          color: zone.color,
-                          selectors: zone.selectors,
-                          active: (zone.groupId ?? zone.id) === effectiveActiveGroupId,
-                        })),
-                      enabled: true,
-                    }
-                  : null
-              }
+              surfaceSelection={zoneType === 'building_surface' ? surfaceSelection : null}
             />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>

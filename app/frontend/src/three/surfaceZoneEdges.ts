@@ -26,6 +26,15 @@ export function getSurfaceZonesWithSelectors(zones: Zone[]): BuildingSurfaceZone
   return zones.filter(isSurfaceZoneWithSelectors);
 }
 
+export function surfaceZoneEdgeRequestKey(zones: Zone[]): string {
+  return JSON.stringify(
+    getSurfaceZonesWithSelectors(zones).map((zone) => ({
+      id: zone.id,
+      selectors: zone.selectors,
+    })),
+  );
+}
+
 export function shouldFetchSurfaceZoneEdges(options: { hasModel: boolean; enabled: boolean; zones: Zone[] }): boolean {
   return options.hasModel && options.enabled && getSurfaceZonesWithSelectors(options.zones).length > 0;
 }
@@ -47,8 +56,7 @@ export function buildSurfaceZoneEdgeLineSpecs(zones: SurfaceZoneEdgeRenderSpec[]
     const points = segmentsToLinePoints(zone.segments);
     if (points.length === 0) return [];
     return [
-      { id: `${zone.id}:halo`, color: '#000000', lineWidth: 4, opacity: 0.6, points },
-      { id: `${zone.id}:color`, color: zone.color, lineWidth: 2, opacity: 1, points },
+      { id: zone.id, color: zone.color, lineWidth: 2, opacity: 1, points },
     ];
   });
 }

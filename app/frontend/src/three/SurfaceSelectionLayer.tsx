@@ -1,97 +1,38 @@
 /**
- * Renders selected building surface triangles as a colored overlay.
- *
- * Uses the same selector semantics as the backend:
- * - 'whole': all faces of a building
- * - 'roof': roof faces only
- * - 'all_walls': wall faces only
- * - 'wall_orientation': walls of specific orientation
- * - 'faces': specific face keys
- * - 'exclude_faces': excluded from the above
+ * Renders selected building surface zones as either:
+ * - 'fill': translucent colored mesh faces (Zoning tab)
+ * - 'boundary': outer boundary lines with dark halo + dashed color line (Simulation tabs)
  */
-import { useMemo } from 'react';
+import { Line } from '@react-three/drei';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 
-import type { MeshChunk } from './types';
+import type { MeshChunkDto } from '../api';
 import type { SurfaceFaceMeta } from './types';
-import type { SurfaceSelector } from '../types/zones';
+import {
+  buildBoundaryLinePoints,
+  buildZoneFillGeometry,
+  type BoundaryPoint,
+  type SurfaceSelectionDisplayMode,
+  type SurfaceSelectionLayerSpec,
+} from './surfaceSelection';
 
 export interface SurfaceSelectionLayerProps {
-  surfaceChunk: MeshChunk | null;
+  surfaceChunk: MeshChunkDto | null;
   faceToSurface: SurfaceFaceMeta[];
-  zones: Array<{
-    id: string;
-    color: string;
-    selectors: SurfaceSelector[];
-    active: boolean;
-  }>;
+  zones: SurfaceSelectionLayerSpec[];
   enabled: boolean;
+  displayMode: SurfaceSelectionDisplayMode;
 }
 
-/** Determine if a face is selected given the active selectors. */
-function isFaceSelected(meta: SurfaceFaceMeta, selectors: SurfaceSelector[]): boolean {
-  const buildingSelectors = selectors.filter((s) => s.buildingId === meta.buildingId);
-  if (buildingSelectors.length === 0) return false;
-
-  // Check excludes first
-  const excluded = buildingSelectors.some(
-    (s) =>
-      s.mode === 'exclude_faces' &&
-      'faceKeys' in s &&
-      s.faceKeys.includes(meta.faceKey),
-  );
-  if (excluded) return false;
-
-  // Check positive selectors
-  return buildingSelectors.some((s) => {
-    if (s.mode === 'whole') return true;
-    if (s.mode === 'roof') return meta.surfaceKind === 'roof';
-    if (s.mode === 'all_walls') return meta.surfaceKind === 'wall';
-    if (s.mode === 'wall_orientation')
-      return meta.surfaceKind === 'wall' && 'orientation' in s && meta.orientation === s.orientation;
-    if (s.mode === 'faces') return 'faceKeys' in s && s.faceKeys.includes(meta.faceKey);
-    return false;
-  });
-}
-
-function buildZoneGeometry(
-  surfaceChunk: MeshChunk,
-  faceToSurface: SurfaceFaceMeta[],
-  selectors: SurfaceSelector[],
-): THREE.BufferGeometry | null {
-  const srcPositions = surfaceChunk.positions;
-  if (!srcPositions || srcPositions.length === 0) return null;
-
-  const selectedTriangleIndices: number[] = [];
-  for (let i = 0; i < faceToSurface.length; i++) {
-    const meta = faceToSurface[i];
-    if (meta && isFaceSelected(meta, selectors)) {
-      selectedTriangleIndices.push(i);
-    }
+function applyBoundaryLineMaterialFlags(line: unknown) {
+  const material = (line as { material?: THREE.Material | THREE.Material[] }).material;
+  const materials = Array.isArray(material) ? material : material ? [material] : [];
+  for (const mat of materials) {
+    mat.depthTest = false;
+    mat.depthWrite = false;
+    mat.needsUpdate = true;
   }
-
-  if (selectedTriangleIndices.length === 0) return null;
-
-  const floatsPerTriangle = 9; // 3 verts * 3 floats
-  const out = new Float32Array(selectedTriangleIndices.length * floatsPerTriangle);
-  let outOffset = 0;
-  for (const triIdx of selectedTriangleIndices) {
-    const srcOffset = triIdx * floatsPerTriangle;
-    out[outOffset++] = srcPositions[srcOffset];
-    out[outOffset++] = srcPositions[srcOffset + 1];
-    out[outOffset++] = srcPositions[srcOffset + 2];
-    out[outOffset++] = srcPositions[srcOffset + 3];
-    out[outOffset++] = srcPositions[srcOffset + 4];
-    out[outOffset++] = srcPositions[srcOffset + 5];
-    out[outOffset++] = srcPositions[srcOffset + 6];
-    out[outOffset++] = srcPositions[srcOffset + 7];
-    out[outOffset++] = srcPositions[srcOffset + 8];
-  }
-
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(out, 3));
-  geom.computeVertexNormals();
-  return geom;
 }
 
 export function SurfaceSelectionLayer({
@@ -99,35 +40,90 @@ export function SurfaceSelectionLayer({
   faceToSurface,
   zones,
   enabled,
+  displayMode,
 }: SurfaceSelectionLayerProps) {
   const zoneGeometries = useMemo(() => {
-    if (!enabled || !surfaceChunk) return [];
+    if (!enabled || !surfaceChunk || displayMode !== 'fill') return [];
     return zones.map((zone) => ({
       id: zone.id,
       color: zone.color,
       active: zone.active,
-      geometry: buildZoneGeometry(surfaceChunk, faceToSurface, zone.selectors),
+      geometry: buildZoneFillGeometry(surfaceChunk, faceToSurface, zone.selectors),
     }));
-  }, [surfaceChunk, faceToSurface, zones, enabled]);
+  }, [surfaceChunk, faceToSurface, zones, enabled, displayMode]);
+
+  useEffect(() => {
+    return () => {
+      for (const zone of zoneGeometries) {
+        zone.geometry?.dispose();
+      }
+    };
+  }, [zoneGeometries]);
+
+  const zoneBoundaries = useMemo(() => {
+    if (!enabled || !surfaceChunk || displayMode !== 'boundary') return [];
+    return zones.map((zone) => ({
+      id: zone.id,
+      color: zone.color,
+      points: buildBoundaryLinePoints(surfaceChunk, faceToSurface, zone.selectors),
+    }));
+  }, [surfaceChunk, faceToSurface, zones, enabled, displayMode]);
 
   if (!enabled || !surfaceChunk) return null;
 
+  if (displayMode === 'fill') {
+    return (
+      <group>
+        {zoneGeometries.map(
+          (zone) =>
+            zone.geometry && (
+              <mesh key={zone.id} geometry={zone.geometry} renderOrder={15}>
+                <meshBasicMaterial
+                  color={zone.color}
+                  transparent
+                  opacity={zone.active ? 0.5 : 0.32}
+                  side={THREE.DoubleSide}
+                  depthTest={false}
+                  depthWrite={false}
+                />
+              </mesh>
+            ),
+        )}
+      </group>
+    );
+  }
+
+  if (displayMode !== 'boundary') return null;
+
   return (
     <group>
-      {zoneGeometries.map(
-        (z) =>
-          z.geometry && (
-            <mesh key={z.id} geometry={z.geometry} renderOrder={15}>
-              <meshBasicMaterial
-                color={new THREE.Color(z.color)}
-                transparent
-                opacity={z.active ? 0.5 : 0.32}
-                side={THREE.DoubleSide}
-                depthTest={false}
-                depthWrite={false}
-              />
-            </mesh>
-          ),
+      {zoneBoundaries.map((zone) =>
+        zone.points.length > 0 ? (
+          <group key={zone.id}>
+            <Line
+              points={zone.points as BoundaryPoint[]}
+              segments
+              color="#000000"
+              lineWidth={4}
+              transparent
+              opacity={0.55}
+              onUpdate={applyBoundaryLineMaterialFlags}
+              renderOrder={16}
+            />
+            <Line
+              points={zone.points as BoundaryPoint[]}
+              segments
+              color={zone.color}
+              lineWidth={2}
+              dashed
+              dashSize={0.8}
+              gapSize={0.45}
+              dashScale={1}
+              onUpdate={applyBoundaryLineMaterialFlags}
+              renderOrder={17}
+            />
+          </group>
+        ) : null,
       )}
     </group>
   );

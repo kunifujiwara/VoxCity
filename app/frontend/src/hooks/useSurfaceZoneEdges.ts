@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Zone } from '../types/zones';
-import { getSurfaceZoneEdges } from '../api';
+import { getSurfaceZoneEdges, type SurfaceZoneEdgesResponse } from '../api';
 import type { SurfaceZoneEdgeRenderSpec } from '../three/surfaceZoneEdges';
 import {
+  getSurfaceZonesWithSelectors,
   shouldFetchSurfaceZoneEdges,
+  surfaceZoneEdgeRequestKey,
   toSurfaceZoneEdgeRenderSpecs,
 } from '../three/surfaceZoneEdges';
 
@@ -17,40 +19,47 @@ export function useSurfaceZoneEdges({ hasModel, enabled, zones }: UseSurfaceZone
   surfaceZoneEdges: SurfaceZoneEdgeRenderSpec[] | null;
   loading: boolean;
 } {
-  const [surfaceZoneEdges, setSurfaceZoneEdges] = useState<SurfaceZoneEdgeRenderSpec[] | null>(null);
+  const surfaceZones = useMemo(() => getSurfaceZonesWithSelectors(zones), [zones]);
+  const requestKey = useMemo(() => surfaceZoneEdgeRequestKey(surfaceZones), [surfaceZones]);
+  const requestZones = useMemo(() => surfaceZones, [requestKey]);
+  const [response, setResponse] = useState<SurfaceZoneEdgesResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const surfaceZoneEdges = useMemo<SurfaceZoneEdgeRenderSpec[] | null>(
+    () => (response ? toSurfaceZoneEdgeRenderSpecs(zones, response) : null),
+    [zones, response],
+  );
+
   useEffect(() => {
-    if (!shouldFetchSurfaceZoneEdges({ hasModel, enabled, zones })) {
-      setSurfaceZoneEdges(null);
+    if (!shouldFetchSurfaceZoneEdges({ hasModel, enabled, zones: requestZones })) {
+      setResponse(null);
       setLoading(false);
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
 
-    getSurfaceZoneEdges(zones)
+    getSurfaceZoneEdges(requestZones, controller.signal)
       .then((response) => {
-        if (cancelled) return;
-        setSurfaceZoneEdges(toSurfaceZoneEdgeRenderSpecs(zones, response));
+        if (controller.signal.aborted) return;
+        setResponse(response);
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const name = err instanceof Error ? err.name : null;
         if (name !== 'AbortError') {
-          setSurfaceZoneEdges(null);
+          setResponse(null);
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasModel, enabled, JSON.stringify(zones)]);
+  }, [hasModel, enabled, requestKey, requestZones]);
 
   return { surfaceZoneEdges, loading };
 }

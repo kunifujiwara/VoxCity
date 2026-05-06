@@ -456,9 +456,10 @@ export interface SurfaceZoneEdgesResponse {
   zones: SurfaceZoneEdgePayloadDto[];
 }
 
-export async function getSurfaceZoneEdges(zones: Zone[]) {
+export async function getSurfaceZoneEdges(zones: Zone[], signal?: AbortSignal) {
   return request<SurfaceZoneEdgesResponse>('/buildings/surface-zone-edges', {
     method: 'POST',
+    signal,
     body: JSON.stringify({ zones: zones.map(toZoneSpecDto) }),
   });
 }

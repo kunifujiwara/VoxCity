@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from app.backend.models import SurfaceSelector, ZoneSpec
+from app.backend import surface_zone_edges as surface_zone_edges_module
 from app.backend.surface_zone_edges import (
     AXIS_EPSILON_M,
     build_surface_zone_edge_payloads,
@@ -114,6 +115,58 @@ def test_faces_and_exclude_faces_promote_triangle_keys_to_full_rectangle():
     assert roof_record not in excluded
 
 
+def test_filtered_extraction_preserves_face_keys_for_selected_building():
+    voxels = np.zeros((2, 3, 1), dtype=int)
+    ids = np.zeros((2, 3), dtype=int)
+    voxels[0, 0, 0] = -3
+    voxels[0, 2, 0] = -3
+    ids[0, 0] = 4
+    ids[0, 2] = 8
+
+    full = extract_voxel_surface_records(voxels, ids, meshsize=1.0)
+    filtered = extract_voxel_surface_records(voxels, ids, meshsize=1.0, building_ids={8})
+
+    assert filtered
+    assert {record.building_id for record in filtered} == {8}
+    assert [record.face_keys for record in filtered] == [record.face_keys for record in full if record.building_id == 8]
+
+
+def test_bulk_zone_edge_payload_extracts_only_selected_building_ids(monkeypatch):
+    calls = []
+
+    def fake_extract(voxels, building_id_grid, meshsize, *, building_ids=None, preserve_global_face_index=True):
+        calls.append((building_ids, preserve_global_face_index))
+        return []
+
+    monkeypatch.setattr(surface_zone_edges_module, "extract_voxel_surface_records", fake_extract)
+
+    voxels = np.zeros((2, 2, 1), dtype=int)
+    ids = np.zeros((2, 2), dtype=int)
+    build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("roof", [SurfaceSelector(building_id=4, mode="roof")]),
+    ])
+
+    assert calls == [({4}, False)]
+
+
+def test_face_key_zone_edge_payload_preserves_global_face_indices(monkeypatch):
+    calls = []
+
+    def fake_extract(voxels, building_id_grid, meshsize, *, building_ids=None, preserve_global_face_index=True):
+        calls.append((building_ids, preserve_global_face_index))
+        return []
+
+    monkeypatch.setattr(surface_zone_edges_module, "extract_voxel_surface_records", fake_extract)
+
+    voxels = np.zeros((2, 2, 1), dtype=int)
+    ids = np.zeros((2, 2), dtype=int)
+    build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("faces", [SurfaceSelector(building_id=4, mode="faces", face_keys=["face-a"])]),
+    ])
+
+    assert calls == [({4}, True)]
+
+
 def test_two_voxel_east_wall_merges_to_one_rectangle_with_four_edges():
     voxels = np.zeros((3, 3, 1), dtype=int)
     ids = np.zeros((3, 3), dtype=int)
@@ -176,12 +229,9 @@ def test_axis_alignment_and_segment_normalization_drop_diagonals():
 
 
 def test_two_by_two_east_wall_returns_only_outer_boundary_four_edges():
-    """A 2×2 grid of east-wall voxels (2 rows × 2 heights) should produce only
-    the 4 outer boundary segments.  The shared horizontal mid-edge appears in
-    two adjacent greedy rectangles, so its count is even and it is cancelled."""
     voxels = np.zeros((3, 3, 2), dtype=int)
     ids = np.zeros((3, 3), dtype=int)
-    voxels[0:2, 1, 0:2] = -3  # 2 rows × 2 heights at column 1
+    voxels[0:2, 1, 0:2] = -3
     ids[0:2, 1] = 7
 
     payloads = build_surface_zone_edge_payloads(voxels, ids, 1.0, [
@@ -189,14 +239,36 @@ def test_two_by_two_east_wall_returns_only_outer_boundary_four_edges():
     ])
 
     assert len(payloads) == 1
-    segs = payloads[0].segments
-    assert len(segs) == 4, f"Expected 4 boundary segments, got {len(segs)}: {segs}"
-
-    # Outer rectangle at x=2: y in [0,2], z in [0,2]
     expected = {
         normalize_segment_key((2, 0, 0, 2, 2, 0)),
         normalize_segment_key((2, 2, 0, 2, 2, 2)),
         normalize_segment_key((2, 2, 2, 2, 0, 2)),
         normalize_segment_key((2, 0, 2, 2, 0, 0)),
     }
-    assert {normalize_segment_key(segment) for segment in segs} == expected
+    assert {normalize_segment_key(segment) for segment in payloads[0].segments} == expected
+
+
+def test_l_shaped_roof_returns_merged_outer_boundary_only():
+    voxels = np.zeros((3, 3, 1), dtype=int)
+    ids = np.zeros((3, 3), dtype=int)
+    voxels[0, 0, 0] = -3
+    voxels[0, 1, 0] = -3
+    voxels[1, 0, 0] = -3
+    ids[0, 0] = 11
+    ids[0, 1] = 11
+    ids[1, 0] = 11
+
+    payloads = build_surface_zone_edge_payloads(voxels, ids, 1.0, [
+        _zone("roof", [SurfaceSelector(building_id=11, mode="roof")]),
+    ])
+
+    assert len(payloads) == 1
+    expected = {
+        normalize_segment_key((0, 0, 1, 2, 0, 1)),
+        normalize_segment_key((2, 0, 1, 2, 1, 1)),
+        normalize_segment_key((2, 1, 1, 1, 1, 1)),
+        normalize_segment_key((1, 1, 1, 1, 2, 1)),
+        normalize_segment_key((1, 2, 1, 0, 2, 1)),
+        normalize_segment_key((0, 2, 1, 0, 0, 1)),
+    }
+    assert {normalize_segment_key(segment) for segment in payloads[0].segments} == expected
