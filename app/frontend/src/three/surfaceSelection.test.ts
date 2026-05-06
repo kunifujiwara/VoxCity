@@ -9,6 +9,7 @@ import {
   getSurfaceZones,
   isSurfaceFaceSelected,
   shouldFetchSurfaceSelection,
+  shouldEnableZoningSurfaceSelection,
   shouldMountPickableSurface,
   surfaceLoadErrorResult,
   surfaceTriangleCount,
@@ -89,6 +90,12 @@ describe('surface selection payload decisions', () => {
 
   it('does not fetch for simulation tabs with no building-surface zones', () => {
     expect(shouldFetchSurfaceSelection({ hasModel: true, enabled: true, surfaceZoneCount: 0, requireSurfaceZones: true })).toBe(false);
+  });
+
+  it('keeps Zoning tab surface highlights enabled outside building-surface edit mode when surface zones exist', () => {
+    expect(shouldEnableZoningSurfaceSelection({ zoneType: 'horizontal', surfaceZoneCount: 1 })).toBe(true);
+    expect(shouldEnableZoningSurfaceSelection({ zoneType: 'building_surface', surfaceZoneCount: 0 })).toBe(true);
+    expect(shouldEnableZoningSurfaceSelection({ zoneType: 'horizontal', surfaceZoneCount: 0 })).toBe(false);
   });
 
   it('builds no enabled payload when geometry metadata length does not match triangle count', () => {

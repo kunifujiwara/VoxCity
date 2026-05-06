@@ -5,8 +5,12 @@ import {
   toggleWholeBuilding,
   toggleBulkSelector,
   buildingHasPositiveSelection,
+  resolveZoneGroupForMode,
+  zoneGroupType,
+  zoneTypeShortLabel,
   type SurfaceSelector,
   type SurfacePickMeta,
+  type Zone,
 } from './zones';
 
 describe('normalizeSurfaceSelectors', () => {
@@ -97,5 +101,66 @@ describe('buildingHasPositiveSelection', () => {
         1,
       ),
     ).toBe(false);
+  });
+});
+
+describe('zone group edit mode compatibility', () => {
+  const zones: Zone[] = [
+    {
+      id: 'h1',
+      name: 'Area',
+      color: '#ff0000',
+      type: 'horizontal',
+      shape: 'rect',
+      ring_lonlat: [[0, 0], [1, 0], [1, 1]],
+      groupId: 'area-group',
+    },
+    {
+      id: 's1',
+      name: 'Surface',
+      color: '#00ff00',
+      type: 'building_surface',
+      selectors: [],
+      groupId: 'surface-group',
+    },
+  ];
+
+  it('reports the committed type for a zone group', () => {
+    expect(zoneGroupType(zones, 'area-group')).toBe('horizontal');
+    expect(zoneGroupType(zones, 'surface-group')).toBe('building_surface');
+  });
+
+  it('does not resolve a building surface group while editing 2D areas', () => {
+    expect(resolveZoneGroupForMode({
+      zones,
+      candidates: [
+        { id: 'area-group', draft: false },
+        { id: 'surface-group', draft: false },
+      ],
+      activeGroupId: 'surface-group',
+      zoneType: 'horizontal',
+    })).toBeNull();
+  });
+
+  it('treats draft groups as 2D area groups only', () => {
+    expect(resolveZoneGroupForMode({
+      zones,
+      candidates: [{ id: 'draft-group', draft: true }],
+      activeGroupId: 'draft-group',
+      zoneType: 'horizontal',
+    })).toBe('draft-group');
+    expect(resolveZoneGroupForMode({
+      zones,
+      candidates: [{ id: 'draft-group', draft: true }],
+      activeGroupId: 'draft-group',
+      zoneType: 'building_surface',
+    })).toBeNull();
+  });
+});
+
+describe('zone type display labels', () => {
+  it('uses compact labels for zone-list badges', () => {
+    expect(zoneTypeShortLabel('horizontal')).toBe('2D');
+    expect(zoneTypeShortLabel('building_surface')).toBe('Building');
   });
 });

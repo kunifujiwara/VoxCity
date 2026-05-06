@@ -110,6 +110,35 @@ export function zoneGroupType(zones: Zone[], groupId: string): ZoneType | null {
   return types.size === 1 ? (members[0].type as ZoneType) : null;
 }
 
+export function zoneTypeShortLabel(zoneType: ZoneType): '2D' | 'Building' {
+  return zoneType === 'horizontal' ? '2D' : 'Building';
+}
+
+export interface ZoneGroupModeCandidate {
+  id: string;
+  draft?: boolean;
+}
+
+export function resolveZoneGroupForMode(options: {
+  zones: Zone[];
+  candidates: ZoneGroupModeCandidate[];
+  activeGroupId: string | null;
+  zoneType: ZoneType;
+}): string | null {
+  const fallbackCandidate = options.candidates.length > 0
+    ? options.candidates[options.candidates.length - 1]
+    : null;
+  const candidateId = options.activeGroupId ?? fallbackCandidate?.id ?? null;
+  if (!candidateId) return null;
+
+  const candidate = options.candidates.find((group) => group.id === candidateId);
+  if (candidate?.draft) {
+    return options.zoneType === 'horizontal' ? candidateId : null;
+  }
+
+  return zoneGroupType(options.zones, candidateId) === options.zoneType ? candidateId : null;
+}
+
 /** Human-readable summary for a building surface zone. */
 export function surfaceZoneSummary(zone: BuildingSurfaceZone): string {
   const buildingIds = [...new Set(zone.selectors.map((s) => s.buildingId))];

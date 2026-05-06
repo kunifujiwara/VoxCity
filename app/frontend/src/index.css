@@ -633,6 +633,9 @@ input:focus, select:focus {
 .zone-row.selected { background: rgba(0, 0, 0, 0.06); }
 .zone-row .swatch  { width: 14px; height: 14px; border-radius: 3px; flex: 0 0 14px; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; }
 .zone-row .name    { flex: 1; }
+.zone-row .zone-type-badge { flex: 0 0 auto; min-width: 32px; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.05); color: #334155; font-size: 0.72rem; font-weight: 700; line-height: 1.45; text-align: center; }
+.zone-row .zone-type-badge.two-d { background: rgba(37, 99, 235, 0.12); border-color: rgba(37, 99, 235, 0.22); color: #1e3a8a; }
+.zone-row .zone-type-badge.building { background: rgba(5, 150, 105, 0.13); border-color: rgba(5, 150, 105, 0.24); color: #064e3b; }
 .zone-row button   { background: none; border: none; cursor: pointer; padding: 2px 4px; }
 
 .zone-stats-table { margin-top: 12px; font-size: 13px; }

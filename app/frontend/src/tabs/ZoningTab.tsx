@@ -30,9 +30,13 @@ import {
   toggleBulkSelector,
   buildingHasPositiveSelection,
   WallOrientation,
+  resolveZoneGroupForMode,
+  zoneGroupType,
+  zoneTypeShortLabel,
 } from '../types/zones';
 import type { PickResult } from '../three/types';
 import { useSurfaceZoneSelection } from '../hooks/useSurfaceZoneSelection';
+import { getSurfaceZones, shouldEnableZoningSurfaceSelection } from '../three/surfaceSelection';
 
 interface ZoningTabProps {
   hasModel: boolean;
@@ -113,24 +117,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
   const interaction: MapInteraction = shape === 'rect' ? 'draw_rect_3pt' : 'draw_polygon';
 
-  // Render existing zones as paint_zone overlays.
-  const pendingEdits: PendingEdit[] = useMemo(() => {
-    if (!geo) return [];
-    return zones.flatMap((z) => {
-      if (z.type !== 'horizontal') return [];
-      return [{
-        kind: 'paint_zone' as const,
-        cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
-        ring: z.ring_lonlat,
-        selected:
-          z.id === selectedId ||
-          (activeGroupId != null && (z.groupId ?? z.id) === activeGroupId),
-        color: z.color,
-        target: 'evaluation' as const,
-      }];
-    });
-  }, [geo, zones, selectedId, activeGroupId]);
-
   /**
    * Group sibling zones (same `groupId`) together so the zone list shows
    * one row per logical zone. The first member's metadata acts as the
@@ -159,16 +145,37 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     return [...committed, ...drafts];
   }, [committedGroups, draftGroups]);
 
-  // Resolve which group new polygons attach to: explicit `activeGroupId`,
-  // else the most recent group, else "start a new one".
-  const effectiveActiveGroupId =
-    activeGroupId ?? (groups.length > 0 ? groups[groups.length - 1].id : null);
+  const effectiveActiveGroupId = useMemo(
+    () => resolveZoneGroupForMode({ zones, candidates: groups, activeGroupId, zoneType }),
+    [zones, groups, activeGroupId, zoneType],
+  );
+
+  // Render existing zones as paint_zone overlays.
+  const pendingEdits: PendingEdit[] = useMemo(() => {
+    if (!geo) return [];
+    return zones.flatMap((z) => {
+      if (z.type !== 'horizontal') return [];
+      return [{
+        kind: 'paint_zone' as const,
+        cells: polygonToCells(z.ring_lonlat, geo.grid_geom),
+        ring: z.ring_lonlat,
+        selected: zoneType === 'horizontal' && (
+          z.id === selectedId ||
+          (effectiveActiveGroupId != null && (z.groupId ?? z.id) === effectiveActiveGroupId)
+        ),
+        color: z.color,
+        target: 'evaluation' as const,
+      }];
+    });
+  }, [geo, zones, selectedId, effectiveActiveGroupId, zoneType]);
+  const surfaceZoneCount = useMemo(() => getSurfaceZones(zones).length, [zones]);
+  const surfaceSelectionEnabled = shouldEnableZoningSurfaceSelection({ zoneType, surfaceZoneCount });
 
   const { surfaceSelection } = useSurfaceZoneSelection({
     hasModel,
     geometryToken,
     zones,
-    enabled: zoneType === 'building_surface',
+    enabled: surfaceSelectionEnabled,
     displayMode: 'fill',
     activeGroupId: effectiveActiveGroupId,
     requireSurfaceZones: false,
@@ -447,11 +454,13 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           )}
           {groups.map((g) => {
             const isActive = (effectiveActiveGroupId ?? null) === g.id;
+            const groupType = g.draft ? 'horizontal' : zoneGroupType(zones, g.id);
             return (
               <div
                 key={g.id}
                 className={`zone-row${isActive ? ' selected' : ''}`}
                 onClick={() => {
+                  if (groupType) setZoneType(groupType);
                   setActiveGroupId(g.id);
                   setSelectedId(g.members[0]?.id ?? null);
                   setRefiningBuildingId(null);
@@ -495,6 +504,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                     )}
                   </span>
                 )}
+                <span
+                  className={`zone-type-badge ${groupType === 'building_surface' ? 'building' : 'two-d'}`}
+                  title={groupType === 'building_surface' ? 'Building surface zone' : '2D area zone'}
+                >
+                  {groupType ? zoneTypeShortLabel(groupType) : 'Mixed'}
+                </span>
                 <button
                   title="Rename"
                   onClick={(e) => {
@@ -654,7 +669,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               showZones
               colorOverride={colorOverride}
               onPick={zoneType === 'building_surface' ? handleSurfacePick : undefined}
-              surfaceSelection={zoneType === 'building_surface' ? surfaceSelection : null}
+              surfaceSelection={surfaceSelection}
             />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>

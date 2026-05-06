@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingSurfacesResponse, MeshChunkDto, SurfaceFaceMetaDto } from '../api';
-import type { BuildingSurfaceZone, SurfaceSelector, WallOrientation, Zone } from '../types/zones';
+import type { BuildingSurfaceZone, SurfaceSelector, WallOrientation, Zone, ZoneType } from '../types/zones';
 import type { SurfaceFaceMeta } from './types';
 
 export type SurfaceSelectionDisplayMode = 'fill' | 'boundary';
@@ -101,6 +101,13 @@ export function shouldFetchSurfaceSelection(options: {
   requireSurfaceZones: boolean;
 }): boolean {
   return options.hasModel && options.enabled && (!options.requireSurfaceZones || options.surfaceZoneCount > 0);
+}
+
+export function shouldEnableZoningSurfaceSelection(options: {
+  zoneType: ZoneType;
+  surfaceZoneCount: number;
+}): boolean {
+  return options.zoneType === 'building_surface' || options.surfaceZoneCount > 0;
 }
 
 export function shouldMountPickableSurface(
