@@ -15,6 +15,7 @@ import ZoneStatsTable from '../components/ZoneStatsTable';
 import { CUSTOM_CLASSES } from '../constants';
 import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
+import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 
 interface ViewTabProps {
@@ -48,6 +49,12 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSimResult, setHasSimResult] = useState(false);
+
+  const { surfaceZoneEdges } = useSurfaceZoneEdges({
+    hasModel,
+    enabled: showZones3D,
+    zones,
+  });
 
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   useEffect(() => {
@@ -222,6 +229,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           lonLatToXY={lonLatToXY}
           showZones={showZones3D}
           hiddenClasses={hiddenClasses}
+          surfaceZoneEdges={surfaceZoneEdges}
         />
       </div>
     </div>

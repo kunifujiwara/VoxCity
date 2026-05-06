@@ -15,6 +15,7 @@ import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
 import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
+import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 
 interface SolarTabProps {
@@ -51,6 +52,12 @@ const SolarTab: React.FC<SolarTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSimResult, setHasSimResult] = useState(false);
+
+  const { surfaceZoneEdges } = useSurfaceZoneEdges({
+    hasModel,
+    enabled: showZones3D,
+    zones,
+  });
 
   // Geometry for the lon/lat -> world projection used by zone outlines.
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
@@ -211,6 +218,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
           lonLatToXY={lonLatToXY}
           showZones={showZones3D}
           hiddenClasses={hiddenClasses}
+          surfaceZoneEdges={surfaceZoneEdges}
         />
       </div>
     </div>

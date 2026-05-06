@@ -30,6 +30,7 @@ import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
 import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
+import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 
 interface LandmarkTabProps {
@@ -71,6 +72,12 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   // Selection state
   const [selectedBuildingIds, setSelectedBuildingIds] = useState<number[]>([]);
   const [buildings, setBuildings] = useState<BuildingInfo[]>([]);
+
+  const { surfaceZoneEdges } = useSurfaceZoneEdges({
+    hasModel,
+    enabled: showZones3D,
+    zones,
+  });
 
   // Geometry for zone projection.
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
@@ -348,6 +355,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           hiddenClasses={hiddenClasses}
           onPick={!showingSimResult ? handlePick : undefined}
           highlightChunks={highlightChunks}
+          surfaceZoneEdges={surfaceZoneEdges}
         />
       </div>
     </div>
