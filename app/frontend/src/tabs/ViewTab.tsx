@@ -17,6 +17,8 @@ import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface ViewTabProps {
   hasModel: boolean;
@@ -33,7 +35,7 @@ interface ViewTabProps {
 const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'view', simRunNonce);
-  const [viewType, setViewType] = useState('green');
+  const [viewType, setViewType] = useState<'green' | 'sky' | 'custom'>('green');
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [viewPointHeight, setViewPointHeight] = useState(1.5);
   const [customClasses, setCustomClasses] = useState<Set<number>>(new Set());
@@ -71,7 +73,15 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
 
   if (!hasModel) {
-    return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
+    const message = prerequisiteMessageForTab('view');
+    return (
+      <div className="two-col">
+        <GuidedStatus tone="warning">
+          <strong>{message.title}</strong><br />
+          {message.body}
+        </GuidedStatus>
+      </div>
+    );
   }
 
   const toggleClass = (id: number) => {
@@ -109,20 +119,41 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
 
   return (
     <div className="two-col">
-      <div className="panel">
-        <h2>View Index Analysis</h2>
-
-        <div className="form-group">
-          <label>View Type</label>
-          <select value={viewType} onChange={(e) => setViewType(e.target.value)}>
-            <option value="green">Green View Index</option>
-            <option value="sky">Sky View Index</option>
-            <option value="custom">Custom (Select Classes)</option>
-          </select>
-        </div>
+      <GuidedPanel
+        title="View Index"
+        subtitle="Analyse sky, green, or custom view from any point."
+        status={
+          error ? (
+            <GuidedStatus tone="error">{error}</GuidedStatus>
+          ) : hasSimResult ? (
+            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+          ) : undefined
+        }
+        footer={(
+          <GuidedFooter>
+            <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
+              {loading && <span className="spinner" />}
+              {simulationActionLabel(loading)}
+            </button>
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection label="View type">
+          <ChoiceGroup
+            ariaLabel="View type"
+            value={viewType}
+            onChange={setViewType}
+            columns={1}
+            options={[
+              { id: 'green', label: 'Green View Index' },
+              { id: 'sky', label: 'Sky View Index' },
+              { id: 'custom', label: 'Custom (select classes)' },
+            ]}
+          />
+        </GuidedSection>
 
         {viewType === 'custom' && (
-          <div className="form-group" style={{ maxHeight: 200, overflowY: 'auto', padding: '0.5rem', border: '1px solid var(--vc-ring)', borderRadius: 6 }}>
+          <GuidedSection label="Custom classes">
             <div className="radio-group" style={{ marginBottom: '0.5rem' }}>
               <label>
                 <input type="radio" checked={inclusionMode} onChange={() => setInclusionMode(true)} />
@@ -133,74 +164,73 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
                 Exclusion
               </label>
             </div>
-            {CUSTOM_CLASSES.map((cls) => (
-              <div className="checkbox-row" key={cls.id}>
-                <input
-                  type="checkbox"
-                  checked={customClasses.has(cls.id)}
-                  onChange={() => toggleClass(cls.id)}
-                />
-                <span>{cls.label}</span>
-              </div>
-            ))}
-          </div>
+            <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+              {CUSTOM_CLASSES.map((cls) => (
+                <div className="checkbox-row" key={cls.id}>
+                  <input
+                    type="checkbox"
+                    checked={customClasses.has(cls.id)}
+                    onChange={() => toggleClass(cls.id)}
+                  />
+                  <span>{cls.label}</span>
+                </div>
+              ))}
+            </div>
+          </GuidedSection>
         )}
 
-        <div className="form-group">
-          <label>Analysis Target</label>
-          <div className="radio-group">
-            <label>
-              <input type="radio" checked={analysisTarget === 'ground'} onChange={() => setAnalysisTarget('ground')} />
-              Ground Level
-            </label>
-            <label>
-              <input type="radio" checked={analysisTarget === 'building'} onChange={() => setAnalysisTarget('building')} />
-              Building Surfaces
-            </label>
+        <GuidedSection label="Sampling">
+          <ChoiceGroup
+            ariaLabel="Analysis target"
+            value={analysisTarget}
+            onChange={setAnalysisTarget}
+            options={[
+              { id: 'ground', label: 'Ground level' },
+              { id: 'building', label: 'Building surfaces' },
+            ]}
+          />
+          <div className="form-group">
+            <label>View point height (m)</label>
+            <input
+              type="number"
+              value={viewPointHeight}
+              min={0}
+              max={10}
+              step={0.5}
+              onChange={(e) => setViewPointHeight(Number(e.target.value))}
+            />
           </div>
-        </div>
+          <SamplingSettings
+            nAzimuth={nAzimuth}
+            onNAzimuthChange={setNAzimuth}
+            nElevation={nElevation}
+            onNElevationChange={setNElevation}
+            elevMin={elevMin}
+            onElevMinChange={setElevMin}
+            elevMax={elevMax}
+            onElevMaxChange={setElevMax}
+            showElevationRange={analysisTarget === 'ground'}
+          />
+        </GuidedSection>
 
-        <div className="form-group">
-          <label>View Point Height (m)</label>
-          <input type="number" value={viewPointHeight} min={0} max={10} step={0.5} onChange={(e) => setViewPointHeight(Number(e.target.value))} />
-        </div>
-
-        <SamplingSettings
-          nAzimuth={nAzimuth}
-          onNAzimuthChange={setNAzimuth}
-          nElevation={nElevation}
-          onNElevationChange={setNElevation}
-          elevMin={elevMin}
-          onElevMinChange={setElevMin}
-          elevMax={elevMax}
-          onElevMaxChange={setElevMax}
-          showElevationRange={analysisTarget === 'ground'}
-        />
-
-        <ColorSettings
-          colormap={colormap}
-          onColormapChange={setColormap}
-          vmin={vmin}
-          onVminChange={setVmin}
-          vmax={vmax}
-          onVmaxChange={(v) => setVmax(Number(v))}
-        />
-
-        <VoxelClassVisibility
-          hiddenClasses={hiddenClasses}
-          onHiddenClassesChange={setHiddenClasses}
-        />
-
-        <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
-          {loading && <span className="spinner" />}
-          {loading ? 'Running...' : 'Run Simulation'}
-        </button>
-
-        {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
+        <GuidedSection label="Display">
+          <ColorSettings
+            colormap={colormap}
+            onColormapChange={setColormap}
+            vmin={vmin}
+            onVminChange={setVmin}
+            vmax={vmax}
+            onVmaxChange={(v) => setVmax(Number(v))}
+          />
+          <VoxelClassVisibility
+            hiddenClasses={hiddenClasses}
+            onHiddenClassesChange={setHiddenClasses}
+          />
+        </GuidedSection>
 
         {zones.length > 0 && (
-          <>
-            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+          <GuidedSection label="Zones and results">
+            <div className="form-group">
               <label>
                 <input
                   type="checkbox"
@@ -211,9 +241,9 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
-          </>
+          </GuidedSection>
         )}
-      </div>
+      </GuidedPanel>
 
       <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
         <SceneViewer
