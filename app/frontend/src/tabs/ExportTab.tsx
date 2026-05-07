@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { exportCityles, exportObj } from '../api';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
+import { ExportFormat, exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
 
 interface ExportTabProps {
   hasModel: boolean;
 }
 
 const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
-  const [exportFormat, setExportFormat] = useState<'cityles' | 'obj'>('cityles');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('cityles');
   const [buildingMaterial, setBuildingMaterial] = useState('default');
   const [treeType, setTreeType] = useState('default');
   const [trunkHeightRatio, setTrunkHeightRatio] = useState(0.3);
