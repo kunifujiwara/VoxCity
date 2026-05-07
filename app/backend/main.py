@@ -259,48 +259,41 @@ def _load_citygml_cache(rectangle_vertices):
 # ---------------------------------------------------------------------------
 
 def _load_ndsm_grid(rectangle_vertices, meshsize: float):
-    """Load nDSM grid from the cached COG GeoTIFF.
+    """Load nDSM values for the VoxCity grid from the cached COG GeoTIFF.
 
-    Returns the nDSM 2-D numpy array, or None if the file is unavailable.
+    Values are sampled at the actual VoxCity grid cell centers, so rotated
+    target rectangles stay aligned with the model grid. Returns the nDSM 2-D
+    numpy array, or None if the file is unavailable.
     """
     if not os.path.exists(NDSM_COG_PATH):
         return None
     import rasterio
-    from rasterio.enums import Resampling
-    from rasterio.windows import from_bounds
     from pyproj import Transformer
+    from voxcity.geoprocessor.raster.core import compute_cell_center_coords
+
+    cell_centers = compute_cell_center_coords(rectangle_vertices, meshsize)
+    if cell_centers is None:
+        raise ValueError("Unable to compute grid cell centers for nDSM sampling")
+
+    center_lons = cell_centers["lons"]
+    center_lats = cell_centers["lats"]
+    target_shape = cell_centers["grid_size"]
 
     with rasterio.open(NDSM_COG_PATH) as src:
         if src.crs is None:
             raise ValueError("nDSM COG has no CRS")
-        to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
-        minx, miny = to_src.transform(
-            float(min(v[0] for v in rectangle_vertices)),
-            float(min(v[1] for v in rectangle_vertices)),
-        )
-        maxx, maxy = to_src.transform(
-            float(max(v[0] for v in rectangle_vertices)),
-            float(max(v[1] for v in rectangle_vertices)),
-        )
-        minx, maxx = min(minx, maxx), max(minx, maxx)
-        miny, maxy = min(miny, maxy), max(miny, maxy)
+        if src.crs.to_epsg() != 4326:
+            to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+            sample_x, sample_y = to_src.transform(center_lons.ravel(), center_lats.ravel())
+        else:
+            sample_x, sample_y = center_lons.ravel(), center_lats.ravel()
 
-        win = from_bounds(minx, miny, maxx, maxy, src.transform)
-        win = win.round_offsets().round_lengths()
-
-        width_m = maxx - minx
-        height_m = maxy - miny
-        out_w = max(1, int(round(width_m / float(meshsize))))
-        out_h = max(1, int(round(height_m / float(meshsize))))
-
-        arr = src.read(1, window=win, out_shape=(out_h, out_w), resampling=Resampling.average)
-        nodata = src.nodata
-        arr = arr.astype(float, copy=False)
-        if nodata is not None:
-            arr = np.where(arr == float(nodata), np.nan, arr)
-        # Normalize orientation to VoxCity convention (south-up, row 0 = south)
-        if float(src.transform.e) < 0:
-            arr = np.flipud(arr)
+        samples = np.ma.array([
+            value[0] for value in src.sample(zip(sample_x, sample_y), masked=True)
+        ], dtype=float)
+        arr = np.ma.filled(samples, np.nan).reshape(target_shape)
+        if src.nodata is not None:
+            arr = np.where(arr == float(src.nodata), np.nan, arr)
         return arr
 
 
