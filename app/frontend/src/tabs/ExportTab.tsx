@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { exportCityles, exportObj } from '../api';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
 
 interface ExportTabProps {
   hasModel: boolean;
 }
 
 const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
-  const [exportFormat, setExportFormat] = useState('cityles');
+  const [exportFormat, setExportFormat] = useState<'cityles' | 'obj'>('cityles');
   const [buildingMaterial, setBuildingMaterial] = useState('default');
   const [treeType, setTreeType] = useState('default');
   const [trunkHeightRatio, setTrunkHeightRatio] = useState(0.3);
@@ -17,7 +19,15 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
   const [success, setSuccess] = useState<string | null>(null);
 
   if (!hasModel) {
-    return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
+    const message = prerequisiteMessageForTab('export');
+    return (
+      <div style={{ maxWidth: 600 }}>
+        <GuidedStatus tone="warning">
+          <strong>{message.title}</strong><br />
+          {message.body}
+        </GuidedStatus>
+      </div>
+    );
   }
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -58,19 +68,39 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
 
   return (
     <div style={{ maxWidth: 600 }}>
-      <div className="panel">
-        <h2>Export</h2>
+      <GuidedPanel
+        title="Export"
+        subtitle="Download the VoxCity model in your preferred format."
+        status={
+          error ? (
+            <GuidedStatus tone="error">{error}</GuidedStatus>
+          ) : success ? (
+            <GuidedStatus tone="success">{success}</GuidedStatus>
+          ) : undefined
+        }
+        footer={(
+          <GuidedFooter>
+            <button className="btn btn-primary" onClick={handleExport} disabled={loading} type="button">
+              {loading && <span className="spinner" />}
+              {exportActionLabel(exportFormat, loading)}
+            </button>
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection label="Export format">
+          <ChoiceGroup
+            ariaLabel="Export format"
+            value={exportFormat}
+            onChange={setExportFormat}
+            options={[
+              { id: 'cityles', label: 'CityLES', description: 'CityLES output archive' },
+              { id: 'obj', label: 'OBJ', description: 'Mesh export archive' },
+            ]}
+          />
+        </GuidedSection>
 
-        <div className="form-group">
-          <label>Export Format</label>
-          <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
-            <option value="cityles">CityLES</option>
-            <option value="obj">OBJ File</option>
-          </select>
-        </div>
-
-        {exportFormat === 'cityles' ? (
-          <>
+        {exportFormat === 'cityles' && (
+          <GuidedSection label="CityLES options">
             <div className="form-group">
               <label>Building Material</label>
               <select value={buildingMaterial} onChange={(e) => setBuildingMaterial(e.target.value)}>
@@ -98,9 +128,11 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
                 onChange={(e) => setTrunkHeightRatio(Number(e.target.value))}
               />
             </div>
-          </>
-        ) : (
-          <>
+          </GuidedSection>
+        )}
+
+        {exportFormat === 'obj' && (
+          <GuidedSection label="OBJ options">
             <div className="form-group">
               <label>Output Filename</label>
               <input
@@ -117,17 +149,9 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
               />
               <span>Also export NetCDF</span>
             </div>
-          </>
+          </GuidedSection>
         )}
-
-        <button className="btn btn-primary" onClick={handleExport} disabled={loading} style={{ marginTop: '0.5rem' }}>
-          {loading && <span className="spinner" />}
-          {loading ? 'Exporting...' : `Export ${exportFormat === 'cityles' ? 'CityLES' : 'OBJ'}`}
-        </button>
-
-        {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
-        {success && <div className="alert alert-success" style={{ marginTop: '0.75rem' }}>{success}</div>}
-      </div>
+      </GuidedPanel>
     </div>
   );
 };
