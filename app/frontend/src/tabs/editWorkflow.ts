@@ -128,6 +128,7 @@ export function actionForWorkflow(state: EditWorkflowState): ModeAction {
 }
 
 export function interactionForWorkflow(state: EditWorkflowState): MapInteraction {
+  const { target } = normalizeWorkflow(state);
   switch (actionForWorkflow(state)) {
     case 'add_rect': return 'draw_rect_3pt';
     case 'add_polygon':
@@ -138,7 +139,7 @@ export function interactionForWorkflow(state: EditWorkflowState): MapInteraction
       return 'draw_polygon';
     case 'remove_click':
     case 'set_height_click':
-      return state.target === 'building' ? 'click_feature' : 'click_point';
+      return target === 'building' ? 'click_feature' : 'click_point';
     case 'add_click':
     case 'paint_click':
       return 'click_point';
