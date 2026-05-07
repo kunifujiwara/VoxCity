@@ -4,7 +4,7 @@
  * only mutates them via `onZonesChange`.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getModelGeo, type ModelGeoResult, getBuildingAt } from '../api';
 import { SceneViewer } from '../three';
 import PlanMapEditor, {
@@ -37,6 +37,8 @@ import {
 import type { PickResult } from '../three/types';
 import { useSurfaceZoneSelection } from '../hooks/useSurfaceZoneSelection';
 import { getSurfaceZones, shouldEnableZoningSurfaceSelection } from '../three/surfaceSelection';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { prerequisiteMessageForTab } from './guidedTabState';
 
 interface ZoningTabProps {
   hasModel: boolean;
@@ -354,14 +356,30 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     setActiveGroupId(null);
   };
 
+  const displayMenuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (displayMenuRef.current && !displayMenuRef.current.contains(event.target as Node)) {
+        displayMenuRef.current.removeAttribute('open');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   // Use each zone's own colour in 3D so the right-hand viewer matches the
   // left-hand 2D editor exactly. Selection emphasis happens on the 2D side.
   const colorOverride = undefined;
 
   if (!hasModel) {
+    const message = prerequisiteMessageForTab('zoning');
     return (
-      <div className="alert alert-info">
-        Generate a model on the <strong>Generation</strong> tab first, then come back here to define zones.
+      <div className="three-col">
+        <GuidedStatus tone="warning">
+          <strong>{message.title}</strong><br />
+          {message.body}
+        </GuidedStatus>
       </div>
     );
   }
@@ -369,83 +387,57 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   return (
     <div className="three-col">
       {/* Left: config + zone list */}
-      <div className="panel" style={{ overflow: 'auto' }}>
-        <h2>Zoning</h2>
-        {error && <div className="alert alert-error">{error}</div>}
-        <div className="form-group">
-          <label>Zone type</label>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <GuidedPanel
+        title="Zoning"
+        subtitle="Define evaluation zones for simulation summaries."
+        status={error ? <GuidedStatus tone="error">{error}</GuidedStatus> : undefined}
+        footer={(
+          <GuidedFooter>
             <button
               type="button"
-              className={`btn ${zoneType === 'horizontal' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setZoneType('horizontal')}
+              className="btn btn-primary"
+              onClick={handleAddZone}
+              title="Add a new zone row. Draw on the map to set its boundary."
             >
-              2D area
+              Add zone
             </button>
             <button
               type="button"
-              className={`btn ${zoneType === 'building_surface' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setZoneType('building_surface')}
+              className="btn btn-secondary"
+              onClick={clearAll}
+              disabled={zones.length === 0 && draftGroups.length === 0}
             >
-              Building surfaces
+              Clear all zones
             </button>
-          </div>
-        </div>
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection label="Zone type">
+          <ChoiceGroup
+            ariaLabel="Zone type"
+            value={zoneType}
+            onChange={(next) => setZoneType(next)}
+            options={[
+              { id: 'horizontal', label: '2D area' },
+              { id: 'building_surface', label: 'Building surfaces' },
+            ]}
+          />
+        </GuidedSection>
         {zoneType === 'horizontal' && (
-        <div className="form-group">
-          <label>Shape</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setShape('rect')}
-            >
-              Rectangle
-            </button>
-            <button
-              type="button"
-              className={`btn ${shape === 'polygon' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setShape('polygon')}
-            >
-              Polygon
-            </button>
-          </div>
-        </div>
+          <GuidedSection label="Shape">
+            <ChoiceGroup
+              ariaLabel="Zone shape"
+              value={shape}
+              onChange={setShape}
+              options={[
+                { id: 'rect', label: 'Rectangle' },
+                { id: 'polygon', label: 'Polygon' },
+              ]}
+            />
+          </GuidedSection>
         )}
 
-        <div className="form-group">
-          <label>Backdrop</label>
-          <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
-            <option value="buildings">Buildings</option>
-            <option value="canopy">Canopy</option>
-            <option value="land_cover">Land cover</option>
-            <option value="none">None</option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label>Basemap</label>
-          <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
-            <option>CartoDB Positron</option>
-            <option>Google Satellite</option>
-            <option>OpenStreetMap</option>
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleAddZone}
-            title="Add a new zone row. Draw on the map to set its boundary."
-          >
-            + Add a zone
-          </button>
-          <button className="btn btn-secondary" onClick={clearAll} disabled={zones.length === 0 && draftGroups.length === 0}>
-            Clear all zones
-          </button>
-        </div>
-
+        <GuidedSection label="Zones">
         <div className="zone-list">
           {groups.length === 0 && (
             <div className="alert alert-info" style={{ marginTop: 8 }}>
@@ -637,11 +629,41 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             </div>
           );
         })()}
-      </div>
+        </GuidedSection>
+      </GuidedPanel>
 
       {/* Center: 2D editor */}
       <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <h2>2D zone editor</h2>
+        <div className="plan-panel-header">
+          <div>
+            <h2>2D zone editor</h2>
+            <div className="plan-overlay-summary">
+              {backdrop === 'buildings' ? 'Buildings overlay' : backdrop === 'canopy' ? 'Canopy overlay' : backdrop === 'land_cover' ? 'Land cover overlay' : 'No overlay'}
+            </div>
+          </div>
+          <details className="display-menu" ref={displayMenuRef}>
+            <summary>Display</summary>
+            <div className="display-menu-popover">
+              <div className="form-group">
+                <label>Basemap</label>
+                <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
+                  <option>CartoDB Positron</option>
+                  <option>Google Satellite</option>
+                  <option>OpenStreetMap</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Overlay</label>
+                <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
+                  <option value="buildings">Buildings</option>
+                  <option value="canopy">Canopy</option>
+                  <option value="land_cover">Land cover</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
+          </details>
+        </div>
         {loading && <div className="alert alert-info">Loading map…</div>}
         {geo && (
           <PlanMapEditor
