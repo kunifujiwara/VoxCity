@@ -68,3 +68,67 @@ def test_load_ndsm_grid_samples_rotated_grid_cell_centers(tmp_path, monkeypatch)
 
     assert actual.shape == expected_shape
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_sanitize_ndsm_canopy_clamps_plausible_tree_range():
+    canopy = np.array(
+        [
+            [np.nan, 1.0, 12.0],
+            [35.0, 60.0, 0.0],
+        ],
+        dtype=float,
+    )
+    tree_mask = np.array(
+        [
+            [False, True, True],
+            [True, True, False],
+        ],
+        dtype=bool,
+    )
+    building_heights = np.zeros_like(canopy)
+
+    actual = main_mod._sanitize_ndsm_canopy(
+        canopy,
+        building_heights=building_heights,
+        tree_mask=tree_mask,
+        replacement_m=10.0,
+        min_tree_height_m=2.0,
+        max_tree_height_m=35.0,
+    )
+
+    expected = np.array(
+        [
+            [np.nan, 10.0, 12.0],
+            [35.0, 35.0, 0.0],
+        ],
+        dtype=float,
+    )
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_sanitize_ndsm_canopy_replaces_local_tree_height_spikes():
+    canopy = np.zeros((5, 5), dtype=float)
+    canopy[1:4, 1:4] = np.array(
+        [
+            [10.0, 11.0, 10.0],
+            [10.0, 45.0, 11.0],
+            [10.0, 9.0, 10.0],
+        ]
+    )
+    tree_mask = canopy > 0
+    building_heights = np.zeros_like(canopy)
+    building_heights[2, 0] = 30.0
+
+    actual = main_mod._sanitize_ndsm_canopy(
+        canopy,
+        building_heights=building_heights,
+        tree_mask=tree_mask,
+        replacement_m=10.0,
+        max_tree_height_m=60.0,
+        local_outlier_margin_m=12.0,
+    )
+
+    assert actual[2, 2] == 10.0
+    unchanged = tree_mask.copy()
+    unchanged[2, 2] = False
+    np.testing.assert_array_equal(actual[unchanged], canopy[unchanged])

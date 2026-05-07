@@ -322,6 +322,105 @@ def _build_canopy_from_ndsm(
     return canopy
 
 
+def _max_filter_2d(values: np.ndarray, radius: int = 1) -> np.ndarray:
+    H, W = values.shape
+    pad = int(radius)
+    padded = np.pad(values, pad, mode="constant", constant_values=0.0)
+    filtered = np.zeros((H, W), dtype=float)
+    width = 2 * pad + 1
+    for dr in range(width):
+        for dc in range(width):
+            np.maximum(filtered, padded[dr:dr + H, dc:dc + W], out=filtered)
+    return filtered
+
+
+def _count_filter_2d(mask: np.ndarray, radius: int = 1) -> np.ndarray:
+    H, W = mask.shape
+    pad = int(radius)
+    padded = np.pad(mask.astype(int), pad, mode="constant", constant_values=0)
+    counts = np.zeros((H, W), dtype=int)
+    width = 2 * pad + 1
+    for dr in range(width):
+        for dc in range(width):
+            counts += padded[dr:dr + H, dc:dc + W]
+    return counts
+
+
+def _local_tree_median(canopy: np.ndarray, valid_tree_mask: np.ndarray, radius: int = 1) -> np.ndarray:
+    H, W = canopy.shape
+    med = np.full((H, W), np.nan, dtype=float)
+    for r in range(H):
+        r0 = max(0, r - radius)
+        r1 = min(H, r + radius + 1)
+        for c in range(W):
+            if not valid_tree_mask[r, c]:
+                continue
+            c0 = max(0, c - radius)
+            c1 = min(W, c + radius + 1)
+            local = canopy[r0:r1, c0:c1]
+            local_mask = valid_tree_mask[r0:r1, c0:c1]
+            local_values = local[local_mask]
+            if local_values.size:
+                med[r, c] = float(np.median(local_values))
+    return med
+
+
+def _sanitize_ndsm_canopy(
+    canopy: np.ndarray,
+    building_heights: np.ndarray,
+    tree_mask: np.ndarray,
+    replacement_m: float = 10.0,
+    min_tree_height_m: float = 2.0,
+    max_tree_height_m: float = 35.0,
+    building_leakage_tolerance_m: float = 5.0,
+    local_outlier_margin_m: float = 12.0,
+    min_local_tree_cells: int = 4,
+    high_isolated_tree_m: float = 20.0,
+) -> np.ndarray:
+    """Apply nDSM canopy quality checks before voxel regeneration."""
+    can = canopy.astype(float, copy=True)
+    valid_tree = tree_mask & np.isfinite(can)
+
+    too_low = valid_tree & (can < float(min_tree_height_m))
+    if np.any(too_low):
+        can[too_low] = float(replacement_m)
+
+    too_high = valid_tree & (can > float(max_tree_height_m))
+    if np.any(too_high):
+        can[too_high] = float(max_tree_height_m)
+
+    valid_tree = tree_mask & np.isfinite(can)
+    nearby_bld_h = _max_filter_2d(np.asarray(building_heights, dtype=float), radius=1)
+    building_leakage = (
+        valid_tree
+        & (nearby_bld_h > 0)
+        & (np.abs(can - nearby_bld_h) <= float(building_leakage_tolerance_m))
+    )
+
+    local_counts = _count_filter_2d(valid_tree, radius=1)
+    local_median = _local_tree_median(can, valid_tree, radius=1)
+    local_outlier = (
+        valid_tree
+        & (local_counts >= int(min_local_tree_cells))
+        & np.isfinite(local_median)
+        & (can > local_median + float(local_outlier_margin_m))
+    )
+
+    isolated_high_near_building = (
+        valid_tree
+        & (nearby_bld_h > 0)
+        & (local_counts <= 2)
+        & (can >= float(high_isolated_tree_m))
+    )
+
+    suspicious = building_leakage | local_outlier | isolated_high_near_building
+    n_replaced = int(np.count_nonzero(suspicious))
+    if n_replaced:
+        can[suspicious] = float(replacement_m)
+        print(f"[nDSM] Replaced {n_replaced} suspicious tree-height cells")
+    return can
+
+
 def _fix_building_leakage(
     canopy: np.ndarray,
     building_heights: np.ndarray,
@@ -337,21 +436,12 @@ def _fix_building_leakage(
     replaced with *replacement_m* (static tree height).
     """
     can = canopy.astype(float, copy=True)
-    bh = np.asarray(building_heights, dtype=float)
-
-    # 3×3 max-filter of building heights (vectorized, no Python loops)
-    H, W = bh.shape
-    padded = np.pad(bh, 1, mode="constant", constant_values=0.0)
-    nearby_bld_h = np.zeros((H, W), dtype=float)
-    for dr in range(3):
-        for dc in range(3):
-            np.maximum(nearby_bld_h, padded[dr:dr + H, dc:dc + W], out=nearby_bld_h)
-
+    nearby_bld_h = _max_filter_2d(np.asarray(building_heights, dtype=float), radius=1)
     suspect = (
         tree_mask
         & np.isfinite(can)
-        & (nearby_bld_h > 0)                            # adjacent to a building
-        & (np.abs(can - nearby_bld_h) < tolerance_m)    # height ≈ building roof
+        & (nearby_bld_h > 0)
+        & (np.abs(can - nearby_bld_h) <= tolerance_m)
     )
     n_fixed = int(np.count_nonzero(suspect))
     if n_fixed:
@@ -391,12 +481,11 @@ def _refine_canopy_with_ndsm(
     if np.any(missing):
         canopy[missing] = float(static_tree_height)
 
-    # Fix nDSM leakage: tree cells that picked up building roof heights
-    canopy = _fix_building_leakage(
+    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights
+    canopy = _sanitize_ndsm_canopy(
         canopy,
         building_heights=voxcity_obj.buildings.heights,
         tree_mask=tree_mask,
-        tolerance_m=5.0,
         replacement_m=float(static_tree_height),
     )
 
