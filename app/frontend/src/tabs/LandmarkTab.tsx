@@ -32,6 +32,8 @@ import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface LandmarkTabProps {
   hasModel: boolean;
@@ -184,7 +186,15 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   }, [hasModel, selectedBuildingIds, highlightAsSimResult, colormap]);
 
   if (!hasModel) {
-    return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
+    const message = prerequisiteMessageForTab('landmark');
+    return (
+      <div className="two-col">
+        <GuidedStatus tone="warning">
+          <strong>{message.title}</strong><br />
+          {message.body}
+        </GuidedStatus>
+      </div>
+    );
   }
 
   const handleRun = async () => {
@@ -220,25 +230,53 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
 
   return (
     <div className="two-col">
-      <div className="panel">
-        <h2>Landmark Visibility Analysis</h2>
+      <GuidedPanel
+        title="Landmark Visibility"
+        subtitle="Select buildings as landmarks and analyse how visible they are."
+        status={
+          error ? (
+            <GuidedStatus tone="error">{error}</GuidedStatus>
+          ) : hasSimResult ? (
+            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+          ) : undefined
+        }
+        footer={(
+          <GuidedFooter>
+            {showingSimResult && hasSimResult && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleBackToSelection}
+                disabled={loading}
+              >
+                Back to selection
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleRun}
+              disabled={loading}
+            >
+              {loading && <span className="spinner" />}
+              {simulationActionLabel(loading)}
+            </button>
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection label="Analysis target">
+          <ChoiceGroup
+            ariaLabel="Analysis target"
+            value={analysisTarget}
+            onChange={setAnalysisTarget}
+            options={[
+              { id: 'ground', label: 'Ground level' },
+              { id: 'building', label: 'Building surfaces' },
+            ]}
+          />
+        </GuidedSection>
 
-        <div className="form-group">
-          <label>Analysis Target</label>
-          <div className="radio-group">
-            <label>
-              <input type="radio" checked={analysisTarget === 'ground'} onChange={() => setAnalysisTarget('ground')} />
-              Ground Level
-            </label>
-            <label>
-              <input type="radio" checked={analysisTarget === 'building'} onChange={() => setAnalysisTarget('building')} />
-              Building Surfaces
-            </label>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label>Select Landmark Buildings</label>
+        <GuidedSection label="Landmark buildings">
           {!showingSimResult && (
             <div className="selection-toolbar">
               <span className="hint">Click a building in the 3D viewer to toggle it.</span>
@@ -252,79 +290,67 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
               </button>
             </div>
           )}
-        </div>
-
-        {selectedBuildingIds.length > 0 && (
-          <div className="form-group">
-            <label>Selected Buildings ({selectedBuildingIds.length})</label>
-            <div className="building-chips">
-              {selectedBuildingIds.map((id) => (
-                <span key={id} className="building-chip">
-                  {id}
-                  <button
-                    className="chip-remove"
-                    onClick={() => setSelection(selectedBuildingIds.filter((i) => i !== id))}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
+          {selectedBuildingIds.length > 0 && (
+            <div className="form-group">
+              <label>Selected Buildings ({selectedBuildingIds.length})</label>
+              <div className="building-chips">
+                {selectedBuildingIds.map((id) => (
+                  <span key={id} className="building-chip">
+                    {id}
+                    <button
+                      className="chip-remove"
+                      onClick={() => setSelection(selectedBuildingIds.filter((i) => i !== id))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
+          )}
+          <div className="form-group">
+            <label>Landmark Building IDs (comma-separated, empty = center building)</label>
+            <input
+              type="text"
+              value={landmarkIdsText}
+              onChange={(e) => handleIdsTextChange(e.target.value)}
+              placeholder="e.g. 12, 34, 56"
+            />
           </div>
-        )}
+        </GuidedSection>
 
-        <div className="form-group">
-          <label>Landmark Building IDs (comma-separated, empty = center building)</label>
-          <input
-            type="text"
-            value={landmarkIdsText}
-            onChange={(e) => handleIdsTextChange(e.target.value)}
-            placeholder="e.g. 12, 34, 56"
+        <GuidedSection label="Sampling">
+          <SamplingSettings
+            nAzimuth={nAzimuth}
+            onNAzimuthChange={setNAzimuth}
+            nElevation={nElevation}
+            onNElevationChange={setNElevation}
+            elevMin={elevMin}
+            onElevMinChange={setElevMin}
+            elevMax={elevMax}
+            onElevMaxChange={setElevMax}
+            showElevationRange={analysisTarget === 'ground'}
           />
-        </div>
+        </GuidedSection>
 
-        <SamplingSettings
-          nAzimuth={nAzimuth}
-          onNAzimuthChange={setNAzimuth}
-          nElevation={nElevation}
-          onNElevationChange={setNElevation}
-          elevMin={elevMin}
-          onElevMinChange={setElevMin}
-          elevMax={elevMax}
-          onElevMaxChange={setElevMax}
-          showElevationRange={analysisTarget === 'ground'}
-        />
-
-        <ColorSettings
-          colormap={colormap}
-          onColormapChange={setColormap}
-          vmin={vmin}
-          onVminChange={setVmin}
-          vmax={vmax}
-          onVmaxChange={(v) => setVmax(Number(v))}
-        />
-
-        <VoxelClassVisibility
-          hiddenClasses={hiddenClasses}
-          onHiddenClassesChange={setHiddenClasses}
-        />
-
-        {showingSimResult && hasSimResult && (
-          <button className="btn btn-secondary" onClick={handleBackToSelection} disabled={loading} style={{ marginBottom: '0.5rem' }}>
-            Back to Selection
-          </button>
-        )}
-
-        <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
-          {loading && <span className="spinner" />}
-          {loading ? 'Running...' : 'Run Simulation'}
-        </button>
-
-        {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
+        <GuidedSection label="Display">
+          <ColorSettings
+            colormap={colormap}
+            onColormapChange={setColormap}
+            vmin={vmin}
+            onVminChange={setVmin}
+            vmax={vmax}
+            onVmaxChange={(v) => setVmax(Number(v))}
+          />
+          <VoxelClassVisibility
+            hiddenClasses={hiddenClasses}
+            onHiddenClassesChange={setHiddenClasses}
+          />
+        </GuidedSection>
 
         {zones.length > 0 && (
-          <>
-            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+          <GuidedSection label="Zones and results">
+            <div className="form-group">
               <label>
                 <input
                   type="checkbox"
@@ -335,9 +361,9 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
-          </>
+          </GuidedSection>
         )}
-      </div>
+      </GuidedPanel>
 
       <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
         <SceneViewer
