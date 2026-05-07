@@ -173,7 +173,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
             <div className="expander" style={{ marginBottom: '0.75rem' }}>
               <div className="expander-header" onClick={() => setShowSources((open) => !open)}>
                 Data Sources
-                <span className={`expander-chevron ${showSources ? 'open' : ''}`}><ChevronDown size={16} /></span>
+                <span className={`expander-chevron ${(showSources || !useAutoSources) ? 'open' : ''}`}><ChevronDown size={16} /></span>
               </div>
               {(showSources || !useAutoSources) && (
                 <div className="expander-body">
