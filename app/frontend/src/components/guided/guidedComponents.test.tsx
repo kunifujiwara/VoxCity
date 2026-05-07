@@ -50,4 +50,10 @@ describe('guided components', () => {
     expect(html).toContain('Simulation archive');
     expect(html).toContain('disabled=""');
   });
+
+  it('renders a bare panel without heading or bottom section', () => {
+    const html = renderToStaticMarkup(<GuidedPanel>content</GuidedPanel>);
+    expect(html).not.toContain('guided-panel-bottom');
+    expect(html).not.toContain('guided-panel-heading');
+  });
 });

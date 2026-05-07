@@ -1,6 +1,6 @@
 import React from 'react';
 
-type GuidedTone = 'info' | 'success' | 'warning' | 'error';
+export type GuidedTone = 'info' | 'success' | 'warning' | 'error';
 
 interface GuidedPanelProps {
   title?: React.ReactNode;

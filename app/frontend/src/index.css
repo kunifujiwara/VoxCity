@@ -826,7 +826,7 @@ input:focus, select:focus {
 
 .choice-btn {
   border: 1px solid var(--vc-ring);
-  background: #fff;
+  background: var(--vc-surface);
   color: var(--vc-primary);
   border-radius: 8px;
   padding: 0.45rem 0.55rem;
