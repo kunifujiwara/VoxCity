@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { Check } from 'lucide-react';
 import MapPicker from '../components/MapPicker';
 import { geocodeCity } from '../api';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { targetAreaActionLabel } from './guidedTabState';
 
 interface TargetAreaTabProps {
   rectangle: number[][] | null;
@@ -54,117 +55,108 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
   return (
     <div className="two-col">
       {/* Left panel – controls */}
-      <div className="panel">
-        <div className="form-group">
-          <div className="radio-group">
-            <label>
-              <input
-                type="radio"
-                checked={areaMethod === 'draw'}
-                onChange={() => setAreaMethod('draw')}
-              />
-              Draw on map
-            </label>
-            <label>
-              <input
-                type="radio"
-                checked={areaMethod === 'coordinates'}
-                onChange={() => setAreaMethod('coordinates')}
-              />
-              Enter coordinates
-            </label>
-          </div>
-        </div>
+      <GuidedPanel
+        title="Target Area"
+        subtitle="Choose the city area used by model generation."
+        status={rectangle ? <GuidedStatus tone="success">Target area is ready.</GuidedStatus> : undefined}
+        footer={(
+          <GuidedFooter>
+            <button
+              className="btn btn-primary"
+              onClick={areaMethod === 'draw' ? handleLoadMap : handleSetCoords}
+              disabled={areaMethod === 'draw' && loading}
+              type="button"
+            >
+              {loading && areaMethod === 'draw' && <span className="spinner" />}
+              {targetAreaActionLabel(areaMethod, loading)}
+            </button>
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection label="Define area by">
+          <ChoiceGroup
+            ariaLabel="Target area input method"
+            value={areaMethod}
+            onChange={setAreaMethod}
+            options={[
+              { id: 'draw', label: 'Draw on map' },
+              { id: 'coordinates', label: 'Enter coordinates' },
+            ]}
+          />
+        </GuidedSection>
 
         {areaMethod === 'draw' && (
           <>
-            <div className="form-group">
-              <label>City name</label>
-              <input
-                type="text"
-                value={cityName}
-                onChange={(e) => setCityName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleLoadMap()}
-              />
-            </div>
-
-            <div className="form-group">
-              <div className="radio-group">
-                <label>
-                  <input
-                    type="radio"
-                    checked={selectionMode === 'draw'}
-                    onChange={() => setSelectionMode('draw')}
-                  />
-                  Free hand
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    checked={selectionMode === 'rotated'}
-                    onChange={() => setSelectionMode('rotated')}
-                  />
-                  Rotated free hand
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    checked={selectionMode === 'dimensions'}
-                    onChange={() => setSelectionMode('dimensions')}
-                  />
-                  Set dimensions
-                </label>
+            <GuidedSection>
+              <div className="form-group">
+                <label>City name</label>
+                <input
+                  type="text"
+                  value={cityName}
+                  onChange={(e) => setCityName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleLoadMap()}
+                />
               </div>
-            </div>
+            </GuidedSection>
+
+            <GuidedSection label="Drawing mode">
+              <ChoiceGroup
+                ariaLabel="Target area drawing mode"
+                value={selectionMode}
+                onChange={setSelectionMode}
+                columns={1}
+                options={[
+                  { id: 'draw', label: 'Free hand' },
+                  { id: 'rotated', label: 'Rotated free hand' },
+                  { id: 'dimensions', label: 'Set dimensions' },
+                ]}
+              />
+            </GuidedSection>
 
             {selectionMode === 'dimensions' && (
-              <div className="form-row">
-                <div>
-                  <label>Width (m)</label>
-                  <input
-                    type="number"
-                    value={widthM}
-                    min={50}
-                    max={20000}
-                    step={50}
-                    onChange={(e) => setWidthM(Number(e.target.value))}
-                  />
+              <GuidedSection>
+                <div className="form-row">
+                  <div>
+                    <label>Width (m)</label>
+                    <input
+                      type="number"
+                      value={widthM}
+                      min={50}
+                      max={20000}
+                      step={50}
+                      onChange={(e) => setWidthM(Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label>Height (m)</label>
+                    <input
+                      type="number"
+                      value={heightM}
+                      min={50}
+                      max={20000}
+                      step={50}
+                      onChange={(e) => setHeightM(Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label>Rotation (°)</label>
+                    <input
+                      type="number"
+                      value={rotationDeg}
+                      min={-90}
+                      max={90}
+                      step={1}
+                      onChange={(e) => setRotationDeg(Number(e.target.value))}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label>Height (m)</label>
-                  <input
-                    type="number"
-                    value={heightM}
-                    min={50}
-                    max={20000}
-                    step={50}
-                    onChange={(e) => setHeightM(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label>Rotation (°)</label>
-                  <input
-                    type="number"
-                    value={rotationDeg}
-                    min={-90}
-                    max={90}
-                    step={1}
-                    onChange={(e) => setRotationDeg(Number(e.target.value))}
-                  />
-                </div>
-              </div>
+              </GuidedSection>
             )}
-
-            <button className="btn btn-primary" onClick={handleLoadMap} disabled={loading}>
-              {loading && <span className="spinner" />}
-              Load Map
-            </button>
           </>
         )}
 
         {areaMethod === 'coordinates' && (
-          <>
-            <h2>Rectangle Vertices</h2>
+          <GuidedSection label="Rectangle vertices">
             {(['sw', 'nw', 'ne', 'se'] as const).map((corner) => (
               <div className="form-row" key={corner}>
                 <div>
@@ -191,21 +183,13 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                 </div>
               </div>
             ))}
-            <button className="btn btn-primary" onClick={handleSetCoords}>
-              Set Rectangle
-            </button>
-          </>
+          </GuidedSection>
         )}
-
-        {rectangle && (
-          <div className="alert alert-success" style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Check size={16} /> Rectangle set
-          </div>
-        )}
-      </div>
+      </GuidedPanel>
 
       {/* Right panel – map */}
-      <div className="panel" style={{ padding: 0 }}>
+      <div className="panel" style={{ padding: 0, position: 'relative' }}>
+        {rectangle && <div className="panel-overlay-status">Target area set</div>}
         <div className="map-container" style={{ height: '100%', minHeight: 500 }}>
           <MapPicker
             center={mapCenter}
