@@ -48,6 +48,8 @@ Building height labels are shown by default when the Edit tab is in Building mod
 
 Labels read from `geo.building_geojson.features[*].properties.height`. If a building has a buffered pending height edit, its label shows the pending value so the map reflects the staged state. Undoing or clearing pending edits returns the label to the committed GeoJSON value.
 
+The advanced min/base field reads from `geo.building_geojson.features[*].properties.min_height`. The model-geo response should include this property when `building_gdf.min_height` is present and finite, and should return `0` otherwise. If the user does not change or enable the advanced field, the frontend omits `min_height_m` from the pending edit so the backend preserves existing segment bases.
+
 ### Individual Height Editing
 
 In Individual mode, the user clicks a footprint on the 2D map. The selected footprint is highlighted, and the side panel shows:
@@ -55,9 +57,9 @@ In Individual mode, the user clicks a footprint on the 2D map. The selected foot
 - Building id.
 - `Height (m)` as the main input.
 - An advanced `Min height / base (m)` input.
-- A button to buffer or update the pending height edit for that building.
+- A button to buffer a pending height edit for that building.
 
-The input fields edit local draft values first. Pressing the buffer button adds or replaces one pending `set_building_height` edit for the selected building. The 3D model is not regenerated until **Update 3D model** is clicked.
+The input fields edit local draft values first. Pressing the buffer button appends one pending `set_building_height` edit for the selected building. If the user buffers another height edit for the same building, the latest pending operation controls the displayed label after pending edits are replayed in order. The 3D model is not regenerated until **Update 3D model** is clicked.
 
 ### Group Height Editing
 
@@ -66,7 +68,9 @@ In Group mode, the user can build a selected set in either of two ways:
 - Click footprints to toggle buildings in or out of the selected set.
 - Draw a polygon to select buildings whose footprints are fully inside the polygon.
 
-The panel shows the selected count, a shared `Height (m)` input, an advanced `Min height / base (m)` input, and a button to buffer or update the pending group height edit. The selected buildings are highlighted immediately, and their labels show the pending group value after it is buffered.
+The panel shows the selected count, a shared `Height (m)` input, an advanced `Min height / base (m)` input, and a button to buffer the pending group height edit. The selected buildings are highlighted immediately, and their labels show the pending group value after it is buffered.
+
+Fully-inside polygon selection will be implemented as a distinct helper, separate from the existing intersection-based `buildingsInPolygon` helper. A footprint counts as fully inside when every exterior coordinate of every selected polygon ring lies inside or on the boundary of the drawn polygon, and no footprint edge crosses outside the drawn polygon. The helper returns frontend building ids from `properties.idx`.
 
 ### Pending Edit Behavior
 
@@ -76,7 +80,9 @@ Height edits participate in the same pending edit list as add, remove, tree, and
 - **Clear edits** removes all buffered edits.
 - **Update 3D model** sends all pending edits to the backend in order.
 
-When a new height edit targets the same building ids as an existing pending height edit, the frontend may replace the previous pending height edit instead of appending duplicate edits. This keeps the edit list easy to reason about while preserving order relative to other edit kinds.
+Height edits are appended to the pending list in the order the user buffers them. Label overrides are computed by replaying pending edits in order, so the latest pending height edit for a building controls the displayed value. **Undo last** removes only the last pending operation, which makes repeated edits predictable. **Clear edits** removes every pending operation and returns all labels to committed values.
+
+Buildings already pending deletion are not selectable for height editing. If the user buffers a height edit and then buffers a delete for the same building, the pending delete hides the footprint and the backend applies the operations in list order; the delete wins in the final model if it comes after the height edit.
 
 ## Frontend Data Flow
 
@@ -96,6 +102,8 @@ When a new height edit targets the same building ids as an existing pending heig
 - Building click callbacks that can be used for height selection as well as existing deletion selection.
 - Optional pending height values for label overrides.
 
+The frontend will add a pure selection helper, likely in `app/frontend/src/lib/grid.ts` or a small sibling module, for fully-contained building selection. This keeps group-height semantics testable and avoids changing the existing intersection-based delete-area behavior.
+
 `PlanMapEditor` renders height labels from `ModelGeoResult.building_geojson` but does not decide whether an edit is valid, pending, or committed.
 
 The frontend API type `PendingEditDto` gains:
@@ -111,6 +119,27 @@ The frontend API type `PendingEditDto` gains:
 
 The ids are frontend building ids from `properties.idx`, matching the existing delete-building behavior.
 
+Individual edit example:
+
+```json
+{
+  "kind": "set_building_height",
+  "building_ids": [42],
+  "height_m": 18.5
+}
+```
+
+Group edit with advanced min/base value example:
+
+```json
+{
+  "kind": "set_building_height",
+  "building_ids": [42, 77, 81],
+  "height_m": 24,
+  "min_height_m": 3
+}
+```
+
 ## Backend Data Flow
 
 `/api/model/apply_edits` will accept the new `set_building_height` edit kind.
@@ -122,7 +151,7 @@ The backend helper will:
 3. Validate `0 <= min_height_m < height_m` when `min_height_m` is provided.
 4. Translate frontend GeoJSON ids to source ids using the same `building_gdf` mapping approach as `_apply_delete_buildings`.
 5. Update `vc.buildings.heights` for all grid cells whose `vc.buildings.ids` match the translated source ids.
-6. Update `vc.buildings.min_heights` when `min_height_m` is provided.
+6. Update `vc.buildings.min_heights` for those same owned grid cells without discarding unrelated segment pairs. Each cell stores a list of `[min_height, max_height]` pairs. The helper must capture the cell's previous committed height before writing `vc.buildings.heights`. It should update segment pairs whose `max_height` matches that previous committed height; when `min_height_m` is omitted it preserves each matched segment's existing `min_height`, and when `min_height_m` is provided it sets the matched segment to `[min_height_m, height_m]`. If a selected cell has no matching segment pair, it should write a single `[existing_min_height_or_0, height_m]` pair for that owned cell.
 7. Update matching `building_gdf.height` and, when provided, `building_gdf.min_height`.
 8. Return the changed-cell count and affected building count.
 
@@ -158,6 +187,8 @@ Backend validation mirrors those checks and returns `400` responses for malforme
 
 If a valid building id no longer maps to grid cells, the backend reports zero changed cells for that edit rather than failing the full batch. This matches the current delete-building behavior and avoids surprising failures from stale client state.
 
+The frontend prevents buffering new height edits for footprints already hidden by pending deletion. The backend still treats stale height edits as normal ordered operations so a batch remains deterministic even if a client sends height and delete edits for the same building.
+
 ## Testing
 
 Backend tests should cover:
@@ -174,12 +205,15 @@ Frontend tests should cover pure helper behavior where practical:
 - Overlaying pending height values onto label display data.
 - Converting pending frontend height edits into API DTOs.
 - Selecting only fully-contained buildings for polygon group selection.
+- Treating footprint vertices on the drawn polygon boundary as inside for full-containment selection.
 
 Manual verification should cover:
 
 - Generate or load a small model.
 - Toggle height labels on and off in Building mode.
 - Buffer one individual height edit and confirm the 2D label reflects the pending value.
+- Undo that buffered individual edit and confirm the label returns to the committed value.
+- Clear buffered height edits and confirm selected highlights and pending labels reset.
 - Buffer one group height edit using multi-click selection.
 - Buffer one group height edit using polygon selection with fully-contained footprints only.
 - Click **Update 3D model** and confirm labels and the 3D preview update.
@@ -188,5 +222,5 @@ Manual verification should cover:
 
 - Dense building areas may make labels crowded. The show/hide toggle mitigates this.
 - `properties.idx` represents GeoDataFrame index values, not always source ids. The backend must reuse the explicit mapping pattern already used by building deletion.
-- Repeated draft edits could produce duplicate pending operations. The frontend should replace existing pending height edits for the same target set when practical.
+- Repeated draft edits can create multiple pending height operations for the same building. Replaying pending edits in order keeps labels, undo, and backend application deterministic.
 - Applying min/base height to groups can be destructive if used casually. Keeping it in an advanced field reduces accidental changes.
