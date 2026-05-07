@@ -250,6 +250,11 @@ input:focus, select:focus {
   overflow: hidden;
 }
 
+.three-container canvas {
+  border-radius: inherit;
+  display: block;
+}
+
 /* ── Map container ────────────────────────────────── */
 .map-container {
   width: 100%;
@@ -476,7 +481,7 @@ input:focus, select:focus {
 /* ── Edit tab: 3-column layout ────────────────────── */
 .three-col {
   display: grid;
-  grid-template-columns: 280px minmax(360px, 1fr) minmax(360px, 1.2fr);
+  grid-template-columns: 280px minmax(360px, 1fr) minmax(360px, 1fr);
   gap: 1rem;
   height: 100%;
 }
@@ -492,9 +497,35 @@ input:focus, select:focus {
   position: relative;
   flex: 1 1 auto;
   width: 100%;
-  min-height: 520px;
+  min-height: 0;
   border: 1px solid var(--vc-ring);
   border-radius: 8px;
+  overflow: hidden;
+}
+
+.visual-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.visual-panel > h2 {
+  min-height: 2rem;
+}
+
+.visual-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.visual-frame > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: inherit;
   overflow: hidden;
 }
 
@@ -570,13 +601,29 @@ input:focus, select:focus {
   margin-bottom: 0.85rem;
 }
 
+.guided-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
 .guided-section-label {
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--vc-muted);
-  margin-bottom: 0.4rem;
   letter-spacing: 0;
+}
+
+.guided-section-action {
+  flex-shrink: 0;
+}
+
+.btn-sm {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 5px;
 }
 
 .guided-target-list,
@@ -689,7 +736,7 @@ input:focus, select:focus {
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   position: relative;
-  z-index: 30;
+  z-index: 1200;
 }
 
 .plan-panel-header h2 {
@@ -726,6 +773,7 @@ input:focus, select:focus {
   position: absolute;
   right: 0;
   top: calc(100% + 0.35rem);
+  z-index: 1;
   width: min(240px, 70vw);
   padding: 0.85rem;
   background: var(--vc-surface);
@@ -818,6 +866,11 @@ input:focus, select:focus {
 .choice-group {
   display: grid;
   gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.choice-group:last-child {
+  margin-bottom: 0;
 }
 
 .choice-group-1 { grid-template-columns: 1fr; }

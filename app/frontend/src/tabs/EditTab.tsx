@@ -799,7 +799,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       </div>
 
       {/* 2D editor */}
-      <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="panel visual-panel">
         <div className="plan-panel-header">
           <div>
             <h2>2D plan editor</h2>
@@ -839,6 +839,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           </details>
         </div>
         {loading && <div className="alert alert-info">Loading map…</div>}
+        <div className="visual-frame">
         {geo && (
           <PlanMapEditor
             geo={geo}
@@ -855,12 +856,13 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             onPolygonComplete={handlePolygonComplete}
           />
         )}
+        </div>
       </div>
 
       {/* 3D viewer */}
-      <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="panel visual-panel">
         <h2>3D result</h2>
-        <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="visual-frame">
           {figureJson ? (
             <ThreeViewer figureJson={figureJson} />
           ) : (

@@ -245,22 +245,24 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
         )}
       </GuidedPanel>
 
-      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
-        <SceneViewer
-          geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-          downsample={1}
-          colorScheme="grayscale"
-          simKind={hasSimResult ? 'view' : null}
-          simToken={simRunNonce}
-          colormap={colormap}
-          vmin={vmin}
-          vmax={vmax}
-          zones={zones}
-          lonLatToXY={lonLatToXY}
-          showZones={showZones3D}
-          hiddenClasses={hiddenClasses}
-          surfaceZoneEdges={surfaceZoneEdges}
-        />
+      <div className="panel visual-panel">
+        <div className="visual-frame">
+          <SceneViewer
+            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+            downsample={1}
+            colorScheme="grayscale"
+            simKind={hasSimResult ? 'view' : null}
+            simToken={simRunNonce}
+            colormap={colormap}
+            vmin={vmin}
+            vmax={vmax}
+            zones={zones}
+            lonLatToXY={lonLatToXY}
+            showZones={showZones3D}
+            hiddenClasses={hiddenClasses}
+            surfaceZoneEdges={surfaceZoneEdges}
+          />
+        </div>
       </div>
     </div>
   );

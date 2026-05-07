@@ -365,24 +365,26 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
         )}
       </GuidedPanel>
 
-      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
-        <SceneViewer
-          geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-          downsample={1}
-          colorScheme="grayscale"
-          simKind={showingSimResult ? 'landmark' : null}
-          simToken={simRunNonce}
-          colormap={colormap}
-          vmin={vmin}
-          vmax={vmax}
-          zones={zones}
-          lonLatToXY={lonLatToXY}
-          showZones={showZones3D}
-          hiddenClasses={hiddenClasses}
-          onPick={!showingSimResult ? handlePick : undefined}
-          highlightChunks={highlightChunks}
-          surfaceZoneEdges={surfaceZoneEdges}
-        />
+      <div className="panel visual-panel">
+        <div className="visual-frame">
+          <SceneViewer
+            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+            downsample={1}
+            colorScheme="grayscale"
+            simKind={showingSimResult ? 'landmark' : null}
+            simToken={simRunNonce}
+            colormap={colormap}
+            vmin={vmin}
+            vmax={vmax}
+            zones={zones}
+            lonLatToXY={lonLatToXY}
+            showZones={showZones3D}
+            hiddenClasses={hiddenClasses}
+            onPick={!showingSimResult ? handlePick : undefined}
+            highlightChunks={highlightChunks}
+            surfaceZoneEdges={surfaceZoneEdges}
+          />
+        </div>
       </div>
     </div>
   );

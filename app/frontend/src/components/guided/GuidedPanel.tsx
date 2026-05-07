@@ -41,13 +41,19 @@ export const GuidedPanel: React.FC<GuidedPanelProps> = ({
 interface GuidedSectionProps {
   label?: React.ReactNode;
   title?: React.ReactNode;
+  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
 
-export const GuidedSection: React.FC<GuidedSectionProps> = ({ label, title, children, className }) => (
+export const GuidedSection: React.FC<GuidedSectionProps> = ({ label, title, action, children, className }) => (
   <section className={`guided-section${className ? ` ${className}` : ''}`}>
-    {label && <div className="guided-section-label">{label}</div>}
+    {(label || action) && (
+      <div className="guided-section-header">
+        {label && <div className="guided-section-label">{label}</div>}
+        {action && <div className="guided-section-action">{action}</div>}
+      </div>
+    )}
     {title && <h3 className="guided-section-title">{title}</h3>}
     {children}
   </section>

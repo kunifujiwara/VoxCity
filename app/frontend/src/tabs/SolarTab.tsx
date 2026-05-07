@@ -216,22 +216,24 @@ const SolarTab: React.FC<SolarTabProps> = ({
         )}
       </GuidedPanel>
 
-      <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
-        <SceneViewer
-          geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-          downsample={1}
-          colorScheme="grayscale"
-          simKind={hasSimResult ? 'solar' : null}
-          simToken={simRunNonce}
-          colormap={colormap}
-          vmin={vmin}
-          vmax={vmaxNum}
-          zones={zones}
-          lonLatToXY={lonLatToXY}
-          showZones={showZones3D}
-          hiddenClasses={hiddenClasses}
-          surfaceZoneEdges={surfaceZoneEdges}
-        />
+      <div className="panel visual-panel">
+        <div className="visual-frame">
+          <SceneViewer
+            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+            downsample={1}
+            colorScheme="grayscale"
+            simKind={hasSimResult ? 'solar' : null}
+            simToken={simRunNonce}
+            colormap={colormap}
+            vmin={vmin}
+            vmax={vmaxNum}
+            zones={zones}
+            lonLatToXY={lonLatToXY}
+            showZones={showZones3D}
+            hiddenClasses={hiddenClasses}
+            surfaceZoneEdges={surfaceZoneEdges}
+          />
+        </div>
       </div>
     </div>
   );

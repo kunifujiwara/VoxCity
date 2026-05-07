@@ -84,6 +84,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
    */
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [draftGroups, setDraftGroups] = useState<DraftZoneGroup[]>([]);
+  const [groupOrder, setGroupOrder] = useState<string[]>([]);
   const [zoneType, setZoneType] = useState<ZoneType>('horizontal');
   const [refiningBuildingId, setRefiningBuildingId] = useState<number | null>(null);
 
@@ -106,6 +107,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     if (zones.length === 0 && draftGroups.length === 0) {
       const id = makeZoneGroupId();
       setDraftGroups([{ id, name: 'Zone 1', color: ZONE_PALETTE[0], shape }]);
+      setGroupOrder([id]);
       setActiveGroupId(id);
     }
   }, [zones.length, draftGroups.length, shape]);
@@ -144,8 +146,11 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     const drafts = draftGroups
       .filter((g) => !committedIds.has(g.id))
       .map((g) => ({ ...g, members: [] as Zone[], draft: true as const }));
-    return [...committed, ...drafts];
-  }, [committedGroups, draftGroups]);
+    const all = new Map([...committed, ...drafts].map((g) => [g.id, g]));
+    const ordered = groupOrder.filter((id) => all.has(id)).map((id) => all.get(id)!);
+    const untracked = [...all.values()].filter((g) => !groupOrder.includes(g.id));
+    return [...ordered, ...untracked];
+  }, [committedGroups, draftGroups, groupOrder]);
 
   const effectiveActiveGroupId = useMemo(
     () => resolveZoneGroupForMode({ zones, candidates: groups, activeGroupId, zoneType }),
@@ -228,11 +233,13 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         groupId: id,
       };
       onZonesChange([...zones, newZone]);
+      setGroupOrder((prev) => [...prev, id]);
       setRefiningBuildingId(null);
       setActiveGroupId(id);
       setSelectedId(newZone.id);
     } else {
       setDraftGroups((prev) => [...prev, { id, name, color, shape }]);
+      setGroupOrder((prev) => [...prev, id]);
       setActiveGroupId(id);
       setSelectedId(null);
     }
@@ -352,6 +359,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     if (zones.length > 0 && !window.confirm(`Delete all ${committedGroups.length} zones?`)) return;
     onZonesChange([]);
     setDraftGroups([]);
+    setGroupOrder([]);
     setSelectedId(null);
     setActiveGroupId(null);
   };
@@ -395,14 +403,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           <GuidedFooter>
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={handleAddZone}
-              title="Add a new zone row. Draw on the map to set its boundary."
-            >
-              Add zone
-            </button>
-            <button
-              type="button"
               className="btn btn-secondary"
               onClick={clearAll}
               disabled={zones.length === 0 && draftGroups.length === 0}
@@ -437,7 +437,16 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           </GuidedSection>
         )}
 
-        <GuidedSection label="Zones">
+        <GuidedSection label="Zones" action={(
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleAddZone}
+            title="Add a new zone row. Draw on the map to set its boundary."
+          >
+            + Add zone
+          </button>
+        )}>
         <div className="zone-list">
           {groups.length === 0 && (
             <div className="alert alert-info" style={{ marginTop: 8 }}>
@@ -633,7 +642,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       </GuidedPanel>
 
       {/* Center: 2D editor */}
-      <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="panel visual-panel">
         <div className="plan-panel-header">
           <div>
             <h2>2D zone editor</h2>
@@ -665,23 +674,25 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           </details>
         </div>
         {loading && <div className="alert alert-info">Loading map…</div>}
-        {geo && (
-          <PlanMapEditor
-            geo={geo}
-            interaction={zoneType === 'building_surface' ? 'none' : interaction}
-            backdrop={backdrop}
-            basemap={basemap}
-            drawColor="blue"
-            pendingEdits={pendingEdits}
-            onPolygonComplete={handlePolygonComplete}
-          />
-        )}
+        <div className="visual-frame">
+          {geo && (
+            <PlanMapEditor
+              geo={geo}
+              interaction={zoneType === 'building_surface' ? 'none' : interaction}
+              backdrop={backdrop}
+              basemap={basemap}
+              drawColor="blue"
+              pendingEdits={pendingEdits}
+              onPolygonComplete={handlePolygonComplete}
+            />
+          )}
+        </div>
       </div>
 
       {/* Right: 3D viewer */}
-      <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="panel visual-panel">
         <h2>3D preview</h2>
-        <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="visual-frame">
           {hasModel ? (
             <SceneViewer
               geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}

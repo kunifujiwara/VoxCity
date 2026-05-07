@@ -338,8 +338,10 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       </GuidedPanel>
 
       {/* Right – 3D preview */}
-      <div className="panel">
-        <ThreeViewer figureJson={figureJson} />
+      <div className="panel visual-panel">
+        <div className="visual-frame">
+          <ThreeViewer figureJson={figureJson} />
+        </div>
       </div>
     </div>
   );
