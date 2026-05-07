@@ -57,6 +57,45 @@ interface EditTabProps {
   onModelEdited?: () => void;
 }
 
+const SegmentedButton: React.FC<{
+  active: boolean;
+  label: string;
+  tone?: 'danger';
+  onClick: () => void;
+}> = ({ active, label, tone, onClick }) => (
+  <button
+    className={`guided-segment-btn${active ? ' active' : ''}${tone === 'danger' ? ' danger' : ''}`}
+    onClick={onClick}
+    type="button"
+  >
+    {label}
+  </button>
+);
+
+interface MethodSelectorProps {
+  target: import('./editWorkflow').EditTarget;
+  task: import('./editWorkflow').EditTask;
+  method: import('./editWorkflow').EditMethod;
+  onMethodChange: (m: import('./editWorkflow').EditMethod) => void;
+}
+
+const MethodSelector: React.FC<MethodSelectorProps> = ({ target, task, method, onMethodChange }) => (
+  <div className="form-group">
+    <div className="guided-section-label">Method</div>
+    <div className="guided-method-grid">
+      {methodOptionsForTask(target, task).map((methodOption) => (
+        <SegmentedButton
+          key={methodOption.id}
+          active={method === methodOption.id}
+          label={methodOption.label}
+          tone={methodOption.tone}
+          onClick={() => onMethodChange(methodOption.id)}
+        />
+      ))}
+    </div>
+  </div>
+);
+
 
 const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited }) => {
   const [workflow, setWorkflow] = useState(() => defaultWorkflowForTarget('building'));
@@ -496,38 +535,6 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     );
   }
 
-  const SegmentedButton: React.FC<{
-    active: boolean;
-    label: string;
-    tone?: 'danger';
-    onClick: () => void;
-  }> = ({ active, label, tone, onClick }) => (
-    <button
-      className={`guided-segment-btn${active ? ' active' : ''}${tone === 'danger' ? ' danger' : ''}`}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-
-  const MethodSelector: React.FC = () => (
-    <div className="form-group">
-      <div className="guided-section-label">Method</div>
-      <div className="guided-method-grid">
-        {methodOptionsForTask(mode, workflow.task).map((methodOption) => (
-          <SegmentedButton
-            key={methodOption.id}
-            active={workflow.method === methodOption.id}
-            label={methodOption.label}
-            tone={methodOption.tone}
-            onClick={() => setMethod(methodOption.id)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="three-col">
       {/* Controls */}
@@ -547,7 +554,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                 >
                   <span>{targetOption.label}</span>
                   <span className="guided-target-count">
-                    {taskOptionsForTarget(targetOption.id).length} task{taskOptionsForTarget(targetOption.id).length === 1 ? '' : 's'}
+                    {(() => { const n = taskOptionsForTarget(targetOption.id).length; return `${n} task${n === 1 ? '' : 's'}`; })()}
                   </span>
                 </button>
               ))}
@@ -574,7 +581,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           {mode === 'building' && workflow.task === 'add' && (
             <div className="guided-tool-details">
               <h3>Add building</h3>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
               <div className="form-group">
                 <label>Height (m)</label>
                 <input type="number" min={1} step={0.5} value={buildingHeight}
@@ -591,7 +598,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           {mode === 'building' && workflow.task === 'height' && (
             <div className="guided-tool-details">
               <h3>Edit height</h3>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
               <div className="guided-tool-hint">
                 {action === 'set_height_click'
                   ? 'Click buildings to select/deselect.'
@@ -648,7 +655,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           {mode === 'building' && workflow.task === 'remove' && (
             <div className="guided-tool-details danger-surface">
               <h3>Remove building</h3>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
               <div className="guided-tool-hint">
                 {action === 'remove_click'
                   ? 'Click a footprint on the map to delete it.'
@@ -660,7 +667,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           {mode === 'tree' && workflow.task === 'add' && (
             <div className="guided-tool-details">
               <h3>Add tree</h3>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
               <div className="form-group">
                 <label>Top (m)</label>
                 <input type="number" min={1} step={0.5} value={treeTop}
@@ -689,7 +696,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           {mode === 'tree' && workflow.task === 'remove' && (
             <div className="guided-tool-details danger-surface">
               <h3>Remove tree</h3>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
               <div className="guided-tool-hint">
                 {action === 'remove_click'
                   ? 'Click a cell to clear its canopy.'
@@ -716,7 +723,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
               <div className="lc-active-name">
                 {classes.find((c) => c.index === classIndex)?.name ?? '—'}
               </div>
-              <MethodSelector />
+              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
             </div>
           )}
 
