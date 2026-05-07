@@ -31,6 +31,22 @@ import {
   pendingBuildingHeightOverrides,
   validateBuildingHeightInput,
 } from '../lib/buildingHeightEdits';
+import {
+  actionForWorkflow,
+  defaultBackdropForTarget,
+  defaultWorkflowForTarget,
+  drawColorForTarget,
+  interactionForWorkflow,
+  methodOptionsForTask,
+  normalizeWorkflow,
+  overlayLabel,
+  taskOptionsForTarget,
+  TARGET_OPTIONS,
+  type EditMethod,
+  type EditTarget,
+  type EditTask,
+  type ModeAction,
+} from './editWorkflow';
 
 interface EditTabProps {
   hasModel: boolean;
@@ -41,71 +57,11 @@ interface EditTabProps {
   onModelEdited?: () => void;
 }
 
-type EditMode = 'building' | 'tree' | 'land_cover';
-
-type BuildingAction = 'add_rect' | 'add_polygon' | 'remove_click' | 'remove_area' | 'set_height_click' | 'set_height_area';
-type TreeAction = 'add_click' | 'add_area' | 'remove_click' | 'remove_area';
-type LandCoverAction = 'paint_click' | 'paint_area';
-type ModeAction = BuildingAction | TreeAction | LandCoverAction;
-
-const MODE_OPTIONS: { id: EditMode; label: string }[] = [
-  { id: 'building',   label: 'Building'   },
-  { id: 'tree',       label: 'Tree'       },
-  { id: 'land_cover', label: 'Land cover' },
-];
-
-function defaultActionFor(mode: EditMode): ModeAction {
-  switch (mode) {
-    case 'building':   return 'add_rect';
-    case 'tree':       return 'add_click';
-    case 'land_cover': return 'paint_click';
-  }
-}
-
-function defaultBackdropFor(mode: EditMode): Backdrop {
-  switch (mode) {
-    case 'building':   return 'buildings';
-    case 'tree':       return 'canopy';
-    case 'land_cover': return 'land_cover';
-  }
-}
-
-function drawColorFor(mode: EditMode): DrawColor {
-  switch (mode) {
-    case 'building':   return 'red';
-    case 'tree':       return 'green';
-    case 'land_cover': return 'blue';
-  }
-}
-
-function interactionFor(mode: EditMode, action: ModeAction): MapInteraction {
-  if (mode === 'building') {
-    switch (action as BuildingAction) {
-      case 'add_rect':        return 'draw_rect_3pt';
-      case 'add_polygon':     return 'draw_polygon';
-      case 'remove_click':    return 'click_feature';
-      case 'remove_area':     return 'draw_polygon';
-      case 'set_height_click': return 'click_feature';
-      case 'set_height_area':  return 'draw_polygon';
-    }
-  }
-  if (mode === 'tree') {
-    switch (action as TreeAction) {
-      case 'add_click':    return 'click_point';
-      case 'add_area':     return 'draw_polygon';
-      case 'remove_click': return 'click_point';
-      case 'remove_area':  return 'draw_polygon';
-    }
-  }
-  switch (action as LandCoverAction) {
-    case 'paint_click': return 'click_point';
-    case 'paint_area':  return 'draw_polygon';
-  }
-}
 
 const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited }) => {
-  const [mode, setMode] = useState<EditMode>('building');
-  const [action, setAction] = useState<ModeAction>('add_rect');
+  const [workflow, setWorkflow] = useState(() => defaultWorkflowForTarget('building'));
+  const mode = workflow.target;
+  const action = actionForWorkflow(workflow);
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   const [classes, setClasses] = useState<LandCoverClass[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,6 +148,18 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
   const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]);
   const [committing, setCommitting] = useState(false);
 
+  const setTarget = useCallback((target: EditTarget) => {
+    setWorkflow(defaultWorkflowForTarget(target));
+  }, []);
+
+  const setTask = useCallback((task: EditTask) => {
+    setWorkflow((current) => normalizeWorkflow({ ...current, task }));
+  }, []);
+
+  const setMethod = useCallback((method: EditMethod) => {
+    setWorkflow((current) => normalizeWorkflow({ ...current, method }));
+  }, []);
+
   /* ── Initial fetch ──────────────────────────────────────── */
   const reload = useCallback(async () => {
     if (!hasModel) return;
@@ -215,10 +183,10 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
   useEffect(() => { reload(); }, [reload]);
 
   useEffect(() => {
-    setAction(defaultActionFor(mode));
-    setBackdrop(defaultBackdropFor(mode));
+    setBackdrop(defaultBackdropForTarget(mode));
     setError(null);
     setInfo(null);
+    setSelectedBuildingIds([]);
   }, [mode]);
 
   useEffect(() => {
@@ -227,8 +195,8 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     setSelectedBuildingIds([]);
   }, [action]);
 
-  const interaction = useMemo(() => interactionFor(mode, action), [mode, action]);
-  const drawColor = drawColorFor(mode);
+  const interaction = useMemo(() => interactionForWorkflow(workflow), [workflow]);
+  const drawColor = drawColorForTarget(mode);
 
   const editableClasses = useMemo(() => classes.filter((c) => c.editable), [classes]);
 
@@ -528,71 +496,85 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     );
   }
 
-  const ActionBtn: React.FC<{ id: ModeAction; label: string; danger?: boolean }> = ({ id, label, danger }) => (
+  const SegmentedButton: React.FC<{
+    active: boolean;
+    label: string;
+    tone?: 'danger';
+    onClick: () => void;
+  }> = ({ active, label, tone, onClick }) => (
     <button
-      className={
-        `draw-toolbar-btn` +
-        (action === id ? ' active' : '') +
-        (danger ? ' danger' : '')
-      }
-      onClick={() => setAction(id)}
-    >{label}</button>
+      className={`guided-segment-btn${active ? ' active' : ''}${tone === 'danger' ? ' danger' : ''}`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+
+  const MethodSelector: React.FC = () => (
+    <div className="form-group">
+      <div className="guided-section-label">Method</div>
+      <div className="guided-method-grid">
+        {methodOptionsForTask(mode, workflow.task).map((methodOption) => (
+          <SegmentedButton
+            key={methodOption.id}
+            active={workflow.method === methodOption.id}
+            label={methodOption.label}
+            tone={methodOption.tone}
+            onClick={() => setMethod(methodOption.id)}
+          />
+        ))}
+      </div>
+    </div>
   );
 
   return (
     <div className="three-col">
       {/* Controls */}
-      <div className="panel">
-        <h2>Edit Model</h2>
+      <div className="panel edit-control-panel">
+        <div className="edit-control-scroll">
+          <h2>Edit Model</h2>
 
-        <div className="mode-tabs">
-          {MODE_OPTIONS.map((m) => (
-            <button
-              key={m.id}
-              className={`mode-tab ${mode === m.id ? 'active' : ''}`}
-              onClick={() => setMode(m.id)}
-            >{m.label}</button>
-          ))}
-        </div>
-
-        <div className="form-group">
-          <label>Basemap</label>
-          <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
-            <option value="CartoDB Positron">CartoDB Positron</option>
-            <option value="Google Satellite">Google Satellite</option>
-            <option value="OpenStreetMap">OpenStreetMap</option>
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label>Overlay</label>
-          <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
-            <option value="buildings">Buildings</option>
-            <option value="canopy">Canopy</option>
-            <option value="land_cover">Land cover</option>
-            <option value="none">None</option>
-          </select>
-        </div>
-
-        {mode === 'building' && (
-          <>
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={showBuildingHeightLabels}
-                  onChange={(e) => setShowBuildingHeightLabels(e.target.checked)}
-                />
-                Show height labels
-              </label>
+          <div className="guided-section">
+            <div className="guided-section-label">Target</div>
+            <div className="guided-target-list">
+              {TARGET_OPTIONS.map((targetOption) => (
+                <button
+                  key={targetOption.id}
+                  type="button"
+                  className={`guided-target-btn ${mode === targetOption.id ? 'active' : ''}`}
+                  onClick={() => setTarget(targetOption.id)}
+                >
+                  <span>{targetOption.label}</span>
+                  <span className="guided-target-count">
+                    {taskOptionsForTarget(targetOption.id).length} task{taskOptionsForTarget(targetOption.id).length === 1 ? '' : 's'}
+                  </span>
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="mode-section">
-              <h3>Add</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="add_rect"    label="Rectangle" />
-                <ActionBtn id="add_polygon" label="Polygon" />
-              </div>
+          <div className="guided-section">
+            <div className="guided-section-label">
+              {mode === 'building' ? 'Building workflow' : mode === 'tree' ? 'Tree workflow' : 'Land cover workflow'}
+            </div>
+            <div className="guided-task-list">
+              {taskOptionsForTarget(mode).map((taskOption) => (
+                <SegmentedButton
+                  key={taskOption.id}
+                  active={workflow.task === taskOption.id}
+                  label={taskOption.label}
+                  tone={taskOption.tone}
+                  onClick={() => setTask(taskOption.id)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {mode === 'building' && workflow.task === 'add' && (
+            <div className="guided-tool-details">
+              <h3>Add building</h3>
+              <MethodSelector />
               <div className="form-group">
                 <label>Height (m)</label>
                 <input type="number" min={1} step={0.5} value={buildingHeight}
@@ -604,34 +586,16 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                        onChange={(e) => setBuildingMinHeight(parseFloat(e.target.value))} />
               </div>
             </div>
+          )}
 
-            <div className="mode-section">
-              <h3>Remove</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="remove_click" label="Click"  danger />
-                <ActionBtn id="remove_area"  label="Area"   danger />
-              </div>
-              <div style={{ color: 'var(--vc-muted)', fontSize: '0.8rem' }}>
-                {action === 'remove_click'
-                  ? 'Click a footprint on the map to delete it.'
-                  : action === 'remove_area'
-                  ? 'Draw a polygon to delete every building inside.'
-                  : 'Switch to a Remove tool above.'}
-              </div>
-            </div>
-
-            <div className="mode-section">
-              <h3>Set Height</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="set_height_click" label="Click" />
-                <ActionBtn id="set_height_area"  label="Area" />
-              </div>
-              <div style={{ color: 'var(--vc-muted)', fontSize: '0.8rem', marginBottom: '0.4rem' }}>
+          {mode === 'building' && workflow.task === 'height' && (
+            <div className="guided-tool-details">
+              <h3>Edit height</h3>
+              <MethodSelector />
+              <div className="guided-tool-hint">
                 {action === 'set_height_click'
                   ? 'Click buildings to select/deselect.'
-                  : action === 'set_height_area'
-                  ? 'Draw a polygon to select fully-contained buildings.'
-                  : 'Switch to a Set Height tool above.'}
+                  : 'Draw a polygon to select fully-contained buildings.'}
               </div>
               {selectedBuildingIds.length > 0 && (
                 <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--vc-text)' }}>
@@ -674,21 +638,29 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                 style={{ marginTop: '0.25rem', width: '100%' }}
                 onClick={handleApplyHeightEdit}
                 disabled={selectedBuildingIds.length === 0}
+                type="button"
               >
                 Apply to {selectedBuildingIds.length || 0} building(s)
               </button>
             </div>
-          </>
-        )}
+          )}
 
-        {mode === 'tree' && (
-          <>
-            <div className="mode-section">
-              <h3>Add</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="add_click" label="Click" />
-                <ActionBtn id="add_area"  label="Area" />
+          {mode === 'building' && workflow.task === 'remove' && (
+            <div className="guided-tool-details danger-surface">
+              <h3>Remove building</h3>
+              <MethodSelector />
+              <div className="guided-tool-hint">
+                {action === 'remove_click'
+                  ? 'Click a footprint on the map to delete it.'
+                  : 'Draw a polygon to delete every building inside.'}
               </div>
+            </div>
+          )}
+
+          {mode === 'tree' && workflow.task === 'add' && (
+            <div className="guided-tool-details">
+              <h3>Add tree</h3>
+              <MethodSelector />
               <div className="form-group">
                 <label>Top (m)</label>
                 <input type="number" min={1} step={0.5} value={treeTop}
@@ -712,21 +684,23 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                 </label>
               </div>
             </div>
+          )}
 
-            <div className="mode-section">
-              <h3>Remove</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="remove_click" label="Click" danger />
-                <ActionBtn id="remove_area"  label="Area"  danger />
+          {mode === 'tree' && workflow.task === 'remove' && (
+            <div className="guided-tool-details danger-surface">
+              <h3>Remove tree</h3>
+              <MethodSelector />
+              <div className="guided-tool-hint">
+                {action === 'remove_click'
+                  ? 'Click a cell to clear its canopy.'
+                  : 'Draw a polygon to clear all canopy cells inside.'}
               </div>
             </div>
-          </>
-        )}
+          )}
 
-        {mode === 'land_cover' && (
-          <>
-            <div className="mode-section">
-              <h3>Class</h3>
+          {mode === 'land_cover' && workflow.task === 'paint' && (
+            <div className="guided-tool-details">
+              <h3>Paint land cover</h3>
               <div className="land-cover-swatches">
                 {classes.map((c) => (
                   <button
@@ -735,46 +709,50 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                     style={{ background: c.color }}
                     title={`${c.index} ${c.name}`}
                     onClick={() => setClassIndex(c.index)}
+                    type="button"
                   />
                 ))}
               </div>
               <div className="lc-active-name">
                 {classes.find((c) => c.index === classIndex)?.name ?? '—'}
               </div>
+              <MethodSelector />
             </div>
+          )}
 
-            <div className="mode-section">
-              <h3>Paint</h3>
-              <div className="draw-toolbar">
-                <ActionBtn id="paint_click" label="Click" />
-                <ActionBtn id="paint_area"  label="Area" />
-              </div>
-            </div>
-          </>
-        )}
+          <div className="guided-feedback-slot">
+            {error && <div className="alert alert-error">{error}</div>}
+            {info && <div className="alert alert-success">{info}</div>}
+          </div>
+        </div>
 
-        {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
-        {info && <div className="alert alert-success" style={{ marginTop: '0.75rem' }}>{info}</div>}
-
-        <div className="mode-section" style={{ marginTop: '0.75rem' }}>
-          <h3>Edits</h3>
-          <div className="draw-toolbar">
+        <div className="pending-edit-footer">
+          <div className="pending-edit-summary">
+            <span>Pending edits</span>
+            <strong>{pendingEdits.length}</strong>
+          </div>
+          <div className="guided-method-grid">
             <button
-              className="draw-toolbar-btn"
+              className="guided-segment-btn"
               onClick={handleUndoLast}
               disabled={pendingEdits.length === 0 || committing}
               title="Discard the most recent buffered edit"
-            >Undo last</button>
+              type="button"
+            >
+              Undo last
+            </button>
             <button
-              className="draw-toolbar-btn"
+              className="guided-segment-btn danger"
               onClick={handleClearEdits}
               disabled={pendingEdits.length === 0 || committing}
               title="Discard all buffered edits"
-            >Clear edits</button>
+              type="button"
+            >
+              Clear edits
+            </button>
           </div>
           <button
-            className="btn btn-primary"
-            style={{ marginTop: '0.5rem', width: '100%' }}
+            className="btn btn-primary pending-update-btn"
             onClick={handleUpdate3D}
             disabled={pendingEdits.length === 0 || committing || loading}
             title={
@@ -782,6 +760,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                 ? 'No pending edits'
                 : `Re-voxelize and render the ${pendingEdits.length} pending edit(s).`
             }
+            type="button"
           >
             {committing && <span className="spinner" />}
             {committing
