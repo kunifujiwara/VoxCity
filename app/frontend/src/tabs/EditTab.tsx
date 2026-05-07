@@ -9,7 +9,7 @@
  * Adapted from `reference/optree_app/frontend/src/tabs/EditModelTab.tsx`.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyEdits,
   getModelGeo,
@@ -186,6 +186,18 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
    *  commit effect below. */
   const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([]);
   const [committing, setCommitting] = useState(false);
+
+  // Close the Display menu when clicking outside it
+  const displayMenuRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (displayMenuRef.current && !displayMenuRef.current.contains(e.target as Node)) {
+        displayMenuRef.current.removeAttribute('open');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const setTarget = useCallback((target: EditTarget) => {
     setWorkflow(defaultWorkflowForTarget(target));
@@ -784,7 +796,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             <h2>2D plan editor</h2>
             <div className="plan-overlay-summary">{overlayLabel(backdrop)}</div>
           </div>
-          <details className="display-menu">
+          <details className="display-menu" ref={displayMenuRef}>
             <summary>Display</summary>
             <div className="display-menu-popover">
               <div className="form-group">

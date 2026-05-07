@@ -648,7 +648,7 @@ input:focus, select:focus {
 
 .guided-tool-details h3 {
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0 0 0.65rem 0;
 }
 
@@ -734,7 +734,7 @@ input:focus, select:focus {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
-.checkbox-row {
+.display-menu .checkbox-row {
   display: flex;
   align-items: center;
   gap: 0.45rem;
