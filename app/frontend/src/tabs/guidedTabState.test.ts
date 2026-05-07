@@ -29,6 +29,7 @@ describe('guided tab action labels', () => {
     expect(targetAreaActionLabel('draw', false)).toBe('Load Map');
     expect(targetAreaActionLabel('draw', true)).toBe('Loading map...');
     expect(targetAreaActionLabel('coordinates', false)).toBe('Set Rectangle');
+    expect(targetAreaActionLabel('coordinates', true)).toBe('Loading map...');
   });
 
   it('labels generation and simulation actions by loading state', () => {
@@ -40,6 +41,7 @@ describe('guided tab action labels', () => {
 
   it('labels export actions by selected format and loading state', () => {
     expect(exportActionLabel('cityles', false)).toBe('Export CityLES');
+    expect(exportActionLabel('cityles', true)).toBe('Exporting...');
     expect(exportActionLabel('obj', false)).toBe('Export OBJ');
     expect(exportActionLabel('obj', true)).toBe('Exporting...');
   });

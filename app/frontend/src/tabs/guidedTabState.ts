@@ -4,7 +4,7 @@ export type ExportFormat = 'cityles' | 'obj';
 
 const MODEL_REQUIRED_BODY = 'Use the Generation tab to create a VoxCity model before using this workflow.';
 
-export function prerequisiteMessageForTab(tab: PrerequisiteTab) {
+export function prerequisiteMessageForTab(tab: PrerequisiteTab): { title: string; body: string } {
   if (tab === 'generation') {
     return {
       title: 'Set a target area first',
