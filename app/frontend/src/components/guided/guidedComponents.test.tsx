@@ -51,6 +51,47 @@ describe('guided components', () => {
     expect(html).toContain('disabled=""');
   });
 
+  it('renders check-style choices as radio inputs', () => {
+    const onChange = vi.fn();
+    const html = renderToStaticMarkup(
+      <ChoiceGroup
+        variant="checks"
+        ariaLabel="Generation mode"
+        value="normal"
+        onChange={onChange}
+        options={[
+          { id: 'normal', label: 'Normal', description: 'Global open data sources' },
+          { id: 'plateau', label: 'PLATEAU', description: 'Japanese CityGML data', disabled: true },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('choice-group-checks');
+    expect(html).toContain('choice-check-row active');
+    expect(html).toContain('type="radio"');
+    expect(html).toContain('checked=""');
+    expect(html).toContain('Global open data sources');
+    expect(html).toContain('disabled=""');
+  });
+
+  it('applies column classes to check-style choices', () => {
+    const html = renderToStaticMarkup(
+      <ChoiceGroup
+        variant="checks"
+        columns={2}
+        ariaLabel="Analysis target"
+        value="ground"
+        onChange={() => {}}
+        options={[
+          { id: 'ground', label: 'Ground level' },
+          { id: 'building', label: 'Building surfaces' },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('choice-group-checks-2');
+  });
+
   it('renders a bare panel without heading or bottom section', () => {
     const html = renderToStaticMarkup(<GuidedPanel>content</GuidedPanel>);
     expect(html).not.toContain('guided-panel-bottom');

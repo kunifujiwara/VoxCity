@@ -16,6 +16,7 @@ interface ChoiceGroupProps<T extends string> {
   ariaLabel: string;
   columns?: 1 | 2 | 3;
   className?: string;
+  variant?: 'cards' | 'checks';
 }
 
 export function ChoiceGroup<T extends string>({
@@ -25,7 +26,42 @@ export function ChoiceGroup<T extends string>({
   ariaLabel,
   columns = 2,
   className,
+  variant = 'cards',
 }: ChoiceGroupProps<T>) {
+  if (variant === 'checks') {
+    return (
+      <div
+        className={`choice-group-checks choice-group-checks-${columns}${className ? ` ${className}` : ''}`}
+        role="radiogroup"
+        aria-label={ariaLabel}
+      >
+        {options.map((option) => {
+          const active = value === option.id;
+          return (
+            <label
+              key={option.id}
+              className={`choice-check-row${active ? ' active' : ''}${option.tone === 'danger' ? ' danger' : ''}${option.disabled ? ' disabled' : ''}`}
+            >
+              <input
+                type="radio"
+                checked={active}
+                disabled={option.disabled}
+                onChange={() => onChange(option.id)}
+              />
+              <span className="choice-check-content">
+                <span className="choice-check-main">
+                  <span>{option.label}</span>
+                  {option.count && <span className="choice-check-count">{option.count}</span>}
+                </span>
+                {option.description && <span className="choice-check-description">{option.description}</span>}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`choice-group choice-group-${columns}${className ? ` ${className}` : ''}`}

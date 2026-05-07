@@ -293,6 +293,68 @@ input:focus, select:focus {
   color: #1F2937;
 }
 
+.choice-group-checks {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.choice-group-checks-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice-group-checks-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choice-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  color: var(--vc-primary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.choice-check-row input {
+  flex: 0 0 auto;
+  margin-top: 0.14rem;
+}
+
+.choice-check-row.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.choice-check-row.danger {
+  color: var(--vc-danger);
+}
+
+.choice-check-content {
+  display: grid;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.choice-check-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.choice-check-count,
+.choice-check-description {
+  color: var(--vc-muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 560px) {
+  .choice-group-checks-2,
+  .choice-group-checks-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Expander / collapsible ───────────────────────── */
 .expander {
   border: 1px solid var(--vc-ring);
@@ -626,66 +688,16 @@ input:focus, select:focus {
   border-radius: 5px;
 }
 
-.guided-target-list,
-.guided-task-list,
-.guided-method-grid {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.guided-task-list,
-.guided-method-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.guided-target-btn,
-.guided-segment-btn {
-  border: 1px solid var(--vc-ring);
-  background: #fff;
-  color: var(--vc-primary);
-  border-radius: 8px;
-  padding: 0.45rem 0.55rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.guided-target-btn {
+.pending-edit-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  text-align: left;
+  gap: 0.45rem;
 }
 
-.guided-target-btn:hover,
-.guided-segment-btn:hover {
-  border-color: rgba(102, 102, 255, 0.35);
-  background: var(--vc-accent-soft);
-}
+.pending-edit-actions .btn { flex: 1; }
 
-.guided-target-btn.active,
-.guided-segment-btn.active {
-  border-color: var(--vc-accent);
-  background: var(--vc-accent);
-  color: #fff;
-}
-
-.guided-segment-btn.danger {
-  color: var(--vc-danger);
-}
-
-.guided-segment-btn.danger.active {
-  border-color: var(--vc-danger);
-  background: var(--vc-danger);
-  color: #fff;
-}
-
-.guided-target-count {
-  color: inherit;
-  opacity: 0.75;
-  font-size: 0.74rem;
-}
+.btn-secondary.danger { color: var(--vc-danger); border-color: rgba(239, 68, 68, 0.45); }
+.btn-secondary.danger:hover { background: #FEF2F2; }
 
 .guided-tool-details {
   border-top: 1px solid var(--vc-ring);
@@ -734,6 +746,7 @@ input:focus, select:focus {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  min-height: 2.4rem;
   margin-bottom: 0.75rem;
   position: relative;
   z-index: 1200;

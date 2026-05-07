@@ -414,6 +414,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       >
         <GuidedSection label="Zone type">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Zone type"
             value={zoneType}
             onChange={(next) => setZoneType(next)}
@@ -426,6 +427,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         {zoneType === 'horizontal' && (
           <GuidedSection label="Shape">
             <ChoiceGroup
+              variant="checks"
               ariaLabel="Zone shape"
               value={shape}
               onChange={setShape}
@@ -646,9 +648,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
         <div className="plan-panel-header">
           <div>
             <h2>2D zone editor</h2>
-            <div className="plan-overlay-summary">
-              {backdrop === 'buildings' ? 'Buildings overlay' : backdrop === 'canopy' ? 'Canopy overlay' : backdrop === 'land_cover' ? 'Land cover overlay' : 'No overlay'}
-            </div>
           </div>
           <details className="display-menu" ref={displayMenuRef}>
             <summary>Display</summary>
@@ -691,7 +690,9 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
       {/* Right: 3D viewer */}
       <div className="panel visual-panel">
-        <h2>3D preview</h2>
+        <div className="plan-panel-header">
+          <h2>3D preview</h2>
+        </div>
         <div className="visual-frame">
           {hasModel ? (
             <SceneViewer

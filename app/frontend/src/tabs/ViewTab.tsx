@@ -140,6 +140,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
       >
         <GuidedSection label="View type">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="View type"
             value={viewType}
             onChange={setViewType}
@@ -154,16 +155,16 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
 
         {viewType === 'custom' && (
           <GuidedSection label="Custom classes">
-            <div className="radio-group" style={{ marginBottom: '0.5rem' }}>
-              <label>
-                <input type="radio" checked={inclusionMode} onChange={() => setInclusionMode(true)} />
-                Inclusion
-              </label>
-              <label>
-                <input type="radio" checked={!inclusionMode} onChange={() => setInclusionMode(false)} />
-                Exclusion
-              </label>
-            </div>
+            <ChoiceGroup
+              variant="checks"
+              ariaLabel="Custom class mode"
+              value={inclusionMode ? 'include' : 'exclude'}
+              onChange={(next) => setInclusionMode(next === 'include')}
+              options={[
+                { id: 'include', label: 'Inclusion' },
+                { id: 'exclude', label: 'Exclusion' },
+              ]}
+            />
             <div style={{ maxHeight: 160, overflowY: 'auto' }}>
               {CUSTOM_CLASSES.map((cls) => (
                 <div className="checkbox-row" key={cls.id}>
@@ -181,6 +182,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
 
         <GuidedSection label="Sampling">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Analysis target"
             value={analysisTarget}
             onChange={setAnalysisTarget}

@@ -75,6 +75,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
       >
         <GuidedSection label="Define area by">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Target area input method"
             value={areaMethod}
             onChange={setAreaMethod}
@@ -101,6 +102,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
 
             <GuidedSection label="Drawing mode">
               <ChoiceGroup
+                variant="checks"
                 ariaLabel="Target area drawing mode"
                 value={selectionMode}
                 onChange={setSelectionMode}

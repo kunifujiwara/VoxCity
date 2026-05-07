@@ -266,6 +266,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
       >
         <GuidedSection label="Analysis target">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Analysis target"
             value={analysisTarget}
             onChange={setAnalysisTarget}

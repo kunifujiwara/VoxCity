@@ -18,6 +18,7 @@ import {
   LandCoverClass,
   PendingEditDto,
 } from '../api';
+import { ChoiceGroup } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import PlanMapEditor, {
   Backdrop,
@@ -39,7 +40,6 @@ import {
   interactionForWorkflow,
   methodOptionsForTask,
   normalizeWorkflow,
-  overlayLabel,
   taskOptionsForTarget,
   TARGET_OPTIONS,
   type EditMethod,
@@ -57,21 +57,6 @@ interface EditTabProps {
   onModelEdited?: () => void;
 }
 
-const SegmentedButton: React.FC<{
-  active: boolean;
-  label: string;
-  tone?: 'danger';
-  onClick: () => void;
-}> = ({ active, label, tone, onClick }) => (
-  <button
-    className={`guided-segment-btn${active ? ' active' : ''}${tone === 'danger' ? ' danger' : ''}`}
-    onClick={onClick}
-    type="button"
-  >
-    {label}
-  </button>
-);
-
 interface MethodSelectorProps {
   target: import('./editWorkflow').EditTarget;
   task: import('./editWorkflow').EditTask;
@@ -82,17 +67,13 @@ interface MethodSelectorProps {
 const MethodSelector: React.FC<MethodSelectorProps> = ({ target, task, method, onMethodChange }) => (
   <div className="form-group">
     <div className="guided-section-label">Method</div>
-    <div className="guided-method-grid">
-      {methodOptionsForTask(target, task).map((methodOption) => (
-        <SegmentedButton
-          key={methodOption.id}
-          active={method === methodOption.id}
-          label={methodOption.label}
-          tone={methodOption.tone}
-          onClick={() => onMethodChange(methodOption.id)}
-        />
-      ))}
-    </div>
+    <ChoiceGroup
+      variant="checks"
+      ariaLabel="Edit method"
+      value={method}
+      onChange={onMethodChange}
+      options={methodOptionsForTask(target, task)}
+    />
   </div>
 );
 
@@ -565,38 +546,32 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
           <div className="guided-section">
             <div className="guided-section-label">Target</div>
-            <div className="guided-target-list">
-              {TARGET_OPTIONS.map((targetOption) => (
-                <button
-                  key={targetOption.id}
-                  type="button"
-                  className={`guided-target-btn ${mode === targetOption.id ? 'active' : ''}`}
-                  onClick={() => setTarget(targetOption.id)}
-                >
-                  <span>{targetOption.label}</span>
-                  <span className="guided-target-count">
-                    {(() => { const n = taskOptionsForTarget(targetOption.id).length; return `${n} task${n === 1 ? '' : 's'}`; })()}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <ChoiceGroup
+              variant="checks"
+              ariaLabel="Edit target"
+              value={mode}
+              onChange={setTarget}
+              options={TARGET_OPTIONS.map((targetOption) => {
+                const taskCount = taskOptionsForTarget(targetOption.id).length;
+                return {
+                  ...targetOption,
+                  count: `${taskCount} task${taskCount === 1 ? '' : 's'}`,
+                };
+              })}
+            />
           </div>
 
           <div className="guided-section">
             <div className="guided-section-label">
               {mode === 'building' ? 'Building workflow' : mode === 'tree' ? 'Tree workflow' : 'Land cover workflow'}
             </div>
-            <div className="guided-task-list">
-              {taskOptionsForTarget(mode).map((taskOption) => (
-                <SegmentedButton
-                  key={taskOption.id}
-                  active={workflow.task === taskOption.id}
-                  label={taskOption.label}
-                  tone={taskOption.tone}
-                  onClick={() => setTask(taskOption.id)}
-                />
-              ))}
-            </div>
+            <ChoiceGroup
+              variant="checks"
+              ariaLabel="Edit workflow"
+              value={workflow.task}
+              onChange={setTask}
+              options={taskOptionsForTarget(mode)}
+            />
           </div>
 
           {mode === 'building' && workflow.task === 'add' && (
@@ -759,9 +734,9 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             <span>Pending edits</span>
             <strong>{pendingEdits.length}</strong>
           </div>
-          <div className="guided-method-grid">
+          <div className="pending-edit-actions">
             <button
-              className="guided-segment-btn"
+              className="btn btn-secondary btn-sm"
               onClick={handleUndoLast}
               disabled={pendingEdits.length === 0 || committing}
               title="Discard the most recent buffered edit"
@@ -770,7 +745,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
               Undo last
             </button>
             <button
-              className="guided-segment-btn danger"
+              className="btn btn-secondary btn-sm danger"
               onClick={handleClearEdits}
               disabled={pendingEdits.length === 0 || committing}
               title="Discard all buffered edits"
@@ -803,7 +778,6 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
         <div className="plan-panel-header">
           <div>
             <h2>2D plan editor</h2>
-            <div className="plan-overlay-summary">{overlayLabel(backdrop)}</div>
           </div>
           <details className="display-menu" ref={displayMenuRef}>
             <summary>Display</summary>
@@ -861,7 +835,9 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
       {/* 3D viewer */}
       <div className="panel visual-panel">
-        <h2>3D result</h2>
+        <div className="plan-panel-header">
+          <h2>3D result</h2>
+        </div>
         <div className="visual-frame">
           {figureJson ? (
             <ThreeViewer figureJson={figureJson} />

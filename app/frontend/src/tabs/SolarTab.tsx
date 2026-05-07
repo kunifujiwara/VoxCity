@@ -139,23 +139,15 @@ const SolarTab: React.FC<SolarTabProps> = ({
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Core setup">
+        <GuidedSection label="Temporal Type">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Calculation type"
             value={calcType}
             onChange={setCalcType}
             options={[
               { id: 'instantaneous', label: 'Instantaneous' },
               { id: 'cumulative', label: 'Cumulative' },
-            ]}
-          />
-          <ChoiceGroup
-            ariaLabel="Analysis target"
-            value={analysisTarget}
-            onChange={setAnalysisTarget}
-            options={[
-              { id: 'ground', label: 'Ground level' },
-              { id: 'building', label: 'Building surfaces' },
             ]}
           />
           {calcType === 'instantaneous' ? (
@@ -181,6 +173,19 @@ const SolarTab: React.FC<SolarTabProps> = ({
               </div>
             </>
           )}
+        </GuidedSection>
+
+        <GuidedSection label="Spatial Type">
+          <ChoiceGroup
+            variant="checks"
+            ariaLabel="Analysis target"
+            value={analysisTarget}
+            onChange={setAnalysisTarget}
+            options={[
+              { id: 'ground', label: 'Ground level' },
+              { id: 'building', label: 'Building surfaces' },
+            ]}
+          />
         </GuidedSection>
 
         <GuidedSection label="Display">
