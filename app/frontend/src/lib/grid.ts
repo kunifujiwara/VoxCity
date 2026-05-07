@@ -222,6 +222,138 @@ export function buildingsInPolygon(
   return ids;
 }
 
+const GEOM_EPS = 1e-10;
+const ORIENTATION_EPS_FACTOR = 128 * Number.EPSILON;
+
+function segmentEps(a: [number, number], b: [number, number], c?: [number, number], d?: [number, number]): number {
+  const coords = c && d ? [a, b, c, d] : [a, b];
+  let scale = 0;
+  for (let i = 0; i < coords.length; i++) {
+    for (let j = i + 1; j < coords.length; j++) {
+      scale = Math.max(
+        scale,
+        Math.abs(coords[i][0] - coords[j][0]),
+        Math.abs(coords[i][1] - coords[j][1]),
+      );
+    }
+  }
+  scale = Math.max(scale, 1e-12);
+  return ORIENTATION_EPS_FACTOR * scale * scale;
+}
+
+function normalisedRing(ring: [number, number][]): [number, number][] {
+  if (ring.length < 2) return ring.slice();
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (Math.abs(first[0] - last[0]) <= GEOM_EPS && Math.abs(first[1] - last[1]) <= GEOM_EPS) {
+    return ring.slice(0, -1);
+  }
+  return ring.slice();
+}
+
+function pointOnSegment(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): boolean {
+  const cross = (p[1] - a[1]) * (b[0] - a[0]) - (p[0] - a[0]) * (b[1] - a[1]);
+  const eps = segmentEps(a, b);
+  if (Math.abs(cross) > eps) return false;
+  const dot = (p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1]);
+  if (dot < -eps) return false;
+  const lenSq = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+  return dot <= lenSq + eps;
+}
+
+function pointInRingInclusive(
+  lon: number,
+  lat: number,
+  ring: [number, number][],
+): boolean {
+  const vertices = normalisedRing(ring);
+  if (vertices.length < 3) return false;
+  const p: [number, number] = [lon, lat];
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    if (pointOnSegment(p, a, b)) return true;
+  }
+  return pointInRing(lon, lat, vertices);
+}
+
+function orientation(a: [number, number], b: [number, number], c: [number, number]): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function segmentsProperlyIntersect(
+  a1: [number, number],
+  a2: [number, number],
+  b1: [number, number],
+  b2: [number, number],
+): boolean {
+  const eps = segmentEps(a1, a2, b1, b2);
+  const sign = (value: number): number => {
+    if (Math.abs(value) <= eps) return 0;
+    return value > 0 ? 1 : -1;
+  };
+  const o1 = orientation(a1, a2, b1);
+  const o2 = orientation(a1, a2, b2);
+  const o3 = orientation(b1, b2, a1);
+  const o4 = orientation(b1, b2, a2);
+  return sign(o1) * sign(o2) < 0 && sign(o3) * sign(o4) < 0;
+}
+
+function ringFullyContainedInRing(
+  subject: [number, number][],
+  container: [number, number][],
+): boolean {
+  const subjectRing = normalisedRing(subject);
+  const containerRing = normalisedRing(container);
+  if (subjectRing.length < 3 || containerRing.length < 3) return false;
+
+  for (const [lon, lat] of subjectRing) {
+    if (!pointInRingInclusive(lon, lat, containerRing)) return false;
+  }
+
+  for (let i = 0; i < subjectRing.length; i++) {
+    const a = subjectRing[i];
+    const b = subjectRing[(i + 1) % subjectRing.length];
+    const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (!pointInRingInclusive(mid[0], mid[1], containerRing)) return false;
+    for (let j = 0; j < containerRing.length; j++) {
+      const c = containerRing[j];
+      const d = containerRing[(j + 1) % containerRing.length];
+      if (segmentsProperlyIntersect(a, b, c, d)) return false;
+    }
+  }
+  return true;
+}
+
+export function buildingsFullyContainedInPolygon(
+  buildingFc: any,
+  ring: [number, number][],
+): number[] {
+  if (!buildingFc?.features?.length || ring.length < 3) return [];
+  const ids: number[] = [];
+  for (const feat of buildingFc.features) {
+    const id = feat?.properties?.idx;
+    if (id == null) continue;
+    const geom = feat?.geometry;
+    if (!geom) continue;
+    const polys: [number, number][][] =
+      geom.type === 'Polygon'
+        ? [geom.coordinates[0]]
+        : geom.type === 'MultiPolygon'
+        ? geom.coordinates.map((p: any) => p[0])
+        : [];
+    if (polys.length === 0) continue;
+    if (polys.every((outer) => ringFullyContainedInRing(outer, ring))) {
+      ids.push(Number(id));
+    }
+  }
+  return ids;
+}
+
 /**
  * Convert a list of (i, j) cells into per-cell lon/lat quadrilateral rings,
  * suitable for rendering pending edits as a Leaflet overlay.

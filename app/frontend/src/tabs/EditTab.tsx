@@ -26,7 +26,11 @@ import PlanMapEditor, {
   MapInteraction,
   PendingEdit,
 } from '../components/PlanMapEditor';
-import { polygonToCells, buildingsInPolygon } from '../lib/grid';
+import { polygonToCells, buildingsInPolygon, buildingsFullyContainedInPolygon } from '../lib/grid';
+import {
+  pendingBuildingHeightOverrides,
+  validateBuildingHeightInput,
+} from '../lib/buildingHeightEdits';
 
 interface EditTabProps {
   hasModel: boolean;
@@ -39,7 +43,7 @@ interface EditTabProps {
 
 type EditMode = 'building' | 'tree' | 'land_cover';
 
-type BuildingAction = 'add_rect' | 'add_polygon' | 'remove_click' | 'remove_area';
+type BuildingAction = 'add_rect' | 'add_polygon' | 'remove_click' | 'remove_area' | 'set_height_click' | 'set_height_area';
 type TreeAction = 'add_click' | 'add_area' | 'remove_click' | 'remove_area';
 type LandCoverAction = 'paint_click' | 'paint_area';
 type ModeAction = BuildingAction | TreeAction | LandCoverAction;
@@ -77,10 +81,12 @@ function drawColorFor(mode: EditMode): DrawColor {
 function interactionFor(mode: EditMode, action: ModeAction): MapInteraction {
   if (mode === 'building') {
     switch (action as BuildingAction) {
-      case 'add_rect':     return 'draw_rect_3pt';
-      case 'add_polygon':  return 'draw_polygon';
-      case 'remove_click': return 'click_feature';
-      case 'remove_area':  return 'draw_polygon';
+      case 'add_rect':        return 'draw_rect_3pt';
+      case 'add_polygon':     return 'draw_polygon';
+      case 'remove_click':    return 'click_feature';
+      case 'remove_area':     return 'draw_polygon';
+      case 'set_height_click': return 'click_feature';
+      case 'set_height_area':  return 'draw_polygon';
     }
   }
   if (mode === 'tree') {
@@ -111,6 +117,13 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
   const [buildingHeight, setBuildingHeight] = useState(15);
   const [buildingMinHeight, setBuildingMinHeight] = useState(0);
+
+  // Building height edit state
+  const [selectedBuildingIds, setSelectedBuildingIds] = useState<number[]>([]);
+  const [heightEditValue, setHeightEditValue] = useState('10');
+  const [heightEditMinValue, setHeightEditMinValue] = useState('0');
+  const [useMinHeightEdit, setUseMinHeightEdit] = useState(false);
+  const [showBuildingHeightLabels, setShowBuildingHeightLabels] = useState(true);
   // Tree shape defaults mirror voxcity.geoprocessor.draw.edit_tree:
   //   top=10 m, bottom (trunk)=4 m, crown diameter=6 m, fixed proportion ON.
   const [treeTop, setTreeTop] = useState(10);
@@ -211,12 +224,18 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
   useEffect(() => {
     setError(null);
     setInfo(null);
+    setSelectedBuildingIds([]);
   }, [action]);
 
   const interaction = useMemo(() => interactionFor(mode, action), [mode, action]);
   const drawColor = drawColorFor(mode);
 
   const editableClasses = useMemo(() => classes.filter((c) => c.editable), [classes]);
+
+  const pendingBuildingHeightsMap = useMemo(
+    () => pendingBuildingHeightOverrides(pendingEdits),
+    [pendingEdits],
+  );
 
   const meshsize = geo?.meshsize_m || 1;
   const treeBrushRadius = useMemo(() => {
@@ -335,11 +354,17 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
   );
 
   const handlePickBuilding = useCallback((bid: number) => {
-    if (mode !== 'building' || action !== 'remove_click') return;
-    addPending(
-      { kind: 'delete_building', building_id: bid },
-      `Buffered: delete building #${bid}.`,
-    );
+    if (mode !== 'building') return;
+    if (action === 'remove_click') {
+      addPending(
+        { kind: 'delete_building', building_id: bid },
+        `Buffered: delete building #${bid}.`,
+      );
+    } else if (action === 'set_height_click') {
+      setSelectedBuildingIds((prev) =>
+        prev.includes(bid) ? prev.filter((id) => id !== bid) : [...prev, bid],
+      );
+    }
   }, [mode, action, addPending]);
 
   const handlePolygonComplete = useCallback(
@@ -367,6 +392,12 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             ...ids.map<PendingEdit>((bid) => ({ kind: 'delete_building', building_id: bid })),
           ]);
           setInfo(`Buffered: delete ${ids.length} building(s).`);
+          setError(null);
+        } else if (mode === 'building' && action === 'set_height_area') {
+          const ids = buildingsFullyContainedInPolygon(geo.building_geojson, ring);
+          if (ids.length === 0) throw new Error('No buildings fully inside the polygon.');
+          setSelectedBuildingIds(ids);
+          setInfo(`Selected ${ids.length} building(s) for height edit.`);
           setError(null);
         } else if (mode === 'tree' && action === 'add_area') {
           const cells = polygonCells(ring);
@@ -400,6 +431,27 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     [mode, action, geo, buildingHeight, buildingMinHeight, treeTop, treeBottom, classIndex, editableClasses, addPending],
   );
 
+  const handleApplyHeightEdit = useCallback(() => {
+    if (selectedBuildingIds.length === 0) return;
+    const heightNum = parseFloat(heightEditValue);
+    const minNum = useMinHeightEdit ? parseFloat(heightEditMinValue) : 0;
+    const validated = validateBuildingHeightInput(heightNum, useMinHeightEdit, minNum);
+    if (!validated.ok) {
+      setError(validated.error);
+      return;
+    }
+    addPending(
+      {
+        kind: 'set_building_height',
+        building_ids: selectedBuildingIds,
+        height_m: validated.height,
+        ...(validated.minHeight != null ? { min_height_m: validated.minHeight } : {}),
+      },
+      `Buffered: set height to ${validated.height} m for ${selectedBuildingIds.length} building(s).`,
+    );
+    setSelectedBuildingIds([]);
+  }, [selectedBuildingIds, heightEditValue, useMinHeightEdit, heightEditMinValue, addPending]);
+
   /* ── Buffer management ─────────────────────────────────── */
   const handleUndoLast = useCallback(() => {
     setPendingEdits((p) => p.slice(0, -1));
@@ -429,6 +481,13 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             };
           case 'delete_building':
             return { kind: 'delete_building', building_ids: [e.building_id] };
+          case 'set_building_height':
+            return {
+              kind: 'set_building_height',
+              building_ids: e.building_ids,
+              height_m: e.height_m,
+              ...(e.min_height_m != null ? { min_height_m: e.min_height_m } : {}),
+            };
           case 'add_trees':
             return {
               kind: 'add_trees',
@@ -517,6 +576,17 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
         {mode === 'building' && (
           <>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={showBuildingHeightLabels}
+                  onChange={(e) => setShowBuildingHeightLabels(e.target.checked)}
+                />
+                Show height labels
+              </label>
+            </div>
+
             <div className="mode-section">
               <h3>Add</h3>
               <div className="draw-toolbar">
@@ -548,6 +618,65 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                   ? 'Draw a polygon to delete every building inside.'
                   : 'Switch to a Remove tool above.'}
               </div>
+            </div>
+
+            <div className="mode-section">
+              <h3>Set Height</h3>
+              <div className="draw-toolbar">
+                <ActionBtn id="set_height_click" label="Click" />
+                <ActionBtn id="set_height_area"  label="Area" />
+              </div>
+              <div style={{ color: 'var(--vc-muted)', fontSize: '0.8rem', marginBottom: '0.4rem' }}>
+                {action === 'set_height_click'
+                  ? 'Click buildings to select/deselect.'
+                  : action === 'set_height_area'
+                  ? 'Draw a polygon to select fully-contained buildings.'
+                  : 'Switch to a Set Height tool above.'}
+              </div>
+              {selectedBuildingIds.length > 0 && (
+                <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--vc-text)' }}>
+                  {selectedBuildingIds.length} building(s) selected
+                </div>
+              )}
+              <div className="form-group">
+                <label>Top height (m)</label>
+                <input
+                  type="number"
+                  min={0.1}
+                  step={0.5}
+                  value={heightEditValue}
+                  onChange={(e) => setHeightEditValue(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={useMinHeightEdit}
+                    onChange={(e) => setUseMinHeightEdit(e.target.checked)}
+                  />
+                  Set min height (m)
+                </label>
+              </div>
+              {useMinHeightEdit && (
+                <div className="form-group">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={heightEditMinValue}
+                    onChange={(e) => setHeightEditMinValue(e.target.value)}
+                  />
+                </div>
+              )}
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: '0.25rem', width: '100%' }}
+                onClick={handleApplyHeightEdit}
+                disabled={selectedBuildingIds.length === 0}
+              >
+                Apply to {selectedBuildingIds.length || 0} building(s)
+              </button>
             </div>
           </>
         )}
@@ -674,6 +803,9 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             basemap={basemap}
             drawColor={drawColor}
             pendingEdits={pendingEdits}
+            showBuildingHeightLabels={showBuildingHeightLabels && backdrop === 'buildings'}
+            selectedBuildingIds={selectedBuildingIds}
+            pendingBuildingHeights={pendingBuildingHeightsMap}
             onPointClick={handlePointClick}
             onPickBuilding={handlePickBuilding}
             onPolygonComplete={handlePolygonComplete}

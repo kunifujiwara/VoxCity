@@ -355,6 +355,7 @@ export async function listLandCoverClasses() {
 export type PendingEditDto =
   | { kind: 'add_building';   cells: [number, number][]; height_m: number; min_height_m: number; ring?: [number, number][] }
   | { kind: 'delete_building'; building_ids: number[] }
+  | { kind: 'set_building_height'; building_ids: number[]; height_m: number; min_height_m?: number }
   | { kind: 'add_trees';      cells: [number, number][]; height_m: number; bottom_m: number; tops?: number[]; bottoms?: number[] }
   | { kind: 'delete_trees';   cells: [number, number][] }
   | { kind: 'paint_lc';       cells: [number, number][]; class_index: number };

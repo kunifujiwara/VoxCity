@@ -185,7 +185,8 @@ def build_building_geojson(
     ----------
     building_gdf : GeoDataFrame or None
     include_height : bool
-        If *True*, each feature's properties will contain ``idx`` and ``height``.
+        If *True*, each feature's properties will contain ``idx``, ``height``,
+        ``min_height``, and ``height_estimated``.
     """
     features: list[dict] = []
     if building_gdf is None or len(building_gdf) == 0:
@@ -199,8 +200,19 @@ def build_building_geojson(
             if include_height:
                 h = row.get("height", 0)
                 h = 0.0 if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
+                try:
+                    min_height = float(row.get("min_height", 0.0))
+                except (TypeError, ValueError):
+                    min_height = 0.0
+                if not math.isfinite(min_height):
+                    min_height = 0.0
                 estimated = bool(row.get("height_estimated", False))
-                props = {"idx": int(idx), "height": h, "height_estimated": estimated}
+                props = {
+                    "idx": int(idx),
+                    "height": h,
+                    "min_height": min_height,
+                    "height_estimated": estimated,
+                }
             features.append({
                 "type": "Feature",
                 "id": str(idx),

@@ -1,9 +1,12 @@
 """Regression tests for voxcity.geoprocessor.draw._common helpers."""
+import geopandas as gpd
+import numpy as np
 import pytest
+from shapely.geometry import Polygon
 
 from voxcity.geoprocessor.raster.core import compute_grid_geometry
 from voxcity.utils.projector import GridProjector
-from voxcity.geoprocessor.draw._common import geo_to_cell
+from voxcity.geoprocessor.draw._common import build_building_geojson, geo_to_cell
 
 
 # Axis-aligned ~4 km × 4 km rectangle in Tokyo, vertex order SW/NW/NE/SE.
@@ -52,3 +55,60 @@ class TestGeoToCell:
         lon, lat = 0.0, 0.0
         shape = grid_geom["grid_size"]
         assert geo_to_cell(lon, lat, grid_geom, shape) == (None, None)
+
+
+class TestBuildBuildingGeojson:
+    def test_includes_min_height_when_present(self):
+        gdf = gpd.GeoDataFrame(
+            [{
+                "geometry": Polygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+                "height": 18.5,
+                "min_height": 3.0,
+                "height_estimated": False,
+            }],
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+
+        fc = build_building_geojson(gdf, include_height=True)
+
+        props = fc["features"][0]["properties"]
+        assert props["height"] == 18.5
+        assert props["min_height"] == 3.0
+
+    def test_defaults_min_height_to_zero_for_missing_values(self):
+        gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "geometry": Polygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+                    "height": 12.0,
+                    "min_height": np.nan,
+                },
+                {
+                    "geometry": Polygon([(2, 0), (3, 0), (3, 1), (2, 1)]),
+                    "height": 16.0,
+                    "min_height": 1.5,
+                },
+            ],
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+
+        fc = build_building_geojson(gdf, include_height=True)
+
+        assert fc["features"][0]["properties"]["min_height"] == 0.0
+        assert fc["features"][1]["properties"]["min_height"] == 1.5
+
+    def test_defaults_min_height_to_zero_when_column_absent(self):
+        gdf = gpd.GeoDataFrame(
+            [{
+                "geometry": Polygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+                "height": 12.0,
+            }],
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+
+        fc = build_building_geojson(gdf, include_height=True)
+
+        assert fc["features"][0]["properties"]["min_height"] == 0.0

@@ -2136,6 +2136,119 @@ def _apply_add_building(
     return {"n_changed": int(mask_n.sum()), "building_id": new_id}
 
 
+def _frontend_building_ids_to_source_ids(gdf, building_ids: List[int]) -> set[int]:
+    frontend_ids: list[int] = []
+    for value in building_ids:
+        try:
+            frontend_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not frontend_ids:
+        return set()
+
+    if gdf is not None and "id" in getattr(gdf, "columns", []) and len(gdf) > 0:
+        df_idx_to_id: dict[int, int] = {}
+        for df_idx, id_val in zip(gdf.index.tolist(), gdf["id"].tolist()):
+            try:
+                df_idx_to_id[int(df_idx)] = int(id_val)
+            except (TypeError, ValueError):
+                continue
+        return {df_idx_to_id[idx] for idx in frontend_ids if idx in df_idx_to_id and df_idx_to_id[idx] > 0}
+
+    return {idx for idx in frontend_ids if idx > 0}
+
+
+def _normalise_min_height_pairs(value) -> list[list[float]]:
+    pairs: list[list[float]] = []
+    if value is None:
+        return pairs
+    try:
+        iterator = iter(value)
+    except TypeError:
+        return pairs
+    for pair in iterator:
+        try:
+            min_height = float(pair[0])
+            max_height = float(pair[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if math.isfinite(min_height) and math.isfinite(max_height):
+            pairs.append([min_height, max_height])
+    return pairs
+
+
+def _updated_height_segments(
+    existing_pairs,
+    previous_height: float,
+    height_m: float,
+    min_height_m: Optional[float],
+) -> list[list[float]]:
+    pairs = _normalise_min_height_pairs(existing_pairs)
+    updated: list[list[float]] = []
+    matched = False
+    fallback_min: Optional[float] = None
+    for min_height, max_height in pairs:
+        if fallback_min is None:
+            fallback_min = min_height
+        if np.isclose(max_height, previous_height):
+            matched = True
+            updated.append([
+                float(min_height_m) if min_height_m is not None else min_height,
+                float(height_m),
+            ])
+        else:
+            updated.append([min_height, max_height])
+    if matched:
+        return updated
+    if min_height_m is not None:
+        fallback_min = float(min_height_m)
+    elif fallback_min is None:
+        fallback_min = 0.0
+    return [[float(fallback_min), float(height_m)]]
+
+
+def _apply_set_building_height(
+    vc,
+    building_ids: List[int],
+    height_m: float,
+    min_height_m: Optional[float] = None,
+) -> dict:
+    bld = vc.buildings
+    gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
+    source_ids = _frontend_building_ids_to_source_ids(gdf, building_ids)
+    if not source_ids:
+        return {"n_changed": 0, "n_buildings": 0}
+
+    mask = np.isin(bld.ids, list(source_ids))
+    if not mask.any():
+        return {"n_changed": 0, "n_buildings": 0}
+
+    previous_heights = np.asarray(bld.heights).copy()
+    bld.heights[mask] = float(height_m)
+    if bld.min_heights is not None:
+        for row, col in np.argwhere(mask):
+            bld.min_heights[int(row), int(col)] = _updated_height_segments(
+                bld.min_heights[int(row), int(col)],
+                float(previous_heights[int(row), int(col)]),
+                float(height_m),
+                min_height_m,
+            )
+
+    if gdf is not None and "id" in getattr(gdf, "columns", []):
+        try:
+            rows = gdf["id"].isin(source_ids)
+            gdf.loc[rows, "height"] = float(height_m)
+            if min_height_m is not None:
+                gdf.loc[rows, "min_height"] = float(min_height_m)
+            if "height_estimated" in getattr(gdf, "columns", []):
+                gdf.loc[rows, "height_estimated"] = False
+            vc.extras["building_gdf"] = gdf
+        except Exception:
+            pass
+
+    return {"n_changed": int(mask.sum()), "n_buildings": int(len(source_ids))}
+
+
 def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
     """Remove the listed buildings from grids + GeoDataFrame.
 
@@ -2151,36 +2264,17 @@ def _apply_delete_buildings(vc, building_ids: List[int]) -> dict:
     bld = vc.buildings
     gdf = vc.extras.get("building_gdf") if isinstance(vc.extras, dict) else None
 
-    # Row positions (0..N-1) coming from the frontend.
+    # Frontend ids are DataFrame index values from build_building_geojson.
     row_positions = [int(i) for i in building_ids]
     if not row_positions:
         n_buildings = int(len(gdf)) if gdf is not None else 0
         return {"n_deleted": 0, "n_buildings": n_buildings}
 
     # Translate DataFrame-index → source id stored in the grid.
-    #
     # build_building_geojson emits `"idx": int(idx)` where `idx` is the
     # *DataFrame index* value from iterrows(), NOT a positional offset into
-    # the list.  When the DataFrame's index is non-contiguous (e.g. after
-    # clipping a large CityGML cache to the user's rectangle) the old
-    # positional lookup `id_values[pos]` silently mapped to the wrong row or
-    # fell outside the list entirely, so nothing was ever deleted in Plateau
-    # mode.  We now build an explicit {df_index → id} map so the lookup is
-    # correct regardless of index shape.
-    delete_set: set[int] = set()
-    if gdf is not None and "id" in getattr(gdf, "columns", []) and len(gdf) > 0:
-        df_idx_to_id: dict[int, int] = {}
-        for df_idx, id_val in zip(gdf.index.tolist(), gdf["id"].tolist()):
-            try:
-                df_idx_to_id[int(df_idx)] = int(id_val)
-            except (TypeError, ValueError):
-                continue
-        for pos in row_positions:
-            if pos in df_idx_to_id:
-                delete_set.add(df_idx_to_id[pos])
-    else:
-        # No id column to translate through – fall back to identity.
-        delete_set = {pos for pos in row_positions if pos > 0}
+    # the list.
+    delete_set = _frontend_building_ids_to_source_ids(gdf, row_positions)
 
     if not delete_set:
         n_buildings = int(len(gdf)) if gdf is not None else 0
@@ -2793,8 +2887,11 @@ async def apply_edits(payload: dict):
 
             if kind == "add_building":
                 cells = _parse_cells(edit)
+                height_raw = edit.get("height_m")
+                if isinstance(height_raw, bool):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
                 try:
-                    height_m = float(edit.get("height_m"))
+                    height_m = float(height_raw)
                 except (TypeError, ValueError):
                     raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
                 if height_m <= 0:
@@ -2824,6 +2921,42 @@ async def apply_edits(payload: dict):
                     raise HTTPException(status_code=400, detail=f"edit #{idx}: building_ids must be integers")
                 r = _apply_delete_buildings(vc, ids_to_delete)
                 n_changed_total += int(r.get("n_deleted", 0))
+
+            elif kind == "set_building_height":
+                ids_raw = edit.get("building_ids")
+                if not isinstance(ids_raw, list) or len(ids_raw) == 0:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: building_ids must be a non-empty list")
+                if any(type(v) is not int for v in ids_raw):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: building_ids must be integers")
+                ids_to_update = [int(v) for v in ids_raw]
+                height_raw = edit.get("height_m")
+                if isinstance(height_raw, bool):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
+                try:
+                    height_m = float(height_raw)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m required")
+                if not math.isfinite(height_m):
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m must be finite")
+                if height_m <= 0:
+                    raise HTTPException(status_code=400, detail=f"edit #{idx}: height_m must be > 0")
+
+                min_height_m: Optional[float] = None
+                if "min_height_m" in edit and edit.get("min_height_m") is not None:
+                    min_height_raw = edit.get("min_height_m")
+                    if isinstance(min_height_raw, bool):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: min_height_m must be a number")
+                    try:
+                        min_height_m = float(min_height_raw)
+                    except (TypeError, ValueError):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: min_height_m must be a number")
+                    if not math.isfinite(min_height_m):
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: min_height_m must be finite")
+                    if min_height_m < 0 or min_height_m >= height_m:
+                        raise HTTPException(status_code=400, detail=f"edit #{idx}: min_height_m must be in [0, height_m)")
+
+                r = _apply_set_building_height(vc, ids_to_update, height_m, min_height_m)
+                n_changed_total += int(r.get("n_changed", 0))
 
             elif kind == "add_trees":
                 cells = _parse_cells(edit)

@@ -31,6 +31,7 @@ import {
   keyToCell,
   type GridGeom,
 } from '../lib/grid';
+import { buildingHeightLabelValue, type BuildingHeightOverride } from '../lib/buildingHeightEdits';
 
 export type MapInteraction =
   | 'none'
@@ -51,6 +52,7 @@ export type DrawColor = 'red' | 'green' | 'blue';
 export type PendingEdit =
   | { kind: 'add_building';   ring: [number, number][]; cells: [number, number][]; height_m: number; min_height_m: number }
   | { kind: 'delete_building'; building_id: number }
+  | { kind: 'set_building_height'; building_ids: number[]; height_m: number; min_height_m?: number }
   | { kind: 'add_trees';      cells: [number, number][]; height_m: number; bottom_m: number; tops?: number[]; bottoms?: number[] }
   | { kind: 'delete_trees';   cells: [number, number][] }
   | { kind: 'paint_lc';       cells: [number, number][]; class_index: number; color: string }
@@ -82,6 +84,12 @@ export interface PlanMapEditorProps {
 
   /** Bumping this value clears any in-progress draw + completed-shape preview. */
   clearDrawNonce?: number;
+  /** Show height labels on building footprints. */
+  showBuildingHeightLabels?: boolean;
+  /** Building feature IDs that are currently selected for height editing. */
+  selectedBuildingIds?: number[];
+  /** Pending height overrides keyed by building idx. */
+  pendingBuildingHeights?: Map<number, BuildingHeightOverride>;
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -164,6 +172,13 @@ const HIGHLIGHTED_BUILDING_STYLE: L.PathOptions = {
   fillOpacity: 0.7,
 };
 
+const SELECTED_BUILDING_STYLE: L.PathOptions = {
+  color: '#1a73e8',
+  weight: 2.5,
+  fillColor: '#4a90e2',
+  fillOpacity: 0.55,
+};
+
 /** Style for buildings that the user has queued for deletion. Drawn with
  *  `stroke: false` and `fillOpacity: 0` so the polygon vanishes from view
  *  in place — no DOM teardown, no GeoJSON re-fetch. */
@@ -216,6 +231,9 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
   onPickBuilding,
   onPolygonComplete,
   clearDrawNonce,
+  showBuildingHeightLabels,
+  selectedBuildingIds,
+  pendingBuildingHeights,
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -232,6 +250,8 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
   const rectPreviewRef = useRef<L.Polygon | null>(null);
   /** Persistent overlay holding all uncommitted pending-edit polygons. */
   const pendingOverlayRef = useRef<L.LayerGroup | null>(null);
+  /** Layer group for building height label markers. */
+  const heightLabelLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Stable refs so map handlers always see the latest props.
   const interactionRef = useRef(interaction);
@@ -258,6 +278,10 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
   pendingDeletedRef.current = pendingDeletedIds;
   const highlightedRef = useRef<Set<number>>(new Set());
   highlightedRef.current = new Set(highlightedBuildingIds ?? []);
+  const selectedRef = useRef<Set<number>>(new Set());
+  selectedRef.current = new Set(selectedBuildingIds ?? []);
+  const pendingBuildingHeightsRef = useRef<Map<number, BuildingHeightOverride>>(new Map());
+  pendingBuildingHeightsRef.current = pendingBuildingHeights ?? new Map();
 
   const grid: GridGeom = useMemo(() => ({
     origin:    geo.grid_geom.origin    as [number, number],
@@ -385,6 +409,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
 
     drawLayerRef.current = L.layerGroup().addTo(map);
     pendingOverlayRef.current = L.layerGroup().addTo(map);
+    heightLabelLayerRef.current = L.layerGroup().addTo(map);
 
     /* ── Click → routes by interaction mode ── */
     const onClick = (ev: L.LeafletMouseEvent) => {
@@ -523,6 +548,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
       drawLayerRef.current = null;
       previewLineRef.current = null;
       pendingOverlayRef.current = null;
+      heightLabelLayerRef.current = null;
     };
     // Build the map once per stable grid geometry; geojson refreshes are
     // handled by the dedicated backdrop effect below so the user's pan/zoom
@@ -558,6 +584,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
             const idn = Number(id);
             if (pendingDeletedRef.current.has(idn)) return HIDDEN_BUILDING_STYLE;
             if (highlightedRef.current.has(idn))   return HIGHLIGHTED_BUILDING_STYLE;
+            if (selectedRef.current.has(idn))       return SELECTED_BUILDING_STYLE;
           }
           return buildingStyle();
         },
@@ -601,7 +628,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
     if (layer) {
       layer.addTo(map);
       backdropLayerRef.current = layer;
-      // Keep pending overlay + in-progress draw on top.
+      // Keep pending overlay + in-progress draw + height labels on top.
       if (pendingOverlayRef.current) {
         map.removeLayer(pendingOverlayRef.current);
         map.addLayer(pendingOverlayRef.current);
@@ -609,6 +636,10 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
       if (drawLayerRef.current) {
         map.removeLayer(drawLayerRef.current);
         map.addLayer(drawLayerRef.current);
+      }
+      if (heightLabelLayerRef.current) {
+        map.removeLayer(heightLabelLayerRef.current);
+        map.addLayer(heightLabelLayerRef.current);
       }
     }
   }, [backdrop, geo, canopyMask, pendingDeletedTreeKeys]);
@@ -623,10 +654,11 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
         const idn = Number(id);
         if (pendingDeletedRef.current.has(idn)) return HIDDEN_BUILDING_STYLE;
         if (highlightedRef.current.has(idn))   return HIGHLIGHTED_BUILDING_STYLE;
+        if (selectedRef.current.has(idn))       return SELECTED_BUILDING_STYLE;
       }
       return buildingStyle();
     });
-  }, [highlightedBuildingIds, pendingDeletedIds, backdrop]);
+  }, [highlightedBuildingIds, selectedBuildingIds, pendingDeletedIds, backdrop]);
 
 
 
@@ -694,10 +726,44 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
           }
           break;
         }
+        case 'set_building_height':
+          // Rendered via building backdrop re-style (selected + pending height refs).
+          break;
         // delete_building is rendered via the buildings backdrop re-style.
       }
     }
   }, [pendingEdits, grid]);
+
+  /* ──────── Building height labels ──────── */
+  useEffect(() => {
+    const layer = heightLabelLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!showBuildingHeightLabels) return;
+    const features = (geo.building_geojson as any)?.features ?? [];
+    for (const feature of features) {
+      const val = buildingHeightLabelValue(feature, pendingBuildingHeightsRef.current);
+      if (!val) continue;
+      const label = val.minHeight > 0
+        ? `${val.height.toFixed(1)} / ${val.minHeight.toFixed(1)} m`
+        : `${val.height.toFixed(1)} m`;
+      const coords = feature.geometry?.coordinates?.[0];
+      if (!coords || coords.length < 3) continue;
+      // Compute centroid of the first ring.
+      let sumLon = 0, sumLat = 0;
+      for (const [lon, lat] of coords) { sumLon += lon; sumLat += lat; }
+      const cx = sumLon / coords.length;
+      const cy = sumLat / coords.length;
+      L.marker([cy, cx], {
+        icon: L.divIcon({
+          className: 'building-height-label',
+          html: label,
+          iconAnchor: [0, 0],
+        }),
+        interactive: false,
+      }).addTo(layer);
+    }
+  }, [showBuildingHeightLabels, geo.building_geojson, pendingBuildingHeights]);
 
   /* ──────── Clear in-progress draw on demand ──────── */
   useEffect(() => {
