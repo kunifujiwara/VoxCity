@@ -524,95 +524,6 @@ input:focus, select:focus {
 }
 
 /* ── Edit tab: mode tabs ──────────────────────────── */
-.mode-tabs {
-  display: flex;
-  gap: 0.25rem;
-  background: var(--vc-bg);
-  border: 1px solid var(--vc-ring);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 0.75rem;
-}
-
-.mode-tab {
-  flex: 1;
-  padding: 0.4rem 0.5rem;
-  border: none;
-  background: transparent;
-  color: var(--vc-muted);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 7px;
-  transition: all 0.15s ease;
-}
-
-.mode-tab:hover { color: var(--vc-primary); }
-
-.mode-tab.active {
-  background: var(--vc-accent);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(102, 102, 255, 0.3);
-}
-
-.mode-section {
-  border-top: 1px solid var(--vc-ring);
-  padding-top: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.mode-section h3 {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vc-muted);
-  margin: 0 0 0.5rem 0;
-}
-
-.draw-toolbar {
-  display: flex;
-  gap: 0.25rem;
-  background: var(--vc-bg);
-  border: 1px solid var(--vc-ring);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 0.6rem;
-}
-
-.draw-toolbar-btn {
-  flex: 1;
-  padding: 0.4rem 0.5rem;
-  border: none;
-  background: transparent;
-  color: var(--vc-muted);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 7px;
-  transition: all 0.15s ease;
-}
-
-.draw-toolbar-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--vc-primary);
-}
-
-.draw-toolbar-btn.active {
-  background: var(--vc-accent);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(102, 102, 255, 0.3);
-}
-
-.draw-toolbar-btn.danger.active {
-  background: var(--vc-danger);
-  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.3);
-}
-
-.draw-toolbar-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .land-cover-swatches {
   display: grid;
@@ -639,6 +550,197 @@ input:focus, select:focus {
   font-size: 0.8rem;
   color: var(--vc-muted);
   margin-top: 0.25rem;
+}
+
+/* ── Edit tab: guided controls ──────────────────────────── */
+.edit-control-panel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.edit-control-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.guided-section {
+  margin-bottom: 0.85rem;
+}
+
+.guided-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--vc-muted);
+  margin-bottom: 0.4rem;
+  letter-spacing: 0;
+}
+
+.guided-target-list,
+.guided-task-list,
+.guided-method-grid {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.guided-task-list,
+.guided-method-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guided-target-btn,
+.guided-segment-btn {
+  border: 1px solid var(--vc-ring);
+  background: #fff;
+  color: var(--vc-primary);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.guided-target-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.guided-target-btn:hover,
+.guided-segment-btn:hover {
+  border-color: rgba(102, 102, 255, 0.35);
+  background: var(--vc-accent-soft);
+}
+
+.guided-target-btn.active,
+.guided-segment-btn.active {
+  border-color: var(--vc-accent);
+  background: var(--vc-accent);
+  color: #fff;
+}
+
+.guided-segment-btn.danger {
+  color: var(--vc-danger);
+}
+
+.guided-segment-btn.danger.active {
+  border-color: var(--vc-danger);
+  background: var(--vc-danger);
+  color: #fff;
+}
+
+.guided-target-count {
+  color: inherit;
+  opacity: 0.75;
+  font-size: 0.74rem;
+}
+
+.guided-tool-details {
+  border-top: 1px solid var(--vc-ring);
+  padding-top: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.guided-tool-details h3 {
+  font-size: 0.86rem;
+  font-weight: 650;
+  margin: 0 0 0.65rem 0;
+}
+
+.guided-tool-hint {
+  color: var(--vc-muted);
+  font-size: 0.8rem;
+  margin-top: 0.45rem;
+}
+
+.guided-feedback-slot {
+  margin-top: 0.85rem;
+}
+
+.pending-edit-footer {
+  border-top: 1px solid var(--vc-ring);
+  padding: 0.85rem 1.25rem 1.1rem;
+  background: var(--vc-surface);
+}
+
+.pending-edit-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--vc-muted);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.pending-update-btn {
+  width: 100%;
+  margin-top: 0.55rem;
+}
+
+.plan-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  position: relative;
+  z-index: 30;
+}
+
+.plan-panel-header h2 {
+  margin-bottom: 0.1rem;
+}
+
+.plan-overlay-summary {
+  font-size: 0.78rem;
+  color: var(--vc-muted);
+}
+
+.display-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.display-menu > summary {
+  list-style: none;
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--vc-primary);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem 0.65rem;
+}
+
+.display-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.display-menu-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  width: min(240px, 70vw);
+  padding: 0.85rem;
+  background: var(--vc-surface);
+  border: 1px solid var(--vc-ring);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--vc-primary);
+  font-size: 0.82rem;
+  cursor: pointer;
 }
 
 /* ── Zoning ─────────────────────────────────────────────── */

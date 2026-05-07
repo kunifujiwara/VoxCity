@@ -779,7 +779,44 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
       {/* 2D editor */}
       <div className="panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <h2>2D plan editor</h2>
+        <div className="plan-panel-header">
+          <div>
+            <h2>2D plan editor</h2>
+            <div className="plan-overlay-summary">{overlayLabel(backdrop)}</div>
+          </div>
+          <details className="display-menu">
+            <summary>Display</summary>
+            <div className="display-menu-popover">
+              <div className="form-group">
+                <label>Basemap</label>
+                <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
+                  <option value="CartoDB Positron">CartoDB Positron</option>
+                  <option value="Google Satellite">Google Satellite</option>
+                  <option value="OpenStreetMap">OpenStreetMap</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Overlay</label>
+                <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
+                  <option value="buildings">Buildings</option>
+                  <option value="canopy">Canopy</option>
+                  <option value="land_cover">Land cover</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              {backdrop === 'buildings' && (
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={showBuildingHeightLabels}
+                    onChange={(e) => setShowBuildingHeightLabels(e.target.checked)}
+                  />
+                  Show height labels
+                </label>
+              )}
+            </div>
+          </details>
+        </div>
         {loading && <div className="alert alert-info">Loading map…</div>}
         {geo && (
           <PlanMapEditor
