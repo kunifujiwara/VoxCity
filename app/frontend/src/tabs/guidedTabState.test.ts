@@ -29,7 +29,7 @@ describe('guided tab action labels', () => {
     expect(targetAreaActionLabel('draw', false)).toBe('Load Map');
     expect(targetAreaActionLabel('draw', true)).toBe('Loading map...');
     expect(targetAreaActionLabel('coordinates', false)).toBe('Set Rectangle');
-    expect(targetAreaActionLabel('coordinates', true)).toBe('Loading map...');
+    expect(targetAreaActionLabel('coordinates', true)).toBe('Set Rectangle');
   });
 
   it('labels generation and simulation actions by loading state', () => {

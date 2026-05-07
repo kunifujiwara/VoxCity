@@ -18,8 +18,8 @@ export function prerequisiteMessageForTab(tab: PrerequisiteTab): { title: string
 }
 
 export function targetAreaActionLabel(method: TargetAreaMethod, loading: boolean) {
-  if (loading) return 'Loading map...';
-  return method === 'coordinates' ? 'Set Rectangle' : 'Load Map';
+  if (method === 'coordinates') return 'Set Rectangle';
+  return loading ? 'Loading map...' : 'Load Map';
 }
 
 export function generationActionLabel(loading: boolean) {
