@@ -744,6 +744,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
     for (const feature of features) {
       const val = buildingHeightLabelValue(feature, pendingBuildingHeightsRef.current);
       if (!val) continue;
+      if (pendingDeletedIds.has(val.buildingId)) continue;
       const label = val.minHeight > 0
         ? `${val.height.toFixed(1)} / ${val.minHeight.toFixed(1)} m`
         : `${val.height.toFixed(1)} m`;
@@ -763,7 +764,7 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
         interactive: false,
       }).addTo(layer);
     }
-  }, [showBuildingHeightLabels, geo.building_geojson, pendingBuildingHeights]);
+  }, [showBuildingHeightLabels, geo.building_geojson, pendingBuildingHeights, pendingDeletedIds]);
 
   /* ──────── Clear in-progress draw on demand ──────── */
   useEffect(() => {

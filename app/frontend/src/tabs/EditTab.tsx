@@ -256,6 +256,15 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     [pendingEdits],
   );
 
+  const visiblePendingEdits = useMemo(() => pendingEdits.filter((e) => {
+    switch (mode) {
+      case 'building': return e.kind === 'add_building' || e.kind === 'delete_building' || e.kind === 'set_building_height';
+      case 'tree':     return e.kind === 'add_trees'    || e.kind === 'delete_trees';
+      case 'land_cover': return e.kind === 'paint_lc';
+      default: return false;
+    }
+  }), [pendingEdits, mode]);
+
   const meshsize = geo?.meshsize_m || 1;
   const treeBrushRadius = useMemo(() => {
     if (!geo) return 0;
@@ -837,7 +846,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             backdrop={backdrop}
             basemap={basemap}
             drawColor={drawColor}
-            pendingEdits={pendingEdits}
+            pendingEdits={visiblePendingEdits}
             showBuildingHeightLabels={showBuildingHeightLabels && backdrop === 'buildings'}
             selectedBuildingIds={selectedBuildingIds}
             pendingBuildingHeights={pendingBuildingHeightsMap}
