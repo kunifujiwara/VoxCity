@@ -17,6 +17,8 @@ import { lonLatToUvM } from '../lib/grid';
 import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
+import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
+import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface SolarTabProps {
   hasModel: boolean;
@@ -75,7 +77,15 @@ const SolarTab: React.FC<SolarTabProps> = ({
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
 
   if (!hasModel) {
-    return <div className="alert alert-warning">Please generate a VoxCity model first in the "Generation" tab.</div>;
+    const message = prerequisiteMessageForTab('solar');
+    return (
+      <div className="two-col">
+        <GuidedStatus tone="warning">
+          <strong>{message.title}</strong><br />
+          {message.body}
+        </GuidedStatus>
+      </div>
+    );
   }
 
   const handleRun = async () => {
@@ -110,86 +120,88 @@ const SolarTab: React.FC<SolarTabProps> = ({
 
   return (
     <div className="two-col">
-      <div className="panel">
-        <h2>Solar Radiation Analysis</h2>
-
-        <div className="form-group">
-          <label>Calculation Type</label>
-          <div className="radio-group">
-            <label>
-              <input type="radio" checked={calcType === 'instantaneous'} onChange={() => setCalcType('instantaneous')} />
-              Instantaneous
-            </label>
-            <label>
-              <input type="radio" checked={calcType === 'cumulative'} onChange={() => setCalcType('cumulative')} />
-              Cumulative
-            </label>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label>Analysis Target</label>
-          <div className="radio-group">
-            <label>
-              <input type="radio" checked={analysisTarget === 'ground'} onChange={() => setAnalysisTarget('ground')} />
-              Ground Level
-            </label>
-            <label>
-              <input type="radio" checked={analysisTarget === 'building'} onChange={() => setAnalysisTarget('building')} />
-              Building Surfaces
-            </label>
-          </div>
-        </div>
-
-        {calcType === 'instantaneous' ? (
-          <div className="form-row">
-            <div>
-              <label>Date (MM-DD)</label>
-              <input type="text" value={calcDate} onChange={(e) => setCalcDate(e.target.value)} />
-            </div>
-            <div>
-              <label>Time (HH:MM:SS)</label>
-              <input type="text" value={calcTime} onChange={(e) => setCalcTime(e.target.value)} />
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="form-group">
-              <label>Start (MM-DD HH:MM:SS)</label>
-              <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>End (MM-DD HH:MM:SS)</label>
-              <input type="text" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </div>
-          </>
+      <GuidedPanel
+        title="Solar Radiation"
+        subtitle="Compute irradiance on ground or building surfaces."
+        status={
+          error ? (
+            <GuidedStatus tone="error">{error}</GuidedStatus>
+          ) : hasSimResult ? (
+            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+          ) : undefined
+        }
+        footer={(
+          <GuidedFooter>
+            <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
+              {loading && <span className="spinner" />}
+              {simulationActionLabel(loading)}
+            </button>
+          </GuidedFooter>
         )}
+      >
+        <GuidedSection label="Core setup">
+          <ChoiceGroup
+            ariaLabel="Calculation type"
+            value={calcType}
+            onChange={setCalcType}
+            options={[
+              { id: 'instantaneous', label: 'Instantaneous' },
+              { id: 'cumulative', label: 'Cumulative' },
+            ]}
+          />
+          <ChoiceGroup
+            ariaLabel="Analysis target"
+            value={analysisTarget}
+            onChange={setAnalysisTarget}
+            options={[
+              { id: 'ground', label: 'Ground level' },
+              { id: 'building', label: 'Building surfaces' },
+            ]}
+          />
+          {calcType === 'instantaneous' ? (
+            <div className="form-row">
+              <div>
+                <label>Date (MM-DD)</label>
+                <input type="text" value={calcDate} onChange={(e) => setCalcDate(e.target.value)} />
+              </div>
+              <div>
+                <label>Time (HH:MM:SS)</label>
+                <input type="text" value={calcTime} onChange={(e) => setCalcTime(e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="form-group">
+                <label>Start (MM-DD HH:MM:SS)</label>
+                <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>End (MM-DD HH:MM:SS)</label>
+                <input type="text" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </div>
+            </>
+          )}
+        </GuidedSection>
 
-        <ColorSettings
-          colormap={colormap}
-          onColormapChange={setColormap}
-          vmin={vmin}
-          onVminChange={setVmin}
-          vmax={vmax}
-          onVmaxChange={(v) => setVmax(String(v))}
-          vmaxAsText
-        />
-
-        <VoxelClassVisibility
-          hiddenClasses={hiddenClasses}
-          onHiddenClassesChange={setHiddenClasses}
-        />
-
-        <button className="btn btn-primary" onClick={handleRun} disabled={loading}>
-          {loading && <span className="spinner" />}
-          {loading ? 'Running...' : 'Run Simulation'}
-        </button>
-
-        {error && <div className="alert alert-error" style={{ marginTop: '0.75rem' }}>{error}</div>}
+        <GuidedSection label="Display">
+          <ColorSettings
+            colormap={colormap}
+            onColormapChange={setColormap}
+            vmin={vmin}
+            onVminChange={setVmin}
+            vmax={vmax}
+            onVmaxChange={(v) => setVmax(String(v))}
+            vmaxAsText
+          />
+          <VoxelClassVisibility
+            hiddenClasses={hiddenClasses}
+            onHiddenClassesChange={setHiddenClasses}
+          />
+        </GuidedSection>
 
         {zones.length > 0 && (
-          <>
-            <div className="form-group" style={{ marginTop: '0.75rem' }}>
+          <GuidedSection label="Zones and results">
+            <div className="form-group">
               <label>
                 <input
                   type="checkbox"
@@ -200,9 +212,9 @@ const SolarTab: React.FC<SolarTabProps> = ({
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
-          </>
+          </GuidedSection>
         )}
-      </div>
+      </GuidedPanel>
 
       <div className="panel" style={{ position: 'relative', minHeight: 400 }}>
         <SceneViewer
