@@ -107,7 +107,8 @@ def get_land_cover_classes(source):
             (34, 97, 38): 'Tree',
             (0, 69, 255): 'Water',
             (75, 181, 73): 'Agriculture land',
-            (222, 31, 7): 'Building'
+            (222, 31, 7): 'Building',
+            (0, 0, 0): 'No Data'
         }
     elif source == "ESRI 10m Annual Land Cover":
         # ESRI's global 10-meter resolution land cover classification
@@ -246,7 +247,7 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
     elif land_cover_source == "Dynamic World V1":
         mapping = {0: 9, 1: 5, 2: 2, 3: 7, 4: 4, 5: 3, 6: 11, 7: 1, 8: 10}    
     elif land_cover_source == "OpenEarthMapJapan":
-        mapping = {0: 1, 1: 2, 2: 11, 3: 12, 4: 5, 5: 9, 6: 4, 7: 13}
+        mapping = {-1: 14, 0: 1, 1: 2, 2: 11, 3: 12, 4: 5, 5: 9, 6: 4, 7: 13, 8: 14}
     else:
         # If unknown source, return as-is with +1 offset for consistency
         return input_array.copy() + 1
@@ -257,11 +258,18 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
     
     # Apply the mapping
     for old_val, new_val in mapping.items():
-        if old_val < max_val:
+        if 0 <= old_val < max_val:
             lookup[old_val] = new_val
     
-    # Use fancy indexing for fast conversion
-    return lookup[input_array]
+    # Use fancy indexing for fast conversion. Unknown source labels are -1;
+    # map them to the standard No Data class instead of allowing negative
+    # NumPy indexing to select the last lookup entry.
+    negative_mask = input_array < 0
+    safe_input = input_array.copy()
+    safe_input[negative_mask] = 0
+    converted = lookup[safe_input]
+    converted[negative_mask] = mapping.get(-1, 14)
+    return converted
 
 def get_class_priority(source):
     """

@@ -210,7 +210,7 @@ def compose_image(tiles, bounds):
         result.paste(tile, ((x - min_x) * 256, (y - min_y) * 256))
     return result
 
-def crop_image(image, polygon, bounds, zoom):
+def crop_image(image, polygon, bounds, zoom, mask_outside=False):
     """Crop composed image to the exact polygon boundary.
     
     Creates a mask from the polygon coordinates and uses it to crop the image,
@@ -222,6 +222,7 @@ def crop_image(image, polygon, bounds, zoom):
         polygon (list): List of (lon, lat) coordinates defining the boundary
         bounds (tuple): (min_x, min_y, max_x, max_y) tile bounds
         zoom (int): Zoom level used for coordinate conversion
+        mask_outside (bool): If True, fill pixels outside the polygon with black
         
     Returns:
         tuple: (
@@ -252,8 +253,14 @@ def crop_image(image, polygon, bounds, zoom):
         raise ValueError("The polygon does not intersect with the downloaded tiles.")
     
     # Crop to polygon boundary
-    cropped = Image.composite(image, Image.new('RGB', image.size, (0, 0, 0)), mask)
-    return cropped.crop(bbox), bbox
+    # mask_outside=True composites pixels outside the polygon to black (0,0,0),
+    # which can be mis-classified as "Tree" by the nearest-colour land-cover
+    # classifier. For land-cover GeoTIFFs the default is False: just crop to
+    # the bounding box.
+    if mask_outside:
+        cropped = Image.composite(image, Image.new('RGB', image.size, (0, 0, 0)), mask)
+        return cropped.crop(bbox), bbox
+    return image.crop(bbox), bbox
 
 def save_as_geotiff(image, polygon, zoom, bbox, bounds, output_path):
     """Save cropped image as a georeferenced GeoTIFF file.
@@ -360,7 +367,7 @@ def save_oemj_as_geotiff(polygon, filepath, zoom=16, *, ssl_verify=True, allow_i
             raise ValueError("No tiles were downloaded. Please check the polygon coordinates and zoom level.")
 
         composed_image = compose_image(tiles, bounds)
-        cropped_image, bbox = crop_image(composed_image, polygon, bounds, zoom)
+        cropped_image, bbox = crop_image(composed_image, polygon, bounds, zoom, mask_outside=False)
         save_as_geotiff(cropped_image, polygon, zoom, bbox, bounds, filepath)
         print(f"GeoTIFF saved as '{filepath}' in Web Mercator projection (EPSG:3857).")
     except Exception as e:

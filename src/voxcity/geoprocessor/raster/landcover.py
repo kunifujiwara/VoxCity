@@ -82,7 +82,13 @@ def create_land_cover_grid_from_geotiff_polygon(
         grid = np.full(nx * ny, 'No Data', dtype=object)
         for idx in np.where(valid)[0]:
             cell_data = img[:, row[idx], col[idx]]
-            dominant_class = get_dominant_class(cell_data, land_cover_classes)
+            # Treat black pixels as No Data only for palettes where black is a
+            # No Data sentinel. Some sources, such as Urbanwatch, use black as
+            # a real class (Sea).
+            if np.all(cell_data == 0) and land_cover_classes.get((0, 0, 0)) == 'No Data':
+                dominant_class = 'No Data'
+            else:
+                dominant_class = get_dominant_class(cell_data, land_cover_classes)
             grid[idx] = dominant_class
 
         grid = grid.reshape(nx, ny)

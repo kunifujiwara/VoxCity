@@ -113,12 +113,14 @@ def visualize_point_gdf_on_basemap(point_gdf, value_name='value', **kwargs):
 def visualize_land_cover_grid(grid, mesh_size, color_map, land_cover_classes):
     all_classes = list(land_cover_classes.values())
     unique_classes = list(dict.fromkeys(all_classes))
-    colors = [color_map[cls] for cls in unique_classes]
+    grid_classes = [cls for cls in dict.fromkeys(np.asarray(grid, dtype=object).ravel()) if cls not in unique_classes]
+    unique_classes.extend(grid_classes)
+    colors = [color_map.get(cls, [0.0, 0.0, 0.0]) for cls in unique_classes]
     cmap = mcolors.ListedColormap(colors)
     bounds = np.arange(len(unique_classes) + 1)
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
     class_to_num = {cls: i for i, cls in enumerate(unique_classes)}
-    numeric_grid = np.vectorize(class_to_num.get)(grid)
+    numeric_grid = np.vectorize(class_to_num.get, otypes=[float])(grid)
     plt.figure(figsize=(10, 10))
     im = plt.imshow(numeric_grid, cmap=cmap, norm=norm, interpolation='nearest', origin='lower')
     cbar = plt.colorbar(im, ticks=bounds[:-1] + 0.5)
