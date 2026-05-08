@@ -609,7 +609,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         "min_canopy_height", "trunk_height_ratio", "static_tree_height",
     }
     dem_keys = {
-        "flat_dem",
+        "flat_dem", "flatten_water_dem", "water_dem_connectivity",
     }
     visualize_keys = {"gridvis", "mapvis"}
     io_keys = {"save_voxcity_data", "save_voxctiy_data", "save_data_path", "save_path"}

@@ -24,6 +24,69 @@ from .grids import (
 from .voxelizer import Voxelizer
 
 
+def _flatten_water_dem_by_component(
+    dem_grid: np.ndarray,
+    land_cover_grid: np.ndarray,
+    land_cover_source: str,
+    *,
+    enabled: bool = True,
+    connectivity: int = 4,
+):
+    if not enabled:
+        return dem_grid, {
+            "applied": False,
+            "reason": "disabled",
+            "water_body_count": 0,
+            "water_cell_count": 0,
+            "water_dem_min_values": [],
+        }
+
+    if connectivity not in (4, 8):
+        raise ValueError("water_dem_connectivity must be 4 or 8")
+
+    if land_cover_source == "OpenStreetMap":
+        standard_land_cover = land_cover_grid + 1
+    else:
+        from ..utils.lc import convert_land_cover
+        standard_land_cover = convert_land_cover(land_cover_grid, land_cover_source=land_cover_source)
+
+    water_mask = standard_land_cover == 9
+    water_cell_count = int(np.count_nonzero(water_mask))
+    if water_cell_count == 0:
+        return dem_grid, {
+            "applied": False,
+            "reason": "no_water_cells",
+            "water_body_count": 0,
+            "water_cell_count": 0,
+            "water_dem_min_values": [],
+        }
+
+    from scipy import ndimage
+    structure = ndimage.generate_binary_structure(2, 1 if connectivity == 4 else 2)
+    labels, water_body_count = ndimage.label(water_mask, structure=structure)
+
+    flattened = dem_grid.copy()
+    water_dem_min_values = []
+    applied = False
+    for water_body_id in range(1, water_body_count + 1):
+        component_mask = labels == water_body_id
+        finite_mask = component_mask & np.isfinite(dem_grid)
+        if not np.any(finite_mask):
+            continue
+        water_min = float(np.min(dem_grid[finite_mask]))
+        flattened[component_mask] = water_min
+        water_dem_min_values.append(water_min)
+        applied = True
+
+    return flattened, {
+        "applied": applied,
+        "reason": "applied" if applied else "no_finite_water_dem_values",
+        "water_body_count": int(water_body_count),
+        "water_cell_count": water_cell_count,
+        "water_dem_min_values": water_dem_min_values,
+    }
+
+
 class VoxCityPipeline:
     def __init__(self, meshsize: float, rectangle_vertices, crs: str = "EPSG:4326") -> None:
         self.meshsize = float(meshsize)
@@ -144,6 +207,15 @@ class VoxCityPipeline:
                 **{**cfg.dem_options, **kwargs}
             )
 
+        flatten_water_dem = kwargs.get(
+            "flatten_water_dem",
+            cfg.dem_options.get("flatten_water_dem", True),
+        )
+        water_dem_connectivity = kwargs.get(
+            "water_dem_connectivity",
+            cfg.dem_options.get("water_dem_connectivity", 4),
+        )
+
         ro = cfg.remove_perimeter_object
         if (ro is not None) and (ro > 0):
             w_peri = int(ro * bh.shape[0] + 0.5)
@@ -168,6 +240,14 @@ class VoxCityPipeline:
                 pos = np.where(bid == rid)
                 bh[pos] = 0
                 bmin[pos] = [[] for _ in range(len(bmin[pos]))]
+
+        dem, water_dem_info = _flatten_water_dem_by_component(
+            dem,
+            land_cover_grid,
+            lc_src_effective,
+            enabled=bool(flatten_water_dem),
+            connectivity=int(water_dem_connectivity),
+        )
 
         voxelizer = Voxelizer(
             voxel_size=cfg.meshsize,
@@ -194,6 +274,9 @@ class VoxCityPipeline:
             "dem_source": cfg.dem_source,
             "canopy_height_source": cfg.canopy_height_source,
             "trunk_height_ratio": cfg.trunk_height_ratio,
+            "flatten_water_dem": bool(flatten_water_dem),
+            "water_dem_connectivity": int(water_dem_connectivity),
+            "water_dem_flattening": water_dem_info,
         }
         
         # Include tree_gdf if the canopy strategy created one (e.g., OSM source)
