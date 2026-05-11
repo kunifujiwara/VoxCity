@@ -103,7 +103,8 @@ class ViewCalculator:
         elevation_min_degrees: float = -30.0,
         elevation_max_degrees: float = 30.0,
         tree_k: float = 0.5,
-        tree_lad: float = 1.0
+        tree_lad: float = 1.0,
+        workspace=None,
     ) -> np.ndarray:
         """
         Compute View Index map.
@@ -118,6 +119,8 @@ class ViewCalculator:
             elevation_max_degrees: Maximum viewing angle
             tree_k: Tree extinction coefficient
             tree_lad: Leaf area density for trees
+            workspace: Optional pre-allocated ViewWorkspace whose Taichi fields are
+                reused instead of allocating new ones on every call.
         
         Returns:
             2D array of view index values (nx, ny)
@@ -131,47 +134,73 @@ class ViewCalculator:
             inclusion_mode = False
         elif hit_values is None:
             raise ValueError("For custom mode, you must provide hit_values.")
-        
-        # Setup ray directions
-        self._setup_ray_directions(elevation_min_degrees, elevation_max_degrees)
-        
-        # Convert view height to voxels
+
+        # Convert view height to voxels (needed in both paths)
         view_height_voxel = int(view_point_height / self.dz)
-        
-        # Prepare output
-        vi_map = ti.field(dtype=ti.f32, shape=(self.nx, self.ny))
-        
-        # Prepare masks from voxel data
-        if voxel_data is None:
-            # Use domain's is_solid and is_tree
-            is_tree = self.domain.is_tree
-            is_solid = self.domain.is_solid
-            is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_allowed = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_blocker = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_walkable = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            
-            # Initialize target/allowed based on mode
-            self._init_target_masks_from_domain(
-                is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
-                inclusion_mode, mode == 'green'
-            )
+
+        if workspace is not None:
+            # ── Workspace path: reuse pre-allocated Taichi fields ────────────
+            self._ray_dirs = workspace.ray_dirs
+            self._n_ray_dirs = workspace.n_ray_dirs
+            vi_map = workspace.vi_map
+
+            if voxel_data is None:
+                is_tree    = self.domain.is_tree
+                is_solid   = self.domain.is_solid
+                is_target  = workspace.is_target
+                is_allowed = workspace.is_allowed
+                is_blocker = workspace.is_blocker
+                is_walkable = workspace.is_walkable
+
+                self._init_target_masks_from_domain(
+                    is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
+                    inclusion_mode, mode == 'green'
+                )
+            else:
+                workspace.validate_voxel_data(voxel_data)
+                is_tree    = workspace.is_tree
+                is_solid   = workspace.is_solid
+                is_target  = workspace.is_target
+                is_allowed = workspace.is_allowed
+                is_blocker = workspace.is_blocker
+                is_walkable = workspace.is_walkable
+
+                hit_values_arr = np.array(hit_values, dtype=np.int32)
+                self._setup_masks_from_voxel_data(
+                    voxel_data, hit_values_arr, inclusion_mode,
+                    is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
+                )
         else:
-            # Create masks from voxel_data
-            is_tree = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_solid = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_allowed = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_blocker = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_walkable = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            
-            # Convert hit_values to array for kernel
-            hit_values_arr = np.array(hit_values, dtype=np.int32)
-            
-            self._setup_masks_from_voxel_data(
-                voxel_data, hit_values_arr, inclusion_mode,
-                is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
-            )
+            # ── Per-call allocation path (original behaviour) ─────────────
+            self._setup_ray_directions(elevation_min_degrees, elevation_max_degrees)
+
+            vi_map = ti.field(dtype=ti.f32, shape=(self.nx, self.ny))
+
+            if voxel_data is None:
+                is_tree    = self.domain.is_tree
+                is_solid   = self.domain.is_solid
+                is_target  = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_allowed = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_blocker = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_walkable = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+
+                self._init_target_masks_from_domain(
+                    is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
+                    inclusion_mode, mode == 'green'
+                )
+            else:
+                is_tree    = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_solid   = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_target  = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_allowed = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_blocker = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_walkable = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+
+                hit_values_arr = np.array(hit_values, dtype=np.int32)
+                self._setup_masks_from_voxel_data(
+                    voxel_data, hit_values_arr, inclusion_mode,
+                    is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
+                )
         
         # Compute transmissivity per voxel for trees
         tree_att = float(math.exp(-tree_k * tree_lad * self.dz))

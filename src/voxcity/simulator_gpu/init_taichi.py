@@ -20,6 +20,7 @@ def init_taichi(
     default_ip: type = ti.i32,
     debug: bool = False,
     suppress_fp16_warnings: bool = True,
+    honor_env: bool = True,
     **kwargs
 ) -> bool:
     """
@@ -89,16 +90,17 @@ def init_taichi(
     else:
         raise ValueError(f"Unknown architecture: {arch}")
     
-    # Check environment variable for override
-    env_arch = os.environ.get('TAICHI_ARCH', '').lower()
-    if env_arch == 'cpu':
-        ti_arch = ti.cpu
-    elif env_arch == 'cuda':
-        ti_arch = ti.cuda
-    elif env_arch == 'vulkan':
-        ti_arch = ti.vulkan
-    elif env_arch == 'gpu':
-        ti_arch = ti.gpu
+    # Check environment variable for override (skipped when honor_env=False)
+    if honor_env:
+        env_arch = os.environ.get('TAICHI_ARCH', '').lower()
+        if env_arch == 'cpu':
+            ti_arch = ti.cpu
+        elif env_arch == 'cuda':
+            ti_arch = ti.cuda
+        elif env_arch == 'vulkan':
+            ti_arch = ti.vulkan
+        elif env_arch == 'gpu':
+            ti_arch = ti.gpu
     
     # Initialize Taichi
     ti.init(

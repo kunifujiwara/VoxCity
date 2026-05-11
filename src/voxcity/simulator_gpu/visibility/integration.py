@@ -23,6 +23,7 @@ API Compatibility:
 """
 
 import numpy as np
+import taichi as ti
 from typing import Dict, Optional, Tuple, Union, List
 from dataclasses import dataclass
 import math
@@ -31,6 +32,11 @@ from ..domain import Domain
 from .view import ViewCalculator, SurfaceViewFactorCalculator
 from .landmark import LandmarkVisibilityCalculator, SurfaceLandmarkVisibilityCalculator
 from .landmark import mark_building_by_id
+from .workspace import ViewWorkspace, ViewWorkspaceKey
+import importlib as _importlib
+# Use importlib to get the actual init_taichi MODULE (not the function that
+# voxcity.simulator_gpu.__init__.py re-exports under the same name).
+_init_taichi_module = _importlib.import_module("voxcity.simulator_gpu.init_taichi")
 from voxcity.simulator.common.coordinates import (
     scene_points_to_uv_domain,
     scene_vectors_to_uv_domain,
@@ -64,6 +70,12 @@ class _CachedDomain:
 
 # Module-level cache for Domain
 _domain_cache: Optional[_CachedDomain] = None
+
+# Module-level cache for ViewWorkspace instances (keyed by ViewWorkspaceKey).
+# Taichi fields cannot be freed without ti.reset(), so we never evict entries.
+# The cache is cleared together with _domain_cache.
+_view_workspace_cache: Dict[ViewWorkspaceKey, ViewWorkspace] = {}
+_MAX_VIEW_WORKSPACES = 8
 
 
 def _get_or_create_domain(
@@ -99,18 +111,14 @@ def _get_or_create_domain(
     # If we already have a cached domain with different dimensions,
     # we need to reset Taichi to free the old fields
     if _domain_cache is not None and _domain_cache.shape != shape:
-        import taichi as ti
-        from ..init_taichi import reset as reset_init_flag
         try:
             ti.reset()
         except Exception:
             pass  # Ignore reset errors
         # Clear the init tracking flag so ti.init() will be called again
-        reset_init_flag()
-        try:
-            ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
-        except Exception:
-            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
+        _init_taichi_module.reset()
+        _view_workspace_cache.clear()
+        _init_taichi_module.init_taichi(arch="cuda", honor_env=False)
     
     domain = Domain(
         nx=nx, ny=ny, nz=nz,
@@ -127,9 +135,10 @@ def _get_or_create_domain(
 
 
 def clear_visibility_cache():
-    """Clear the cached Domain to free GPU memory."""
-    global _domain_cache
+    """Clear the cached Domain and workspace fields."""
+    global _domain_cache, _view_workspace_cache
     _domain_cache = None
+    _view_workspace_cache.clear()
 
 
 def reset_visibility_taichi_cache():
@@ -143,22 +152,72 @@ def reset_visibility_taichi_cache():
     After calling this, the next visibility calculation will create fresh
     Taichi fields.
     """
-    global _domain_cache
+    global _domain_cache, _view_workspace_cache
     _domain_cache = None
-    
-    import taichi as ti
-    from ..init_taichi import reset as reset_init_flag
-    try:
-        ti.reset()
-        reset_init_flag()
-        # Reinitialize Taichi after reset
-        ti.init(arch=ti.cuda, default_fp=ti.f32, default_ip=ti.i32)
-    except Exception:
-        try:
-            # Fallback to CPU if CUDA fails
-            ti.init(arch=ti.cpu, default_fp=ti.f32, default_ip=ti.i32)
-        except Exception:
-            pass  # Ignore if already initialized
+    _view_workspace_cache.clear()
+
+    ti.reset()
+    _init_taichi_module.reset()
+    _init_taichi_module.init_taichi(arch="cuda", honor_env=False)
+
+
+def _get_or_create_view_workspace(
+    *,
+    nx: int,
+    ny: int,
+    nz: int,
+    meshsize: float,
+    n_azimuth: int,
+    n_elevation: int,
+    ray_sampling: str,
+    n_rays: Optional[int],
+    elevation_min_degrees: float,
+    elevation_max_degrees: float,
+) -> ViewWorkspace:
+    """Return a cached ``ViewWorkspace`` for this ray/grid configuration.
+
+    Creates a new workspace (allocating Taichi fields) only when no matching
+    entry exists in the cache.  Raises ``RuntimeError`` if the cache would
+    exceed ``_MAX_VIEW_WORKSPACES`` — this prevents unbounded GPU memory
+    growth without silently evicting live fields.
+    """
+    global _view_workspace_cache
+
+    key = ViewWorkspaceKey(
+        shape=(int(nx), int(ny), int(nz)),
+        meshsize=float(meshsize),
+        n_azimuth=int(n_azimuth),
+        n_elevation=int(n_elevation),
+        ray_sampling=str(ray_sampling).lower(),
+        n_rays=None if n_rays is None else int(n_rays),
+        elevation_min_degrees=float(elevation_min_degrees),
+        elevation_max_degrees=float(elevation_max_degrees),
+    )
+    cached = _view_workspace_cache.get(key)
+    if cached is not None:
+        return cached
+
+    if len(_view_workspace_cache) >= _MAX_VIEW_WORKSPACES:
+        raise RuntimeError(
+            "Too many visibility workspace configurations in one Taichi runtime. "
+            "Call reset_visibility_taichi_cache() before switching to more "
+            "visibility configurations."
+        )
+
+    workspace = ViewWorkspace(
+        key=key,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+        elevation_min_degrees=elevation_min_degrees,
+        elevation_max_degrees=elevation_max_degrees,
+    )
+    _view_workspace_cache[key] = workspace
+    return workspace
 
 
 def create_domain_from_voxcity(voxcity) -> Domain:
@@ -233,6 +292,20 @@ def get_view_index_gpu(
     
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
+
+    # Get or create a cached workspace (reuses GPU fields across calls)
+    workspace = _get_or_create_view_workspace(
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        meshsize=meshsize,
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+        elevation_min_degrees=elevation_min_degrees,
+        elevation_max_degrees=elevation_max_degrees,
+    )
     
     # Create calculator
     calc = ViewCalculator(
@@ -253,7 +326,8 @@ def get_view_index_gpu(
         elevation_min_degrees=elevation_min_degrees,
         elevation_max_degrees=elevation_max_degrees,
         tree_k=tree_k,
-        tree_lad=tree_lad
+        tree_lad=tree_lad,
+        workspace=workspace,
     )
     
     # Note: ViewCalculator.compute_view_index already flips to match VoxCity coordinate system
