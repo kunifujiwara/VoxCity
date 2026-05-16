@@ -9,6 +9,7 @@ This module provides cache dataclasses and management functions for:
 """
 
 import numpy as np
+import taichi as ti
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
 
@@ -18,6 +19,23 @@ from .utils import (
     compute_valid_ground_vectorized,
     VOXCITY_BUILDING_CODE,
 )
+
+
+# =============================================================================
+# Module-Level Taichi Kernels (JIT-compiled on first call)
+# =============================================================================
+
+@ti.kernel
+def _fill_mask_ones_kernel(mask_f: ti.template()):
+    for i, j in mask_f:
+        mask_f[i, j] = ti.cast(1, ti.i8)
+
+
+@ti.kernel
+def _apply_mask_nan_kernel(trans_f: ti.template(), mask_f: ti.template()):
+    for i, j in trans_f:
+        if mask_f[i, j] == 0:
+            trans_f[i, j] = ti.math.nan
 
 
 # =============================================================================
@@ -129,6 +147,7 @@ class CachedGPURayTracer:
     voxel_shape: Tuple[int, int, int]
     meshsize: float
     voxel_data_id: int = 0
+    mask_field: object = None
 
 
 # =============================================================================
@@ -602,6 +621,9 @@ def get_or_create_gpu_ray_tracer(
     
     trace_rays_kernel = _get_cached_trace_rays_kernel()
     
+    mask_field = ti.field(dtype=ti.i8, shape=(nx, ny))
+    _fill_mask_ones_kernel(mask_field)
+    
     _gpu_ray_tracer_cache = CachedGPURayTracer(
         is_solid_field=is_solid_field,
         lad_field=lad_field,
@@ -610,7 +632,8 @@ def get_or_create_gpu_ray_tracer(
         trace_rays_kernel=trace_rays_kernel,
         voxel_shape=(nx, ny, nz),
         meshsize=meshsize,
-        voxel_data_id=id(voxel_data)
+        voxel_data_id=id(voxel_data),
+        mask_field=mask_field
     )
     
     return _gpu_ray_tracer_cache
@@ -934,7 +957,9 @@ def compute_direct_transmittance_map_gpu(
     view_point_height: float,
     meshsize: float,
     tree_k: float = 0.6,
-    tree_lad: float = 1.0
+    tree_lad: float = 1.0,
+    *,
+    computation_mask=None
 ) -> np.ndarray:
     """
     Compute direct solar transmittance map using GPU ray tracing.
@@ -942,6 +967,13 @@ def compute_direct_transmittance_map_gpu(
     nx, ny, nz = voxel_data.shape
     
     cache = get_or_create_gpu_ray_tracer(voxel_data, meshsize, tree_lad)
+    
+    # Upload mask before running the kernel
+    if computation_mask is not None:
+        mask_np = np.asarray(computation_mask, dtype=np.int8)
+        cache.mask_field.from_numpy(mask_np)
+    else:
+        _fill_mask_ones_kernel(cache.mask_field)
     
     sun_dir_x = float(sun_direction[0])
     sun_dir_y = float(sun_direction[1])
@@ -960,6 +992,10 @@ def compute_direct_transmittance_map_gpu(
         meshsize, step_size, max_trace_dist,
         nx, ny, nz
     )
+    
+    # Apply mask post-kernel: write NaN for cells where mask == 0
+    if computation_mask is not None:
+        _apply_mask_nan_kernel(cache.transmittance_field, cache.mask_field)
     
     return cache.transmittance_field.to_numpy()
 

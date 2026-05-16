@@ -239,13 +239,15 @@ def get_direct_solar_irradiance_map(
         elevation_radians = np.deg2rad(elevation_degrees)
         
         # Compute transmittance map using ray tracing
+        computation_mask = kwargs.get('computation_mask', None)
         transmittance_map = compute_direct_transmittance_map_gpu(
             voxel_data=voxel_data,
             sun_direction=(dx_dir, dy_dir, dz_dir),
             view_point_height=view_point_height,
             meshsize=meshsize,
             tree_k=tree_k,
-            tree_lad=tree_lad
+            tree_lad=tree_lad,
+            computation_mask=computation_mask,
         )
         
         # Convert to horizontal irradiance
