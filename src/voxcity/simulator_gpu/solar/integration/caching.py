@@ -31,13 +31,6 @@ def _fill_mask_ones_kernel(mask_f: ti.template()):
         mask_f[i, j] = ti.cast(1, ti.i8)
 
 
-@ti.kernel
-def _apply_mask_nan_kernel(trans_f: ti.template(), mask_f: ti.template()):
-    for i, j in trans_f:
-        if mask_f[i, j] == 0:
-            trans_f[i, j] = ti.math.nan
-
-
 # =============================================================================
 # Data Classes for Caching
 # =============================================================================
@@ -895,57 +888,61 @@ def _get_cached_trace_rays_kernel():
         lad_f: ti.template(),
         topo_f: ti.template(),
         trans_f: ti.template(),
+        mask_f: ti.template(),
         sun_x: ti.f32, sun_y: ti.f32, sun_z: ti.f32,
         vhk: ti.i32, ext: ti.f32,
         dx: ti.f32, step: ti.f32, max_dist: ti.f32,
         grid_nx: ti.i32, grid_ny: ti.i32, grid_nz: ti.i32
     ):
         for i, j in trans_f:
-            ground_k = topo_f[i, j]
-            start_k = ground_k + vhk
-            if start_k < 0:
-                start_k = 0
-            if start_k >= grid_nz:
-                start_k = grid_nz - 1
-            
-            while start_k < grid_nz - 1 and is_solid_f[i, j, start_k] == 1:
-                start_k += 1
-            
-            if is_solid_f[i, j, start_k] == 1:
-                trans_f[i, j] = 0.0
+            if mask_f[i, j] == 0:
+                trans_f[i, j] = ti.math.nan
             else:
-                ox = (float(i) + 0.5) * dx
-                oy = (float(j) + 0.5) * dx
-                oz = (float(start_k) + 0.5) * dx
+                ground_k = topo_f[i, j]
+                start_k = ground_k + vhk
+                if start_k < 0:
+                    start_k = 0
+                if start_k >= grid_nz:
+                    start_k = grid_nz - 1
                 
-                trans = 1.0
-                t = step
+                while start_k < grid_nz - 1 and is_solid_f[i, j, start_k] == 1:
+                    start_k += 1
                 
-                while t < max_dist and trans > 0.001:
-                    px = ox + sun_x * t
-                    py = oy + sun_y * t
-                    pz = oz + sun_z * t
+                if is_solid_f[i, j, start_k] == 1:
+                    trans_f[i, j] = 0.0
+                else:
+                    ox = (float(i) + 0.5) * dx
+                    oy = (float(j) + 0.5) * dx
+                    oz = (float(start_k) + 0.5) * dx
                     
-                    gi = int(px / dx)
-                    gj = int(py / dx)
-                    gk = int(pz / dx)
+                    trans = 1.0
+                    t = step
                     
-                    if gi < 0 or gi >= grid_nx or gj < 0 or gj >= grid_ny:
-                        break
-                    if gk < 0 or gk >= grid_nz:
-                        break
+                    while t < max_dist and trans > 0.001:
+                        px = ox + sun_x * t
+                        py = oy + sun_y * t
+                        pz = oz + sun_z * t
+                        
+                        gi = int(px / dx)
+                        gj = int(py / dx)
+                        gk = int(pz / dx)
+                        
+                        if gi < 0 or gi >= grid_nx or gj < 0 or gj >= grid_ny:
+                            break
+                        if gk < 0 or gk >= grid_nz:
+                            break
+                        
+                        if is_solid_f[gi, gj, gk] == 1:
+                            trans = 0.0
+                            break
+                        
+                        lad_val = lad_f[gi, gj, gk]
+                        if lad_val > 0.0:
+                            trans *= ti.exp(-ext * lad_val * step)
+                        
+                        t += step
                     
-                    if is_solid_f[gi, gj, gk] == 1:
-                        trans = 0.0
-                        break
-                    
-                    lad_val = lad_f[gi, gj, gk]
-                    if lad_val > 0.0:
-                        trans *= ti.exp(-ext * lad_val * step)
-                    
-                    t += step
-                
-                trans_f[i, j] = trans
+                    trans_f[i, j] = trans
     
     _cached_trace_rays_kernel = trace_rays_kernel
     return _cached_trace_rays_kernel
@@ -987,15 +984,13 @@ def compute_direct_transmittance_map_gpu(
         cache.lad_field,
         cache.topo_top_field,
         cache.transmittance_field,
+        cache.mask_field,
         sun_dir_x, sun_dir_y, sun_dir_z,
         view_height_k, tree_k,
         meshsize, step_size, max_trace_dist,
         nx, ny, nz
     )
-    
-    # Apply mask post-kernel: write NaN for cells where mask == 0
-    if computation_mask is not None:
-        _apply_mask_nan_kernel(cache.transmittance_field, cache.mask_field)
+    # (no post-pass — kernel handles NaN for masked cells directly)
     
     return cache.transmittance_field.to_numpy()
 
