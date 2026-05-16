@@ -239,7 +239,7 @@ def get_direct_solar_irradiance_map(
         elevation_radians = np.deg2rad(elevation_degrees)
         
         # Compute transmittance map using ray tracing
-        computation_mask = kwargs.get('computation_mask', None)
+        computation_mask = kwargs.pop('computation_mask', None)
         transmittance_map = compute_direct_transmittance_map_gpu(
             voxel_data=voxel_data,
             sun_direction=(dx_dir, dy_dir, dz_dir),

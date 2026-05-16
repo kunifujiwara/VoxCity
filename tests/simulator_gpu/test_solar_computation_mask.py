@@ -1,5 +1,5 @@
-"""Verify that a computation_mask is forwarded into trace_rays_kernel
-and that non-mask cells receive NaN without paying the per-cell GPU work."""
+"""Verify that a computation_mask is applied as a post-filter pass so that
+non-mask cells receive NaN in the returned result."""
 import numpy as np
 import pytest
 
@@ -54,3 +54,17 @@ def test_no_mask_preserves_legacy_behavior():
         computation_mask=np.ones(voxels.shape[:2], dtype=bool),
     )
     np.testing.assert_allclose(legacy, with_full_mask, equal_nan=True)
+
+
+def test_all_false_mask_returns_all_nan():
+    voxels = _tiny_voxel_data()
+    mask = np.zeros(voxels.shape[:2], dtype=bool)  # all False
+    result = compute_direct_transmittance_map_gpu(
+        voxel_data=voxels,
+        sun_direction=(0.5, 0.5, -1.0),
+        view_point_height=1.5,
+        meshsize=1.0,
+        computation_mask=mask,
+    )
+    assert result.shape == voxels.shape[:2]
+    assert np.all(np.isnan(result))
