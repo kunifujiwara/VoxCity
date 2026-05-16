@@ -258,6 +258,7 @@ def get_view_index_gpu(
     tree_k: float = 0.5,
     tree_lad: float = 1.0,
     show_plot: bool = False,
+    computation_mask: np.ndarray = None,
     **kwargs
 ) -> np.ndarray:
     """
@@ -328,6 +329,7 @@ def get_view_index_gpu(
         tree_k=tree_k,
         tree_lad=tree_lad,
         workspace=workspace,
+        computation_mask=computation_mask,
     )
     
     # Note: ViewCalculator.compute_view_index already flips to match VoxCity coordinate system
@@ -394,6 +396,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
     tree_k = kwargs.pop('tree_k', 0.5)
     tree_lad = kwargs.pop('tree_lad', 1.0)
     show_plot = kwargs.pop('show_plot', True)  # VoxCity default shows plot
+    computation_mask = kwargs.pop('computation_mask', None)
     
     return get_view_index_gpu(
         voxcity,
@@ -410,6 +413,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
         tree_k=tree_k,
         tree_lad=tree_lad,
         show_plot=show_plot,
+        computation_mask=computation_mask,
         **kwargs
     )
 
@@ -441,6 +445,7 @@ def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
     tree_k = kwargs.pop('tree_k', 0.6)
     tree_lad = kwargs.pop('tree_lad', 1.0)
     colormap = kwargs.pop('colormap', 'BuPu_r')
+    computation_mask = kwargs.pop('computation_mask', None)
     
     return get_view_index_gpu(
         voxcity,
@@ -454,6 +459,7 @@ def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
         tree_lad=tree_lad,
         show_plot=show_plot,
         colormap=colormap,
+        computation_mask=computation_mask,
         **kwargs
     )
 

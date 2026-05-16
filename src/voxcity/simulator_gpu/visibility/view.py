@@ -105,6 +105,7 @@ class ViewCalculator:
         tree_k: float = 0.5,
         tree_lad: float = 1.0,
         workspace=None,
+        computation_mask: np.ndarray = None,
     ) -> np.ndarray:
         """
         Compute View Index map.
@@ -212,7 +213,11 @@ class ViewCalculator:
             inclusion_mode, tree_att
         )
         
-        return vi_map.to_numpy()
+        result = vi_map.to_numpy()
+        if computation_mask is not None:
+            mask = np.asarray(computation_mask, dtype=bool)
+            result = np.where(mask, result, np.nan)
+        return result
     
     @ti.kernel
     def _init_target_masks_from_domain(
