@@ -55,3 +55,54 @@ def test_svf_map_no_mask_preserves_behavior():
     full_mask = np.ones(vc.voxels.classes.shape[:2], dtype=bool)
     svf_full_mask = get_sky_view_factor_map(vc, computation_mask=full_mask, show_plot=False)
     np.testing.assert_allclose(svf_no_mask, svf_full_mask, equal_nan=True)
+
+
+def test_view_kernel_does_not_touch_out_of_mask_cells():
+    """The GPU kernel itself must write NaN for non-mask cells.
+
+    This test proves the gating is done inside ``_compute_vi_map_kernel``
+    (via ``mask_f``), NOT by the ``np.where`` post-filter in
+    ``compute_view_index``.  It reads ``ws.vi_map`` directly after the call
+    so that the raw kernel output — not the returned numpy array — is checked.
+    """
+    from voxcity.simulator_gpu.visibility.integration import (
+        _get_or_create_view_workspace,
+        get_view_index,
+    )
+
+    voxels = _tiny_svf_voxel_data()
+    nx, ny, nz = voxels.shape
+    vc = _FakeVoxCity(voxels)
+
+    # Warm the workspace cache so _get_or_create_view_workspace hits cache.
+    _ = get_view_index(vc, mode='green', show_plot=False)
+
+    ws = _get_or_create_view_workspace(
+        nx=nx, ny=ny, nz=nz, meshsize=1.0,
+        n_azimuth=120, n_elevation=20,
+        ray_sampling='grid', n_rays=None,
+        elevation_min_degrees=-30.0, elevation_max_degrees=30.0,
+    )
+
+    # Pre-seed vi_map with a distinctive sentinel so we can tell whether
+    # the kernel touched (overwrote) a cell.
+    SENTINEL = -77.0
+    ws.vi_map.fill(SENTINEL)
+
+    mask = np.zeros((nx, ny), dtype=bool)
+    mask[2:5, 2:5] = True  # walkable paved cells only (building is at 0:2, 0:2)
+
+    result = get_view_index(vc, mode='green', show_plot=False, computation_mask=mask)
+
+    # KEY assertion: the raw Taichi field must have NaN for non-mask cells.
+    # Before Task 2 the kernel writes computed values everywhere (sentinel is
+    # gone and no NaN is written by the kernel) → this FAILS.
+    # After Task 2 the kernel writes NaN for mask_f==0 cells → this PASSES.
+    raw_map = ws.vi_map.to_numpy()
+    assert np.all(np.isnan(raw_map[~mask])), (
+        "Kernel should write NaN for non-mask cells (mask_f gate missing)"
+    )
+
+    # Sanity: returned result must also reflect masking.
+    assert np.all(np.isnan(result[~mask])), "Non-mask cells should be NaN in returned result"
+    assert np.all(np.isfinite(result[mask])), "Mask cells should be finite in returned result"

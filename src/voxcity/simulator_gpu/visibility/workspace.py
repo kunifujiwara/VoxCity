@@ -96,6 +96,19 @@ class ViewWorkspace:
         self.is_allowed = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
         self.is_blocker = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
         self.is_walkable = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+        self.mask_field = ti.field(dtype=ti.i8, shape=(nx, ny))
+        self._reset_mask_all_on()
+
+    def _reset_mask_all_on(self) -> None:
+        """Fill mask_field with 1 (all cells enabled)."""
+        self.mask_field.fill(1)
+
+    def set_mask(self, mask_np) -> None:
+        """Set mask_field from a boolean numpy array, or reset to all-on."""
+        if mask_np is None:
+            self._reset_mask_all_on()
+        else:
+            self.mask_field.from_numpy(np.asarray(mask_np, dtype=np.int8))
 
     def validate_voxel_data(self, voxel_data: np.ndarray) -> None:
         """Raise ``ValueError`` if *voxel_data* shape does not match this workspace."""

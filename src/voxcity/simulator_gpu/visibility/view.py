@@ -144,6 +144,8 @@ class ViewCalculator:
             self._ray_dirs = workspace.ray_dirs
             self._n_ray_dirs = workspace.n_ray_dirs
             vi_map = workspace.vi_map
+            workspace.set_mask(computation_mask)
+            mask_f = workspace.mask_field
 
             if voxel_data is None:
                 is_tree    = self.domain.is_tree
@@ -176,6 +178,11 @@ class ViewCalculator:
             self._setup_ray_directions(elevation_min_degrees, elevation_max_degrees)
 
             vi_map = ti.field(dtype=ti.f32, shape=(self.nx, self.ny))
+            mask_f = ti.field(dtype=ti.i8, shape=(self.nx, self.ny))
+            if computation_mask is not None:
+                mask_f.from_numpy(np.asarray(computation_mask, dtype=np.int8))
+            else:
+                mask_f.fill(1)
 
             if voxel_data is None:
                 is_tree    = self.domain.is_tree
@@ -210,14 +217,11 @@ class ViewCalculator:
         self._compute_vi_map_kernel(
             vi_map, view_height_voxel,
             is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
+            mask_f,
             inclusion_mode, tree_att
         )
-        
-        result = vi_map.to_numpy()
-        if computation_mask is not None:
-            mask = np.asarray(computation_mask, dtype=bool)
-            result = np.where(mask, result, np.nan)
-        return result
+
+        return vi_map.to_numpy()
     
     @ti.kernel
     def _init_target_masks_from_domain(
@@ -338,60 +342,64 @@ class ViewCalculator:
         is_allowed: ti.template(),
         is_blocker: ti.template(),
         is_walkable: ti.template(),
+        mask_f: ti.template(),
         inclusion_mode: ti.i32,
         tree_att: ti.f32
     ):
         """Compute View Index map using GPU parallel processing."""
         for x, y in vi_map:
-            # Find observer position (first non-solid cell above ground)
-            # Allow being inside tree canopy
-            observer_z = -1
-            surface_walkable = 0
-            for z in range(1, self.nz):
-                # Current cell is not solid (but can be inside tree)
-                current_not_solid = 1 if is_solid[x, y, z] == 0 else 0
-                # Below cell has something (ground, building, or tree)
-                below_has_something = is_solid[x, y, z-1] + is_tree[x, y, z-1]
-                
-                if current_not_solid == 1 and below_has_something > 0:
-                    # Found ground level - check if walkable
-                    surface_walkable = is_walkable[x, y, z-1]
-                    observer_z = z + view_height_voxel
-                    break
-            
-            # Mark as invalid if no observer position found or surface not walkable
-            # (water, building tops, etc. are not walkable)
-            if observer_z < 0 or observer_z >= self.nz or surface_walkable == 0:
+            if mask_f[x, y] == 0:
                 vi_map[x, y] = ti.cast(float('nan'), ti.f32)
-                continue
-            
-            # Trace rays and count visibility
-            visibility_sum = 0.0
-            valid_rays = 0
-            
-            for r in range(self._n_ray_dirs):
-                ray_dir = self._ray_dirs[r]
-                
-                # Trace ray through voxels
-                hit, trans = self._trace_ray_vi(
-                    x, y, observer_z, ray_dir,
-                    is_tree, is_solid, is_target, is_allowed, is_blocker,
-                    inclusion_mode, tree_att
-                )
-                
-                if inclusion_mode == 1:
-                    if hit == 1:
-                        visibility_sum += 1.0
-                else:
-                    if hit == 0:
-                        visibility_sum += trans
-                
-                valid_rays += 1
-            
-            if valid_rays > 0:
-                vi_map[x, y] = visibility_sum / valid_rays
             else:
-                vi_map[x, y] = 0.0
+                # Find observer position (first non-solid cell above ground)
+                # Allow being inside tree canopy
+                observer_z = -1
+                surface_walkable = 0
+                for z in range(1, self.nz):
+                    # Current cell is not solid (but can be inside tree)
+                    current_not_solid = 1 if is_solid[x, y, z] == 0 else 0
+                    # Below cell has something (ground, building, or tree)
+                    below_has_something = is_solid[x, y, z-1] + is_tree[x, y, z-1]
+
+                    if current_not_solid == 1 and below_has_something > 0:
+                        # Found ground level - check if walkable
+                        surface_walkable = is_walkable[x, y, z-1]
+                        observer_z = z + view_height_voxel
+                        break
+
+                # Mark as invalid if no observer position found or surface not walkable
+                # (water, building tops, etc. are not walkable)
+                if observer_z < 0 or observer_z >= self.nz or surface_walkable == 0:
+                    vi_map[x, y] = ti.cast(float('nan'), ti.f32)
+                    continue
+
+                # Trace rays and count visibility
+                visibility_sum = 0.0
+                valid_rays = 0
+
+                for r in range(self._n_ray_dirs):
+                    ray_dir = self._ray_dirs[r]
+
+                    # Trace ray through voxels
+                    hit, trans = self._trace_ray_vi(
+                        x, y, observer_z, ray_dir,
+                        is_tree, is_solid, is_target, is_allowed, is_blocker,
+                        inclusion_mode, tree_att
+                    )
+
+                    if inclusion_mode == 1:
+                        if hit == 1:
+                            visibility_sum += 1.0
+                    else:
+                        if hit == 0:
+                            visibility_sum += trans
+
+                    valid_rays += 1
+
+                if valid_rays > 0:
+                    vi_map[x, y] = visibility_sum / valid_rays
+                else:
+                    vi_map[x, y] = 0.0
     
     @ti.func
     def _trace_ray_vi(
