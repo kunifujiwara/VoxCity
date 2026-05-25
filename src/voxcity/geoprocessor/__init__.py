@@ -10,6 +10,7 @@ from . import (
     selection,
     overlap,
     merge_utils,
+    surface_meta,
 )
 
 # Re-export frequently used functions at package level for convenience
@@ -38,6 +39,16 @@ from .overlap import (
 from .merge_utils import (
     merge_gdfs_with_id_conflict_resolution,
 )
+from .surface_meta import (
+    attach_surface_face_meta,
+    compute_face_areas,
+    surface_zone_mask,
+    classify_surface_faces,
+    make_surface_face_key,
+    classify_surface_kind,
+    wall_orientation,
+    SELECTABLE_KINDS,
+)
 
 __all__ = [
     # submodules
@@ -52,6 +63,7 @@ __all__ = [
     "selection",
     "overlap",
     "merge_utils",
+    "surface_meta",
     # functions
     "filter_and_convert_gdf_to_geojson",
     "geojson_to_gdf",
@@ -66,4 +78,12 @@ __all__ = [
     "get_buildings_in_drawn_polygon",
     "process_building_footprints_by_overlap",
     "merge_gdfs_with_id_conflict_resolution",
+    "attach_surface_face_meta",
+    "compute_face_areas",
+    "surface_zone_mask",
+    "classify_surface_faces",
+    "make_surface_face_key",
+    "classify_surface_kind",
+    "wall_orientation",
+    "SELECTABLE_KINDS",
 ]
