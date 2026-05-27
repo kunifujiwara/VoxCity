@@ -5,9 +5,11 @@ from typing import Any, Dict
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from voxcity.geoprocessor.surface_meta import resolve_target_face_mask
+from voxcity.simulator_gpu.solar.integration import building as building_integration
 from voxcity.simulator_gpu.visibility import integration as visibility_integration
 
 
@@ -169,3 +171,251 @@ def test_view_empty_target_returns_all_nan(monkeypatch):
     values = mesh.metadata["view_factor_values"]
     assert values.shape == (len(mesh.faces),)
     assert np.all(np.isnan(values))
+
+
+class _ArrayField:
+    def __init__(self, values):
+        self._values = np.asarray(values)
+
+    def to_numpy(self):
+        return self._values.copy()
+
+
+class _ScalarField:
+    def __setitem__(self, key, value):
+        self.value = value
+
+
+class _SolarMesh(_Mesh):
+    @property
+    def bounds(self):
+        return np.array([self.vertices.min(axis=0), self.vertices.max(axis=0)], dtype=np.float64)
+
+    @property
+    def triangles_center(self):
+        return np.array([[0.25, 0.25, 1.0], [3.25, 0.25, 1.0]], dtype=np.float64)
+
+    @property
+    def face_normals(self):
+        return np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+
+
+def _solar_mesh_two_buildings():
+    vertices = np.array(
+        [
+            [0, 0, 1], [1, 0, 1], [0, 1, 1],
+            [3, 0, 1], [4, 0, 1], [3, 1, 1],
+        ],
+        dtype=np.float64,
+    )
+    faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32)
+    mesh = _SolarMesh(vertices=vertices, faces=faces)
+    mesh.metadata = {
+        "building_id": np.array([1, 2], dtype=np.int32),
+        "provided_face_normals": np.array([[0, 0, 1], [0, 0, 1]], dtype=np.float64),
+    }
+    return mesh
+
+
+class _FakeSolarModel:
+    def __init__(self):
+        self.solar_calc = SimpleNamespace(
+            sun_direction=_ScalarField(),
+            cos_zenith=_ScalarField(),
+            sun_up=_ScalarField(),
+        )
+        self.surfaces = SimpleNamespace(
+            count=2,
+            sw_in_direct=_ArrayField([10.0, 20.0]),
+            sw_in_diffuse=_ArrayField([1.0, 2.0]),
+            center=_ArrayField([[0.25, 0.25, 1.0], [0.25, 3.25, 1.0]]),
+            normal=_ArrayField([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+        )
+        self.compute_calls = 0
+
+    def compute_shortwave_radiation(self, **kwargs):
+        self.compute_calls += 1
+
+
+def _patch_solar_dependencies(monkeypatch, captured=None):
+    model = _FakeSolarModel()
+    mesh = _solar_mesh_two_buildings()
+
+    def fake_get_or_create(*args, **kwargs):
+        if captured is not None:
+            captured["n_reflection_steps"] = kwargs.get("n_reflection_steps")
+        return model, np.array([True, True], dtype=bool)
+
+    monkeypatch.setattr(building_integration, "get_or_create_building_radiation_model", fake_get_or_create)
+    monkeypatch.setattr(building_integration, "get_building_radiation_model_cache", lambda: None)
+    monkeypatch.setattr(building_integration, "compute_boundary_vertical_mask", lambda *args, **kwargs: np.zeros(2, dtype=bool))
+    monkeypatch.setattr(building_integration, "_map_mesh_faces_to_surfaces", lambda *args, **kwargs: np.array([0, 1], dtype=np.int64))
+
+    import voxcity.geoprocessor.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "create_voxel_mesh", lambda *args, **kwargs: mesh)
+    return model, mesh
+
+
+def test_solar_restriction_nan_pads_non_target_faces(monkeypatch):
+    voxcity = _tiny_voxcity_two_buildings()
+    model, _ = _patch_solar_dependencies(monkeypatch)
+
+    mesh = building_integration.get_building_solar_irradiance(
+        voxcity,
+        azimuth_degrees_ori=180.0,
+        elevation_degrees=45.0,
+        direct_normal_irradiance=100.0,
+        diffuse_irradiance=10.0,
+        target_selectors=_building_2_whole_selector(),
+    )
+
+    assert model.compute_calls == 1
+    np.testing.assert_allclose(mesh.metadata["direct"], [np.nan, 20.0], equal_nan=True)
+    np.testing.assert_allclose(mesh.metadata["diffuse"], [np.nan, 2.0], equal_nan=True)
+    np.testing.assert_allclose(mesh.metadata["global"], [np.nan, 22.0], equal_nan=True)
+
+
+def test_solar_target_selectors_force_reflections_off(monkeypatch):
+    voxcity = _tiny_voxcity_two_buildings()
+    captured = {}
+    warnings = []
+    _patch_solar_dependencies(monkeypatch, captured)
+    monkeypatch.setattr(building_integration.logger, "warning", lambda message: warnings.append(message))
+
+    building_integration.get_building_solar_irradiance(
+        voxcity,
+        azimuth_degrees_ori=180.0,
+        elevation_degrees=45.0,
+        direct_normal_irradiance=100.0,
+        diffuse_irradiance=10.0,
+        target_selectors=_building_2_whole_selector(),
+        with_reflections=True,
+        n_reflection_steps=2,
+    )
+
+    assert captured["n_reflection_steps"] == 0
+    assert len(warnings) == 1
+    assert "target_selectors" in warnings[0]
+    assert "reflections" in warnings[0]
+
+
+def _one_step_weather(dni=100.0, dhi=10.0):
+    return pd.DataFrame(
+        {"DNI": [dni], "DHI": [dhi]},
+        index=pd.date_range("2020-01-01 12:00:00", periods=1, freq="h", tz="UTC"),
+    )
+
+
+def _patch_cumulative_time_dependencies(monkeypatch):
+    monkeypatch.setattr(building_integration, "filter_df_to_period", lambda weather_df, *args, **kwargs: weather_df)
+
+    def fake_solar_positions(index, lon, lat):
+        return pd.DataFrame(
+            {"azimuth": np.full(len(index), 180.0), "elevation": np.full(len(index), 45.0)},
+            index=index,
+        )
+
+    monkeypatch.setattr(building_integration, "get_solar_positions_astral", fake_solar_positions)
+    monkeypatch.setattr(building_integration, "compute_boundary_vertical_mask", lambda *args, **kwargs: np.zeros(2, dtype=bool))
+
+
+def _fake_irradiance_mesh(*, target_selectors=None):
+    if target_selectors is None:
+        direct = np.array([10.0, 20.0], dtype=np.float64)
+        diffuse = np.array([1.0, 2.0], dtype=np.float64)
+    else:
+        direct = np.array([np.nan, 20.0], dtype=np.float64)
+        diffuse = np.array([np.nan, 2.0], dtype=np.float64)
+    return SimpleNamespace(
+        metadata={
+            "direct": direct,
+            "diffuse": diffuse,
+            "global": direct + diffuse,
+        }
+    )
+
+
+def test_solar_cumulative_restriction_nan_pads_non_target_faces(monkeypatch):
+    voxcity = _tiny_voxcity_two_buildings()
+    mesh = _solar_mesh_two_buildings()
+    _patch_cumulative_time_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        building_integration,
+        "get_building_solar_irradiance",
+        lambda *args, **kwargs: _fake_irradiance_mesh(target_selectors=kwargs.get("target_selectors")),
+    )
+
+    result = building_integration.get_cumulative_building_solar_irradiance(
+        voxcity,
+        mesh,
+        _one_step_weather(),
+        lon=139.0,
+        lat=35.0,
+        tz=0.0,
+        time_step_hours=2.0,
+        target_selectors=_building_2_whole_selector(),
+    )
+
+    np.testing.assert_allclose(result.metadata["cumulative_direct"], [np.nan, 40.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["cumulative_diffuse"], [np.nan, 4.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["cumulative_global"], [np.nan, 44.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["direct"], [np.nan, 40.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["diffuse"], [np.nan, 4.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["global"], [np.nan, 44.0], equal_nan=True)
+
+
+def test_solar_cumulative_target_selectors_none_is_unchanged(monkeypatch):
+    voxcity = _tiny_voxcity_two_buildings()
+    _patch_cumulative_time_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        building_integration,
+        "get_building_solar_irradiance",
+        lambda *args, **kwargs: _fake_irradiance_mesh(target_selectors=kwargs.get("target_selectors")),
+    )
+
+    default_result = building_integration.get_cumulative_building_solar_irradiance(
+        voxcity,
+        _solar_mesh_two_buildings(),
+        _one_step_weather(),
+        lon=139.0,
+        lat=35.0,
+        tz=0.0,
+        time_step_hours=2.0,
+    )
+    none_result = building_integration.get_cumulative_building_solar_irradiance(
+        voxcity,
+        _solar_mesh_two_buildings(),
+        _one_step_weather(),
+        lon=139.0,
+        lat=35.0,
+        tz=0.0,
+        time_step_hours=2.0,
+        target_selectors=None,
+    )
+
+    for key in ("cumulative_direct", "cumulative_diffuse", "cumulative_global", "direct", "diffuse", "global"):
+        np.testing.assert_allclose(none_result.metadata[key], default_result.metadata[key], equal_nan=True)
+        assert np.all(np.isfinite(none_result.metadata[key]))
+
+
+def test_solar_cumulative_sky_patch_svf_diffuse_respects_target_selectors(monkeypatch):
+    voxcity = _tiny_voxcity_two_buildings()
+    mesh = _solar_mesh_two_buildings()
+    mesh.metadata["svf"] = np.array([0.5, 0.25], dtype=np.float64)
+    _patch_cumulative_time_dependencies(monkeypatch)
+
+    result = building_integration.get_cumulative_building_solar_irradiance(
+        voxcity,
+        mesh,
+        _one_step_weather(dni=0.0, dhi=10.0),
+        lon=139.0,
+        lat=35.0,
+        tz=0.0,
+        use_sky_patches=True,
+        target_selectors=_building_2_whole_selector(),
+    )
+
+    np.testing.assert_allclose(result.metadata["cumulative_direct"], [np.nan, 0.0], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["cumulative_diffuse"], [np.nan, 2.5], equal_nan=True)
+    np.testing.assert_allclose(result.metadata["cumulative_global"], [np.nan, 2.5], equal_nan=True)

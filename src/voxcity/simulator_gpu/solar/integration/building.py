@@ -11,10 +11,13 @@ These functions match the voxcity.simulator.solar API signatures for
 drop-in replacement with GPU acceleration.
 """
 
+import logging
+
 import numpy as np
 from typing import Optional, Tuple, Dict
 from scipy.spatial import cKDTree
 
+from voxcity.geoprocessor.surface_meta import resolve_target_face_mask
 from voxcity.simulator.common.coordinates import uv_domain_points_to_scene
 
 from .utils import (
@@ -36,6 +39,9 @@ from .caching import (
     get_or_create_building_radiation_model,
     CachedBuildingRadiationModel,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _scene_grid_bounds(shape, meshsize):
@@ -107,6 +113,7 @@ def get_building_solar_irradiance(
             - n_reflection_steps (int): Number of reflection bounces (default: 2)
             - building_class_id (int): Building voxel class code (default: -3)
             - computation_mask (np.ndarray): Optional 2D boolean mask
+            - target_selectors (list): Optional surface selectors limiting returned faces
             - progress_report (bool): Print progress (default: False)
     
     Returns:
@@ -131,6 +138,14 @@ def get_building_solar_irradiance(
     n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
     with_reflections = kwargs.pop('with_reflections', False)
     computation_mask = kwargs.pop('computation_mask', None)
+    target_selectors = kwargs.pop('target_selectors', None)
+    if target_selectors is not None and with_reflections:
+        logger.warning(
+            "target_selectors for building solar irradiance currently use output-only restriction; "
+            "disabling reflections because reflected exchange is computed over the full PALM surface set."
+        )
+        with_reflections = False
+        n_reflection_steps = 0
     
     if not with_reflections:
         n_reflection_steps = 0
@@ -210,6 +225,12 @@ def get_building_solar_irradiance(
         face_svf = None
     
     n_mesh_faces = len(building_mesh.faces)
+    target_face_mask = None
+    if target_selectors is not None:
+        target_face_mask = resolve_target_face_mask(building_mesh, target_selectors)
+        if target_face_mask.shape != (n_mesh_faces,):
+            raise ValueError("target_selectors resolved to a mask with the wrong face count")
+
     mesh_signature = _mesh_geometry_signature(building_mesh)
     cache_matches_mesh = (
         cache is not None and
@@ -310,8 +331,15 @@ def get_building_solar_irradiance(
         total_sw = apply_computation_mask_to_faces(
             total_sw, mesh_face_centers, computation_mask, meshsize, (ny_vc, nx_vc)
         )
-    
-    building_mesh.metadata = {
+
+    if target_face_mask is not None:
+        sw_in_direct = np.where(target_face_mask, sw_in_direct, np.nan)
+        sw_in_diffuse = np.where(target_face_mask, sw_in_diffuse, np.nan)
+        sw_in_reflected = np.where(target_face_mask, sw_in_reflected, np.nan)
+        total_sw = np.where(target_face_mask, total_sw, np.nan)
+
+    metadata = dict(getattr(building_mesh, 'metadata', {}) or {})
+    metadata.update({
         'irradiance_direct': sw_in_direct,
         'irradiance_diffuse': sw_in_diffuse,
         'irradiance_reflected': sw_in_reflected,
@@ -319,7 +347,8 @@ def get_building_solar_irradiance(
         'direct': sw_in_direct,
         'diffuse': sw_in_diffuse,
         'global': total_sw,
-    }
+    })
+    building_mesh.metadata = metadata
     if face_svf is not None:
         building_mesh.metadata['svf'] = face_svf
     
@@ -374,6 +403,7 @@ def get_cumulative_building_solar_irradiance(
     progress_report = kwargs.pop('progress_report', False)
     use_sky_patches = kwargs.pop('use_sky_patches', False)
     computation_mask = kwargs.pop('computation_mask', None)
+    target_selectors = kwargs.get('target_selectors', None)
     
     if weather_df.empty:
         raise ValueError("No data in weather dataframe.")
@@ -390,6 +420,12 @@ def get_cumulative_building_solar_irradiance(
     
     if n_faces == 0:
         raise ValueError("Building mesh has no faces")
+
+    target_face_mask = None
+    if target_selectors is not None:
+        target_face_mask = resolve_target_face_mask(result_mesh, target_selectors)
+        if target_face_mask.shape != (n_faces,):
+            raise ValueError("target_selectors resolved to a mask with the wrong face count")
     
     cumulative_direct = np.zeros(n_faces, dtype=np.float64)
     cumulative_diffuse = np.zeros(n_faces, dtype=np.float64)
@@ -550,6 +586,11 @@ def get_cumulative_building_solar_irradiance(
         cumulative_global = apply_computation_mask_to_faces(
             cumulative_global, mesh_face_centers, computation_mask, meshsize, (ny_vc, nx_vc)
         )
+
+    if target_face_mask is not None:
+        cumulative_direct = np.where(target_face_mask, cumulative_direct, np.nan)
+        cumulative_diffuse = np.where(target_face_mask, cumulative_diffuse, np.nan)
+        cumulative_global = np.where(target_face_mask, cumulative_global, np.nan)
     
     # Store results
     result_mesh.metadata = getattr(result_mesh, 'metadata', {})
