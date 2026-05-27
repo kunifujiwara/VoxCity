@@ -255,6 +255,21 @@ def surface_zone_mask(
     return positive & ~excluded
 
 
+def resolve_target_face_mask(mesh: Any, target_selectors: Sequence) -> np.ndarray:
+    """Resolve target_selectors to a boolean face mask over mesh.faces.
+
+    Ensures surface_face_meta is attached first (classifying if needed), then
+    delegates to surface_zone_mask. Returns an (n_faces,) bool array.
+    """
+    meta = getattr(mesh, "metadata", None)
+    have_meta = isinstance(meta, dict) and meta.get("surface_face_meta")
+    if not have_meta:
+        attach_surface_face_meta(mesh)
+        meta = mesh.metadata
+    face_meta = meta["surface_face_meta"]
+    return surface_zone_mask(face_meta, target_selectors).astype(bool)
+
+
 # ---------------------------------------------------------------------------
 # Face area computation
 # ---------------------------------------------------------------------------
