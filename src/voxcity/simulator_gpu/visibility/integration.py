@@ -41,6 +41,7 @@ from voxcity.simulator.common.coordinates import (
     scene_points_to_uv_domain,
     scene_vectors_to_uv_domain,
 )
+from voxcity.geoprocessor.surface_meta import resolve_target_face_mask
 
 
 # VoxCity voxel class codes
@@ -488,6 +489,7 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
             - target_values (tuple): Target voxel values (default: (0,))
             - inclusion_mode (bool): Inclusion vs exclusion mode (default: False)
             - building_class_id (int): Building class ID for mesh extraction (default: -3)
+            - target_selectors (list): Optional surface selectors limiting computed faces
             - progress_report (bool): Show progress (default: False)
             - obj_export (bool): Export mesh to OBJ (default: False)
     
@@ -507,6 +509,7 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     tree_k = kwargs.get('tree_k', 0.6)
     tree_lad = kwargs.get('tree_lad', 1.0)
     building_class_id = kwargs.get('building_class_id', -3)
+    target_selectors = kwargs.get('target_selectors', None)
     progress_report = kwargs.get('progress_report', False)
     
     # Handle mode parameter
@@ -547,6 +550,20 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
 
     face_centers = scene_points_to_uv_domain(building_mesh.triangles_center).astype(np.float32)
     face_normals = scene_vectors_to_uv_domain(building_mesh.face_normals).astype(np.float32)
+    total_face_count = len(face_centers)
+    target_face_indices = None
+
+    if target_selectors is not None:
+        target_face_mask = resolve_target_face_mask(building_mesh, target_selectors)
+        target_face_indices = np.flatnonzero(target_face_mask)
+        if len(target_face_indices) == 0:
+            if not hasattr(building_mesh, 'metadata'):
+                building_mesh.metadata = {}
+            building_mesh.metadata[value_name] = np.full(total_face_count, np.nan, dtype=np.float32)
+            return building_mesh
+
+        face_centers = face_centers[target_face_indices]
+        face_normals = face_normals[target_face_indices]
 
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
@@ -569,6 +586,11 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         tree_k=tree_k,
         tree_lad=tree_lad
     )
+
+    if target_face_indices is not None:
+        restricted_values = np.full(total_face_count, np.nan, dtype=face_vf_values.dtype)
+        restricted_values[target_face_indices] = face_vf_values
+        face_vf_values = restricted_values
     
     # Add values to mesh metadata
     if not hasattr(building_mesh, 'metadata'):
