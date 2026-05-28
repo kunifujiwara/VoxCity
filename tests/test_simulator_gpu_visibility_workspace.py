@@ -14,6 +14,11 @@ class FakeWorkspace:
     key: object
 
 
+@dataclass
+class FakeSurfaceWorkspace:
+    key: object
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Chunk 1 – workspace cache-key and cache-management
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,6 +139,87 @@ def test_visibility_workspace_reuses_across_modes_when_allocation_shape_matches(
 
     assert sky is green
     assert len(created) == 1
+
+
+def test_surface_view_workspace_reuses_same_config(monkeypatch):
+    from voxcity.simulator_gpu.visibility import integration
+
+    created = []
+
+    def fake_factory(**kwargs):
+        workspace = FakeSurfaceWorkspace(key=kwargs["key"])
+        created.append(workspace)
+        return workspace
+
+    monkeypatch.setattr(integration, "SurfaceViewWorkspace", fake_factory, raising=False)
+    integration.clear_visibility_cache()
+
+    kwargs = dict(
+        nx=4, ny=5, nz=6, meshsize=1.0,
+        n_faces=5790,
+        n_azimuth=60, n_elevation=10,
+        ray_sampling="grid", n_rays=None,
+    )
+
+    first = integration._get_or_create_surface_view_workspace(**kwargs)
+    second = integration._get_or_create_surface_view_workspace(**kwargs)
+
+    assert first is second
+    assert len(created) == 1
+
+
+def test_surface_view_workspace_key_changes_for_face_count(monkeypatch):
+    from voxcity.simulator_gpu.visibility import integration
+
+    created = []
+
+    def fake_factory(**kwargs):
+        workspace = FakeSurfaceWorkspace(key=kwargs["key"])
+        created.append(workspace)
+        return workspace
+
+    monkeypatch.setattr(integration, "SurfaceViewWorkspace", fake_factory, raising=False)
+    integration.clear_visibility_cache()
+
+    common = dict(
+        nx=4, ny=5, nz=6, meshsize=1.0,
+        n_azimuth=60, n_elevation=10,
+        ray_sampling="grid", n_rays=None,
+    )
+
+    first = integration._get_or_create_surface_view_workspace(n_faces=5790, **common)
+    second = integration._get_or_create_surface_view_workspace(n_faces=6000, **common)
+
+    assert first is not second
+    assert len(created) == 2
+
+
+def test_clear_visibility_cache_clears_surface_view_workspace(monkeypatch):
+    from voxcity.simulator_gpu.visibility import integration
+
+    created = []
+
+    def fake_factory(**kwargs):
+        workspace = FakeSurfaceWorkspace(key=kwargs["key"])
+        created.append(workspace)
+        return workspace
+
+    monkeypatch.setattr(integration, "SurfaceViewWorkspace", fake_factory, raising=False)
+    integration.clear_visibility_cache()
+
+    kwargs = dict(
+        nx=4, ny=5, nz=6, meshsize=1.0,
+        n_faces=5790,
+        n_azimuth=60, n_elevation=10,
+        ray_sampling="grid", n_rays=None,
+    )
+
+    first = integration._get_or_create_surface_view_workspace(**kwargs)
+    integration.clear_visibility_cache()
+    second = integration._get_or_create_surface_view_workspace(**kwargs)
+
+    assert first is not second
+    assert len(created) == 2
 
 
 def test_domain_recreation_does_not_fallback_to_cpu(monkeypatch):

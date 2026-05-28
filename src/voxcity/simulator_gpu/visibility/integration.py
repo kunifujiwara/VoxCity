@@ -32,7 +32,12 @@ from ..domain import Domain
 from .view import ViewCalculator, SurfaceViewFactorCalculator
 from .landmark import LandmarkVisibilityCalculator, SurfaceLandmarkVisibilityCalculator
 from .landmark import mark_building_by_id
-from .workspace import ViewWorkspace, ViewWorkspaceKey
+from .workspace import (
+    SurfaceViewWorkspace,
+    SurfaceViewWorkspaceKey,
+    ViewWorkspace,
+    ViewWorkspaceKey,
+)
 import importlib as _importlib
 # Use importlib to get the actual init_taichi MODULE (not the function that
 # voxcity.simulator_gpu.__init__.py re-exports under the same name).
@@ -78,6 +83,9 @@ _domain_cache: Optional[_CachedDomain] = None
 _view_workspace_cache: Dict[ViewWorkspaceKey, ViewWorkspace] = {}
 _MAX_VIEW_WORKSPACES = 8
 
+_surface_view_workspace_cache: Dict[SurfaceViewWorkspaceKey, SurfaceViewWorkspace] = {}
+_MAX_SURFACE_VIEW_WORKSPACES = 8
+
 
 def _get_or_create_domain(
     nx: int, ny: int, nz: int,
@@ -119,6 +127,7 @@ def _get_or_create_domain(
         # Clear the init tracking flag so ti.init() will be called again
         _init_taichi_module.reset()
         _view_workspace_cache.clear()
+        _surface_view_workspace_cache.clear()
         _init_taichi_module.init_taichi(arch="cuda", honor_env=False)
     
     domain = Domain(
@@ -137,9 +146,10 @@ def _get_or_create_domain(
 
 def clear_visibility_cache():
     """Clear the cached Domain and workspace fields."""
-    global _domain_cache, _view_workspace_cache
+    global _domain_cache, _view_workspace_cache, _surface_view_workspace_cache
     _domain_cache = None
     _view_workspace_cache.clear()
+    _surface_view_workspace_cache.clear()
 
 
 def reset_visibility_taichi_cache():
@@ -153,9 +163,10 @@ def reset_visibility_taichi_cache():
     After calling this, the next visibility calculation will create fresh
     Taichi fields.
     """
-    global _domain_cache, _view_workspace_cache
+    global _domain_cache, _view_workspace_cache, _surface_view_workspace_cache
     _domain_cache = None
     _view_workspace_cache.clear()
+    _surface_view_workspace_cache.clear()
 
     ti.reset()
     _init_taichi_module.reset()
@@ -218,6 +229,55 @@ def _get_or_create_view_workspace(
         elevation_max_degrees=elevation_max_degrees,
     )
     _view_workspace_cache[key] = workspace
+    return workspace
+
+
+def _get_or_create_surface_view_workspace(
+    *,
+    nx: int,
+    ny: int,
+    nz: int,
+    meshsize: float,
+    n_faces: int,
+    n_azimuth: int,
+    n_elevation: int,
+    ray_sampling: str,
+    n_rays: Optional[int],
+) -> SurfaceViewWorkspace:
+    global _surface_view_workspace_cache
+
+    key = SurfaceViewWorkspaceKey(
+        shape=(int(nx), int(ny), int(nz)),
+        meshsize=float(meshsize),
+        n_faces=int(n_faces),
+        n_azimuth=int(n_azimuth),
+        n_elevation=int(n_elevation),
+        ray_sampling=str(ray_sampling).lower(),
+        n_rays=None if n_rays is None else int(n_rays),
+    )
+    cached = _surface_view_workspace_cache.get(key)
+    if cached is not None:
+        return cached
+
+    if len(_surface_view_workspace_cache) >= _MAX_SURFACE_VIEW_WORKSPACES:
+        raise RuntimeError(
+            "Too many surface visibility workspace configurations in one Taichi runtime. "
+            "Call reset_visibility_taichi_cache() before switching to more surface "
+            "visibility configurations."
+        )
+
+    workspace = SurfaceViewWorkspace(
+        key=key,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        n_faces=n_faces,
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+    )
+    _surface_view_workspace_cache[key] = workspace
     return workspace
 
 
