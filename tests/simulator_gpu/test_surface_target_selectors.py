@@ -206,6 +206,33 @@ def test_view_empty_target_returns_all_nan(monkeypatch):
     assert np.all(np.isnan(values))
 
 
+def test_view_sim_forwards_reference_mesh_to_resolve(monkeypatch):
+    """get_surface_view_factor forwards reference_mesh into resolve_target_face_mask
+    so the fast classify path triggers."""
+    from voxcity.geoprocessor import surface_meta as sm
+    from voxcity.simulator_gpu.visibility import integration as vint
+
+    captured = {}
+    real_resolve = sm.resolve_target_face_mask
+
+    def _spy(mesh, target_selectors, reference_mesh=None):
+        captured["reference_mesh_id"] = id(reference_mesh) if reference_mesh is not None else None
+        return real_resolve(mesh, target_selectors, reference_mesh=reference_mesh)
+
+    monkeypatch.setattr(vint, "resolve_target_face_mask", _spy)
+
+    vc = _tiny_voxcity_two_buildings()
+    ref = vc
+    out = vint.get_surface_view_factor(
+        vc,
+        mode="sky",
+        target_selectors=[{"building_id": 9999, "mode": "whole"}],
+        reference_mesh=ref,
+    )
+    assert out is not None
+    assert captured["reference_mesh_id"] == id(ref)
+
+
 class _ArrayField:
     def __init__(self, values):
         self._values = np.asarray(values)

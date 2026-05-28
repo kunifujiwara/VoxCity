@@ -490,6 +490,7 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
             - inclusion_mode (bool): Inclusion vs exclusion mode (default: False)
             - building_class_id (int): Building class ID for mesh extraction (default: -3)
             - target_selectors (list): Optional surface selectors limiting computed faces
+            - reference_mesh: Optional reference mesh used to reuse surface metadata
             - progress_report (bool): Show progress (default: False)
             - obj_export (bool): Export mesh to OBJ (default: False)
     
@@ -554,7 +555,10 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     target_face_indices = None
 
     if target_selectors is not None:
-        target_face_mask = resolve_target_face_mask(building_mesh, target_selectors)
+        reference_mesh = kwargs.get('reference_mesh', None)
+        target_face_mask = resolve_target_face_mask(
+            building_mesh, target_selectors, reference_mesh=reference_mesh,
+        )
         target_face_indices = np.flatnonzero(target_face_mask)
         if len(target_face_indices) == 0:
             if not hasattr(building_mesh, 'metadata'):
