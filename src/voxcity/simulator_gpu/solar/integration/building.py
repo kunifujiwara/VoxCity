@@ -114,6 +114,7 @@ def get_building_solar_irradiance(
             - building_class_id (int): Building voxel class code (default: -3)
             - computation_mask (np.ndarray): Optional 2D boolean mask
             - target_selectors (list): Optional surface selectors limiting returned faces
+            - reference_mesh: Optional reference mesh for target selector metadata fast path
             - progress_report (bool): Print progress (default: False)
     
     Returns:
@@ -227,7 +228,10 @@ def get_building_solar_irradiance(
     n_mesh_faces = len(building_mesh.faces)
     target_face_mask = None
     if target_selectors is not None:
-        target_face_mask = resolve_target_face_mask(building_mesh, target_selectors)
+        reference_mesh = kwargs.get("reference_mesh", None)
+        target_face_mask = resolve_target_face_mask(
+            building_mesh, target_selectors, reference_mesh=reference_mesh,
+        )
         if target_face_mask.shape != (n_mesh_faces,):
             raise ValueError("target_selectors resolved to a mask with the wrong face count")
 
@@ -423,7 +427,10 @@ def get_cumulative_building_solar_irradiance(
 
     target_face_mask = None
     if target_selectors is not None:
-        target_face_mask = resolve_target_face_mask(result_mesh, target_selectors)
+        reference_mesh = kwargs.get("reference_mesh", None)
+        target_face_mask = resolve_target_face_mask(
+            result_mesh, target_selectors, reference_mesh=reference_mesh,
+        )
         if target_face_mask.shape != (n_faces,):
             raise ValueError("target_selectors resolved to a mask with the wrong face count")
     
