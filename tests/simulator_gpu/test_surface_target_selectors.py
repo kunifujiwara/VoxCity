@@ -73,6 +73,39 @@ def test_resolve_target_face_mask_attaches_meta_if_missing():
     np.testing.assert_array_equal(mask, [True])
 
 
+def test_resolve_target_face_mask_uses_reference_fast_path(monkeypatch):
+    """When reference_mesh matches topology, attach_surface_face_meta should
+    use the fast-path copy and NOT call the slow classify_surface_faces loop."""
+    from voxcity.geoprocessor import surface_meta as sm
+
+    face_meta_list = [
+        {"face_key": f"f{i}", "building_id": 1, "surface_kind": "wall", "orientation": "S"}
+        for i in range(4)
+    ]
+    ref = _mesh_with_meta(face_meta_list)
+    iter_mesh = _mesh_with_meta([])
+    iter_mesh.metadata = {}
+    iter_mesh.vertices = ref.vertices.copy()
+    iter_mesh.faces = ref.faces.copy()
+
+    call_count = {"classify": 0}
+    real_classify = sm.classify_surface_faces
+
+    def _spy_classify(mesh):
+        call_count["classify"] += 1
+        return real_classify(mesh)
+
+    monkeypatch.setattr(sm, "classify_surface_faces", _spy_classify)
+
+    mask = sm.resolve_target_face_mask(
+        iter_mesh,
+        [{"building_id": 1, "mode": "whole"}],
+        reference_mesh=ref,
+    )
+    assert call_count["classify"] == 0
+    np.testing.assert_array_equal(mask, [True, True, True, True])
+
+
 def _tiny_voxcity_two_buildings():
     classes = np.zeros((7, 4, 3), dtype=np.int32)
     classes[1:3, 1:3, 0:2] = -3
