@@ -632,6 +632,18 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
 
+    surface_workspace = _get_or_create_surface_view_workspace(
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        meshsize=meshsize,
+        n_faces=int(face_centers.shape[0]),
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+    )
+
     calc = SurfaceViewFactorCalculator(
         domain,
         n_azimuth=n_azimuth,
@@ -648,7 +660,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         target_values=target_values,
         inclusion_mode=inclusion_mode,
         tree_k=tree_k,
-        tree_lad=tree_lad
+        tree_lad=tree_lad,
+        workspace=surface_workspace,
     )
 
     if target_face_indices is not None:

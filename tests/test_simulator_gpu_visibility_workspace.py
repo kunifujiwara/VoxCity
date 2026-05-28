@@ -478,3 +478,88 @@ def test_get_view_index_gpu_reuses_workspace_for_sky_and_green(monkeypatch):
     integration.get_view_index_gpu(voxcity, mode="green", n_azimuth=60, n_elevation=10, show_plot=False)
 
     assert len(created) == 1
+
+
+def test_get_surface_view_factor_passes_cached_workspace(monkeypatch):
+    import numpy as np
+    from voxcity.simulator_gpu.visibility import integration
+    from voxcity.geoprocessor import mesh as mesh_module
+
+    fake_domain = type(
+        "FakeDomain",
+        (),
+        {"nx": 4, "ny": 5, "nz": 6, "dx": 1.0, "dy": 1.0, "dz": 1.0},
+    )()
+    fake_workspace = object()
+    captured = {}
+
+    class FakeMesh:
+        def __init__(self):
+            self.faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+            self.triangles_center = np.array(
+                [[1.5, 1.5, 1.0], [2.5, 1.5, 1.0]], dtype=np.float32
+            )
+            self.face_normals = np.array(
+                [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32
+            )
+            self.metadata = {}
+
+    class FakeCalculator:
+        def __init__(self, domain, **kwargs):
+            captured["domain"] = domain
+            captured["init_kwargs"] = kwargs
+
+        def compute_surface_view_factor(self, **kwargs):
+            captured["compute_kwargs"] = kwargs
+            return np.array([0.25, 0.75], dtype=np.float32)
+
+    def fake_get_workspace(**kwargs):
+        captured["workspace_kwargs"] = kwargs
+        return fake_workspace
+
+    monkeypatch.setattr(mesh_module, "create_voxel_mesh", lambda *args, **kwargs: FakeMesh())
+    monkeypatch.setattr(integration, "scene_points_to_uv_domain", lambda points: points)
+    monkeypatch.setattr(integration, "scene_vectors_to_uv_domain", lambda vectors: vectors)
+    monkeypatch.setattr(integration, "_get_or_create_domain", lambda *args, **kwargs: fake_domain)
+    monkeypatch.setattr(integration, "_get_or_create_surface_view_workspace", fake_get_workspace)
+    monkeypatch.setattr(integration, "SurfaceViewFactorCalculator", FakeCalculator)
+
+    voxcity = type(
+        "FakeVoxCity",
+        (),
+        {
+            "voxels": type(
+                "Voxels",
+                (),
+                {
+                    "classes": np.zeros((4, 5, 6), dtype=np.int8),
+                    "meta": type("Meta", (), {"meshsize": 1.0})(),
+                },
+            )(),
+            "buildings": type("Buildings", (), {"ids": np.zeros((4, 5, 6), dtype=np.int32)})(),
+        },
+    )()
+
+    result = integration.get_surface_view_factor(
+        voxcity,
+        mode="green",
+        N_azimuth=60,
+        N_elevation=10,
+        ray_sampling="grid",
+    )
+
+    assert result.metadata["view_factor_values"].tolist() == [0.25, 0.75]
+    assert captured["workspace_kwargs"] == {
+        "nx": 4,
+        "ny": 5,
+        "nz": 6,
+        "meshsize": 1.0,
+        "n_faces": 2,
+        "n_azimuth": 60,
+        "n_elevation": 10,
+        "ray_sampling": "grid",
+        "n_rays": None,
+    }
+    assert captured["compute_kwargs"]["workspace"] is fake_workspace
+    assert captured["compute_kwargs"]["target_values"] == (-2, 2, 5, 6, 7, 8)
+    assert captured["compute_kwargs"]["inclusion_mode"] is True

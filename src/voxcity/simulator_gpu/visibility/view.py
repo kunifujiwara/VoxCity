@@ -627,7 +627,8 @@ class SurfaceViewFactorCalculator:
         inclusion_mode: bool = False,
         tree_k: float = 0.6,
         tree_lad: float = 1.0,
-        boundary_epsilon: float = None
+        boundary_epsilon: float = None,
+        workspace=None,
     ) -> np.ndarray:
         """
         Compute view factors for building surface faces.
@@ -641,6 +642,8 @@ class SurfaceViewFactorCalculator:
             tree_k: Tree extinction coefficient
             tree_lad: Leaf area density
             boundary_epsilon: Epsilon for boundary detection
+            workspace: Optional pre-allocated SurfaceViewWorkspace whose Taichi fields are
+                reused instead of allocating new ones on every call.
         
         Returns:
             1D array of view factor values for each face
@@ -656,31 +659,53 @@ class SurfaceViewFactorCalculator:
             [self.nx * self.meshsize, self.ny * self.meshsize, self.nz * self.meshsize]
         ], dtype=np.float32)
         
-        # Prepare Taichi fields
-        face_centers_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))
-        face_normals_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))
-        face_vf_values = ti.field(dtype=ti.f32, shape=(n_faces,))
-        
-        face_centers_ti.from_numpy(face_centers.astype(np.float32))
-        face_normals_ti.from_numpy(face_normals.astype(np.float32))
-        
-        # Prepare masks
-        if voxel_data is not None:
-            is_tree = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_solid = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_opaque = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            
+        use_workspace = workspace is not None and voxel_data is not None
+
+        if use_workspace:
+            workspace.validate_voxel_data(voxel_data)
+            workspace.set_faces(face_centers, face_normals)
+
+            self._hemisphere_dirs = workspace.hemisphere_dirs
+            self._n_hemisphere_dirs = workspace.n_hemisphere_dirs
+            face_centers_ti = workspace.face_centers
+            face_normals_ti = workspace.face_normals
+            face_vf_values = workspace.face_vf_values
+            is_tree = workspace.is_tree
+            is_solid = workspace.is_solid
+            is_target = workspace.is_target
+            is_opaque = workspace.is_opaque
+
             target_values_arr = np.array(target_values, dtype=np.int32)
             self._setup_surface_masks(
                 voxel_data, target_values_arr, len(target_values_arr), inclusion_mode,
                 is_tree, is_solid, is_target, is_opaque
             )
         else:
-            is_tree = self.domain.is_tree
-            is_solid = self.domain.is_solid
-            is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            is_opaque = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+            # Prepare Taichi fields
+            face_centers_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))
+            face_normals_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))
+            face_vf_values = ti.field(dtype=ti.f32, shape=(n_faces,))
+            
+            face_centers_ti.from_numpy(face_centers.astype(np.float32))
+            face_normals_ti.from_numpy(face_normals.astype(np.float32))
+            
+            # Prepare masks
+            if voxel_data is not None:
+                is_tree = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_solid = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_opaque = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                
+                target_values_arr = np.array(target_values, dtype=np.int32)
+                self._setup_surface_masks(
+                    voxel_data, target_values_arr, len(target_values_arr), inclusion_mode,
+                    is_tree, is_solid, is_target, is_opaque
+                )
+            else:
+                is_tree = self.domain.is_tree
+                is_solid = self.domain.is_solid
+                is_target = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
+                is_opaque = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
         
         # Tree attenuation
         tree_att = float(math.exp(-tree_k * tree_lad * self.meshsize))
