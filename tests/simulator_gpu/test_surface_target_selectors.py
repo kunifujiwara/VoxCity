@@ -419,3 +419,85 @@ def test_solar_cumulative_sky_patch_svf_diffuse_respects_target_selectors(monkey
     np.testing.assert_allclose(result.metadata["cumulative_direct"], [np.nan, 0.0], equal_nan=True)
     np.testing.assert_allclose(result.metadata["cumulative_diffuse"], [np.nan, 2.5], equal_nan=True)
     np.testing.assert_allclose(result.metadata["cumulative_global"], [np.nan, 2.5], equal_nan=True)
+
+
+def test_building_radiation_cache_invalidates_for_new_voxel_array(monkeypatch):
+    from voxcity.simulator_gpu.solar.integration import caching
+    from voxcity.simulator_gpu.solar import domain as domain_mod
+    from voxcity.simulator_gpu.solar import radiation as radiation_mod
+
+    old_voxels = np.zeros((2, 2, 2), dtype=np.int32)
+    new_voxels = old_voxels.copy()
+    new_voxels[0, 0, 0] = -3
+    old_model = object()
+
+    seeded_cache = caching.CachedBuildingRadiationModel(
+        model=old_model,
+        voxcity_shape=old_voxels.shape,
+        meshsize=1.0,
+        n_reflection_steps=0,
+        n_azimuth=40,
+        n_elevation=10,
+        is_building_surf=np.array([True], dtype=bool),
+        building_svf_mesh=None,
+    )
+    seeded_cache.voxel_data_id = id(old_voxels)
+    caching.set_building_radiation_model_cache(seeded_cache)
+
+    class _FakeDomain:
+        def __init__(self, **kwargs):
+            self.nx = kwargs["nx"]
+            self.ny = kwargs["ny"]
+            self.nz = kwargs["nz"]
+
+        def set_lad_from_array(self, lad_array):
+            self.lad_array = lad_array
+
+    class _FakeRadiationConfig:
+        def __init__(self, **kwargs):
+            self.n_reflection_steps = kwargs["n_reflection_steps"]
+            self.n_azimuth = kwargs["n_azimuth"]
+            self.n_elevation = kwargs["n_elevation"]
+            self.surface_reflections = kwargs["surface_reflections"]
+            self.cache_svf_matrix = kwargs["cache_svf_matrix"]
+
+    class _FakeRadiationModel:
+        def __init__(self, domain, config):
+            self.domain = domain
+            self.config = config
+            self.surfaces = SimpleNamespace(
+                count=1,
+                position=_ArrayField([[0, 0, 0]]),
+            )
+
+        def compute_svf(self):
+            pass
+
+    monkeypatch.setattr(domain_mod, "Domain", _FakeDomain)
+    monkeypatch.setattr(radiation_mod, "RadiationConfig", _FakeRadiationConfig)
+    monkeypatch.setattr(radiation_mod, "RadiationModel", _FakeRadiationModel)
+    monkeypatch.setattr(caching, "get_location_from_voxcity", lambda voxcity: (0.0, 0.0))
+    monkeypatch.setattr(
+        caching,
+        "convert_voxel_data_to_arrays",
+        lambda voxel_data, default_lad: (
+            voxel_data == -3,
+            np.zeros_like(voxel_data, dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(caching, "_set_solid_array", lambda domain, is_solid: None)
+    monkeypatch.setattr(caching, "_update_topo_from_solid", lambda domain: None)
+
+    voxcity = SimpleNamespace(
+        voxels=SimpleNamespace(classes=new_voxels, meta=SimpleNamespace(meshsize=1.0)),
+    )
+
+    model, is_building_surf = caching.get_or_create_building_radiation_model(
+        voxcity,
+        n_reflection_steps=0,
+    )
+
+    assert model is not old_model
+    assert is_building_surf.tolist() == [True]
+    assert caching.get_building_radiation_model_cache().voxel_data_id == id(new_voxels)
+    caching.clear_building_radiation_model_cache()
