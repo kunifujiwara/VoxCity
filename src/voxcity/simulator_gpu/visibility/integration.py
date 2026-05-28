@@ -649,7 +649,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         n_azimuth=n_azimuth,
         n_elevation=n_elevation,
         ray_sampling=ray_sampling,
-        n_rays=n_rays
+        n_rays=n_rays,
+        precompute_directions=False,
     )
     
     # Compute surface view factors

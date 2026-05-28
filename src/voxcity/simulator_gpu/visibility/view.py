@@ -572,7 +572,8 @@ class SurfaceViewFactorCalculator:
         n_azimuth: int = 120,
         n_elevation: int = 20,
         ray_sampling: str = "grid",
-        n_rays: int = None
+        n_rays: int = None,
+        precompute_directions: bool = True,
     ):
         """
         Initialize Surface View Factor Calculator.
@@ -583,6 +584,7 @@ class SurfaceViewFactorCalculator:
             n_elevation: Number of elevation divisions
             ray_sampling: 'grid' or 'fibonacci'
             n_rays: Total rays for fibonacci sampling
+            precompute_directions: If True, allocate hemisphere direction fields during initialization
         """
         self.domain = domain
         self.nx = domain.nx
@@ -601,7 +603,8 @@ class SurfaceViewFactorCalculator:
         # Pre-computed hemisphere directions (upper hemisphere only for surfaces)
         self._hemisphere_dirs = None
         self._n_hemisphere_dirs = 0
-        self._setup_hemisphere_directions()
+        if precompute_directions:
+            self._setup_hemisphere_directions()
     
     def _setup_hemisphere_directions(self):
         """Setup hemisphere ray directions for surface view factor."""
@@ -681,6 +684,9 @@ class SurfaceViewFactorCalculator:
                 is_tree, is_solid, is_target, is_opaque
             )
         else:
+            if self._hemisphere_dirs is None:
+                self._setup_hemisphere_directions()
+
             # Prepare Taichi fields
             face_centers_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))
             face_normals_ti = ti.Vector.field(3, dtype=ti.f32, shape=(n_faces,))

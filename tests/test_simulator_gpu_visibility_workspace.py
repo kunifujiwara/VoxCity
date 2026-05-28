@@ -563,3 +563,4 @@ def test_get_surface_view_factor_passes_cached_workspace(monkeypatch):
     assert captured["compute_kwargs"]["workspace"] is fake_workspace
     assert captured["compute_kwargs"]["target_values"] == (-2, 2, 5, 6, 7, 8)
     assert captured["compute_kwargs"]["inclusion_mode"] is True
+    assert captured["init_kwargs"]["precompute_directions"] is False
