@@ -32,7 +32,12 @@ from ..domain import Domain
 from .view import ViewCalculator, SurfaceViewFactorCalculator
 from .landmark import LandmarkVisibilityCalculator, SurfaceLandmarkVisibilityCalculator
 from .landmark import mark_building_by_id
-from .workspace import ViewWorkspace, ViewWorkspaceKey
+from .workspace import (
+    SurfaceViewWorkspace,
+    SurfaceViewWorkspaceKey,
+    ViewWorkspace,
+    ViewWorkspaceKey,
+)
 import importlib as _importlib
 # Use importlib to get the actual init_taichi MODULE (not the function that
 # voxcity.simulator_gpu.__init__.py re-exports under the same name).
@@ -41,6 +46,7 @@ from voxcity.simulator.common.coordinates import (
     scene_points_to_uv_domain,
     scene_vectors_to_uv_domain,
 )
+from voxcity.geoprocessor.surface_meta import resolve_target_face_mask
 
 
 # VoxCity voxel class codes
@@ -76,6 +82,9 @@ _domain_cache: Optional[_CachedDomain] = None
 # The cache is cleared together with _domain_cache.
 _view_workspace_cache: Dict[ViewWorkspaceKey, ViewWorkspace] = {}
 _MAX_VIEW_WORKSPACES = 8
+
+_surface_view_workspace_cache: Dict[SurfaceViewWorkspaceKey, SurfaceViewWorkspace] = {}
+_MAX_SURFACE_VIEW_WORKSPACES = 8
 
 
 def _get_or_create_domain(
@@ -118,6 +127,7 @@ def _get_or_create_domain(
         # Clear the init tracking flag so ti.init() will be called again
         _init_taichi_module.reset()
         _view_workspace_cache.clear()
+        _surface_view_workspace_cache.clear()
         _init_taichi_module.init_taichi(arch="cuda", honor_env=False)
     
     domain = Domain(
@@ -136,9 +146,10 @@ def _get_or_create_domain(
 
 def clear_visibility_cache():
     """Clear the cached Domain and workspace fields."""
-    global _domain_cache, _view_workspace_cache
+    global _domain_cache, _view_workspace_cache, _surface_view_workspace_cache
     _domain_cache = None
     _view_workspace_cache.clear()
+    _surface_view_workspace_cache.clear()
 
 
 def reset_visibility_taichi_cache():
@@ -152,9 +163,10 @@ def reset_visibility_taichi_cache():
     After calling this, the next visibility calculation will create fresh
     Taichi fields.
     """
-    global _domain_cache, _view_workspace_cache
+    global _domain_cache, _view_workspace_cache, _surface_view_workspace_cache
     _domain_cache = None
     _view_workspace_cache.clear()
+    _surface_view_workspace_cache.clear()
 
     ti.reset()
     _init_taichi_module.reset()
@@ -217,6 +229,55 @@ def _get_or_create_view_workspace(
         elevation_max_degrees=elevation_max_degrees,
     )
     _view_workspace_cache[key] = workspace
+    return workspace
+
+
+def _get_or_create_surface_view_workspace(
+    *,
+    nx: int,
+    ny: int,
+    nz: int,
+    meshsize: float,
+    n_faces: int,
+    n_azimuth: int,
+    n_elevation: int,
+    ray_sampling: str,
+    n_rays: Optional[int],
+) -> SurfaceViewWorkspace:
+    global _surface_view_workspace_cache
+
+    key = SurfaceViewWorkspaceKey(
+        shape=(int(nx), int(ny), int(nz)),
+        meshsize=float(meshsize),
+        n_faces=int(n_faces),
+        n_azimuth=int(n_azimuth),
+        n_elevation=int(n_elevation),
+        ray_sampling=str(ray_sampling).lower(),
+        n_rays=None if n_rays is None else int(n_rays),
+    )
+    cached = _surface_view_workspace_cache.get(key)
+    if cached is not None:
+        return cached
+
+    if len(_surface_view_workspace_cache) >= _MAX_SURFACE_VIEW_WORKSPACES:
+        raise RuntimeError(
+            "Too many surface visibility workspace configurations in one Taichi runtime. "
+            "Call reset_visibility_taichi_cache() before switching to more surface "
+            "visibility configurations."
+        )
+
+    workspace = SurfaceViewWorkspace(
+        key=key,
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        n_faces=n_faces,
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+    )
+    _surface_view_workspace_cache[key] = workspace
     return workspace
 
 
@@ -488,6 +549,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
             - target_values (tuple): Target voxel values (default: (0,))
             - inclusion_mode (bool): Inclusion vs exclusion mode (default: False)
             - building_class_id (int): Building class ID for mesh extraction (default: -3)
+            - target_selectors (list): Optional surface selectors limiting computed faces
+            - reference_mesh: Optional reference mesh used to reuse surface metadata
             - progress_report (bool): Show progress (default: False)
             - obj_export (bool): Export mesh to OBJ (default: False)
     
@@ -507,6 +570,7 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     tree_k = kwargs.get('tree_k', 0.6)
     tree_lad = kwargs.get('tree_lad', 1.0)
     building_class_id = kwargs.get('building_class_id', -3)
+    target_selectors = kwargs.get('target_selectors', None)
     progress_report = kwargs.get('progress_report', False)
     
     # Handle mode parameter
@@ -547,16 +611,46 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
 
     face_centers = scene_points_to_uv_domain(building_mesh.triangles_center).astype(np.float32)
     face_normals = scene_vectors_to_uv_domain(building_mesh.face_normals).astype(np.float32)
+    total_face_count = len(face_centers)
+    target_face_indices = None
+
+    if target_selectors is not None:
+        reference_mesh = kwargs.get('reference_mesh', None)
+        target_face_mask = resolve_target_face_mask(
+            building_mesh, target_selectors, reference_mesh=reference_mesh,
+        )
+        target_face_indices = np.flatnonzero(target_face_mask)
+        if len(target_face_indices) == 0:
+            if not hasattr(building_mesh, 'metadata'):
+                building_mesh.metadata = {}
+            building_mesh.metadata[value_name] = np.full(total_face_count, np.nan, dtype=np.float32)
+            return building_mesh
+
+        face_centers = face_centers[target_face_indices]
+        face_normals = face_normals[target_face_indices]
 
     # Get or create cached domain to avoid Taichi memory issues
     domain = _get_or_create_domain(nx, ny, nz, meshsize)
+
+    surface_workspace = _get_or_create_surface_view_workspace(
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        meshsize=meshsize,
+        n_faces=int(face_centers.shape[0]),
+        n_azimuth=n_azimuth,
+        n_elevation=n_elevation,
+        ray_sampling=ray_sampling,
+        n_rays=n_rays,
+    )
 
     calc = SurfaceViewFactorCalculator(
         domain,
         n_azimuth=n_azimuth,
         n_elevation=n_elevation,
         ray_sampling=ray_sampling,
-        n_rays=n_rays
+        n_rays=n_rays,
+        precompute_directions=False,
     )
     
     # Compute surface view factors
@@ -567,8 +661,14 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         target_values=target_values,
         inclusion_mode=inclusion_mode,
         tree_k=tree_k,
-        tree_lad=tree_lad
+        tree_lad=tree_lad,
+        workspace=surface_workspace,
     )
+
+    if target_face_indices is not None:
+        restricted_values = np.full(total_face_count, np.nan, dtype=face_vf_values.dtype)
+        restricted_values[target_face_indices] = face_vf_values
+        face_vf_values = restricted_values
     
     # Add values to mesh metadata
     if not hasattr(building_mesh, 'metadata'):

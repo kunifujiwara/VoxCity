@@ -127,6 +127,7 @@ class CachedBuildingRadiationModel:
     mesh_geometry_signature: Optional[object] = None
     boundary_mask: Optional[np.ndarray] = None
     cached_building_mesh: object = None
+    voxel_data_id: int = 0
 
 
 @dataclass
@@ -471,7 +472,8 @@ def get_or_create_building_radiation_model(
         if (cache.voxcity_shape == voxel_data.shape and
             cache.meshsize == meshsize and
             cache.n_azimuth == requested_n_azimuth and
-            cache.n_elevation == requested_n_elevation):
+            cache.n_elevation == requested_n_elevation and
+            cache.voxel_data_id == id(voxel_data)):
             if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
                 cache_valid = True
                 if progress_report:
@@ -557,7 +559,8 @@ def get_or_create_building_radiation_model(
         is_building_surf=is_building_surf,
         building_svf_mesh=None,
         bldg_indices=bldg_indices,
-        mesh_to_surface_idx=None
+        mesh_to_surface_idx=None,
+        voxel_data_id=id(voxel_data),
     )
     
     return model, is_building_surf

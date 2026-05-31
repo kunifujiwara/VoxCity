@@ -255,6 +255,29 @@ def surface_zone_mask(
     return positive & ~excluded
 
 
+def resolve_target_face_mask(
+    mesh: Any,
+    target_selectors: Sequence,
+    reference_mesh: Any = None,
+) -> np.ndarray:
+    """Resolve target_selectors to a boolean face mask over mesh.faces.
+
+    Ensures surface_face_meta is attached first (classifying if needed). When
+    *reference_mesh* is provided and its face count matches *mesh*, the
+    attach uses its fast-path copy of the reference's classified meta --
+    avoiding the per-face Python classify loop.
+
+    Returns an (n_faces,) bool array.
+    """
+    meta = getattr(mesh, "metadata", None)
+    have_meta = isinstance(meta, dict) and meta.get("surface_face_meta")
+    if not have_meta:
+        attach_surface_face_meta(mesh, reference_mesh=reference_mesh)
+        meta = mesh.metadata
+    face_meta = meta["surface_face_meta"]
+    return surface_zone_mask(face_meta, target_selectors).astype(bool)
+
+
 # ---------------------------------------------------------------------------
 # Face area computation
 # ---------------------------------------------------------------------------

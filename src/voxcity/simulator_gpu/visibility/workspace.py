@@ -39,6 +39,18 @@ class ViewWorkspaceKey:
     elevation_max_degrees: float
 
 
+@dataclass(frozen=True)
+class SurfaceViewWorkspaceKey:
+    """Immutable key for reusable building-surface visibility fields."""
+    shape: Tuple[int, int, int]
+    meshsize: float
+    n_faces: int
+    n_azimuth: int
+    n_elevation: int
+    ray_sampling: str
+    n_rays: Optional[int]
+
+
 class ViewWorkspace:
     """Pre-allocated Taichi fields for one visibility-ray configuration.
 
@@ -117,3 +129,73 @@ class ViewWorkspace:
                 f"voxel_data shape {voxel_data.shape} does not match visibility workspace "
                 f"shape {(self.nx, self.ny, self.nz)}."
             )
+
+
+class SurfaceViewWorkspace:
+    """Pre-allocated Taichi fields for one surface visibility configuration."""
+
+    def __init__(
+        self,
+        *,
+        key: SurfaceViewWorkspaceKey,
+        nx: int,
+        ny: int,
+        nz: int,
+        n_faces: int,
+        n_azimuth: int,
+        n_elevation: int,
+        ray_sampling: str,
+        n_rays: Optional[int],
+    ) -> None:
+        self.key = key
+        self.nx = nx
+        self.ny = ny
+        self.nz = nz
+        self.n_faces = int(n_faces)
+
+        if ray_sampling.lower() == "fibonacci":
+            dirs_np = generate_ray_directions_fibonacci(
+                n_rays if n_rays is not None else n_azimuth * n_elevation,
+                0.0,
+                90.0,
+            )
+        else:
+            dirs_np = generate_ray_directions_grid(
+                n_azimuth,
+                n_elevation,
+                0.0,
+                90.0,
+            )
+
+        self.n_hemisphere_dirs = int(dirs_np.shape[0])
+        self.hemisphere_dirs = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_hemisphere_dirs,))
+        self.hemisphere_dirs.from_numpy(np.asarray(dirs_np, dtype=np.float32))
+
+        self.face_centers = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_faces,))
+        self.face_normals = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_faces,))
+        self.face_vf_values = ti.field(dtype=ti.f32, shape=(self.n_faces,))
+
+        self.is_tree = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+        self.is_solid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+        self.is_target = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+        self.is_opaque = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
+
+    def validate_face_data(self, face_centers: np.ndarray, face_normals: np.ndarray) -> None:
+        expected_shape = (self.n_faces, 3)
+        if tuple(face_centers.shape) != expected_shape or tuple(face_normals.shape) != expected_shape:
+            raise ValueError(
+                f"surface workspace face data shapes must match {expected_shape}; "
+                f"got face_centers={face_centers.shape} face_normals={face_normals.shape}."
+            )
+
+    def validate_voxel_data(self, voxel_data: np.ndarray) -> None:
+        if tuple(voxel_data.shape) != (self.nx, self.ny, self.nz):
+            raise ValueError(
+                f"voxel_data shape {voxel_data.shape} does not match surface workspace "
+                f"shape {(self.nx, self.ny, self.nz)}."
+            )
+
+    def set_faces(self, face_centers: np.ndarray, face_normals: np.ndarray) -> None:
+        self.validate_face_data(face_centers, face_normals)
+        self.face_centers.from_numpy(np.asarray(face_centers, dtype=np.float32))
+        self.face_normals.from_numpy(np.asarray(face_normals, dtype=np.float32))
