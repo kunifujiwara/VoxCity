@@ -89,7 +89,6 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
       >
         <GuidedSection label="Export format">
           <ChoiceGroup
-            variant="checks"
             ariaLabel="Export format"
             value={exportFormat}
             onChange={setExportFormat}

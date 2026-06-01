@@ -1,4 +1,5 @@
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 export interface ChoiceOption<T extends string> {
   id: T;
@@ -7,6 +8,7 @@ export interface ChoiceOption<T extends string> {
   count?: React.ReactNode;
   tone?: 'danger';
   disabled?: boolean;
+  icon?: LucideIcon;
 }
 
 interface ChoiceGroupProps<T extends string> {
@@ -37,6 +39,7 @@ export function ChoiceGroup<T extends string>({
       >
         {options.map((option) => {
           const active = value === option.id;
+          const Icon = option.icon;
           return (
             <label
               key={option.id}
@@ -50,10 +53,10 @@ export function ChoiceGroup<T extends string>({
               />
               <span className="choice-check-content">
                 <span className="choice-check-main">
+                  {Icon && <Icon size={13} className="choice-check-icon" aria-hidden="true" />}
                   <span>{option.label}</span>
                   {option.count && <span className="choice-check-count">{option.count}</span>}
                 </span>
-                {option.description && <span className="choice-check-description">{option.description}</span>}
               </span>
             </label>
           );
@@ -70,6 +73,7 @@ export function ChoiceGroup<T extends string>({
     >
       {options.map((option) => {
         const active = value === option.id;
+        const Icon = option.icon;
         return (
           <button
             key={option.id}
@@ -80,6 +84,7 @@ export function ChoiceGroup<T extends string>({
             aria-pressed={active}
           >
             <span className="choice-btn-main">
+              {Icon && <Icon size={13} className="choice-btn-icon" aria-hidden="true" />}
               <span>{option.label}</span>
               {option.count && <span className="choice-btn-count">{option.count}</span>}
             </span>

@@ -70,7 +70,7 @@ describe('guided components', () => {
     expect(html).toContain('choice-check-row active');
     expect(html).toContain('type="radio"');
     expect(html).toContain('checked=""');
-    expect(html).toContain('Global open data sources');
+    expect(html).not.toContain('Global open data sources');
     expect(html).toContain('disabled=""');
   });
 
@@ -119,5 +119,34 @@ describe('guided components', () => {
     );
     expect(html).toContain('guided-section-header-collapsible');
     expect(html).toContain('guided-section-collapse-chevron');
+  });
+
+  it('keeps descriptions visible for card-style choices', () => {
+    const html = renderToStaticMarkup(
+      <ChoiceGroup
+        ariaLabel="Export format"
+        value="cityles"
+        onChange={() => {}}
+        options={[{ id: 'cityles', label: 'CityLES', description: 'Simulation archive' }]}
+      />,
+    );
+    expect(html).toContain('Simulation archive');
+  });
+
+  it('renders an icon glyph before the label when ChoiceOption.icon is set', () => {
+    const Stub: any = (props: any) => <svg {...props} />;
+    const html = renderToStaticMarkup(
+      <ChoiceGroup
+        variant="checks"
+        ariaLabel="Action"
+        value="add"
+        onChange={() => {}}
+        options={[{ id: 'add', label: 'Add', icon: Stub }]}
+      />,
+    );
+    expect(html).toContain('<svg');
+    expect(html).toContain('choice-check-icon');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toMatch(/<svg[^>]*class="choice-check-icon"[^>]*aria-hidden="true"/);
   });
 });

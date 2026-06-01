@@ -151,7 +151,6 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       >
         <GuidedSection label="Generation mode">
           <ChoiceGroup
-            variant="checks"
             ariaLabel="Generation mode"
             value={mode}
             onChange={setMode}
