@@ -7,18 +7,22 @@ import ViewTab from './tabs/ViewTab';
 import LandmarkTab from './tabs/LandmarkTab';
 import ExportTab from './tabs/ExportTab';
 import ZoningTab from './tabs/ZoningTab';
+import {
+  MapPin, Layers, Pencil, Grid3x3, Sun, Camera,
+  Landmark as LandmarkIcon, FolderOpen,
+} from 'lucide-react';
 import type { Zone } from './types/zones';
 import { healthCheck, resetSession } from './api';
 
 const TABS = [
-  { id: 'area', label: 'Target Area' },
-  { id: 'generation', label: 'Generation' },
-  { id: 'edit', label: 'Edit' },
-  { id: 'zoning', label: 'Zoning' },
-  { id: 'solar', label: 'Solar' },
-  { id: 'view', label: 'View' },
-  { id: 'landmark', label: 'Landmark' },
-  { id: 'export', label: 'Export' },
+  { id: 'area',       label: 'Target',   Icon: MapPin },
+  { id: 'generation', label: 'Generate', Icon: Layers },
+  { id: 'edit',       label: 'Edit',     Icon: Pencil },
+  { id: 'zoning',     label: 'Zone',     Icon: Grid3x3 },
+  { id: 'solar',      label: 'Solar',    Icon: Sun },
+  { id: 'view',       label: 'View',     Icon: Camera },
+  { id: 'landmark',   label: 'Landmark', Icon: LandmarkIcon },
+  { id: 'export',     label: 'File',     Icon: FolderOpen },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -82,20 +86,22 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="app-header">
         <img src="/logo.png" alt="VoxCity" className="logo" />
+        <nav className="tab-bar">
+          {TABS.map((tab) => {
+            const Icon = tab.Icon;
+            return (
+              <button
+                key={tab.id}
+                className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={14} aria-hidden="true" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </header>
-
-      {/* Tab bar */}
-      <nav className="tab-bar">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
 
       {/* Tab content */}
       <main className="tab-content">
