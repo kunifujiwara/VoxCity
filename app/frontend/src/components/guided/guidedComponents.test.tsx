@@ -97,4 +97,27 @@ describe('guided components', () => {
     expect(html).not.toContain('guided-panel-bottom');
     expect(html).not.toContain('guided-panel-heading');
   });
+
+  it('renders a numbered index when GuidedSection.index is set', () => {
+    const html = renderToStaticMarkup(
+      <GuidedSection index={2} label="Solar">body</GuidedSection>,
+    );
+    expect(html).toContain('guided-section-index');
+    expect(html).toContain('>2<');
+  });
+
+  it('applies tone-danger class when GuidedSection.tone="danger"', () => {
+    const html = renderToStaticMarkup(
+      <GuidedSection label="Reset" tone="danger">body</GuidedSection>,
+    );
+    expect(html).toContain('tone-danger');
+  });
+
+  it('renders a collapsible affordance with chevron when GuidedSection.collapsible', () => {
+    const html = renderToStaticMarkup(
+      <GuidedSection label="Solar" collapsible>body</GuidedSection>,
+    );
+    expect(html).toContain('guided-section-header-collapsible');
+    expect(html).toContain('guided-section-collapse-chevron');
+  });
 });
