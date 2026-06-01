@@ -317,6 +317,15 @@ input:focus, select:focus {
   gap: 0.4rem;
 }
 
+.choice-group-checks-1 {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.choice-group-checks-1 .choice-check-row {
+  width: 100%;
+}
+
 .choice-group-checks-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -363,8 +372,8 @@ input:focus, select:focus {
 }
 
 .choice-check-row.active {
-  border-color: var(--vc-primary);
-  background: var(--vc-primary);
+  border-color: var(--vc-accent);
+  background: var(--vc-accent);
   color: #fff;
 }
 
