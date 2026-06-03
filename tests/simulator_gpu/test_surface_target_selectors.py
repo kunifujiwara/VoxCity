@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytest.importorskip("taichi")
+
 from voxcity.geoprocessor.surface_meta import resolve_target_face_mask
 from voxcity.simulator_gpu.solar.integration import building as building_integration
 from voxcity.simulator_gpu.visibility import integration as visibility_integration

@@ -3,6 +3,8 @@ non-mask cells receive NaN in the returned result."""
 import numpy as np
 import pytest
 
+pytest.importorskip("taichi")
+
 from voxcity.simulator_gpu.solar.integration.caching import (
     compute_direct_transmittance_map_gpu,
 )

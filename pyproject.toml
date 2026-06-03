@@ -69,6 +69,7 @@ pytest = "*"
 ruff = "*"
 fastapi = "*"
 httpx = "*"
+python-multipart = "*"
 
 [tool.poetry.extras]
 gpu = ["taichi"]

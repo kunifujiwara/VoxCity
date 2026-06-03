@@ -1,6 +1,9 @@
 """SVF map and view index respect computation_mask."""
 import numpy as np
 import pytest
+
+pytest.importorskip("taichi")
+
 from voxcity.simulator_gpu.visibility.integration import get_sky_view_factor_map
 
 pytestmark = pytest.mark.gpu
