@@ -405,7 +405,26 @@ def save_results_h5(
                 if isinstance(v, _gpd.GeoDataFrame):
                     import io as _io
                     buf = _io.BytesIO()
-                    v.to_parquet(buf)
+                    try:
+                        v.to_parquet(buf)
+                    except Exception:
+                        # Mixed-type (object dtype) non-geometry columns — e.g. an
+                        # ``id`` column holding both ints and bytes — cannot be
+                        # encoded by the Arrow/Parquet writer. Coerce object
+                        # columns to strings and retry so the save still succeeds.
+                        buf = _io.BytesIO()
+                        v_clean = v.copy()
+                        geom_col = v_clean.geometry.name
+                        for col in v_clean.columns:
+                            if col == geom_col:
+                                continue
+                            if v_clean[col].dtype == object:
+                                v_clean[col] = v_clean[col].apply(
+                                    lambda x: x.decode('utf-8', 'replace')
+                                    if isinstance(x, (bytes, bytearray))
+                                    else ('' if x is None else str(x))
+                                )
+                        v_clean.to_parquet(buf)
                     if 'extras_gdf' not in vc:
                         vc.create_group('extras_gdf')
                     vc['extras_gdf'].create_dataset(k, data=np.void(buf.getvalue()))
