@@ -6,7 +6,7 @@ import { Zone, hashZones } from '../types/zones';
  * Aggregate per-ring stats returned by the backend into one stat per logical
  * zone group (zones sharing the same `groupId`).
  */
-function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): ZoneStatsResponse {
+export function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): ZoneStatsResponse {
   // Map each ring id → its group key
   const ringToGroup = new Map<string, string>();
   for (const z of zones) {
