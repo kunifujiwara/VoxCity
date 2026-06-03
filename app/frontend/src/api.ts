@@ -568,6 +568,10 @@ export interface SessionLoadSummary {
   rectangle_vertices: number[][] | null;
   land_cover_source: string;
   frontend_state: string | null;
+  has_sim_results: boolean;
+  last_sim_type: string | null;
+  sim_result_types: string[];
+  landmark_building_ids: number[];
 }
 
 export async function loadSession(file: File): Promise<SessionLoadSummary> {

@@ -46,6 +46,10 @@ interface LandmarkTabProps {
   simRunNonce: number;
   onSimRun: () => void;
   geometryToken?: string | number;
+  /** Sim types restored from a loaded session; show this tab's overlay if listed. */
+  restoredSimTypes?: string[];
+  /** Landmark building IDs recovered from a restored landmark sim, for highlights. */
+  restoredLandmarkIds?: number[];
 }
 
 const LandmarkTab: React.FC<LandmarkTabProps> = ({
@@ -54,13 +58,15 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   simRunNonce,
   onSimRun,
   geometryToken,
+  restoredSimTypes,
+  restoredLandmarkIds,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'landmark', simRunNonce);
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
   const [landmarkIdsText, setLandmarkIdsText] = useState('');
-  const [nAzimuth, setNAzimuth] = useState(60);
-  const [nElevation, setNElevation] = useState(10);
+  const [nAzimuth, setNAzimuth] = useState(360);
+  const [nElevation, setNElevation] = useState(60);
   const [elevMin, setElevMin] = useState(-30);
   const [elevMax, setElevMax] = useState(30);
   const [colormap, setColormap] = useState('viridis');
@@ -100,6 +106,19 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
     return () => { cancelled = true; };
   }, [hasModel]);
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
+
+  // When a loaded session carried a cached landmark result, flip on the overlay
+  // so SceneViewer fetches it from /sim/landmark/geometry without a re-run.
+  useEffect(() => {
+    if (restoredSimTypes?.includes('landmark')) {
+      setHasSimResult(true);
+      setShowingSimResult(true);
+      if (restoredLandmarkIds && restoredLandmarkIds.length > 0) {
+        setSelectedBuildingIds(restoredLandmarkIds);
+        setLandmarkIdsText(restoredLandmarkIds.join(', '));
+      }
+    }
+  }, [restoredSimTypes, restoredLandmarkIds]);
 
   // Bidirectional sync: text -> selection
   const handleIdsTextChange = useCallback((text: string) => {

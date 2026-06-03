@@ -31,6 +31,8 @@ interface SolarTabProps {
   simRunNonce: number;
   onSimRun: () => void;
   geometryToken?: string | number;
+  /** Sim types restored from a loaded session; show this tab's overlay if listed. */
+  restoredSimTypes?: string[];
 }
 
 const SolarTab: React.FC<SolarTabProps> = ({
@@ -39,6 +41,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   simRunNonce,
   onSimRun,
   geometryToken,
+  restoredSimTypes,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'solar', simRunNonce);
@@ -76,6 +79,12 @@ const SolarTab: React.FC<SolarTabProps> = ({
     return () => { cancelled = true; };
   }, [hasModel]);
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
+
+  // When a loaded session carried a cached solar result, flip on the overlay so
+  // SceneViewer fetches it from /sim/solar/geometry without a re-run.
+  useEffect(() => {
+    if (restoredSimTypes?.includes('solar')) setHasSimResult(true);
+  }, [restoredSimTypes]);
 
   if (!hasModel) {
     const message = prerequisiteMessageForTab('solar');

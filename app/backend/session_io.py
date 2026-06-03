@@ -404,12 +404,68 @@ def apply_session_to_state(parsed: ParsedSession, state) -> Dict[str, Any]:
     if parsed.sim_results is not None:
         _restore_sim_results(parsed.sim_results, state)
 
+    sim_result_types: list[str] = []
+    if parsed.sim_results is not None:
+        for entry in parsed.sim_results.get("entries") or []:
+            sim_type = entry.get("sim_type")
+            if sim_type and sim_type not in sim_result_types:
+                sim_result_types.append(sim_type)
+
     return {
         "has_voxcity": state.voxcity is not None,
         "rectangle_vertices": state.rectangle_vertices,
         "land_cover_source": state.land_cover_source,
         "frontend_state": parsed.frontend_state,
+        "has_sim_results": bool(sim_result_types),
+        "landmark_building_ids": _landmark_building_ids_from_state(state),
+        "last_sim_type": state.last_sim_type,
+        "sim_result_types": sim_result_types,
     }
+
+
+def _landmark_building_ids_from_state(state) -> list:
+    """Recover the landmark building IDs from a restored landmark sim entry.
+
+    The landmark sim marks its target buildings with the sentinel class ``-30``
+    in the cached ``voxcity_grid``. Cross-referencing the marked voxel columns
+    against the cached ``building_id_grid`` yields the originally selected IDs,
+    so the frontend can restore the building highlights without re-running.
+    """
+    get_sim_result = getattr(state, "get_sim_result", None)
+    if get_sim_result is None:
+        return []
+    entry = get_sim_result("landmark")
+    if entry is None:
+        return []
+    vox = getattr(entry, "voxcity_grid", None)
+    if vox is None:
+        return []
+    # The ground-level landmark path doesn't cache a building_id_grid, so fall
+    # back to the loaded voxcity's authoritative (unmarked) building id grid.
+    bid = getattr(entry, "building_id_grid", None)
+    if bid is None:
+        voxcity = getattr(state, "voxcity", None)
+        buildings = getattr(voxcity, "buildings", None) if voxcity is not None else None
+        bid = getattr(buildings, "ids", None) if buildings is not None else None
+    if bid is None:
+        return []
+    try:
+        import numpy as np
+
+        vox = np.asarray(vox)
+        bid = np.asarray(bid)
+        if vox.ndim == 3:
+            marked = np.any(vox == -30, axis=2)
+        elif vox.ndim == 2:
+            marked = vox == -30
+        else:
+            return []
+        if marked.shape != bid.shape:
+            return []
+        ids = np.unique(bid[marked])
+        return [int(x) for x in ids.tolist() if int(x) > 0]
+    except Exception:
+        return []
 
 
 def _restore_sim_results(blob: Dict[str, Any], state) -> None:

@@ -31,9 +31,11 @@ interface ViewTabProps {
   simRunNonce: number;
   onSimRun: () => void;
   geometryToken?: string | number;
+  /** Sim types restored from a loaded session; show this tab's overlay if listed. */
+  restoredSimTypes?: string[];
 }
 
-const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken }) => {
+const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken, restoredSimTypes }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'view', simRunNonce);
   const [viewType, setViewType] = useState<'green' | 'sky' | 'custom'>('green');
@@ -41,8 +43,8 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   const [viewPointHeight, setViewPointHeight] = useState(1.5);
   const [customClasses, setCustomClasses] = useState<Set<number>>(new Set());
   const [inclusionMode, setInclusionMode] = useState(true);
-  const [nAzimuth, setNAzimuth] = useState(60);
-  const [nElevation, setNElevation] = useState(10);
+  const [nAzimuth, setNAzimuth] = useState(360);
+  const [nElevation, setNElevation] = useState(60);
   const [elevMin, setElevMin] = useState(-30);
   const [elevMax, setElevMax] = useState(30);
   const [colormap, setColormap] = useState('viridis');
@@ -72,6 +74,12 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
     return () => { cancelled = true; };
   }, [hasModel]);
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
+
+  // When a loaded session carried a cached view result, flip on the overlay so
+  // SceneViewer fetches it from /sim/view/geometry without a re-run.
+  useEffect(() => {
+    if (restoredSimTypes?.includes('view')) setHasSimResult(true);
+  }, [restoredSimTypes]);
 
   if (!hasModel) {
     const message = prerequisiteMessageForTab('view');

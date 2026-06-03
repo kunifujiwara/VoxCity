@@ -52,6 +52,17 @@ const App: React.FC = () => {
   const [initialResetPending, setInitialResetPending] = useState(true);
   const restoringFromSessionRef = useRef<RestoredFrontendState>({});
   const sessionLoadedRef = useRef(false);
+  // Sim types restored by a session load, consumed by the rectangle effect so it
+  // seeds the matching sim nonces (instead of 0) — a non-zero nonce is what makes
+  // useZoneStats fetch stats for the restored result.
+  const restoreSimNoncesRef = useRef<string[]>([]);
+  // When a session is loaded that carried cached simulation results, this holds
+  // every restored sim type ('solar' | 'view' | 'landmark') so each matching sim
+  // tab can show its overlay without requiring a re-run.
+  const [restoredSimTypes, setRestoredSimTypes] = useState<string[]>([]);
+  // Landmark building IDs recovered from a restored landmark sim, so the
+  // Landmark tab can re-apply its selection highlights.
+  const [restoredLandmarkIds, setRestoredLandmarkIds] = useState<number[]>([]);
 
   // When the user changes the target rectangle, the previous zones and any
   // cached simulation figures no longer correspond to the area on screen.
@@ -68,9 +79,14 @@ const App: React.FC = () => {
     setSolarFigureJson('');
     setViewFigureJson('');
     setLandmarkFigureJson('');
-    setSolarRunNonce(0);
-    setViewRunNonce(0);
-    setLandmarkRunNonce(0);
+    // On a session restore, the cached sim results are valid for this rectangle,
+    // so seed the matching nonces (non-zero) to make zone stats fetch. A normal
+    // rectangle change leaves the list empty and resets all nonces to 0.
+    const restoredSims = restoreSimNoncesRef.current;
+    setSolarRunNonce(restoredSims.includes('solar') ? 1 : 0);
+    setViewRunNonce(restoredSims.includes('view') ? 1 : 0);
+    setLandmarkRunNonce(restoredSims.includes('landmark') ? 1 : 0);
+    restoreSimNoncesRef.current = [];
   }, [rectangle]);
 
   // After an edit commit, the cached Solar / View / Landmark figures and the
@@ -83,12 +99,15 @@ const App: React.FC = () => {
     setLandmarkFigureJson('');
     setGeometryToken((t) => t + 1);
     setZones((prev) => prev.filter((z) => z.type === 'horizontal'));
+    setRestoredSimTypes([]);
+    setRestoredLandmarkIds([]);
   }, []);
 
   const handleSessionLoaded = useCallback(
     (summary: SessionLoadSummary, restored?: RestoredFrontendState) => {
       sessionLoadedRef.current = true;
       restoringFromSessionRef.current = { zones: restored?.zones };
+      restoreSimNoncesRef.current = summary.sim_result_types ?? [];
       setHasModel(summary.has_voxcity);
       setRectangle(summary.rectangle_vertices);
       setFigureJson('');
@@ -97,6 +116,8 @@ const App: React.FC = () => {
       setViewFigureJson('');
       setLandmarkFigureJson('');
       setGeometryToken((token) => token + 1);
+      setRestoredSimTypes(summary.sim_result_types ?? []);
+      setRestoredLandmarkIds(summary.landmark_building_ids ?? []);
     },
     [],
   );
@@ -165,6 +186,8 @@ const App: React.FC = () => {
               setSolarFigureJson('');
               setViewFigureJson('');
               setLandmarkFigureJson('');
+              setRestoredSimTypes([]);
+              setRestoredLandmarkIds([]);
             }}
           />
         </div>
@@ -201,6 +224,7 @@ const App: React.FC = () => {
                 simRunNonce={solarRunNonce}
                 onSimRun={() => setSolarRunNonce((n) => n + 1)}
                 geometryToken={geometryToken}
+                restoredSimTypes={restoredSimTypes}
               />
             </div>
             <div style={{ display: activeTab === 'view' ? 'contents' : 'none' }}>
@@ -212,6 +236,7 @@ const App: React.FC = () => {
                 simRunNonce={viewRunNonce}
                 onSimRun={() => setViewRunNonce((n) => n + 1)}
                 geometryToken={geometryToken}
+                restoredSimTypes={restoredSimTypes}
               />
             </div>
             <div style={{ display: activeTab === 'landmark' ? 'contents' : 'none' }}>
@@ -223,6 +248,8 @@ const App: React.FC = () => {
                 simRunNonce={landmarkRunNonce}
                 onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
                 geometryToken={geometryToken}
+                restoredSimTypes={restoredSimTypes}
+                restoredLandmarkIds={restoredLandmarkIds}
               />
             </div>
           </>
