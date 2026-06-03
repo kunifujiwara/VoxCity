@@ -17,8 +17,10 @@ import gc
 import json
 import math
 import os
+import shutil
 import tempfile
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -28,7 +30,7 @@ matplotlib.use("Agg")
 import geopandas as gpd
 import numpy as np
 import requests
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -66,6 +68,14 @@ from .scene_geometry import (
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
+from .session_io import (
+    DEFAULT_MAX_UPLOAD_BYTES,
+    SessionLoadError,
+    apply_session_to_state,
+    parse_session_zip,
+    parsed_session_temp_root,
+    save_session_to_zip,
+)
 from .surface_zone_edges import build_surface_zone_edge_payloads
 from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh, attach_surface_face_meta
 from .zoning import (
@@ -820,6 +830,57 @@ async def reset_session():
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _max_session_upload_bytes() -> int:
+    raw = os.environ.get("VOXCITY_SESSION_MAX_UPLOAD_MB")
+    if raw is None:
+        return DEFAULT_MAX_UPLOAD_BYTES
+    try:
+        return max(0, int(raw)) * 1024 * 1024
+    except ValueError:
+        return DEFAULT_MAX_UPLOAD_BYTES
+
+
+@app.post("/api/session/save")
+async def save_session_endpoint(
+    include_sim_results: bool = False,
+    frontend_state: Optional[str] = Form(None),
+):
+    try:
+        buf = save_session_to_zip(
+            app_state,
+            frontend_state=frontend_state,
+            include_sim_results=include_sim_results,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = f"voxcity-session-{uuid.uuid4().hex[:8]}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/session/load")
+async def load_session_endpoint(file: UploadFile = File(...)):
+    try:
+        parsed = parse_session_zip(file.file, max_bytes=_max_session_upload_bytes())
+    except SessionLoadError as exc:
+        message = str(exc)
+        if "exceeds maximum size" in message:
+            raise HTTPException(status_code=413, detail=message) from exc
+        raise HTTPException(status_code=400, detail=message) from exc
+    try:
+        return apply_session_to_state(parsed, app_state)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply loaded session: {exc}",
+        ) from exc
+    finally:
+        shutil.rmtree(parsed_session_temp_root(parsed), ignore_errors=True)
 
 
 @app.post("/api/geocode", response_model=GeocodeResponse)

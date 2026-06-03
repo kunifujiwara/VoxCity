@@ -1,14 +1,23 @@
-import React, { useState } from 'react';
-import { Package, Box, Download } from 'lucide-react';
-import { exportCityles, exportObj } from '../api';
+import React, { useRef, useState } from 'react';
+import { Package, Box, Download, Upload } from 'lucide-react';
+import { exportCityles, exportObj, loadSession, saveSession } from '../api';
+import type { SessionLoadSummary } from '../api';
+import {
+  buildRestoredFrontendState,
+  parsePersistedFrontendState,
+  type RestoredFrontendState,
+} from '../lib/sessionRestore';
+import type { Zone } from '../types/zones';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
 import { ExportFormat, exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
 
 interface ExportTabProps {
   hasModel: boolean;
+  zones: Zone[];
+  onSessionLoaded?: (summary: SessionLoadSummary, restored?: RestoredFrontendState) => void;
 }
 
-const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
+const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded }) => {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('cityles');
   const [buildingMaterial, setBuildingMaterial] = useState('default');
   const [treeType, setTreeType] = useState('default');
@@ -18,6 +27,12 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [sessionIncludeSim, setSessionIncludeSim] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionSuccess, setSessionSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!hasModel) {
     const message = prerequisiteMessageForTab('export');
@@ -38,6 +53,48 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleSaveSession = async () => {
+    setSessionLoading(true);
+    setSessionError(null);
+    setSessionSuccess(null);
+    try {
+      const frontendStateJson = JSON.stringify({ zones });
+      const blob = await saveSession(frontendStateJson, sessionIncludeSim);
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadBlob(blob, `voxcity-session-${ts}.zip`);
+      setSessionSuccess('Session saved.');
+    } catch (err: any) {
+      setSessionError(err.message);
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleLoadSession = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setSessionLoading(true);
+    setSessionError(null);
+    setSessionSuccess(null);
+    try {
+      const summary = await loadSession(file);
+      const persisted = parsePersistedFrontendState(summary.frontend_state);
+      const malformed = Boolean(summary.frontend_state) && !persisted;
+      const { restored, skippedFrontendState } = buildRestoredFrontendState(persisted);
+      onSessionLoaded?.(summary, restored);
+      setSessionSuccess(
+        malformed || skippedFrontendState
+          ? 'Session loaded; some frontend state was not restored.'
+          : 'Session loaded.',
+      );
+    } catch (err: any) {
+      setSessionError(err.message);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setSessionLoading(false);
+    }
   };
 
   const handleExport = async () => {
@@ -69,6 +126,58 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
 
   return (
     <div style={{ maxWidth: 600 }}>
+      <GuidedPanel
+        title="Save / Load Session"
+        subtitle="Move the current scene and zones between browser sessions."
+        status={
+          sessionError ? <GuidedStatus tone="error">{sessionError}</GuidedStatus>
+            : sessionSuccess ? <GuidedStatus tone="success">{sessionSuccess}</GuidedStatus>
+            : undefined
+        }
+        footer={(
+          <GuidedFooter>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={!hasModel || sessionLoading}
+              onClick={handleSaveSession}
+            >
+              {sessionLoading && <span className="spinner" />}
+              <Download size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+              Save Session
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={sessionLoading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+              Load Session
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              style={{ display: 'none' }}
+              onChange={handleLoadSession}
+            />
+          </GuidedFooter>
+        )}
+      >
+        <GuidedSection index={1} label="SESSION OPTIONS">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={sessionIncludeSim}
+              disabled={!hasModel || sessionLoading}
+              onChange={(e) => setSessionIncludeSim(e.target.checked)}
+            />
+            <span>Include simulation results (larger file, lets overlays render without re-running)</span>
+          </label>
+        </GuidedSection>
+      </GuidedPanel>
+
       <GuidedPanel
         title="Export"
         subtitle="Download the VoxCity model in your preferred format."

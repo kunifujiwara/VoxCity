@@ -7,6 +7,10 @@ import ViewTab from './tabs/ViewTab';
 import LandmarkTab from './tabs/LandmarkTab';
 import ExportTab from './tabs/ExportTab';
 import ZoningTab from './tabs/ZoningTab';
+import StartSplash, { SPLASH_DISMISSED_KEY } from './components/StartSplash';
+import type { RestoredFrontendState } from './lib/sessionRestore';
+export type { RestoredFrontendState };
+import type { SessionLoadSummary } from './api';
 import {
   MapPin, Layers, Pencil, Grid3x3, Sun, Camera,
   Landmark as LandmarkIcon, FolderOpen,
@@ -42,10 +46,23 @@ const App: React.FC = () => {
   const [viewRunNonce, setViewRunNonce] = useState(0);
   const [landmarkRunNonce, setLandmarkRunNonce] = useState(0);
 
+  const [splashOpen, setSplashOpen] = useState(() => {
+    try { return localStorage.getItem(SPLASH_DISMISSED_KEY) !== '1'; } catch { return true; }
+  });
+  const [initialResetPending, setInitialResetPending] = useState(true);
+  const restoringFromSessionRef = useRef<RestoredFrontendState>({});
+  const sessionLoadedRef = useRef(false);
+
   // When the user changes the target rectangle, the previous zones and any
   // cached simulation figures no longer correspond to the area on screen.
   useEffect(() => {
-    setZones([]);
+    const restoredZones = restoringFromSessionRef.current.zones;
+    if (restoredZones !== undefined) {
+      setZones(restoredZones);
+      restoringFromSessionRef.current.zones = undefined;
+    } else {
+      setZones([]);
+    }
     setFigureJson('');
     setEditFigureJson('');
     setSolarFigureJson('');
@@ -68,6 +85,22 @@ const App: React.FC = () => {
     setZones((prev) => prev.filter((z) => z.type === 'horizontal'));
   }, []);
 
+  const handleSessionLoaded = useCallback(
+    (summary: SessionLoadSummary, restored?: RestoredFrontendState) => {
+      sessionLoadedRef.current = true;
+      restoringFromSessionRef.current = { zones: restored?.zones };
+      setHasModel(summary.has_voxcity);
+      setRectangle(summary.rectangle_vertices);
+      setFigureJson('');
+      setEditFigureJson('');
+      setSolarFigureJson('');
+      setViewFigureJson('');
+      setLandmarkFigureJson('');
+      setGeometryToken((token) => token + 1);
+    },
+    [],
+  );
+
   // On page load, reset the backend so Taichi caches are cleared and a
   // new target area / model / simulation cycle can run cleanly.
   // Also check whether a model already exists (backend may still hold one).
@@ -77,12 +110,19 @@ const App: React.FC = () => {
     didReset.current = true;
     resetSession()
       .then(() => healthCheck())
-      .then((h) => setHasModel(h.has_model))
-      .catch(() => {});
+      .then((h) => { if (!sessionLoadedRef.current) setHasModel(h.has_model); })
+      .catch(() => {})
+      .finally(() => setInitialResetPending(false));
   }, []);
 
   return (
     <div className="app-container">
+      <StartSplash
+        open={splashOpen}
+        onClose={() => setSplashOpen(false)}
+        onSessionLoaded={handleSessionLoaded}
+        disableOpen={initialResetPending}
+      />
       {/* Header */}
       <header className="app-header">
         <img src="/logo.png" alt="VoxCity" className="logo" />
@@ -220,7 +260,13 @@ const App: React.FC = () => {
             geometryToken={geometryToken}
           />
         )}
-        {activeTab === 'export' && <ExportTab hasModel={hasModel} />}
+        {activeTab === 'export' && (
+          <ExportTab
+            hasModel={hasModel}
+            zones={zones}
+            onSessionLoaded={handleSessionLoaded}
+          />
+        )}
       </main>
 
     </div>

@@ -125,6 +125,13 @@ class AppState:
         self.last_sim_view_point_height = 1.5
         self.last_colorbar_title = None
 
+    def reset_for_session_load(self) -> None:
+        """Clear caches that are tied to the previous voxcity grid."""
+        self.raw_data = {}
+        self.clear_sim_results()
+        self.last_base_fig_json = None
+        self.last_hidden_classes = None
+
     # ------------------------------------------------------------------
     # Construction helpers
     # ------------------------------------------------------------------

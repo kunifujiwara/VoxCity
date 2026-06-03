@@ -540,3 +540,44 @@ export async function getBuildingSurfaces() {
   return request<BuildingSurfacesResponse>('/buildings/surfaces');
 }
 
+// ── Session save / load ───────────────────────────────────────
+
+export async function saveSession(
+  frontendState?: string,
+  includeSimResults: boolean = false,
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  if (includeSimResults) params.set('include_sim_results', '1');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const options: RequestInit = { method: 'POST' };
+  if (frontendState !== undefined) {
+    const form = new FormData();
+    form.append('frontend_state', frontendState);
+    options.body = form;
+  }
+  const res = await fetch(`${BASE}/session/save${query}`, options);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
+export interface SessionLoadSummary {
+  has_voxcity: boolean;
+  rectangle_vertices: number[][] | null;
+  land_cover_source: string;
+  frontend_state: string | null;
+}
+
+export async function loadSession(file: File): Promise<SessionLoadSummary> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/session/load`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
