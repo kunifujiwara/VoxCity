@@ -8,6 +8,7 @@
  * but they are intentionally unused.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, CalendarRange, Layers, Box, Sun } from 'lucide-react';
 import { getModelGeo, ModelGeoResult, runSolar } from '../api';
 import { SceneViewer } from '../three';
 import ColorSettings from '../components/ColorSettings';
@@ -134,20 +135,21 @@ const SolarTab: React.FC<SolarTabProps> = ({
           <GuidedFooter>
             <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
               {loading && <span className="spinner" />}
+              <Sun size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               {simulationActionLabel(loading)}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Temporal Type">
+        <GuidedSection index={1} label="TEMPORAL TYPE">
           <ChoiceGroup
             variant="checks"
             ariaLabel="Calculation type"
             value={calcType}
             onChange={setCalcType}
             options={[
-              { id: 'instantaneous', label: 'Instantaneous' },
-              { id: 'cumulative', label: 'Cumulative' },
+              { id: 'instantaneous', label: 'Instantaneous', icon: Clock },
+              { id: 'cumulative', label: 'Cumulative', icon: CalendarRange },
             ]}
           />
           {calcType === 'instantaneous' ? (
@@ -175,20 +177,20 @@ const SolarTab: React.FC<SolarTabProps> = ({
           )}
         </GuidedSection>
 
-        <GuidedSection label="Spatial Type">
+        <GuidedSection index={2} label="SPATIAL TYPE">
           <ChoiceGroup
             variant="checks"
             ariaLabel="Analysis target"
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level' },
-              { id: 'building', label: 'Building surfaces' },
+              { id: 'ground', label: 'Ground level', icon: Layers },
+              { id: 'building', label: 'Building surfaces', icon: Box },
             ]}
           />
         </GuidedSection>
 
-        <GuidedSection label="Display">
+        <GuidedSection index={3} label="DISPLAY">
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -205,7 +207,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection label="Zones and results">
+          <GuidedSection index={4} label="ZONES AND RESULTS">
             <div className="form-group">
               <label>
                 <input

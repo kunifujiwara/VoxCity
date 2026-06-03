@@ -372,8 +372,8 @@ input:focus, select:focus {
 }
 
 .choice-check-row.active {
-  border-color: var(--vc-accent);
-  background: var(--vc-accent);
+  border-color: var(--vc-primary);
+  background: var(--vc-primary);
   color: #fff;
 }
 

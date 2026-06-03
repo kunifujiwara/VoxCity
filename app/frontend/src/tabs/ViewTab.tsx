@@ -6,6 +6,7 @@
  * Chunk 4 of the Three.js migration.
  */
 import React, { useEffect, useMemo, useState } from 'react';
+import { Leaf, CloudSun, Sliders, Check, X, Layers, Box, Eye } from 'lucide-react';
 import { getModelGeo, ModelGeoResult, runView } from '../api';
 import { SceneViewer } from '../three';
 import ColorSettings from '../components/ColorSettings';
@@ -133,12 +134,13 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           <GuidedFooter>
             <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
               {loading && <span className="spinner" />}
+              <Eye size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               {simulationActionLabel(loading)}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="View type">
+        <GuidedSection index={1} label="VIEW TYPE">
           <ChoiceGroup
             variant="checks"
             ariaLabel="View type"
@@ -146,23 +148,23 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
             onChange={setViewType}
             columns={1}
             options={[
-              { id: 'green', label: 'Green View Index' },
-              { id: 'sky', label: 'Sky View Index' },
-              { id: 'custom', label: 'Custom (select classes)' },
+              { id: 'green', label: 'Green View Index', icon: Leaf },
+              { id: 'sky', label: 'Sky View Index', icon: CloudSun },
+              { id: 'custom', label: 'Custom (select classes)', icon: Sliders },
             ]}
           />
         </GuidedSection>
 
         {viewType === 'custom' && (
-          <GuidedSection label="Custom classes">
+          <GuidedSection index={2} label="CUSTOM CLASSES">
             <ChoiceGroup
               variant="checks"
               ariaLabel="Custom class mode"
               value={inclusionMode ? 'include' : 'exclude'}
               onChange={(next) => setInclusionMode(next === 'include')}
               options={[
-                { id: 'include', label: 'Inclusion' },
-                { id: 'exclude', label: 'Exclusion' },
+                { id: 'include', label: 'Inclusion', icon: Check },
+                { id: 'exclude', label: 'Exclusion', icon: X },
               ]}
             />
             <div style={{ maxHeight: 160, overflowY: 'auto' }}>
@@ -180,15 +182,15 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           </GuidedSection>
         )}
 
-        <GuidedSection label="Sampling">
+        <GuidedSection index={3} label="SAMPLING">
           <ChoiceGroup
             variant="checks"
             ariaLabel="Analysis target"
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level' },
-              { id: 'building', label: 'Building surfaces' },
+              { id: 'ground', label: 'Ground level', icon: Layers },
+              { id: 'building', label: 'Building surfaces', icon: Box },
             ]}
           />
           <div className="form-group">
@@ -215,7 +217,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           />
         </GuidedSection>
 
-        <GuidedSection label="Display">
+        <GuidedSection index={4} label="DISPLAY">
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -231,7 +233,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection label="Zones and results">
+          <GuidedSection index={5} label="ZONES AND RESULTS">
             <div className="form-group">
               <label>
                 <input

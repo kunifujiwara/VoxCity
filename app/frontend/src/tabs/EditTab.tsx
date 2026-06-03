@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Building, Trees, Layers, Plus, Pencil, Trash2, Undo2, Brush, Check } from 'lucide-react';
 import {
   applyEdits,
   getModelGeo,
@@ -18,7 +19,7 @@ import {
   LandCoverClass,
   PendingEditDto,
 } from '../api';
-import { ChoiceGroup } from '../components/guided';
+import { ChoiceGroup, GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import PlanMapEditor, {
   Backdrop,
@@ -72,10 +73,23 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({ target, task, method, o
       ariaLabel="Edit method"
       value={method}
       onChange={onMethodChange}
-      options={methodOptionsForTask(target, task)}
+      options={methodOptionsForTask(target, task).map(({ tone: _tone, ...option }) => option)}
     />
   </div>
 );
+
+function parameterSectionMeta(
+  target: import('./editWorkflow').EditTarget,
+  task: import('./editWorkflow').EditTask,
+): { label: string; tone: 'default' | 'danger' } {
+  if (target === 'building' && task === 'add') return { label: 'ADD BUILDING', tone: 'default' };
+  if (target === 'building' && task === 'height') return { label: 'EDIT HEIGHT', tone: 'default' };
+  if (target === 'building' && task === 'remove') return { label: 'REMOVE BUILDING', tone: 'default' };
+  if (target === 'tree' && task === 'add') return { label: 'ADD TREE', tone: 'default' };
+  if (target === 'tree' && task === 'remove') return { label: 'REMOVE TREE', tone: 'default' };
+  if (target === 'land_cover' && task === 'paint') return { label: 'PAINT LAND COVER', tone: 'default' };
+  return { label: 'PARAMETERS', tone: 'default' };
+}
 
 
 const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited }) => {
@@ -537,6 +551,25 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     );
   }
 
+  const targetOptionsWithIcons = TARGET_OPTIONS.map((targetOption) => {
+    const taskCount = taskOptionsForTarget(targetOption.id).length;
+    return {
+      ...targetOption,
+      count: `${taskCount} task${taskCount === 1 ? '' : 's'}`,
+      icon: targetOption.id === 'building' ? Building : targetOption.id === 'tree' ? Trees : Layers,
+    };
+  });
+
+  const taskOptionsWithIcons = taskOptionsForTarget(workflow.target).map((taskOption) => {
+    let icon;
+    if (taskOption.id === 'add') icon = Plus;
+    else if (taskOption.id === 'height') icon = Pencil;
+    else if (taskOption.id === 'remove') icon = Trash2;
+    else if (taskOption.id === 'paint') icon = Brush;
+    const { tone: _tone, ...baseOption } = taskOption;
+    return { ...baseOption, icon };
+  });
+
   return (
     <div className="three-col">
       {/* Controls */}
@@ -544,184 +577,210 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
         <div className="edit-control-scroll">
           <h2>Edit Model</h2>
 
-          <div className="guided-section">
-            <div className="guided-section-label">Target</div>
+          <GuidedSection index={1} label="TARGET">
             <ChoiceGroup
               variant="checks"
               ariaLabel="Edit target"
               value={mode}
               onChange={setTarget}
-              options={TARGET_OPTIONS.map((targetOption) => {
-                const taskCount = taskOptionsForTarget(targetOption.id).length;
-                return {
-                  ...targetOption,
-                  count: `${taskCount} task${taskCount === 1 ? '' : 's'}`,
-                };
-              })}
+              options={targetOptionsWithIcons}
             />
-          </div>
+          </GuidedSection>
 
-          <div className="guided-section">
-            <div className="guided-section-label">
-              {mode === 'building' ? 'Building workflow' : mode === 'tree' ? 'Tree workflow' : 'Land cover workflow'}
-            </div>
+          <GuidedSection index={2} label="OPERATIONS">
             <ChoiceGroup
               variant="checks"
               ariaLabel="Edit workflow"
               value={workflow.task}
               onChange={setTask}
-              options={taskOptionsForTarget(mode)}
+              options={taskOptionsWithIcons}
             />
-          </div>
+          </GuidedSection>
 
-          {mode === 'building' && workflow.task === 'add' && (
-            <div className="guided-tool-details">
-              <h3>Add building</h3>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
-              <div className="form-group">
-                <label>Height (m)</label>
-                <input type="number" min={1} step={0.5} value={buildingHeight}
-                       onChange={(e) => setBuildingHeight(parseFloat(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label>Min height / base (m)</label>
-                <input type="number" min={0} step={0.5} value={buildingMinHeight}
-                       onChange={(e) => setBuildingMinHeight(parseFloat(e.target.value))} />
-              </div>
-            </div>
-          )}
+          {(() => {
+            const meta = parameterSectionMeta(workflow.target, workflow.task);
+            return (
+              <GuidedSection index={3} label={meta.label} tone={meta.tone}>
+                {mode === 'building' && workflow.task === 'add' && (
+                  <div className="guided-tool-details">
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                    <div className="form-group">
+                      <label>Height (m)</label>
+                      <input type="number" min={1} step={0.5} value={buildingHeight}
+                             onChange={(e) => setBuildingHeight(parseFloat(e.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Min height / base (m)</label>
+                      <input type="number" min={0} step={0.5} value={buildingMinHeight}
+                             onChange={(e) => setBuildingMinHeight(parseFloat(e.target.value))} />
+                    </div>
+                  </div>
+                )}
 
-          {mode === 'building' && workflow.task === 'height' && (
-            <div className="guided-tool-details">
-              <h3>Edit height</h3>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
-              <div className="guided-tool-hint">
-                {action === 'set_height_click'
-                  ? 'Click buildings to select/deselect.'
-                  : 'Draw a polygon to select fully-contained buildings.'}
-              </div>
-              {selectedBuildingIds.length > 0 && (
-                <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--vc-text)' }}>
-                  {selectedBuildingIds.length} building(s) selected
-                </div>
-              )}
-              <div className="form-group">
-                <label>Top height (m)</label>
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.5}
-                  value={heightEditValue}
-                  onChange={(e) => setHeightEditValue(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={useMinHeightEdit}
-                    onChange={(e) => setUseMinHeightEdit(e.target.checked)}
-                  />
-                  Set min height (m)
-                </label>
-              </div>
-              {useMinHeightEdit && (
-                <div className="form-group">
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={heightEditMinValue}
-                    onChange={(e) => setHeightEditMinValue(e.target.value)}
-                  />
-                </div>
-              )}
-              <button
-                className="btn btn-primary"
-                style={{ marginTop: '0.25rem', width: '100%' }}
-                onClick={handleApplyHeightEdit}
-                disabled={selectedBuildingIds.length === 0}
-                type="button"
-              >
-                Apply to {selectedBuildingIds.length || 0} building(s)
-              </button>
-            </div>
-          )}
+                {mode === 'building' && workflow.task === 'height' && (
+                  <div className="guided-tool-details">
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                    <div className="guided-tool-hint">
+                      {action === 'set_height_click'
+                        ? 'Click buildings to select/deselect.'
+                        : 'Draw a polygon to select fully-contained buildings.'}
+                    </div>
+                    {selectedBuildingIds.length > 0 && (
+                      <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--vc-text)' }}>
+                        {selectedBuildingIds.length} building(s) selected
+                      </div>
+                    )}
+                    <div className="form-group">
+                      <label>Top height (m)</label>
+                      <input
+                        type="number"
+                        min={0.1}
+                        step={0.5}
+                        value={heightEditValue}
+                        onChange={(e) => setHeightEditValue(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={useMinHeightEdit}
+                          onChange={(e) => setUseMinHeightEdit(e.target.checked)}
+                        />
+                        Set min height (m)
+                      </label>
+                    </div>
+                    {useMinHeightEdit && (
+                      <div className="form-group">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={heightEditMinValue}
+                          onChange={(e) => setHeightEditMinValue(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <button
+                      className="btn btn-primary"
+                      style={{ marginTop: '0.25rem', width: '100%' }}
+                      onClick={handleApplyHeightEdit}
+                      disabled={selectedBuildingIds.length === 0}
+                      type="button"
+                    >
+                      <Check size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+                      Apply to {selectedBuildingIds.length || 0} building(s)
+                    </button>
+                  </div>
+                )}
 
-          {mode === 'building' && workflow.task === 'remove' && (
-            <div className="guided-tool-details danger-surface">
-              <h3>Remove building</h3>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
-              <div className="guided-tool-hint">
-                {action === 'remove_click'
-                  ? 'Click a footprint on the map to delete it.'
-                  : 'Draw a polygon to delete every building inside.'}
-              </div>
-            </div>
-          )}
+                {mode === 'building' && workflow.task === 'remove' && (
+                  <div className="guided-tool-details">
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                    <div className="guided-tool-hint">
+                      {action === 'remove_click'
+                        ? 'Click a footprint on the map to delete it.'
+                        : 'Draw a polygon to delete every building inside.'}
+                    </div>
+                  </div>
+                )}
 
-          {mode === 'tree' && workflow.task === 'add' && (
-            <div className="guided-tool-details">
-              <h3>Add tree</h3>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
-              <div className="form-group">
-                <label>Top (m)</label>
-                <input type="number" min={1} step={0.5} value={treeTop}
-                       onChange={(e) => onTreeTopChange(parseFloat(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label>Trunk / bottom (m)</label>
-                <input type="number" min={0} step={0.5} value={treeBottom}
-                       onChange={(e) => onTreeBottomChange(parseFloat(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label>Diameter (m) — disc brush radius {treeBrushRadius} cell(s)</label>
-                <input type="number" min={1} step={0.5} value={treeDiameter}
-                       onChange={(e) => onTreeDiameterChange(parseFloat(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={treeFixedProp}
-                         onChange={(e) => onTreeFixedPropToggle(e.target.checked)} />
-                  Fixed proportion
-                </label>
-              </div>
-            </div>
-          )}
+                {mode === 'tree' && workflow.task === 'add' && (
+                  <div className="guided-tool-details">
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                    <div className="form-group">
+                      <label>Top (m)</label>
+                      <input type="number" min={1} step={0.5} value={treeTop}
+                             onChange={(e) => onTreeTopChange(parseFloat(e.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Trunk / bottom (m)</label>
+                      <input type="number" min={0} step={0.5} value={treeBottom}
+                             onChange={(e) => onTreeBottomChange(parseFloat(e.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label>Diameter (m) — disc brush radius {treeBrushRadius} cell(s)</label>
+                      <input type="number" min={1} step={0.5} value={treeDiameter}
+                             onChange={(e) => onTreeDiameterChange(parseFloat(e.target.value))} />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={treeFixedProp}
+                               onChange={(e) => onTreeFixedPropToggle(e.target.checked)} />
+                        Fixed proportion
+                      </label>
+                    </div>
+                  </div>
+                )}
 
-          {mode === 'tree' && workflow.task === 'remove' && (
-            <div className="guided-tool-details danger-surface">
-              <h3>Remove tree</h3>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
-              <div className="guided-tool-hint">
-                {action === 'remove_click'
-                  ? 'Click a cell to clear its canopy.'
-                  : 'Draw a polygon to clear all canopy cells inside.'}
-              </div>
-            </div>
-          )}
+                {mode === 'tree' && workflow.task === 'remove' && (
+                  <div className="guided-tool-details">
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                    <div className="guided-tool-hint">
+                      {action === 'remove_click'
+                        ? 'Click a cell to clear its canopy.'
+                        : 'Draw a polygon to clear all canopy cells inside.'}
+                    </div>
+                  </div>
+                )}
 
-          {mode === 'land_cover' && workflow.task === 'paint' && (
-            <div className="guided-tool-details">
-              <h3>Paint land cover</h3>
-              <div className="land-cover-swatches">
-                {classes.map((c) => (
-                  <button
-                    key={c.index}
-                    className={`lc-swatch ${classIndex === c.index ? 'active' : ''}`}
-                    style={{ background: c.color }}
-                    title={`${c.index} ${c.name}`}
-                    onClick={() => setClassIndex(c.index)}
-                    type="button"
-                  />
-                ))}
-              </div>
-              <div className="lc-active-name">
-                {classes.find((c) => c.index === classIndex)?.name ?? '—'}
-              </div>
-              <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                {mode === 'land_cover' && workflow.task === 'paint' && (
+                  <div className="guided-tool-details">
+                    <div className="land-cover-swatches">
+                      {classes.map((c) => (
+                        <button
+                          key={c.index}
+                          className={`lc-swatch ${classIndex === c.index ? 'active' : ''}`}
+                          style={{ background: c.color }}
+                          title={`${c.index} ${c.name}`}
+                          onClick={() => setClassIndex(c.index)}
+                          type="button"
+                        />
+                      ))}
+                    </div>
+                    <div className="lc-active-name">
+                      {classes.find((c) => c.index === classIndex)?.name ?? '—'}
+                    </div>
+                    <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
+                  </div>
+                )}
+              </GuidedSection>
+            );
+          })()}
+
+          <GuidedSection
+            index={4}
+            label={`SESSION${pendingEdits.length > 0 ? ` · ${pendingEdits.length} PENDING` : ''}`}
+            action={(
+              <>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleUndoLast}
+                  disabled={pendingEdits.length === 0 || committing}
+                  title="Discard the most recent buffered edit"
+                  type="button"
+                >
+                  <Undo2 size={12} aria-hidden="true" style={{ marginRight: 4 }} />
+                  Undo
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm danger"
+                  onClick={handleClearEdits}
+                  disabled={pendingEdits.length === 0 || committing}
+                  title="Discard all buffered edits"
+                  type="button"
+                  style={{ marginLeft: 6 }}
+                >
+                  <Trash2 size={12} aria-hidden="true" style={{ marginRight: 4 }} />
+                  Clear
+                </button>
+              </>
+            )}
+          >
+            <div style={{ color: 'var(--vc-muted)', fontSize: '0.78rem' }}>
+              Edits are buffered locally. Click Update 3D model to apply.
             </div>
-          )}
+          </GuidedSection>
 
           <div className="guided-feedback-slot">
             {error && <div className="alert alert-error">{error}</div>}
@@ -730,30 +789,6 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
         </div>
 
         <div className="pending-edit-footer">
-          <div className="pending-edit-summary">
-            <span>Pending edits</span>
-            <strong>{pendingEdits.length}</strong>
-          </div>
-          <div className="pending-edit-actions">
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleUndoLast}
-              disabled={pendingEdits.length === 0 || committing}
-              title="Discard the most recent buffered edit"
-              type="button"
-            >
-              Undo last
-            </button>
-            <button
-              className="btn btn-secondary btn-sm danger"
-              onClick={handleClearEdits}
-              disabled={pendingEdits.length === 0 || committing}
-              title="Discard all buffered edits"
-              type="button"
-            >
-              Clear edits
-            </button>
-          </div>
           <button
             className="btn btn-primary pending-update-btn"
             onClick={handleUpdate3D}
@@ -766,9 +801,10 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             type="button"
           >
             {committing && <span className="spinner" />}
+            <Layers size={14} aria-hidden="true" style={{ marginRight: 6 }} />
             {committing
-              ? 'Updating…'
-              : `Update 3D model${pendingEdits.length > 0 ? ` (${pendingEdits.length})` : ''}`}
+              ? 'Updating...'
+              : `Update 3D model${pendingEdits.length > 0 ? ` · ${pendingEdits.length}` : ''}`}
           </button>
         </div>
       </div>

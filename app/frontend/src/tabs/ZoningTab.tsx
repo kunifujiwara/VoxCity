@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Square, Box, Hexagon, Plus, Trash2 } from 'lucide-react';
 import { getModelGeo, type ModelGeoResult, getBuildingAt } from '../api';
 import { SceneViewer } from '../three';
 import PlanMapEditor, {
@@ -407,46 +408,48 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               onClick={clearAll}
               disabled={zones.length === 0 && draftGroups.length === 0}
             >
+              <Trash2 size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               Clear all zones
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Zone type">
+        <GuidedSection index={1} label="ZONE TYPE">
           <ChoiceGroup
             variant="checks"
             ariaLabel="Zone type"
             value={zoneType}
             onChange={(next) => setZoneType(next)}
             options={[
-              { id: 'horizontal', label: '2D area' },
-              { id: 'building_surface', label: 'Building surfaces' },
+              { id: 'horizontal', label: '2D area', icon: Square },
+              { id: 'building_surface', label: 'Building surfaces', icon: Box },
             ]}
           />
         </GuidedSection>
         {zoneType === 'horizontal' && (
-          <GuidedSection label="Shape">
+          <GuidedSection index={2} label="SHAPE">
             <ChoiceGroup
               variant="checks"
               ariaLabel="Zone shape"
               value={shape}
               onChange={setShape}
               options={[
-                { id: 'rect', label: 'Rectangle' },
-                { id: 'polygon', label: 'Polygon' },
+                { id: 'rect', label: 'Rectangle', icon: Square },
+                { id: 'polygon', label: 'Polygon', icon: Hexagon },
               ]}
             />
           </GuidedSection>
         )}
 
-        <GuidedSection label="Zones" action={(
+        <GuidedSection index={3} label="ZONES" action={(
           <button
             type="button"
             className="btn btn-primary btn-sm"
             onClick={handleAddZone}
             title="Add a new zone row. Draw on the map to set its boundary."
           >
-            + Add zone
+            <Plus size={12} aria-hidden="true" style={{ marginRight: 4 }} />
+            Add zone
           </button>
         )}>
         <div className="zone-list">

@@ -12,6 +12,7 @@
  * out of scope for this chunk.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Layers, Box, Flag, ArrowLeft } from 'lucide-react';
 import {
   BuildingInfo,
   getBuildingAt,
@@ -249,6 +250,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
                 onClick={handleBackToSelection}
                 disabled={loading}
               >
+                <ArrowLeft size={14} aria-hidden="true" style={{ marginRight: 6 }} />
                 Back to selection
               </button>
             )}
@@ -259,25 +261,26 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
               disabled={loading}
             >
               {loading && <span className="spinner" />}
+              <Flag size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               {simulationActionLabel(loading)}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Analysis target">
+        <GuidedSection index={1} label="ANALYSIS TARGET">
           <ChoiceGroup
             variant="checks"
             ariaLabel="Analysis target"
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level' },
-              { id: 'building', label: 'Building surfaces' },
+              { id: 'ground', label: 'Ground level', icon: Layers },
+              { id: 'building', label: 'Building surfaces', icon: Box },
             ]}
           />
         </GuidedSection>
 
-        <GuidedSection label="Landmark buildings">
+        <GuidedSection index={2} label="LANDMARK BUILDINGS">
           {!showingSimResult && (
             <div className="selection-toolbar">
               <span className="hint">Click a building in the 3D viewer to toggle it.</span>
@@ -320,7 +323,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           </div>
         </GuidedSection>
 
-        <GuidedSection label="Sampling">
+        <GuidedSection index={3} label="SAMPLING">
           <SamplingSettings
             nAzimuth={nAzimuth}
             onNAzimuthChange={setNAzimuth}
@@ -334,7 +337,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           />
         </GuidedSection>
 
-        <GuidedSection label="Display">
+        <GuidedSection index={4} label="DISPLAY">
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -350,7 +353,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection label="Zones and results">
+          <GuidedSection index={5} label="ZONES AND RESULTS">
             <div className="form-group">
               <label>
                 <input

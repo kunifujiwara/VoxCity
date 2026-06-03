@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Package, Box, Download } from 'lucide-react';
 import { exportCityles, exportObj } from '../api';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
 import { ExportFormat, exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
@@ -82,25 +83,26 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
           <GuidedFooter>
             <button className="btn btn-primary" onClick={handleExport} disabled={loading} type="button">
               {loading && <span className="spinner" />}
+              <Download size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               {exportActionLabel(exportFormat, loading)}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Export format">
+        <GuidedSection index={1} label="EXPORT FORMAT">
           <ChoiceGroup
             ariaLabel="Export format"
             value={exportFormat}
             onChange={setExportFormat}
             options={[
-              { id: 'cityles', label: 'CityLES', description: 'CityLES output archive' },
-              { id: 'obj', label: 'OBJ', description: 'Mesh export archive' },
+              { id: 'cityles', label: 'CityLES', description: 'CityLES output archive', icon: Package },
+              { id: 'obj', label: 'OBJ', description: 'Mesh export archive', icon: Box },
             ]}
           />
         </GuidedSection>
 
         {exportFormat === 'cityles' && (
-          <GuidedSection label="CityLES options">
+          <GuidedSection index={2} label="CITYLES OPTIONS">
             <div className="form-group">
               <label>Building Material</label>
               <select value={buildingMaterial} onChange={(e) => setBuildingMaterial(e.target.value)}>
@@ -132,7 +134,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel }) => {
         )}
 
         {exportFormat === 'obj' && (
-          <GuidedSection label="OBJ options">
+          <GuidedSection index={2} label="OBJ OPTIONS">
             <div className="form-group">
               <label>Output Filename</label>
               <input

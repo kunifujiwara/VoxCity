@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Globe, Building2, Layers } from 'lucide-react';
 import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import {
@@ -50,8 +50,6 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gridShape, setGridShape] = useState<number[] | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showSources, setShowSources] = useState(false);
 
   // Auto-detect sources when rectangle changes and mode is normal + auto
   useEffect(() => {
@@ -144,24 +142,26 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           <GuidedFooter>
             <button className="btn btn-primary" onClick={handleGenerate} disabled={loading} type="button">
               {loading && <span className="spinner" />}
+              <Layers size={14} aria-hidden="true" style={{ marginRight: 6 }} />
               {generationActionLabel(loading)}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="Generation mode">
+        <GuidedSection index={1} label="GENERATION MODE">
           <ChoiceGroup
+            variant="checks"
             ariaLabel="Generation mode"
             value={mode}
             onChange={setMode}
             options={[
-              { id: 'normal', label: 'Normal', description: 'Global open data sources' },
-              { id: 'plateau', label: 'PLATEAU', description: 'Japanese CityGML data' },
+              { id: 'normal', label: 'Normal', description: 'Global open data sources', icon: Globe },
+              { id: 'plateau', label: 'PLATEAU', description: 'Japanese CityGML data', icon: Building2 },
             ]}
           />
         </GuidedSection>
 
-        <GuidedSection label="Model resolution">
+        <GuidedSection index={2} label="GRID RESOLUTION">
           <div className="form-group">
             <label>Mesh size (meters)</label>
             <input type="number" value={meshsize} min={1} max={50} onChange={(e) => setMeshsize(Number(e.target.value))} />
@@ -169,171 +169,161 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         </GuidedSection>
 
         {mode === 'normal' && (
-          <GuidedSection label="Source strategy">
-            <div className="expander" style={{ marginBottom: '0.75rem' }}>
-              <div className="expander-header" onClick={() => setShowSources((open) => !open)}>
-                Data Sources
-                <span className={`expander-chevron ${(showSources || !useAutoSources) ? 'open' : ''}`}><ChevronDown size={16} /></span>
-              </div>
-              {(showSources || !useAutoSources) && (
-                <div className="expander-body">
-                  <div className="checkbox-row" style={{ marginBottom: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={useAutoSources}
-                      onChange={(e) => setUseAutoSources(e.target.checked)}
-                    />
-                    <span>Auto-select sources based on location</span>
-                  </div>
-
-                  {useAutoSources && autoDetected && (
-                    <div className="alert alert-info" style={{ fontSize: '0.78rem', marginBottom: '0.75rem' }}>
-                      <strong>Auto-detected:</strong><br />
-                      Buildings: {autoDetected.building_source}<br />
-                      Complementary: {autoDetected.building_complementary_source}<br />
-                      Land Cover: {autoDetected.land_cover_source}<br />
-                      Canopy: {autoDetected.canopy_height_source}<br />
-                      DEM: {autoDetected.dem_source}
-                    </div>
-                  )}
-
-                  {useAutoSources && !autoDetected && (
-                    <button
-                      className="btn btn-sm"
-                      onClick={handleAutoDetect}
-                      disabled={detectingAuto}
-                      style={{ marginBottom: '0.5rem' }}
-                    >
-                      {detectingAuto ? 'Detecting...' : 'Detect Sources'}
-                    </button>
-                  )}
-
-                  {!useAutoSources && (
-                    <>
-                      <div className="form-group">
-                        <label>Building Source</label>
-                        <select
-                          value={buildingSource || 'OpenStreetMap'}
-                          onChange={(e) => setBuildingSource(e.target.value)}
-                        >
-                          {BUILDING_SOURCES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Building Complementary Source</label>
-                        <select
-                          value={buildingCompSource || 'None'}
-                          onChange={(e) => setBuildingCompSource(e.target.value)}
-                        >
-                          {BUILDING_COMPLEMENTARY_SOURCES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Land Cover Source</label>
-                        <select
-                          value={landCoverSource || 'OpenStreetMap'}
-                          onChange={(e) => setLandCoverSource(e.target.value)}
-                        >
-                          {LAND_COVER_SOURCES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>Canopy Height Source</label>
-                        <select
-                          value={canopyHeightSource || 'Static'}
-                          onChange={(e) => setCanopyHeightSource(e.target.value)}
-                        >
-                          {CANOPY_HEIGHT_SOURCES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label>DEM Source</label>
-                        <select
-                          value={demSource || 'Flat'}
-                          onChange={(e) => setDemSource(e.target.value)}
-                        >
-                          {DEM_SOURCES.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+          <GuidedSection
+            index={3}
+            label="DATA SOURCES"
+            collapsible
+            defaultOpen={!useAutoSources}
+          >
+            <div className="checkbox-row" style={{ marginBottom: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={useAutoSources}
+                onChange={(e) => setUseAutoSources(e.target.checked)}
+              />
+              <span>Auto-select sources based on location</span>
             </div>
+
+            {useAutoSources && autoDetected && (
+              <div className="alert alert-info" style={{ fontSize: '0.78rem', marginBottom: '0.75rem' }}>
+                <strong>Auto-detected:</strong><br />
+                Buildings: {autoDetected.building_source}<br />
+                Complementary: {autoDetected.building_complementary_source}<br />
+                Land Cover: {autoDetected.land_cover_source}<br />
+                Canopy: {autoDetected.canopy_height_source}<br />
+                DEM: {autoDetected.dem_source}
+              </div>
+            )}
+
+            {useAutoSources && !autoDetected && (
+              <button
+                className="btn btn-sm"
+                onClick={handleAutoDetect}
+                disabled={detectingAuto}
+                style={{ marginBottom: '0.5rem' }}
+              >
+                {detectingAuto ? 'Detecting...' : 'Detect Sources'}
+              </button>
+            )}
+
+            {!useAutoSources && (
+              <>
+                <div className="form-group">
+                  <label>Building Source</label>
+                  <select
+                    value={buildingSource || 'OpenStreetMap'}
+                    onChange={(e) => setBuildingSource(e.target.value)}
+                  >
+                    {BUILDING_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Building Complementary Source</label>
+                  <select
+                    value={buildingCompSource || 'None'}
+                    onChange={(e) => setBuildingCompSource(e.target.value)}
+                  >
+                    {BUILDING_COMPLEMENTARY_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Land Cover Source</label>
+                  <select
+                    value={landCoverSource || 'OpenStreetMap'}
+                    onChange={(e) => setLandCoverSource(e.target.value)}
+                  >
+                    {LAND_COVER_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Canopy Height Source</label>
+                  <select
+                    value={canopyHeightSource || 'Static'}
+                    onChange={(e) => setCanopyHeightSource(e.target.value)}
+                  >
+                    {CANOPY_HEIGHT_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>DEM Source</label>
+                  <select
+                    value={demSource || 'Flat'}
+                    onChange={(e) => setDemSource(e.target.value)}
+                  >
+                    {DEM_SOURCES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
           </GuidedSection>
         )}
 
-        <GuidedSection label="Advanced">
-          <div className="expander">
-            <div className="expander-header" onClick={() => setShowAdvanced(!showAdvanced)}>
-              Advanced Parameters
-              <span className={`expander-chevron ${showAdvanced ? 'open' : ''}`}><ChevronDown size={16} /></span>
-            </div>
-            {showAdvanced && (
-              <div className="expander-body">
-                <div className="form-group">
-                  <label>Building Complement Height (m)</label>
-                  <input
-                    type="number"
-                    value={buildingComplementHeight}
-                    onChange={(e) => setBuildingComplementHeight(Number(e.target.value))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Static Tree Height (m)</label>
-                  <input
-                    type="number"
-                    value={staticTreeHeight}
-                    min={0}
-                    max={100}
-                    onChange={(e) => setStaticTreeHeight(Number(e.target.value))}
-                  />
-                </div>
-                <div className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={demInterpolation}
-                    onChange={(e) => setDemInterpolation(e.target.checked)}
-                  />
-                  <span>DEM Interpolation</span>
-                </div>
-                {mode === 'plateau' && (
-                  <>
-                    <div className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={useCitygmlCache}
-                        onChange={(e) => setUseCitygmlCache(e.target.checked)}
-                      />
-                      <span>Use CityGML Cache</span>
-                    </div>
-                    <div className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={useNdsmCanopy}
-                        onChange={(e) => setUseNdsmCanopy(e.target.checked)}
-                      />
-                      <span>Use nDSM for Canopy</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+        <GuidedSection
+          index={4}
+          label="ADVANCED"
+          collapsible
+          defaultOpen={false}
+        >
+          <div className="form-group">
+            <label>Building Complement Height (m)</label>
+            <input
+              type="number"
+              value={buildingComplementHeight}
+              onChange={(e) => setBuildingComplementHeight(Number(e.target.value))}
+            />
           </div>
+          <div className="form-group">
+            <label>Static Tree Height (m)</label>
+            <input
+              type="number"
+              value={staticTreeHeight}
+              min={0}
+              max={100}
+              onChange={(e) => setStaticTreeHeight(Number(e.target.value))}
+            />
+          </div>
+          <div className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={demInterpolation}
+              onChange={(e) => setDemInterpolation(e.target.checked)}
+            />
+            <span>DEM Interpolation</span>
+          </div>
+          {mode === 'plateau' && (
+            <>
+              <div className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={useCitygmlCache}
+                  onChange={(e) => setUseCitygmlCache(e.target.checked)}
+                />
+                <span>Use CityGML Cache</span>
+              </div>
+              <div className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={useNdsmCanopy}
+                  onChange={(e) => setUseNdsmCanopy(e.target.checked)}
+                />
+                <span>Use nDSM for Canopy</span>
+              </div>
+            </>
+          )}
         </GuidedSection>
       </GuidedPanel>
 
