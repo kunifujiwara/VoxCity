@@ -27,7 +27,7 @@ export function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): Zo
         mean: stat.mean,
         min: stat.min,
         max: stat.max,
-        std: null,
+        std: stat.std,
         _wMeanSum: stat.mean != null ? stat.mean * stat.valid_count : 0,
         _wSum: stat.mean != null ? stat.valid_count : 0,
       });
@@ -40,6 +40,7 @@ export function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): Zo
       }
       if (stat.min != null && (prev.min == null || stat.min < prev.min)) prev.min = stat.min;
       if (stat.max != null && (prev.max == null || stat.max > prev.max)) prev.max = stat.max;
+      prev.std = null;
     }
   }
 
@@ -52,7 +53,7 @@ export function aggregateByGroup(zones: Zone[], response: ZoneStatsResponse): Zo
       mean: acc._wSum > 0 ? acc._wMeanSum / acc._wSum : null,
       min: acc.min,
       max: acc.max,
-      std: null,
+      std: acc.std,
     });
   }
   return { ...response, stats };
