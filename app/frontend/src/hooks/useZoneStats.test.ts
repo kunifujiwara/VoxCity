@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { aggregateByGroup } from './useZoneStats';
-import type { Zone } from '../types/zones';
+import type { HorizontalZone, Zone } from '../types/zones';
 import type { ZoneStatsResponse } from '../api';
 
-function makeZone(id: string, groupId?: string): Zone {
+function makeZone(id: string, groupId?: string): HorizontalZone {
   return {
     id,
     name: id,
@@ -12,7 +12,7 @@ function makeZone(id: string, groupId?: string): Zone {
     shape: 'polygon',
     ring_lonlat: [[0, 0], [1, 0], [1, 1]],
     ...(groupId ? { groupId } : {}),
-  } as Zone;
+  };
 }
 
 function makeResponse(stats: ZoneStatsResponse['stats']): ZoneStatsResponse {
