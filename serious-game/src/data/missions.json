@@ -1,0 +1,684 @@
+[
+  {
+    "id": "hitzeinseln",
+    "title": "Hitzeinseln erkennen",
+    "subtitle": "Mikroklima messen, Hitze-Hotspots datenbasiert finden",
+    "reference": "Use Case Mannheim: Mikroklima, Hitzesensoren und LoRaWAN",
+    "description": "Sommer werden heißer. Bestimmte Quartiere heizen sich stark auf und gefährden vor allem ältere Menschen. Du sollst Hitzeinseln erkennen und Maßnahmen datenbasiert priorisieren – mit begrenztem Budget.",
+    "icon": "🌡️",
+    "cards": [
+      {
+        "id": "hitze-1",
+        "title": "KI-Modell für Hitzeinseln",
+        "scenario": "Die Stadt möchte ein fertiges KI-Modell zur Erkennung von Hitzeinseln kaufen. Die vorhandenen Geodaten zu Gebäuden, Versiegelung und Vegetation sind aber unvollständig und veraltet.",
+        "info": {
+          "title": "Aufgabe vor Technologie",
+          "body": "KI ist kein Selbstzweck. Ein Modell ist nur so gut wie die Daten, mit denen es arbeitet. Erst das fachliche Problem und die Datenqualität klären, dann KI sinnvoll einsetzen – sonst entstehen teure, aber unsichere Ergebnisse."
+        },
+        "options": [
+          {
+            "id": "hitze-1-a",
+            "label": "KI sofort kaufen",
+            "consequence": "Schneller Start, aber das Modell rechnet mit lückenhaften Daten – Ergebnisse bleiben unsicher.",
+            "effects": { "budget": -16, "datenqualitaet": -4, "klimaresilienz": 2, "verwaltungsfaehigkeit": -3 },
+            "learn": "Riskant: 'Garbage in, garbage out'. Eine KI auf schlechten Geodaten liefert scheinbar präzise, aber unzuverlässige Aussagen. Das Geld ist ausgegeben, das Problem nicht gelöst."
+          },
+          {
+            "id": "hitze-1-b",
+            "label": "Erst Geodaten bereinigen",
+            "consequence": "Budget sinkt nur leicht, die Datenqualität steigt deutlich – eine spätere KI wird verlässlicher.",
+            "effects": { "budget": -6, "datenqualitaet": 16, "verwaltungsfaehigkeit": 6, "technischeNachhaltigkeit": 6 },
+            "learn": "Gut: 'Geodaten sind das Gold'. Saubere Grunddaten sind die Basis für jede Analyse. Die Investition zahlt sich bei allen späteren Use Cases aus."
+          },
+          {
+            "id": "hitze-1-c",
+            "label": "Externe Beratung beauftragen",
+            "consequence": "Mittlere Kosten, die interne Datenkompetenz wächst etwas, schnelle Eigenständigkeit bleibt aber aus.",
+            "effects": { "budget": -10, "verwaltungsfaehigkeit": 8, "datenqualitaet": 4, "interkommunaleKooperation": 2 },
+            "learn": "Solide: Beratung kann Kompetenz aufbauen. Achte aber darauf, dass Wissen im Haus bleibt und du nicht dauerhaft von Externen abhängig wirst."
+          }
+        ]
+      },
+      {
+        "id": "hitze-2",
+        "title": "Sensornetz für Temperatur",
+        "scenario": "Für laufende Messungen brauchst du ein Netz aus Temperatur- und Feuchtesensoren im Stadtgebiet. Wie baust du die Infrastruktur auf?",
+        "info": {
+          "title": "IoT & LoRaWAN",
+          "body": "LoRaWAN ist ein offener, energiesparender Funkstandard für Sensorik über große Distanzen. Offene Standards verhindern Abhängigkeit von einem einzigen Anbieter und ermöglichen, das Netz später gemeinsam mit anderen Kommunen zu nutzen."
+        },
+        "options": [
+          {
+            "id": "hitze-2-a",
+            "label": "Offenes LoRaWAN-Netz aufbauen",
+            "consequence": "Höherer Anfangsaufwand, aber ein souveränes, erweiterbares Sensornetz auf offenem Standard.",
+            "effects": { "budget": -11, "datenqualitaet": 10, "openSourceReife": 8, "technischeNachhaltigkeit": 9, "klimaresilienz": 4 },
+            "learn": "Gut: Ein offenes LoRaWAN-Netz ist günstig im Betrieb, herstellerunabhängig und kann für viele weitere Use Cases (Starkregen, Bäume) mitgenutzt werden."
+          },
+          {
+            "id": "hitze-2-b",
+            "label": "Schlüsselfertige Box eines Anbieters",
+            "consequence": "Schnell startklar, aber Daten und Hardware sind an einen Hersteller gebunden.",
+            "effects": { "budget": -9, "datenqualitaet": 8, "klimaresilienz": 4, "openSourceReife": -8, "technischeNachhaltigkeit": -6 },
+            "learn": "Riskant: Komfort heute, Vendor Lock-in morgen. Spätere Erweiterungen und Datenexporte können teuer oder unmöglich werden."
+          },
+          {
+            "id": "hitze-2-c",
+            "label": "Vorhandene Wetterstationen nutzen",
+            "consequence": "Kaum Kosten, aber zu grobe räumliche Auflösung für einzelne Quartiere.",
+            "effects": { "budget": -2, "datenqualitaet": -2, "klimaresilienz": 1, "verwaltungsfaehigkeit": 2 },
+            "learn": "Sparsam, aber begrenzt: Wenige Stationen zeigen keine kleinräumigen Hitzeinseln. Für Quartiersmaßnahmen reicht die Auflösung nicht."
+          }
+        ]
+      },
+      {
+        "id": "hitze-3",
+        "title": "Wo werden Sensoren platziert?",
+        "scenario": "Das Budget reicht nur für eine begrenzte Zahl an Sensoren. Wo sollen sie hin?",
+        "options": [
+          {
+            "id": "hitze-3-a",
+            "label": "Datenbasiert nach Risikoanalyse",
+            "consequence": "Sensoren stehen dort, wo Hitze und vulnerable Gruppen zusammentreffen – maximaler Nutzen.",
+            "effects": { "datenqualitaet": 9, "klimaresilienz": 9, "buergerzufriedenheit": 6, "verwaltungsfaehigkeit": 5 },
+            "learn": "Gut: Datenbasierte Priorisierung statt pauschaler Verteilung. So wirkt jeder eingesetzte Euro dort, wo der Bedarf am größten ist."
+          },
+          {
+            "id": "hitze-3-b",
+            "label": "Gleichmäßig über alle Stadtteile",
+            "consequence": "Politisch ausgewogen, aber Hotspots werden nicht gezielt erfasst.",
+            "effects": { "buergerzufriedenheit": 4, "klimaresilienz": 3, "datenqualitaet": 2, "budget": -3 },
+            "learn": "Mittelweg: Fair wirkt es, aber das eigentliche Hitzeproblem wird nur teilweise sichtbar. Gießkanne statt Priorisierung."
+          },
+          {
+            "id": "hitze-3-c",
+            "label": "Dort, wo Beschwerden kommen",
+            "consequence": "Reagiert auf laute Stimmen, nicht auf den tatsächlichen Bedarf.",
+            "effects": { "buergerzufriedenheit": 5, "klimaresilienz": -2, "datenqualitaet": -3, "verwaltungsfaehigkeit": -3 },
+            "learn": "Riskant: Wer am lautesten ruft, bekommt die Sensoren – nicht unbedingt das am stärksten betroffene Quartier. Datenbasierte Entscheidungen verhindern Verzerrungen."
+          }
+        ]
+      },
+      {
+        "id": "hitze-4",
+        "title": "Ergebnisse kommunizieren",
+        "scenario": "Die Hitzekarte ist fertig. Wie machst du die Erkenntnisse nutzbar?",
+        "info": {
+          "title": "Offenheit als Pflicht",
+          "body": "Offene Daten schaffen Vertrauen und ermöglichen, dass Zivilgesellschaft, Forschung und Wirtschaft mitarbeiten. Transparenz ist kein Risiko, sondern ein Qualitätsmerkmal moderner Verwaltung."
+        },
+        "options": [
+          {
+            "id": "hitze-4-a",
+            "label": "Offenes Dashboard für alle veröffentlichen",
+            "consequence": "Bürgerinnen, Forschung und Vereine können mitdenken und Maßnahmen mittragen.",
+            "effects": { "buergerzufriedenheit": 10, "openSourceReife": 6, "interkommunaleKooperation": 5, "datenschutzVertrauen": 3 },
+            "learn": "Gut: Offene Daten erhöhen Akzeptanz und Wirkung. Andere Kommunen können dein Vorgehen nachnutzen – 'Allianzen schmieden'."
+          },
+          {
+            "id": "hitze-4-b",
+            "label": "Nur verwaltungsintern nutzen",
+            "consequence": "Schnell und kontrolliert, aber ohne Beteiligung und ohne Außenwirkung.",
+            "effects": { "verwaltungsfaehigkeit": 4, "buergerzufriedenheit": -3, "openSourceReife": -4 },
+            "learn": "Verschenkt Potenzial: Daten im Silo nutzen weniger. Offenheit hätte Vertrauen und Mitwirkung gebracht."
+          },
+          {
+            "id": "hitze-4-c",
+            "label": "Daten teuer an Dritte verkaufen",
+            "consequence": "Kurzfristige Einnahmen, aber Vertrauen und Gemeinwohlorientierung leiden.",
+            "effects": { "budget": 6, "buergerzufriedenheit": -7, "datenschutzVertrauen": -5, "openSourceReife": -3 },
+            "learn": "Riskant: Kommunale Daten sind Gemeingut. Verkauf statt Offenheit beschädigt Vertrauen und widerspricht dem Gemeinwohl-Kompass."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "starkregen",
+    "title": "Starkregen vorbereiten",
+    "subtitle": "Hochwasser simulieren, Kanäle steuern, Schwammstadt bauen",
+    "reference": "Use Cases Wuppertal & Dresden (Schwammstadt-Simulation) und Jena (KI-Kanalsteuerung)",
+    "description": "Extreme Regenereignisse nehmen zu. Du sollst die Stadt mit Simulation, smarter Kanalsteuerung und Schwammstadt-Prinzipien auf Starkregen vorbereiten.",
+    "icon": "🌧️",
+    "cards": [
+      {
+        "id": "regen-1",
+        "title": "Digitaler Zwilling & Hochwassersimulation",
+        "scenario": "Du möchtest Überflutungen vorab simulieren, um Risikopunkte zu finden. Welchen Weg gehst du?",
+        "info": {
+          "title": "Digitaler Zwilling",
+          "body": "Ein digitaler Zwilling ist ein virtuelles Abbild der Stadt aus Geodaten, das 'Was-wäre-wenn'-Szenarien erlaubt – etwa Starkregen. Er ist nur so gut wie die zugrunde liegenden Höhen-, Kanal- und Versiegelungsdaten."
+        },
+        "options": [
+          {
+            "id": "regen-1-a",
+            "label": "Digitalen Zwilling auf offenen Geodaten aufbauen",
+            "consequence": "Aufwändig, aber ein nachnutzbares Stadtmodell für viele künftige Fragen.",
+            "effects": { "budget": -13, "klimaresilienz": 12, "datenqualitaet": 8, "technischeNachhaltigkeit": 8, "openSourceReife": 5 },
+            "learn": "Gut: Ein offener digitaler Zwilling dient nicht nur dem Hochwasser, sondern auch Hitze, Verkehr und Planung. Investition mit breitem Nutzen."
+          },
+          {
+            "id": "regen-1-b",
+            "label": "Fertige Simulation als Dienstleistung einkaufen",
+            "consequence": "Schnelles Ergebnis, aber Modell und Daten liegen beim Anbieter.",
+            "effects": { "budget": -10, "klimaresilienz": 8, "openSourceReife": -6, "technischeNachhaltigkeit": -4 },
+            "learn": "Mit Vorsicht: Eine Einmal-Studie hilft sofort, schafft aber keine eigene Fähigkeit. Achte auf Datenexport und Wiederholbarkeit."
+          },
+          {
+            "id": "regen-1-c",
+            "label": "Auf Erfahrungswerte verzichten und improvisieren",
+            "consequence": "Kein Aufwand, aber Maßnahmen bleiben Bauchgefühl.",
+            "effects": { "budget": 0, "klimaresilienz": -6, "datenqualitaet": -4, "verwaltungsfaehigkeit": -4 },
+            "learn": "Riskant: Ohne Simulation werden teure Schutzbauten womöglich am falschen Ort errichtet. Daten reduzieren Fehlinvestitionen."
+          }
+        ]
+      },
+      {
+        "id": "regen-2",
+        "title": "KI-gestützte Kanalsteuerung",
+        "scenario": "Nach dem Vorbild Jena willst du das Kanalnetz vorausschauend nach Wetterprognosen steuern, um Überlauf zu vermeiden.",
+        "info": {
+          "title": "Datenqualität entscheidet",
+          "body": "Eine vorausschauende Steuerung braucht verlässliche Sensordaten zu Füllständen und gute Wetterprognosen. Schlechte oder ausgefallene Sensoren führen zu Fehlsteuerungen – Datenqualität und Betrieb sind sicherheitsrelevant."
+        },
+        "options": [
+          {
+            "id": "regen-2-a",
+            "label": "Pilot mit Füllstandsensoren und Prognose-KI",
+            "consequence": "Das Netz reagiert vorausschauend auf Regen – weniger Überläufe.",
+            "effects": { "budget": -11, "klimaresilienz": 11, "datenqualitaet": 6, "technischeNachhaltigkeit": 5, "buergerzufriedenheit": 4 },
+            "learn": "Gut: Vorausschauende Steuerung nutzt vorhandene Infrastruktur klüger. Wichtig ist ein gesicherter Betrieb der Sensorik."
+          },
+          {
+            "id": "regen-2-b",
+            "label": "KI ohne ausreichende Sensorabdeckung starten",
+            "consequence": "Die Steuerung trifft Entscheidungen auf dünner Datenbasis.",
+            "effects": { "budget": -8, "klimaresilienz": -3, "datenqualitaet": -5, "datenschutzVertrauen": -1 },
+            "learn": "Riskant: Eine KI ohne genügend Messpunkte 'rät'. Bei sicherheitskritischer Steuerung kann das Schäden verursachen."
+          },
+          {
+            "id": "regen-2-c",
+            "label": "Erst Sensorabdeckung und Betrieb sichern",
+            "consequence": "Verzögert die KI, schafft aber eine belastbare Grundlage und gesicherten Betrieb.",
+            "effects": { "budget": -7, "datenqualitaet": 12, "technischeNachhaltigkeit": 9, "verwaltungsfaehigkeit": 4 },
+            "learn": "Gut: Erst die Datengrundlage und das Betriebsbudget sichern, dann KI. Reihenfolge schlägt Tempo."
+          }
+        ]
+      },
+      {
+        "id": "regen-3",
+        "title": "Schwammstadt-Maßnahmen",
+        "scenario": "Du willst Wasser in der Stadt zurückhalten und versickern lassen. Wie priorisierst du Entsiegelung und Versickerung?",
+        "options": [
+          {
+            "id": "regen-3-a",
+            "label": "Datenbasiert an den Risiko-Hotspots",
+            "consequence": "Entsiegelung und Versickerungsmulden dort, wo die Simulation Überflutung zeigt.",
+            "effects": { "klimaresilienz": 10, "buergerzufriedenheit": 6, "datenqualitaet": 4, "budget": -7 },
+            "learn": "Gut: Die Simulationsdaten lenken knappe Mittel an die wirksamsten Stellen. Datenbasierte Priorisierung in Aktion."
+          },
+          {
+            "id": "regen-3-b",
+            "label": "Überall ein bisschen, gleichmäßig verteilt",
+            "consequence": "Sichtbares Engagement, aber begrenzte Schutzwirkung an den kritischen Punkten.",
+            "effects": { "klimaresilienz": 4, "buergerzufriedenheit": 5, "budget": -9 },
+            "learn": "Mittelweg: Gut fürs Stadtbild, aber an den eigentlichen Hotspots oft zu schwach. Pauschale Maßnahmen kosten viel, wirken wenig gezielt."
+          },
+          {
+            "id": "regen-3-c",
+            "label": "Auf klassische Kanalvergrößerung setzen",
+            "consequence": "Bewährte Technik, aber teuer und ökologisch weniger wertvoll.",
+            "effects": { "klimaresilienz": 6, "budget": -13, "technischeNachhaltigkeit": -2 },
+            "learn": "Solide, aber teuer: Reine 'graue' Infrastruktur ignoriert günstigere, naturbasierte Lösungen, die Hitze und Wasser zugleich angehen."
+          }
+        ]
+      },
+      {
+        "id": "regen-4",
+        "title": "Daten teilen mit Nachbarn",
+        "scenario": "Wasser kennt keine Stadtgrenzen. Eine Nachbarkommune am selben Flusslauf fragt nach Datenaustausch.",
+        "info": {
+          "title": "Allianzen schmieden",
+          "body": "Hochwasserschutz endet nicht an der Gemeindegrenze. Interkommunale Kooperation und gemeinsame Datenstandards machen Maßnahmen wirksamer und günstiger – gemeinsam statt jede Kommune für sich."
+        },
+        "options": [
+          {
+            "id": "regen-4-a",
+            "label": "Gemeinsame Datenplattform mit offenen Standards",
+            "consequence": "Beide Kommunen sehen das Einzugsgebiet vollständig und planen abgestimmt.",
+            "effects": { "interkommunaleKooperation": 12, "klimaresilienz": 7, "openSourceReife": 6, "budget": -4 },
+            "learn": "Gut: Geteilte Daten über offene Standards erhöhen die Wirkung für alle und senken langfristig die Kosten."
+          },
+          {
+            "id": "regen-4-b",
+            "label": "Daten nur auf Anfrage per E-Mail schicken",
+            "consequence": "Funktioniert notdürftig, ist aber langsam und fehleranfällig.",
+            "effects": { "interkommunaleKooperation": 3, "verwaltungsfaehigkeit": -2, "datenqualitaet": -2 },
+            "learn": "Halbherzig: Datenaustausch per E-Mail ist kein nachhaltiges Vorgehen. Standardisierte Schnittstellen wären verlässlicher."
+          },
+          {
+            "id": "regen-4-c",
+            "label": "Keine Daten herausgeben",
+            "consequence": "Kontrolle bleibt im Haus, aber das gemeinsame Problem bleibt ungelöst.",
+            "effects": { "interkommunaleKooperation": -8, "klimaresilienz": -3, "buergerzufriedenheit": -2 },
+            "learn": "Riskant: Abschottung schwächt den Schutz beider Kommunen. Datenkooperation ist Teil des Gemeinwohl-Kompasses."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "stadtbaeume",
+    "title": "Stadtbäume schützen",
+    "subtitle": "Baumschäden und Mistelbefall früh erkennen",
+    "reference": "Use Case Bamberg: Drohnen und KI zur Erkennung von Baumschäden und Mistelbefall",
+    "description": "Stadtbäume kühlen, speichern Wasser und binden CO₂ – leiden aber unter Trockenheit und Befall. Du sollst Schäden früh erkennen und die Pflege effizient steuern.",
+    "icon": "🌳",
+    "cards": [
+      {
+        "id": "baum-1",
+        "title": "Drohnen und KI zur Schadenserkennung",
+        "scenario": "Drohnenbilder sollen per KI Baumschäden und Mistelbefall erkennen, damit Pflegeteams gezielt ausrücken.",
+        "info": {
+          "title": "Fernerkundung & KI",
+          "body": "Drohnen und Fernerkundung liefern flächendeckende Bilddaten. KI kann daraus Muster wie Mistelbefall erkennen – das spart aufwändige Begehungen, ersetzt aber nicht die fachliche Bewertung durch Expertinnen."
+        },
+        "options": [
+          {
+            "id": "baum-1-a",
+            "label": "Pilotprojekt mit klarer Fragestellung starten",
+            "consequence": "Fokussierter Test mit messbarem Nutzen für die Baumpflege.",
+            "effects": { "budget": -9, "klimaresilienz": 8, "datenqualitaet": 6, "verwaltungsfaehigkeit": 5, "technischeNachhaltigkeit": 4 },
+            "learn": "Gut: Ein klar umrissener Use Case ('Aufgabe vor Technologie') macht den Nutzen messbar und das Risiko überschaubar."
+          },
+          {
+            "id": "baum-1-b",
+            "label": "Großen Komplettauftrag für die ganze Stadt vergeben",
+            "consequence": "Maximale Abdeckung, aber hohe Kosten und Abhängigkeit von einem Dienstleister.",
+            "effects": { "budget": -16, "klimaresilienz": 7, "openSourceReife": -5, "technischeNachhaltigkeit": -4 },
+            "learn": "Riskant: Ohne erprobtes Vorgehen ist ein Großauftrag teuer und schwer steuerbar. Erst klein testen, dann skalieren."
+          },
+          {
+            "id": "baum-1-c",
+            "label": "Weiter manuell per Begehung kontrollieren",
+            "consequence": "Vertraut und ohne Technikrisiko, aber langsam und lückenhaft.",
+            "effects": { "budget": -4, "klimaresilienz": 1, "verwaltungsfaehigkeit": -2 },
+            "learn": "Vorsichtig: Manuelle Kontrolle bleibt möglich, erkennt Schäden aber spät. Fernerkundung könnte hier echten Mehrwert bringen."
+          }
+        ]
+      },
+      {
+        "id": "baum-2",
+        "title": "Trainingsdaten für die KI",
+        "scenario": "Die KI muss lernen, gesunde von befallenen Bäumen zu unterscheiden. Woher kommen die Trainingsdaten?",
+        "info": {
+          "title": "Datenqualität & Bias",
+          "body": "Eine KI lernt aus Beispielen. Sind die Trainingsdaten einseitig oder fehlerhaft annotiert, übernimmt das Modell diese Fehler. Sorgfältig geprüfte, fachlich annotierte Daten sind entscheidend für verlässliche Ergebnisse."
+        },
+        "options": [
+          {
+            "id": "baum-2-a",
+            "label": "Fachlich annotierte, geprüfte Daten aufbauen",
+            "consequence": "Aufwändiger Start, aber zuverlässige Erkennung und nachnutzbarer Datensatz.",
+            "effects": { "budget": -8, "datenqualitaet": 14, "verwaltungsfaehigkeit": 5, "technischeNachhaltigkeit": 5 },
+            "learn": "Gut: Saubere, von Fachleuten geprüfte Trainingsdaten sind das Fundament. Sie verhindern Fehlalarme und Blindstellen."
+          },
+          {
+            "id": "baum-2-b",
+            "label": "Beliebige Bilder aus dem Netz verwenden",
+            "consequence": "Schnell und günstig, aber unklare Qualität und rechtliche Risiken.",
+            "effects": { "budget": -2, "datenqualitaet": -8, "datenschutzVertrauen": -4, "klimaresilienz": -2 },
+            "learn": "Riskant: Ungeprüfte Daten erzeugen Bias und Rechtsprobleme. Die KI erkennt dann Muster, die mit lokalen Bäumen wenig zu tun haben."
+          },
+          {
+            "id": "baum-2-c",
+            "label": "Datensatz mit anderen Kommunen teilen",
+            "consequence": "Gemeinsam größere, vielfältigere Datenbasis bei geteilten Kosten.",
+            "effects": { "budget": -4, "datenqualitaet": 9, "interkommunaleKooperation": 9, "openSourceReife": 6 },
+            "learn": "Gut: Gemeinsame, offene Trainingsdaten erhöhen Qualität und senken Kosten – ein Paradebeispiel für Datenkooperation."
+          }
+        ]
+      },
+      {
+        "id": "baum-3",
+        "title": "Drohnenflug und Datenschutz",
+        "scenario": "Die Drohnen überfliegen auch private Gärten und Höfe. Anwohnende sorgen sich um ihre Privatsphäre.",
+        "info": {
+          "title": "Privacy by Design",
+          "body": "Datenschutz beginnt im Entwurf, nicht erst hinterher. Wer Flugrouten, Auflösung und Verarbeitung von Anfang an datensparsam plant und transparent kommuniziert, vermeidet Konflikte und stärkt Vertrauen."
+        },
+        "options": [
+          {
+            "id": "baum-3-a",
+            "label": "Privacy by Design: nur Baumkronen, Gärten verpixeln",
+            "consequence": "Technisch etwas aufwändiger, aber datenschutzfreundlich und akzeptiert.",
+            "effects": { "datenschutzVertrauen": 12, "buergerzufriedenheit": 7, "klimaresilienz": 3, "technischeNachhaltigkeit": 2 },
+            "learn": "Gut: Datensparsamkeit und Anonymisierung von Anfang an machen das Projekt rechtssicher und akzeptiert. Datenschutz als Qualitätsmerkmal."
+          },
+          {
+            "id": "baum-3-b",
+            "label": "Alles in hoher Auflösung aufnehmen und speichern",
+            "consequence": "Maximale Bilddaten, aber massive Datenschutzbedenken und Misstrauen.",
+            "effects": { "datenschutzVertrauen": -14, "buergerzufriedenheit": -8, "datenqualitaet": 4 },
+            "learn": "Riskant: 'Mehr Daten' ist nicht besser, wenn dabei Persönlichkeitsrechte verletzt werden. Vertrauen ist schwer zurückzugewinnen."
+          },
+          {
+            "id": "baum-3-c",
+            "label": "Anwohnende vorab informieren und einbinden",
+            "consequence": "Etwas Zeitaufwand, aber transparente Kommunikation und Akzeptanz.",
+            "effects": { "datenschutzVertrauen": 7, "buergerzufriedenheit": 8, "verwaltungsfaehigkeit": 3 },
+            "learn": "Gut: Transparenz schafft Akzeptanz. Frühe Beteiligung verhindert späteren Widerstand und stärkt das Vertrauen in die Verwaltung."
+          }
+        ]
+      },
+      {
+        "id": "baum-4",
+        "title": "Anbindung ans Baumkataster",
+        "scenario": "Die KI-Ergebnisse sollen die Pflege steuern. Wie verbindest du sie mit dem vorhandenen Fachverfahren (Baumkataster)?",
+        "info": {
+          "title": "Geodaten & Fachverfahren",
+          "body": "Fachverfahren wie das Baumkataster sind das Rückgrat kommunaler Daten. Werden KI-Ergebnisse über offene Schnittstellen sauber eingebunden, statt isolierte Insellösungen zu schaffen, entsteht echter, dauerhafter Nutzen."
+        },
+        "options": [
+          {
+            "id": "baum-4-a",
+            "label": "Über offene Schnittstelle ins Baumkataster integrieren",
+            "consequence": "Pflegeteams arbeiten mit einem System – kein Datenchaos, klare Zuständigkeit.",
+            "effects": { "verwaltungsfaehigkeit": 10, "datenqualitaet": 7, "technischeNachhaltigkeit": 7, "openSourceReife": 4 },
+            "learn": "Gut: Integration über offene Standards statt Insellösung. Die Daten bleiben pflegbar und die Zuständigkeit klar."
+          },
+          {
+            "id": "baum-4-b",
+            "label": "Separate KI-App ohne Anbindung betreiben",
+            "consequence": "Schnell verfügbar, aber ein weiteres Datensilo neben dem Kataster.",
+            "effects": { "verwaltungsfaehigkeit": -5, "datenqualitaet": -4, "technischeNachhaltigkeit": -5 },
+            "learn": "Riskant: Eine weitere Insellösung erzeugt doppelte Datenhaltung und Pflegeaufwand. Silos sind ein Kernproblem im Reality Check."
+          },
+          {
+            "id": "baum-4-c",
+            "label": "Ergebnisse manuell ins Kataster übertragen",
+            "consequence": "Keine Technikkosten, aber fehleranfällige und langsame Handarbeit.",
+            "effects": { "verwaltungsfaehigkeit": -2, "datenqualitaet": -2, "budget": -2 },
+            "learn": "Mittelweg: Manuelle Übertragung funktioniert kurzfristig, ist aber fehleranfällig und bindet Personal dauerhaft."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "datenschutz-ki",
+    "title": "Datenschutzkonforme KI einsetzen",
+    "subtitle": "KI mit Edge, Anonymisierung und menschlicher Aufsicht",
+    "reference": "Use Case Duisburg: KI-Schilderkennung über Müllfahrzeuge",
+    "description": "KI im öffentlichen Raum berührt Persönlichkeitsrechte. Du sollst nützliche KI-Anwendungen umsetzen und dabei Datenschutz als Qualitätsmerkmal behandeln.",
+    "icon": "🛡️",
+    "cards": [
+      {
+        "id": "dski-1",
+        "title": "Kameras zur Schilderkennung",
+        "scenario": "Kameras sollen den Zustand von Verkehrsschildern erkennen. Dabei werden zwangsläufig auch Passanten und Kennzeichen erfasst.",
+        "info": {
+          "title": "Edge Computing",
+          "body": "Beim Edge Computing werden Bilder direkt im Gerät verarbeitet und anonymisiert, statt Rohdaten zentral zu speichern. So verlassen sensible Aufnahmen das Fahrzeug gar nicht erst – Datenschutz und Datensparsamkeit von Grund auf."
+        },
+        "options": [
+          {
+            "id": "dski-1-a",
+            "label": "Rohbilder zentral speichern",
+            "consequence": "Bequem für spätere Auswertungen, aber ein erhebliches Datenschutzrisiko.",
+            "effects": { "datenschutzVertrauen": -15, "buergerzufriedenheit": -6, "datenqualitaet": 4 },
+            "learn": "Riskant: Zentrale Speicherung von Rohbildern mit Gesichtern und Kennzeichen ist datenschutzrechtlich heikel und untergräbt Vertrauen."
+          },
+          {
+            "id": "dski-1-b",
+            "label": "Edge-Verarbeitung und Anonymisierung nutzen",
+            "consequence": "Höhere technische Komplexität, aber sensible Daten verlassen das Gerät nicht.",
+            "effects": { "datenschutzVertrauen": 13, "technischeNachhaltigkeit": 5, "datenqualitaet": 5, "buergerzufriedenheit": 4 },
+            "learn": "Gut: Edge Computing und Verpixelung schützen Persönlichkeitsrechte und liefern trotzdem die nötige Fachinformation. Datenschutz als Qualitätsmerkmal."
+          },
+          {
+            "id": "dski-1-c",
+            "label": "Projekt ganz stoppen",
+            "consequence": "Datenschutzrisiko gleich null, aber auch kein Innovationsnutzen.",
+            "effects": { "datenschutzVertrauen": 4, "klimaresilienz": -1, "verwaltungsfaehigkeit": -3, "technischeNachhaltigkeit": -2 },
+            "learn": "Defensiv: Stoppen vermeidet jedes Risiko, verschenkt aber den Nutzen. Mit Privacy by Design wäre eine sichere Umsetzung möglich gewesen."
+          }
+        ]
+      },
+      {
+        "id": "dski-2",
+        "title": "Müllfahrzeuge als mobile Sensoren",
+        "scenario": "Nach dem Vorbild Duisburg könnten Müllfahrzeuge auf ihren Routen ganz nebenbei den Zustand von Schildern und Straßen erfassen.",
+        "info": {
+          "title": "Vorhandene Infrastruktur nutzen",
+          "body": "Fahrzeuge, die ohnehin täglich durch die Stadt fahren, sind eine günstige mobile Sensorplattform. Solche Mehrfachnutzungen sparen Geld – sofern Datenschutz und klare Zuständigkeiten mitgedacht werden."
+        },
+        "options": [
+          {
+            "id": "dski-2-a",
+            "label": "Bestehende Fahrzeuge datenschutzkonform ausstatten",
+            "consequence": "Günstige Flächenabdeckung mit Anonymisierung an Bord.",
+            "effects": { "budget": -6, "klimaresilienz": 4, "datenqualitaet": 8, "technischeNachhaltigkeit": 6, "datenschutzVertrauen": 4 },
+            "learn": "Gut: Mehrfachnutzung vorhandener Fahrzeuge ist ressourcenschonend. Mit Edge-Anonymisierung bleibt es datenschutzkonform."
+          },
+          {
+            "id": "dski-2-b",
+            "label": "Eigene Sensorflotte zusätzlich anschaffen",
+            "consequence": "Maximale Kontrolle, aber teuer und doppelte Infrastruktur.",
+            "effects": { "budget": -14, "datenqualitaet": 6, "technischeNachhaltigkeit": -3 },
+            "learn": "Teuer: Eine separate Flotte verursacht hohe Anschaffungs- und Betriebskosten, wo vorhandene Fahrzeuge gereicht hätten."
+          },
+          {
+            "id": "dski-2-c",
+            "label": "Idee ohne Datenschutzkonzept umsetzen",
+            "consequence": "Schneller Start, aber rechtliche und vertrauensbezogene Risiken.",
+            "effects": { "budget": -5, "datenschutzVertrauen": -10, "buergerzufriedenheit": -4, "datenqualitaet": 4 },
+            "learn": "Riskant: Ohne Datenschutzkonzept drohen Beschwerden und Rechtsverstöße. Datenschutz muss von Anfang an Teil des Konzepts sein."
+          }
+        ]
+      },
+      {
+        "id": "dski-3",
+        "title": "Menschliche Aufsicht über die KI",
+        "scenario": "Die KI markiert Schäden und Auffälligkeiten automatisch. Sollen daraus direkt Maßnahmen oder Bußgelder folgen?",
+        "info": {
+          "title": "Human Oversight",
+          "body": "KI-Ergebnisse können falsch sein. Bei Entscheidungen mit Folgen für Menschen muss eine fachkundige Person prüfen und verantworten ('Human in the Loop'). Menschliche Aufsicht ist rechtlich geboten und schützt vor automatisierten Fehlern."
+        },
+        "options": [
+          {
+            "id": "dski-3-a",
+            "label": "KI als Vorschlag, Mensch entscheidet final",
+            "consequence": "Etwas langsamer, aber rechtssicher und fehlertolerant.",
+            "effects": { "datenschutzVertrauen": 9, "verwaltungsfaehigkeit": 7, "buergerzufriedenheit": 5 },
+            "learn": "Gut: Human Oversight stellt sicher, dass falsche KI-Ergebnisse keine unmittelbaren Folgen für Bürgerinnen haben. Verantwortung bleibt beim Menschen."
+          },
+          {
+            "id": "dski-3-b",
+            "label": "Vollautomatische Bescheide ohne Prüfung",
+            "consequence": "Maximale Effizienz, aber Fehlentscheidungen treffen direkt die Menschen.",
+            "effects": { "datenschutzVertrauen": -12, "buergerzufriedenheit": -9, "verwaltungsfaehigkeit": -4 },
+            "learn": "Riskant: Vollautomatisierung ohne Aufsicht ist bei belastenden Entscheidungen rechtlich problematisch und beschädigt Vertrauen massiv."
+          },
+          {
+            "id": "dski-3-c",
+            "label": "Stichprobenartige Kontrolle der KI",
+            "consequence": "Schneller als Vollprüfung, aber einzelne Fehler rutschen durch.",
+            "effects": { "verwaltungsfaehigkeit": 3, "datenschutzVertrauen": -2, "buergerzufriedenheit": 1 },
+            "learn": "Mittelweg: Stichproben senken den Aufwand, garantieren aber keine Einzelfallgerechtigkeit. Bei belastenden Entscheidungen oft zu wenig."
+          }
+        ]
+      },
+      {
+        "id": "dski-4",
+        "title": "Datenschutz-Folgenabschätzung",
+        "scenario": "Vor dem Rollout steht die Frage nach einer Datenschutz-Folgenabschätzung (DSFA) und Beteiligung der/des Datenschutzbeauftragten.",
+        "info": {
+          "title": "Datenschutz als Qualitätsmerkmal",
+          "body": "Eine DSFA ist keine lästige Pflicht, sondern macht Risiken früh sichtbar und das Projekt besser. Datenschutzbeauftragte früh einzubinden spart später teure Korrekturen und stärkt das Vertrauen."
+        },
+        "options": [
+          {
+            "id": "dski-4-a",
+            "label": "DSFA früh durchführen, DSB einbinden",
+            "consequence": "Etwas Vorlauf, aber ein rechtssicheres und vertrauenswürdiges Projekt.",
+            "effects": { "datenschutzVertrauen": 11, "verwaltungsfaehigkeit": 6, "technischeNachhaltigkeit": 3 },
+            "learn": "Gut: Frühe DSFA deckt Risiken auf, solange sie noch günstig zu beheben sind. Datenschutz wird so zum Qualitätstreiber."
+          },
+          {
+            "id": "dski-4-b",
+            "label": "DSFA überspringen, später nachholen",
+            "consequence": "Schnellerer Start, aber hohes Risiko teurer Nachbesserungen.",
+            "effects": { "datenschutzVertrauen": -9, "verwaltungsfaehigkeit": -3, "budget": -3 },
+            "learn": "Riskant: Eine nachträgliche DSFA findet Probleme erst, wenn sie teuer geworden sind – oder gar nicht. Vertrauen leidet."
+          },
+          {
+            "id": "dski-4-c",
+            "label": "Standard-Vorlage einer anderen Kommune nutzen",
+            "consequence": "Spart Zeit, muss aber an die lokale Situation angepasst werden.",
+            "effects": { "datenschutzVertrauen": 5, "interkommunaleKooperation": 6, "verwaltungsfaehigkeit": 3 },
+            "learn": "Pragmatisch: Geteilte Vorlagen sparen Arbeit (Datenkooperation), ersetzen aber nicht die Prüfung des konkreten Einzelfalls."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "datenplattform",
+    "title": "Urbane Datenplattform aufbauen",
+    "subtitle": "Offene Standards statt Vendor Lock-in",
+    "reference": "Querschnitt: Urbane Datenplattform, offene Standards, Open Source, interkommunale Kooperation",
+    "description": "Eine urbane Datenplattform verbindet Geodaten, Fachverfahren und Sensorik. Du sollst sie souverän, nachhaltig und herstellerunabhängig aufbauen.",
+    "icon": "🏛️",
+    "cards": [
+      {
+        "id": "platt-1",
+        "title": "Geschlossenes System oder offene Standards?",
+        "scenario": "Ein Anbieter bietet ein vollständig geschlossenes System für Sensordaten an – schnell startklar, aber proprietär.",
+        "info": {
+          "title": "Vendor Lock-in",
+          "body": "Vendor Lock-in bedeutet, dass man von einem Anbieter abhängig wird, weil Daten und Funktionen nicht offen zugänglich sind. Offene Standards und Open Source erhalten die Datensouveränität und ermöglichen den Anbieterwechsel."
+        },
+        "options": [
+          {
+            "id": "platt-1-a",
+            "label": "Schnell das geschlossene System kaufen",
+            "consequence": "Kurzfristiger Fortschritt, aber wachsende Abhängigkeit vom Anbieter.",
+            "effects": { "klimaresilienz": 3, "technischeNachhaltigkeit": -8, "openSourceReife": -12, "interkommunaleKooperation": -4, "budget": -8 },
+            "learn": "Riskant: Vendor Lock-in fesselt die Stadt langfristig an einen Anbieter. Datenexport und Wechsel werden teuer – Souveränität geht verloren."
+          },
+          {
+            "id": "platt-1-b",
+            "label": "Offene Standards und Datenexport verlangen",
+            "consequence": "Das Projekt dauert länger, aber die Datensouveränität bleibt erhalten.",
+            "effects": { "openSourceReife": 11, "technischeNachhaltigkeit": 9, "datenqualitaet": 4, "budget": -6 },
+            "learn": "Gut: Offene Standards ('Offenheit als Pflicht') sichern, dass die Daten der Stadt gehören und das System austauschbar bleibt."
+          },
+          {
+            "id": "platt-1-c",
+            "label": "Interkommunale Open-Source-Lösung prüfen",
+            "consequence": "Kooperation steigt, langfristig sinken die Kosten durch geteilten Betrieb.",
+            "effects": { "interkommunaleKooperation": 12, "openSourceReife": 10, "budget": -4, "technischeNachhaltigkeit": 7 },
+            "learn": "Gut: Gemeinsam getragene Open-Source-Plattformen senken Kosten und stärken die Unabhängigkeit. 'Allianzen schmieden' in Reinform."
+          }
+        ]
+      },
+      {
+        "id": "platt-2",
+        "title": "Datensilos der Ämter",
+        "scenario": "Jedes Amt hütet seine eigenen Daten in eigenen Systemen. Die Plattform soll sie zusammenführen – das weckt Widerstände.",
+        "info": {
+          "title": "Reality Check: Silos",
+          "body": "Ämter-Silos verhindern gemeinsame Lösungen. Eine Datenplattform scheitert selten an der Technik, sondern an Zuständigkeiten und Kultur. Klare Datenzuständigkeit und gemeinsame Standards sind der Schlüssel."
+        },
+        "options": [
+          {
+            "id": "platt-2-a",
+            "label": "Klare Datenzuständigkeiten und Governance einführen",
+            "consequence": "Mühsame Abstimmung, aber dauerhaft tragfähige Datenflüsse.",
+            "effects": { "verwaltungsfaehigkeit": 11, "datenqualitaet": 8, "technischeNachhaltigkeit": 5, "budget": -5 },
+            "learn": "Gut: Datenzuständigkeit klären löst das eigentliche Problem. Governance ist wichtiger als jede einzelne Software."
+          },
+          {
+            "id": "platt-2-b",
+            "label": "Technik einführen, Organisation später regeln",
+            "consequence": "Schneller Plattformstart, aber die Silos bleiben faktisch bestehen.",
+            "effects": { "technischeNachhaltigkeit": -4, "verwaltungsfaehigkeit": -6, "datenqualitaet": -3 },
+            "learn": "Riskant: Technik ohne Organisationsentwicklung führt zu einer leeren Plattform. Die Silos lösen sich nicht von allein."
+          },
+          {
+            "id": "platt-2-c",
+            "label": "Mit einem motivierten Amt als Leuchtturm starten",
+            "consequence": "Kleiner, sichtbarer Erfolg, der zum Mitmachen einlädt.",
+            "effects": { "verwaltungsfaehigkeit": 6, "buergerzufriedenheit": 3, "datenqualitaet": 4, "interkommunaleKooperation": 2 },
+            "learn": "Gut: Ein Leuchtturmprojekt schafft Vertrauen und Vorbilder. Andere Ämter folgen leichter, wenn der Nutzen sichtbar ist."
+          }
+        ]
+      },
+      {
+        "id": "platt-3",
+        "title": "Betrieb und Budget sichern",
+        "scenario": "Die Plattform und die Sensorik sind aufgebaut. Doch wer bezahlt Wartung, Updates und Sensoraustausch in den nächsten Jahren?",
+        "info": {
+          "title": "Reality Check: Betriebsbudget",
+          "body": "Fehlende Betriebsbudgets gefährden Sensorik und Plattformen. Viele Projekte werden gefördert aufgebaut – und verfallen dann, weil niemand den laufenden Betrieb bezahlt. Nachhaltigkeit heißt: Betrieb von Anfang an einplanen."
+        },
+        "options": [
+          {
+            "id": "platt-3-a",
+            "label": "Festes Betriebsbudget dauerhaft einplanen",
+            "consequence": "Bindet Mittel, sichert aber den dauerhaften Wert der Investition.",
+            "effects": { "technischeNachhaltigkeit": 12, "datenqualitaet": 6, "klimaresilienz": 4, "budget": -9 },
+            "learn": "Gut: Ein gesichertes Betriebsbudget verhindert, dass teuer Aufgebautes verfällt. Nachhaltigkeit schlägt kurzfristige Einsparung."
+          },
+          {
+            "id": "platt-3-b",
+            "label": "Nur die Förderung nutzen, Betrieb offenlassen",
+            "consequence": "Spart jetzt Geld, gefährdet aber den Fortbestand nach Projektende.",
+            "effects": { "budget": 5, "technischeNachhaltigkeit": -12, "datenqualitaet": -6, "klimaresilienz": -3 },
+            "learn": "Riskant: Ohne Betriebsbudget veralten Sensoren und Software. Die Investition verpufft – ein klassischer Fehler im Reality Check."
+          },
+          {
+            "id": "platt-3-c",
+            "label": "Betriebskosten interkommunal teilen",
+            "consequence": "Geteilte Verantwortung senkt die Last für jede einzelne Kommune.",
+            "effects": { "interkommunaleKooperation": 10, "technischeNachhaltigkeit": 7, "openSourceReife": 4, "budget": -3 },
+            "learn": "Gut: Gemeinsamer Betrieb über Kommunengrenzen hinweg senkt Kosten und erhöht die Ausfallsicherheit. Kooperation als Betriebsmodell."
+          }
+        ]
+      },
+      {
+        "id": "platt-4",
+        "title": "Datenkompetenz im Haus",
+        "scenario": "Damit die Plattform wirklich genutzt wird, müssen Mitarbeitende mit Daten umgehen können. Wie baust du Datenkompetenz auf?",
+        "info": {
+          "title": "Datenkompetenz",
+          "body": "Datenkompetenz ist die Fähigkeit, Daten zu verstehen, zu bewerten und verantwortungsvoll zu nutzen. Ohne sie bleibt jede Plattform ungenutzt. Sie ist – neben Datensouveränität, Datenzuständigkeit und Datenkooperation – ein Pfeiler des Gemeinwohl-Kompasses."
+        },
+        "options": [
+          {
+            "id": "platt-4-a",
+            "label": "Schulungen und Datenlots:innen aufbauen",
+            "consequence": "Investition in Menschen, die die Plattform dauerhaft mit Leben füllt.",
+            "effects": { "verwaltungsfaehigkeit": 10, "datenqualitaet": 6, "buergerzufriedenheit": 3, "budget": -5 },
+            "learn": "Gut: Datenkompetenz im Haus macht die Stadt unabhängig von Externen und sorgt dafür, dass die Plattform wirklich genutzt wird."
+          },
+          {
+            "id": "platt-4-b",
+            "label": "Alles dauerhaft an Dienstleister auslagern",
+            "consequence": "Bequem, aber das Wissen und die Kontrolle bleiben außerhalb des Hauses.",
+            "effects": { "verwaltungsfaehigkeit": -6, "openSourceReife": -5, "budget": -7 },
+            "learn": "Riskant: Dauerhaftes Auslagern erzeugt eine neue Abhängigkeit. Ohne eigenes Wissen kann die Stadt Ergebnisse nicht beurteilen."
+          },
+          {
+            "id": "platt-4-c",
+            "label": "Wissen im Verwaltungsnetzwerk teilen",
+            "consequence": "Gemeinsames Lernen mit anderen Kommunen über Best Practices.",
+            "effects": { "interkommunaleKooperation": 9, "verwaltungsfaehigkeit": 6, "openSourceReife": 5 },
+            "learn": "Gut: Interkommunaler Wissensaustausch beschleunigt das Lernen für alle Beteiligten und stärkt die Open-Source-Kultur."
+          }
+        ]
+      }
+    ]
+  }
+]
