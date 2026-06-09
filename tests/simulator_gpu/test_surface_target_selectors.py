@@ -483,7 +483,9 @@ def test_solar_cumulative_sky_patch_svf_diffuse_respects_target_selectors(monkey
     np.testing.assert_allclose(result.metadata["cumulative_global"], [np.nan, 2.5], equal_nan=True)
 
 
-def test_building_radiation_cache_invalidates_for_new_voxel_array(monkeypatch):
+def test_building_radiation_cache_warm_refreshes_for_new_voxel_array_same_shape(monkeypatch):
+    """When shape/params match but voxel_data identity changes (optimization normal case),
+    the warm-refresh path must reuse the cached model — not create a new Domain."""
     from voxcity.simulator_gpu.solar.integration import caching
     from voxcity.simulator_gpu.solar import domain as domain_mod
     from voxcity.simulator_gpu.solar import radiation as radiation_mod
@@ -491,7 +493,19 @@ def test_building_radiation_cache_invalidates_for_new_voxel_array(monkeypatch):
     old_voxels = np.zeros((2, 2, 2), dtype=np.int32)
     new_voxels = old_voxels.copy()
     new_voxels[0, 0, 0] = -3
-    old_model = object()
+
+    set_from_voxel_data_calls = []
+    set_lad_from_array_calls = []
+
+    class _FakeDomainForRefresh:
+        def set_from_voxel_data(self, voxel_data, tree_code=-2):
+            set_from_voxel_data_calls.append(1)
+
+        def set_lad_from_array(self, lad_array):
+            set_lad_from_array_calls.append(1)
+
+    fake_domain_instance = _FakeDomainForRefresh()
+    old_model = SimpleNamespace(domain=fake_domain_instance)
 
     seeded_cache = caching.CachedBuildingRadiationModel(
         model=old_model,
@@ -506,52 +520,16 @@ def test_building_radiation_cache_invalidates_for_new_voxel_array(monkeypatch):
     seeded_cache.voxel_data_id = id(old_voxels)
     caching.set_building_radiation_model_cache(seeded_cache)
 
-    class _FakeDomain:
-        def __init__(self, **kwargs):
-            self.nx = kwargs["nx"]
-            self.ny = kwargs["ny"]
-            self.nz = kwargs["nz"]
-
-        def set_lad_from_array(self, lad_array):
-            self.lad_array = lad_array
-
-    class _FakeRadiationConfig:
-        def __init__(self, **kwargs):
-            self.n_reflection_steps = kwargs["n_reflection_steps"]
-            self.n_azimuth = kwargs["n_azimuth"]
-            self.n_elevation = kwargs["n_elevation"]
-            self.surface_reflections = kwargs["surface_reflections"]
-            self.cache_svf_matrix = kwargs["cache_svf_matrix"]
-
-    class _FakeRadiationModel:
-        def __init__(self, domain, config):
-            self.domain = domain
-            self.config = config
-            self.surfaces = SimpleNamespace(
-                count=1,
-                position=_ArrayField([[0, 0, 0]]),
-            )
-
-        def compute_svf(self):
-            pass
-
-    monkeypatch.setattr(domain_mod, "Domain", _FakeDomain)
-    monkeypatch.setattr(radiation_mod, "RadiationConfig", _FakeRadiationConfig)
-    monkeypatch.setattr(radiation_mod, "RadiationModel", _FakeRadiationModel)
-    monkeypatch.setattr(caching, "get_location_from_voxcity", lambda voxcity: (0.0, 0.0))
+    monkeypatch.setattr(caching, "get_location_from_voxcity", lambda vc: (0.0, 0.0))
     monkeypatch.setattr(
         caching,
         "convert_voxel_data_to_arrays",
-        lambda voxel_data, default_lad: (
-            voxel_data == -3,
-            np.zeros_like(voxel_data, dtype=np.float32),
-        ),
+        lambda vd, lad: (np.zeros((2, 2, 2), dtype=np.int8), np.zeros((2, 2, 2), dtype=np.float32)),
     )
-    monkeypatch.setattr(caching, "_set_solid_array", lambda domain, is_solid: None)
-    monkeypatch.setattr(caching, "_update_topo_from_solid", lambda domain: None)
 
     voxcity = SimpleNamespace(
         voxels=SimpleNamespace(classes=new_voxels, meta=SimpleNamespace(meshsize=1.0)),
+        extras={},
     )
 
     model, is_building_surf = caching.get_or_create_building_radiation_model(
@@ -559,7 +537,111 @@ def test_building_radiation_cache_invalidates_for_new_voxel_array(monkeypatch):
         n_reflection_steps=0,
     )
 
-    assert model is not old_model
-    assert is_building_surf.tolist() == [True]
+    # Warm refresh: same model returned, domain NOT re-constructed
+    assert model is old_model, "Warm path must return cached model unchanged"
+    assert len(set_from_voxel_data_calls) == 1
+    assert len(set_lad_from_array_calls) == 1
     assert caching.get_building_radiation_model_cache().voxel_data_id == id(new_voxels)
+    caching.clear_building_radiation_model_cache()
+
+
+def test_building_radiation_model_warm_refresh_reuses_domain(monkeypatch):
+    """Second call with same shape but different voxel_data id must NOT create a
+    new Domain. Domain.__init__ must be called exactly once. The second call must
+    return the same RadiationModel object (warm-refresh path), and must call
+    set_from_voxel_data + set_lad_from_array on the existing domain."""
+    from voxcity.simulator_gpu.solar.integration import caching
+    from voxcity.simulator_gpu.solar import domain as domain_mod
+    from voxcity.simulator_gpu.solar import radiation as radiation_mod
+    from unittest.mock import MagicMock
+
+    caching.clear_building_radiation_model_cache()
+
+    nx, ny, nz = 4, 4, 4
+    classes1 = np.zeros((nx, ny, nz), dtype=np.int32)
+    classes1[1:3, 1:3, 0:2] = -3
+    classes2 = classes1.copy()  # same content, different id
+    assert id(classes1) != id(classes2)
+
+    domain_init_calls = []
+    set_from_voxel_data_calls = []
+    set_lad_from_array_calls = []
+    compute_svf_calls = []
+
+    class _FakeDomain:
+        def __init__(self, **kwargs):
+            domain_init_calls.append(1)
+
+        def set_from_voxel_data(self, voxel_data, tree_code=-2):
+            set_from_voxel_data_calls.append(1)
+
+        def set_lad_from_array(self, lad_array):
+            set_lad_from_array_calls.append(1)
+
+    class _FakeRadiationConfig:
+        def __init__(self, **kwargs):
+            self.n_reflection_steps = kwargs.get("n_reflection_steps", 0)
+            self.n_azimuth = kwargs.get("n_azimuth", 40)
+            self.n_elevation = kwargs.get("n_elevation", 10)
+            self.surface_reflections = kwargs.get("surface_reflections", False)
+            self.cache_svf_matrix = kwargs.get("cache_svf_matrix", False)
+
+    class _FakeRadiationModel:
+        def __init__(self, domain, config):
+            self.domain = domain
+            self.config = config
+            self.surfaces = SimpleNamespace(
+                count=0,
+                position=_ArrayField(np.zeros((0, 3))),
+            )
+
+        def compute_svf(self):
+            compute_svf_calls.append(1)
+
+    monkeypatch.setattr(domain_mod, "Domain", _FakeDomain)
+    monkeypatch.setattr(radiation_mod, "RadiationConfig", _FakeRadiationConfig)
+    monkeypatch.setattr(radiation_mod, "RadiationModel", _FakeRadiationModel)
+    monkeypatch.setattr(caching, "get_location_from_voxcity", lambda vc: (35.0, 139.0))
+    monkeypatch.setattr(
+        caching,
+        "convert_voxel_data_to_arrays",
+        lambda vd, lad: (np.zeros((nx, ny, nz), dtype=np.int8), np.zeros((nx, ny, nz), dtype=np.float32)),
+    )
+    monkeypatch.setattr(caching, "_set_solid_array", lambda d, s: None)
+    monkeypatch.setattr(caching, "_update_topo_from_solid", lambda d: None)
+
+    vc1 = SimpleNamespace(
+        voxels=SimpleNamespace(classes=classes1, meta=SimpleNamespace(meshsize=1.0)),
+        extras={},
+    )
+    vc2 = SimpleNamespace(
+        voxels=SimpleNamespace(classes=classes2, meta=SimpleNamespace(meshsize=1.0)),
+        extras={},
+    )
+
+    model1, _ = caching.get_or_create_building_radiation_model(vc1, n_reflection_steps=0)
+    # Reset per-call counters — we want to measure only what the warm-refresh path does
+    set_from_voxel_data_calls.clear()
+    set_lad_from_array_calls.clear()
+    compute_svf_calls_before_warm = len(compute_svf_calls)
+    model2, _ = caching.get_or_create_building_radiation_model(vc2, n_reflection_steps=0)
+
+    # Domain must be constructed exactly once (cold-create for vc1 only)
+    assert len(domain_init_calls) == 1, (
+        f"Domain.__init__ called {len(domain_init_calls)} times; "
+        "expected 1 — warm path must reuse existing domain"
+    )
+    # Same RadiationModel object must be returned
+    assert model1 is model2, "Warm path must return the cached model, not a new one"
+    # Refresh methods must have been called for vc2
+    assert len(set_from_voxel_data_calls) == 1, "set_from_voxel_data must be called once for warm refresh"
+    assert len(set_lad_from_array_calls) == 1, "set_lad_from_array must be called once for warm refresh"
+    # SVF must NOT be recomputed on warm refresh — building geometry is constant
+    assert len(compute_svf_calls) == compute_svf_calls_before_warm, (
+        "compute_svf must not be called during warm refresh — SVF depends on solid "
+        "building geometry which is constant across optimization individuals"
+    )
+    # Cache must record the new voxel array's id
+    assert caching.get_building_radiation_model_cache().voxel_data_id == id(classes2)
+
     caching.clear_building_radiation_model_cache()

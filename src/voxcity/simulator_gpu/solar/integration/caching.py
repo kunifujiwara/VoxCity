@@ -467,22 +467,53 @@ def get_or_create_building_radiation_model(
     
     # Check if cache is valid
     cache_valid = False
+    needs_refresh = False
     if _building_radiation_model_cache is not None:
         cache = _building_radiation_model_cache
         if (cache.voxcity_shape == voxel_data.shape and
             cache.meshsize == meshsize and
             cache.n_azimuth == requested_n_azimuth and
-            cache.n_elevation == requested_n_elevation and
-            cache.voxel_data_id == id(voxel_data)):
-            if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
-                cache_valid = True
-                if progress_report:
-                    print("Using cached Building RadiationModel (SVF/CSF already computed)")
-    
+            cache.n_elevation == requested_n_elevation):
+            if cache.voxel_data_id == id(voxel_data):
+                if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
+                    cache_valid = True
+                    if progress_report:
+                        print("Using cached Building RadiationModel (SVF/CSF already computed)")
+            else:
+                # Same geometry/params, different voxel array identity (normal during
+                # optimization — each individual gets a new numpy array). Refresh the
+                # domain's LAD/solid fields in-place instead of allocating a new Domain.
+                # SVF is NOT recomputed: it depends on solid building geometry, which is
+                # constant across optimization individuals (only tree placements change).
+                # Only warm-refresh when the reflection-step requirement is compatible;
+                # a new n_reflection_steps value requires a new Domain.
+                if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
+                    needs_refresh = True
+
     if cache_valid:
         return (_building_radiation_model_cache.model,
                 _building_radiation_model_cache.is_building_surf)
-    
+
+    if needs_refresh:
+        # `cache` is already bound above; do not re-assign from the module global.
+        default_lad = kwargs.get('default_lad', 2.0)
+        # lad_np is derived from convert_voxel_data_to_arrays for consistency with the
+        # cold-create path.  set_from_voxel_data re-derives is_solid internally; for all
+        # standard VoxCity codes (-3 building, -2 tree, -1 ground, 0 air, >0 land cover)
+        # both functions agree on solid classification, so the two results are equivalent.
+        # Topography (topo_top) is set once at domain creation and does not change between
+        # optimization individuals, so _update_topo_from_solid is intentionally skipped.
+        # SVF is also not recomputed: it depends on solid building geometry, which is
+        # constant across individuals (only tree placements — reflected in LAD — change).
+        _, lad_np = convert_voxel_data_to_arrays(voxel_data, default_lad)
+        domain = cache.model.domain
+        domain.set_from_voxel_data(voxel_data, tree_code=-2)
+        domain.set_lad_from_array(lad_np)
+        cache.voxel_data_id = id(voxel_data)
+        if progress_report:
+            print("Refreshed Building RadiationModel domain with new voxel content")
+        return cache.model, cache.is_building_surf
+
     # Need to create new model
     if progress_report:
         print("Creating new Building RadiationModel (computing SVF/CSF matrices)...")
