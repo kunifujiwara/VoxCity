@@ -41,16 +41,21 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
 
     Returns:
         List of ``(name, mesh)`` tuples, in the order the geometry was
-        discovered. If the file has no named scene structure (trimesh
-        collapses it to a single ``Trimesh``), the single group is named
-        ``"imported_building_1"``.
+        discovered. trimesh collapses an OBJ to a single, unnamed
+        ``Trimesh`` (rather than a ``Scene``) whenever the file resolves
+        to only one geometry group — this includes both OBJs with no
+        named scene structure at all *and* OBJs containing exactly one
+        named ``o <name>`` block, since trimesh discards that name in
+        the single-group case. In either case the single group returned
+        here is named ``"imported_building_1"``.
 
     Raises:
-        FileNotFoundError: if *obj_path* does not exist.
+        FileNotFoundError: if *obj_path* does not exist or is not a file
+            (e.g. a directory path).
         ValueError: if the file loads but contains no usable mesh geometry.
     """
     path_str = str(obj_path)
-    if not os.path.exists(path_str):
+    if not os.path.isfile(path_str):
         raise FileNotFoundError(f"OBJ file not found: {path_str}")
 
     # Note: trimesh's OBJ loader kwarg is `split_objects` (plural); passing
@@ -84,6 +89,11 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
 
 def classify_roles(names: Iterable[str], roles: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """Map each group name to its import role, defaulting to ``"building"``.
+
+    Matching against *roles* is exact string match only (no glob/regex
+    pattern support). A typo or an intended pattern in a ``roles`` key
+    that doesn't exactly equal a group name is silently ignored, and that
+    group defaults to role ``"building"``.
 
     Args:
         names: iterable of group name strings.

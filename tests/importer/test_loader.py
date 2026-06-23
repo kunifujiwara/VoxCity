@@ -1,6 +1,7 @@
 """Tests for the OBJ group loader and role-based building selection."""
 import logging
 
+import pytest
 import trimesh
 
 from voxcity.importer.loader import (
@@ -78,8 +79,15 @@ def test_select_building_groups_skips_non_building(caplog, propagate_voxcity_log
 
 def test_missing_file_raises(tmp_path):
     missing = tmp_path / "nonexistent.obj"
-    try:
+    with pytest.raises(FileNotFoundError) as exc_info:
         load_obj_groups(missing)
-        assert False, "expected FileNotFoundError"
-    except FileNotFoundError as exc:
-        assert str(missing) in str(exc)
+    assert str(missing) in str(exc_info.value)
+
+
+def test_directory_path_raises_file_not_found_error(tmp_path):
+    """A directory path must not slip past the existence check and reach
+    trimesh's loader (which would raise an opaque ValueError instead of
+    the documented FileNotFoundError)."""
+    with pytest.raises(FileNotFoundError) as exc_info:
+        load_obj_groups(tmp_path)
+    assert str(tmp_path) in str(exc_info.value)
