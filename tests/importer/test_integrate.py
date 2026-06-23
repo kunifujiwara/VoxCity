@@ -87,6 +87,24 @@ def test_cross_group_column_collision_logs_warning(caplog, propagate_voxcity_log
     assert "collision" in caplog.text.lower() or "already" in caplog.text.lower()
 
 
+def test_heights_stored_above_ground_with_nonzero_dem():
+    """heights/min_heights must be stored above ground level, not as absolute
+    voxel-index heights. With a non-zero, non-uniform DEM, ground_level at
+    column (2, 3) is int(5.0/1.0 + 0.5) + 1 = 6. A building stamped at
+    k=6,7,8 (i.e. starting exactly at ground_level) should report an
+    above-ground span of [0.0, 3.0] and a top height of 3.0 -- not the old
+    buggy absolute values of [6.0, 9.0] / 9.0.
+    """
+    vc = make_flat_voxcity(nx=10, ny=10, nz=12, meshsize=1.0)
+    vc.dem.elevation[2, 3] = 5.0  # ground_level = int(5.0/1.0 + 0.5) + 1 = 6
+
+    occ = {"b1": np.array([[2, 3, 6], [2, 3, 7], [2, 3, 8]], dtype=np.int64)}
+    out = stamp_buildings(vc, occ)
+
+    assert out.buildings.min_heights[2, 3] == [[0.0, 3.0]]
+    assert out.buildings.heights[2, 3] == 3.0
+
+
 def test_out_of_bounds_group_skipped_without_consuming_id(caplog, propagate_voxcity_logs):
     """A group entirely outside (i, j) bounds must not consume an id or
     appear in the manifest's id_map, and the next real group must still get

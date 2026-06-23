@@ -89,6 +89,10 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
         for (i, j), ks in cols.items():
             spans = _spans_from_ks(ks)
             top_k = max(s[1] for s in spans)  # exclusive end
+            # heights/min_heights store values above ground level (matching
+            # the convention used by generator/voxelizer.py), so the DEM-derived
+            # ground offset must be subtracted from the absolute voxel indices.
+            ground_level = int(voxcity.dem.elevation[i, j] / meshsize + 0.5) + 1
             owner = column_owner.get((i, j))
             if owner is not None and owner[0] != name:
                 _logger.warning(
@@ -98,12 +102,12 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
                 )
             column_owner[(i, j)] = (name, bid)
             ids_grid[i, j] = bid
-            heights_grid[i, j] = max(float(heights_grid[i, j]), top_k * meshsize)
+            heights_grid[i, j] = max(float(heights_grid[i, j]), (top_k - ground_level) * meshsize)
             cell = min_heights[i, j]
             if not isinstance(cell, list):
                 cell = []
             for a, b in spans:
-                cell.append([a * meshsize, b * meshsize])
+                cell.append([(a - ground_level) * meshsize, (b - ground_level) * meshsize])
             min_heights[i, j] = cell
 
     if collisions:
