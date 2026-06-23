@@ -81,6 +81,21 @@ def build_placement_transform(
     S[0, 0] = S[1, 1] = S[2, 2] = scale
 
     # 3. horizontal rotation: model (x=east, y=north) -> domain (u, v) metres.
+    #
+    # Step A: rotate the model's (x, y) by `rotation` (theta) counter-clockwise
+    # in the (east, north) plane (to_en), giving each model basis vector's
+    # (e, n) = (east, north) components.
+    #
+    # Step B: re-express those (e, n) vectors in the domain's own (u, v) axes.
+    # The domain's u-axis (side_1) has bearing `phi` (clockwise from true
+    # north), so the domain (u, v) basis vectors expressed in (east, north)
+    # are:
+    #   u_dir = (sin(phi),  cos(phi))   # (east, north) components of +u
+    #   v_dir = (cos(phi), -sin(phi))   # (east, north) components of +v
+    # Projecting an (e, n) vector onto those axes (dot product, since u_dir
+    # and v_dir are orthonormal) gives its (u, v) coordinates:
+    #   u = e*sin(phi) + n*cos(phi)
+    #   v = e*cos(phi) - n*sin(phi)
     phi = math.radians(_domain_rotation_deg(geom))
     theta = math.radians(float(rotation))
     cos_t, sin_t = math.cos(theta), math.sin(theta)
@@ -90,12 +105,14 @@ def build_placement_transform(
 
     sin_p, cos_p = math.sin(phi), math.cos(phi)
 
-    ex, nx_ = to_en(1.0, 0.0)
-    ey, ny_ = to_en(0.0, 1.0)
-    u_from_x = ex * sin_p + nx_ * cos_p
-    v_from_x = ex * cos_p - nx_ * sin_p
-    u_from_y = ey * sin_p + ny_ * cos_p
-    v_from_y = ey * cos_p - ny_ * sin_p
+    # (e_x, n_x) = (east, north) components of the rotated model +X axis;
+    # (e_y, n_y) = (east, north) components of the rotated model +Y axis.
+    e_x, n_x = to_en(1.0, 0.0)
+    e_y, n_y = to_en(0.0, 1.0)
+    u_from_x = e_x * sin_p + n_x * cos_p
+    v_from_x = e_x * cos_p - n_x * sin_p
+    u_from_y = e_y * sin_p + n_y * cos_p
+    v_from_y = e_y * cos_p - n_y * sin_p
 
     R = np.eye(4)
     R[0, 0] = u_from_x
