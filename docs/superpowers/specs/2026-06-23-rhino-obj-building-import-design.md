@@ -33,6 +33,9 @@ This closes the loop with VoxCity's existing Rhino interoperability (it already
 
 **Out of scope (explicitly)**
 - Footprint+height extraction mode (we voxelize the true 3D mesh instead).
+- Geometry-driven windows/materials from Rhino (deferred to future work, Path B);
+  v1 only adds the role router + skips non-building layers. Procedural windows via
+  the existing `voxcity.utils.material` utilities still work on imported buildings.
 - Synthesizing `building_gdf` footprint polygons for imported buildings.
 - Importing terrain, land cover, or vegetation from the Rhino file.
 - Native `.3dm` parsing (OBJ only for this iteration).
@@ -52,6 +55,7 @@ This closes the loop with VoxCity's existing Rhino interoperability (it already
 | Metadata depth | Voxels **+** derived metadata (`building_id_grid`, `building_height_grid`, `min_heights`); **no** `building_gdf` synthesis |
 | Vertical placement | User supplies anchor elevation; mapped relative to base model's ground datum |
 | Voxelization backend | **trimesh** default (MIT-clean, already a dependency); optional lazy `backend="meshlib"` for robust SDF voxelization (MeshLib is non-commercial-licensed, so never required/default) |
+| Materials/windows | v1: **role-aware group routing** — voxelize only `building`-role groups; skip non-building (e.g. window) groups cleanly. Future windows reuse the existing **glass voxel class (-16)** via façade surface projection (Path B). No new per-face material structure. |
 | Code placement | VoxCity core, `voxcity/importer/` subpackage |
 
 ## 4. Architecture
@@ -85,6 +89,7 @@ voxcity = add_buildings_from_obj(
     rotation=0.0,                        # degrees clockwise; model +Y -> true north at 0
     move=(0.0, 0.0, 0.0),                # extra nudge (east_m, north_m, up_m)
     units="m",                           # "m" | "cm" | "mm" | "ft" | "in"
+    roles=None,                          # optional {layer/group-name -> role}; role "building" (default) is voxelized solid, other roles (e.g. "window") are skipped in v1
     backend="trimesh",                   # "trimesh" (default) | "meshlib" (optional, lazy)
     z_up=True,                           # model Z is vertical; set False / use swap_yz for Y-up exports
     swap_yz=False,                       # escape hatch for Y-up OBJ exports
@@ -164,8 +169,20 @@ occupied integer `(i, j, k)` cells.
   backend='trimesh'"). Never imported otherwise (keeps default install
   MIT-clean; MeshLib is non-commercial-licensed).
 
-**Per-building identity:** each OBJ object/group is voxelized separately so its
-cells carry that building's identity. Unnamed geometry → `imported_building_1…N`.
+**Role-aware group routing (v1 requirement):** before voxelizing, classify each
+OBJ object/group by name via the `roles` mapping into a role. `building` (the
+default for unmapped groups) is voxelized as a solid. **Any non-`building` role
+(e.g. `window`/glazing surfaces) is skipped in v1** and logged
+("detected glazing on layer X; geometry-driven windows not yet implemented — use
+`window_ratio` via the material utilities for now"). This is a correctness
+requirement, not just future-proofing: window/other surfaces are often non-solid
+planar geometry, and feeding them to solid-fill/z-ray voxelization would produce
+artifacts. The router is the seam for the future surface-material path (§12,
+Path B).
+
+**Per-building identity:** each `building`-role OBJ object/group is voxelized
+separately so its cells carry that building's identity. Unnamed geometry →
+`imported_building_1…N`.
 
 **Resolution note:** voxelizing at `meshsize` loses sub-voxel architectural
 detail — inherent to voxel models. No separate downsampling pass.
@@ -199,7 +216,16 @@ detail — inherent to voxel models. No separate downsampling pass.
 
 4. **Provenance.** Record `voxcity.extras['imported_buildings']` — a manifest of
    source file, anchor, rotation, move, units, backend, and per-building
-   id↔name map — for reproducibility and inspection.
+   id↔name (and id↔role) map — for reproducibility and inspection.
+
+**Material/window compatibility (Path A, free in v1).** Because imported
+buildings get real building IDs and BUILDING voxels, VoxCity's existing material
+machinery (`voxcity.utils.material`: `set_building_material_by_id` /
+`set_building_material_by_gdf`) already applies to them — including procedural
+windows via `window_ratio` (which stamps the existing `glass` class, -16). v1
+adds no material code; it just documents that these functions accept the result
+of `add_buildings_from_obj`, and reserves the imported IDs so they can be
+targeted. Geometry-driven windows from Rhino are the future Path B (§12).
 
 ## 8. Rhino export guide (user-facing docs + docstring)
 
@@ -217,6 +243,13 @@ detail — inherent to voxel models. No separate downsampling pass.
    Y-up exports), export **with object names/groups**.
 6. **(Optional) MeshLib:** pass `backend="meshlib"` if installed — note the
    non-commercial license.
+7. **Windows/glazing (forward-looking convention).** Model opaque building mass
+   as **closed solids**; model windows as **planar surfaces (not solids)** on a
+   dedicated layer such as `Window`. In v1 these layers are detected and
+   **skipped** (use `window_ratio` via `voxcity.utils.material` for procedural
+   windows in the meantime); a future release maps them to glass voxels
+   directly (§12, Path B). Adopting this layer convention now makes models
+   forward-compatible.
 
 Docs include a minimal end-to-end snippet (`get_voxcity` →
 `add_buildings_from_obj` → `export_obj`/visualize) so users verify placement
@@ -243,6 +276,11 @@ visually and iterate on `rotation`/`move`.
   meshsizes; ft/mm units.
 - **Voxelization tests:** unit cube and L-shape → assert occupied-cell
   counts/extents; open (non-watertight) box → fallback fills solid.
+- **Role-router tests:** an OBJ with a `building` solid + a `window` planar
+  surface group → only the building is voxelized, the window group is skipped
+  (no voxels from it), and a skip is logged. Procedural windows
+  (`set_building_material_by_id`) then apply glass (-16) to the imported
+  building's IDs.
 - **Integration tests:** tiny base VoxCity (flat DEM) + small OBJ → BUILDING
   voxels at right cells; `building_id_grid` new non-overlapping IDs;
   `building_height_grid` matches; Z grows when building taller than base;
@@ -263,8 +301,17 @@ visually and iterate on `rotation`/`move`.
 
 ## 12. Open questions / future work (not in this iteration)
 
+- **Geometry-driven windows (Path B).** Model windows in Rhino as **non-solid
+  planar surfaces** on a dedicated layer (e.g. `Window`). On import, route them
+  via the v1 `roles` mapping to a `window` handler that *surface*-voxelizes the
+  planes (no fill), intersects them with the building's air-facing **surface
+  voxels**, and reassigns those voxels to the existing `glass` class (-16).
+  Volume is unchanged (windows are not solid); only the façade voxel class flips
+  opaque→glass. Shares the v1 transform `M` and the role router; no new per-face
+  material structure. Extends naturally to other glazing/material layers.
 - Native `.3dm` import (preserves layers/blocks; adds `rhino3dm` dep).
 - Footprint+height extraction mode as an alternative to mesh voxelization.
 - `building_gdf` synthesis for full footprint-feature parity.
-- Material/color mapping from OBJ to VoxCity classes.
+- General material/color mapping from OBJ materials (`.mtl`) to VoxCity material
+  classes (beyond the glass/window case above).
 - A plugin/importer-family extraction if SketchUp/IFC importers are later added.
