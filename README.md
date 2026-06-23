@@ -311,6 +311,23 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
   <em>Example Output Exported in OBJ and Rendered in Rhino</em>
 </p>
 
+#### Importing Rhino Models (OBJ):
+
+You can import buildings authored in Rhino into a VoxCity model:
+
+```python
+from voxcity.importer import add_buildings_from_obj
+
+voxcity = add_buildings_from_obj(
+    voxcity, "design.obj",
+    anchor_lonlat=(139.7536, 35.6841),  # world (lon, lat) of the model anchor
+    anchor_elevation=12.0,              # world elevation (m) of the anchor
+    rotation=0.0, units="m",
+)
+```
+
+See [docs/rhino_obj_import.md](docs/rhino_obj_import.md) for the full Rhino export guide.
+
 #### MagicaVoxel VOX Files:
 
 [MagicaVoxel](https://ephtracy.github.io/) is a lightweight and user-friendly voxel art editor. It allows users to create, edit, and render voxel-based 3D models with an intuitive interface, making it perfect for modifying and visualizing voxelized city models. The software is free and available for Windows and Mac.
