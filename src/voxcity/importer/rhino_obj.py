@@ -10,7 +10,7 @@ from ..utils.logging import get_logger
 from .units import validate_units
 from .transform import build_placement_transform, grid_geom_from_voxcity
 from .loader import load_obj_groups, select_building_groups
-from .voxelize import voxelize_mesh
+from .voxelize import voxelize_mesh, voxelize_mesh_meshlib
 from .integrate import stamp_buildings
 
 _logger = get_logger(__name__)
@@ -78,9 +78,14 @@ def add_buildings_from_obj(
             only. Group names absent from this mapping (including all
             names, when ``roles=None``, the default) are treated as role
             ``"building"`` and voxelized.
-        backend: voxelization backend. ``"trimesh"`` (default) is the only
-            currently implemented backend. ``"meshlib"`` is accepted but
-            not yet functional (see Raises below).
+        backend: voxelization backend. ``"trimesh"`` (default) uses
+            :func:`~voxcity.importer.voxelize.voxelize_mesh` (column z-ray
+            casting). ``"meshlib"`` uses the optional
+            :func:`~voxcity.importer.voxelize.voxelize_mesh_meshlib` SDF
+            backend, which requires the optional ``meshlib`` package to be
+            installed (see Raises below); this backend is best-effort and
+            not empirically verified against a real MeshLib install (see
+            that function's docstring for details).
         z_up: whether the OBJ's vertical axis is already Z-up (Rhino's
             convention), the default (``True``). When ``False``, the
             loaded mesh is treated as Y-up and axes 1/2 (Y/Z) are swapped
@@ -112,9 +117,6 @@ def add_buildings_from_obj(
             *anchor_lonlat* does not have exactly 2 elements.
         ImportError: if ``backend="meshlib"`` is requested but the optional
             ``meshlib`` package is not installed.
-        NotImplementedError: if ``backend="meshlib"`` is requested and
-            ``meshlib`` is installed; the meshlib voxelization path is not
-            implemented yet (use ``backend="trimesh"``).
     """
     # --- validation (fail fast) ---
     if not os.path.exists(os.fspath(obj_path)):
@@ -133,9 +135,8 @@ def add_buildings_from_obj(
                 "backend='meshlib' requires the optional 'meshlib' package "
                 "(non-commercial license). Install it or use backend='trimesh'."
             ) from e
-        raise NotImplementedError(
-            "meshlib backend voxelization is not implemented yet; use backend='trimesh'."
-        )
+
+    _voxelize = voxelize_mesh_meshlib if backend == "meshlib" else voxelize_mesh
 
     apply_swap = swap_yz or (not z_up)
 
@@ -156,7 +157,7 @@ def add_buildings_from_obj(
 
     occupied_by_name = {}
     for name, mesh in building_groups:
-        occ = voxelize_mesh(mesh, M, grid_shape)
+        occ = _voxelize(mesh, M, grid_shape)
         if len(occ):
             occupied_by_name[name] = occ
 

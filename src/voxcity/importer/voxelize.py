@@ -155,3 +155,61 @@ def voxelize_mesh(mesh, transform, grid_shape):
         return np.empty((0, 3), dtype=np.int64)
 
     return np.unique(ijk, axis=0).astype(np.int64)
+
+
+def voxelize_mesh_meshlib(mesh, transform, grid_shape):
+    """Voxelize *mesh* via the optional MeshLib SDF backend.
+
+    .. warning::
+        **Untested / version-sensitive.** This function is a best-effort
+        transcription of the MeshLib-based voxelization approach from the
+        design plan. The ``meshlib`` package is NOT installed in the
+        environment this was implemented and tested in, so the exact API
+        calls below (``mr.meshFromFacesVerts``, ``mr.MeshToVolumeSettings``,
+        ``vol.dims``, ``vol.data.get(...)``) could not be empirically
+        verified against a real MeshLib distribution. MeshLib's Python API
+        is known to vary across versions. A maintainer who adds ``meshlib``
+        as an actual dependency MUST verify/adapt these calls against the
+        installed version before relying on this path, and should run
+        ``tests/importer/test_voxelize_meshlib.py`` (which is automatically
+        skipped via ``pytest.importorskip("meshlib")`` when the package is
+        absent) to confirm parity with :func:`voxelize_mesh`.
+
+    Args:
+        mesh: a ``trimesh.Trimesh`` (or compatible) in original model
+            coordinates. Not mutated.
+        transform: 4x4 numpy affine mapping model coordinates -> voxel-index
+            space (i, j, k), as produced by ``build_placement_transform``.
+        grid_shape: ``(nx, ny, nz)`` voxel grid bounds used to clip results.
+
+    Returns:
+        ``(N, 3)`` numpy ``int64`` array of unique, sorted occupied (i, j, k)
+        voxel indices, matching the return contract of :func:`voxelize_mesh`
+        exactly. Empty ``(0, 3)`` array if there are no occupied voxels.
+    """
+    import meshlib.mrmeshpy as mr  # lazy import: meshlib is optional
+
+    nx, ny, nz = grid_shape
+    m = mesh.copy()
+    m.apply_transform(np.asarray(transform, dtype=float))
+
+    verts = [mr.Vector3f(float(x), float(y), float(z)) for x, y, z in m.vertices]
+    tris = m.faces.astype(np.int64)
+    ml_mesh = mr.meshFromFacesVerts(tris.tolist(), verts)  # API per meshlib version
+
+    # signed distance volume at pitch=1 (index space)
+    settings = mr.MeshToVolumeSettings()
+    settings.voxelSize = mr.Vector3f(1.0, 1.0, 1.0)
+    vol = mr.meshToVolume(ml_mesh, settings)
+
+    # extract occupied voxels where distance <= 0 (inside)
+    occupied = []
+    dims = vol.dims
+    for i in range(min(dims.x, nx)):
+        for j in range(min(dims.y, ny)):
+            for k in range(min(dims.z, nz)):
+                if vol.data.get(mr.Vector3i(i, j, k)) <= 0:
+                    occupied.append((i, j, k))
+    if not occupied:
+        return np.empty((0, 3), dtype=np.int64)
+    return np.array(sorted(set(occupied)), dtype=np.int64)
