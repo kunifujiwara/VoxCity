@@ -194,8 +194,9 @@ def voxelize_mesh_meshlib(mesh, transform, grid_shape):
     m.apply_transform(np.asarray(transform, dtype=float))
 
     verts = [mr.Vector3f(float(x), float(y), float(z)) for x, y, z in m.vertices]
-    tris = m.faces.astype(np.int64)
-    ml_mesh = mr.meshFromFacesVerts(tris.tolist(), verts)  # API per meshlib version
+    # trimesh face arrays are already integer-typed; .tolist() yields plain
+    # Python ints regardless of dtype, so no explicit cast is needed here.
+    ml_mesh = mr.meshFromFacesVerts(m.faces.tolist(), verts)  # API per meshlib version
 
     # signed distance volume at pitch=1 (index space)
     settings = mr.MeshToVolumeSettings()
@@ -205,6 +206,10 @@ def voxelize_mesh_meshlib(mesh, transform, grid_shape):
     # extract occupied voxels where distance <= 0 (inside)
     occupied = []
     dims = vol.dims
+    # NOTE: naive O(nx*ny*nz) Python loop with a per-voxel .get() call. For
+    # grid_shape ~ (200, 200, 50) this is ~2M Python-level iterations and will
+    # be slow. Vectorize via vol.data as a numpy-convertible buffer (API
+    # permitting) once meshlib is actually installed and can be profiled.
     for i in range(min(dims.x, nx)):
         for j in range(min(dims.y, ny)):
             for k in range(min(dims.z, nz)):
@@ -212,4 +217,7 @@ def voxelize_mesh_meshlib(mesh, transform, grid_shape):
                     occupied.append((i, j, k))
     if not occupied:
         return np.empty((0, 3), dtype=np.int64)
-    return np.array(sorted(set(occupied)), dtype=np.int64)
+    # (i, j, k) triples are unique per iteration (each combination of the
+    # three nested loop variables is visited exactly once), so no dedup is
+    # needed here -- only sort for a stable, deterministic return order.
+    return np.array(sorted(occupied), dtype=np.int64)

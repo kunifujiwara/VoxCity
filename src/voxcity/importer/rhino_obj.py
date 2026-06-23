@@ -135,6 +135,10 @@ def add_buildings_from_obj(
                 "backend='meshlib' requires the optional 'meshlib' package "
                 "(non-commercial license). Install it or use backend='trimesh'."
             ) from e
+        _logger.warning(
+            "backend='meshlib' is experimental and not empirically verified; "
+            "see voxelize_mesh_meshlib's docstring for details."
+        )
 
     _voxelize = voxelize_mesh_meshlib if backend == "meshlib" else voxelize_mesh
 
