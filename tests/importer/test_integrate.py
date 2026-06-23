@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 
 from voxcity.importer.integrate import stamp_buildings
@@ -60,3 +62,49 @@ def test_provenance_recorded():
     man = out.extras["imported_buildings"][-1]
     assert man["source"] == "model.obj"
     assert "id_map" in man
+
+
+def test_cross_group_column_collision_logs_warning(caplog, propagate_voxcity_logs):
+    """Two groups in the same call that both touch column (i, j) must not
+    silently clobber the ids_grid entry -- a warning must be logged, and
+    (per last-group-wins, dict insertion order) the *second* group inserted
+    ("b") wins the column since occupied_by_name.items() iterates in
+    insertion order in Python 3.7+."""
+    vc = make_flat_voxcity(nx=8, ny=8, nz=6, meshsize=1.0)
+    occ = {
+        "a": np.array([[2, 2, 1]], dtype=np.int64),
+        "b": np.array([[2, 2, 3]], dtype=np.int64),  # same (i, j), different k
+    }
+
+    with caplog.at_level(logging.WARNING, logger="voxcity"):
+        out = stamp_buildings(vc, occ)
+
+    man = out.extras["imported_buildings"][-1]
+    id_map = man["id_map"]
+    assert id_map["a"] != id_map["b"]
+    # "b" was inserted after "a", so it is processed second and wins the column.
+    assert int(out.buildings.ids[2, 2]) == id_map["b"]
+    assert "collision" in caplog.text.lower() or "already" in caplog.text.lower()
+
+
+def test_out_of_bounds_group_skipped_without_consuming_id(caplog, propagate_voxcity_logs):
+    """A group entirely outside (i, j) bounds must not consume an id or
+    appear in the manifest's id_map, and the next real group must still get
+    the id that would have gone to it had the bad group never run."""
+    vc = make_flat_voxcity(nx=8, ny=8, nz=6, meshsize=1.0)
+    expected_next_id = int(vc.buildings.ids.max()) + 1
+
+    occ = {
+        "bad": np.array([[100, 100, 1], [-5, -5, 1]], dtype=np.int64),  # all out of bounds
+        "good": np.array([[3, 3, 1]], dtype=np.int64),
+    }
+
+    with caplog.at_level(logging.WARNING, logger="voxcity"):
+        out = stamp_buildings(vc, occ)
+
+    man = out.extras["imported_buildings"][-1]
+    id_map = man["id_map"]
+    assert "bad" not in id_map
+    assert id_map["good"] == expected_next_id
+    assert int(out.buildings.ids[3, 3]) == expected_next_id
+    assert "bad" in caplog.text

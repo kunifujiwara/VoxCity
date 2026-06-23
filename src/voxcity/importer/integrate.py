@@ -53,13 +53,14 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
     next_id = int(ids_grid.max()) + 1 if ids_grid.size else 1
     collisions = 0
     id_map = {}
+    # Tracks which group last claimed each (i, j) column within *this* call,
+    # so cross-group collisions inside a single stamp_buildings invocation
+    # can be detected and logged instead of silently overwriting ids_grid.
+    column_owner = {}
 
     for name, occ in occupied_by_name.items():
         if not len(occ):
             continue
-        bid = next_id
-        next_id += 1
-        id_map[name] = bid
 
         # group occupied cells by column for metadata
         cols = {}
@@ -74,9 +75,28 @@ def stamp_buildings(voxcity, occupied_by_name, building_value=BUILDING_CODE,
                 classes[i, j, k] = building_value
                 cols.setdefault((i, j), []).append(k)
 
+        if not cols:
+            _logger.warning(
+                "Group '%s' has no in-bounds occupied cells; skipping id assignment.",
+                name,
+            )
+            continue
+
+        bid = next_id
+        next_id += 1
+        id_map[name] = bid
+
         for (i, j), ks in cols.items():
             spans = _spans_from_ks(ks)
             top_k = max(s[1] for s in spans)  # exclusive end
+            owner = column_owner.get((i, j))
+            if owner is not None and owner[0] != name:
+                _logger.warning(
+                    "Column (%d, %d) claimed by group '%s' (id=%d) was already "
+                    "stamped by group '%s' (id=%d) in this call; last group wins.",
+                    i, j, name, bid, owner[0], owner[1],
+                )
+            column_owner[(i, j)] = (name, bid)
             ids_grid[i, j] = bid
             heights_grid[i, j] = max(float(heights_grid[i, j]), top_k * meshsize)
             cell = min_heights[i, j]
