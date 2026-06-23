@@ -77,9 +77,22 @@ def voxelize_mesh(mesh, transform, grid_shape):
 
     voxel_rows = []
     n_odd_columns = 0
-    for ray_idx in np.unique(index_ray):
+
+    # Group hits by ray (column) in O(n log n) instead of one full-array
+    # boolean mask per unique ray index (which was O(rays * total_hits)).
+    order = np.argsort(index_ray, kind="stable")
+    sorted_ray = index_ray[order]
+    sorted_z = locations[order, 2]
+    boundaries = np.flatnonzero(np.diff(sorted_ray)) + 1
+    z_groups = np.split(sorted_z, boundaries)
+    ray_id_groups = np.split(sorted_ray, boundaries)
+
+    for ray_idx_group, z_hits_unsorted in zip(ray_id_groups, z_groups):
+        ray_idx = ray_idx_group[0]
         i, j = columns[int(ray_idx)]
-        z_hits = np.sort(locations[index_ray == ray_idx, 2])
+        # Sorting by ray index alone does not sort z within each group, so
+        # we still need to sort each (small) per-column group of hits.
+        z_hits = np.sort(z_hits_unsorted)
         n_hits = len(z_hits)
 
         if n_hits == 0:
