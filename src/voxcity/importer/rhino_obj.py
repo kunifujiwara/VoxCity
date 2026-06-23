@@ -34,8 +34,87 @@ def add_buildings_from_obj(
 ):
     """Voxelize buildings from an OBJ file and stamp them into a VoxCity model.
 
-    Returns a new VoxCity object (the input is not mutated).
-    See docs/rhino_obj_import.md for the Rhino export guide and conventions.
+    Loads geometry groups from *obj_path*, selects the groups whose resolved
+    role is ``"building"``, places them into the VoxCity domain using an
+    anchor lon/lat + elevation (plus optional rotation/translation/unit
+    scaling), voxelizes each building group, and stamps the resulting cells
+    into a copy of *voxcity*. The input *voxcity* is never mutated; this
+    function always returns a new object. See docs/rhino_obj_import.md for
+    the Rhino export guide and conventions.
+
+    Args:
+        voxcity: source VoxCity object. Read for its grid geometry
+            (``extras['rectangle_vertices']``), voxel shape, DEM, and
+            existing building grids; never mutated. A deep copy is made
+            internally and returned (with buildings stamped in), or
+            returned unmodified (still a deep copy) if no in-domain
+            geometry is found.
+        obj_path: path to the OBJ file to import. Must exist on disk;
+            checked before any other validation.
+        anchor_lonlat: ``(lon, lat)`` pair giving the geographic position
+            that ``anchor_model_point`` is placed at. Must have exactly 2
+            elements.
+        anchor_elevation: elevation (metres) of ``anchor_model_point`` in
+            the real world. Combined with the VoxCity DEM minimum to fix
+            the vertical (Z) placement of the model.
+        anchor_model_point: ``(x, y, z)`` point in OBJ model coordinates
+            (in *units*, pre-scale) that is pinned to ``anchor_lonlat`` /
+            ``anchor_elevation``. Defaults to the model origin
+            ``(0.0, 0.0, 0.0)``.
+        rotation: rotation in degrees applied to the model in the
+            horizontal (east/north) plane before placement. Positive values
+            rotate the model counter-clockwise; e.g. at ``rotation=90``,
+            model +X ends up pointing north. Defaults to ``0.0`` (no
+            rotation).
+        move: ``(east, north, up)`` offset in metres applied after
+            anchoring, e.g. for fine-tuning placement without changing the
+            anchor. Defaults to ``(0.0, 0.0, 0.0)`` (no offset).
+        units: model length unit, used to scale OBJ coordinates to metres.
+            One of ``"m"``, ``"cm"``, ``"mm"``, ``"ft"``, ``"in"``
+            (case-insensitive). Defaults to ``"m"``.
+        roles: optional ``{group_name: role}`` mapping used to mark some
+            OBJ groups as non-building (e.g. ``{"windows": "window"}``) so
+            they are excluded from voxelization. Matching is exact-string
+            only. Group names absent from this mapping (including all
+            names, when ``roles=None``, the default) are treated as role
+            ``"building"`` and voxelized.
+        backend: voxelization backend. ``"trimesh"`` (default) is the only
+            currently implemented backend. ``"meshlib"`` is accepted but
+            not yet functional (see Raises below).
+        z_up: whether the OBJ's vertical axis is already Z-up (Rhino's
+            convention), the default (``True``). When ``False``, the
+            loaded mesh is treated as Y-up and axes 1/2 (Y/Z) are swapped
+            before placement, equivalent to setting ``swap_yz=True``.
+        swap_yz: if ``True``, force an explicit Y/Z axis swap on the
+            loaded geometry regardless of ``z_up``. Defaults to ``False``.
+            The effective swap applied is ``swap_yz or (not z_up)``.
+        overwrite: if ``True`` (default), newly stamped building voxels
+            overwrite any existing non-empty voxel at that cell (and the
+            collision is counted/logged). If ``False``, only cells that are
+            currently empty are stamped; already-occupied cells are left
+            untouched.
+        gridvis: if ``True``, after stamping, display a quick-look 2D
+            visualization of the post-import building height grid. Purely
+            a debugging aid; failures in the visualization step (including
+            a missing/broken plotting backend) are swallowed silently.
+            Defaults to ``False``.
+
+    Returns:
+        A new VoxCity object with the imported buildings stamped in (or an
+        unmodified deep copy of *voxcity* if no building-role geometry was
+        found, or none of it voxelized to cells inside the domain). The
+        *voxcity* argument passed in is never mutated.
+
+    Raises:
+        FileNotFoundError: if *obj_path* does not exist.
+        ValueError: if *units* is not one of the recognized unit strings,
+            if *backend* is not ``"trimesh"`` or ``"meshlib"``, or if
+            *anchor_lonlat* does not have exactly 2 elements.
+        ImportError: if ``backend="meshlib"`` is requested but the optional
+            ``meshlib`` package is not installed.
+        NotImplementedError: if ``backend="meshlib"`` is requested and
+            ``meshlib`` is installed; the meshlib voxelization path is not
+            implemented yet (use ``backend="trimesh"``).
     """
     # --- validation (fail fast) ---
     if not os.path.exists(os.fspath(obj_path)):
