@@ -1,3 +1,5 @@
 """VoxCity importer subpackage: import external 3D geometry into VoxCity models."""
 
-__all__ = []
+from .rhino_obj import add_buildings_from_obj
+
+__all__ = ["add_buildings_from_obj"]
