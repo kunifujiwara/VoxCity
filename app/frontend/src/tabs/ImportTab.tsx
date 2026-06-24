@@ -108,10 +108,11 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           <h2>Import OBJ</h2>
 
           <GuidedSection index={1} label="UPLOAD">
-            <label className="btn btn-secondary" style={{ width: '100%', cursor: 'pointer' }}>
+            <label className="btn btn-secondary"
+                   style={{ width: '100%', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
               <Upload size={14} style={{ marginRight: 6 }} />
               {upload ? 'Replace OBJ…' : 'Choose OBJ file…'}
-              <input type="file" accept=".obj" style={{ display: 'none' }}
+              <input type="file" accept=".obj" style={{ display: 'none' }} disabled={busy}
                      onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
             </label>
           </GuidedSection>
@@ -124,7 +125,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                     <tr key={g.name}>
                       <td title={`${g.n_faces} faces`}>{g.name}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <select value={roles[g.name] ?? 'building'}
+                        <select value={roles[g.name] ?? 'building'} disabled={busy}
                                 onChange={(e) => setRoles((r) => ({ ...r, [g.name]: e.target.value }))}>
                           <option value="building">building</option>
                           <option value="skip">skip</option>
@@ -146,21 +147,21 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               </div>
               <div className="form-group">
                 <label>Rotation (deg)</label>
-                <input type="number" step={1} value={placement.rotation}
+                <input type="number" step={1} value={placement.rotation} disabled={busy}
                        onChange={(e) => setPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
               </div>
               <div className="form-group">
                 <label>Move east / north / up (m)</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[0, 1, 2].map((k) => (
-                    <input key={k} type="number" step={0.5} value={placement.move[k]}
+                    <input key={k} type="number" step={0.5} value={placement.move[k]} disabled={busy}
                            onChange={(e) => setMove(k as 0 | 1 | 2, parseFloat(e.target.value) || 0)} />
                   ))}
                 </div>
               </div>
               <div className="form-group">
                 <label>Units</label>
-                <select value={placement.units}
+                <select value={placement.units} disabled={busy}
                         onChange={(e) => setPlacement((p) => ({ ...p, units: e.target.value as Units }))}>
                   {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
@@ -169,18 +170,18 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               <details open={advanced} onToggle={(e) => setAdvanced((e.target as HTMLDetailsElement).open)}>
                 <summary>Advanced</summary>
                 <label className="checkbox-row">
-                  <input type="checkbox" checked={placement.zUp}
+                  <input type="checkbox" checked={placement.zUp} disabled={busy}
                          onChange={(e) => setPlacement((p) => ({ ...p, zUp: e.target.checked }))} />
                   Z-up (uncheck for Y-up exports)
                 </label>
                 <label className="checkbox-row">
-                  <input type="checkbox" checked={placement.swapYz}
+                  <input type="checkbox" checked={placement.swapYz} disabled={busy}
                          onChange={(e) => setPlacement((p) => ({ ...p, swapYz: e.target.checked }))} />
                   Swap Y/Z
                 </label>
                 <div className="form-group">
                   <label>Anchor elevation (m, blank = auto from terrain)</label>
-                  <input type="number" step={0.5}
+                  <input type="number" step={0.5} disabled={busy}
                          value={placement.anchorElevation ?? ''}
                          onChange={(e) => setPlacement((p) => ({
                            ...p,
