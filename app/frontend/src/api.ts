@@ -585,3 +585,68 @@ export async function loadSession(file: File): Promise<SessionLoadSummary> {
   return res.json();
 }
 
+// ── OBJ import tab ────────────────────────────────────────────
+
+export interface ImportObjGroupDto {
+  name: string;
+  role: string;
+  n_faces: number;
+  bbox_model: [number, number, number][]; // [min, max]
+}
+
+export interface ImportObjPreviewDto {
+  footprints: [number, number][][];
+  vertices: [number, number, number][];
+  indices: [number, number, number][];
+}
+
+export interface ImportObjUploadResult {
+  import_id: string;
+  groups: ImportObjGroupDto[];
+  model_bounds: [number, number, number][];
+  preview: ImportObjPreviewDto;
+}
+
+export interface ImportPlacementDto {
+  anchor_lonlat: [number, number];
+  anchor_elevation: number | null;
+  anchor_model_point: [number, number, number];
+  rotation: number;
+  move: [number, number, number];
+  units: string;
+  z_up: boolean;
+  swap_yz: boolean;
+}
+
+export interface ImportObjCommitRequestDto {
+  import_id: string;
+  placement: ImportPlacementDto;
+  roles: Record<string, string>;
+  overwrite: boolean;
+}
+
+export interface ImportObjCommitResult {
+  figure_json: string;
+  imported_building_ids: number[];
+  n_building_voxels_added: number;
+  warning: string | null;
+}
+
+export async function uploadImportObj(file: File): Promise<ImportObjUploadResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/model/import_obj/upload`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function commitImportObj(req: ImportObjCommitRequestDto) {
+  return request<ImportObjCommitResult>('/model/import_obj/commit', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
