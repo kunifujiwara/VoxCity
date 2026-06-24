@@ -42,6 +42,12 @@ from .models import (
     GenerateRequest,
     GeocodeRequest,
     GeocodeResponse,
+    ImportObjCommitRequest,
+    ImportObjCommitResponse,
+    ImportObjGroup,
+    ImportObjPreview,
+    ImportObjUploadResponse,
+    ImportPlacement,
     LandmarkRequest,
     MeshChunk,
     OverlayGeometryResponse,
@@ -160,6 +166,9 @@ except Exception:
 # ---------------------------------------------------------------------------
 BASE_OUTPUT_DIR = os.environ.get("VOXCITY_OUTPUT_DIR", os.path.join(tempfile.gettempdir(), "voxcity_output"))
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
+
+# In-memory registry of uploaded OBJ imports: import_id -> stored .obj path.
+import_obj_store: Dict[str, str] = {}
 
 APP_DIR = os.path.dirname(os.path.dirname(__file__))  # app/
 DEFAULT_TOKYO_EPW = os.path.join(
@@ -2146,6 +2155,21 @@ def _require_model() -> None:
         raise HTTPException(status_code=400, detail="No model generated yet")
 
 
+def _anchor_lonlat_to_cell(lon: float, lat: float) -> tuple[int, int]:
+    """Project a lon/lat anchor to an (i, j) grid cell using the model grid geom."""
+    from voxcity.geoprocessor.draw._common import compute_grid_geometry
+    from voxcity.utils.projector import GridProjector
+
+    rect = app_state.rectangle_vertices
+    if rect is None and app_state.voxcity is not None and isinstance(app_state.voxcity.extras, dict):
+        rect = app_state.voxcity.extras.get("rectangle_vertices")
+    if rect is None:
+        raise HTTPException(status_code=400, detail="Model has no rectangle_vertices")
+    gg = compute_grid_geometry(rect, float(app_state.meshsize))
+    i, j = GridProjector(gg).lon_lat_to_cell(float(lon), float(lat))
+    return int(i), int(j)
+
+
 def _parse_cells(payload: dict) -> List[List[int]]:
     """Pull a list of [i, j] integer cells from request JSON. uv/Phase 3 cell indices."""
     raw = payload.get("cells")
@@ -3163,3 +3187,77 @@ async def apply_edits(payload: dict):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/model/import_obj/upload")
+async def import_obj_upload(file: UploadFile = File(...)):
+    """Parse an uploaded OBJ into groups + preview geometry; register an import_id."""
+    _require_model()
+    import uuid
+    from voxcity.importer.loader import load_obj_groups, classify_roles
+
+    import_id = uuid.uuid4().hex
+    dest_dir = os.path.join(BASE_OUTPUT_DIR, "import_obj", import_id)
+    os.makedirs(dest_dir, exist_ok=True)
+    obj_path = os.path.join(dest_dir, os.path.basename(file.filename) or "model.obj")
+    with open(obj_path, "wb") as f:
+        f.write(await file.read())
+
+    try:
+        groups = load_obj_groups(obj_path)  # [(name, trimesh), ...]; raises ValueError if no mesh
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse OBJ: {e}")
+
+    role_map = classify_roles([name for name, _ in groups])
+
+    group_models: List[ImportObjGroup] = []
+    footprints: List[List[List[float]]] = []
+    all_verts: List[List[float]] = []
+    all_faces: List[List[int]] = []
+    # Combined-mesh face cap for the preview (decimation: keep every Nth face when large).
+    MAX_PREVIEW_FACES = 20000
+    total_faces = sum(int(len(m.faces)) for _, m in groups)
+    stride = max(1, (total_faces + MAX_PREVIEW_FACES - 1) // MAX_PREVIEW_FACES)
+
+    gxmin = gymin = gzmin = float("inf")
+    gxmax = gymax = gzmax = float("-inf")
+    for name, mesh in groups:
+        verts = np.asarray(mesh.vertices, dtype=float)
+        faces = np.asarray(mesh.faces, dtype=int)
+        bmin = verts.min(axis=0)
+        bmax = verts.max(axis=0)
+        gxmin, gymin, gzmin = min(gxmin, bmin[0]), min(gymin, bmin[1]), min(gzmin, bmin[2])
+        gxmax, gymax, gzmax = max(gxmax, bmax[0]), max(gymax, bmax[1]), max(gzmax, bmax[2])
+        group_models.append(ImportObjGroup(
+            name=name,
+            role=role_map.get(name, "building"),
+            n_faces=int(len(faces)),
+            bbox_model=[[float(bmin[0]), float(bmin[1]), float(bmin[2])],
+                        [float(bmax[0]), float(bmax[1]), float(bmax[2])]],
+        ))
+        # Footprint: 2D convex hull of XY projection (closed ring).
+        try:
+            from scipy.spatial import ConvexHull
+            xy = verts[:, :2]
+            hull = ConvexHull(xy)
+            ring = [[float(xy[v, 0]), float(xy[v, 1])] for v in hull.vertices]
+            ring.append(ring[0])
+        except Exception:
+            ring = [[float(bmin[0]), float(bmin[1])], [float(bmax[0]), float(bmin[1])],
+                    [float(bmax[0]), float(bmax[1])], [float(bmin[0]), float(bmax[1])],
+                    [float(bmin[0]), float(bmin[1])]]
+        footprints.append(ring)
+        # Decimated mesh for 3D preview.
+        base = len(all_verts)
+        all_verts.extend([[float(v[0]), float(v[1]), float(v[2])] for v in verts])
+        for fi in range(0, len(faces), stride):
+            a, b, c = faces[fi]
+            all_faces.append([base + int(a), base + int(b), base + int(c)])
+
+    import_obj_store[import_id] = obj_path
+    return ImportObjUploadResponse(
+        import_id=import_id,
+        groups=group_models,
+        model_bounds=[[gxmin, gymin, gzmin], [gxmax, gymax, gzmax]],
+        preview=ImportObjPreview(footprints=footprints, vertices=all_verts, indices=all_faces),
+    )
