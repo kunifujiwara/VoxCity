@@ -46,7 +46,7 @@ const ObjPlacementMap: React.FC<Props> = ({ geo, placement, footprints, onAnchor
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current).setView([geo.center[1], geo.center[0]], 17);
+    const map = L.map(containerRef.current).setView(geo.center as [number, number], 17);
     L.tileLayer(
       'https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}@2x.png',
       { attribution: '&copy; <a href="https://carto.com/">CARTO</a>', maxZoom: 20 },
