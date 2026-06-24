@@ -3,7 +3,7 @@
  * placement; clicking sets the anchor lon/lat. Footprint vertices are computed
  * via transformModelPoint() (scene-metres offset from the anchor) composed with
  * the anchor's own scene position (via grid.ts's lonLatToUvM), then converted
- * back to lon/lat via the local sceneXYToLonLat() inverse.
+ * back to lon/lat via grid.ts's sceneXYToLonLat() inverse.
  *
  * Coordinate convention note (see PlanMapEditor.tsx):
  *   - Voxcity / grid.ts use [lon, lat] order.
@@ -12,7 +12,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import type { ModelGeoResult } from '../api';
-import { lonLatToUvM, type GridGeom } from '../lib/grid';
+import { lonLatToUvM, sceneXYToLonLat } from '../lib/grid';
 import { transformModelPoint, type Placement } from '../lib/objPlacement';
 
 interface Props {
@@ -20,21 +20,6 @@ interface Props {
   placement: Placement;
   footprints: [number, number][][]; // model-XY rings from upload.preview
   onAnchor: (lonLat: [number, number]) => void;
-}
-
-/** Inverse of grid.ts's lonLatToUvM: scene metres [east, north] -> [lon, lat]. */
-function sceneXYToLonLat(geo: GridGeom, eastM: number, northM: number): [number, number] {
-  const [du, dv] = geo.adj_mesh;
-  const [ox, oy] = geo.origin;
-  const [ux, uy] = geo.u_vec;
-  const [vx, vy] = geo.v_vec;
-  const a = ux * du, b = vx * dv;
-  const c = uy * du, d = vy * dv;
-  const u_cell = northM / du;
-  const v_cell = eastM / dv;
-  const dlon = a * u_cell + b * v_cell;
-  const dlat = c * u_cell + d * v_cell;
-  return [ox + dlon, oy + dlat];
 }
 
 const ObjPlacementMap: React.FC<Props> = ({ geo, placement, footprints, onAnchor }) => {

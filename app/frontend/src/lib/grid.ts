@@ -498,3 +498,31 @@ export function lonLatToUvM(
     return [v_cell * dv, u_cell * du];
   };
 }
+
+/**
+ * Inverse of `lonLatToUvM`: scene metres `[east, north]` -> `[lon, lat]`.
+ *
+ * `lonLatToUvM` solves `[lon, lat] = origin + M * [u_cell, v_cell]` for
+ * `[u_cell, v_cell]` by inverting the 2x2 matrix `M = [[a, b], [c, d]]`
+ * (built from `u_vec`/`v_vec` scaled by the cell sizes `adj_mesh`), then
+ * scales back to metres. This function runs the *same* matrix `M` in its
+ * original, non-inverted direction: given scene metres, recover the cell
+ * fractions (`u_cell`, `v_cell`) by dividing out the cell sizes, then apply
+ * `M` directly to land back on `[lon, lat]` relative to `origin`. Because it
+ * reuses `M` as-is (no re-inversion), it is exactly the forward half of the
+ * same affine map `lonLatToUvM` inverts — so composing the two is a no-op
+ * round trip by construction, not by coincidence.
+ */
+export function sceneXYToLonLat(geo: GridGeom, eastM: number, northM: number): [number, number] {
+  const [du, dv] = geo.adj_mesh;
+  const [ox, oy] = geo.origin;
+  const [ux, uy] = geo.u_vec;
+  const [vx, vy] = geo.v_vec;
+  const a = ux * du, b = vx * dv;
+  const c = uy * du, d = vy * dv;
+  const u_cell = northM / du;
+  const v_cell = eastM / dv;
+  const dlon = a * u_cell + b * v_cell;
+  const dlat = c * u_cell + d * v_cell;
+  return [ox + dlon, oy + dlat];
+}
