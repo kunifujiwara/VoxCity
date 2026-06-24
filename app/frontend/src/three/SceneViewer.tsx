@@ -25,6 +25,7 @@ import { CameraControls } from './CameraControls';
 import { ColorBar } from './ColorBar';
 import { MeshLayer } from './MeshLayer';
 import { Picker } from './Picker';
+import { PlacementGizmo } from './PlacementGizmo';
 import { SurfaceSelectionLayer } from './SurfaceSelectionLayer';
 import { SurfaceZoneEdgeLayer } from './SurfaceZoneEdgeLayer';
 import {
@@ -97,6 +98,15 @@ export interface SceneViewerProps {
   style?: React.CSSProperties;
   /** Background colour for the canvas (CSS string). */
   background?: string;
+
+  /** When set, renders an imported-OBJ placement preview + gizmo (Import tab). */
+  placementPreview?: {
+    vertices: [number, number, number][];
+    indices: [number, number, number][];
+    placement: import('../lib/objPlacement').Placement;
+    mode: 'translate' | 'rotate';
+    onChange: (next: Partial<import('../lib/objPlacement').Placement>) => void;
+  } | null;
 }
 
 const DEFAULT_BG = '#1a1a2e';
@@ -122,6 +132,7 @@ export function SceneViewer({
   surfaceZoneEdges = null,
   style,
   background = DEFAULT_BG,
+  placementPreview = null,
 }: SceneViewerProps) {
   const pickableSurfaceEnabled = shouldMountPickableSurface(onPick, surfaceSelection);
   const [scene, setScene] = useState<SceneGeometryResponse | null>(null);
@@ -298,6 +309,16 @@ export function SceneViewer({
                 meshsize={scene?.meshsize_m}
               />
             )
+          )}
+
+          {placementPreview && (
+            <PlacementGizmo
+              vertices={placementPreview.vertices}
+              indices={placementPreview.indices}
+              placement={placementPreview.placement}
+              mode={placementPreview.mode}
+              onChange={placementPreview.onChange}
+            />
           )}
 
           <CameraControls bboxMin={bboxMin} bboxMax={bboxMax} />

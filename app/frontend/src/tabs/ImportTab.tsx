@@ -17,6 +17,7 @@ import {
 import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import ObjPlacementMap from '../components/ObjPlacementMap';
+import { SceneViewer } from '../three';
 import {
   defaultPlacement,
   Placement,
@@ -36,6 +37,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [upload, setUpload] = useState<ImportObjUploadResult | null>(null);
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [placement, setPlacement] = useState<Placement>(defaultPlacement);
+  const [gizmoMode, setGizmoMode] = useState<'translate' | 'rotate'>('translate');
   const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +156,21 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                   : 'Click the map to set the anchor.'}
               </div>
               <div className="form-group">
+                <label>3D gizmo mode</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" disabled={busy}
+                          className={`btn btn-sm ${gizmoMode === 'translate' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => setGizmoMode('translate')}>
+                    Move
+                  </button>
+                  <button type="button" disabled={busy}
+                          className={`btn btn-sm ${gizmoMode === 'rotate' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => setGizmoMode('rotate')}>
+                    Rotate
+                  </button>
+                </div>
+              </div>
+              <div className="form-group">
                 <label>Rotation (deg)</label>
                 <input type="number" step={1} value={placement.rotation} disabled={busy}
                        onChange={(e) => setPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
@@ -239,9 +256,22 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       <div className="panel visual-panel">
         <div className="plan-panel-header"><h2>3D result</h2></div>
         <div className="visual-frame">
-          {figureJson
-            ? <ThreeViewer figureJson={figureJson} />
-            : <div className="alert alert-info">Import to render the 3D result here.</div>}
+          {upload && !figureJson ? (
+            <SceneViewer
+              geometryToken="import-preview"
+              placementPreview={{
+                vertices: upload.preview.vertices,
+                indices: upload.preview.indices,
+                placement,
+                mode: gizmoMode,
+                onChange: (next) => setPlacement((p) => ({ ...p, ...next })),
+              }}
+            />
+          ) : figureJson ? (
+            <ThreeViewer figureJson={figureJson} />
+          ) : (
+            <div className="alert alert-info">Upload an OBJ to place it in 3D.</div>
+          )}
         </div>
       </div>
     </div>
