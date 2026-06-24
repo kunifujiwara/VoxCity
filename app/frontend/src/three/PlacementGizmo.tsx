@@ -39,6 +39,14 @@ export function PlacementGizmo({ vertices, indices, placement, mode, onChange }:
   // the 2D map's anchor click) -- the gizmo's own drags update placement via
   // onChange and don't need this effect to "round-trip" back to the mesh,
   // since React state flows down through these same props on next render.
+  //
+  // NOTE: unlike lib/objPlacement.ts's transformModelPoint (used by the 2D map
+  // in ObjPlacementMap.tsx), this effect does not subtract placement.anchorModelPoint
+  // before applying scale/rotation. This is harmless today because no UI control
+  // in this app ever sets anchorModelPoint away from its [0,0,0] default -- but if
+  // one is ever added, this gizmo will silently diverge from the 2D map and the
+  // server-side commit transform. Apply the same (pt - anchorModelPoint) offset
+  // here if/when anchorModelPoint becomes user-settable.
   useEffect(() => {
     const m = meshRef.current;
     if (!m) return;
