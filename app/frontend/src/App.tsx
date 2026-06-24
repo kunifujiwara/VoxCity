@@ -98,7 +98,6 @@ const App: React.FC = () => {
   // Also bump geometryToken so SceneViewer re-fetches city geometry.
   const handleModelEdited = useCallback(() => {
     setFigureJson('');
-    setImportFigureJson('');
     setSolarFigureJson('');
     setViewFigureJson('');
     setLandmarkFigureJson('');
