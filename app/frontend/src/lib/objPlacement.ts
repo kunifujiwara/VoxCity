@@ -43,9 +43,10 @@ const UNIT_SCALE: Record<Units, number> = {
 };
 
 export function unitScale(units: string): number {
-  const s = UNIT_SCALE[(units as Units)];
-  if (s === undefined) throw new Error(`Unknown units: ${units}`);
-  return s;
+  if (!Object.prototype.hasOwnProperty.call(UNIT_SCALE, units)) {
+    throw new Error(`Unknown units: ${units}`);
+  }
+  return UNIT_SCALE[units as Units];
 }
 
 /**
@@ -56,6 +57,12 @@ export function unitScale(units: string): number {
  *   about the up axis (model +X->east, +Y->north at rotation 0), 4. add move.
  * Returns [east, north, up] metres. Domain rotation + ground offset are applied
  * server-side and intentionally omitted from this visual approximation.
+ *
+ * NOTE: widened from `Placement` to `units: string` only so the (fixed,
+ * spec-mandated) test file's untyped `{ ...base, units: 'ft' }` literal
+ * type-checks; do not narrow back to `Placement` or the test file will fail
+ * to compile. Callers should still only ever pass a real `Units` value --
+ * `unitScale` throws at runtime on anything else.
  */
 export function transformModelPoint(
   pt: [number, number, number],
