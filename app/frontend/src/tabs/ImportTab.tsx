@@ -5,15 +5,18 @@
  * here writes it; the 2D map (Task 8) and 3D gizmo (Task 9) read/write the same
  * object. Commit calls /api/model/import_obj/commit and renders the result.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Upload, Boxes } from 'lucide-react';
 import {
   uploadImportObj,
   commitImportObj,
+  getModelGeo,
   ImportObjUploadResult,
+  ModelGeoResult,
 } from '../api';
 import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
+import ObjPlacementMap from '../components/ObjPlacementMap';
 import {
   defaultPlacement,
   Placement,
@@ -37,6 +40,11 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [geo, setGeo] = useState<ModelGeoResult | null>(null);
+
+  useEffect(() => {
+    if (hasModel) getModelGeo().then(setGeo).catch(() => {});
+  }, [hasModel]);
 
   const setMove = (idx: 0 | 1 | 2, v: number) =>
     setPlacement((p) => {
@@ -210,11 +218,20 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         </div>
       </div>
 
-      {/* 2D map placeholder — replaced by ObjPlacementMap in Task 8 */}
+      {/* 2D map */}
       <div className="panel visual-panel">
         <div className="plan-panel-header"><h2>2D placement</h2></div>
         <div className="visual-frame">
-          <div className="alert alert-info">Map placement added in a later step.</div>
+          {geo && upload ? (
+            <ObjPlacementMap
+              geo={geo}
+              placement={placement}
+              footprints={upload.preview.footprints}
+              onAnchor={(lonLat) => setPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
+            />
+          ) : (
+            <div className="alert alert-info">Upload an OBJ, then click the map to set the anchor.</div>
+          )}
         </div>
       </div>
 
