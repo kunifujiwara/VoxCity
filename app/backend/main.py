@@ -3207,6 +3207,12 @@ async def import_obj_upload(file: UploadFile = File(...)):
         groups = load_obj_groups(obj_path)  # [(name, trimesh), ...]; raises ValueError if no mesh
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=f"Could not parse OBJ: {e}")
+    except Exception as e:
+        # Defensive catch-all: trimesh's underlying OBJ parser can raise other
+        # exception types (e.g. IndexError) for structurally malformed-but-OBJ-
+        # shaped input (bad vertex/face indices). Treat any failure here as a
+        # client-input problem, not a server bug.
+        raise HTTPException(status_code=400, detail=f"Could not parse OBJ: {e}")
 
     role_map = classify_roles([name for name, _ in groups])
 
@@ -3218,6 +3224,12 @@ async def import_obj_upload(file: UploadFile = File(...)):
     MAX_PREVIEW_FACES = 20000
     total_faces = sum(int(len(m.faces)) for _, m in groups)
     stride = max(1, (total_faces + MAX_PREVIEW_FACES - 1) // MAX_PREVIEW_FACES)
+    # NOTE: this stride-based decimation caps any single large group's
+    # contribution, but with many small groups (each near or below `stride`
+    # faces) the total preview face count can still exceed MAX_PREVIEW_FACES,
+    # since range(0, n, stride) can't reduce a group below ceil(n/stride) faces.
+    # Acceptable for a v1 preview (visual only; the real commit re-reads the
+    # original file and is unaffected by this approximation).
 
     gxmin = gymin = gzmin = float("inf")
     gxmax = gymax = gzmax = float("-inf")
@@ -3235,7 +3247,10 @@ async def import_obj_upload(file: UploadFile = File(...)):
             bbox_model=[[float(bmin[0]), float(bmin[1]), float(bmin[2])],
                         [float(bmax[0]), float(bmax[1]), float(bmax[2])]],
         ))
-        # Footprint: 2D convex hull of XY projection (closed ring).
+        # Footprint: 2D convex hull of XY projection (closed ring); falls back to an
+        # axis-aligned bbox rectangle if the hull fails (degenerate/collinear points).
+        # Note: concave footprints (L/U/T-shaped buildings) are over-approximated by
+        # the hull -- this is a deliberate v1 simplification for the preview overlay.
         try:
             from scipy.spatial import ConvexHull
             xy = verts[:, :2]

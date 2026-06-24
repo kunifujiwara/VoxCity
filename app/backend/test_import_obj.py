@@ -62,6 +62,16 @@ def test_upload_rejects_non_obj_garbage(client):
     assert r.status_code == 400
 
 
+def test_upload_rejects_structurally_malformed_obj(client):
+    """A face referencing an out-of-range vertex index throws IndexError deep in
+    trimesh's parser, not load_obj_groups's own ValueError/FileNotFoundError --
+    this must still surface as a clean 400, not an uncaught 500."""
+    bad_obj = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 99\n"  # vertex index 99 doesn't exist
+    files = {"file": ("malformed.obj", io.BytesIO(bad_obj), "text/plain")}
+    r = client.post("/api/model/import_obj/upload", files=files)
+    assert r.status_code == 400, r.text
+
+
 def test_upload_requires_model(client):
     app_state.voxcity = None
     files = {"file": ("box.obj", io.BytesIO(_box_obj_bytes()), "text/plain")}
