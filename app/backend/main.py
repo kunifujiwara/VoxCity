@@ -3276,3 +3276,66 @@ async def import_obj_upload(file: UploadFile = File(...)):
         model_bounds=[[gxmin, gymin, gzmin], [gxmax, gymax, gzmax]],
         preview=ImportObjPreview(footprints=footprints, vertices=all_verts, indices=all_faces),
     )
+
+
+@app.post("/api/model/import_obj/commit", response_model=ImportObjCommitResponse)
+async def import_obj_commit(req: ImportObjCommitRequest):
+    """Stamp the uploaded OBJ's buildings into the current model and re-render."""
+    _require_model()
+    from voxcity.importer import add_buildings_from_obj
+
+    obj_path = import_obj_store.get(req.import_id)
+    if obj_path is None or not os.path.isfile(obj_path):
+        raise HTTPException(status_code=404, detail="Unknown or expired import_id; please re-upload.")
+
+    p = req.placement
+    if len(p.anchor_lonlat) != 2:
+        raise HTTPException(status_code=400, detail="anchor_lonlat must be [lon, lat]")
+
+    anchor_elev = p.anchor_elevation
+    if anchor_elev is None:
+        i, j = _anchor_lonlat_to_cell(p.anchor_lonlat[0], p.anchor_lonlat[1])
+        dem = np.asarray(app_state.voxcity.dem.elevation)
+        nx, ny = dem.shape
+        ii = min(max(i, 0), nx - 1)
+        jj = min(max(j, 0), ny - 1)
+        anchor_elev = float(dem[ii, jj])
+
+    before = int(np.sum(np.asarray(app_state.voxcity.voxels.classes) == -3))
+    try:
+        out = add_buildings_from_obj(
+            app_state.voxcity,
+            obj_path,
+            anchor_lonlat=(float(p.anchor_lonlat[0]), float(p.anchor_lonlat[1])),
+            anchor_elevation=float(anchor_elev),
+            anchor_model_point=tuple(float(x) for x in p.anchor_model_point),
+            rotation=float(p.rotation),
+            move=tuple(float(x) for x in p.move),
+            units=p.units,
+            roles=req.roles or None,
+            z_up=p.z_up,
+            swap_yz=p.swap_yz,
+            overwrite=req.overwrite,
+            backend="trimesh",
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    app_state.voxcity = out
+    app_state.refresh_raw_cache()
+
+    after = int(np.sum(np.asarray(out.voxels.classes) == -3))
+    n_added = after - before
+    manifest = out.extras.get("imported_buildings") if isinstance(out.extras, dict) else None
+    ids: List[int] = []
+    if manifest:
+        ids = [int(v) for v in (manifest[-1].get("id_map") or {}).values()]
+    warning = None if n_added > 0 else (
+        "Imported geometry voxelized to 0 cells inside the domain — check anchor/rotation/move/units."
+    )
+    return ImportObjCommitResponse(
+        figure_json=_render_edit_preview(out, title="Imported building"),
+        imported_building_ids=ids,
+        n_building_voxels_added=int(n_added),
+        warning=warning,
+    )

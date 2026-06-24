@@ -77,3 +77,66 @@ def test_upload_requires_model(client):
     files = {"file": ("box.obj", io.BytesIO(_box_obj_bytes()), "text/plain")}
     r = client.post("/api/model/import_obj/upload", files=files)
     assert r.status_code == 400
+
+
+def _upload_box(client) -> str:
+    files = {"file": ("box.obj", io.BytesIO(_box_obj_bytes()), "text/plain")}
+    r = client.post("/api/model/import_obj/upload", files=files)
+    assert r.status_code == 200, r.text
+    return r.json()["import_id"]
+
+
+def _domain_center_lonlat() -> list[float]:
+    rect = app_state.rectangle_vertices
+    lons = [p[0] for p in rect]
+    lats = [p[1] for p in rect]
+    return [sum(lons) / len(lons), sum(lats) / len(lats)]
+
+
+def test_commit_imports_building(client):
+    import_id = _upload_box(client)
+    before = int(np.sum(app_state.voxcity.voxels.classes == -3))
+    req = {
+        "import_id": import_id,
+        "placement": {
+            "anchor_lonlat": _domain_center_lonlat(),
+            "anchor_elevation": None,            # auto-sample DEM
+            "anchor_model_point": [0.0, 0.0, 0.0],
+            "rotation": 0.0,
+            "move": [0.0, 0.0, 0.0],
+            "units": "m",
+            "z_up": True,
+            "swap_yz": False,
+        },
+        "roles": {},
+        "overwrite": True,
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["n_building_voxels_added"] > 0
+    assert len(body["imported_building_ids"]) >= 1
+    assert body["figure_json"]
+    after = int(np.sum(app_state.voxcity.voxels.classes == -3))
+    assert after > before
+
+
+def test_commit_skips_non_building_role(client):
+    import_id = _upload_box(client)
+    files = {"file": ("box.obj", io.BytesIO(_box_obj_bytes()), "text/plain")}
+    name = client.post("/api/model/import_obj/upload", files=files).json()["groups"][0]["name"]
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": _domain_center_lonlat()},
+        "roles": {name: "skip"},
+        "overwrite": True,
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 200, r.text
+    assert r.json()["n_building_voxels_added"] == 0
+
+
+def test_commit_unknown_import_id_404(client):
+    req = {"import_id": "deadbeef", "placement": {"anchor_lonlat": _domain_center_lonlat()}}
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 404
