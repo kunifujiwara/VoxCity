@@ -281,3 +281,56 @@ class SurfaceZoneEdgeZone(BaseModel):
 
 class SurfaceZoneEdgesResponse(BaseModel):
     zones: List[SurfaceZoneEdgeZone]
+
+
+# ---------------------------------------------------------------------------
+# OBJ import (Import tab)
+# ---------------------------------------------------------------------------
+
+class ImportObjGroup(BaseModel):
+    """One named group parsed from an uploaded OBJ."""
+    name: str
+    role: str = "building"           # default role from classify_roles
+    n_faces: int
+    bbox_model: List[List[float]]    # [[xmin,ymin,zmin],[xmax,ymax,zmax]] in model units
+
+
+class ImportObjPreview(BaseModel):
+    """Lightweight geometry for client-side preview (model coordinates)."""
+    # Per-group XY footprint outlines (closed rings) in model coords.
+    footprints: List[List[List[float]]]
+    # Decimated combined mesh for the 3D preview (model coords).
+    vertices: List[List[float]]      # [[x,y,z], ...]
+    indices: List[List[int]]         # [[a,b,c], ...]
+
+
+class ImportObjUploadResponse(BaseModel):
+    import_id: str
+    groups: List[ImportObjGroup]
+    model_bounds: List[List[float]]  # [[xmin,ymin,zmin],[xmax,ymax,zmax]]
+    preview: ImportObjPreview
+
+
+class ImportPlacement(BaseModel):
+    anchor_lonlat: List[float]                       # [lon, lat]
+    anchor_elevation: Optional[float] = None         # None -> auto-sample DEM
+    anchor_model_point: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    rotation: float = 0.0                            # degrees
+    move: List[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])  # [east, north, up] m
+    units: str = "m"
+    z_up: bool = True
+    swap_yz: bool = False
+
+
+class ImportObjCommitRequest(BaseModel):
+    import_id: str
+    placement: ImportPlacement
+    roles: Dict[str, str] = Field(default_factory=dict)
+    overwrite: bool = True
+
+
+class ImportObjCommitResponse(BaseModel):
+    figure_json: str
+    imported_building_ids: List[int]
+    n_building_voxels_added: int
+    warning: Optional[str] = None
