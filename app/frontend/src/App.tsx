@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import TargetAreaTab from './tabs/TargetAreaTab';
 import GenerationTab from './tabs/GenerationTab';
 import EditTab from './tabs/EditTab';
+import ImportTab from './tabs/ImportTab';
 import SolarTab from './tabs/SolarTab';
 import ViewTab from './tabs/ViewTab';
 import LandmarkTab from './tabs/LandmarkTab';
@@ -13,7 +14,7 @@ export type { RestoredFrontendState };
 import type { SessionLoadSummary } from './api';
 import {
   MapPin, Layers, Pencil, Grid3x3, Sun, Camera,
-  Landmark as LandmarkIcon, FolderOpen,
+  Landmark as LandmarkIcon, FolderOpen, Boxes,
 } from 'lucide-react';
 import type { Zone } from './types/zones';
 import { healthCheck, resetSession } from './api';
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'area',       label: 'Target',   Icon: MapPin },
   { id: 'generation', label: 'Generate', Icon: Layers },
   { id: 'edit',       label: 'Edit',     Icon: Pencil },
+  { id: 'import',     label: 'Import',   Icon: Boxes },
   { id: 'zoning',     label: 'Zone',     Icon: Grid3x3 },
   { id: 'solar',      label: 'Solar',    Icon: Sun },
   { id: 'view',       label: 'View',     Icon: Camera },
@@ -36,6 +38,7 @@ const App: React.FC = () => {
   const [rectangle, setRectangle] = useState<number[][] | null>(null);
   const [figureJson, setFigureJson] = useState('');
   const [editFigureJson, setEditFigureJson] = useState('');
+  const [importFigureJson, setImportFigureJson] = useState('');
   const [solarFigureJson, setSolarFigureJson] = useState('');
   const [viewFigureJson, setViewFigureJson] = useState('');
   const [landmarkFigureJson, setLandmarkFigureJson] = useState('');
@@ -76,6 +79,7 @@ const App: React.FC = () => {
     }
     setFigureJson('');
     setEditFigureJson('');
+    setImportFigureJson('');
     setSolarFigureJson('');
     setViewFigureJson('');
     setLandmarkFigureJson('');
@@ -94,6 +98,7 @@ const App: React.FC = () => {
   // Also bump geometryToken so SceneViewer re-fetches city geometry.
   const handleModelEdited = useCallback(() => {
     setFigureJson('');
+    setImportFigureJson('');
     setSolarFigureJson('');
     setViewFigureJson('');
     setLandmarkFigureJson('');
@@ -112,6 +117,7 @@ const App: React.FC = () => {
       setRectangle(summary.rectangle_vertices);
       setFigureJson('');
       setEditFigureJson('');
+      setImportFigureJson('');
       setSolarFigureJson('');
       setViewFigureJson('');
       setLandmarkFigureJson('');
@@ -183,6 +189,7 @@ const App: React.FC = () => {
               setZones([]);
               setGeometryToken((t) => t + 1);
               setEditFigureJson('');
+              setImportFigureJson('');
               setSolarFigureJson('');
               setViewFigureJson('');
               setLandmarkFigureJson('');
@@ -196,6 +203,14 @@ const App: React.FC = () => {
             hasModel={hasModel}
             figureJson={editFigureJson}
             onFigureChange={setEditFigureJson}
+            onModelEdited={handleModelEdited}
+          />
+        )}
+        {activeTab === 'import' && (
+          <ImportTab
+            hasModel={hasModel}
+            figureJson={importFigureJson}
+            onFigureChange={setImportFigureJson}
             onModelEdited={handleModelEdited}
           />
         )}
