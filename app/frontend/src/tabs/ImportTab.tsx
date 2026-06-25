@@ -45,6 +45,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   // DEM datum at the current anchor cell, for the 3D preview's vertical seating.
   const [anchorGround, setAnchorGround] = useState<AnchorGroundResult | null>(null);
@@ -121,7 +122,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
   const handleFile = useCallback(async (file: File | null) => {
     if (!file) return;
-    setBusy(true); setError(null); setInfo(null);
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
       const res = await uploadImportObj(file);
       setUpload(res);
@@ -139,7 +140,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     if (!upload) return;
     const anchorLonLat = placement.anchorLonLat;
     if (!anchorLonLat) { setError('Click the map to set an anchor first.'); return; }
-    setBusy(true); setError(null); setInfo(null);
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
       const r = await commitImportObj({
         import_id: upload.import_id,
@@ -158,7 +159,13 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       });
       onFigureChange(r.figure_json);
       onModelEdited?.();
-      setInfo(r.warning ?? `Imported ${r.imported_building_ids.length} building(s); ${r.n_building_voxels_added} voxel(s) added.`);
+      if (r.warning) {
+        setWarning(r.warning);
+        setInfo(null);
+      } else {
+        setWarning(null);
+        setInfo(`Imported ${r.imported_building_ids.length} building(s); ${r.n_building_voxels_added} voxel(s) added.`);
+      }
     } catch (err: any) {
       setError(err.message || 'Import failed');
     } finally {
@@ -320,6 +327,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
           <div className="guided-feedback-slot">
             {error && <div className="alert alert-error">{error}</div>}
+            {warning && <div className="alert alert-warning">{warning}</div>}
             {info && <div className="alert alert-success">{info}</div>}
           </div>
         </div>
