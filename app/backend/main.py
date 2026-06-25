@@ -3402,6 +3402,23 @@ async def import_obj_commit(req: ImportObjCommitRequest):
     ids: List[int] = []
     if manifest:
         ids = [int(v) for v in (manifest[-1].get("id_map") or {}).values()]
+    # `ids` is non-empty iff at least one OBJ group got an id_map entry, which
+    # happens iff that group had >=1 in-bounds occupied cell -- regardless of
+    # whether those cells were a fresh placement or a full overlap with an
+    # existing building (see stamp_buildings/_spans_from_ks in
+    # src/voxcity/importer/integrate.py, and add_buildings_from_obj's
+    # per-group occupied_by_name construction in rhino_obj.py). So
+    # ids-non-empty + n_added==0 means "something landed in-domain but added
+    # no NET voxels" -- usually a full overlap.
+    #
+    # Known limitation: this reports per-IMPORT, not per-GROUP. With a
+    # multi-group OBJ where one group fully overlaps an existing building
+    # (in-domain, 0 new voxels) and another group lands entirely off-domain
+    # (0 occupied cells), the combined result still has ids non-empty (from
+    # the overlapping group) and n_added==0, so this emits the "overlap"
+    # message even though the off-domain group's placement was likely wrong.
+    # Disambiguating per-group would require tracking per-group occupancy
+    # counts through stamp_buildings's manifest -- not done here.
     if n_added > 0:
         warning = None
     elif ids:
