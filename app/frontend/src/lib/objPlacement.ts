@@ -79,11 +79,11 @@ export function transformModelPoint(
   const ly = (pt[1] - p.anchorModelPoint[1]) * s;
   const lz = (pt[2] - p.anchorModelPoint[2]) * s;
   const theta = (p.rotation * Math.PI) / 180;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
+  const cosTheta = Math.cos(theta);
+  const sinTheta = Math.sin(theta);
   // east = lx*cos - ly*sin ; north = lx*sin + ly*cos  (CCW, +X->E, +Y->N at 0)
-  const e = lx * cos - ly * sin;
-  const n = lx * sin + ly * cos;
+  const e = lx * cosTheta - ly * sinTheta;
+  const n = lx * sinTheta + ly * cosTheta;
   // Project (e, n) onto the grid's own (u, v) axes -- server parity with
   // voxcity.importer.transform.build_placement_transform's phi projection
   // (phi = domain rotation bearing of the grid's +u axis):
@@ -91,12 +91,15 @@ export function transformModelPoint(
   // At phi=0 this reduces to (u, v) = (n, e), so east=v=e, north=u=n --
   // identical to the pre-domain-rotation formula above.
   const phi = (domainRotationDeg * Math.PI) / 180;
-  const sp = Math.sin(phi);
-  const cp = Math.cos(phi);
-  const u = e * sp + n * cp;
-  const v = e * cp - n * sp;
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+  const u = e * sinPhi + n * cosPhi;
+  const v = e * cosPhi - n * sinPhi;
   const east = v + p.move[0];
   const north = u + p.move[1];
   const up = lz + p.move[2];
+  // NOTE: v (not u) is the east-axis value here, matching lib/grid.ts's
+  // lonLatToUvM/sceneXYToLonLat convention -- see the domain-rotation
+  // explanation in this function's docstring above.
   return [east, north, up];
 }
