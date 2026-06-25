@@ -183,3 +183,23 @@ def test_commit_rejects_wrong_length_anchor_model_point(client):
     r = client.post("/api/model/import_obj/commit", json=req)
     assert r.status_code == 400, r.text
     assert "anchor_model_point" in r.json()["detail"].lower()
+
+
+def test_commit_rejects_nan_rotation(client):
+    import_id = _upload_box(client)
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": _domain_center_lonlat(), "rotation": float("nan")},
+    }
+    # See test_commit_rejects_nan_anchor: httpx's TestClient.post(json=...) encodes
+    # with allow_nan=False and raises ValueError before the request is ever sent,
+    # so NaN payloads must be built manually with stdlib json.dumps (which allows
+    # NaN by default) and posted as raw content with an explicit content-type.
+    body = json.dumps(req).encode("utf-8")
+    r = client.post(
+        "/api/model/import_obj/commit",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 400, r.text
+    assert "rotation" in r.json()["detail"].lower()

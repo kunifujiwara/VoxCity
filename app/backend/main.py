@@ -3345,10 +3345,15 @@ async def import_obj_commit(req: ImportObjCommitRequest):
     p = req.placement
 
     def _require_finite_vec(name: str, vec, length: int) -> None:
-        if len(vec) != length or not all(math.isfinite(float(x)) for x in vec):
+        if len(vec) != length:
             raise HTTPException(
                 status_code=400,
-                detail=f"{name} must be {length} finite number(s), got {vec!r}",
+                detail=f"{name} must have exactly {length} element(s), got {len(vec)}",
+            )
+        if not all(math.isfinite(float(x)) for x in vec):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name} must contain only finite numbers (no NaN/Infinity)",
             )
 
     _require_finite_vec("anchor_lonlat", p.anchor_lonlat, 2)
@@ -3356,6 +3361,8 @@ async def import_obj_commit(req: ImportObjCommitRequest):
     _require_finite_vec("anchor_model_point", p.anchor_model_point, 3)
     if p.anchor_elevation is not None and not math.isfinite(float(p.anchor_elevation)):
         raise HTTPException(status_code=400, detail="anchor_elevation must be a finite number or null")
+    if not math.isfinite(float(p.rotation)):
+        raise HTTPException(status_code=400, detail="rotation must be a finite number")
 
     anchor_elev = p.anchor_elevation
     if anchor_elev is None:
