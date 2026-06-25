@@ -215,8 +215,42 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
             <GuidedSection index={3} label="PLACEMENT">
               <div className="guided-tool-hint">
                 {placement.anchorLonLat
-                  ? `Anchor: ${placement.anchorLonLat[1].toFixed(5)}, ${placement.anchorLonLat[0].toFixed(5)}`
-                  : 'Click the map to set the anchor.'}
+                  ? 'Edit the anchor below or click the map to set it.'
+                  : 'Click the map or enter lat/lon below to set the anchor.'}
+              </div>
+              <div className="form-group">
+                <label>Anchor latitude / longitude</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="number" step="any" placeholder="lat" disabled={busy}
+                         value={placement.anchorLonLat ? placement.anchorLonLat[1] : ''}
+                         onChange={(e) => {
+                           const lat = parseFloat(e.target.value);
+                           if (Number.isNaN(lat)) return;
+                           setPlacement((p) => ({
+                             ...p,
+                             anchorLonLat: [p.anchorLonLat ? p.anchorLonLat[0] : 0, lat],
+                           }));
+                         }} />
+                  <input type="number" step="any" placeholder="lon" disabled={busy}
+                         value={placement.anchorLonLat ? placement.anchorLonLat[0] : ''}
+                         onChange={(e) => {
+                           const lon = parseFloat(e.target.value);
+                           if (Number.isNaN(lon)) return;
+                           setPlacement((p) => ({
+                             ...p,
+                             anchorLonLat: [lon, p.anchorLonLat ? p.anchorLonLat[1] : 0],
+                           }));
+                         }} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Anchor elevation (m, blank = auto from terrain)</label>
+                <input type="number" step={0.5} disabled={busy}
+                       value={placement.anchorElevation ?? ''}
+                       onChange={(e) => setPlacement((p) => ({
+                         ...p,
+                         anchorElevation: e.target.value === '' ? null : parseFloat(e.target.value),
+                       }))} />
               </div>
               <div className="form-group">
                 <label>3D gizmo mode</label>
@@ -267,15 +301,6 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                          onChange={(e) => setPlacement((p) => ({ ...p, swapYz: e.target.checked }))} />
                   Swap Y/Z
                 </label>
-                <div className="form-group">
-                  <label>Anchor elevation (m, blank = auto from terrain)</label>
-                  <input type="number" step={0.5} disabled={busy}
-                         value={placement.anchorElevation ?? ''}
-                         onChange={(e) => setPlacement((p) => ({
-                           ...p,
-                           anchorElevation: e.target.value === '' ? null : parseFloat(e.target.value),
-                         }))} />
-                </div>
               </details>
             </GuidedSection>
           )}
