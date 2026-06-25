@@ -33,3 +33,24 @@ describe('transformModelPoint', () => {
     expect(out[0]).toBeCloseTo(0.3048, 4);
   });
 });
+
+describe('transformModelPoint with domain rotation', () => {
+  it('reduces to the no-domain result when domainRotationDeg = 0', () => {
+    const p = { ...defaultPlacement(), units: 'm' as const, move: [0, 0, 0] as [number, number, number] };
+    const a = transformModelPoint([2, 3, 1], p);
+    const b = transformModelPoint([2, 3, 1], p, 0);
+    expect(b[0]).toBeCloseTo(a[0], 9);
+    expect(b[1]).toBeCloseTo(a[1], 9);
+    expect(b[2]).toBeCloseTo(a[2], 9);
+  });
+
+  it('projects (east,north) onto the rotated (u,v) axes (phi=90)', () => {
+    // At phi=90: u = e*sin90 + n*cos90 = e ; v = e*cos90 - n*sin90 = -n.
+    // transformModelPoint returns [v, u, up] = [-n, e, up].
+    const p = { ...defaultPlacement(), units: 'm' as const, rotation: 0, move: [0, 0, 0] as [number, number, number] };
+    // model +X -> (e,n) = (1,0) at rotation 0 -> [v,u] = [-0, 1] = [0,1]
+    const out = transformModelPoint([1, 0, 0], p, 90);
+    expect(out[0]).toBeCloseTo(0, 6); // v (east-grid)
+    expect(out[1]).toBeCloseTo(1, 6); // u (north-grid)
+  });
+});

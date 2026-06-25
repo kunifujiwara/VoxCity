@@ -6,10 +6,12 @@
  * point to scene metres (x=east, y=north, z=up) for the *visual* preview only;
  * the committed voxelization uses the exact server-side transform
  * (`voxcity.importer.transform.build_placement_transform`). This client-side
- * version intentionally omits the server-side "domain rotation" correction
- * (which corrects for the model grid's own rectangle not being exactly
- * true-north-aligned), since that correction is not knowable purely
- * client-side without fetching grid geometry from the backend.
+ * version optionally applies the server's "domain rotation" correction (which
+ * corrects for the model grid's own rectangle not being exactly
+ * true-north-aligned) via the `domainRotationDeg` parameter; callers that
+ * have grid geometry available (e.g. `ObjPlacementMap.tsx`, via
+ * `lib/grid.ts`'s `domainRotationDeg`) should pass it for preview parity with
+ * the committed result.
  */
 
 export type Units = 'm' | 'cm' | 'mm' | 'ft' | 'in';
@@ -54,9 +56,12 @@ export function unitScale(units: string): number {
  *
  * Mirrors the visual part of voxcity.importer.transform.build_placement_transform:
  *   1. subtract anchorModelPoint, 2. scale by units, 3. rotate `rotation` deg
- *   about the up axis (model +X->east, +Y->north at rotation 0), 4. add move.
- * Returns [east, north, up] metres. Domain rotation + ground offset are applied
- * server-side and intentionally omitted from this visual approximation.
+ *   about the up axis (model +X->east, +Y->north at rotation 0), 4. project
+ *   onto the grid's own (u, v) axes using `domainRotationDeg` (phi) -- a
+ *   no-op when phi=0 -- 5. add move.
+ * Returns [east, north, up] metres. Ground offset (DEM-based vertical datum
+ * shift) is still applied server-side only and omitted from this visual
+ * approximation.
  *
  * NOTE: widened from `Placement` to `units: string` only so the (fixed,
  * spec-mandated) test file's untyped `{ ...base, units: 'ft' }` literal
@@ -67,6 +72,7 @@ export function unitScale(units: string): number {
 export function transformModelPoint(
   pt: [number, number, number],
   p: Omit<Placement, 'units'> & { units: string },
+  domainRotationDeg = 0,
 ): [number, number, number] {
   const s = unitScale(p.units);
   const lx = (pt[0] - p.anchorModelPoint[0]) * s;
@@ -76,8 +82,21 @@ export function transformModelPoint(
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
   // east = lx*cos - ly*sin ; north = lx*sin + ly*cos  (CCW, +X->E, +Y->N at 0)
-  const east = lx * cos - ly * sin + p.move[0];
-  const north = lx * sin + ly * cos + p.move[1];
+  const e = lx * cos - ly * sin;
+  const n = lx * sin + ly * cos;
+  // Project (e, n) onto the grid's own (u, v) axes -- server parity with
+  // voxcity.importer.transform.build_placement_transform's phi projection
+  // (phi = domain rotation bearing of the grid's +u axis):
+  //   u = e*sin(phi) + n*cos(phi) ; v = e*cos(phi) - n*sin(phi)
+  // At phi=0 this reduces to (u, v) = (n, e), so east=v=e, north=u=n --
+  // identical to the pre-domain-rotation formula above.
+  const phi = (domainRotationDeg * Math.PI) / 180;
+  const sp = Math.sin(phi);
+  const cp = Math.cos(phi);
+  const u = e * sp + n * cp;
+  const v = e * cp - n * sp;
+  const east = v + p.move[0];
+  const north = u + p.move[1];
   const up = lz + p.move[2];
   return [east, north, up];
 }

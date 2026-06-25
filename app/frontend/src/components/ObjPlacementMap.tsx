@@ -12,7 +12,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import type { ModelGeoResult } from '../api';
-import { lonLatToUvM, sceneXYToLonLat } from '../lib/grid';
+import { lonLatToUvM, sceneXYToLonLat, domainRotationDeg } from '../lib/grid';
 import { transformModelPoint, type Placement } from '../lib/objPlacement';
 
 interface Props {
@@ -50,10 +50,11 @@ const ObjPlacementMap: React.FC<Props> = ({ geo, placement, footprints, onAnchor
     if (!placement.anchorLonLat) return;
     const fwd = lonLatToUvM({ grid_geom: geo.grid_geom });
     if (!fwd) return;
+    const phiDeg = domainRotationDeg(geo.grid_geom);
     const [anchorEastM, anchorNorthM] = fwd(placement.anchorLonLat[0], placement.anchorLonLat[1]);
     for (const ring of footprints) {
       const latlngs = ring.map(([mx, my]) => {
-        const [eastOffset, northOffset] = transformModelPoint([mx, my, 0], placement);
+        const [eastOffset, northOffset] = transformModelPoint([mx, my, 0], placement, phiDeg);
         const [lon, lat] = sceneXYToLonLat(geo.grid_geom, anchorEastM + eastOffset, anchorNorthM + northOffset);
         return L.latLng(lat, lon);
       });
