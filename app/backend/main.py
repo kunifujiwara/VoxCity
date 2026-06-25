@@ -3402,9 +3402,18 @@ async def import_obj_commit(req: ImportObjCommitRequest):
     ids: List[int] = []
     if manifest:
         ids = [int(v) for v in (manifest[-1].get("id_map") or {}).values()]
-    warning = None if n_added > 0 else (
-        "Imported geometry voxelized to 0 cells inside the domain — check anchor/rotation/move/units."
-    )
+    if n_added > 0:
+        warning = None
+    elif ids:
+        warning = (
+            "Imported building(s) fully overlapped existing buildings; no new voxels were "
+            "added (placement may be correct — the geometry coincides with what's already there)."
+        )
+    else:
+        warning = (
+            "Imported geometry produced 0 cells inside the domain (off-domain placement or all "
+            "groups skipped) — check anchor/rotation/move/units and the group roles."
+        )
     return ImportObjCommitResponse(
         figure_json=_render_edit_preview(out, title="Imported building"),
         imported_building_ids=ids,

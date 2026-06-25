@@ -185,6 +185,29 @@ def test_commit_rejects_wrong_length_anchor_model_point(client):
     assert "anchor_model_point" in r.json()["detail"].lower()
 
 
+def test_commit_overlap_warning_distinct_from_offdomain(client):
+    # First import lands a building at the centre.
+    id1 = _upload_box(client)
+    center = _domain_center_lonlat()
+    r1 = client.post("/api/model/import_obj/commit", json={
+        "import_id": id1, "placement": {"anchor_lonlat": center}, "roles": {}, "overwrite": True,
+    })
+    assert r1.status_code == 200 and r1.json()["n_building_voxels_added"] > 0
+
+    # Second import of the SAME box at the SAME spot fully overlaps -> 0 net added,
+    # but ids ARE assigned (in-domain). Warning must say "overlap", not "0 cells".
+    id2 = _upload_box(client)
+    r2 = client.post("/api/model/import_obj/commit", json={
+        "import_id": id2, "placement": {"anchor_lonlat": center}, "roles": {}, "overwrite": True,
+    })
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+    assert body["n_building_voxels_added"] == 0
+    assert body["warning"] is not None
+    assert "overlap" in body["warning"].lower()
+    assert "0 cells" not in body["warning"].lower()
+
+
 def test_commit_rejects_nan_rotation(client):
     import_id = _upload_box(client)
     req = {
