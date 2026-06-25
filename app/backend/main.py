@@ -3343,8 +3343,19 @@ async def import_obj_commit(req: ImportObjCommitRequest):
         raise HTTPException(status_code=404, detail="Unknown or expired import_id; please re-upload.")
 
     p = req.placement
-    if len(p.anchor_lonlat) != 2:
-        raise HTTPException(status_code=400, detail="anchor_lonlat must be [lon, lat]")
+
+    def _require_finite_vec(name: str, vec, length: int) -> None:
+        if len(vec) != length or not all(math.isfinite(float(x)) for x in vec):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name} must be {length} finite number(s), got {vec!r}",
+            )
+
+    _require_finite_vec("anchor_lonlat", p.anchor_lonlat, 2)
+    _require_finite_vec("move", p.move, 3)
+    _require_finite_vec("anchor_model_point", p.anchor_model_point, 3)
+    if p.anchor_elevation is not None and not math.isfinite(float(p.anchor_elevation)):
+        raise HTTPException(status_code=400, detail="anchor_elevation must be a finite number or null")
 
     anchor_elev = p.anchor_elevation
     if anchor_elev is None:

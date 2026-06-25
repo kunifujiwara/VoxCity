@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import numpy as np
@@ -140,3 +141,45 @@ def test_commit_unknown_import_id_404(client):
     req = {"import_id": "deadbeef", "placement": {"anchor_lonlat": _domain_center_lonlat()}}
     r = client.post("/api/model/import_obj/commit", json=req)
     assert r.status_code == 404
+
+
+def test_commit_rejects_wrong_length_move(client):
+    import_id = _upload_box(client)
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": _domain_center_lonlat(), "move": [1.0, 2.0]},
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 400, r.text
+    assert "move" in r.json()["detail"].lower()
+
+
+def test_commit_rejects_nan_anchor(client):
+    import_id = _upload_box(client)
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": [float("nan"), 35.0]},
+    }
+    # httpx's TestClient.post(json=...) encodes with allow_nan=False and raises
+    # ValueError before the request is ever sent, so NaN payloads must be built
+    # manually with stdlib json.dumps (which allows NaN by default) and posted
+    # as raw content with an explicit content-type.
+    body = json.dumps(req).encode("utf-8")
+    r = client.post(
+        "/api/model/import_obj/commit",
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 400, r.text
+    assert "anchor_lonlat" in r.json()["detail"].lower()
+
+
+def test_commit_rejects_wrong_length_anchor_model_point(client):
+    import_id = _upload_box(client)
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": _domain_center_lonlat(), "anchor_model_point": [0.0, 0.0]},
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 400, r.text
+    assert "anchor_model_point" in r.json()["detail"].lower()
