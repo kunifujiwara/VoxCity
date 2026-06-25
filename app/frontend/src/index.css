@@ -1124,3 +1124,18 @@ input:focus, select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.role-table {
+  border-collapse: collapse;
+}
+.role-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--vc-ring);
+  vertical-align: middle;
+}
+.role-table td:first-child {
+  word-break: break-all;
+}
+.role-table select {
+  min-width: 92px;
+}
