@@ -68,6 +68,11 @@ export function unitScale(units: string): number {
  * type-checks; do not narrow back to `Placement` or the test file will fail
  * to compile. Callers should still only ever pass a real `Units` value --
  * `unitScale` throws at runtime on anything else.
+ *
+ * NOTE: three/PlacementGizmo.tsx's mesh-sync effect duplicates this rotation
+ * formula by construction (three.js requires imperative position/rotation,
+ * not a callable pure function) -- mirror any change to the rotation/anchor
+ * math there too.
  */
 export function transformModelPoint(
   pt: [number, number, number],
