@@ -242,3 +242,29 @@ def test_commit_offdomain_anchor_warns(client):
     assert r.status_code == 200, r.text
     w = r.json()["warning"]
     assert w is not None and "outside the model domain" in w.lower()
+
+
+def test_anchor_ground_returns_datum(client):
+    lon, lat = _domain_center_lonlat()
+    r = client.get("/api/model/anchor_ground", params={"lon": lon, "lat": lat})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Flat fixture (make_flat_voxcity(nx=30, ny=30, nz=12, meshsize=1.0)): DEM is
+    # an all-zeros (30, 30) grid, so both the sampled elevation and the grid min
+    # are 0.0; meshsize is the 1.0 passed to the fixture.
+    assert body["dem_elevation"] == 0.0
+    assert body["dem_min"] == 0.0
+    assert body["meshsize_m"] == 1.0
+
+
+def test_anchor_ground_requires_model(client):
+    app_state.voxcity = None
+    r = client.get("/api/model/anchor_ground", params={"lon": 0.0, "lat": 0.0})
+    assert r.status_code == 400
+
+
+def test_anchor_ground_offdomain_clamps_without_error(client):
+    # Off-domain anchor must still return a datum (nearest in-bounds cell), not 500.
+    r = client.get("/api/model/anchor_ground", params={"lon": 10.0, "lat": 10.0})
+    assert r.status_code == 200, r.text
+    assert "dem_elevation" in r.json()
