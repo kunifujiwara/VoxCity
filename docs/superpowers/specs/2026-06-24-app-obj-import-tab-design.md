@@ -143,7 +143,11 @@ through later Edit-tab re-voxelization.
   *visual* portion of `build_placement_transform` (anchor→uv_m, units scale,
   rotation + domain rotation, move) used only to position the preview footprint/mesh.
   It is explicitly an approximation; the committed voxelization uses the exact Python
-  transform. Vertical (ground offset) is treated as a constant for preview.
+  transform. Vertical placement now mirrors the server's exact datum: the frontend fetches
+  the DEM elevation/minimum and meshsize at the anchor cell via
+  `GET /api/model/anchor_ground` and computes `(anchor_elevation - dem_min) +
+  meshsize`, the same formula `build_placement_transform` uses, so the preview's
+  vertical seating matches the committed result (not a constant approximation).
 - **`api.ts`:** `uploadImportObj(file): ImportObjUploadResponse`,
   `commitImportObj(req): ImportObjCommitResponse`. On successful commit, call the
   parent `onModelEdited` so Solar/View/Landmark/Export figures invalidate (same hook
