@@ -26,6 +26,7 @@ import {
   Placement,
   Units,
 } from '../lib/objPlacement';
+import { anchorSceneUp } from './importAnchorScene';
 
 interface ImportTabProps {
   hasModel: boolean;
@@ -112,11 +113,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     const fwd = lonLatToUvM({ grid_geom: geo.grid_geom });
     if (!fwd) return [0, 0, 0];
     const [east, north] = fwd(placement.anchorLonLat[0], placement.anchorLonLat[1]);
-    let up = 0;
-    if (anchorGround) {
-      const effElev = placement.anchorElevation ?? anchorGround.dem_elevation;
-      up = effElev - anchorGround.dem_min + anchorGround.meshsize_m;
-    }
+    const up = anchorSceneUp(placement.anchorElevation, anchorGround);
     return [east, north, up];
   }, [geo, placement.anchorLonLat, placement.anchorElevation, anchorGround]);
 
