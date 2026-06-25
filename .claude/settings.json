@@ -1,4 +1,18 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(grep -i -m3 \"license\" pyproject.toml)",
+      "Bash(head -3 LICENSE*)",
+      "Bash(\"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" env *)",
+      "Bash(ls -d .worktrees)",
+      "Bash(ls -d worktrees)",
+      "Bash(grep -i \"worktree.*director\" CLAUDE.md)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/importer/test_units.py -v)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/importer/ --collect-only -q 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import tests.importer.conftest; print\\('OK'\\)\" 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import trimesh; print\\(trimesh.__version__\\)\")"
+    ]
+  },
   "allowDangerouslySkipPermissions": true,
   "initialPermissionMode": "bypassPermissions",
   "terminalShell.windows": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"

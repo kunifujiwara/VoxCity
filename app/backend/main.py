@@ -3247,21 +3247,42 @@ async def import_obj_upload(file: UploadFile = File(...)):
             bbox_model=[[float(bmin[0]), float(bmin[1]), float(bmin[2])],
                         [float(bmax[0]), float(bmax[1]), float(bmax[2])]],
         ))
-        # Footprint: 2D convex hull of XY projection (closed ring); falls back to an
-        # axis-aligned bbox rectangle if the hull fails (degenerate/collinear points).
-        # Note: concave footprints (L/U/T-shaped buildings) are over-approximated by
-        # the hull -- this is a deliberate v1 simplification for the preview overlay.
+        # Footprint: true horizontal outline = the union of all triangle faces
+        # projected onto the model XY plane (exterior ring(s)). Unlike a convex
+        # hull this matches the building's actual horizontal silhouette, including
+        # concave (L/U/T-shaped) buildings and disjoint parts. Falls back to an
+        # axis-aligned bbox rectangle if the union fails or yields nothing (e.g.
+        # fully-degenerate / purely-vertical geometry that projects to lines).
+        rings: List[List[List[float]]] = []
         try:
-            from scipy.spatial import ConvexHull
-            xy = verts[:, :2]
-            hull = ConvexHull(xy)
-            ring = [[float(xy[v, 0]), float(xy[v, 1])] for v in hull.vertices]
-            ring.append(ring[0])
+            from shapely.geometry import Polygon as ShapelyPolygon, MultiPolygon
+            from shapely.ops import unary_union
+
+            tris = []
+            for fa, fb, fc in faces:
+                tri = ShapelyPolygon([
+                    (float(verts[fa, 0]), float(verts[fa, 1])),
+                    (float(verts[fb, 0]), float(verts[fb, 1])),
+                    (float(verts[fc, 0]), float(verts[fc, 1])),
+                ])
+                if tri.is_valid and tri.area > 0:
+                    tris.append(tri)
+            merged = unary_union(tris) if tris else None
+            if merged is not None and not merged.is_empty:
+                geoms = list(merged.geoms) if isinstance(merged, MultiPolygon) else [merged]
+                for g in geoms:
+                    if g.is_empty or g.area <= 0:
+                        continue
+                    ring = [[float(x), float(y)] for x, y in g.exterior.coords]
+                    if len(ring) >= 4:
+                        rings.append(ring)
         except Exception:
-            ring = [[float(bmin[0]), float(bmin[1])], [float(bmax[0]), float(bmin[1])],
-                    [float(bmax[0]), float(bmax[1])], [float(bmin[0]), float(bmax[1])],
-                    [float(bmin[0]), float(bmin[1])]]
-        footprints.append(ring)
+            rings = []
+        if not rings:
+            rings = [[[float(bmin[0]), float(bmin[1])], [float(bmax[0]), float(bmin[1])],
+                      [float(bmax[0]), float(bmax[1])], [float(bmin[0]), float(bmax[1])],
+                      [float(bmin[0]), float(bmin[1])]]]
+        footprints.extend(rings)
         # Decimated mesh for 3D preview.
         base = len(all_verts)
         all_verts.extend([[float(v[0]), float(v[1]), float(v[2])] for v in verts])

@@ -104,6 +104,8 @@ export interface SceneViewerProps {
     vertices: [number, number, number][];
     indices: [number, number, number][];
     placement: import('../lib/objPlacement').Placement;
+    /** Scene-metre offset [east, north, up] of the placement anchor. */
+    anchorScene: [number, number, number];
     mode: 'translate' | 'rotate';
     onChange: (next: Partial<import('../lib/objPlacement').Placement>) => void;
   } | null;
@@ -316,6 +318,7 @@ export function SceneViewer({
               vertices={placementPreview.vertices}
               indices={placementPreview.indices}
               placement={placementPreview.placement}
+              anchorScene={placementPreview.anchorScene}
               mode={placementPreview.mode}
               onChange={placementPreview.onChange}
             />

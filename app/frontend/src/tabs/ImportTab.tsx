@@ -5,7 +5,7 @@
  * here writes it; the 2D map (Task 8) and 3D gizmo (Task 9) read/write the same
  * object. Commit calls /api/model/import_obj/commit and renders the result.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Upload, Boxes } from 'lucide-react';
 import {
   uploadImportObj,
@@ -18,6 +18,7 @@ import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import ObjPlacementMap from '../components/ObjPlacementMap';
 import { SceneViewer } from '../three';
+import { lonLatToUvM } from '../lib/grid';
 import {
   defaultPlacement,
   Placement,
@@ -48,12 +49,46 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     if (hasModel) getModelGeo().then(setGeo).catch(() => {});
   }, [hasModel]);
 
+  // Default the placement anchor to the model centre once an OBJ is uploaded.
+  // The 3D gizmo only writes `move`/`rotation`, never the anchor, so without
+  // this a user who positions purely in 3D would never set `anchorLonLat` and
+  // the "Import building(s)" button would stay disabled. Clicking the 2D map
+  // still overrides this default. geo.center is Leaflet [lat, lon]; Placement
+  // stores [lon, lat].
+  useEffect(() => {
+    if (!upload || !geo) return;
+    setPlacement((p) =>
+      p.anchorLonLat ? p : { ...p, anchorLonLat: [geo.center[1], geo.center[0]] },
+    );
+  }, [upload, geo]);
+
   const setMove = (idx: 0 | 1 | 2, v: number) =>
     setPlacement((p) => {
       const move = [...p.move] as [number, number, number];
       move[idx] = v;
       return { ...p, move };
     });
+
+  // Stable identity so the gizmo's onObjectChange handler doesn't churn the
+  // SceneViewer/PlacementGizmo props on every drag tick.
+  const handlePlacementChange = useCallback(
+    (next: Partial<Placement>) => setPlacement((p) => ({ ...p, ...next })),
+    [],
+  );
+
+  // Scene-metre position [east, north, up] of the placement anchor. The 2D map
+  // draws footprints at `anchorScene + transformModelPoint(...)`; the 3D gizmo
+  // mesh must sit at `anchorScene + move` to stay in sync. We derive east/north
+  // from the anchor lon/lat via the same grid projection the 2D map uses, and
+  // up from the anchor elevation (0 when auto). Falls back to the origin when
+  // no anchor or grid geometry is available yet.
+  const anchorScene = useMemo<[number, number, number]>(() => {
+    if (!geo || !placement.anchorLonLat) return [0, 0, 0];
+    const fwd = lonLatToUvM({ grid_geom: geo.grid_geom });
+    if (!fwd) return [0, 0, 0];
+    const [east, north] = fwd(placement.anchorLonLat[0], placement.anchorLonLat[1]);
+    return [east, north, placement.anchorElevation ?? 0];
+  }, [geo, placement.anchorLonLat, placement.anchorElevation]);
 
   const handleFile = useCallback(async (file: File | null) => {
     if (!file) return;
@@ -62,7 +97,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       const res = await uploadImportObj(file);
       setUpload(res);
       setRoles(Object.fromEntries(res.groups.map((g) => [g.name, g.role])));
-      setInfo(`Loaded ${res.groups.length} group(s). Set an anchor and import.`);
+      setInfo(`Loaded ${res.groups.length} group(s). Position it and import.`);
       onFigureChange(''); // clear any previous committed result so the live preview shows
     } catch (err: any) {
       setError(err.message || 'Upload failed');
@@ -263,8 +298,9 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 vertices: upload.preview.vertices,
                 indices: upload.preview.indices,
                 placement,
+                anchorScene,
                 mode: gizmoMode,
-                onChange: (next) => setPlacement((p) => ({ ...p, ...next })),
+                onChange: handlePlacementChange,
               }}
             />
           ) : figureJson ? (

@@ -6,7 +6,7 @@
  * decimated preview geometry (model coords); object position/rotation/scale
  * are derived from the current Placement (units scale, rotation, move).
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { TransformControls } from '@react-three/drei';
 import { Placement, unitScale } from '../lib/objPlacement';
@@ -15,12 +15,30 @@ export interface PlacementGizmoProps {
   vertices: [number, number, number][]; // model coords, from upload.preview.vertices
   indices: [number, number, number][]; // from upload.preview.indices
   placement: Placement;
+  /**
+   * Scene-metre offset of the placement anchor: [east, north, up]. The 2D map
+   * draws each footprint at `anchorScene + transformModelPoint(...)`, so the 3D
+   * mesh must live in the same frame to stay in sync -- i.e. its world position
+   * is `anchorScene + move`. Defaults to [0,0,0] (legacy origin-relative) when
+   * the anchor/grid geometry isn't available yet.
+   */
+  anchorScene: [number, number, number];
   mode: 'translate' | 'rotate';
   onChange: (next: Partial<Placement>) => void;
 }
 
-export function PlacementGizmo({ vertices, indices, placement, mode, onChange }: PlacementGizmoProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
+export function PlacementGizmo({ vertices, indices, placement, anchorScene, mode, onChange }: PlacementGizmoProps) {
+  // Hold the mesh in state (not just a ref) so TransformControls receives a
+  // concrete `object` to attach to once the mesh has mounted. Attaching to the
+  // mesh itself (rather than nesting it as TransformControls' children) keeps
+  // drei's attach effect from re-running on every render -- nesting passes a
+  // brand-new `children` element each render, which made drei detach/re-attach
+  // the controls mid-drag and abort the gesture after ~1m. See PR notes.
+  const [mesh, setMesh] = useState<THREE.Mesh | null>(null);
+  // True while the user is actively dragging a gizmo handle. Used to suppress
+  // the placement->mesh sync effect below so external state round-trips don't
+  // fight the in-progress drag.
+  const draggingRef = useRef(false);
 
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
@@ -34,11 +52,18 @@ export function PlacementGizmo({ vertices, indices, placement, mode, onChange }:
     return geom;
   }, [vertices, indices]);
 
-  // Apply units scale + rotation about up (Z) + position from move whenever
-  // placement changes from OUTSIDE this component (e.g. the numeric form or
-  // the 2D map's anchor click) -- the gizmo's own drags update placement via
-  // onChange and don't need this effect to "round-trip" back to the mesh,
-  // since React state flows down through these same props on next render.
+  // Apply units scale + rotation about up (Z) + position whenever placement (or
+  // the anchor's scene position) changes from OUTSIDE this component (e.g. the
+  // numeric form, the units dropdown, or a 2D-map anchor click). The mesh's
+  // world position is `anchorScene + move` so the 3D object sits at the same
+  // place as the 2D map's footprint, which is drawn at
+  // `anchorScene + transformModelPoint(...)`. The gizmo's own drags update
+  // placement.move via onChange and flow back down through these props on the
+  // next render.
+  //
+  // While a drag is in progress we skip this entirely: the gizmo already owns
+  // the mesh transform, and re-writing position/rotation here mid-gesture would
+  // snap the object back and cancel free movement.
   //
   // NOTE: unlike lib/objPlacement.ts's transformModelPoint (used by the 2D map
   // in ObjPlacementMap.tsx), this effect does not subtract placement.anchorModelPoint
@@ -48,21 +73,30 @@ export function PlacementGizmo({ vertices, indices, placement, mode, onChange }:
   // server-side commit transform. Apply the same (pt - anchorModelPoint) offset
   // here if/when anchorModelPoint becomes user-settable.
   useEffect(() => {
-    const m = meshRef.current;
-    if (!m) return;
+    if (!mesh || draggingRef.current) return;
     const s = unitScale(placement.units);
-    m.scale.set(s, s, s);
-    m.rotation.set(0, 0, (placement.rotation * Math.PI) / 180);
-    m.position.set(placement.move[0], placement.move[1], placement.move[2]);
-  }, [placement]);
+    mesh.scale.set(s, s, s);
+    mesh.rotation.set(0, 0, (placement.rotation * Math.PI) / 180);
+    mesh.position.set(
+      anchorScene[0] + placement.move[0],
+      anchorScene[1] + placement.move[1],
+      anchorScene[2] + placement.move[2],
+    );
+  }, [mesh, placement, anchorScene]);
 
   const handleObjectChange = () => {
-    const m = meshRef.current;
-    if (!m) return;
+    if (!mesh) return;
     if (mode === 'translate') {
-      onChange({ move: [m.position.x, m.position.y, m.position.z] });
+      // Mesh world position is anchorScene + move; recover move for placement.
+      onChange({
+        move: [
+          mesh.position.x - anchorScene[0],
+          mesh.position.y - anchorScene[1],
+          mesh.position.z - anchorScene[2],
+        ],
+      });
     } else {
-      onChange({ rotation: (m.rotation.z * 180) / Math.PI });
+      onChange({ rotation: (mesh.rotation.z * 180) / Math.PI });
     }
   };
 
@@ -75,16 +109,40 @@ export function PlacementGizmo({ vertices, indices, placement, mode, onChange }:
   const showZ = true;
 
   return (
-    <TransformControls
-      mode={mode}
-      showX={showX}
-      showY={showY}
-      showZ={showZ}
-      onObjectChange={handleObjectChange}
-    >
-      <mesh ref={meshRef} geometry={geometry}>
-        <meshStandardMaterial color="#e8590c" transparent opacity={0.65} side={THREE.DoubleSide} flatShading />
+    <>
+      <mesh ref={setMesh} geometry={geometry}>
+        <meshStandardMaterial
+          color="#e8590c"
+          transparent
+          opacity={0.4}
+          side={THREE.DoubleSide}
+          flatShading
+        />
       </mesh>
-    </TransformControls>
+      {mesh && (
+        <TransformControls
+          object={mesh}
+          mode={mode}
+          // Larger handles are easier to grab; the arrows draw with depthTest
+          // off so they stay readable through the translucent preview mesh.
+          size={1.1}
+          // Continuous movement -- explicitly no snapping/quantization.
+          translationSnap={null}
+          rotationSnap={null}
+          showX={showX}
+          showY={showY}
+          showZ={showZ}
+          // Drag start/end: while dragging, suppress the placement->mesh sync
+          // effect so external state round-trips don't cancel the gesture.
+          onMouseDown={() => {
+            draggingRef.current = true;
+          }}
+          onMouseUp={() => {
+            draggingRef.current = false;
+          }}
+          onObjectChange={handleObjectChange}
+        />
+      )}
+    </>
   );
 }
