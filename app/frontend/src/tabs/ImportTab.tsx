@@ -5,7 +5,7 @@
  * here writes it; the 2D map (Task 8) and 3D gizmo (Task 9) read/write the same
  * object. Commit calls /api/model/import_obj/commit and renders the result.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, Boxes } from 'lucide-react';
 import {
   uploadImportObj,
@@ -48,6 +48,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   // DEM datum at the current anchor cell, for the 3D preview's vertical seating.
   const [anchorGround, setAnchorGround] = useState<AnchorGroundResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (hasModel) getModelGeo().then(setGeo).catch(() => {});
@@ -181,13 +182,25 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           <h2>Import OBJ</h2>
 
           <GuidedSection index={1} label="UPLOAD">
-            <label className="btn btn-secondary"
-                   style={{ width: '100%', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: '100%', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+              disabled={busy}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Upload size={14} style={{ marginRight: 6 }} />
               {upload ? 'Replace OBJ…' : 'Choose OBJ file…'}
-              <input type="file" accept=".obj" style={{ display: 'none' }} disabled={busy}
-                     onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
-            </label>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".obj"
+              disabled={busy}
+              style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+                       overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
+              onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+            />
           </GuidedSection>
 
           {upload && (
