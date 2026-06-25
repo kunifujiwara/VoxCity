@@ -20,7 +20,7 @@ import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import ObjPlacementMap from '../components/ObjPlacementMap';
 import { SceneViewer } from '../three';
-import { lonLatToUvM } from '../lib/grid';
+import { lonLatToUvM, domainRotationDeg } from '../lib/grid';
 import {
   defaultPlacement,
   Placement,
@@ -119,6 +119,13 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     }
     return [east, north, up];
   }, [geo, placement.anchorLonLat, placement.anchorElevation, anchorGround]);
+
+  // Bearing (degrees) of the grid's own +u axis -- see lib/grid.ts's
+  // domainRotationDeg(). Passed to the 3D gizmo so it applies the same
+  // combined rotation (placement.rotation + phiDeg) as transformModelPoint
+  // (used by the 2D footprint map), keeping the two previews in sync on
+  // rotated grids.
+  const phiDeg = useMemo(() => (geo ? domainRotationDeg(geo.grid_geom) : 0), [geo]);
 
   const handleFile = useCallback(async (file: File | null) => {
     if (!file) return;
@@ -373,6 +380,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 indices: upload.preview.indices,
                 placement,
                 anchorScene,
+                domainRotationDeg: phiDeg,
                 mode: gizmoMode,
                 onChange: handlePlacementChange,
               }}
