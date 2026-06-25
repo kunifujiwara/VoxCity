@@ -2705,6 +2705,39 @@ async def model_geo():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/model/anchor_ground")
+async def model_anchor_ground(lon: float, lat: float):
+    """Vertical datum info for placing an imported OBJ at a lon/lat anchor.
+
+    The 3D import preview must seat ``move_up = 0`` at the same height the
+    commit transform does, namely scene-Z ``(dem_at_anchor - dem_min) + meshsize``
+    (per-cell terrain height plus the one-voxel ground offset). The frontend
+    lacks the DEM, so we return the raw pieces it needs to compute that:
+    ``dem_elevation`` (absolute DEM at the anchor cell), ``dem_min`` (DEM grid
+    minimum) and ``meshsize_m``. Mirrors the commit endpoint's auto-elevation
+    lookup (``_anchor_lonlat_to_cell`` + DEM sample) so preview and commit agree.
+    """
+    _require_model()
+    try:
+        dem = np.asarray(app_state.voxcity.dem.elevation, dtype=float)
+        if dem.size == 0:
+            raise HTTPException(status_code=400, detail="Model has no DEM elevation grid")
+        i, j = _anchor_lonlat_to_cell(lon, lat)
+        nx, ny = dem.shape
+        ii = min(max(i, 0), nx - 1)
+        jj = min(max(j, 0), ny - 1)
+        return {
+            "dem_elevation": float(dem[ii, jj]),
+            "dem_min": float(np.min(dem)),
+            "meshsize_m": float(app_state.meshsize),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---------------------------------------------------------------------------
 # Zoning
 # ---------------------------------------------------------------------------

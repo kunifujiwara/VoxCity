@@ -337,6 +337,24 @@ export async function getModelGeo() {
   return request<ModelGeoResult>('/model/geo');
 }
 
+export interface AnchorGroundResult {
+  dem_elevation: number; // absolute DEM elevation at the anchor cell (metres)
+  dem_min: number;       // DEM grid minimum (metres)
+  meshsize_m: number;    // voxel size (metres)
+}
+
+/**
+ * Vertical datum info for seating an imported OBJ at a lon/lat anchor. Used by
+ * the Import tab's 3D preview so `move_up = 0` lands the building on the ground
+ * at the same height the commit transform uses: scene-Z `(dem_elevation -
+ * dem_min) + meshsize_m`.
+ */
+export async function getAnchorGround(lon: number, lat: number) {
+  return request<AnchorGroundResult>(
+    `/model/anchor_ground?lon=${encodeURIComponent(lon)}&lat=${encodeURIComponent(lat)}`,
+  );
+}
+
 export interface LandCoverClass {
   index: number;
   name: string;

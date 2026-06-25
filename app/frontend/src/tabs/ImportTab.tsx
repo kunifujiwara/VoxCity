@@ -11,6 +11,8 @@ import {
   uploadImportObj,
   commitImportObj,
   getModelGeo,
+  getAnchorGround,
+  AnchorGroundResult,
   ImportObjUploadResult,
   ModelGeoResult,
 } from '../api';
@@ -44,6 +46,8 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
+  // DEM datum at the current anchor cell, for the 3D preview's vertical seating.
+  const [anchorGround, setAnchorGround] = useState<AnchorGroundResult | null>(null);
 
   useEffect(() => {
     if (hasModel) getModelGeo().then(setGeo).catch(() => {});
@@ -62,6 +66,19 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     );
   }, [upload, geo]);
 
+  // Fetch the DEM datum at the anchor cell whenever the anchor moves. The 3D
+  // preview uses this so `move_up = 0` seats the building on the ground at the
+  // same height the commit transform does (see `anchorScene` below).
+  useEffect(() => {
+    const a = placement.anchorLonLat;
+    if (!a) { setAnchorGround(null); return; }
+    let cancelled = false;
+    getAnchorGround(a[0], a[1])
+      .then((r) => { if (!cancelled) setAnchorGround(r); })
+      .catch(() => { if (!cancelled) setAnchorGround(null); });
+    return () => { cancelled = true; };
+  }, [placement.anchorLonLat]);
+
   const setMove = (idx: 0 | 1 | 2, v: number) =>
     setPlacement((p) => {
       const move = [...p.move] as [number, number, number];
@@ -78,17 +95,28 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
   // Scene-metre position [east, north, up] of the placement anchor. The 2D map
   // draws footprints at `anchorScene + transformModelPoint(...)`; the 3D gizmo
-  // mesh must sit at `anchorScene + move` to stay in sync. We derive east/north
-  // from the anchor lon/lat via the same grid projection the 2D map uses, and
-  // up from the anchor elevation (0 when auto). Falls back to the origin when
-  // no anchor or grid geometry is available yet.
+  // mesh must sit at `anchorScene + move` to stay in sync. East/north come from
+  // the anchor lon/lat via the same grid projection the 2D map uses.
+  //
+  // The vertical component must match the commit transform so that `move_up = 0`
+  // seats the building on the ground in BOTH the preview and the voxelized
+  // result. The commit places model z=0 at scene-Z `(anchor_elevation - dem_min)
+  // + meshsize` (per-cell terrain height + one ground voxel). We mirror that here
+  // using the DEM datum fetched for the anchor cell; the effective elevation is
+  // the user's manual override when set, else the auto DEM sample (matching the
+  // commit endpoint's fallback). Falls back to 0 until the datum is available.
   const anchorScene = useMemo<[number, number, number]>(() => {
     if (!geo || !placement.anchorLonLat) return [0, 0, 0];
     const fwd = lonLatToUvM({ grid_geom: geo.grid_geom });
     if (!fwd) return [0, 0, 0];
     const [east, north] = fwd(placement.anchorLonLat[0], placement.anchorLonLat[1]);
-    return [east, north, placement.anchorElevation ?? 0];
-  }, [geo, placement.anchorLonLat, placement.anchorElevation]);
+    let up = 0;
+    if (anchorGround) {
+      const effElev = placement.anchorElevation ?? anchorGround.dem_elevation;
+      up = effElev - anchorGround.dem_min + anchorGround.meshsize_m;
+    }
+    return [east, north, up];
+  }, [geo, placement.anchorLonLat, placement.anchorElevation, anchorGround]);
 
   const handleFile = useCallback(async (file: File | null) => {
     if (!file) return;
