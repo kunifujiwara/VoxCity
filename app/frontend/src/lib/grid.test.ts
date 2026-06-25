@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildingsFullyContainedInPolygon, buildingsInPolygon } from './grid';
+import { buildingsFullyContainedInPolygon, buildingsInPolygon, domainRotationDeg, type GridGeom } from './grid';
 
 function polygonFeature(id: number, ring: [number, number][]) {
   return {
@@ -94,5 +94,21 @@ describe('buildingsFullyContainedInPolygon', () => {
     };
 
     expect(buildingsFullyContainedInPolygon(fc, concaveSelection)).toEqual([]);
+  });
+});
+
+describe('domainRotationDeg', () => {
+  it('matches the server _domain_rotation_deg (bearing of u_vec, deg CW from north)', () => {
+    const geom = {
+      origin: [139.70, 35.66], side_1: [0, 0], side_2: [0, 0],
+      u_vec: [-4.710113518866101e-06, 8.152119551880664e-06], v_vec: [0, 0],
+      adj_mesh: [1, 1], grid_size: [1, 1],
+    } as unknown as GridGeom;
+    expect(domainRotationDeg(geom)).toBeCloseTo(-30.01836742761813, 6);
+  });
+
+  it('is ~0 for an axis-aligned (north-up) grid', () => {
+    const geom = { u_vec: [0, 1] } as unknown as GridGeom;
+    expect(domainRotationDeg(geom)).toBeCloseTo(0, 9);
   });
 });

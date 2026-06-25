@@ -43,6 +43,17 @@ export function pointInRing(lon: number, lat: number, ring: [number, number][]):
   return inside;
 }
 
+/**
+ * Bearing (degrees, clockwise from true north) of the grid's +u axis — the
+ * VoxCity "domain rotation". Reproduces src/voxcity/importer/transform.py's
+ * _domain_rotation_deg: degrees(atan2(u_vec[0], u_vec[1])), where u_vec is
+ * (dlon, dlat) per metre along side_1.
+ */
+export function domainRotationDeg(geo: GridGeom): number {
+  const [du, dv] = geo.u_vec; // (dlon, dlat) per metre
+  return (Math.atan2(du, dv) * 180) / Math.PI;
+}
+
 /** Cell centre in lon/lat coordinates. */
 export function cellCentre(i: number, j: number, g: GridGeom): [number, number] {
   const [dx, dy] = g.adj_mesh;
