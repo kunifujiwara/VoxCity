@@ -3364,13 +3364,15 @@ async def import_obj_commit(req: ImportObjCommitRequest):
     if not math.isfinite(float(p.rotation)):
         raise HTTPException(status_code=400, detail="rotation must be a finite number")
 
+    ai, aj = _anchor_lonlat_to_cell(p.anchor_lonlat[0], p.anchor_lonlat[1])
+    dem = np.asarray(app_state.voxcity.dem.elevation)
+    nx, ny = dem.shape
+    anchor_off_domain = not (0 <= ai < nx and 0 <= aj < ny)
+
     anchor_elev = p.anchor_elevation
     if anchor_elev is None:
-        i, j = _anchor_lonlat_to_cell(p.anchor_lonlat[0], p.anchor_lonlat[1])
-        dem = np.asarray(app_state.voxcity.dem.elevation)
-        nx, ny = dem.shape
-        ii = min(max(i, 0), nx - 1)
-        jj = min(max(j, 0), ny - 1)
+        ii = min(max(ai, 0), nx - 1)
+        jj = min(max(aj, 0), ny - 1)
         anchor_elev = float(dem[ii, jj])
 
     before = int(np.sum(np.asarray(app_state.voxcity.voxels.classes) == -3))
@@ -3431,6 +3433,10 @@ async def import_obj_commit(req: ImportObjCommitRequest):
             "Imported geometry produced 0 cells inside the domain (off-domain placement or all "
             "groups skipped) — check anchor/rotation/move/units and the group roles."
         )
+
+    if anchor_off_domain:
+        note = "Anchor lon/lat falls outside the model domain; placement may be unexpected. "
+        warning = note + warning if warning else note.strip()
     return ImportObjCommitResponse(
         figure_json=_render_edit_preview(out, title="Imported building"),
         imported_building_ids=ids,

@@ -226,3 +226,19 @@ def test_commit_rejects_nan_rotation(client):
     )
     assert r.status_code == 400, r.text
     assert "rotation" in r.json()["detail"].lower()
+
+
+def test_commit_offdomain_anchor_warns(client):
+    import_id = _upload_box(client)
+    # Anchor far from the model rectangle (the flat fixture is near (0,0));
+    # provide explicit elevation so the test doesn't depend on the auto-sample
+    # path's own off-domain clamping behavior.
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": [10.0, 10.0], "anchor_elevation": 0.0},
+        "roles": {}, "overwrite": True,
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 200, r.text
+    w = r.json()["warning"]
+    assert w is not None and "outside the model domain" in w.lower()
