@@ -362,6 +362,12 @@ def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
 
     if source == "Local file":
         geotiff_path = kwargs["dem_path"]
+    elif source == "GSI DEM Japan":
+        from ..downloader.gsi import save_gsi_dem_as_geotiff
+        geotiff_path = os.path.join(output_dir, "dem.tif")
+        save_gsi_dem_as_geotiff(
+            rectangle_vertices, geotiff_path, dem_type=kwargs.get("gsi_dem_type")
+        )
     else:
         try:
             initialize_earth_engine()
