@@ -143,6 +143,14 @@ def _txt_resp(value):
     return m
 
 
+def _txt_resp_factory():
+    """Infinite generator of valid 200 tile responses (value 3.0)."""
+    def gen():
+        while True:
+            yield _txt_resp(3.0)
+    return gen()
+
+
 class TestDownloadAndCompose:
     def test_download_fills_missing_with_nodata(self):
         # 1x2 tile range; first tile 200, second 404
@@ -197,3 +205,33 @@ class TestSaveDemAsGeotiff:
             tile = (2 * 20037508.342789244) / (2 ** zoom)
             assert src.transform.a == pytest.approx(tile / 256, rel=1e-9)
             assert src.transform.e == pytest.approx(-tile / 256, rel=1e-9)
+
+
+from voxcity.downloader.gsi import save_gsi_dem_as_geotiff
+
+
+class TestSaveGsiDemAsGeotiff:
+    def _verts(self):
+        return [(140.09, 36.21), (140.12, 36.21), (140.12, 36.24), (140.09, 36.24)]
+
+    def test_auto_detect_then_write(self, tmp_path):
+        out = tmp_path / "dem.tif"
+        with patch("voxcity.downloader.gsi.check_dem_availability",
+                   return_value=("dem5a", 15)) as chk, \
+             patch("voxcity.downloader.gsi.requests.get", side_effect=_txt_resp_factory()):
+            path = save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+        assert path == str(out)
+        assert out.exists()
+        chk.assert_called_once()
+
+    def test_forced_type_skips_probe(self, tmp_path):
+        out = tmp_path / "dem.tif"
+        with patch("voxcity.downloader.gsi.check_dem_availability") as chk, \
+             patch("voxcity.downloader.gsi.requests.get", side_effect=_txt_resp_factory()):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), dem_type="dem10b", sleep=0)
+        chk.assert_not_called()
+
+    def test_invalid_type_raises(self, tmp_path):
+        out = tmp_path / "dem.tif"
+        with pytest.raises(ValueError):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), dem_type="bogus", sleep=0)

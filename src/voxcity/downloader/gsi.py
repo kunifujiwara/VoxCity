@@ -193,3 +193,48 @@ def save_dem_as_geotiff(array, tile_range, zoom, filepath, nodata=GSI_NODATA):
     band.SetNoDataValue(float(nodata))
     dataset = None
     return filepath
+
+
+def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
+                            nodata=GSI_NODATA, sleep=0.4, timeout_s=10):
+    """Download GSI bare-earth DEM for an ROI and save an EPSG:3857 GeoTIFF.
+
+    Args:
+        rectangle_vertices: list of (lon, lat) tuples defining the ROI.
+        filepath: output GeoTIFF path.
+        dem_type: None to auto-detect the finest available product, or one of
+                  'dem5a' / 'dem5b' / 'dem10b' to force it.
+        nodata: no-data fill value.
+        sleep: seconds between requests (politeness; set 0 in tests).
+        timeout_s: per-request timeout.
+
+    Returns:
+        The written filepath.
+
+    Raises:
+        ValueError: if dem_type is invalid or no tiles cover the area.
+    """
+    bbox = _bbox_from_rectangle_vertices(rectangle_vertices)
+    min_lon, min_lat, max_lon, max_lat = bbox
+    mid_lat = (min_lat + max_lat) / 2.0
+    mid_lon = (min_lon + max_lon) / 2.0
+
+    if dem_type is None:
+        dem_type, zoom = check_dem_availability(
+            mid_lat, mid_lon, timeout_s=timeout_s, sleep=sleep
+        )
+    else:
+        if dem_type not in _ZOOM_BY_TYPE:
+            raise ValueError(
+                f"Unknown dem_type {dem_type!r}; expected one of "
+                f"{sorted(_ZOOM_BY_TYPE)}"
+            )
+        zoom = _ZOOM_BY_TYPE[dem_type]
+
+    tile_range = tile_range_for_bbox(bbox, zoom)
+    tiles = download_dem_tiles(
+        tile_range, dem_type, zoom, nodata=nodata, sleep=sleep, timeout_s=timeout_s
+    )
+    mosaic = compose_dem_array(tiles, tile_range, nodata=nodata)
+    save_dem_as_geotiff(mosaic, tile_range, zoom, filepath, nodata=nodata)
+    return filepath
