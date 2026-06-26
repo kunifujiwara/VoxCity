@@ -378,23 +378,47 @@ def build_building_highlight_buffers(
     return chunks
 
 
-def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np.ndarray:
-    """Return ground-level elevation in metres, in uv layout (axis 0 = u = north).
+def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape,
+                     include_building_roofs: bool = False) -> np.ndarray:
+    """Return surface elevation in metres, in uv layout (axis 0 = u = north).
 
-    Both ``voxcity_grid`` and the consumer ``build_ground_overlay_buffers`` use
-    uv layout, so no orientation conversion is needed at this boundary.
+    When include_building_roofs=False: height of the first contiguous solid run
+    from the ground (pilotis → open floor, normal building → roof, terrain → top).
+    When include_building_roofs=True: height of the topmost solid surface, so the
+    overlay sits on the roof for all elevated structures.
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return np.zeros(ref_shape, dtype=float)
-    # Height of the surface the observer stands on: the top of the first
-    # contiguous solid column from the ground up (ground -1, land cover >=1,
-    # building -3).  This matches where the ground simulation observer sits:
-    #  - normal building -> roof top (rooftop observers)
-    #  - pilotis/elevated mass -> the open ground floor below the air gap
-    #  - plain terrain -> land-cover top
-    # Trees (-2) and air (0) are not solid.  The first air gap above a solid
-    # run terminates the column, so elevated masses above a void are excluded.
+    if include_building_roofs:
+        return _topmost_solid_top(voxcity_grid, meshsize)
     return _first_contiguous_solid_top(voxcity_grid, meshsize)
+
+
+def _topmost_solid_top(voxcity_grid: np.ndarray, meshsize: float) -> np.ndarray:
+    """Per-cell height (m) of the topmost air-above-solid surface.
+
+    Scans each column top-to-bottom; returns the k-index of the highest voxel
+    that is solid and has air/tree directly above it.  Skips water (7/8/9) and
+    non-building negatives.  Mirrors the top-to-bottom observer scan used when
+    include_building_roofs=True: pilotis and elevated masses yield the roof.
+    """
+    solid = (voxcity_grid == -1) | (voxcity_grid >= 1) | (voxcity_grid == -3)
+    water = np.isin(voxcity_grid, [7, 8, 9])
+    bad_neg = (voxcity_grid < 0) & (voxcity_grid != -3) & (voxcity_grid != -1)
+    invalid_surface = water | bad_neg
+    air = ~solid
+    nz = solid.shape[2]
+    nx, ny = voxcity_grid.shape[:2]
+    top_k = np.zeros((nx, ny), dtype=np.int32)
+    for z in range(nz - 1, 0, -1):
+        above_is_air = air[:, :, z]
+        below_is_solid = solid[:, :, z - 1]
+        below_is_valid = ~invalid_surface[:, :, z - 1]
+        new_top = above_is_air & below_is_solid & below_is_valid
+        # Only assign cells not yet assigned (top_k==0 and not already at floor)
+        unset = (top_k == 0) & new_top
+        top_k = np.where(unset, z - 1, top_k)
+    return top_k.astype(float) * float(meshsize)
 
 
 def _first_contiguous_solid_top(voxcity_grid: np.ndarray, meshsize: float) -> np.ndarray:
@@ -427,6 +451,7 @@ def build_ground_overlay_buffers(
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
     unit_label: str = "",
+    include_building_roofs: bool = False,
 ) -> OverlayGeometryResponse:
     """Build a coloured ground-surface overlay (one quad per non-NaN cell).
 
@@ -441,7 +466,7 @@ def build_ground_overlay_buffers(
     # Both sim_grid and voxcity_grid arrive in uv layout (Phase 3); the scene
     # mesh places voxel (u, v) at scene (u*ms, v*ms), so iterate (u, v) directly.
     sim_uv = sim
-    dem_uv = _derive_dem_norm(voxcity_grid, meshsize, sim.shape)
+    dem_uv = _derive_dem_norm(voxcity_grid, meshsize, sim.shape, include_building_roofs)
 
     finite = np.isfinite(sim_uv) & ~np.isnan(sim_uv)
     if not np.any(finite):

@@ -634,6 +634,7 @@ def _build_sim_overlay_traces(
     vmax: Optional[float],
     view_point_height: float,
     colorbar_title: str = "",
+    include_building_roofs: bool = False,
 ) -> list:
     """Build only the simulation overlay Plotly traces (no voxels).
 
@@ -650,20 +651,10 @@ def _build_sim_overlay_traces(
         # -- Derive DEM from voxel grid (same logic as _derive_dem_norm in scene_geometry.py) --
         # voxcity_grid and sim_grid are uv layout (Phase 3); no flip.
         if voxcity_grid is not None and voxcity_grid.ndim == 3:
-            # Height of the surface the observer stands on: top of the first
-            # contiguous solid run from the ground up (ground -1, land cover
-            # >=1, building -3).  Matches the simulator observer search:
-            # normal building -> roof; pilotis -> open ground floor; terrain ->
-            # land-cover top.  The first air gap above a solid run terminates
-            # the column, so elevated masses above a void are excluded.
-            solid = (voxcity_grid == -1) | (voxcity_grid >= 1) | (voxcity_grid == -3)
-            nz_g = solid.shape[2]
-            air = ~solid
-            has_air = air.any(axis=2)
-            first_air = np.argmax(air, axis=2)
-            first_air = np.where(has_air, first_air, nz_g)
-            k_top_grid = np.maximum(first_air - 1, 0)
-            dem_norm = k_top_grid.astype(float) * float(meshsize)
+            # Delegate to scene_geometry helpers so logic is not duplicated.
+            from .scene_geometry import _derive_dem_norm as _sc_dem
+            dem_norm = _sc_dem(voxcity_grid, meshsize, sim_grid.shape,
+                               include_building_roofs=include_building_roofs)
         else:
             dem_norm = np.zeros_like(sim_grid, dtype=float)
 
@@ -1196,6 +1187,7 @@ async def run_solar(req: SolarRequest):
                 voxcity_grid=voxcity.voxels.classes,
                 view_point_height=req.view_point_height,
                 colorbar_title=_colorbar_title,
+                include_building_roofs=req.include_building_roofs,
             )
 
             # Build overlay figure
@@ -1219,6 +1211,7 @@ async def run_solar(req: SolarRequest):
                     "sim_surface_opacity": 0.95,
                     "title": "Solar overlay",
                     "ground_colorbar_title": app_state.last_colorbar_title,
+                    "include_building_roofs": req.include_building_roofs,
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -1369,6 +1362,7 @@ async def run_view(req: ViewRequest):
                 voxcity_grid=voxcity.voxels.classes,
                 view_point_height=req.view_point_height,
                 colorbar_title="View Index",
+                include_building_roofs=req.include_building_roofs,
             )
 
             voxcity_grid = voxcity.voxels.classes
@@ -1391,6 +1385,7 @@ async def run_view(req: ViewRequest):
                     "sim_surface_opacity": 0.95,
                     "title": req.view_type.replace("_", " ").title() + " View Index",
                     "ground_colorbar_title": "View Index",
+                    "include_building_roofs": req.include_building_roofs,
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -1554,6 +1549,7 @@ async def run_landmark(req: LandmarkRequest):
                 voxcity_grid=voxcity_grid,
                 view_point_height=req.view_point_height,
                 colorbar_title="Visibility",
+                include_building_roofs=req.include_building_roofs,
             )
 
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
@@ -1575,6 +1571,7 @@ async def run_landmark(req: LandmarkRequest):
                     "sim_surface_opacity": 0.95,
                     "title": "Landmark Visibility (Ground)",
                     "ground_colorbar_title": "Visibility",
+                    "include_building_roofs": req.include_building_roofs,
                 },
             )
             app_state.last_base_fig_json = fig_json
@@ -1704,6 +1701,7 @@ async def rerender(req: RerenderRequest):
                 vmax=req.vmax,
                 view_point_height=app_state.last_sim_view_point_height,
                 colorbar_title=app_state.last_colorbar_title or "",
+                include_building_roofs=app_state.last_sim_result.include_building_roofs if app_state.last_sim_result else False,
             )
 
             fig_dict['data'] = voxel_traces + sim_traces
@@ -1737,6 +1735,7 @@ async def rerender(req: RerenderRequest):
                     "sim_surface_opacity": 0.95,
                     "title": title_map.get(app_state.last_sim_type, "Simulation"),
                     "ground_colorbar_title": app_state.last_colorbar_title,
+                    "include_building_roofs": app_state.last_sim_result.include_building_roofs if app_state.last_sim_result else False,
                 },
             )
         else:
@@ -3057,6 +3056,7 @@ def sim_geometry(kind: str, req: SimGeometryRequest) -> OverlayGeometryResponse:
             vmin=req.vmin,
             vmax=req.vmax,
             unit_label=unit,
+            include_building_roofs=cached.include_building_roofs,
         )
     elif target == "building":
         if cached.mesh is None:

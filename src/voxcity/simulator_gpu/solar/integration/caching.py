@@ -137,6 +137,7 @@ class CachedGPURayTracer:
     lad_field: object
     transmittance_field: object
     topo_top_field: object
+    topo_roof_field: object    # topmost solid (top-to-bottom scan) for rooftop mode
     trace_rays_kernel: object
     voxel_shape: Tuple[int, int, int]
     meshsize: float
@@ -629,40 +630,44 @@ def get_or_create_gpu_ray_tracer(
             cache.is_solid_field.from_numpy(is_solid)
             cache.lad_field.from_numpy(lad_array)
             cache.voxel_data_id = id(voxel_data)
-            
+
             _compute_topo_gpu(cache.is_solid_field, cache.topo_top_field, nz)
+            _compute_topo_roof_gpu(cache.is_solid_field, cache.topo_roof_field, nz)
             return cache
-    
+
     # Create new cache
     is_solid, lad_array = convert_voxel_data_to_arrays(voxel_data, tree_lad)
-    
+
     is_solid_field = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
     lad_field = ti.field(dtype=ti.f32, shape=(nx, ny, nz))
     transmittance_field = ti.field(dtype=ti.f32, shape=(nx, ny))
     topo_top_field = ti.field(dtype=ti.i32, shape=(nx, ny))
-    
+    topo_roof_field = ti.field(dtype=ti.i32, shape=(nx, ny))
+
     is_solid_field.from_numpy(is_solid)
     lad_field.from_numpy(lad_array)
-    
+
     _compute_topo_gpu(is_solid_field, topo_top_field, nz)
-    
+    _compute_topo_roof_gpu(is_solid_field, topo_roof_field, nz)
+
     trace_rays_kernel = _get_cached_trace_rays_kernel()
-    
+
     mask_field = ti.field(dtype=ti.i8, shape=(nx, ny))
     _fill_mask_ones_kernel(mask_field)
-    
+
     _gpu_ray_tracer_cache = CachedGPURayTracer(
         is_solid_field=is_solid_field,
         lad_field=lad_field,
         transmittance_field=transmittance_field,
         topo_top_field=topo_top_field,
+        topo_roof_field=topo_roof_field,
         trace_rays_kernel=trace_rays_kernel,
         voxel_shape=(nx, ny, nz),
         meshsize=meshsize,
         voxel_data_id=id(voxel_data),
         mask_field=mask_field
     )
-    
+
     return _gpu_ray_tracer_cache
 
 
@@ -901,9 +906,50 @@ def _get_cached_topo_kernel():
 
 
 def _compute_topo_gpu(is_solid_field, topo_top_field, nz: int):
-    """Compute topography using GPU."""
+    """Compute topography using GPU (first contiguous solid from bottom)."""
     kernel = _get_cached_topo_kernel()
     kernel(is_solid_field, topo_top_field, nz)
+
+
+_cached_topo_roof_kernel = None
+
+
+def _get_cached_topo_roof_kernel():
+    """Get or create topmost-solid kernel (top-to-bottom scan)."""
+    global _cached_topo_roof_kernel
+    if _cached_topo_roof_kernel is not None:
+        return _cached_topo_roof_kernel
+
+    import taichi as ti
+    from ...init_taichi import ensure_initialized
+    ensure_initialized()
+
+    @ti.kernel
+    def _topo_roof_kernel(
+        is_solid_f: ti.template(),
+        topo_f: ti.template(),
+        grid_nz: ti.i32
+    ):
+        for i, j in topo_f:
+            # Topmost solid voxel with air/space above it.
+            roof_k = -1
+            for z_rev in range(grid_nz - 1):
+                k = grid_nz - 1 - z_rev   # scan nz-1 down to 1
+                if k < 1:
+                    break
+                if is_solid_f[i, j, k] == 0 and is_solid_f[i, j, k - 1] == 1:
+                    roof_k = k - 1
+                    break
+            topo_f[i, j] = roof_k
+
+    _cached_topo_roof_kernel = _topo_roof_kernel
+    return _cached_topo_roof_kernel
+
+
+def _compute_topo_roof_gpu(is_solid_field, topo_roof_field, nz: int):
+    """Compute topmost-surface topography (top-to-bottom scan)."""
+    kernel = _get_cached_topo_roof_kernel()
+    kernel(is_solid_field, topo_roof_field, nz)
 
 
 def _get_cached_trace_rays_kernel():
@@ -990,33 +1036,37 @@ def compute_direct_transmittance_map_gpu(
     tree_k: float = 0.6,
     tree_lad: float = 1.0,
     *,
-    computation_mask=None
+    computation_mask=None,
+    include_building_roofs: bool = False
 ) -> np.ndarray:
     """
     Compute direct solar transmittance map using GPU ray tracing.
     """
     nx, ny, nz = voxel_data.shape
-    
+
     cache = get_or_create_gpu_ray_tracer(voxel_data, meshsize, tree_lad)
-    
+
     # Upload mask before running the kernel
     if computation_mask is not None:
         mask_np = np.asarray(computation_mask, dtype=np.int8)
         cache.mask_field.from_numpy(mask_np)
     else:
         _fill_mask_ones_kernel(cache.mask_field)
-    
+
     sun_dir_x = float(sun_direction[0])
     sun_dir_y = float(sun_direction[1])
     sun_dir_z = float(sun_direction[2])
     view_height_k = max(1, int(view_point_height / meshsize))
     step_size = meshsize * 0.5
     max_trace_dist = float(max(nx, ny, nz) * meshsize * 2)
-    
+
+    # Select topo: topmost surface when rooftops enabled, first-contiguous otherwise.
+    topo_field = cache.topo_roof_field if include_building_roofs else cache.topo_top_field
+
     cache.trace_rays_kernel(
         cache.is_solid_field,
         cache.lad_field,
-        cache.topo_top_field,
+        topo_field,
         cache.transmittance_field,
         cache.mask_field,
         sun_dir_x, sun_dir_y, sun_dir_z,
@@ -1025,7 +1075,7 @@ def compute_direct_transmittance_map_gpu(
         nx, ny, nz
     )
     # (no post-pass — kernel handles NaN for masked cells directly)
-    
+
     return cache.transmittance_field.to_numpy()
 
 

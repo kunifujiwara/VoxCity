@@ -40,6 +40,7 @@ class SimulationResultCache:
     view_point_height: float = 1.5              # relevant for view sims
     colorbar_title: Optional[str] = None        # unit label for the colorbar
     building_id_grid: Optional[Any] = None      # building_id_grid snapshot at sim time
+    include_building_roofs: bool = False        # whether topmost surface was used
 
 
 @dataclass
@@ -80,6 +81,7 @@ class AppState:
         view_point_height: float = 1.5,
         colorbar_title: Optional[str] = None,
         building_id_grid: Optional[Any] = None,
+        include_building_roofs: bool = False,
     ) -> None:
         """Persist a simulation result both in the per-type dict and the legacy
         last_sim_* fields so existing render/export paths keep working."""
@@ -93,6 +95,7 @@ class AppState:
             view_point_height=view_point_height,
             colorbar_title=colorbar_title,
             building_id_grid=bid_snapshot,
+            include_building_roofs=include_building_roofs,
         )
         self.sim_results_by_type[sim_type] = entry
         # Update legacy fields
@@ -103,6 +106,13 @@ class AppState:
         self.last_sim_voxcity_grid = voxcity_grid
         self.last_sim_view_point_height = view_point_height
         self.last_colorbar_title = colorbar_title
+
+    @property
+    def last_sim_result(self) -> Optional[SimulationResultCache]:
+        """Return the most recently stored SimulationResultCache."""
+        if self.last_sim_type is not None:
+            return self.sim_results_by_type.get(self.last_sim_type)
+        return None
 
     def get_sim_result(self, sim_type: Optional[str]) -> Optional[SimulationResultCache]:
         """Return the cached result for the requested *sim_type*, or the most

@@ -183,20 +183,36 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            for z in range(1, nz):
-                if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    below = voxel_data[x, y, z - 1]
-                    roof_ok = include_building_roofs and (below == -3)
-                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
-                        vi_map[x, y] = np.nan
-                        found_observer = True
-                        break
-                    else:
+            if include_building_roofs:
+                # Topmost walkable surface: scan top-to-bottom, skip water/invalid.
+                # Allows pilotis/elevated masses to yield the roof, not the floor.
+                for z in range(nz - 1, 0, -1):
+                    if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                        below = voxel_data[x, y, z - 1]
+                        water = below in (7, 8, 9)
+                        bad_neg = (below < 0) and (below != -3)
+                        if water or bad_neg:
+                            continue  # skip, keep scanning downward
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
                         vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
                         vi_map[x, y] = vi_value
                         found_observer = True
                         break
+            else:
+                # First walkable surface from bottom (original behaviour).
+                for z in range(1, nz):
+                    if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                        below = voxel_data[x, y, z - 1]
+                        if (below in (7, 8, 9)) or (below < 0):
+                            vi_map[x, y] = np.nan
+                            found_observer = True
+                            break
+                        else:
+                            observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                            vi_value = compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+                            vi_map[x, y] = vi_value
+                            found_observer = True
+                            break
             if not found_observer:
                 vi_map[x, y] = np.nan
     return vi_map
@@ -337,7 +353,10 @@ def _trace_ray_exclusion_masks(is_tree, is_allowed, origin, direction, meshsize,
 def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, meshsize, tree_k, tree_lad, is_tree, is_target, is_allowed, is_blocker_inc, inclusion_mode, trees_in_targets, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
-    obs_base_z = _precompute_observer_base_z(voxel_data)
+    if include_building_roofs:
+        obs_base_z = _precompute_observer_top_z(voxel_data)
+    else:
+        obs_base_z = _precompute_observer_base_z(voxel_data)
     for x in prange(nx):
         for y in range(ny):
             base_z = obs_base_z[x, y]
@@ -369,6 +388,38 @@ def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, 
                         visibility_sum += value
             vi_map[x, y] = visibility_sum / n_rays
     return vi_map
+
+
+@njit(cache=True, fastmath=True)
+def _precompute_observer_top_z(voxel_data):
+    """Topmost air-above-solid transition: observer for include_building_roofs=True.
+
+    Scans each column top-to-bottom and returns the k-index of the topmost voxel
+    that is solid (not air/tree) and has air or tree directly above it, skipping
+    water surfaces (7/8/9) and non-building negatives.  Returns -1 if no valid
+    surface exists.
+    """
+    nx, ny, nz = voxel_data.shape
+    out = np.empty((nx, ny), dtype=np.int32)
+    for x in range(nx):
+        for y in range(ny):
+            found = False
+            for z_rev in range(nz - 1):
+                z = nz - 1 - z_rev  # nz-1, nz-2, ..., 1
+                v_above = voxel_data[x, y, z]
+                v_base = voxel_data[x, y, z - 1]
+                # Transition: air/tree above, solid below
+                if (v_above == 0 or v_above == -2) and not (v_base == 0 or v_base == -2):
+                    water = (v_base == 7) or (v_base == 8) or (v_base == 9)
+                    bad_neg = (v_base < 0) and (v_base != -3)
+                    if not (water or bad_neg):
+                        out[x, y] = z - 1
+                        found = True
+                        break
+                    # else: non-walkable surface — keep scanning downward
+            if not found:
+                out[x, y] = -1
+    return out
 
 
 @njit(cache=True, fastmath=True)

@@ -240,6 +240,7 @@ def get_direct_solar_irradiance_map(
         
         # Compute transmittance map using ray tracing
         computation_mask = kwargs.pop('computation_mask', None)
+        include_building_roofs = kwargs.get('include_building_roofs', False)
         transmittance_map = compute_direct_transmittance_map_gpu(
             voxel_data=voxel_data,
             sun_direction=(dx_dir, dy_dir, dz_dir),
@@ -248,6 +249,7 @@ def get_direct_solar_irradiance_map(
             tree_k=tree_k,
             tree_lad=tree_lad,
             computation_mask=computation_mask,
+            include_building_roofs=include_building_roofs,
         )
         
         # Convert to horizontal irradiance

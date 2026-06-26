@@ -35,15 +35,15 @@ def compute_direct_solar_irradiance_map_binary(
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            for z in range(1, nz):
-                if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    below = voxel_data[x, y, z - 1]
-                    roof_ok = include_building_roofs and (below == -3)
-                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
-                        irradiance_map[x, y] = np.nan
-                        found_observer = True
-                        break
-                    else:
+            if include_building_roofs:
+                # Topmost walkable surface: scan top-to-bottom.
+                for z in range(nz - 1, 0, -1):
+                    if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                        below = voxel_data[x, y, z - 1]
+                        water = below in (7, 8, 9)
+                        bad_neg = (below < 0) and (below != -3)
+                        if water or bad_neg:
+                            continue
                         observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
                         hit, transmittance = trace_ray_generic(
                             voxel_data,
@@ -58,6 +58,31 @@ def compute_direct_solar_irradiance_map_binary(
                         irradiance_map[x, y] = transmittance if not hit else 0.0
                         found_observer = True
                         break
+            else:
+                # First walkable surface from bottom (original behaviour).
+                for z in range(1, nz):
+                    if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
+                        below = voxel_data[x, y, z - 1]
+                        roof_ok = include_building_roofs and (below == -3)
+                        if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
+                            irradiance_map[x, y] = np.nan
+                            found_observer = True
+                            break
+                        else:
+                            observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                            hit, transmittance = trace_ray_generic(
+                                voxel_data,
+                                observer_location,
+                                sd,
+                                hit_values,
+                                meshsize,
+                                tree_k,
+                                tree_lad,
+                                inclusion_mode,
+                            )
+                            irradiance_map[x, y] = transmittance if not hit else 0.0
+                            found_observer = True
+                            break
             if not found_observer:
                 irradiance_map[x, y] = np.nan
     return irradiance_map

@@ -116,7 +116,8 @@ class LandmarkVisibilityCalculator:
         # Run GPU computation
         self._compute_visibility_map_kernel(
             visibility_map, view_height_voxel,
-            is_tree, is_solid, is_walkable, tree_att, att_cutoff
+            is_tree, is_solid, is_walkable, tree_att, att_cutoff,
+            int(include_building_roofs)
         )
         
         result = visibility_map.to_numpy()
@@ -190,46 +191,55 @@ class LandmarkVisibilityCalculator:
         is_solid: ti.template(),
         is_walkable: ti.template(),
         tree_att: ti.f32,
-        att_cutoff: ti.f32
+        att_cutoff: ti.f32,
+        include_roofs: ti.i32
     ):
         """Compute landmark visibility map using GPU parallel processing."""
         for x, y in visibility_map:
-            # Find observer position (first air voxel above a solid surface)
             observer_z = -1
             surface_walkable = 0
-            for z in range(1, self.nz):
-                val_above = is_solid[x, y, z] + is_tree[x, y, z]
-                val_below = is_solid[x, y, z-1] + is_tree[x, y, z-1]
-                
-                if val_above == 0 and val_below > 0:
-                    # Found ground level - check if walkable
-                    surface_walkable = is_walkable[x, y, z-1]
-                    observer_z = z + view_height_voxel
-                    break
-            
-            # Mark as invalid if no observer position found or surface not walkable
-            # (water, building tops, etc. are not walkable)
+
+            if include_roofs == 1:
+                # Topmost walkable surface: scan top-to-bottom.
+                for z_rev in range(self.nz - 1):
+                    z = self.nz - 1 - z_rev
+                    if z < 1:
+                        break
+                    val_above = is_solid[x, y, z] + is_tree[x, y, z]
+                    val_below = is_solid[x, y, z-1] + is_tree[x, y, z-1]
+                    if val_above == 0 and val_below > 0:
+                        if is_walkable[x, y, z-1] == 1:
+                            surface_walkable = 1
+                            observer_z = z + view_height_voxel
+                            break
+            else:
+                # First surface from bottom (original behaviour).
+                for z in range(1, self.nz):
+                    val_above = is_solid[x, y, z] + is_tree[x, y, z]
+                    val_below = is_solid[x, y, z-1] + is_tree[x, y, z-1]
+                    if val_above == 0 and val_below > 0:
+                        surface_walkable = is_walkable[x, y, z-1]
+                        observer_z = z + view_height_voxel
+                        break
+
             if observer_z < 0 or observer_z >= self.nz or surface_walkable == 0:
                 visibility_map[x, y] = ti.cast(float('nan'), ti.f32)
                 continue
-            
-            # Check visibility to any landmark
+
             visible = 0
             origin = Vector3(ti.cast(x, ti.f32), ti.cast(y, ti.f32), ti.cast(observer_z, ti.f32))
-            
+
             for lm in range(self._n_landmarks):
                 if visible == 0:
                     target = self._landmark_positions[lm]
-                    
                     vis = self._trace_to_landmark(
                         origin, target,
                         is_tree, is_solid,
                         tree_att, att_cutoff
                     )
-                    
                     if vis == 1:
                         visible = 1
-            
+
             visibility_map[x, y] = ti.cast(visible, ti.f32)
     
     @ti.func

@@ -102,20 +102,36 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
     for x in prange(nx):
         for y in range(ny):
             found_observer = False
-            for z in range(1, nz):
-                if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
-                    below = voxel_data[x, y, z - 1]
-                    roof_ok = include_building_roofs and (below == -3)
-                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
-                        visibility_map[x, y] = np.nan
-                        found_observer = True
-                        break
-                    else:
-                        observer_location = np.array([x, y, z+view_height_voxel], dtype=np.float64)
+            if include_building_roofs:
+                # Topmost walkable surface: scan top-to-bottom.
+                for z in range(nz - 1, 0, -1):
+                    if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
+                        below = voxel_data[x, y, z - 1]
+                        water = below in (7, 8, 9)
+                        bad_neg = (below < 0) and (below != -3)
+                        if water or bad_neg:
+                            continue
+                        observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
                         visible = compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
                         visibility_map[x, y] = visible
                         found_observer = True
                         break
+            else:
+                # First walkable surface from bottom (original behaviour).
+                for z in range(1, nz):
+                    if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
+                        below = voxel_data[x, y, z - 1]
+                        roof_ok = include_building_roofs and (below == -3)
+                        if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
+                            visibility_map[x, y] = np.nan
+                            found_observer = True
+                            break
+                        else:
+                            observer_location = np.array([x, y, z + view_height_voxel], dtype=np.float64)
+                            visible = compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values)
+                            visibility_map[x, y] = visible
+                            found_observer = True
+                            break
             if not found_observer:
                 visibility_map[x, y] = np.nan
     return visibility_map

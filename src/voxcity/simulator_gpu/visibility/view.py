@@ -219,7 +219,8 @@ class ViewCalculator:
             vi_map, view_height_voxel,
             is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable,
             mask_f,
-            inclusion_mode, tree_att
+            inclusion_mode, tree_att,
+            int(include_building_roofs)
         )
 
         return vi_map.to_numpy()
@@ -350,56 +351,62 @@ class ViewCalculator:
         is_walkable: ti.template(),
         mask_f: ti.template(),
         inclusion_mode: ti.i32,
-        tree_att: ti.f32
+        tree_att: ti.f32,
+        include_roofs: ti.i32
     ):
         """Compute View Index map using GPU parallel processing."""
         for x, y in vi_map:
             if mask_f[x, y] == 0:
                 vi_map[x, y] = ti.cast(float('nan'), ti.f32)
             else:
-                # Find observer position (first non-solid cell above ground)
-                # Allow being inside tree canopy
                 observer_z = -1
                 surface_walkable = 0
-                for z in range(1, self.nz):
-                    # Current cell is not solid (but can be inside tree)
-                    current_not_solid = 1 if is_solid[x, y, z] == 0 else 0
-                    # Below cell has something (ground, building, or tree)
-                    below_has_something = is_solid[x, y, z-1] + is_tree[x, y, z-1]
 
-                    if current_not_solid == 1 and below_has_something > 0:
-                        # Found ground level - check if walkable
-                        surface_walkable = is_walkable[x, y, z-1]
-                        observer_z = z + view_height_voxel
-                        break
+                if include_roofs == 1:
+                    # Topmost walkable surface: scan top-to-bottom, skip
+                    # non-walkable (water etc.), keep going on invalid.
+                    for z_rev in range(self.nz - 1):
+                        z = self.nz - 1 - z_rev  # nz-1 down to 1
+                        if z < 1:
+                            break
+                        curr_air = 1 if is_solid[x, y, z] == 0 else 0
+                        below_solid = is_solid[x, y, z-1] + is_tree[x, y, z-1]
+                        if curr_air == 1 and below_solid > 0:
+                            if is_walkable[x, y, z-1] == 1:
+                                surface_walkable = 1
+                                observer_z = z + view_height_voxel
+                                break
+                            # else non-walkable (water etc.) — keep scanning
+                else:
+                    # First surface from bottom (original behaviour).
+                    for z in range(1, self.nz):
+                        current_not_solid = 1 if is_solid[x, y, z] == 0 else 0
+                        below_has_something = is_solid[x, y, z-1] + is_tree[x, y, z-1]
+                        if current_not_solid == 1 and below_has_something > 0:
+                            surface_walkable = is_walkable[x, y, z-1]
+                            observer_z = z + view_height_voxel
+                            break
 
-                # Mark as invalid if no observer position found or surface not walkable
-                # (water, building tops, etc. are not walkable)
                 if observer_z < 0 or observer_z >= self.nz or surface_walkable == 0:
                     vi_map[x, y] = ti.cast(float('nan'), ti.f32)
                     continue
 
-                # Trace rays and count visibility
                 visibility_sum = 0.0
                 valid_rays = 0
 
                 for r in range(self._n_ray_dirs):
                     ray_dir = self._ray_dirs[r]
-
-                    # Trace ray through voxels
                     hit, trans = self._trace_ray_vi(
                         x, y, observer_z, ray_dir,
                         is_tree, is_solid, is_target, is_allowed, is_blocker,
                         inclusion_mode, tree_att
                     )
-
                     if inclusion_mode == 1:
                         if hit == 1:
                             visibility_sum += 1.0
                     else:
                         if hit == 0:
                             visibility_sum += trans
-
                     valid_rays += 1
 
                 if valid_rays > 0:

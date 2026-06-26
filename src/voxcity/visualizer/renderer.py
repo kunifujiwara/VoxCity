@@ -410,20 +410,28 @@ def visualize_voxcity_plotly(
         # heterogeneous offset.  By reading terrain heights straight
         # from the voxel array every cell gets a consistent offset.
         if voxel_array is not None and getattr(voxel_array, 'ndim', 0) == 3:
-            # Height of the surface the observer stands on: top of the first
-            # contiguous solid run from the ground up (ground -1, land cover
-            # >=1, building -3).  Matches the simulator observer search so the
-            # overlay sits where the value was computed: normal building ->
-            # roof; pilotis/elevated mass -> the open ground floor below the
-            # air gap; plain terrain -> land-cover top.  Trees (-2)/air (0) are
-            # not solid; the first air gap above a solid run ends the column.
+            include_roofs = bool(kwargs.get('include_building_roofs', False))
             solid = (voxel_array == -1) | (voxel_array >= 1) | (voxel_array == -3)
             nz_g = solid.shape[2]
             air = ~solid
-            has_air = air.any(axis=2)
-            first_air = np.argmax(air, axis=2)
-            first_air = np.where(has_air, first_air, nz_g)
-            k_top_grid = np.maximum(first_air - 1, 0)         # (nx, ny)
+            if include_roofs:
+                # Topmost solid surface (roof for pilotis/elevated masses).
+                water_or_bad = np.isin(voxel_array, [7, 8, 9]) | (
+                    (voxel_array < 0) & (voxel_array != -3) & (voxel_array != -1))
+                valid_solid = solid & ~water_or_bad
+                k_top_grid = np.zeros(voxel_array.shape[:2], dtype=np.int32)
+                for _z in range(nz_g - 1, 0, -1):
+                    above_air = air[:, :, _z]
+                    below_valid = valid_solid[:, :, _z - 1]
+                    new_top = above_air & below_valid
+                    unset = (k_top_grid == 0) & new_top
+                    k_top_grid = np.where(unset, _z - 1, k_top_grid)
+            else:
+                # First contiguous solid run from ground (pilotis -> open floor).
+                has_air = air.any(axis=2)
+                first_air = np.argmax(air, axis=2)
+                first_air = np.where(has_air, first_air, nz_g)
+                k_top_grid = np.maximum(first_air - 1, 0)
             # Derived DEM is already in uv layout, matching create_sim_surface_mesh.
             dem_norm = k_top_grid.astype(float) * float(meshsize)
         else:
