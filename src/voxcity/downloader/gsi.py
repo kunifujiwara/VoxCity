@@ -97,5 +97,8 @@ def parse_dem_tile_text(text, nodata=GSI_NODATA, size=GSI_TILE_SIZE):
             c = cell.strip()
             if c == "" or c == "e":
                 continue
-            arr[i, j] = float(c)
+            try:
+                arr[i, j] = float(c)
+            except ValueError:
+                continue  # malformed token (e.g. truncated mid-stream) -> nodata
     return arr

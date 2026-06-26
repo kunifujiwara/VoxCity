@@ -82,3 +82,13 @@ class TestParseDemTileText:
         assert arr[1, 1] == pytest.approx(3.0)
         # Untouched cell stays nodata
         assert arr[5, 5] == pytest.approx(-1.0)
+
+    def test_malformed_token_defaults_to_nodata(self):
+        # A garbage/truncated token (e.g. from a mid-stream cut response)
+        # must not crash — it should degrade to nodata like other bad input.
+        text = "1.0,xyz\n2.0,3.0"
+        arr = parse_dem_tile_text(text, nodata=-1.0)
+        assert arr[0, 0] == pytest.approx(1.0)
+        assert arr[0, 1] == pytest.approx(-1.0)
+        assert arr[1, 0] == pytest.approx(2.0)
+        assert arr[1, 1] == pytest.approx(3.0)
