@@ -161,6 +161,7 @@ export async function runSolar(params: {
   end_time?: string;
   epw_source?: string;
   view_point_height?: number;
+  include_building_roofs?: boolean;
   colormap?: string;
   vmin?: number | null;
   vmax?: number | null;
@@ -176,6 +177,7 @@ export async function runView(params: {
   view_type: string;
   analysis_target: string;
   view_point_height?: number;
+  include_building_roofs?: boolean;
   custom_classes?: number[];
   inclusion_mode?: boolean;
   n_azimuth?: number;
@@ -198,6 +200,7 @@ export async function runLandmark(params: {
   analysis_target: string;
   landmark_ids?: number[];
   view_point_height?: number;
+  include_building_roofs?: boolean;
   n_azimuth?: number;
   n_elevation?: number;
   elevation_min_degrees?: number;

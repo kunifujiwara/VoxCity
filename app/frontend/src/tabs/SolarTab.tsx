@@ -58,6 +58,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSimResult, setHasSimResult] = useState(false);
+  const [includeBuildingRoofs, setIncludeBuildingRoofs] = useState(false);
 
   const { surfaceZoneEdges } = useSurfaceZoneEdges({
     hasModel,
@@ -106,6 +107,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
         calc_type: calcType,
         analysis_target: analysisTarget,
         epw_source: 'default',
+        include_building_roofs: includeBuildingRoofs,
         colormap,
         vmin,
         vmax: vmax ? parseFloat(vmax) : null,
@@ -197,6 +199,16 @@ const SolarTab: React.FC<SolarTabProps> = ({
               { id: 'building', label: 'Building surfaces', icon: Box },
             ]}
           />
+          {analysisTarget === 'ground' && (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={includeBuildingRoofs}
+                onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
+              />
+              Include building rooftops
+            </label>
+          )}
         </GuidedSection>
 
         <GuidedSection index={3} label="DISPLAY">

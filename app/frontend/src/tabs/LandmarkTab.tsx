@@ -77,6 +77,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [hasSimResult, setHasSimResult] = useState(false);
   const [showingSimResult, setShowingSimResult] = useState(false);
+  const [includeBuildingRoofs, setIncludeBuildingRoofs] = useState(false);
 
   // Selection state
   const [selectedBuildingIds, setSelectedBuildingIds] = useState<number[]>([]);
@@ -230,6 +231,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
         analysis_target: analysisTarget,
         landmark_ids: ids,
         view_point_height: 1.5,
+        include_building_roofs: includeBuildingRoofs,
         n_azimuth: nAzimuth,
         n_elevation: nElevation,
         elevation_min_degrees: elevMin,
@@ -354,6 +356,16 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
             onElevMaxChange={setElevMax}
             showElevationRange={analysisTarget === 'ground'}
           />
+          {analysisTarget === 'ground' && (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={includeBuildingRoofs}
+                onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
+              />
+              Include building rooftops
+            </label>
+          )}
         </GuidedSection>
 
         <GuidedSection index={4} label="DISPLAY">

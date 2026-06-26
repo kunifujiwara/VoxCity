@@ -54,6 +54,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSimResult, setHasSimResult] = useState(false);
+  const [includeBuildingRoofs, setIncludeBuildingRoofs] = useState(false);
 
   const { surfaceZoneEdges } = useSurfaceZoneEdges({
     hasModel,
@@ -107,6 +108,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
         view_type: viewType,
         analysis_target: analysisTarget,
         view_point_height: viewPointHeight,
+        include_building_roofs: includeBuildingRoofs,
         custom_classes: Array.from(customClasses),
         inclusion_mode: inclusionMode,
         n_azimuth: nAzimuth,
@@ -212,6 +214,16 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
               onChange={(e) => setViewPointHeight(Number(e.target.value))}
             />
           </div>
+          {analysisTarget === 'ground' && (
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={includeBuildingRoofs}
+                onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
+              />
+              Include building rooftops
+            </label>
+          )}
           <SamplingSettings
             nAzimuth={nAzimuth}
             onNAzimuthChange={setNAzimuth}
