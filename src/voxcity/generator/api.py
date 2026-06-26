@@ -534,8 +534,12 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             else:
                 auto_sources['canopy_height_source'] = 'OpenStreetMap'
             
-            # DEM: fallback to Flat (no elevation data without GEE)
-            auto_sources['dem_source'] = 'Flat'
+            # DEM: fallback to Flat (no elevation data without GEE), except
+            # for sources that don't require Earth Engine. 'GSI DEM Japan'
+            # downloads bare-earth DEM tiles directly over HTTP from GSI, so
+            # it stays usable even when GEE is unavailable.
+            if auto_sources['dem_source'] != 'GSI DEM Japan':
+                auto_sources['dem_source'] = 'Flat'
             
             # Building complementary sources that require GEE
             ee_dependent_comp = {

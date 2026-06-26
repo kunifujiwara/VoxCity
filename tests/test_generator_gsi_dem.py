@@ -59,3 +59,45 @@ def test_usa_still_usgs():
 
 def test_gsi_in_dem_coverage_map():
     assert "GSI DEM Japan" in _DEM_COVERAGE
+
+
+class _StopBeforeBuild(Exception):
+    """Sentinel to abort get_voxcity right after source resolution."""
+
+
+def _resolved_dem_source_when_ee_unavailable(rectangle_vertices):
+    """Run get_voxcity's auto-selection with Earth Engine unavailable and
+    capture the DEM source it resolves to, short-circuiting before the heavy
+    model build via a patched _warn_source_coverage."""
+    from unittest.mock import patch as _patch
+    from voxcity.generator import api
+
+    captured = {}
+
+    def _capture(_verts, _b, _bc, _lc, _ch, dem_source):
+        captured["dem_source"] = dem_source
+        raise _StopBeforeBuild
+
+    # initialize_earth_engine is imported locally inside get_voxcity via
+    # `from ..downloader.gee import initialize_earth_engine`, so patch it at
+    # its definition module to simulate EE being unavailable (e.g. 403).
+    with _patch("voxcity.downloader.gee.initialize_earth_engine",
+                side_effect=Exception("EE unavailable")), \
+         _patch.object(api, "_warn_source_coverage", side_effect=_capture):
+        try:
+            api.get_voxcity(rectangle_vertices, meshsize=10)
+        except _StopBeforeBuild:
+            pass
+    return captured.get("dem_source")
+
+
+def test_japan_keeps_gsi_when_earth_engine_unavailable():
+    """Regression: the EE-unavailable fallback must NOT downgrade Japan's
+    'GSI DEM Japan' to 'Flat' — GSI downloads over HTTP without Earth Engine."""
+    assert _resolved_dem_source_when_ee_unavailable(JAPAN_VERTS) == "GSI DEM Japan"
+
+
+def test_usa_downgrades_to_flat_when_earth_engine_unavailable():
+    """USA's auto-selected USGS 3DEP DEM *does* require Earth Engine, so it
+    must still fall back to 'Flat' when EE is unavailable."""
+    assert _resolved_dem_source_when_ee_unavailable(USA_VERTS) == "Flat"
