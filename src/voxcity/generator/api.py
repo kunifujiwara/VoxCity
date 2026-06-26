@@ -233,6 +233,7 @@ _DEM_COVERAGE = {
     'DEM France 5m': lambda f: f['is_france'],
     'AUSTRALIA 5M DEM': lambda f: f['is_australia'],
     'Netherlands 0.5m DTM': lambda f: f['is_netherlands'],
+    'GSI DEM Japan': lambda f: f['is_japan'],
 }
 
 
@@ -289,7 +290,8 @@ def auto_select_data_sources(rectangle_vertices):
     - Land cover: USA -> 'Urbanwatch'; Japan -> 'OpenEarthMapJapan'; otherwise 'OpenStreetMap'.
       (If OSM is insufficient, consider 'ESA WorldCover' manually.)
     - Canopy height: 'High Resolution 1m Global Canopy Height Maps'.
-    - DEM: High-resolution where available (USA, England, Australia, France, Netherlands), else 'FABDEM'.
+    - DEM: High-resolution where available (USA, England, Australia, France, Netherlands, Japan), else 'FABDEM'.
+      Japan -> 'GSI DEM Japan' (bare-earth GSI DEM, auto-detected 5 m/10 m).
 
     Returns a dict with keys: building_source, building_complementary_source,
     land_cover_source, canopy_height_source, dem_source.
@@ -420,6 +422,8 @@ def auto_select_data_sources(rectangle_vertices):
         dem_source = 'DEM France 1m'
     elif is_netherlands:
         dem_source = 'Netherlands 0.5m DTM'
+    elif is_japan:
+        dem_source = 'GSI DEM Japan'
     else:
         dem_source = 'FABDEM'
 

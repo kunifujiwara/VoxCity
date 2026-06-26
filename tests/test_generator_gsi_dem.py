@@ -36,3 +36,26 @@ def test_gsi_source_calls_downloader_and_builds_grid(tmp_path):
     assert os.path.basename(called["filepath"]) == "dem.tif"
     assert isinstance(grid, np.ndarray)
     assert grid.ndim == 2
+
+
+from voxcity.generator.api import auto_select_data_sources, _DEM_COVERAGE
+
+
+# Tokyo ROI (Japan)
+JAPAN_VERTS = [(139.76, 35.67), (139.77, 35.67), (139.77, 35.68), (139.76, 35.68)]
+# Manhattan ROI (USA) — must stay USGS, proving Japan branch is scoped
+USA_VERTS = [(-74.01, 40.70), (-74.00, 40.70), (-74.00, 40.71), (-74.01, 40.71)]
+
+
+def test_japan_auto_selects_gsi():
+    sources = auto_select_data_sources(JAPAN_VERTS)
+    assert sources["dem_source"] == "GSI DEM Japan"
+
+
+def test_usa_still_usgs():
+    sources = auto_select_data_sources(USA_VERTS)
+    assert sources["dem_source"] == "USGS 3DEP 1m"
+
+
+def test_gsi_in_dem_coverage_map():
+    assert "GSI DEM Japan" in _DEM_COVERAGE
