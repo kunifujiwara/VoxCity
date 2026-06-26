@@ -725,6 +725,7 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
     tree_k = kwargs.pop('tree_k', 0.6)
     tree_lad = kwargs.pop('tree_lad', 1.0)
     colormap = kwargs.pop('colormap', 'viridis')
+    include_building_roofs = kwargs.pop('include_building_roofs', False)
     
     # Get landmark IDs from various sources if not provided
     if landmark_building_ids is None:
@@ -783,6 +784,7 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
         tree_lad=tree_lad,
         show_plot=True,  # VoxCity default shows plot
         colormap=colormap,
+        include_building_roofs=include_building_roofs,
         **kwargs
     )
 
@@ -1026,6 +1028,7 @@ def get_landmark_visibility_map_gpu(
     tree_k: float = 0.6,
     tree_lad: float = 1.0,
     show_plot: bool = False,
+    include_building_roofs: bool = False,
     **kwargs
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -1074,7 +1077,8 @@ def get_landmark_visibility_map_gpu(
         voxel_data=voxel_data_modified,
         view_height_voxel=view_height_voxel,
         tree_k=tree_k,
-        tree_lad=tree_lad
+        tree_lad=tree_lad,
+        include_building_roofs=include_building_roofs,
     )
     
     # Plot if requested

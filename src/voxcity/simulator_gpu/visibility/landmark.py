@@ -75,7 +75,8 @@ class LandmarkVisibilityCalculator:
         voxel_data: np.ndarray = None,
         view_height_voxel: int = 0,
         tree_k: float = 0.6,
-        tree_lad: float = 1.0
+        tree_lad: float = 1.0,
+        include_building_roofs: bool = False,
     ) -> np.ndarray:
         """
         Compute landmark visibility map.
@@ -100,7 +101,7 @@ class LandmarkVisibilityCalculator:
             is_tree = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
             is_solid = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
             is_walkable = ti.field(dtype=ti.i32, shape=(self.nx, self.ny, self.nz))
-            self._setup_masks_from_voxel(voxel_data, is_tree, is_solid, is_walkable)
+            self._setup_masks_from_voxel(voxel_data, include_building_roofs, is_tree, is_solid, is_walkable)
         else:
             is_tree = self.domain.is_tree
             is_solid = self.domain.is_solid
@@ -124,12 +125,13 @@ class LandmarkVisibilityCalculator:
     def _setup_masks_from_voxel(
         self,
         voxel_data: np.ndarray,
-        is_tree: ti.template(),
-        is_solid: ti.template(),
-        is_walkable: ti.template()
+        include_roofs: bool,
+        is_tree,
+        is_solid,
+        is_walkable
     ):
         """Setup tree, solid, and walkable masks from voxel data."""
-        self._setup_masks_kernel(voxel_data, is_tree, is_solid, is_walkable)
+        self._setup_masks_kernel(voxel_data, int(include_roofs), is_tree, is_solid, is_walkable)
     
     @ti.kernel
     def _init_walkable_from_domain(
@@ -147,6 +149,7 @@ class LandmarkVisibilityCalculator:
     def _setup_masks_kernel(
         self,
         voxel_data: ti.types.ndarray(),
+        include_roofs: ti.i32,
         is_tree: ti.template(),
         is_solid: ti.template(),
         is_walkable: ti.template()
@@ -171,8 +174,11 @@ class LandmarkVisibilityCalculator:
             walkable = 1
             if val == 7 or val == 8 or val == 9:  # Water
                 walkable = 0
-            elif val < 0:  # Ground, trees, buildings, landmarks, etc.
-                walkable = 0
+            elif val < 0:
+                if include_roofs == 1 and val == -3:
+                    walkable = 1
+                else:
+                    walkable = 0
             is_walkable[i, j, k] = walkable
     
     @ti.kernel
