@@ -17,6 +17,7 @@ def compute_direct_solar_irradiance_map_binary(
     tree_k,
     tree_lad,
     inclusion_mode,
+    include_building_roofs=False,
 ):
     """
     Return 2D transmittance map (0..1, NaN invalid) for direct beam along sun_direction.
@@ -36,7 +37,9 @@ def compute_direct_solar_irradiance_map_binary(
             found_observer = False
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
+                    below = voxel_data[x, y, z - 1]
+                    roof_ok = include_building_roofs and (below == -3)
+                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
                         irradiance_map[x, y] = np.nan
                         found_observer = True
                         break

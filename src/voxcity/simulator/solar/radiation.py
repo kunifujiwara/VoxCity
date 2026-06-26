@@ -34,6 +34,7 @@ def get_direct_solar_irradiance_map(
     vmax = kwargs.get("vmax", direct_normal_irradiance)
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
+    include_building_roofs = kwargs.get("include_building_roofs", False)
 
     # Account for grid rotation
     rotation_angle = 0
@@ -59,6 +60,7 @@ def get_direct_solar_irradiance_map(
         tree_k,
         tree_lad,
         inclusion_mode,
+        include_building_roofs,
     )
 
     sin_elev = dz
