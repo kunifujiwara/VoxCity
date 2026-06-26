@@ -410,10 +410,14 @@ def visualize_voxcity_plotly(
         # heterogeneous offset.  By reading terrain heights straight
         # from the voxel array every cell gets a consistent offset.
         if voxel_array is not None and getattr(voxel_array, 'ndim', 0) == 3:
-            # Land-cover classes (>=1) mark the topmost ground voxel.
-            lc_mask = (voxel_array >= 1)
+            # Topmost surface voxel: land-cover classes (>=1) mark terrain, and
+            # building voxels (-3) mark rooftops.  Including buildings lifts the
+            # sim surface onto roofs when rooftop observers are present; when
+            # they are absent those cells are NaN and skipped, so terrain-only
+            # results are unaffected.
+            surface_mask = (voxel_array >= 1) | (voxel_array == -3)
             k_indices = np.arange(voxel_array.shape[2])
-            masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+            masked_k = np.where(surface_mask, k_indices[None, None, :], -1)
             k_top_grid = np.max(masked_k, axis=2)           # (nx, ny)
             k_top_grid = np.maximum(k_top_grid, 0)
             # Derived DEM is already in uv layout, matching create_sim_surface_mesh.

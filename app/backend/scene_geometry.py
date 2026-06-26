@@ -386,9 +386,12 @@ def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return np.zeros(ref_shape, dtype=float)
-    lc_mask = voxcity_grid >= 1
+    # Land cover (>=1) marks terrain tops; buildings (-3) mark rooftops. Buildings
+    # are included so rooftop sim cells render on roofs; terrain-only cells are
+    # unchanged because building cells are NaN (skipped) when rooftops are off.
+    surface_mask = (voxcity_grid >= 1) | (voxcity_grid == -3)
     k_indices = np.arange(voxcity_grid.shape[2])
-    masked_k = np.where(lc_mask, k_indices[None, None, :], -1)
+    masked_k = np.where(surface_mask, k_indices[None, None, :], -1)
     k_top = np.max(masked_k, axis=2)
     k_top = np.maximum(k_top, 0)
     return k_top.astype(float) * float(meshsize)

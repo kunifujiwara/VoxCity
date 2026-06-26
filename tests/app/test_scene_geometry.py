@@ -97,6 +97,59 @@ def test_ground_overlay_face_count_matches_finite_cells():
     assert resp.value_max == pytest.approx(9.0)
 
 
+def test_ground_overlay_building_cell_sits_on_roof():
+    """A rooftop sim cell must render at roof height, while a street cell stays
+    at terrain height (regression: building-top cells used to be drawn at street
+    level, buried inside the building voxels)."""
+    meshsize = 1.0
+    view_point_height = 1.5
+    nz = 12
+    bh = 4  # building roof top voxel index
+
+    # uv grid: street cell (0,0), building column at (2,2) with roof at k=bh.
+    grid3d = np.zeros((6, 6, nz), dtype=np.int32)
+    grid3d[:, :, 0] = 1            # land-cover ground layer everywhere
+    grid3d[2, 2, 1:bh + 1] = -3    # building column, roof top at k=bh
+
+    sim = np.full((6, 6), np.nan, dtype=float)
+    sim[0, 0] = 0.4               # street observer
+    sim[2, 2] = 0.9               # rooftop observer (rooftops enabled)
+
+    resp = build_ground_overlay_buffers(
+        sim,
+        grid3d,
+        meshsize=meshsize,
+        view_point_height=view_point_height,
+        sim_type="solar",
+        colormap="viridis",
+    )
+
+    positions = np.asarray(resp.chunk.positions, dtype=float).reshape(-1, 3)
+    face_to_cell = np.asarray(resp.face_to_cell, dtype=int)
+
+    # z formula mirrors create_sim_surface_mesh.
+    z_off = float(meshsize) + max(float(view_point_height), float(meshsize))
+
+    def _cell_z(u, v, dem_height):
+        return meshsize * int(dem_height / meshsize + 1.5) + z_off - meshsize
+
+    # Find a vertex belonging to the building cell (2,2) and the street cell (0,0).
+    # Each triangle maps to a cell; vertices are grouped 4 per cell in order.
+    cells = face_to_cell[: len(face_to_cell) // 2]  # first tri per cell
+    building_idx = next(i for i, (u, v) in enumerate(cells) if u == 2 and v == 2)
+    street_idx = next(i for i, (u, v) in enumerate(cells) if u == 0 and v == 0)
+
+    building_z = positions[building_idx * 4, 2]
+    street_z = positions[street_idx * 4, 2]
+
+    # Street cell: terrain top (k=0) -> dem height 0.
+    assert street_z == pytest.approx(_cell_z(0, 0, 0.0))
+    # Building cell: roof top (k=bh) -> dem height bh*meshsize.
+    assert building_z == pytest.approx(_cell_z(2, 2, bh * meshsize))
+    # Roof must be clearly above the street surface.
+    assert building_z > street_z + (bh - 1) * meshsize
+
+
 def test_ground_overlay_no_valid_cells_returns_empty_chunk():
     sim = np.full((3, 3), np.nan, dtype=float)
     grid3d = np.zeros((3, 3, 1), dtype=np.int32)
