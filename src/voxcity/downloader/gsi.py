@@ -167,3 +167,29 @@ def compose_dem_array(tiles, tile_range, nodata=GSI_NODATA):
         c0 = (x - x_min) * GSI_TILE_SIZE
         mosaic[r0:r0 + GSI_TILE_SIZE, c0:c0 + GSI_TILE_SIZE] = block
     return mosaic
+
+
+def save_dem_as_geotiff(array, tile_range, zoom, filepath, nodata=GSI_NODATA):
+    """Write the mosaic as a single-band float32 GeoTIFF in EPSG:3857."""
+    x_min, y_min, x_max, y_max = tile_range
+    origin_minx, _, _, origin_maxy = tile_bounds_mercator(x_min, y_min, zoom)
+    pixel = (2 * _MERC_MAX) / (2.0 ** zoom) / GSI_TILE_SIZE
+
+    out_dir = os.path.dirname(filepath)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    height, width = array.shape
+    driver = gdal.GetDriverByName("GTiff")
+    dataset = driver.Create(filepath, width, height, 1, gdal.GDT_Float32)
+    dataset.SetGeoTransform((origin_minx, pixel, 0, origin_maxy, 0, -pixel))
+
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(3857)
+    dataset.SetProjection(srs.ExportToWkt())
+
+    band = dataset.GetRasterBand(1)
+    band.WriteArray(np.asarray(array, dtype=np.float32))
+    band.SetNoDataValue(float(nodata))
+    dataset = None
+    return filepath

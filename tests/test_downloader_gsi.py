@@ -170,3 +170,30 @@ class TestDownloadAndCompose:
         assert mosaic.shape == (256, 512)
         assert np.allclose(mosaic[:, :256], 1.0)
         assert np.allclose(mosaic[:, 256:], 2.0)
+
+
+from voxcity.downloader.gsi import save_dem_as_geotiff, tile_bounds_mercator
+
+
+class TestSaveDemAsGeotiff:
+    def test_roundtrip_crs_transform_nodata(self, tmp_path):
+        import rasterio
+        tile_range = (29000, 12900, 29000, 12900)  # single tile
+        zoom = 15
+        array = np.arange(256 * 256, dtype=np.float32).reshape(256, 256)
+        out = tmp_path / "dem.tif"
+        save_dem_as_geotiff(array, tile_range, zoom, str(out), nodata=-9999.0)
+        assert out.exists()
+        with rasterio.open(str(out)) as src:
+            assert src.crs.to_epsg() == 3857
+            assert src.nodata == -9999.0
+            data = src.read(1)
+            assert np.allclose(data, array)
+            # Origin matches top-left tile bounds
+            minx, miny, maxx, maxy = tile_bounds_mercator(29000, 12900, zoom)
+            assert src.transform.c == pytest.approx(minx, rel=1e-9)
+            assert src.transform.f == pytest.approx(maxy, rel=1e-9)
+            # Pixel size = tile / 256
+            tile = (2 * 20037508.342789244) / (2 ** zoom)
+            assert src.transform.a == pytest.approx(tile / 256, rel=1e-9)
+            assert src.transform.e == pytest.approx(-tile / 256, rel=1e-9)
