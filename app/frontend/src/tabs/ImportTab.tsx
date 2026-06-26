@@ -2,8 +2,8 @@
  * Import tab — upload an OBJ, position it, and stamp its buildings into the model.
  *
  * Placement lives in one `Placement` object (lib/objPlacement). The numeric form
- * here writes it; the 2D map (Task 8) and 3D gizmo (Task 9) read/write the same
- * object. Commit calls /api/model/import_obj/commit and renders the result.
+ * here writes it; the 2D map and 3D gizmo read/write the same object. Commit
+ * calls /api/model/import_obj/commit and renders the result.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, Boxes } from 'lucide-react';
