@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 
 LIVE = os.environ.get("VOXCITY_LIVE_GSI") == "1"
-pytestmark = pytest.mark.skipif(not LIVE, reason="set VOXCITY_LIVE_GSI=1 to run")
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.integration,
+    pytest.mark.skipif(not LIVE, reason="set VOXCITY_LIVE_GSI=1 to run"),
+]
 
 
 def test_tsukuba_download(tmp_path):
