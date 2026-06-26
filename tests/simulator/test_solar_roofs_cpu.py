@@ -36,3 +36,12 @@ def test_global_includes_building_roof_when_enabled():
         include_building_roofs=True,
     )
     assert np.isfinite(g[2, 2])
+
+
+def test_direct_street_cells_unchanged_by_flag():
+    vc = make_voxcity_with_building()
+    off = _direct(vc, include_roofs=False)
+    on  = _direct(vc, include_roofs=True)
+    mask = np.ones_like(off, dtype=bool)
+    mask[2, 2] = False
+    np.testing.assert_allclose(off[mask], on[mask], equal_nan=True)
