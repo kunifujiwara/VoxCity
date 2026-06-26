@@ -130,3 +130,43 @@ class TestCheckDemAvailability:
                    side_effect=_rq.exceptions.ConnectTimeout()):
             dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
         assert (dem_type, zoom) == ("dem10b", 14)
+
+
+from voxcity.downloader.gsi import download_dem_tiles, compose_dem_array
+
+
+def _txt_resp(value):
+    m = MagicMock()
+    m.status_code = 200
+    line = ",".join([str(value)] * 256)
+    m.text = "\n".join([line] * 256)
+    return m
+
+
+class TestDownloadAndCompose:
+    def test_download_fills_missing_with_nodata(self):
+        # 1x2 tile range; first tile 200, second 404
+        tile_range = (10, 20, 10, 21)  # x_min,y_min,x_max,y_max
+        responses = [_txt_resp(5.0), _resp(404)]
+        with patch("voxcity.downloader.gsi.requests.get", side_effect=responses):
+            tiles = download_dem_tiles(tile_range, "dem5a", 15, sleep=0, nodata=-9999.0)
+        assert set(tiles.keys()) == {(10, 20), (10, 21)}
+        assert np.allclose(tiles[(10, 20)], 5.0)
+        assert np.allclose(tiles[(10, 21)], -9999.0)
+
+    def test_download_all_fail_raises(self):
+        tile_range = (10, 20, 10, 20)
+        with patch("voxcity.downloader.gsi.requests.get", return_value=_resp(404)):
+            with pytest.raises(ValueError):
+                download_dem_tiles(tile_range, "dem5a", 15, sleep=0)
+
+    def test_compose_places_blocks(self):
+        tile_range = (10, 20, 11, 20)  # 2 wide, 1 tall
+        tiles = {
+            (10, 20): np.full((256, 256), 1.0, dtype=np.float32),
+            (11, 20): np.full((256, 256), 2.0, dtype=np.float32),
+        }
+        mosaic = compose_dem_array(tiles, tile_range, nodata=-9999.0)
+        assert mosaic.shape == (256, 512)
+        assert np.allclose(mosaic[:, :256], 1.0)
+        assert np.allclose(mosaic[:, 256:], 2.0)

@@ -122,3 +122,48 @@ def check_dem_availability(lat, lon, *, timeout_s=5, sleep=0.2):
         except requests.exceptions.RequestException:
             continue
     return "dem10b", 14
+
+
+def download_dem_tiles(tile_range, dem_type, zoom, *, nodata=GSI_NODATA,
+                       sleep=0.4, timeout_s=10):
+    """Download every tile in ``tile_range`` (x_min, y_min, x_max, y_max).
+
+    Returns ``{(x, y): (256, 256) float32}``. Missing/failed tiles become
+    nodata blocks. Raises ValueError if no tile was retrieved.
+    """
+    x_min, y_min, x_max, y_max = tile_range
+    tiles = {}
+    any_ok = False
+    for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1):
+            url = _GSI_XYZ_URL.format(dem_type=dem_type, zoom=zoom, x=x, y=y)
+            block = np.full((GSI_TILE_SIZE, GSI_TILE_SIZE), nodata, dtype=np.float32)
+            try:
+                if sleep:
+                    time.sleep(sleep)
+                resp = requests.get(url, timeout=timeout_s)
+                if resp.status_code == 200:
+                    block = parse_dem_tile_text(resp.text, nodata=nodata)
+                    any_ok = True
+            except requests.exceptions.RequestException:
+                pass
+            tiles[(x, y)] = block
+    if not any_ok:
+        raise ValueError(
+            "No GSI DEM tiles available for the requested area "
+            "(is it outside Japan coverage?)."
+        )
+    return tiles
+
+
+def compose_dem_array(tiles, tile_range, nodata=GSI_NODATA):
+    """Assemble per-tile 256x256 blocks into one float32 mosaic."""
+    x_min, y_min, x_max, y_max = tile_range
+    cols = (x_max - x_min + 1) * GSI_TILE_SIZE
+    rows = (y_max - y_min + 1) * GSI_TILE_SIZE
+    mosaic = np.full((rows, cols), nodata, dtype=np.float32)
+    for (x, y), block in tiles.items():
+        r0 = (y - y_min) * GSI_TILE_SIZE
+        c0 = (x - x_min) * GSI_TILE_SIZE
+        mosaic[r0:r0 + GSI_TILE_SIZE, c0:c0 + GSI_TILE_SIZE] = block
+    return mosaic
