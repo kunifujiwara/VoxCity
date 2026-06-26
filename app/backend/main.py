@@ -1146,6 +1146,7 @@ async def run_solar(req: SolarRequest):
             solar_kwargs: Dict[str, Any] = {
                 "download_nearest_epw": False,
                 "view_point_height": req.view_point_height,
+                "include_building_roofs": req.include_building_roofs,
                 "tree_k": 0.6,
                 "tree_lad": 0.5,
                 "dem_grid": voxcity.dem.elevation,
@@ -1323,6 +1324,7 @@ async def run_view(req: ViewRequest):
         if req.analysis_target == "ground":
             view_kwargs: Dict[str, Any] = {
                 "view_point_height": req.view_point_height,
+                "include_building_roofs": req.include_building_roofs,
                 "dem_grid": voxcity.dem.elevation,
                 "obj_export": req.export_obj,
                 "output_directory": output_dir,
@@ -1503,6 +1505,7 @@ async def run_landmark(req: LandmarkRequest):
                 voxcity,
                 building_gdf=building_gdf,
                 output_directory=output_dir,
+                include_building_roofs=req.include_building_roofs,
             )
 
         if req.analysis_target == "ground":

@@ -69,6 +69,7 @@ class SolarRequest(BaseModel):
     end_time: Optional[str] = None
     epw_source: str = "default"  # "default" or "upload"
     view_point_height: float = 1.5
+    include_building_roofs: bool = False
     colormap: str = "magma"
     vmin: Optional[float] = 0.0
     vmax: Optional[float] = None
@@ -79,6 +80,7 @@ class ViewRequest(BaseModel):
     view_type: str = "green"  # "green", "sky", "custom"
     analysis_target: str = "ground"  # "ground" or "building"
     view_point_height: float = 1.5
+    include_building_roofs: bool = False
     custom_classes: List[int] = Field(default_factory=list)
     inclusion_mode: bool = True
     n_azimuth: int = 60
@@ -96,6 +98,7 @@ class LandmarkRequest(BaseModel):
     analysis_target: str = "ground"  # "ground" or "building"
     landmark_ids: List[int] = Field(default_factory=list)
     view_point_height: float = 1.5
+    include_building_roofs: bool = False
     n_azimuth: int = 60
     n_elevation: int = 10
     elevation_min_degrees: float = -30.0
