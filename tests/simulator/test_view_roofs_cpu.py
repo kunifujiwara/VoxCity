@@ -57,3 +57,12 @@ def test_fast_path_matches_flag_behaviour():
     )
     assert np.isnan(off[2, 2])
     assert np.isfinite(on[2, 2])
+
+
+def test_non_building_negative_surface_stays_nan_when_flag_on():
+    """Surfaces with negative codes other than -3 must never become observers."""
+    vc = make_voxcity_with_building()
+    # Overwrite the building column with code -1 (ground/underground - should stay invalid)
+    vc.voxels.classes[2, 2, 1:5] = -1
+    m = _svf(vc, include_roofs=True)
+    assert np.isnan(m[2, 2])   # -1 surface must remain invalid even with flag on
