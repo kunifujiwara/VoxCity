@@ -104,6 +104,7 @@ def visualize_voxcity_plotly(
     ground_colorbar_title=None,
     # Building ID grid for interactive selection (per-face building IDs)
     building_id_grid=None,
+    **kwargs,
 ):
     """
     Interactive 3D visualization using Plotly Mesh3d of voxel faces and optional overlays.
