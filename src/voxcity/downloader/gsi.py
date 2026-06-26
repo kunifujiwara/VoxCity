@@ -102,3 +102,23 @@ def parse_dem_tile_text(text, nodata=GSI_NODATA, size=GSI_TILE_SIZE):
             except ValueError:
                 continue  # malformed token (e.g. truncated mid-stream) -> nodata
     return arr
+
+
+_GSI_XYZ_URL = "https://cyberjapandata.gsi.go.jp/xyz/{dem_type}/{zoom}/{x}/{y}.txt"
+
+
+def check_dem_availability(lat, lon, *, timeout_s=5, sleep=0.2):
+    """Probe the center point and return (dem_type, zoom) for the finest
+    available GSI DEM product. Falls back to ('dem10b', 14)."""
+    for item in GSI_DEM_TYPES:
+        x, y = latlon_to_tile(lat, lon, item["zoom"])
+        url = _GSI_XYZ_URL.format(dem_type=item["type"], zoom=item["zoom"], x=x, y=y)
+        try:
+            if sleep:
+                time.sleep(sleep)
+            resp = requests.get(url, timeout=timeout_s)
+            if resp.status_code == 200:
+                return item["type"], item["zoom"]
+        except requests.exceptions.RequestException:
+            continue
+    return "dem10b", 14

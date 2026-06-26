@@ -92,3 +92,41 @@ class TestParseDemTileText:
         assert arr[0, 1] == pytest.approx(-1.0)
         assert arr[1, 0] == pytest.approx(2.0)
         assert arr[1, 1] == pytest.approx(3.0)
+
+
+from unittest.mock import patch, MagicMock
+from voxcity.downloader.gsi import check_dem_availability
+
+
+def _resp(status):
+    m = MagicMock()
+    m.status_code = status
+    return m
+
+
+class TestCheckDemAvailability:
+    def test_picks_finest_available(self):
+        # dem5a (first probe) returns 200 -> chosen immediately
+        with patch("voxcity.downloader.gsi.requests.get", return_value=_resp(200)) as g:
+            dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
+        assert (dem_type, zoom) == ("dem5a", 15)
+        assert g.call_count == 1
+
+    def test_falls_through_to_dem10b(self):
+        # dem5a, dem5b -> 404; dem10b -> 200
+        responses = [_resp(404), _resp(404), _resp(200)]
+        with patch("voxcity.downloader.gsi.requests.get", side_effect=responses):
+            dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
+        assert (dem_type, zoom) == ("dem10b", 14)
+
+    def test_all_fail_defaults_to_dem10b(self):
+        with patch("voxcity.downloader.gsi.requests.get", return_value=_resp(404)):
+            dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
+        assert (dem_type, zoom) == ("dem10b", 14)
+
+    def test_network_error_is_skipped(self):
+        import requests as _rq
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_rq.exceptions.ConnectTimeout()):
+            dem_type, zoom = check_dem_availability(36.225, 140.105, sleep=0)
+        assert (dem_type, zoom) == ("dem10b", 14)
