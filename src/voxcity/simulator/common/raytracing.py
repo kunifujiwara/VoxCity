@@ -177,7 +177,7 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
 
 
 @njit(parallel=True)
-def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
+def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
     for x in prange(nx):
@@ -185,7 +185,9 @@ def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_va
             found_observer = False
             for z in range(1, nz):
                 if voxel_data[x, y, z] in (0, -2) and voxel_data[x, y, z - 1] not in (0, -2):
-                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
+                    below = voxel_data[x, y, z - 1]
+                    roof_ok = include_building_roofs and (below == -3)
+                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
                         vi_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -332,7 +334,7 @@ def _trace_ray_exclusion_masks(is_tree, is_allowed, origin, direction, meshsize,
 
 
 @njit(parallel=True, cache=True, fastmath=True)
-def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, meshsize, tree_k, tree_lad, is_tree, is_target, is_allowed, is_blocker_inc, inclusion_mode, trees_in_targets):
+def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, meshsize, tree_k, tree_lad, is_tree, is_target, is_allowed, is_blocker_inc, inclusion_mode, trees_in_targets, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)
     obs_base_z = _precompute_observer_base_z(voxel_data)
@@ -343,7 +345,8 @@ def _compute_vi_map_generic_fast(voxel_data, ray_directions, view_height_voxel, 
                 vi_map[x, y] = np.nan
                 continue
             below = voxel_data[x, y, base_z]
-            if (below == 7) or (below == 8) or (below == 9) or (below < 0):
+            roof_ok = include_building_roofs and (below == -3)
+            if ((below == 7) or (below == 8) or (below == 9) or (below < 0)) and not roof_ok:
                 vi_map[x, y] = np.nan
                 continue
             oz = base_z + 1 + view_height_voxel

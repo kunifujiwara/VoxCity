@@ -45,6 +45,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
 
     tree_k = kwargs.get("tree_k", 0.5)
     tree_lad = kwargs.get("tree_lad", 1.0)
+    include_building_roofs = kwargs.get("include_building_roofs", False)
 
     if str(ray_sampling).lower() == "fibonacci":
         ray_directions = _generate_ray_directions_fibonacci(int(N_rays), elevation_min_degrees, elevation_max_degrees)
@@ -69,12 +70,12 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
                 is_tree, is_target if is_target is not None else np.zeros(1, dtype=np.bool_),
                 is_allowed if is_allowed is not None else np.zeros(1, dtype=np.bool_),
                 is_blocker_inc if is_blocker_inc is not None else np.zeros(1, dtype=np.bool_),
-                inclusion_mode, trees_in_targets
+                inclusion_mode, trees_in_targets, include_building_roofs
             )
         except Exception:
-            vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+            vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode, include_building_roofs=include_building_roofs)
     else:
-        vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+        vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode, include_building_roofs=include_building_roofs)
 
     cmap = plt.cm.get_cmap(colormap).copy()
     cmap.set_bad(color='lightgray')
@@ -123,13 +124,14 @@ def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
     N_rays = kwargs.get("N_rays", N_azimuth * N_elevation)
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)
+    include_building_roofs = kwargs.get("include_building_roofs", False)
     hit_values = (0,)
     inclusion_mode = False
     if str(ray_sampling).lower() == "fibonacci":
         ray_directions = _generate_ray_directions_fibonacci(int(N_rays), elevation_min_degrees, elevation_max_degrees)
     else:
         ray_directions = _generate_ray_directions_grid(int(N_azimuth), int(N_elevation), elevation_min_degrees, elevation_max_degrees)
-    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode)
+    vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode, include_building_roofs=include_building_roofs)
     if show_plot:
         cmap = plt.cm.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
