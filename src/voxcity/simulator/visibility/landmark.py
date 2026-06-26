@@ -96,7 +96,7 @@ def compute_visibility_to_all_landmarks(observer_location, landmark_positions, v
 
 
 @njit(parallel=True)
-def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel):
+def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     visibility_map = np.full((nx, ny), np.nan)
     for x in prange(nx):
@@ -104,7 +104,9 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
             found_observer = False
             for z in range(1, nz):
                 if voxel_data[x, y, z] == 0 and voxel_data[x, y, z - 1] != 0:
-                    if (voxel_data[x, y, z - 1] in (7, 8, 9)) or (voxel_data[x, y, z - 1] < 0):
+                    below = voxel_data[x, y, z - 1]
+                    roof_ok = include_building_roofs and (below == -3)
+                    if ((below in (7, 8, 9)) or (below < 0)) and not roof_ok:
                         visibility_map[x, y] = np.nan
                         found_observer = True
                         break
@@ -119,13 +121,13 @@ def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_h
     return visibility_map
 
 
-def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis'):
+def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=0, colormap='viridis', include_building_roofs=False):
     landmark_positions = np.argwhere(voxel_data == target_value)
     if landmark_positions.shape[0] == 0:
         raise ValueError(f"No landmark with value {target_value} found in the voxel data.")
     unique_values = np.unique(voxel_data)
     opaque_values = np.array([v for v in unique_values if v != 0 and v != target_value], dtype=np.int32)
-    visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel)
+    visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel, include_building_roofs)
     cmap = plt.cm.get_cmap(colormap, 2).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
@@ -151,6 +153,7 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
     view_point_height = kwargs.get("view_point_height", 1.5)
     view_height_voxel = int(view_point_height / meshsize)
     colormap = kwargs.get("colormap", 'viridis')
+    include_building_roofs = kwargs.get("include_building_roofs", False)
     landmark_ids = kwargs.get('landmark_building_ids', None)
     landmark_polygon = kwargs.get('landmark_polygon', None)
     if landmark_ids is None:
@@ -171,7 +174,10 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
             landmark_ids = find_building_containing_point(building_gdf, target_point)
     target_value = -30
     voxcity_grid = mark_building_by_id(voxcity_grid_ori, building_id_grid, landmark_ids, target_value)
-    landmark_vis_map = compute_landmark_visibility(voxcity_grid, target_value=target_value, view_height_voxel=view_height_voxel, colormap=colormap)
+    landmark_vis_map = compute_landmark_visibility(
+        voxcity_grid, target_value=target_value, view_height_voxel=view_height_voxel,
+        colormap=colormap, include_building_roofs=include_building_roofs
+    )
     obj_export = kwargs.get("obj_export")
     if obj_export == True:
         dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(landmark_vis_map))
