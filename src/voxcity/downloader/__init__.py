@@ -3,6 +3,7 @@ from .utils import *
 from .gee import *
 from .osm import *
 from .oemj import *
+from .gsi import *
 from .eubucco import *
 from .overture import *
 from .gba import *
@@ -34,6 +35,8 @@ __all__ = [
     "classification_mapping",
     # oemj
     "save_oemj_as_geotiff",
+    # gsi
+    "save_gsi_dem_as_geotiff",
     # eubucco
     "load_gdf_from_eubucco",
     "get_gdf_from_eubucco",

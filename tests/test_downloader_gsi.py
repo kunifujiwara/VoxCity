@@ -235,3 +235,10 @@ class TestSaveGsiDemAsGeotiff:
         out = tmp_path / "dem.tif"
         with pytest.raises(ValueError):
             save_gsi_dem_as_geotiff(self._verts(), str(out), dem_type="bogus", sleep=0)
+
+
+class TestPackageExport:
+    def test_exported_from_downloader(self):
+        import voxcity.downloader as dl
+        assert hasattr(dl, "save_gsi_dem_as_geotiff")
+        assert "save_gsi_dem_as_geotiff" in dl.__all__
