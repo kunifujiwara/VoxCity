@@ -10,6 +10,7 @@ from voxcity.downloader.gsi import (
     tile_range_for_bbox,
     _MERC_MAX,
 )
+from voxcity.downloader.gsi import parse_dem_tile_text, GSI_NODATA
 
 
 class TestLatlonToTile:
@@ -52,3 +53,32 @@ class TestBboxAndRange:
         x_min, y_min, x_max, y_max = tile_range_for_bbox(bbox, 15)
         assert x_min <= x_max
         assert y_min <= y_max
+
+
+class TestParseDemTileText:
+    def test_full_grid(self):
+        # 256 rows x 256 cols of "1.5"
+        line = ",".join(["1.5"] * 256)
+        text = "\n".join([line] * 256)
+        arr = parse_dem_tile_text(text)
+        assert arr.shape == (256, 256)
+        assert arr.dtype == np.float32
+        assert np.allclose(arr, 1.5)
+
+    def test_nodata_token(self):
+        line = ",".join(["e"] * 256)
+        text = "\n".join([line] * 256)
+        arr = parse_dem_tile_text(text, nodata=-9999.0)
+        assert np.allclose(arr, -9999.0)
+
+    def test_mixed_and_ragged(self):
+        # First cell real, rest no-data; short rows; missing rows -> nodata
+        text = "12.25,e,e\ne,3.0"
+        arr = parse_dem_tile_text(text, nodata=-1.0)
+        assert arr.shape == (256, 256)
+        assert arr[0, 0] == pytest.approx(12.25)
+        assert arr[0, 1] == pytest.approx(-1.0)
+        assert arr[1, 0] == pytest.approx(-1.0)
+        assert arr[1, 1] == pytest.approx(3.0)
+        # Untouched cell stays nodata
+        assert arr[5, 5] == pytest.approx(-1.0)

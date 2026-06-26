@@ -81,3 +81,21 @@ def tile_range_for_bbox(bbox, zoom):
     x0, y0 = latlon_to_tile(max_lat, min_lon, zoom)  # top-left
     x1, y1 = latlon_to_tile(min_lat, max_lon, zoom)  # bottom-right
     return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+
+
+def parse_dem_tile_text(text, nodata=GSI_NODATA, size=GSI_TILE_SIZE):
+    """Parse a GSI DEM ``.txt`` tile (CSV of meters, ``e`` = no-data).
+
+    Returns a ``(size, size)`` float32 array. Ragged/short rows and missing
+    rows are filled with ``nodata``.
+    """
+    arr = np.full((size, size), nodata, dtype=np.float32)
+    lines = [ln for ln in text.strip().splitlines() if ln.strip()]
+    for i, line in enumerate(lines[:size]):
+        cells = line.split(",")
+        for j, cell in enumerate(cells[:size]):
+            c = cell.strip()
+            if c == "" or c == "e":
+                continue
+            arr[i, j] = float(c)
+    return arr
