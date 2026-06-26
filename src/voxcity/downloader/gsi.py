@@ -211,8 +211,14 @@ def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
     Returns:
         The written filepath.
 
+    Note:
+        Succeeds even if some tiles in the ROI failed to download (e.g. near
+        coverage edges); inspect the returned GeoTIFF for unexpected nodata
+        regions if the ROI may span a coverage boundary.
+
     Raises:
-        ValueError: if dem_type is invalid or no tiles cover the area.
+        ValueError: if rectangle_vertices is empty, dem_type is invalid, or
+            no tiles cover the area.
     """
     bbox = _bbox_from_rectangle_vertices(rectangle_vertices)
     min_lon, min_lat, max_lon, max_lat = bbox
