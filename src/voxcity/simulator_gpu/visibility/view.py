@@ -106,6 +106,7 @@ class ViewCalculator:
         tree_lad: float = 1.0,
         workspace=None,
         computation_mask: np.ndarray = None,
+        include_building_roofs: bool = False,
     ) -> np.ndarray:
         """
         Compute View Index map.
@@ -170,7 +171,7 @@ class ViewCalculator:
 
                 hit_values_arr = np.array(hit_values, dtype=np.int32)
                 self._setup_masks_from_voxel_data(
-                    voxel_data, hit_values_arr, inclusion_mode,
+                    voxel_data, hit_values_arr, inclusion_mode, include_building_roofs,
                     is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
                 )
         else:
@@ -206,7 +207,7 @@ class ViewCalculator:
 
                 hit_values_arr = np.array(hit_values, dtype=np.int32)
                 self._setup_masks_from_voxel_data(
-                    voxel_data, hit_values_arr, inclusion_mode,
+                    voxel_data, hit_values_arr, inclusion_mode, include_building_roofs,
                     is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
                 )
         
@@ -260,6 +261,7 @@ class ViewCalculator:
         voxel_data: np.ndarray,
         hit_values: np.ndarray,
         inclusion_mode: bool,
+        include_roofs: bool,
         is_tree: ti.template(),
         is_solid: ti.template(),
         is_target: ti.template(),
@@ -270,7 +272,7 @@ class ViewCalculator:
         """Setup masks from voxel data array."""
         n_hits = len(hit_values)
         self._setup_masks_kernel(
-            voxel_data, hit_values, n_hits, inclusion_mode,
+            voxel_data, hit_values, n_hits, int(inclusion_mode), int(include_roofs),
             is_tree, is_solid, is_target, is_allowed, is_blocker, is_walkable
         )
     
@@ -281,6 +283,7 @@ class ViewCalculator:
         hit_values: ti.types.ndarray(),
         n_hits: ti.i32,
         inclusion_mode: ti.i32,
+        include_roofs: ti.i32,
         is_tree: ti.template(),
         is_solid: ti.template(),
         is_target: ti.template(),
@@ -315,8 +318,11 @@ class ViewCalculator:
             walkable = 1
             if val == 7 or val == 8 or val == 9:  # Water
                 walkable = 0
-            elif val < 0:  # Ground, trees, buildings, landmarks, etc.
-                walkable = 0
+            elif val < 0:
+                if include_roofs == 1 and val == -3:
+                    walkable = 1
+                else:
+                    walkable = 0
             is_walkable[i, j, k] = walkable
             
             # Set up allowed and blocker based on mode
