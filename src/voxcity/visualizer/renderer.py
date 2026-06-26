@@ -410,16 +410,20 @@ def visualize_voxcity_plotly(
         # heterogeneous offset.  By reading terrain heights straight
         # from the voxel array every cell gets a consistent offset.
         if voxel_array is not None and getattr(voxel_array, 'ndim', 0) == 3:
-            # Topmost surface voxel: land-cover classes (>=1) mark terrain, and
-            # building voxels (-3) mark rooftops.  Including buildings lifts the
-            # sim surface onto roofs when rooftop observers are present; when
-            # they are absent those cells are NaN and skipped, so terrain-only
-            # results are unaffected.
-            surface_mask = (voxel_array >= 1) | (voxel_array == -3)
-            k_indices = np.arange(voxel_array.shape[2])
-            masked_k = np.where(surface_mask, k_indices[None, None, :], -1)
-            k_top_grid = np.max(masked_k, axis=2)           # (nx, ny)
-            k_top_grid = np.maximum(k_top_grid, 0)
+            # Height of the surface the observer stands on: top of the first
+            # contiguous solid run from the ground up (ground -1, land cover
+            # >=1, building -3).  Matches the simulator observer search so the
+            # overlay sits where the value was computed: normal building ->
+            # roof; pilotis/elevated mass -> the open ground floor below the
+            # air gap; plain terrain -> land-cover top.  Trees (-2)/air (0) are
+            # not solid; the first air gap above a solid run ends the column.
+            solid = (voxel_array == -1) | (voxel_array >= 1) | (voxel_array == -3)
+            nz_g = solid.shape[2]
+            air = ~solid
+            has_air = air.any(axis=2)
+            first_air = np.argmax(air, axis=2)
+            first_air = np.where(has_air, first_air, nz_g)
+            k_top_grid = np.maximum(first_air - 1, 0)         # (nx, ny)
             # Derived DEM is already in uv layout, matching create_sim_surface_mesh.
             dem_norm = k_top_grid.astype(float) * float(meshsize)
         else:

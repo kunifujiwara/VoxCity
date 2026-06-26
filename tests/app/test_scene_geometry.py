@@ -150,6 +150,54 @@ def test_ground_overlay_building_cell_sits_on_roof():
     assert building_z > street_z + (bh - 1) * meshsize
 
 
+def test_ground_overlay_pilotis_cell_sits_on_open_floor():
+    """For a pilotis / elevated mass (air gap between ground and building), the
+    observer stands on the open ground floor, so the overlay must render at the
+    floor, NOT at the elevated roof above the void."""
+    meshsize = 1.0
+    view_point_height = 1.5
+    nz = 12
+
+    # Column at (2,2): k0 land cover (open floor), k1..3 air gap, k4..7 building.
+    grid3d = np.zeros((6, 6, nz), dtype=np.int32)
+    grid3d[:, :, 0] = 1
+    grid3d[2, 2, 4:8] = -3        # elevated building mass above an air gap
+
+    sim = np.full((6, 6), np.nan, dtype=float)
+    sim[0, 0] = 0.4               # street cell
+    sim[2, 2] = 0.9               # pilotis observer at the open floor
+
+    resp = build_ground_overlay_buffers(
+        sim,
+        grid3d,
+        meshsize=meshsize,
+        view_point_height=view_point_height,
+        sim_type="solar",
+        colormap="viridis",
+    )
+
+    positions = np.asarray(resp.chunk.positions, dtype=float).reshape(-1, 3)
+    face_to_cell = np.asarray(resp.face_to_cell, dtype=int)
+
+    z_off = float(meshsize) + max(float(view_point_height), float(meshsize))
+
+    def _cell_z(dem_height):
+        return meshsize * int(dem_height / meshsize + 1.5) + z_off - meshsize
+
+    cells = face_to_cell[: len(face_to_cell) // 2]
+    pilotis_idx = next(i for i, (u, v) in enumerate(cells) if u == 2 and v == 2)
+    street_idx = next(i for i, (u, v) in enumerate(cells) if u == 0 and v == 0)
+
+    pilotis_z = positions[pilotis_idx * 4, 2]
+    street_z = positions[street_idx * 4, 2]
+
+    # Pilotis observer is on the open floor (k=0), same height as the street.
+    assert pilotis_z == pytest.approx(_cell_z(0.0))
+    assert pilotis_z == pytest.approx(street_z)
+    # It must NOT float up at the elevated roof (k=7).
+    assert pilotis_z < _cell_z(7 * meshsize)
+
+
 def test_ground_overlay_no_valid_cells_returns_empty_chunk():
     sim = np.full((3, 3), np.nan, dtype=float)
     grid3d = np.zeros((3, 3, 1), dtype=np.int32)

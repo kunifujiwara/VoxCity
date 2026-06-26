@@ -650,14 +650,19 @@ def _build_sim_overlay_traces(
         # -- Derive DEM from voxel grid (same logic as _derive_dem_norm in scene_geometry.py) --
         # voxcity_grid and sim_grid are uv layout (Phase 3); no flip.
         if voxcity_grid is not None and voxcity_grid.ndim == 3:
-            # Land cover (>=1) marks terrain tops; buildings (-3) mark rooftops.
-            # Including buildings lifts the overlay onto roofs when rooftop
-            # observers exist; absent those, building cells are NaN and skipped.
-            surface_mask = (voxcity_grid >= 1) | (voxcity_grid == -3)
-            k_indices = np.arange(voxcity_grid.shape[2])
-            masked_k = np.where(surface_mask, k_indices[None, None, :], -1)
-            k_top_grid = np.max(masked_k, axis=2)
-            k_top_grid = np.maximum(k_top_grid, 0)
+            # Height of the surface the observer stands on: top of the first
+            # contiguous solid run from the ground up (ground -1, land cover
+            # >=1, building -3).  Matches the simulator observer search:
+            # normal building -> roof; pilotis -> open ground floor; terrain ->
+            # land-cover top.  The first air gap above a solid run terminates
+            # the column, so elevated masses above a void are excluded.
+            solid = (voxcity_grid == -1) | (voxcity_grid >= 1) | (voxcity_grid == -3)
+            nz_g = solid.shape[2]
+            air = ~solid
+            has_air = air.any(axis=2)
+            first_air = np.argmax(air, axis=2)
+            first_air = np.where(has_air, first_air, nz_g)
+            k_top_grid = np.maximum(first_air - 1, 0)
             dem_norm = k_top_grid.astype(float) * float(meshsize)
         else:
             dem_norm = np.zeros_like(sim_grid, dtype=float)

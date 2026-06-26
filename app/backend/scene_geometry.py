@@ -386,15 +386,34 @@ def _derive_dem_norm(voxcity_grid: np.ndarray, meshsize: float, ref_shape) -> np
     """
     if voxcity_grid is None or voxcity_grid.ndim != 3:
         return np.zeros(ref_shape, dtype=float)
-    # Land cover (>=1) marks terrain tops; buildings (-3) mark rooftops. Buildings
-    # are included so rooftop sim cells render on roofs; terrain-only cells are
-    # unchanged because building cells are NaN (skipped) when rooftops are off.
-    surface_mask = (voxcity_grid >= 1) | (voxcity_grid == -3)
-    k_indices = np.arange(voxcity_grid.shape[2])
-    masked_k = np.where(surface_mask, k_indices[None, None, :], -1)
-    k_top = np.max(masked_k, axis=2)
-    k_top = np.maximum(k_top, 0)
-    return k_top.astype(float) * float(meshsize)
+    # Height of the surface the observer stands on: the top of the first
+    # contiguous solid column from the ground up (ground -1, land cover >=1,
+    # building -3).  This matches where the ground simulation observer sits:
+    #  - normal building -> roof top (rooftop observers)
+    #  - pilotis/elevated mass -> the open ground floor below the air gap
+    #  - plain terrain -> land-cover top
+    # Trees (-2) and air (0) are not solid.  The first air gap above a solid
+    # run terminates the column, so elevated masses above a void are excluded.
+    return _first_contiguous_solid_top(voxcity_grid, meshsize)
+
+
+def _first_contiguous_solid_top(voxcity_grid: np.ndarray, meshsize: float) -> np.ndarray:
+    """Per-cell height (m) of the top of the first contiguous solid run from k=0.
+
+    Solid = ground (-1), land cover (>=1) or building (-3).  Scanning each column
+    upward, the run ends at the first air voxel above a solid cell; the returned
+    height is that run's top voxel index * meshsize.  Mirrors the simulator's
+    observer search and the solar topo kernel so the overlay is always drawn at
+    the surface the simulation was computed on.
+    """
+    solid = (voxcity_grid == -1) | (voxcity_grid >= 1) | (voxcity_grid == -3)
+    nz = solid.shape[2]
+    air = ~solid
+    has_air = air.any(axis=2)
+    first_air = np.argmax(air, axis=2)            # first air k (0 if column all solid)
+    first_air = np.where(has_air, first_air, nz)  # all-solid column -> top is nz
+    top_k = np.maximum(first_air - 1, 0)
+    return top_k.astype(float) * float(meshsize)
 
 
 def build_ground_overlay_buffers(
