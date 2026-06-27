@@ -10,7 +10,22 @@
       "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/importer/test_units.py -v)",
       "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/importer/ --collect-only -q 2>&1)",
       "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import tests.importer.conftest; print\\('OK'\\)\" 2>&1)",
-      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import trimesh; print\\(trimesh.__version__\\)\")"
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import trimesh; print\\(trimesh.__version__\\)\")",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n base python -c \"from osgeo import gdal; import rasterio, requests, numpy; print\\('gdal', gdal.__version__, '| rasterio', rasterio.__version__, '| ok'\\)\")",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" env list)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -c \"import rasterio,requests,numpy; print\\('rasterio',rasterio.__version__\\); exec\\('try:\\\\n from osgeo import gdal; print\\(\\\\'osgeo\\\\',gdal.__version__\\)\\\\nexcept Exception as e:\\\\n print\\(\\\\'osgeo MISSING\\\\'\\)'\\)\")",
+      "Bash(git status *)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/test_downloader_gsi.py -v)",
+      "Bash(\"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run *)",
+      "Bash('C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe' run -n voxcity python -c ' *)",
+      "Bash(find / -path /proc -prune -o -iname \"code-reviewer.md\" -print 2>/dev/null)",
+      "Read(//c//**)",
+      "Bash(find ~/.claude -iname \"code-reviewer.md\" 2>/dev/null; find / -iname \"*requesting-code-review*\" -type d 2>/dev/null | head -20)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/test_downloader_gsi.py -v 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python -m pytest tests/test_downloader_gsi.py::TestParseDemTileText -v)",
+      "Bash(find / -iname \"*code-review*\" -path \"*requesting-code-review*\" 2>/dev/null | head -50)",
+      "PowerShell(& \"C:\\\\Users\\\\kunih\\\\miniconda3\\\\Scripts\\\\conda.exe\" run -n voxcity python \"C:\\\\Users\\\\kunih\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-kunih-OneDrive-00-Codes-python-VoxCity\\\\26e8944b-6c4b-40f7-be16-143d5dd6d59d\\\\scratchpad\\\\probe.py\")",
+      "Bash(find \"C:\\\\Users\\\\kunih\\\\.claude\" -ipath \"*requesting-code-review*\" -iname \"*.md\" 2>/dev/null; find / -ipath \"*superpowers*requesting-code-review*\" 2>/dev/null | head -50)"
     ]
   },
   "allowDangerouslySkipPermissions": true,

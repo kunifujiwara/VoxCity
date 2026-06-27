@@ -131,3 +131,10 @@ app/cache/
 
 # Git worktrees
 .worktrees/
+.claude/worktrees/
+
+# ENVI-met / generated database files
+*.edb
+
+# Local agent/editor settings
+.claude/settings.local.json
