@@ -124,6 +124,26 @@ def check_dem_availability(lat, lon, *, timeout_s=5, sleep=0.2):
     return "dem10b", 14
 
 
+def _fetch_tile(dem_type, zoom, x, y, *, nodata=GSI_NODATA, sleep=0.4,
+                timeout_s=10):
+    """Fetch and parse a single GSI DEM tile.
+
+    Returns ``(block, ok)`` where ``block`` is a freshly-allocated
+    ``(256, 256)`` float32 array (all-``nodata`` on miss) and ``ok`` is True
+    only on a successful HTTP 200 response.
+    """
+    url = _GSI_XYZ_URL.format(dem_type=dem_type, zoom=zoom, x=x, y=y)
+    try:
+        if sleep:
+            time.sleep(sleep)
+        resp = requests.get(url, timeout=timeout_s)
+        if resp.status_code == 200:
+            return parse_dem_tile_text(resp.text, nodata=nodata), True
+    except requests.exceptions.RequestException:
+        pass
+    return np.full((GSI_TILE_SIZE, GSI_TILE_SIZE), nodata, dtype=np.float32), False
+
+
 def download_dem_tiles(tile_range, dem_type, zoom, *, nodata=GSI_NODATA,
                        sleep=0.4, timeout_s=10):
     """Download every tile in ``tile_range`` (x_min, y_min, x_max, y_max).
@@ -136,17 +156,9 @@ def download_dem_tiles(tile_range, dem_type, zoom, *, nodata=GSI_NODATA,
     any_ok = False
     for x in range(x_min, x_max + 1):
         for y in range(y_min, y_max + 1):
-            url = _GSI_XYZ_URL.format(dem_type=dem_type, zoom=zoom, x=x, y=y)
-            block = np.full((GSI_TILE_SIZE, GSI_TILE_SIZE), nodata, dtype=np.float32)
-            try:
-                if sleep:
-                    time.sleep(sleep)
-                resp = requests.get(url, timeout=timeout_s)
-                if resp.status_code == 200:
-                    block = parse_dem_tile_text(resp.text, nodata=nodata)
-                    any_ok = True
-            except requests.exceptions.RequestException:
-                pass
+            block, ok = _fetch_tile(dem_type, zoom, x, y, nodata=nodata,
+                                    sleep=sleep, timeout_s=timeout_s)
+            any_ok = any_ok or ok
             tiles[(x, y)] = block
     if not any_ok:
         raise ValueError(
@@ -154,6 +166,85 @@ def download_dem_tiles(tile_range, dem_type, zoom, *, nodata=GSI_NODATA,
             "(is it outside Japan coverage?)."
         )
     return tiles
+
+
+def _download_tiles_safe(tile_range, dem_type, zoom, *, nodata=GSI_NODATA,
+                         sleep=0.4, timeout_s=10):
+    """Like :func:`download_dem_tiles` but never raises on all-missing.
+
+    Used for fallback layers, where an absent product is expected and must not
+    abort the merge. Missing/failed tiles are returned as nodata blocks.
+    """
+    x_min, y_min, x_max, y_max = tile_range
+    tiles = {}
+    for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1):
+            block, _ = _fetch_tile(dem_type, zoom, x, y, nodata=nodata,
+                                   sleep=sleep, timeout_s=timeout_s)
+            tiles[(x, y)] = block
+    return tiles
+
+
+def _download_fine_merged(tile_range, *, nodata=GSI_NODATA, sleep=0.4,
+                          timeout_s=10):
+    """Build a z15 mosaic source by overlaying dem5a on dem5b at pixel level.
+
+    For each tile in ``tile_range`` dem5a (5 m laser) is fetched first; dem5b
+    (5 m photogrammetry) is requested *only* when the dem5a tile has missing
+    pixels, and is used to fill those pixels. A tile fully covered by dem5a
+    therefore incurs no extra request.
+
+    Returns ``(tiles, any_ok)`` where ``tiles`` is ``{(x, y): (256, 256)
+    float32}`` and ``any_ok`` is True if any 5 m tile was retrieved.
+    """
+    x_min, y_min, x_max, y_max = tile_range
+    tiles = {}
+    any_ok = False
+    for x in range(x_min, x_max + 1):
+        for y in range(y_min, y_max + 1):
+            block, ok = _fetch_tile("dem5a", 15, x, y, nodata=nodata,
+                                    sleep=sleep, timeout_s=timeout_s)
+            any_ok = any_ok or ok
+            holes = block == nodata
+            if holes.any():
+                block5b, ok5b = _fetch_tile("dem5b", 15, x, y, nodata=nodata,
+                                            sleep=sleep, timeout_s=timeout_s)
+                any_ok = any_ok or ok5b
+                block[holes] = block5b[holes]
+            tiles[(x, y)] = block
+    return tiles, any_ok
+
+
+def _backfill_from_coarser(mosaic, fine_range, coarse_mosaic, coarse_range,
+                           fine_zoom, coarse_zoom, nodata=GSI_NODATA):
+    """Fill remaining no-data pixels of a fine mosaic from a coarser mosaic.
+
+    Both grids subdivide the same global EPSG:3857 extent from the same origin
+    and their pixel sizes differ by an exact power of two, so a fine pixel's
+    global index maps to its covering coarse pixel by integer division - no
+    interpolation or resampling artifacts. ``mosaic`` is modified in place and
+    returned.
+    """
+    holes = mosaic == nodata
+    if not holes.any():
+        return mosaic
+
+    step = 2 ** (fine_zoom - coarse_zoom)  # fine pixels per coarse pixel (axis)
+    g_col0_f = fine_range[0] * GSI_TILE_SIZE
+    g_row0_f = fine_range[1] * GSI_TILE_SIZE
+    g_col0_c = coarse_range[0] * GSI_TILE_SIZE
+    g_row0_c = coarse_range[1] * GSI_TILE_SIZE
+    rows_c, cols_c = coarse_mosaic.shape
+
+    rr, cc = np.nonzero(holes)
+    lc = (g_col0_f + cc) // step - g_col0_c
+    lr = (g_row0_f + rr) // step - g_row0_c
+    in_bounds = (lc >= 0) & (lc < cols_c) & (lr >= 0) & (lr < rows_c)
+    rr, cc, lr, lc = rr[in_bounds], cc[in_bounds], lr[in_bounds], lc[in_bounds]
+    vals = coarse_mosaic[lr, lc]
+    good = vals != nodata
+    mosaic[rr[good], cc[good]] = vals[good]
+    return mosaic
 
 
 def compose_dem_array(tiles, tile_range, nodata=GSI_NODATA):
@@ -196,51 +287,94 @@ def save_dem_as_geotiff(array, tile_range, zoom, filepath, nodata=GSI_NODATA):
 
 
 def save_gsi_dem_as_geotiff(rectangle_vertices, filepath, dem_type=None,
-                            nodata=GSI_NODATA, sleep=0.4, timeout_s=10):
+                            nodata=GSI_NODATA, sleep=0.4, timeout_s=10,
+                            include_dem10b_fallback=True):
     """Download GSI bare-earth DEM for an ROI and save an EPSG:3857 GeoTIFF.
 
     Args:
         rectangle_vertices: list of (lon, lat) tuples defining the ROI.
         filepath: output GeoTIFF path.
-        dem_type: None to auto-detect the finest available product, or one of
-                  'dem5a' / 'dem5b' / 'dem10b' to force it.
+        dem_type: None (default) to build a seamless mosaic by overlaying the
+                  finest products available per pixel (see below), or one of
+                  'dem5a' / 'dem5b' / 'dem10b' to force a single product with
+                  no merging.
         nodata: no-data fill value.
         sleep: seconds between requests (politeness; set 0 in tests).
         timeout_s: per-request timeout.
+        include_dem10b_fallback: when auto-merging, backfill pixels covered by
+                  neither 5 m product with dem10b (10 m). Set False to leave
+                  such pixels as no-data.
 
     Returns:
         The written filepath.
 
     Note:
-        Succeeds even if some tiles in the ROI failed to download (e.g. near
-        coverage edges); inspect the returned GeoTIFF for unexpected nodata
-        regions if the ROI may span a coverage boundary.
+        With ``dem_type=None`` the ROI is composed at z15 from dem5a, with
+        dem5b filling any dem5a no-data pixels, and (optionally) dem10b filling
+        whatever remains. This produces a seamless terrain even when the ROI
+        straddles a dem5a coverage boundary, instead of leaving no-data holes.
+        dem5b is fetched only for tiles where dem5a is incomplete, and dem10b
+        only when 5 m no-data pixels remain, so fully dem5a-covered ROIs incur
+        no extra requests. dem10b (z14) is half the resolution of the 5 m
+        products; because both grids share the global mercator origin and
+        differ by an exact power of two, its pixels are mapped without
+        resampling artifacts.
 
     Raises:
         ValueError: if rectangle_vertices is empty, dem_type is invalid, or
             no tiles cover the area.
     """
     bbox = _bbox_from_rectangle_vertices(rectangle_vertices)
-    min_lon, min_lat, max_lon, max_lat = bbox
-    mid_lat = (min_lat + max_lat) / 2.0
-    mid_lon = (min_lon + max_lon) / 2.0
 
-    if dem_type is None:
-        dem_type, zoom = check_dem_availability(
-            mid_lat, mid_lon, timeout_s=timeout_s, sleep=sleep
-        )
-    else:
+    # Forced single product: download exactly that product, no merging.
+    if dem_type is not None:
         if dem_type not in _ZOOM_BY_TYPE:
             raise ValueError(
                 f"Unknown dem_type {dem_type!r}; expected one of "
                 f"{sorted(_ZOOM_BY_TYPE)}"
             )
         zoom = _ZOOM_BY_TYPE[dem_type]
+        tile_range = tile_range_for_bbox(bbox, zoom)
+        tiles = download_dem_tiles(
+            tile_range, dem_type, zoom, nodata=nodata, sleep=sleep,
+            timeout_s=timeout_s
+        )
+        mosaic = compose_dem_array(tiles, tile_range, nodata=nodata)
+        save_dem_as_geotiff(mosaic, tile_range, zoom, filepath, nodata=nodata)
+        return filepath
 
-    tile_range = tile_range_for_bbox(bbox, zoom)
-    tiles = download_dem_tiles(
-        tile_range, dem_type, zoom, nodata=nodata, sleep=sleep, timeout_s=timeout_s
+    # Auto: pixel-level overlay of dem5a on dem5b at z15, with optional dem10b
+    # (z14) backfill for pixels neither 5 m product covers.
+    fine_range = tile_range_for_bbox(bbox, 15)
+    tiles, any_ok = _download_fine_merged(
+        fine_range, nodata=nodata, sleep=sleep, timeout_s=timeout_s
     )
-    mosaic = compose_dem_array(tiles, tile_range, nodata=nodata)
-    save_dem_as_geotiff(mosaic, tile_range, zoom, filepath, nodata=nodata)
+    mosaic = compose_dem_array(tiles, fine_range, nodata=nodata)
+
+    if include_dem10b_fallback and (mosaic == nodata).any():
+        coarse_range = tile_range_for_bbox(bbox, 14)
+        coarse_tiles = _download_tiles_safe(
+            coarse_range, "dem10b", 14, nodata=nodata, sleep=sleep,
+            timeout_s=timeout_s
+        )
+        coarse_ok = any(
+            bool((block != nodata).any()) for block in coarse_tiles.values()
+        )
+        if coarse_ok:
+            coarse_mosaic = compose_dem_array(
+                coarse_tiles, coarse_range, nodata=nodata
+            )
+            mosaic = _backfill_from_coarser(
+                mosaic, fine_range, coarse_mosaic, coarse_range, 15, 14,
+                nodata=nodata
+            )
+            any_ok = True
+
+    if not any_ok:
+        raise ValueError(
+            "No GSI DEM tiles available for the requested area "
+            "(is it outside Japan coverage?)."
+        )
+
+    save_dem_as_geotiff(mosaic, fine_range, 15, filepath, nodata=nodata)
     return filepath

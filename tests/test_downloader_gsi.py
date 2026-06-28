@@ -216,13 +216,14 @@ class TestSaveGsiDemAsGeotiff:
 
     def test_auto_detect_then_write(self, tmp_path):
         out = tmp_path / "dem.tif"
-        with patch("voxcity.downloader.gsi.check_dem_availability",
-                   return_value=("dem5a", 15)) as chk, \
+        # All dem5a tiles return valid data -> no dem5b/dem10b fetched, and the
+        # legacy center probe is no longer used by the auto path.
+        with patch("voxcity.downloader.gsi.check_dem_availability") as chk, \
              patch("voxcity.downloader.gsi.requests.get", side_effect=_txt_resp_factory()):
             path = save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
         assert path == str(out)
         assert out.exists()
-        chk.assert_called_once()
+        chk.assert_not_called()
 
     def test_forced_type_skips_probe(self, tmp_path):
         out = tmp_path / "dem.tif"
@@ -235,6 +236,175 @@ class TestSaveGsiDemAsGeotiff:
         out = tmp_path / "dem.tif"
         with pytest.raises(ValueError):
             save_gsi_dem_as_geotiff(self._verts(), str(out), dem_type="bogus", sleep=0)
+
+
+from voxcity.downloader.gsi import _download_fine_merged, _backfill_from_coarser
+
+
+def _parse_url(url):
+    """Extract (dem_type, zoom, x, y) from a GSI XYZ tile URL."""
+    tail = url.split("/xyz/")[1]            # e.g. dem5a/15/29139/12925.txt
+    dem_type, zoom, x, ynxt = tail.split("/")
+    return dem_type, int(zoom), int(x), int(ynxt.split(".")[0])
+
+
+def _dispatch(responder):
+    """Build a requests.get side_effect routed by the URL's dem_type/x/y."""
+    def _side(url, **kwargs):
+        return responder(*_parse_url(url))
+    return _side
+
+
+def _half_nodata_tile(value):
+    """200 response whose left half is ``value`` and right half is 'e' nodata."""
+    rows = [",".join(["%s" % value] * 128 + ["e"] * 128) for _ in range(256)]
+    m = MagicMock()
+    m.status_code = 200
+    m.text = "\n".join(rows)
+    return m
+
+
+class TestFineMerge:
+    def test_dem5b_not_fetched_when_dem5a_complete(self):
+        calls = {"dem5a": 0, "dem5b": 0}
+
+        def responder(dem_type, zoom, x, y):
+            calls[dem_type] = calls.get(dem_type, 0) + 1
+            return _txt_resp(7.0)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            tiles, any_ok = _download_fine_merged(
+                (10, 20, 10, 20), sleep=0, nodata=-9999.0
+            )
+        assert any_ok
+        assert calls["dem5a"] == 1
+        assert calls["dem5b"] == 0
+        assert np.allclose(tiles[(10, 20)], 7.0)
+
+    def test_dem5b_fills_dem5a_partial_holes(self):
+        def responder(dem_type, zoom, x, y):
+            if dem_type == "dem5a":
+                return _half_nodata_tile(5.0)
+            if dem_type == "dem5b":
+                return _txt_resp(9.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            tiles, any_ok = _download_fine_merged(
+                (10, 20, 10, 20), sleep=0, nodata=-9999.0
+            )
+        block = tiles[(10, 20)]
+        assert np.allclose(block[:, :128], 5.0)   # dem5a kept
+        assert np.allclose(block[:, 128:], 9.0)   # dem5b filled the 'e' holes
+
+    def test_missing_dem5a_tile_filled_by_dem5b(self):
+        def responder(dem_type, zoom, x, y):
+            if dem_type == "dem5b":
+                return _txt_resp(3.0)
+            return _resp(404)                     # dem5a 404 everywhere
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            tiles, any_ok = _download_fine_merged(
+                (10, 20, 10, 20), sleep=0, nodata=-9999.0
+            )
+        assert any_ok
+        assert np.allclose(tiles[(10, 20)], 3.0)
+
+
+class TestBackfillFromCoarser:
+    def test_integer_division_mapping_no_resample(self):
+        nodata = -9999.0
+        fine = np.full((256, 256), nodata, dtype=np.float32)
+        coarse = np.fromfunction(
+            lambda i, j: i * 1000.0 + j, (256, 256), dtype=np.float32
+        )
+        # Aligned origins: fine z15 tile (2,2), coarse z14 tile (1,1).
+        out = _backfill_from_coarser(
+            fine, (2, 2, 2, 2), coarse, (1, 1, 1, 1), 15, 14, nodata=nodata
+        )
+        for r, c in [(0, 0), (1, 1), (2, 3), (255, 254)]:
+            assert out[r, c] == pytest.approx((r // 2) * 1000.0 + (c // 2))
+
+    def test_only_holes_filled_and_coarse_nodata_preserved(self):
+        nodata = -9999.0
+        fine = np.full((256, 256), 5.0, dtype=np.float32)
+        fine[0, 0] = nodata   # maps to coarse (0, 0) -> filled
+        fine[0, 2] = nodata   # maps to coarse (0, 1) -> coarse is nodata, kept
+        coarse = np.full((256, 256), 8.0, dtype=np.float32)
+        coarse[0, 1] = nodata
+        out = _backfill_from_coarser(
+            fine, (0, 0, 0, 0), coarse, (0, 0, 0, 0), 15, 14, nodata=nodata
+        )
+        assert out[0, 0] == pytest.approx(8.0)   # filled from coarse
+        assert out[0, 2] == nodata               # coarse nodata -> stays hole
+        assert out[0, 1] == pytest.approx(5.0)   # pre-existing value untouched
+
+
+class TestAutoMergeSave:
+    def _verts(self):
+        return [(140.09, 36.21), (140.12, 36.21), (140.12, 36.24), (140.09, 36.24)]
+
+    def test_dem10b_backfills_when_no_5m_coverage(self, tmp_path):
+        import rasterio
+        out = tmp_path / "dem.tif"
+
+        def responder(dem_type, zoom, x, y):
+            if dem_type == "dem10b":
+                return _txt_resp(42.0)
+            return _resp(404)                     # no dem5a / dem5b
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+        with rasterio.open(str(out)) as src:
+            assert np.allclose(src.read(1), 42.0)
+
+    def test_dem5a_used_no_fallback_requests(self, tmp_path):
+        import rasterio
+        out = tmp_path / "dem.tif"
+        seen = set()
+
+        def responder(dem_type, zoom, x, y):
+            seen.add(dem_type)
+            if dem_type == "dem5a":
+                return _txt_resp(6.0)
+            return _resp(404)
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
+        assert "dem5b" not in seen and "dem10b" not in seen
+        with rasterio.open(str(out)) as src:
+            assert np.allclose(src.read(1), 6.0)
+
+    def test_fallback_disabled_does_not_request_dem10b(self, tmp_path):
+        out = tmp_path / "dem.tif"
+        seen = set()
+
+        def responder(dem_type, zoom, x, y):
+            seen.add(dem_type)
+            if dem_type == "dem10b":
+                return _txt_resp(1.0)
+            return _resp(404)                     # no 5 m coverage
+
+        with patch("voxcity.downloader.gsi.requests.get",
+                   side_effect=_dispatch(responder)):
+            with pytest.raises(ValueError):
+                save_gsi_dem_as_geotiff(
+                    self._verts(), str(out), sleep=0,
+                    include_dem10b_fallback=False,
+                )
+        assert "dem10b" not in seen
+
+    def test_all_missing_raises(self, tmp_path):
+        out = tmp_path / "dem.tif"
+        with patch("voxcity.downloader.gsi.requests.get",
+                   return_value=_resp(404)):
+            with pytest.raises(ValueError):
+                save_gsi_dem_as_geotiff(self._verts(), str(out), sleep=0)
 
 
 class TestPackageExport:
