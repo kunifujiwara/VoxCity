@@ -9,9 +9,10 @@ import numpy as np
 from ..utils.logging import get_logger
 from .units import validate_units
 from .transform import build_placement_transform, grid_geom_from_voxcity
-from .loader import load_obj_groups, select_building_groups
+from .loader import load_obj_groups, select_groups_by_role, DEFAULT_WINDOW_KEYWORDS
 from .voxelize import voxelize_mesh, voxelize_mesh_meshlib
 from .integrate import stamp_buildings
+from .windows import stamp_windows
 
 _logger = get_logger(__name__)
 
@@ -30,6 +31,9 @@ def add_buildings_from_obj(
     z_up=True,
     swap_yz=False,
     overwrite=True,
+    auto_window=True,
+    window_keywords=None,
+    window_value=-16,
     gridvis=False,
 ):
     """Voxelize buildings from an OBJ file and stamp them into a VoxCity model.
@@ -72,12 +76,12 @@ def add_buildings_from_obj(
         units: model length unit, used to scale OBJ coordinates to metres.
             One of ``"m"``, ``"cm"``, ``"mm"``, ``"ft"``, ``"in"``
             (case-insensitive). Defaults to ``"m"``.
-        roles: optional ``{group_name: role}`` mapping used to mark some
-            OBJ groups as non-building (e.g. ``{"windows": "window"}``) so
-            they are excluded from voxelization. Matching is exact-string
-            only. Group names absent from this mapping (including all
-            names, when ``roles=None``, the default) are treated as role
-            ``"building"`` and voxelized.
+        roles: optional ``{group_name: role}`` mapping overriding the
+            auto-detected role of a group. Recognized roles: ``"building"``
+            (voxelized solid as ``-3``), ``"window"`` (surface-voxelized and
+            stamped as glass ``-16`` on the building facade it touches), and
+            ``"skip"`` (excluded). Matching is exact-string only. Groups absent
+            from this mapping are auto-classified (see ``auto_window``).
         backend: voxelization backend. ``"trimesh"`` (default) uses
             :func:`~voxcity.importer.voxelize.voxelize_mesh` (column z-ray
             casting). ``"meshlib"`` uses the optional
@@ -98,6 +102,15 @@ def add_buildings_from_obj(
             collision is counted/logged). If ``False``, only cells that are
             currently empty are stamped; already-occupied cells are left
             untouched.
+        auto_window: if ``True`` (default), groups whose name or assigned OBJ
+            material name contains a window keyword (see ``window_keywords``)
+            are auto-classified as ``"window"``. An explicit ``roles`` entry
+            always overrides this.
+        window_keywords: optional iterable of case-insensitive substrings used
+            for window auto-detection. ``None`` (default) uses
+            ``("window", "glass", "glazing")``.
+        window_value: voxel code written for window cells. Defaults to ``-16``
+            (the standard glass code).
         gridvis: if ``True``, after stamping, display a quick-look 2D
             visualization of the post-import building height grid. Purely
             a debugging aid; failures in the visualization step (including
@@ -145,8 +158,13 @@ def add_buildings_from_obj(
     apply_swap = swap_yz or (not z_up)
 
     # --- load + role routing ---
+    kw = DEFAULT_WINDOW_KEYWORDS if window_keywords is None else tuple(window_keywords)
     groups = load_obj_groups(obj_path, swap_yz=apply_swap)
-    building_groups = select_building_groups(groups, roles=roles)
+    buckets = select_groups_by_role(
+        groups, roles=roles, auto_window=auto_window, window_keywords=kw
+    )
+    building_groups = buckets["building"]
+    window_groups = buckets["window"]
     if not building_groups:
         _logger.warning("No building-role geometry found in %s; nothing imported.", obj_path)
         return copy.deepcopy(voxcity)
@@ -184,6 +202,13 @@ def add_buildings_from_obj(
             "units": units, "backend": backend,
         },
     )
+
+    # --- windows: glass skin on building facade cells ---
+    if window_groups:
+        n_window = stamp_windows(out, window_groups, M, window_value=window_value)
+        manifests = out.extras.get("imported_buildings")
+        if manifests:
+            manifests[-1]["n_window_voxels"] = int(n_window)
 
     if gridvis:
         try:
