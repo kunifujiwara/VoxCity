@@ -274,13 +274,12 @@ def _box_with_window_obj_bytes() -> bytes:
     """A box plus a window-named planar pane, exported to OBJ bytes."""
     box = trimesh.creation.box(extents=(3.0, 3.0, 4.0))
     box.apply_translation((1.5, 1.5, 2.0))
-    import numpy as _np
     pane = trimesh.Trimesh(
-        vertices=_np.array(
+        vertices=np.array(
             [[0.5, 0.0, 0.5], [2.5, 0.0, 0.5], [2.5, 0.0, 3.5], [0.5, 0.0, 3.5]],
             dtype=float,
         ),
-        faces=_np.array([[0, 1, 2], [0, 2, 3]]),
+        faces=np.array([[0, 1, 2], [0, 2, 3]]),
         process=False,
     )
     scene = trimesh.Scene()
