@@ -158,10 +158,12 @@ def add_buildings_from_obj(
     apply_swap = swap_yz or (not z_up)
 
     # --- load + role routing ---
-    kw = DEFAULT_WINDOW_KEYWORDS if window_keywords is None else tuple(window_keywords)
+    resolved_window_keywords = (
+        DEFAULT_WINDOW_KEYWORDS if window_keywords is None else tuple(window_keywords)
+    )
     groups = load_obj_groups(obj_path, swap_yz=apply_swap)
     buckets = select_groups_by_role(
-        groups, roles=roles, auto_window=auto_window, window_keywords=kw
+        groups, roles=roles, auto_window=auto_window, window_keywords=resolved_window_keywords
     )
     building_groups = buckets["building"]
     window_groups = buckets["window"]
@@ -203,11 +205,12 @@ def add_buildings_from_obj(
         },
     )
 
-    # --- windows: glass skin on building facade cells ---
+    # --- windows: glass skin ---
     if window_groups:
         n_window = stamp_windows(out, window_groups, M, window_value=window_value)
         manifests = out.extras.get("imported_buildings")
         if manifests:
+            # stamp_buildings just appended exactly one entry above; safe to index -1.
             manifests[-1]["n_window_voxels"] = int(n_window)
 
     if gridvis:
