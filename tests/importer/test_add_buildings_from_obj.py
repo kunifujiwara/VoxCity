@@ -126,3 +126,54 @@ def test_building_only_import_has_no_glass(box_obj_factory):
     )
     assert not np.any(out.voxels.classes == GLASS_CODE)
     assert out.extras["imported_buildings"][-1].get("n_window_voxels", 0) == 0
+
+
+def _window_only_obj(tmp_path):
+    """OBJ with only window-role panes, no building geometry at all.
+
+    Needs >=2 named groups: trimesh collapses a single-group OBJ to one
+    unnamed Trimesh (see load_obj_groups's docstring), which would lose the
+    "Windows" name entirely and default to the building role.
+    """
+    pane_v = np.array(
+        [[0.5, 0.0, 0.5], [2.5, 0.0, 0.5], [2.5, 0.0, 3.5], [0.5, 0.0, 3.5]],
+        dtype=float,
+    )
+    pane_a = trimesh.Trimesh(vertices=pane_v, faces=np.array([[0, 1, 2], [0, 2, 3]]),
+                             process=False)
+    pane_b = trimesh.Trimesh(vertices=pane_v + [3.0, 0.0, 0.0],
+                             faces=np.array([[0, 1, 2], [0, 2, 3]]), process=False)
+    scene = trimesh.Scene()
+    scene.add_geometry(pane_a, node_name="Windows_A", geom_name="Windows_A")
+    scene.add_geometry(pane_b, node_name="Windows_B", geom_name="Windows_B")
+    path = tmp_path / "window_only.obj"
+    scene.export(str(path))
+    return path
+
+
+def test_window_only_import_skipped_with_warning(tmp_path):
+    import logging as _logging
+
+    # voxcity's package logger has propagate=False (see utils/logging.py), so
+    # caplog (which hooks the root logger) never sees these records; attach a
+    # handler directly to the package logger to observe them instead.
+    records = []
+    handler = _logging.Handler()
+    handler.emit = lambda record: records.append(record)
+    pkg_logger = _logging.getLogger("voxcity")
+    pkg_logger.addHandler(handler)
+    try:
+        vc = make_flat_voxcity(nx=30, ny=30, nz=10, meshsize=1.0)
+        before = vc.voxels.classes.copy()
+        geom = grid_geom_from_voxcity(vc)
+        obj = _window_only_obj(tmp_path)
+        out = add_buildings_from_obj(
+            vc, obj,
+            anchor_lonlat=(float(geom["origin"][0]), float(geom["origin"][1])),
+            anchor_elevation=0.0, move=(5.0, 5.0, 0.0),
+        )
+    finally:
+        pkg_logger.removeHandler(handler)
+    assert np.array_equal(out.voxels.classes, before)
+    assert out.extras.get("imported_buildings") in (None, [])
+    assert any("no building-role geometry" in r.getMessage().lower() for r in records)
