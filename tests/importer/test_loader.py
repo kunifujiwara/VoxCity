@@ -5,9 +5,12 @@ import pytest
 import trimesh
 
 from voxcity.importer.loader import (
+    DEFAULT_WINDOW_KEYWORDS,
     classify_roles,
+    group_material_name,
     load_obj_groups,
     select_building_groups,
+    select_groups_by_role,
 )
 
 
@@ -60,7 +63,7 @@ def test_classify_roles_applies_mapping():
     assert roles == {"a": "building", "glass_01": "window", "b": "building"}
 
 
-def test_select_building_groups_skips_non_building(caplog, propagate_voxcity_logs):
+def test_select_building_groups_skips_non_building():
     box = trimesh.creation.box(extents=(1, 1, 1))
     groups = [
         ("wall_1", box),
@@ -68,13 +71,10 @@ def test_select_building_groups_skips_non_building(caplog, propagate_voxcity_log
         ("wall_2", box),
     ]
 
-    with caplog.at_level(logging.INFO, logger="voxcity"):
-        result = select_building_groups(groups, roles={"glass_01": "window"})
+    result = select_building_groups(groups, roles={"glass_01": "window"})
 
     names = [name for name, _mesh in result]
     assert names == ["wall_1", "wall_2"]
-    assert "glass_01" in caplog.text
-    assert "window" in caplog.text
 
 
 def test_missing_file_raises(tmp_path):
@@ -91,3 +91,65 @@ def test_directory_path_raises_file_not_found_error(tmp_path):
     with pytest.raises(FileNotFoundError) as exc_info:
         load_obj_groups(tmp_path)
     assert str(tmp_path) in str(exc_info.value)
+
+
+def test_classify_roles_auto_detects_window_by_name():
+    roles = classify_roles(["WallA", "Windows_South", "Glazing_2"])
+    assert roles == {"WallA": "building", "Windows_South": "window", "Glazing_2": "window"}
+
+
+def test_classify_roles_auto_detects_window_by_material():
+    # generic group name, but the assigned material is glass
+    roles = classify_roles(
+        ["panelA", "panelB"],
+        material_names={"panelA": "Glass_Clear", "panelB": "Concrete"},
+    )
+    assert roles == {"panelA": "window", "panelB": "building"}
+
+
+def test_classify_roles_explicit_override_beats_auto():
+    # force a glass-named group to stay building, and a plain group to window
+    roles = classify_roles(
+        ["Glass_Wall", "plain"],
+        roles={"Glass_Wall": "building", "plain": "window"},
+    )
+    assert roles == {"Glass_Wall": "building", "plain": "window"}
+
+
+def test_classify_roles_auto_window_can_be_disabled():
+    roles = classify_roles(["Windows_1"], auto_window=False)
+    assert roles == {"Windows_1": "building"}
+
+
+def test_group_material_name_reads_texture_material(tmp_path):
+    mtl = tmp_path / "m.mtl"
+    mtl.write_text("newmtl GlassMat\nKd 0.2 0.4 0.9\n")
+    obj = tmp_path / "m.obj"
+    obj.write_text(
+        "mtllib m.mtl\no Pane\nv 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\n"
+        "usemtl GlassMat\nf 1 2 3\nf 1 3 4\n"
+    )
+    groups = load_obj_groups(obj)
+    assert any(group_material_name(mesh) == "GlassMat" for _name, mesh in groups)
+
+
+def test_select_groups_by_role_buckets_building_and_window():
+    box = trimesh.creation.box(extents=(1, 1, 1))
+    groups = [("WallA", box), ("Windows_1", box), ("WallB", box)]
+    buckets = select_groups_by_role(groups)
+    assert [n for n, _ in buckets["building"]] == ["WallA", "WallB"]
+    assert [n for n, _ in buckets["window"]] == ["Windows_1"]
+
+
+def test_select_groups_by_role_drops_skip(caplog, propagate_voxcity_logs):
+    box = trimesh.creation.box(extents=(1, 1, 1))
+    groups = [("WallA", box), ("ctx", box)]
+    with caplog.at_level(logging.INFO, logger="voxcity"):
+        buckets = select_groups_by_role(groups, roles={"ctx": "skip"})
+    assert [n for n, _ in buckets["building"]] == ["WallA"]
+    assert buckets["window"] == []
+    assert "ctx" in caplog.text
+
+
+def test_default_window_keywords_are_english():
+    assert DEFAULT_WINDOW_KEYWORDS == ("window", "glass", "glazing")

@@ -21,12 +21,34 @@ _logger = get_logger(__name__)
 
 _FALLBACK_GROUP_NAME = "imported_building_1"
 
+DEFAULT_WINDOW_KEYWORDS = ("window", "glass", "glazing")
+
 
 def _yz_swap_matrix() -> np.ndarray:
     """Return the 4x4 affine that swaps axes 1 (Y) and 2 (Z)."""
     swap = np.eye(4)
     swap[[1, 2]] = swap[[2, 1]]
     return swap
+
+
+def group_material_name(mesh) -> Optional[str]:
+    """Return the group's assigned OBJ material name, or None.
+
+    trimesh exposes the material name on TextureVisuals as
+    ``mesh.visual.material.name``. ColorVisuals / untextured meshes (or any
+    missing attribute) yield None so callers fall back to name-only matching.
+    """
+    visual = getattr(mesh, "visual", None)
+    material = getattr(visual, "material", None)
+    name = getattr(material, "name", None)
+    return name if isinstance(name, str) else None
+
+
+def _matches_window(text: Optional[str], keywords) -> bool:
+    if not text:
+        return False
+    low = text.lower()
+    return any(kw in low for kw in keywords)
 
 
 def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh.Trimesh"]]:
@@ -87,51 +109,85 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
     return swapped
 
 
-def classify_roles(names: Iterable[str], roles: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def classify_roles(
+    names: Iterable[str],
+    roles: Optional[Dict[str, str]] = None,
+    *,
+    auto_window: bool = True,
+    window_keywords=DEFAULT_WINDOW_KEYWORDS,
+    material_names: Optional[Dict[str, Optional[str]]] = None,
+) -> Dict[str, str]:
     """Map each group name to its import role, defaulting to ``"building"``.
 
-    Matching against *roles* is exact string match only (no glob/regex
-    pattern support). A typo or an intended pattern in a ``roles`` key
-    that doesn't exactly equal a group name is silently ignored, and that
-    group defaults to role ``"building"``.
+    Resolution order per name:
+      1. explicit ``roles[name]`` if present (overrides everything),
+      2. else ``"window"`` if ``auto_window`` and the group name OR its
+         material name (from ``material_names``) contains a window keyword
+         (case-insensitive substring),
+      3. else ``"building"``.
 
-    Args:
-        names: iterable of group name strings.
-        roles: optional mapping of name -> role string. Names absent from
-            this mapping default to role ``"building"``.
-
-    Returns:
-        Dict mapping each name to its resolved role string.
+    Matching against *roles* is exact string match only. ``material_names`` is
+    an optional ``{name: material_name}`` mapping; absent/None material names
+    simply skip the material-based check.
     """
     roles = roles or {}
-    return {name: roles.get(name, "building") for name in names}
+    material_names = material_names or {}
+    keywords = tuple(k.lower() for k in window_keywords)
+
+    resolved: Dict[str, str] = {}
+    for name in names:
+        if name in roles:
+            resolved[name] = roles[name]
+        elif auto_window and (
+            _matches_window(name, keywords)
+            or _matches_window(material_names.get(name), keywords)
+        ):
+            resolved[name] = "window"
+        else:
+            resolved[name] = "building"
+    return resolved
+
+
+def select_groups_by_role(
+    groups: List[Tuple[str, "trimesh.Trimesh"]],
+    roles: Optional[Dict[str, str]] = None,
+    *,
+    auto_window: bool = True,
+    window_keywords=DEFAULT_WINDOW_KEYWORDS,
+) -> Dict[str, List[Tuple[str, "trimesh.Trimesh"]]]:
+    """Bucket ``(name, mesh)`` groups by resolved role.
+
+    Returns ``{"building": [...], "window": [...]}``. Material names are read
+    from each mesh via :func:`group_material_name`, so window detection by name
+    or material both work. Any other/unknown role (e.g. ``"skip"``) is dropped
+    and logged at INFO.
+    """
+    material_names = {name: group_material_name(mesh) for name, mesh in groups}
+    resolved = classify_roles(
+        [name for name, _mesh in groups],
+        roles=roles,
+        auto_window=auto_window,
+        window_keywords=window_keywords,
+        material_names=material_names,
+    )
+    buckets: Dict[str, List[Tuple[str, "trimesh.Trimesh"]]] = {"building": [], "window": []}
+    for name, mesh in groups:
+        role = resolved[name]
+        if role in buckets:
+            buckets[role].append((name, mesh))
+        else:
+            _logger.info("Skipping group '%s' (role=%s)", name, role)
+    return buckets
 
 
 def select_building_groups(
     groups: List[Tuple[str, "trimesh.Trimesh"]],
     roles: Optional[Dict[str, str]] = None,
 ) -> List[Tuple[str, "trimesh.Trimesh"]]:
-    """Filter *groups* down to those classified with role ``"building"``.
+    """Return only the building-role groups (back-compat wrapper).
 
-    Groups with a non-building role (e.g. ``"window"``) are skipped and
-    logged at INFO level.
-
-    Args:
-        groups: list of ``(name, mesh)`` tuples, e.g. from ``load_obj_groups``.
-        roles: optional mapping of name -> role string, passed to
-            ``classify_roles``.
-
-    Returns:
-        List of ``(name, mesh)`` tuples whose role resolved to ``"building"``.
+    With auto window detection on by default, groups whose name or material
+    marks them as windows are excluded here (they belong to the ``"window"``
+    bucket of :func:`select_groups_by_role`).
     """
-    names = [name for name, _mesh in groups]
-    resolved = classify_roles(names, roles=roles)
-
-    selected = []
-    for name, mesh in groups:
-        role = resolved[name]
-        if role == "building":
-            selected.append((name, mesh))
-        else:
-            _logger.info("Skipping group '%s' (role=%s)", name, role)
-    return selected
+    return select_groups_by_role(groups, roles=roles)["building"]
