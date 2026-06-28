@@ -20,22 +20,39 @@ terrain, land cover, and trees come from the base model.
 6. **Export OBJ.** `File > Export Selected > .obj`, keep **Z up**, export with
    object names/groups. If your export is Y-up, pass `z_up=False`.
 
-## Windows / glazing (current behavior)
+## Windows / glazing
 
-Model opaque mass as **solids**; model windows as **planar surfaces (not solids)**
-on a layer such as `Window`. In this version, non-building layers are detected and
-**skipped** — pass `roles={"Window": "window"}` to mark them. For windows today,
-use the procedural material utilities on the imported buildings:
+Model opaque mass as **closed solids**; model windows as **open planar surfaces**
+flush with the wall (within ~1 `meshsize`). Window groups are surface-voxelized
+and the building facade voxels they touch are recolored to the glass code
+(`-16`); the wall behind stays solid. Windows only reclassify existing building
+cells, so there must be a solid wall behind each pane (do **not** cut window
+holes in the building solid).
+
+**Auto-detection.** A group is treated as a window when its object/layer name
+**or** its assigned OBJ material name contains `window`, `glass`, or `glazing`
+(case-insensitive). Override per group with `roles`, e.g.
+`roles={"Facade_North": "window"}` or force a glass-named group back to building
+with `roles={"Glass_Wall": "building"}`. Customize the keywords with
+`window_keywords=(...)` (e.g. add Japanese terms). Disable with
+`auto_window=False`.
 
 ```python
-from voxcity.utils.material import set_building_material_by_id, get_material_dict
-mat = get_material_dict()
-set_building_material_by_id(vc.voxels.classes, vc.buildings.ids, ids=[1, 2],
-                           mark=mat["concrete"], window_ratio=0.4, glass_id=mat["glass"])
+vc = add_buildings_from_obj(
+    vc, "design.obj",
+    anchor_lonlat=(139.7536, 35.6841), anchor_elevation=12.0,
+    rotation=0.0, units="m",
+    # windows auto-detected by name/material; or be explicit:
+    roles={"Windows_South": "window"},
+)
 ```
 
-Geometry-driven windows (mapping window surfaces directly to glass voxels) are
-planned (see the design spec, Path B).
+**Web app note:** the import UI uploads only the `.obj`, so material-name
+detection requires the `.mtl` to be reachable; name-based detection always
+works. The per-group role dropdown lets you set **building / window / skip**.
+
+For procedural (non-geometry) windows, the `set_building_material_by_id`
+material utilities still apply to imported buildings.
 
 ## Example
 
