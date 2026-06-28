@@ -92,10 +92,16 @@ def stamp_windows(
     building_mask = classes == building_value
 
     if skin_radius > 0:
-        structure = ndimage.generate_binary_structure(3, 3)  # full 3x3x3 (Chebyshev)
+        # connectivity=3 -> full 26-connected/3x3x3 structure, i.e. true
+        # Chebyshev-distance dilation (connectivity=1 would be 6-connected/Manhattan).
+        structure = ndimage.generate_binary_structure(3, 3)
         win_dilated = ndimage.binary_dilation(
             win_mask, structure=structure, iterations=skin_radius
         )
+        # A second, independent dilation: win_dilated answers "which building
+        # cells are near a window cell" (used for recolor below); bld_dilated
+        # answers the distinct, non-derivable question "which window cells are
+        # near a building cell" (used only for the unmatched-cell count/log).
         bld_dilated = ndimage.binary_dilation(
             building_mask, structure=structure, iterations=skin_radius
         )
