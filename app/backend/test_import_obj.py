@@ -268,3 +268,45 @@ def test_anchor_ground_offdomain_clamps_without_error(client):
     r = client.get("/api/model/anchor_ground", params={"lon": 10.0, "lat": 10.0})
     assert r.status_code == 200, r.text
     assert "dem_elevation" in r.json()
+
+
+def _box_with_window_obj_bytes() -> bytes:
+    """A box plus a window-named planar pane, exported to OBJ bytes."""
+    box = trimesh.creation.box(extents=(3.0, 3.0, 4.0))
+    box.apply_translation((1.5, 1.5, 2.0))
+    import numpy as _np
+    pane = trimesh.Trimesh(
+        vertices=_np.array(
+            [[0.5, 0.0, 0.5], [2.5, 0.0, 0.5], [2.5, 0.0, 3.5], [0.5, 0.0, 3.5]],
+            dtype=float,
+        ),
+        faces=_np.array([[0, 1, 2], [0, 2, 3]]),
+        process=False,
+    )
+    scene = trimesh.Scene()
+    scene.add_geometry(box, node_name="BuildingA", geom_name="BuildingA")
+    scene.add_geometry(pane, node_name="Windows", geom_name="Windows")
+    return scene.export(file_type="obj").encode("utf-8")
+
+
+def test_upload_reports_window_role(client):
+    files = {"file": ("bw.obj", io.BytesIO(_box_with_window_obj_bytes()), "text/plain")}
+    r = client.post("/api/model/import_obj/upload", files=files)
+    assert r.status_code == 200, r.text
+    roles = {g["name"]: g["role"] for g in r.json()["groups"]}
+    assert roles.get("Windows") == "window"
+    assert roles.get("BuildingA") == "building"
+
+
+def test_commit_reports_window_voxels(client):
+    files = {"file": ("bw.obj", io.BytesIO(_box_with_window_obj_bytes()), "text/plain")}
+    import_id = client.post("/api/model/import_obj/upload", files=files).json()["import_id"]
+    req = {
+        "import_id": import_id,
+        "placement": {"anchor_lonlat": _domain_center_lonlat(), "anchor_elevation": 0.0},
+        "roles": {},
+        "overwrite": True,
+    }
+    r = client.post("/api/model/import_obj/commit", json=req)
+    assert r.status_code == 200, r.text
+    assert r.json()["n_window_voxels_added"] > 0

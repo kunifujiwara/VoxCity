@@ -3238,7 +3238,7 @@ async def import_obj_upload(file: UploadFile = File(...)):
     """Parse an uploaded OBJ into groups + preview geometry; register an import_id."""
     _require_model()
     import uuid
-    from voxcity.importer.loader import load_obj_groups, classify_roles
+    from voxcity.importer.loader import load_obj_groups, classify_roles, group_material_name
 
     import_id = uuid.uuid4().hex
     dest_dir = os.path.join(BASE_OUTPUT_DIR, "import_obj", import_id)
@@ -3258,7 +3258,8 @@ async def import_obj_upload(file: UploadFile = File(...)):
         # client-input problem, not a server bug.
         raise HTTPException(status_code=400, detail=f"Could not parse OBJ: {e}")
 
-    role_map = classify_roles([name for name, _ in groups])
+    material_names = {name: group_material_name(mesh) for name, mesh in groups}
+    role_map = classify_roles([name for name, _ in groups], material_names=material_names)
 
     group_models: List[ImportObjGroup] = []
     footprints: List[List[List[float]]] = []
@@ -3387,6 +3388,7 @@ async def import_obj_commit(req: ImportObjCommitRequest):
         anchor_elev = float(dem[ii, jj])
 
     before = int(np.sum(np.asarray(app_state.voxcity.voxels.classes) == -3))
+    before_w = int(np.sum(np.asarray(app_state.voxcity.voxels.classes) == -16))
     try:
         out = add_buildings_from_obj(
             app_state.voxcity,
@@ -3411,6 +3413,8 @@ async def import_obj_commit(req: ImportObjCommitRequest):
 
     after = int(np.sum(np.asarray(out.voxels.classes) == -3))
     n_added = after - before
+    after_w = int(np.sum(np.asarray(out.voxels.classes) == -16))
+    n_window_added = after_w - before_w
     manifest = out.extras.get("imported_buildings") if isinstance(out.extras, dict) else None
     ids: List[int] = []
     if manifest:
@@ -3452,5 +3456,6 @@ async def import_obj_commit(req: ImportObjCommitRequest):
         figure_json=_render_edit_preview(out, title="Imported building"),
         imported_building_ids=ids,
         n_building_voxels_added=int(n_added),
+        n_window_voxels_added=int(n_window_added),
         warning=warning,
     )

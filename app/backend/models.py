@@ -336,4 +336,5 @@ class ImportObjCommitResponse(BaseModel):
     figure_json: str
     imported_building_ids: List[int]
     n_building_voxels_added: int
+    n_window_voxels_added: int = 0
     warning: Optional[str] = None
