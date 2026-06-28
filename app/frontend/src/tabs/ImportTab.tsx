@@ -168,7 +168,12 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         setInfo(null);
       } else {
         setWarning(null);
-        setInfo(`Imported ${r.imported_building_ids.length} building(s); ${r.n_building_voxels_added} voxel(s) added.`);
+        setInfo(
+          `Imported ${r.imported_building_ids.length} building(s); ` +
+          `${r.n_building_voxels_added} voxel(s) added` +
+          (r.n_window_voxels_added > 0 ? `, ${r.n_window_voxels_added} window voxel(s)` : '') +
+          `.`,
+        );
       }
     } catch (err: any) {
       setError(err.message || 'Import failed');
@@ -225,6 +230,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                         <select value={roles[g.name] ?? 'building'} disabled={busy}
                                 onChange={(e) => setRoles((r) => ({ ...r, [g.name]: e.target.value }))}>
                           <option value="building">building</option>
+                          <option value="window">window</option>
                           <option value="skip">skip</option>
                         </select>
                       </td>

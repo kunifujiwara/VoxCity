@@ -650,6 +650,7 @@ export interface ImportObjCommitResult {
   figure_json: string;
   imported_building_ids: number[];
   n_building_voxels_added: number;
+  n_window_voxels_added: number;
   warning: string | null;
 }
 
