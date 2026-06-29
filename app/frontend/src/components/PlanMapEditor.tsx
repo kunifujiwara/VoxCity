@@ -748,7 +748,16 @@ const PlanMapEditor: React.FC<PlanMapEditorProps> = ({
       const label = val.minHeight > 0
         ? `${val.height.toFixed(1)} / ${val.minHeight.toFixed(1)} m`
         : `${val.height.toFixed(1)} m`;
-      const coords = feature.geometry?.coordinates?.[0];
+      // Resolve the outer ring for both geometry types: a Polygon's first ring
+      // is `coordinates[0]`, while a MultiPolygon nests one level deeper
+      // (`coordinates[0][0]` = first sub-polygon's exterior ring). Without this,
+      // MultiPolygon footprints (e.g. imported OBJ blocks) produce a NaN
+      // centroid and the label is dropped.
+      const geomType = feature.geometry?.type;
+      const coords =
+        geomType === 'MultiPolygon'
+          ? feature.geometry?.coordinates?.[0]?.[0]
+          : feature.geometry?.coordinates?.[0];
       if (!coords || coords.length < 3) continue;
       // Compute centroid of the first ring.
       let sumLon = 0, sumLat = 0;
