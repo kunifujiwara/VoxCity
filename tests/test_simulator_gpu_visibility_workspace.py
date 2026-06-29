@@ -168,7 +168,7 @@ def test_surface_view_workspace_reuses_same_config(monkeypatch):
     assert len(created) == 1
 
 
-def test_surface_view_workspace_key_changes_for_face_count(monkeypatch):
+def test_surface_view_workspace_reuses_across_face_counts(monkeypatch):
     from voxcity.simulator_gpu.visibility import integration
 
     created = []
@@ -187,10 +187,13 @@ def test_surface_view_workspace_key_changes_for_face_count(monkeypatch):
         ray_sampling="grid", n_rays=None,
     )
 
+    # Same capacity bucket -> reuse one workspace; new bucket -> new workspace.
     first = integration._get_or_create_surface_view_workspace(n_faces=5790, **common)
     second = integration._get_or_create_surface_view_workspace(n_faces=6000, **common)
+    third = integration._get_or_create_surface_view_workspace(n_faces=9000, **common)
 
-    assert first is not second
+    assert first is second
+    assert first is not third
     assert len(created) == 2
 
 

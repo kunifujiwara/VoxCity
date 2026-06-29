@@ -139,3 +139,34 @@ def test_gpu_surface_view_factor_north_wall_blocked_by_north_obstructor():
     assert north_vf < south_vf - 0.1
 
 
+def test_reuse_reference_mesh_skips_create_voxel_mesh(monkeypatch):
+    """reuse_reference_mesh=True must bypass create_voxel_mesh and trace the
+    supplied reference geometry (used by the optimizer where buildings/windows
+    are static and only trees move)."""
+    pytest.importorskip("taichi")
+    from voxcity.simulator_gpu.visibility import integration
+
+    voxel_data, building_ids = _asymmetric_layout()
+    voxcity = _fake_voxcity(voxel_data, building_ids)
+
+    ref = integration.get_surface_view_factor(
+        voxcity, target_values=(0,), inclusion_mode=False,
+        N_azimuth=24, N_elevation=6,
+    )
+    assert ref is not None and len(ref.faces) > 0
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("create_voxel_mesh should not be called when reusing")
+
+    monkeypatch.setattr("voxcity.geoprocessor.mesh.create_voxel_mesh", _boom)
+
+    mesh = integration.get_surface_view_factor(
+        voxcity, target_values=(0,), inclusion_mode=False,
+        N_azimuth=24, N_elevation=6,
+        reuse_reference_mesh=True, reference_mesh=ref,
+    )
+    assert mesh is ref
+    assert "view_factor_values" in mesh.metadata
+
+
+
