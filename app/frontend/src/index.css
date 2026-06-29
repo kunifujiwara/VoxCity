@@ -953,6 +953,15 @@ input:focus, select:focus {
 .zone-row .zone-type-badge.building { background: rgba(5, 150, 105, 0.13); border-color: rgba(5, 150, 105, 0.24); color: #064e3b; }
 .zone-row button   { background: none; border: none; cursor: pointer; padding: 2px 4px; }
 
+/* Building surface refinement */
+.surface-building-row { padding: 6px; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px; margin-bottom: 6px; }
+.surface-building-row.refining { background: rgba(37, 99, 235, 0.05); border-color: rgba(37, 99, 235, 0.25); }
+.surface-building-head { display: flex; align-items: center; gap: 6px; }
+.surface-building-name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.surface-refine-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+.surface-refine-divider { flex-basis: 100%; height: 0; }
+.surface-refine-group .btn-icon { min-width: 26px; padding-left: 0; padding-right: 0; text-align: center; }
+
 .zone-stats-table { margin-top: 12px; font-size: 13px; }
 .zone-stats-table .header { font-weight: 600; margin-bottom: 4px; }
 .zone-stats-table table { width: 100%; border-collapse: collapse; }

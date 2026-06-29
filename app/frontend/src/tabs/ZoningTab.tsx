@@ -582,72 +582,51 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           return (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: '0.85em', opacity: 0.7, marginBottom: 4 }}>Selected buildings:</div>
-              {selectedBuildingIds.map((bid) => (
-                <div key={bid} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ flex: 1 }}>Building {bid}</span>
-                  {refiningBuildingId === bid ? (
-                    <>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => {
-                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'roof');
-                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
-                        }}
-                      >Roof</button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => {
-                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'all_walls');
-                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
-                        }}
-                      >All walls</button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => {
-                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'window');
-                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
-                        }}
-                      >Window</button>
-                      {(['N', 'E', 'S', 'W'] as WallOrientation[]).map((dir) => (
+              {selectedBuildingIds.map((bid) => {
+                const sel = activeSurfaceZone.selectors;
+                const isMode = (mode: SurfaceSelector['mode'], dir?: WallOrientation) =>
+                  sel.some((s) => s.buildingId === bid && s.mode === mode && (mode !== 'wall_orientation' || ('orientation' in s && s.orientation === dir)));
+                const apply = (updated: SurfaceSelector[]) =>
+                  onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                return (
+                <div key={bid} className={`surface-building-row${refiningBuildingId === bid ? ' refining' : ''}`}>
+                  <div className="surface-building-head">
+                    <span className="surface-building-name" title={`Building ${bid}`}>Building {bid}</span>
+                    {refiningBuildingId === bid ? (
+                      <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(null)}>Done</button>
+                    ) : (
+                      <>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(bid)}>Refine</button>
                         <button
-                          key={dir}
-                          className="btn btn-secondary"
-                          style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                          className="btn btn-secondary btn-sm"
+                          title="Remove building"
                           onClick={() => {
-                            const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'wall_orientation', dir);
-                            onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                            setRefiningBuildingId(null);
+                            apply(activeSurfaceZone.selectors.filter((s) => s.buildingId !== bid));
                           }}
-                        >{dir}</button>
+                        >✕</button>
+                      </>
+                    )}
+                  </div>
+                  {refiningBuildingId === bid && (
+                    <div className="surface-refine-group">
+                      <button className={`btn btn-sm ${isMode('roof') ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'roof'))}>Roof</button>
+                      <button className={`btn btn-sm ${isMode('all_walls') ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'all_walls'))}>All walls</button>
+                      <button className={`btn btn-sm ${isMode('window') ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'window'))}>Window</button>
+                      <span className="surface-refine-divider" />
+                      {(['N', 'E', 'S', 'W'] as WallOrientation[]).map((dir) => (
+                        <button key={dir} className={`btn btn-sm btn-icon ${isMode('wall_orientation', dir) ? 'btn-primary' : 'btn-secondary'}`}
+                          title={`${dir} wall`}
+                          onClick={() => apply(toggleBulkSelector(sel, bid, 'wall_orientation', dir))}>{dir}</button>
                       ))}
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => setRefiningBuildingId(null)}
-                      >Done</button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => setRefiningBuildingId(bid)}
-                      >Refine</button>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
-                        onClick={() => {
-                          setRefiningBuildingId(null);
-                          const updated = activeSurfaceZone.selectors.filter((s) => s.buildingId !== bid);
-                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
-                        }}
-                      >✕</button>
-                    </>
+                    </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })()}
