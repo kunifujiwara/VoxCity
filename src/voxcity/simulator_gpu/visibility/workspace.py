@@ -41,14 +41,20 @@ class ViewWorkspaceKey:
 
 @dataclass(frozen=True)
 class SurfaceViewWorkspaceKey:
-    """Immutable key for reusable building-surface visibility fields."""
+    """Immutable key for reusable building-surface visibility fields.
+
+    ``face_capacity`` is bucketed (rounded up) so that candidate meshes whose
+    open-air face counts vary slightly all reuse one allocation instead of
+    creating a fresh workspace per exact ``n_faces``.
+    """
     shape: Tuple[int, int, int]
     meshsize: float
-    n_faces: int
+    face_capacity: int
     n_azimuth: int
     n_elevation: int
     ray_sampling: str
     n_rays: Optional[int]
+
 
 
 class ViewWorkspace:
@@ -141,7 +147,7 @@ class SurfaceViewWorkspace:
         nx: int,
         ny: int,
         nz: int,
-        n_faces: int,
+        face_capacity: int,
         n_azimuth: int,
         n_elevation: int,
         ray_sampling: str,
@@ -151,7 +157,7 @@ class SurfaceViewWorkspace:
         self.nx = nx
         self.ny = ny
         self.nz = nz
-        self.n_faces = int(n_faces)
+        self.face_capacity = int(face_capacity)
 
         if ray_sampling.lower() == "fibonacci":
             dirs_np = generate_ray_directions_fibonacci(
@@ -171,9 +177,9 @@ class SurfaceViewWorkspace:
         self.hemisphere_dirs = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_hemisphere_dirs,))
         self.hemisphere_dirs.from_numpy(np.asarray(dirs_np, dtype=np.float32))
 
-        self.face_centers = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_faces,))
-        self.face_normals = ti.Vector.field(3, dtype=ti.f32, shape=(self.n_faces,))
-        self.face_vf_values = ti.field(dtype=ti.f32, shape=(self.n_faces,))
+        self.face_centers = ti.Vector.field(3, dtype=ti.f32, shape=(self.face_capacity,))
+        self.face_normals = ti.Vector.field(3, dtype=ti.f32, shape=(self.face_capacity,))
+        self.face_vf_values = ti.field(dtype=ti.f32, shape=(self.face_capacity,))
 
         self.is_tree = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
         self.is_solid = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
@@ -181,12 +187,17 @@ class SurfaceViewWorkspace:
         self.is_opaque = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
 
     def validate_face_data(self, face_centers: np.ndarray, face_normals: np.ndarray) -> None:
-        expected_shape = (self.n_faces, 3)
-        if tuple(face_centers.shape) != expected_shape or tuple(face_normals.shape) != expected_shape:
+        n = int(face_centers.shape[0])
+        if face_centers.shape != (n, 3) or face_normals.shape != (n, 3):
             raise ValueError(
-                f"surface workspace face data shapes must match {expected_shape}; "
+                f"surface workspace face data must be (n, 3); "
                 f"got face_centers={face_centers.shape} face_normals={face_normals.shape}."
             )
+        if n > self.face_capacity:
+            raise ValueError(
+                f"face count {n} exceeds workspace capacity {self.face_capacity}."
+            )
+
 
     def validate_voxel_data(self, voxel_data: np.ndarray) -> None:
         if tuple(voxel_data.shape) != (self.nx, self.ny, self.nz):
@@ -197,5 +208,10 @@ class SurfaceViewWorkspace:
 
     def set_faces(self, face_centers: np.ndarray, face_normals: np.ndarray) -> None:
         self.validate_face_data(face_centers, face_normals)
-        self.face_centers.from_numpy(np.asarray(face_centers, dtype=np.float32))
-        self.face_normals.from_numpy(np.asarray(face_normals, dtype=np.float32))
+        n = int(face_centers.shape[0])
+        centers = np.zeros((self.face_capacity, 3), dtype=np.float32)
+        normals = np.zeros((self.face_capacity, 3), dtype=np.float32)
+        centers[:n] = np.asarray(face_centers, dtype=np.float32)
+        normals[:n] = np.asarray(face_normals, dtype=np.float32)
+        self.face_centers.from_numpy(centers)
+        self.face_normals.from_numpy(normals)

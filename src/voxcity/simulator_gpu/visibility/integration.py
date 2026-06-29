@@ -232,6 +232,20 @@ def _get_or_create_view_workspace(
     return workspace
 
 
+def _surface_face_capacity(n_faces: int) -> int:
+    """Round a face count up to a coarse bucket.
+
+    Optimization candidates produce open-air building meshes whose exact face
+    count varies (trees cover/uncover faces). Bucketing the capacity lets all
+    candidates reuse one workspace allocation instead of exhausting the cache.
+    """
+    n = max(int(n_faces), 1)
+    cap = 1024
+    while cap < n:
+        cap *= 2
+    return cap
+
+
 def _get_or_create_surface_view_workspace(
     *,
     nx: int,
@@ -246,10 +260,11 @@ def _get_or_create_surface_view_workspace(
 ) -> SurfaceViewWorkspace:
     global _surface_view_workspace_cache
 
+    face_capacity = _surface_face_capacity(n_faces)
     key = SurfaceViewWorkspaceKey(
         shape=(int(nx), int(ny), int(nz)),
         meshsize=float(meshsize),
-        n_faces=int(n_faces),
+        face_capacity=int(face_capacity),
         n_azimuth=int(n_azimuth),
         n_elevation=int(n_elevation),
         ray_sampling=str(ray_sampling).lower(),
@@ -271,7 +286,7 @@ def _get_or_create_surface_view_workspace(
         nx=nx,
         ny=ny,
         nz=nz,
-        n_faces=n_faces,
+        face_capacity=face_capacity,
         n_azimuth=n_azimuth,
         n_elevation=n_elevation,
         ray_sampling=ray_sampling,
@@ -580,7 +595,14 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     building_class_id = kwargs.get('building_class_id', None)
     target_selectors = kwargs.get('target_selectors', None)
     progress_report = kwargs.get('progress_report', False)
-    
+    # Optimization fast-path: trees move but buildings/windows do not, so the
+    # building-surface topology is stable across candidates. When enabled and a
+    # reference mesh is supplied, reuse its geometry instead of rebuilding the
+    # whole-city mesh every call. Tree occlusion is still applied per-candidate
+    # in the ray-tracing kernel via the voxel masks.
+    reuse_reference_mesh = kwargs.get('reuse_reference_mesh', False)
+    reference_mesh = kwargs.get('reference_mesh', None)
+
     # Handle mode parameter
     if mode == 'sky':
         target_values = (0,)
@@ -601,20 +623,28 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         building_class_id = BUILDING_SURFACE_CLASSES
 
     # Create mesh from building voxels
-    try:
-        building_mesh = create_voxel_mesh(
-            voxel_data,
-            building_class_id,
-            meshsize,
-            building_id_grid=building_id_grid,
-            mesh_type='open_air'
-        )
-        if building_mesh is None or len(building_mesh.faces) == 0:
-            print("No surfaces found in voxel data for the specified class.")
+    if (
+        reuse_reference_mesh
+        and reference_mesh is not None
+        and getattr(reference_mesh, "faces", None) is not None
+        and len(reference_mesh.faces) > 0
+    ):
+        building_mesh = reference_mesh
+    else:
+        try:
+            building_mesh = create_voxel_mesh(
+                voxel_data,
+                building_class_id,
+                meshsize,
+                building_id_grid=building_id_grid,
+                mesh_type='open_air'
+            )
+            if building_mesh is None or len(building_mesh.faces) == 0:
+                print("No surfaces found in voxel data for the specified class.")
+                return None
+        except Exception as e:
+            print(f"Error during mesh extraction: {e}")
             return None
-    except Exception as e:
-        print(f"Error during mesh extraction: {e}")
-        return None
     
     if progress_report:
         print(f"Processing view factor for {len(building_mesh.faces)} faces...")

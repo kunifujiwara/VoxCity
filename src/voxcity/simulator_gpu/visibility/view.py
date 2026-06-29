@@ -739,7 +739,9 @@ class SurfaceViewFactorCalculator:
             grid_bounds_real, boundary_epsilon
         )
         
-        return face_vf_values.to_numpy()
+        # Workspace fields may be allocated to a larger capacity than the
+        # current face count; slice back to the actual faces.
+        return face_vf_values.to_numpy()[:n_faces]
     
     @ti.kernel
     def _setup_surface_masks(
