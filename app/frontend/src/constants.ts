@@ -56,6 +56,7 @@ export const DEM_SOURCES = [
 
 export const CUSTOM_CLASSES = [
   { id: -3, label: 'Building' },
+  { id: -16, label: 'Window' },
   { id: -2, label: 'Tree' },
   { id: 1, label: 'Bareland' },
   { id: 2, label: 'Rangeland' },

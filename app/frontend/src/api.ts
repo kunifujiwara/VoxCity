@@ -549,6 +549,7 @@ export interface SurfaceFaceMetaDto {
   building_id: number;
   surface_kind: string;
   orientation: string | null;
+  is_window?: boolean;
 }
 
 export interface BuildingSurfacesResponse {

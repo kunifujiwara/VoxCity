@@ -21,6 +21,7 @@ export interface SurfaceFaceMeta {
   buildingId: number;
   surfaceKind: 'roof' | 'wall' | 'bottom' | 'other';
   orientation?: WallOrientation | null;
+  isWindow?: boolean;
 }
 
 /** A picked element returned by the `<Picker/>` overlay. */

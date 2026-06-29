@@ -171,6 +171,7 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     all_face_verts = []      # list of (M, 4, 3) arrays
     all_face_normals = []    # list of (M, 3) arrays
     all_building_ids_list = []  # list of (M,) arrays  (only when tracking)
+    all_voxel_classes_list = []  # list of (M,) arrays  (source voxel class per face)
     track_ids = (
         bool(class_ids_set & set(BUILDING_SURFACE_CLASSES))
         and building_id_grid is not None
@@ -214,6 +215,8 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         if track_ids:
             ids = building_id_grid_uv[face_coords[:, 0], face_coords[:, 1]]
             all_building_ids_list.append(ids)
+            src_classes = voxel_array[face_coords[:, 0], face_coords[:, 1], face_coords[:, 2]]
+            all_voxel_classes_list.append(src_classes)
 
     if not all_face_verts:
         return None
@@ -264,6 +267,14 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         bid_tris[0::2] = bid_arr
         bid_tris[1::2] = bid_arr
         mesh.metadata['building_id'] = bid_tris
+
+    # Add per-face source voxel class (e.g. window -16 vs building -3)
+    if track_ids and all_voxel_classes_list:
+        cls_arr = np.concatenate(all_voxel_classes_list)   # (F,)
+        cls_tris = np.empty(n_faces_quad * 2, dtype=cls_arr.dtype)
+        cls_tris[0::2] = cls_arr
+        cls_tris[1::2] = cls_arr
+        mesh.metadata['face_voxel_class'] = cls_tris
 
     return mesh
 

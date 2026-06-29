@@ -82,6 +82,13 @@ def classify_surface_faces(mesh: Any) -> list[SurfaceFaceMeta]:
         bid_per_face = np.zeros(len(faces), dtype=int)
     bid_per_face = np.asarray(bid_per_face, dtype=int)
 
+    if isinstance(meta, dict):
+        cls_per_face = meta.get("face_voxel_class", None)
+    else:
+        cls_per_face = getattr(meta, "face_voxel_class", None)
+    if cls_per_face is not None:
+        cls_per_face = np.asarray(cls_per_face, dtype=int)
+
     result = []
     for i, face in enumerate(faces):
         verts = vertices[face]
@@ -105,12 +112,14 @@ def classify_surface_faces(mesh: Any) -> list[SurfaceFaceMeta]:
         kind = classify_surface_kind(normal)
         orient = wall_orientation(normal) if kind == "wall" else None
         face_key = make_surface_face_key(bid, centroid, normal, i)
+        is_window = bool(cls_per_face is not None and int(cls_per_face[i]) == -16)
 
         result.append(SurfaceFaceMeta(
             face_key=face_key,
             building_id=bid,
             surface_kind=kind,
             orientation=orient,
+            is_window=is_window,
         ))
     return result
 
@@ -209,6 +218,7 @@ def surface_zone_mask(
     kinds = np.array([str(_get(m, "surface_kind")) for m in face_meta])
     orientations = np.array([_get(m, "orientation") for m in face_meta], dtype=object)
     face_keys = np.array([str(_get(m, "face_key")) for m in face_meta], dtype=object)
+    windows = np.array([bool(_get(m, "is_window", False)) for m in face_meta])
     selectable = np.isin(kinds, list(SELECTABLE_KINDS))
 
     for selector in selectors:
@@ -219,6 +229,8 @@ def surface_zone_mask(
             positive |= base & (kinds == "roof")
         elif selector.mode == "all_walls":
             positive |= base & (kinds == "wall")
+        elif selector.mode == "window":
+            positive |= base & windows
         elif selector.mode == "wall_orientation":
             positive |= base & (kinds == "wall") & (orientations == selector.orientation)
         elif selector.mode == "faces":

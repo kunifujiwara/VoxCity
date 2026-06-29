@@ -35,7 +35,7 @@ const WALL_ORIENTATIONS: WallOrientation[] = ['N', 'E', 'S', 'W'];
 function isSurfaceSelector(value: unknown): value is SurfaceSelector {
   if (!isRecord(value) || typeof value.buildingId !== 'number' || typeof value.mode !== 'string')
     return false;
-  if (value.mode === 'whole' || value.mode === 'roof' || value.mode === 'all_walls') return true;
+  if (value.mode === 'whole' || value.mode === 'roof' || value.mode === 'all_walls' || value.mode === 'window') return true;
   if (value.mode === 'wall_orientation') {
     return WALL_ORIENTATIONS.includes(value.orientation as WallOrientation);
   }

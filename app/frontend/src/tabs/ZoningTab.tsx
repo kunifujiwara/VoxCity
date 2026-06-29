@@ -603,6 +603,14 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                           onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
                         }}
                       >All walls</button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '0.8em' }}
+                        onClick={() => {
+                          const updated = toggleBulkSelector(activeSurfaceZone.selectors, bid, 'window');
+                          onZonesChange(zones.map((z) => z.id === activeSurfaceZone.id ? { ...activeSurfaceZone, selectors: updated } : z));
+                        }}
+                      >Window</button>
                       {(['N', 'E', 'S', 'W'] as WallOrientation[]).map((dir) => (
                         <button
                           key={dir}

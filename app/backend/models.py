@@ -146,7 +146,7 @@ class StatusResponse(BaseModel):
 
 ZoneType = Literal["horizontal", "building_surface"]
 SurfaceSelectorMode = Literal[
-    "whole", "roof", "all_walls", "wall_orientation", "faces", "exclude_faces"
+    "whole", "roof", "all_walls", "window", "wall_orientation", "faces", "exclude_faces"
 ]
 WallOrientation = Literal["N", "E", "S", "W"]
 
@@ -163,6 +163,7 @@ class SurfaceFaceMeta(BaseModel):
     building_id: int
     surface_kind: str
     orientation: Optional[str] = None
+    is_window: bool = False
 
 
 class ZoneSpec(BaseModel):

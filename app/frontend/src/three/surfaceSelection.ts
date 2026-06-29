@@ -32,6 +32,7 @@ export function toSurfaceFaceMetaArray(faceToSurface: SurfaceFaceMetaInput): Sur
     buildingId: face.building_id,
     surfaceKind: face.surface_kind as SurfaceFaceMeta['surfaceKind'],
     orientation: face.orientation as WallOrientation | null | undefined,
+    isWindow: 'is_window' in face ? Boolean(face.is_window) : false,
   }));
 }
 
@@ -55,6 +56,8 @@ export function isSurfaceFaceSelected(meta: SurfaceFaceMeta, selectors: SurfaceS
         return meta.surfaceKind === 'roof';
       case 'all_walls':
         return meta.surfaceKind === 'wall';
+      case 'window':
+        return meta.isWindow === true;
       case 'wall_orientation':
         return meta.surfaceKind === 'wall' && meta.orientation === selector.orientation;
       case 'faces':

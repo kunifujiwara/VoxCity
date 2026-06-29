@@ -12,6 +12,7 @@ export type SurfaceSelector =
   | { buildingId: number; mode: 'whole' }
   | { buildingId: number; mode: 'roof' }
   | { buildingId: number; mode: 'all_walls' }
+  | { buildingId: number; mode: 'window' }
   | { buildingId: number; mode: 'wall_orientation'; orientation: WallOrientation }
   | { buildingId: number; mode: 'faces'; faceKeys: string[] }
   | { buildingId: number; mode: 'exclude_faces'; faceKeys: string[] };
@@ -21,6 +22,7 @@ export interface SurfacePickMeta {
   faceKey: string;
   surfaceKind: 'roof' | 'wall' | 'bottom' | 'other';
   orientation?: WallOrientation | null;
+  isWindow?: boolean;
 }
 
 // ── Zone interfaces ───────────────────────────────────────────────────────────
@@ -149,8 +151,8 @@ export function surfaceZoneSummary(zone: BuildingSurfaceZone): string {
 
 // ── Surface selector normalization ────────────────────────────────────────────
 
-const POSITIVE_MODES = new Set(['whole', 'roof', 'all_walls', 'wall_orientation', 'faces']);
-const BULK_MODES = new Set(['whole', 'roof', 'all_walls', 'wall_orientation']);
+const POSITIVE_MODES = new Set(['whole', 'roof', 'all_walls', 'window', 'wall_orientation', 'faces']);
+const BULK_MODES = new Set(['whole', 'roof', 'all_walls', 'window', 'wall_orientation']);
 
 /**
  * Normalize selectors: for each building, if 'whole' is present, remove narrower
@@ -202,7 +204,7 @@ export function toggleWholeBuilding(selectors: SurfaceSelector[], buildingId: nu
 export function toggleBulkSelector(
   selectors: SurfaceSelector[],
   buildingId: number,
-  mode: 'roof' | 'all_walls' | 'wall_orientation',
+  mode: 'roof' | 'all_walls' | 'window' | 'wall_orientation',
   orientation?: WallOrientation,
 ): SurfaceSelector[] {
   // Check if this exact selector already exists
