@@ -38,6 +38,7 @@ from .caching import (
     get_building_radiation_model_cache,
     get_or_create_building_radiation_model,
     CachedBuildingRadiationModel,
+    BUILDING_SURFACE_CLASSES,
 )
 
 
@@ -111,7 +112,8 @@ def get_building_solar_irradiance(
         **kwargs: Additional parameters including:
             - with_reflections (bool): Enable multi-bounce reflections (default: False)
             - n_reflection_steps (int): Number of reflection bounces (default: 2)
-            - building_class_id (int): Building voxel class code (default: -3)
+            - building_class_id (int or iterable): Building-surface voxel
+              class code(s); default (-3, -16) includes window/glass cells.
             - computation_mask (np.ndarray): Optional 2D boolean mask
             - target_selectors (list): Optional surface selectors limiting returned faces
             - reference_mesh: Optional reference mesh for target selector metadata fast path
@@ -135,7 +137,7 @@ def get_building_solar_irradiance(
     
     # Extract parameters
     progress_report = kwargs.pop('progress_report', False)
-    building_class_id = kwargs.pop('building_class_id', -3)
+    building_class_id = kwargs.pop('building_class_id', BUILDING_SURFACE_CLASSES)
     n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
     with_reflections = kwargs.pop('with_reflections', False)
     computation_mask = kwargs.pop('computation_mask', None)
@@ -710,7 +712,7 @@ def get_building_sunlight_hours(
             voxel_data = voxcity.voxels.classes
             meshsize = voxcity.voxels.meta.meshsize
             building_id_grid = voxcity.buildings.ids
-            building_class_id = kwargs.pop('building_class_id', -3)
+            building_class_id = kwargs.pop('building_class_id', BUILDING_SURFACE_CLASSES)
             building_svf_mesh = create_voxel_mesh(
                 voxel_data,
                 building_class_id,
@@ -924,11 +926,11 @@ def get_building_global_solar_irradiance_using_epw(
     if building_svf_mesh is None:
         try:
             from voxcity.geoprocessor.mesh import create_voxel_mesh
-            building_class_id = kwargs.get('building_class_id', -3)
+            building_class_id = kwargs.get('building_class_id', BUILDING_SURFACE_CLASSES)
             voxel_data = voxcity.voxels.classes
             meshsize = voxcity.voxels.meta.meshsize
             building_id_grid = voxcity.buildings.ids
-            
+
             building_svf_mesh = create_voxel_mesh(
                 voxel_data,
                 building_class_id,

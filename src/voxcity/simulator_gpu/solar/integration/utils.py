@@ -16,6 +16,9 @@ from datetime import datetime
 VOXCITY_GROUND_CODE = -1
 VOXCITY_TREE_CODE = -2
 VOXCITY_BUILDING_CODE = -3
+# Window/glass cells are the building's outer skin, not air: they must be solid
+# so the radiation domain generates (and shades) building surfaces there.
+VOXCITY_WINDOW_CODE = -16
 
 
 # =============================================================================
@@ -72,9 +75,11 @@ def convert_voxel_data_to_arrays(
     Returns:
         Tuple of (is_solid, lad) numpy arrays with same shape as voxel_data
     """
-    # Vectorized solid detection: buildings (-3), ground (-1), or positive land cover codes
+    # Vectorized solid detection: buildings (-3), windows/glass (-16), ground (-1),
+    # or positive land cover codes. Windows are part of the building's solid skin.
     is_solid = (
         (voxel_data == VOXCITY_BUILDING_CODE) |
+        (voxel_data == VOXCITY_WINDOW_CODE) |
         (voxel_data == VOXCITY_GROUND_CODE) |
         (voxel_data > 0)
     ).astype(np.int32)

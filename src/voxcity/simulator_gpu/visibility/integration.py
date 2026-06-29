@@ -554,7 +554,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
             - tree_lad (float): Leaf area density (default: 1.0)
             - target_values (tuple): Target voxel values (default: (0,))
             - inclusion_mode (bool): Inclusion vs exclusion mode (default: False)
-            - building_class_id (int): Building class ID for mesh extraction (default: -3)
+            - building_class_id (int or iterable): Building-surface class code(s)
+              for mesh extraction; default (-3, -16) includes window/glass cells.
             - target_selectors (list): Optional surface selectors limiting computed faces
             - reference_mesh: Optional reference mesh used to reuse surface metadata
             - progress_report (bool): Show progress (default: False)
@@ -575,7 +576,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     n_rays = kwargs.get('N_rays', kwargs.get('n_rays', None))
     tree_k = kwargs.get('tree_k', 0.6)
     tree_lad = kwargs.get('tree_lad', 1.0)
-    building_class_id = kwargs.get('building_class_id', -3)
+    # None -> building-surface group (buildings + windows), resolved at mesh build.
+    building_class_id = kwargs.get('building_class_id', None)
     target_selectors = kwargs.get('target_selectors', None)
     progress_report = kwargs.get('progress_report', False)
     
@@ -592,10 +594,12 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     
     # Try to import mesh creation utility
     try:
-        from voxcity.geoprocessor.mesh import create_voxel_mesh
+        from voxcity.geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
     except ImportError:
         raise ImportError("VoxCity geoprocessor.mesh module required for surface view factor calculation")
-    
+    if building_class_id is None:
+        building_class_id = BUILDING_SURFACE_CLASSES
+
     # Create mesh from building voxels
     try:
         building_mesh = create_voxel_mesh(
@@ -806,7 +810,8 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
             - landmark_polygon: Polygon to select landmark buildings
             - tree_k (float): Tree extinction coefficient (default: 0.6)
             - tree_lad (float): Leaf area density (default: 1.0)
-            - building_class_id (int): Building class ID (default: -3)
+            - building_class_id (int or iterable): Building-surface class code(s);
+              default (-3, -16) includes window/glass cells.
             - progress_report (bool): Show progress (default: False)
             - colormap (str): Matplotlib colormap name (default: 'RdYlGn')
             - obj_export (bool): Export mesh to OBJ (default: False)
@@ -829,7 +834,8 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
     landmark_polygon = kwargs.get('landmark_polygon', None)
     tree_k = kwargs.get('tree_k', 0.6)
     tree_lad = kwargs.get('tree_lad', 1.0)
-    building_class_id = kwargs.get('building_class_id', -3)
+    # None -> building-surface group (buildings + windows), resolved at mesh build.
+    building_class_id = kwargs.get('building_class_id', None)
     colormap = kwargs.get('colormap', 'RdYlGn')
     landmark_value = -30
     
@@ -898,7 +904,9 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
     
     # Create mesh
     try:
-        from voxcity.geoprocessor.mesh import create_voxel_mesh
+        from voxcity.geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
+        if building_class_id is None:
+            building_class_id = BUILDING_SURFACE_CLASSES
         building_mesh = create_voxel_mesh(
             voxel_data_for_mesh,
             building_class_id,

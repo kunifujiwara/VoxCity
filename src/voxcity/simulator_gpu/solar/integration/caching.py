@@ -18,7 +18,11 @@ from .utils import (
     convert_voxel_data_to_arrays,
     compute_valid_ground_vectorized,
     VOXCITY_BUILDING_CODE,
+    VOXCITY_WINDOW_CODE,
 )
+
+# Voxel codes that together form a building's exterior surface (building + glass).
+BUILDING_SURFACE_CLASSES = (VOXCITY_BUILDING_CODE, VOXCITY_WINDOW_CODE)
 
 
 # =============================================================================
@@ -439,7 +443,7 @@ def get_or_create_building_radiation_model(
     voxcity,
     n_reflection_steps: int = 2,
     progress_report: bool = False,
-    building_class_id: int = -3,
+    building_class_id=None,
     **kwargs
 ) -> Tuple[object, np.ndarray]:
     """
@@ -449,7 +453,8 @@ def get_or_create_building_radiation_model(
         voxcity: VoxCity object
         n_reflection_steps: Number of reflection bounces
         progress_report: Print progress messages
-        building_class_id: Building voxel class code
+        building_class_id: Building-surface voxel class code(s). None (default)
+            uses (-3, -16) so window/glass cells count as building surface.
         **kwargs: Additional RadiationConfig parameters
         
     Returns:
@@ -568,12 +573,20 @@ def get_or_create_building_radiation_model(
     n_surfaces = model.surfaces.count
     surf_positions_all = model.surfaces.position.to_numpy()[:n_surfaces]
     
+    # Building surfaces include window/glass (-16) cells, not just buildings (-3):
+    # windows are the building's outer skin and must receive irradiance too.
+    if building_class_id is None:
+        building_surface_codes = set(BUILDING_SURFACE_CLASSES)
+    elif isinstance(building_class_id, (int, np.integer)):
+        building_surface_codes = {int(building_class_id)}
+    else:
+        building_surface_codes = {int(c) for c in building_class_id}
     is_building_surf = np.zeros(n_surfaces, dtype=bool)
     for s_idx in range(n_surfaces):
         i_idx, j_idx, z_idx = surf_positions_all[s_idx]
         i, j, z = int(i_idx), int(j_idx), int(z_idx)
         if 0 <= i < ni and 0 <= j < nj and 0 <= z < nk:
-            if voxel_data[i, j, z] == building_class_id:
+            if int(voxel_data[i, j, z]) in building_surface_codes:
                 is_building_surf[s_idx] = True
     
     if progress_report:
