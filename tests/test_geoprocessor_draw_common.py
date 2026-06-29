@@ -2,7 +2,7 @@
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import Polygon
+from shapely.geometry import MultiPolygon, Polygon
 
 from voxcity.geoprocessor.raster.core import compute_grid_geometry
 from voxcity.utils.projector import GridProjector
@@ -98,6 +98,43 @@ class TestBuildBuildingGeojson:
 
         assert fc["features"][0]["properties"]["min_height"] == 0.0
         assert fc["features"][1]["properties"]["min_height"] == 1.5
+
+    def test_emits_multipolygon_footprints(self):
+        """A building whose footprint has disjoint parts (a MultiPolygon, e.g.
+        an imported OBJ block) must be emitted, not silently dropped, alongside
+        ordinary single-Polygon buildings."""
+        part_a = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
+        part_b = Polygon([(2, 2), (3, 2), (3, 3), (2, 3)])
+        gdf = gpd.GeoDataFrame(
+            [
+                {
+                    "geometry": Polygon([(5, 5), (6, 5), (6, 6), (5, 6)]),
+                    "height": 9.0,
+                    "min_height": 0.0,
+                    "height_estimated": False,
+                },
+                {
+                    "geometry": MultiPolygon([part_a, part_b]),
+                    "height": 21.0,
+                    "min_height": 0.0,
+                    "height_estimated": False,
+                },
+            ],
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+
+        fc = build_building_geojson(gdf, include_height=True)
+
+        # Both rows emitted (the MultiPolygon is no longer dropped).
+        assert len(fc["features"]) == 2
+        single, multi = fc["features"][0], fc["features"][1]
+        assert single["geometry"]["type"] == "Polygon"
+        assert multi["geometry"]["type"] == "MultiPolygon"
+        # Two disjoint parts preserved, with the correct height/idx.
+        assert len(multi["geometry"]["coordinates"]) == 2
+        assert multi["properties"]["idx"] == 1
+        assert multi["properties"]["height"] == 21.0
 
     def test_defaults_min_height_to_zero_when_column_absent(self):
         gdf = gpd.GeoDataFrame(

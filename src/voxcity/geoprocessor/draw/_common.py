@@ -191,34 +191,58 @@ def build_building_geojson(
     features: list[dict] = []
     if building_gdf is None or len(building_gdf) == 0:
         return dict(_EMPTY_FC)
+
+    def _props(idx: Any, row: Any) -> dict:
+        if not include_height:
+            return {}
+        h = row.get("height", 0)
+        h = 0.0 if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
+        try:
+            min_height = float(row.get("min_height", 0.0))
+        except (TypeError, ValueError):
+            min_height = 0.0
+        if not math.isfinite(min_height):
+            min_height = 0.0
+        return {
+            "idx": int(idx),
+            "height": h,
+            "min_height": min_height,
+            "height_estimated": bool(row.get("height_estimated", False)),
+        }
+
+    def _ring_has_nan(ring: Any) -> bool:
+        return any(math.isnan(c) for pt in ring for c in pt)
+
     for idx, row in building_gdf.iterrows():
-        if isinstance(row.geometry, geom.Polygon):
-            coords = [list(row.geometry.exterior.coords)]
-            if any(math.isnan(c) for ring in coords for pt in ring for c in pt):
+        g = row.geometry
+        # A building footprint may be a single Polygon or, when its parts are
+        # disjoint (e.g. an imported OBJ with separate wings or a block of
+        # buildings unioned together), a MultiPolygon. Emit both so the 2D plan
+        # map and any GeoJSON consumer see every footprint. Exterior rings only,
+        # mirroring the single-Polygon behaviour (holes are not emitted).
+        if isinstance(g, geom.Polygon):
+            ring = list(g.exterior.coords)
+            if _ring_has_nan(ring):
                 continue
-            props: dict[str, Any] = {}
-            if include_height:
-                h = row.get("height", 0)
-                h = 0.0 if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
-                try:
-                    min_height = float(row.get("min_height", 0.0))
-                except (TypeError, ValueError):
-                    min_height = 0.0
-                if not math.isfinite(min_height):
-                    min_height = 0.0
-                estimated = bool(row.get("height_estimated", False))
-                props = {
-                    "idx": int(idx),
-                    "height": h,
-                    "min_height": min_height,
-                    "height_estimated": estimated,
-                }
-            features.append({
-                "type": "Feature",
-                "id": str(idx),
-                "properties": props,
-                "geometry": {"type": "Polygon", "coordinates": coords},
-            })
+            geometry = {"type": "Polygon", "coordinates": [ring]}
+        elif isinstance(g, geom.MultiPolygon):
+            polys = []
+            for sub in g.geoms:
+                ring = list(sub.exterior.coords)
+                if _ring_has_nan(ring):
+                    continue
+                polys.append([ring])
+            if not polys:
+                continue
+            geometry = {"type": "MultiPolygon", "coordinates": polys}
+        else:
+            continue
+        features.append({
+            "type": "Feature",
+            "id": str(idx),
+            "properties": _props(idx, row),
+            "geometry": geometry,
+        })
     return {"type": "FeatureCollection", "features": features}
 
 
