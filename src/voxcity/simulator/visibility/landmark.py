@@ -4,7 +4,7 @@ import matplotlib.patches as mpatches
 from numba import njit, prange
 
 from ...geoprocessor.selection import find_building_containing_point, get_buildings_in_drawn_polygon
-from ...geoprocessor.mesh import create_voxel_mesh
+from ...geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
 from ...exporter.obj import grid_to_obj, export_obj
 
 
@@ -331,7 +331,7 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
             center_lat = (min(lats) + max(lats)) / 2
             target_point = (center_lon, center_lat)
             landmark_ids = find_building_containing_point(building_gdf, target_point)
-    building_class_id = kwargs.get("building_class_id", -3)
+    building_class_id = kwargs.get("building_class_id", BUILDING_SURFACE_CLASSES)
     landmark_value = -30
     tree_k = kwargs.get("tree_k", 0.6)
     tree_lad = kwargs.get("tree_lad", 1.0)

@@ -460,7 +460,7 @@ def get_surface_view_factor(voxcity, **kwargs):
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
     import os
-    from ...geoprocessor.mesh import create_voxel_mesh
+    from ...geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     building_id_grid = voxcity.buildings.ids
@@ -479,7 +479,9 @@ def get_surface_view_factor(voxcity, **kwargs):
     target_values = kwargs.get("target_values", (0,))
     inclusion_mode = kwargs.get("inclusion_mode", False)
     sky_diffuse = bool(kwargs.get("sky_diffuse", False))
-    building_class_id = kwargs.get("building_class_id", -3)
+    # Building surfaces include window/glass cells (-16) -- they are the building's
+    # outer skin, not a separate object -- so they receive view-factor values too.
+    building_class_id = kwargs.get("building_class_id", BUILDING_SURFACE_CLASSES)
     try:
         building_mesh = create_voxel_mesh(
             voxel_data,

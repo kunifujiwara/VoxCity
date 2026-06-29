@@ -215,8 +215,43 @@ def test_building_surfaces_uses_real_create_voxel_mesh_signature(client, monkeyp
     monkeypatch.setattr(main_mod, "create_voxel_mesh", fake_create_voxel_mesh, raising=False)
     response = client.get("/api/buildings/surfaces")
     assert response.status_code == 200
-    assert captured["class_id"] == -3
+    # Building surfaces include window/glass cells (-16), not just buildings (-3),
+    # so windows aren't dropped from the selectable surface.
+    assert captured["class_id"] == main_mod.BUILDING_SURFACE_CLASSES
+    assert -16 in captured["class_id"]
     assert captured["mesh_type"] == "open_air"
+
+
+def test_building_surfaces_includes_window_faces(client, monkeypatch):
+    """End-to-end (real create_voxel_mesh): a building whose outer skin is
+    partly glass (-16) must expose those window faces as selectable building
+    surface -- matching the all-classes extraction, more than buildings-only."""
+    from voxcity.geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
+
+    classes = np.zeros((6, 6, 4), dtype=int)
+    classes[2:4, 2:4, 0:3] = -3          # building block
+    classes[2, 2:4, 0:3] = -16           # one outer wall column -> glass
+    ids = np.zeros((6, 6), dtype=int)
+    ids[2:4, 2:4] = 5
+
+    voxcity = types.SimpleNamespace(
+        voxels=types.SimpleNamespace(
+            classes=classes, meta=types.SimpleNamespace(meshsize=1.0)
+        ),
+        buildings=types.SimpleNamespace(ids=ids),
+    )
+    monkeypatch.setattr(app_state, "voxcity", voxcity)
+
+    response = client.get("/api/buildings/surfaces")
+    assert response.status_code == 200, response.text
+    n_faces = len(response.json()["face_to_surface"])
+
+    group = create_voxel_mesh(classes, BUILDING_SURFACE_CLASSES, meshsize=1.0,
+                              building_id_grid=ids, mesh_type="open_air")
+    building_only = create_voxel_mesh(classes, -3, meshsize=1.0,
+                                      building_id_grid=ids, mesh_type="open_air")
+    assert n_faces == len(group.faces)
+    assert len(building_only.faces) < n_faces
 
 
 def test_building_surfaces_returns_400_when_no_model(client, monkeypatch):

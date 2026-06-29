@@ -129,6 +129,41 @@ class TestCreateVoxelMesh:
         
         assert result is not None
 
+    def test_window_voxels_included_in_building_surface(self):
+        """Windows (-16) replace the outer skin of a building (-3). Extracting
+        the building-surface group (-3, -16) must yield the SAME continuous
+        surface as the equivalent all-building block -- no holes, no internal
+        faces along the building<->window boundary."""
+        from voxcity.geoprocessor.mesh import BUILDING_SURFACE_CLASSES
+
+        solid = np.zeros((6, 6, 6), dtype=np.int32)
+        solid[2:4, 2:4, 0:3] = -3  # a small solid building block
+        bid = np.zeros((6, 6), dtype=np.int32)
+        bid[2:4, 2:4] = 7
+
+        all_building = create_voxel_mesh(
+            solid, class_id=-3, building_id_grid=bid, mesh_type="open_air"
+        )
+
+        # Reclassify part of the block's outer skin to window/glass.
+        mixed = solid.copy()
+        mixed[2, 2:4, 0:3] = -16  # one wall column turned to glass
+
+        group = create_voxel_mesh(
+            mixed, class_id=BUILDING_SURFACE_CLASSES, building_id_grid=bid, mesh_type="open_air"
+        )
+        building_only = create_voxel_mesh(
+            mixed, class_id=-3, building_id_grid=bid, mesh_type="open_air"
+        )
+
+        # Same outer surface as the all-building block (windows are part of it).
+        assert len(group.faces) == len(all_building.faces)
+        # Excluding windows leaves holes -> strictly fewer faces.
+        assert len(building_only.faces) < len(group.faces)
+        # Window faces inherit the building id at their column.
+        assert "building_id" in group.metadata
+        assert set(np.unique(group.metadata["building_id"])) == {7}
+
     def test_faces_at_boundary_only(self):
         """Test that faces are only created at class boundaries."""
         voxel_array = np.zeros((5, 5, 5), dtype=np.int32)

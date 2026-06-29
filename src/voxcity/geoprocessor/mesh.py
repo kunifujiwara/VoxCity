@@ -30,6 +30,15 @@ def _require_trimesh():
             "Install it via 'pip install trimesh'."
         )
 
+
+# Voxel classes that together form a building's exterior surface. Window/glass
+# (-16) cells replace the outer skin of building (-3) cells, so building-surface
+# simulations (solar irradiance, sky view factor, visibility) must treat both as
+# one continuous surface rather than dropping the glass faces.
+BUILDING_CLASS = -3
+WINDOW_CLASS = -16
+BUILDING_SURFACE_CLASSES = (BUILDING_CLASS, WINDOW_CLASS)
+
 def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None, mesh_type=None):
     """
     Create a 3D mesh from voxels preserving sharp edges, scaled by meshsize.
@@ -47,9 +56,13 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         - -3: typically represents buildings
         Other values can represent different classes as defined by the application.
     
-    class_id : int
-        The ID of the class to extract. Only voxels with this ID will be included
-        in the output mesh.
+    class_id : int or iterable of int
+        The class ID(s) to extract. Only voxels whose value is in this set are
+        included in the output mesh. Passing several IDs treats them as one
+        solid group: faces are emitted only where the group meets a non-member
+        (e.g. building -3 + window/glass -16 form a single continuous surface,
+        with no internal face along their shared boundary). See
+        ``BUILDING_SURFACE_CLASSES`` for the standard building-surface set.
     
     meshsize : float, default=1.0
         The real-world size of each voxel in meters, applied uniformly to x, y, and z
@@ -103,8 +116,15 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
     - The mesh preserves sharp edges, which is important for architectural visualization.
     """
     _require_trimesh()
-    # Find voxels of the current class
-    voxel_coords = np.argwhere(voxel_array == class_id)
+    # Normalize class_id to a tuple of ints so a single class and a group of
+    # classes (e.g. building -3 + window -16) share one code path.
+    if isinstance(class_id, (int, np.integer)):
+        class_ids = (int(class_id),)
+    else:
+        class_ids = tuple(int(c) for c in class_id)
+    class_ids_set = set(class_ids)
+    # Find voxels belonging to any of the requested classes
+    voxel_coords = np.argwhere(np.isin(voxel_array, class_ids))
 
     if building_id_grid is not None:
         building_id_grid_uv = np.asarray(building_id_grid)
@@ -138,14 +158,23 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
     ], dtype=np.float64)
 
-    # Whether to use solar/open_air boundary logic
-    solar_mode = (class_id == -3 and mesh_type in ('building_solar', 'open_air'))
+    # Whether to use solar/open_air boundary logic. Applies when extracting a
+    # building surface (buildings and/or windows); both share the same exterior
+    # skin, so a window's outer face is exposed and the building<->window
+    # boundary is internal (no face).
+    solar_mode = (
+        mesh_type in ('building_solar', 'open_air')
+        and bool(class_ids_set & set(BUILDING_SURFACE_CLASSES))
+    )
 
     # Collect per-direction boundary face data
     all_face_verts = []      # list of (M, 4, 3) arrays
     all_face_normals = []    # list of (M, 3) arrays
     all_building_ids_list = []  # list of (M,) arrays  (only when tracking)
-    track_ids = (class_id == -3 and building_id_grid is not None)
+    track_ids = (
+        bool(class_ids_set & set(BUILDING_SURFACE_CLASSES))
+        and building_id_grid is not None
+    )
 
     for d in range(6):
         adj = voxel_coords + direction_offsets[d]  # (N, 3)
@@ -165,7 +194,7 @@ def create_voxel_mesh(voxel_array, class_id, meshsize=1.0, building_id_grid=None
         if solar_mode:
             inbound_boundary = (adj_values == 0) | (adj_values == -2)
         else:
-            inbound_boundary = (adj_values == 0) | (adj_values != class_id)
+            inbound_boundary = (adj_values == 0) | (~np.isin(adj_values, class_ids))
 
         is_boundary = oob | inbound_boundary
         # Voxels with a boundary face in this direction

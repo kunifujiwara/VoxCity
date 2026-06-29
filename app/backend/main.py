@@ -132,7 +132,7 @@ except ImportError:
 
 from voxcity.exporter.cityles import export_cityles
 from voxcity.exporter.obj import export_obj
-from voxcity.geoprocessor.mesh import create_voxel_mesh
+from voxcity.geoprocessor.mesh import create_voxel_mesh, BUILDING_SURFACE_CLASSES
 from voxcity.visualizer import visualize_voxcity_plotly
 from voxcity.utils.lc import get_land_cover_classes
 
@@ -1248,7 +1248,7 @@ async def run_solar(req: SolarRequest):
             _bid_grid = getattr(voxcity.buildings, "ids", None)
             _ref_mesh = create_voxel_mesh(
                 voxcity.voxels.classes,
-                -3,
+                BUILDING_SURFACE_CLASSES,
                 meshsize=app_state.meshsize,
                 building_id_grid=_bid_grid,
                 mesh_type="open_air",
@@ -1423,7 +1423,7 @@ async def run_view(req: ViewRequest):
             _bid_grid = getattr(voxcity.buildings, "ids", None)
             _ref_mesh = create_voxel_mesh(
                 voxcity.voxels.classes,
-                -3,
+                BUILDING_SURFACE_CLASSES,
                 meshsize=app_state.meshsize,
                 building_id_grid=_bid_grid,
                 mesh_type="open_air",
@@ -1612,7 +1612,7 @@ async def run_landmark(req: LandmarkRequest):
             _bid_grid = getattr(voxcity.buildings, "ids", None)
             _ref_mesh = create_voxel_mesh(
                 voxcity.voxels.classes,
-                -3,
+                BUILDING_SURFACE_CLASSES,
                 meshsize=app_state.meshsize,
                 building_id_grid=_bid_grid,
                 mesh_type="open_air",
@@ -2031,7 +2031,7 @@ def building_surfaces() -> BuildingSurfaceGeometryResponse:
 
     mesh = create_voxel_mesh(
         vc.voxels.classes,
-        -3,
+        BUILDING_SURFACE_CLASSES,
         meshsize=app_state.meshsize,
         building_id_grid=bid_grid,
         mesh_type="open_air",
