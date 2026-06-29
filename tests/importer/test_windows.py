@@ -63,6 +63,36 @@ def test_window_recolor_matches_pane_footprint_no_inflation():
     assert glass[:, 2].max() == raw[:, 2].max()
 
 
+def _mullion_window(x0, x1, z0, z1, y):
+    """A window modeled as a frame + central cross of thin bars, like a real OBJ
+    mullioned window (the glass detail is sub-voxel)."""
+    xm, zm = (x0 + x1) / 2.0, (z0 + z1) / 2.0
+    bars = [_vertical_pane(x - 0.2, x + 0.2, y, z0, z1) for x in (x0, xm, x1)]
+    bars += [_vertical_pane(x0, x1, y, z - 0.2, z + 0.2) for z in (z0, zm, z1)]
+    return trimesh.util.concatenate(bars)
+
+
+def test_mullioned_window_fills_opening_to_solid_pane():
+    """A mullioned window (thin frame bars) must voxelize to a SOLID pane filling
+    the opening, not the bars themselves (which render as sparse strips).
+    Regression for imported windows showing as vertical strips."""
+    vc = _wall_voxcity()  # wall slab at j=4, i in [2,8), z in [1,9)
+    win = _mullion_window(3.0, 6.0, 2.0, 7.0, 4.5)
+    n = stamp_windows(vc, [("Windows", win)], IDENTITY)
+    glass = vc.voxels.classes == GLASS_CODE
+
+    assert n > 0
+    # All glass stays at the wall plane.
+    assert np.all(np.where(glass)[1] == 4)
+    # The window's bounding box on the wall is SOLIDLY filled -- no strip gaps.
+    gi = np.argwhere(glass)
+    ilo, ihi = gi[:, 0].min(), gi[:, 0].max()
+    klo, khi = gi[:, 2].min(), gi[:, 2].max()
+    assert glass[ilo:ihi + 1, 4, klo:khi + 1].all(), (
+        "window opening not solidly filled (mullion gaps / strips remain)"
+    )
+
+
 def test_window_far_from_building_is_skipped(caplog, propagate_voxcity_logs):
     vc = _wall_voxcity()
     pane = _vertical_pane(3.0, 6.0, 10.5, 2.0, 7.0)  # j=10, far from the wall at j=4

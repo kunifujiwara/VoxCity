@@ -1,10 +1,14 @@
 """Stamp imported window geometry as a glass skin (code -16) on building voxels.
 
 Window groups are surface-voxelized (not volume-filled) so thin/planar panes
-rasterize reliably, then the building (-3) cells they coincide with -- within a
-small Chebyshev radius -- are recolored to the glass code. Windows never create
-new occupancy; they only reclassify existing building cells, so building
-footprint/height metadata is unaffected.
+rasterize reliably. Each physically-distinct window (a connected component of the
+surface cells) has its opening filled in the facade plane -- so a mullioned frame
+becomes a solid pane rather than thin bars -- and is then bridged to the wall
+along the window normal only, recoloring the building (-3) cells it covers. This
+keeps the glass at the window's true footprint: no lateral halo (an isotropic
+match inflates small windows) and no strips (tracing the bare frame). Windows
+never create new occupancy; they only reclassify existing building cells, so
+building footprint/height metadata is unaffected.
 """
 from __future__ import annotations
 
@@ -84,6 +88,20 @@ def _axis_line_structure(axis):
     return struct
 
 
+def _broadcast_along_axis(filled2d, axis, lo, hi, shape):
+    """Place a filled 2D in-plane footprint back into the 3D grid across a
+    component's (thin) extent along *axis* (indices ``lo..hi`` inclusive).
+
+    ``filled2d`` has the grid shape with *axis* removed; it is re-inserted and
+    broadcast across the ``lo..hi`` slab.
+    """
+    slab = np.zeros(shape, dtype=bool)
+    idx = [slice(None), slice(None), slice(None)]
+    idx[axis] = slice(lo, hi + 1)
+    slab[tuple(idx)] = np.expand_dims(filled2d, axis)
+    return slab
+
+
 def stamp_windows(
     voxcity,
     window_groups,
@@ -129,49 +147,58 @@ def stamp_windows(
 
     iso_structure = ndimage.generate_binary_structure(3, 3)
 
-    if skin_radius > 0:
-        # Bucket each group's cells by its normal axis, then dilate each bucket
-        # along that axis ONLY. This bridges the sub-voxel pane<->wall depth gap
-        # without inflating the window in the facade plane (an isotropic
-        # dilation grows it ~1 voxel per side, ~doubling small windows).
-        # Groups whose plane is undefined fall into an isotropic bucket.
-        axis_masks = {0: None, 1: None, 2: None}
-        iso_mask = None
-        for cells in cells_list:
-            m = np.zeros(grid_shape, dtype=bool)
-            m[cells[:, 0], cells[:, 1], cells[:, 2]] = True
+    if skin_radius <= 0:
+        recolor = building_mask & win_mask
+    else:
+        # Treat each physically-distinct window as a connected component of the
+        # surface cells (OBJ grouping is irrelevant; separate windows are
+        # separate components and never merge). For each component, fill its
+        # opening in the plane perpendicular to its normal -- so a mullioned
+        # frame voxelizes to a solid pane rather than thin bars -- then bridge to
+        # the wall along the normal ONLY, so the window keeps its true facade
+        # footprint without a lateral halo.
+        recolor = np.zeros(grid_shape, dtype=bool)
+        labels, n_lab = ndimage.label(win_mask, structure=iso_structure)
+        for lab in range(1, n_lab + 1):
+            comp = labels == lab
+            cells = np.argwhere(comp)
             axis = _surface_normal_axis(cells)
             if axis is None:
-                iso_mask = m if iso_mask is None else (iso_mask | m)
-            else:
-                axis_masks[axis] = m if axis_masks[axis] is None else (axis_masks[axis] | m)
-
-        win_dilated = np.zeros(grid_shape, dtype=bool)
-        for axis, m in axis_masks.items():
-            if m is None:
+                # Degenerate (near-1D) cloud: no well-defined plane to fill.
+                # Fall back to an isotropic bridge of the raw cells.
+                bridged = ndimage.binary_dilation(
+                    comp, structure=iso_structure, iterations=skin_radius
+                )
+                recolor |= building_mask & bridged
                 continue
-            win_dilated |= ndimage.binary_dilation(
-                m, structure=_axis_line_structure(axis), iterations=skin_radius
+            # Fill the opening within the (perpendicular) facade plane, then
+            # re-expand across the component's thin normal span and bridge to the
+            # wall along the normal axis.
+            proj = comp.any(axis=axis)
+            filled2d = ndimage.binary_fill_holes(proj)
+            slab = _broadcast_along_axis(
+                filled2d, axis,
+                int(cells[:, axis].min()), int(cells[:, axis].max()), grid_shape,
             )
-        if iso_mask is not None:
-            win_dilated |= ndimage.binary_dilation(
-                iso_mask, structure=iso_structure, iterations=skin_radius
+            bridged = ndimage.binary_dilation(
+                slab, structure=_axis_line_structure(axis), iterations=skin_radius
             )
+            recolor |= building_mask & bridged
 
-        # Independent isotropic building dilation answers the distinct question
-        # "which window cells are near a building cell" (used only for the
-        # unmatched-cell count/log, so a generous radius is fine here).
+    recolor &= building_mask
+    n = int(recolor.sum())
+    if n:
+        classes[recolor] = window_value
+
+    # Independent isotropic building dilation answers the distinct question
+    # "which window cells are near a building cell" (used only for the
+    # unmatched-cell count/log below, so a generous radius is fine here).
+    if skin_radius > 0:
         bld_dilated = ndimage.binary_dilation(
             building_mask, structure=iso_structure, iterations=skin_radius
         )
     else:
-        win_dilated = win_mask
         bld_dilated = building_mask
-
-    recolor = building_mask & win_dilated
-    n = int(recolor.sum())
-    if n:
-        classes[recolor] = window_value
 
     n_unmatched = int(win_mask.sum() - (win_mask & bld_dilated).sum())
     if n_unmatched:
