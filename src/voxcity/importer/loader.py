@@ -51,6 +51,28 @@ def _matches_window(text: Optional[str], keywords) -> bool:
     return any(kw in low for kw in keywords)
 
 
+def _material_split_groups(path_str: str):
+    """Re-load *path_str* grouping faces by material.
+
+    Returns a list of ``(material_name, mesh)`` groups, but only when the file
+    actually splits into **two or more** materials; otherwise returns ``None``
+    so the caller keeps the single fallback group (single-material files are
+    unchanged). When the OBJ's ``.mtl`` is reachable the group names are the
+    material names (enabling window auto-detection); without it trimesh still
+    splits by material but the names are generic (geometry index), so callers
+    fall back to manual role assignment.
+    """
+    loaded = trimesh.load(path_str, process=False, split_objects=True, group_material=True)
+    if not isinstance(loaded, trimesh.Scene):
+        return None
+    groups = [
+        (name, mesh)
+        for name, mesh in loaded.geometry.items()
+        if isinstance(mesh, trimesh.Trimesh)
+    ]
+    return groups if len(groups) >= 2 else None
+
+
 def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh.Trimesh"]]:
     """Load *obj_path* and return its geometry as a list of (name, mesh).
 
@@ -68,8 +90,11 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
         to only one geometry group — this includes both OBJs with no
         named scene structure at all *and* OBJs containing exactly one
         named ``o <name>`` block, since trimesh discards that name in
-        the single-group case. In either case the single group returned
-        here is named ``"imported_building_1"``.
+        the single-group case. In that situation the file is re-loaded
+        grouping faces by material: if it separates into 2+ materials,
+        those material-named groups are returned (so e.g. a ``Glass``
+        material becomes its own window-detectable group); otherwise the
+        single group is returned named ``"imported_building_1"``.
 
     Raises:
         FileNotFoundError: if *obj_path* does not exist or is not a file
@@ -88,7 +113,12 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
     if isinstance(loaded, trimesh.Scene):
         groups = [(name, mesh) for name, mesh in loaded.geometry.items()]
     elif isinstance(loaded, trimesh.Trimesh):
-        groups = [(_FALLBACK_GROUP_NAME, loaded)]
+        # No named o/g groups (or exactly one): the file may still separate
+        # geometry by material (a common Rhino export, e.g. usemtl Glass for
+        # panes + usemtl Wall for the box). Re-load grouping by material so
+        # each material becomes its own group -- a 'Glass' material then
+        # surfaces as a 'Glass' group that window auto-detection can see.
+        groups = _material_split_groups(path_str) or [(_FALLBACK_GROUP_NAME, loaded)]
     else:
         groups = []
 

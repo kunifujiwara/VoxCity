@@ -37,6 +37,15 @@ with `roles={"Glass_Wall": "building"}`. Customize the keywords with
 `window_keywords=(...)` (e.g. add Japanese terms). Disable with
 `auto_window=False`.
 
+**Material-only exports.** If your OBJ has no named objects/layers but separates
+geometry by material (a common default Rhino export, e.g. `usemtl Glass` for the
+panes), the loader splits it into one group per material and uses the material
+name as the group name — so a `Glass` material is auto-detected as a window with
+no extra setup. This requires the companion `.mtl` to be alongside the `.obj`
+(it carries the material names). In the web app, where only the `.obj` is
+uploaded, such groups still split apart but appear with generic names, so set
+their role with the dropdown.
+
 ```python
 vc = add_buildings_from_obj(
     vc, "design.obj",

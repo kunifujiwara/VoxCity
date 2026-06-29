@@ -153,3 +153,55 @@ def test_select_groups_by_role_drops_skip(caplog, propagate_voxcity_logs):
 
 def test_default_window_keywords_are_english():
     assert DEFAULT_WINDOW_KEYWORDS == ("window", "glass", "glazing")
+
+
+def _write_material_only_obj(tmp_path):
+    """An OBJ with two materials (one named 'Glass') and NO o/g named groups,
+    plus its .mtl so the material names survive the load. Mirrors a default
+    Rhino export that separates geometry by material rather than by object."""
+    mtl = tmp_path / "mm.mtl"
+    mtl.write_text("newmtl Wall\nKd 0.6 0.6 0.6\nnewmtl Glass\nKd 0.2 0.4 0.9\n")
+    obj = tmp_path / "mm.obj"
+    obj.write_text(
+        "mtllib mm.mtl\n"
+        "usemtl Wall\n"
+        "v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\n"
+        "f 1 2 3 4\n"
+        "usemtl Glass\n"
+        "v 0 0.001 0.2\nv 1 0.001 0.2\nv 1 0.001 0.8\nv 0 0.001 0.8\n"
+        "f 5 6 7 8\n"
+    )
+    return obj
+
+
+def test_material_only_obj_splits_by_material(tmp_path):
+    """A material-authored OBJ with no named groups must split into one group
+    per material, named by material, so a 'Glass' material becomes its own
+    group that window auto-detection can see."""
+    obj = _write_material_only_obj(tmp_path)
+    groups = load_obj_groups(obj)
+    names = {name for name, _mesh in groups}
+    assert names == {"Wall", "Glass"}
+
+
+def test_material_only_obj_window_is_auto_detected(tmp_path):
+    obj = _write_material_only_obj(tmp_path)
+    buckets = select_groups_by_role(load_obj_groups(obj))
+    assert [n for n, _ in buckets["window"]] == ["Glass"]
+    assert [n for n, _ in buckets["building"]] == ["Wall"]
+
+
+def test_single_material_obj_keeps_fallback_single_group(tmp_path):
+    """A single-material OBJ with no named groups must stay one group with the
+    fallback name -- material splitting only kicks in when it yields 2+ groups,
+    so existing single-building imports are unchanged."""
+    mtl = tmp_path / "one.mtl"
+    mtl.write_text("newmtl Wall\nKd 0.6 0.6 0.6\n")
+    obj = tmp_path / "one.obj"
+    obj.write_text(
+        "mtllib one.mtl\nusemtl Wall\n"
+        "v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nf 1 2 3 4\n"
+    )
+    groups = load_obj_groups(obj)
+    assert len(groups) == 1
+    assert groups[0][0] == "imported_building_1"
