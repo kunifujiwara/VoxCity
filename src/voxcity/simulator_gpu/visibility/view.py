@@ -645,6 +645,8 @@ class SurfaceViewFactorCalculator:
         tree_lad: float = 1.0,
         boundary_epsilon: float = None,
         workspace=None,
+        building_ids: np.ndarray = None,
+        self_occlusion_guard: bool = False,
     ) -> np.ndarray:
         """
         Compute view factors for building surface faces.
@@ -731,12 +733,20 @@ class SurfaceViewFactorCalculator:
         att_cutoff = 0.01
         trees_are_targets = (-2 in target_values) and inclusion_mode
         
+        building_ids_ti = ti.field(dtype=ti.i32, shape=(self.nx, self.ny))
+        guard_on = 1 if (self_occlusion_guard and building_ids is not None) else 0
+        if guard_on:
+            building_ids_ti.from_numpy(np.ascontiguousarray(building_ids, dtype=np.int32))
+        else:
+            building_ids_ti.fill(0)
+
         # Run GPU computation
         self._compute_surface_vf_kernel(
             face_centers_ti, face_normals_ti, face_vf_values,
             is_tree, is_solid, is_target, is_opaque,
             tree_att, att_cutoff, inclusion_mode, int(trees_are_targets),
-            grid_bounds_real, boundary_epsilon
+            grid_bounds_real, boundary_epsilon,
+            building_ids_ti, guard_on,
         )
         
         # Workspace fields may be allocated to a larger capacity than the
@@ -802,7 +812,9 @@ class SurfaceViewFactorCalculator:
         inclusion_mode: ti.i32,
         trees_are_targets: ti.i32,
         grid_bounds: ti.types.ndarray(),
-        boundary_epsilon: ti.f32
+        boundary_epsilon: ti.f32,
+        building_ids: ti.template(),
+        self_guard: ti.i32,
     ):
         """Compute surface view factors using GPU parallel processing."""
         for f in face_vf_values:
@@ -829,7 +841,15 @@ class SurfaceViewFactorCalculator:
                 ox = center[0] / meshsize + n[0] * 0.51
                 oy = center[1] / meshsize + n[1] * 0.51
                 oz = center[2] / meshsize + n[2] * 0.51
-                
+
+                # Source building id = footprint id of the solid voxel just INSIDE the
+                # face (opposite the outward normal offset used for the ray origin).
+                self_bi = ti.cast(ti.floor(center[0] / meshsize - n[0] * 0.5), ti.i32)
+                self_bj = ti.cast(ti.floor(center[1] / meshsize - n[1] * 0.5), ti.i32)
+                self_building_id = 0
+                if self_bi >= 0 and self_bi < self.nx and self_bj >= 0 and self_bj < self.ny:
+                    self_building_id = building_ids[self_bi, self_bj]
+
                 vis_sum = 0.0
                 valid_count = 0
                 
@@ -850,7 +870,8 @@ class SurfaceViewFactorCalculator:
                         contrib = self._trace_surface_ray(
                             ox, oy, oz, world_dir,
                             is_tree, is_solid, is_target, is_opaque,
-                            tree_att, att_cutoff, inclusion_mode, trees_are_targets
+                            tree_att, att_cutoff, inclusion_mode, trees_are_targets,
+                            building_ids, self_building_id, self_guard,
                         )
                         vis_sum += contrib
                         valid_count += 1
@@ -903,7 +924,10 @@ class SurfaceViewFactorCalculator:
         tree_att: ti.f32,
         att_cutoff: ti.f32,
         inclusion_mode: ti.i32,
-        trees_are_targets: ti.i32
+        trees_are_targets: ti.i32,
+        building_ids: ti.template(),
+        self_building_id: ti.i32,
+        self_guard: ti.i32,
     ) -> ti.f32:
         """Trace ray from surface for view factor calculation."""
         T = 1.0
@@ -963,9 +987,18 @@ class SurfaceViewFactorCalculator:
                             result = 1.0 - T
                             done = 1
                     elif inclusion_mode == 1 and is_target[i, j, k] == 1:
-                        # Hit target in inclusion mode
-                        result = 1.0
-                        done = 1
+                        # Hit target in inclusion mode. Skip it when the self-occlusion
+                        # guard is on AND the hit voxel belongs to this face's own
+                        # building (its 2-D footprint id matches). Such a hit is a voxel
+                        # zig-zag self view; the target is non-opaque so the loop steps
+                        # past it. Cross-building hits (different id) and unguarded runs
+                        # still count.
+                        if self_guard == 1 and self_building_id != 0 and \
+                                building_ids[i, j] == self_building_id:
+                            pass
+                        else:
+                            result = 1.0
+                            done = 1
                     
                     if done == 0:
                         # Step to next voxel
