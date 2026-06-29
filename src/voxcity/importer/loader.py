@@ -9,7 +9,9 @@ caller mark some groups as non-building (windows, context, site furniture,
 """
 from __future__ import annotations
 
+import io
 import os
+import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -51,6 +53,62 @@ def _matches_window(text: Optional[str], keywords) -> bool:
     return any(kw in low for kw in keywords)
 
 
+def _group_directive_split(path_str: str):
+    """Split an OBJ by its ``g <name>`` / ``o <name>`` group directives.
+
+    trimesh's ``split_objects`` only honors ``o`` (object) directives, so a file
+    that separates parts with ``g`` (group) directives -- e.g. ``g building`` /
+    ``g window`` -- collapses into one unnamed mesh and its meaningful names are
+    lost. Here we rewrite leading ``g <name>`` lines as ``o <name>`` and re-load
+    in-memory (with a path resolver so a companion ``.mtl`` still resolves), so
+    those named groups survive and drive role detection without needing the
+    ``.mtl``.
+
+    Returns the ``(name, mesh)`` groups only when the rewrite yields **two or
+    more** named groups; otherwise ``None`` so the caller falls back.
+    """
+    try:
+        with open(path_str, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+
+    rewritten_lines = []
+    has_group_directive = False
+    for line in text.splitlines():
+        m = re.match(r"^\s*g\s+(.+?)\s*$", line)
+        name = m.group(1).strip() if m else None
+        if name and name != "default":
+            has_group_directive = True
+            rewritten_lines.append("o " + name)
+        else:
+            rewritten_lines.append(line)
+    if not has_group_directive:
+        return None
+
+    try:
+        resolver = trimesh.resolvers.FilePathResolver(os.path.dirname(path_str) or ".")
+        loaded = trimesh.load(
+            file_obj=io.StringIO("\n".join(rewritten_lines)),
+            file_type="obj",
+            process=False,
+            split_objects=True,
+            group_material=False,
+            resolver=resolver,
+        )
+    except Exception:
+        return None
+
+    if not isinstance(loaded, trimesh.Scene):
+        return None
+    groups = [
+        (name, mesh)
+        for name, mesh in loaded.geometry.items()
+        if isinstance(mesh, trimesh.Trimesh)
+    ]
+    return groups if len(groups) >= 2 else None
+
+
 def _material_split_groups(path_str: str):
     """Re-load *path_str* grouping faces by material.
 
@@ -70,7 +128,23 @@ def _material_split_groups(path_str: str):
         for name, mesh in loaded.geometry.items()
         if isinstance(mesh, trimesh.Trimesh)
     ]
-    return groups if len(groups) >= 2 else None
+    if len(groups) < 2:
+        return None
+
+    # Without a reachable .mtl, trimesh names the material-split groups after the
+    # OBJ file (e.g. 'window_test.obj', 'window_test.obj_1'). Those names are not
+    # meaningful and -- worse -- a keyword in the filename (e.g. "window") would
+    # make every part auto-detect as a window. Replace such filename-derived
+    # names with neutral ones so role detection falls back to the material name
+    # (None here) rather than the filename.
+    base = os.path.basename(path_str)
+    generic = re.compile(re.escape(base) + r"(_\d+)?$")
+    cleaned = []
+    for i, (name, mesh) in enumerate(groups, start=1):
+        if generic.fullmatch(name):
+            name = f"{_FALLBACK_GROUP_NAME[:-1]}{i}"  # imported_building_1, _2, ...
+        cleaned.append((name, mesh))
+    return cleaned
 
 
 def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh.Trimesh"]]:
@@ -90,11 +164,12 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
         to only one geometry group — this includes both OBJs with no
         named scene structure at all *and* OBJs containing exactly one
         named ``o <name>`` block, since trimesh discards that name in
-        the single-group case. In that situation the file is re-loaded
-        grouping faces by material: if it separates into 2+ materials,
-        those material-named groups are returned (so e.g. a ``Glass``
-        material becomes its own window-detectable group); otherwise the
-        single group is returned named ``"imported_building_1"``.
+        the single-group case. In that situation named parts are recovered
+        first from ``g <name>`` group directives (which trimesh otherwise
+        ignores, e.g. ``g building`` / ``g window``), then by splitting on
+        material (so e.g. a ``Glass`` material becomes its own
+        window-detectable group); if neither yields 2+ groups, a single
+        group named ``"imported_building_1"`` is returned.
 
     Raises:
         FileNotFoundError: if *obj_path* does not exist or is not a file
@@ -113,12 +188,18 @@ def load_obj_groups(obj_path, swap_yz: bool = False) -> List[Tuple[str, "trimesh
     if isinstance(loaded, trimesh.Scene):
         groups = [(name, mesh) for name, mesh in loaded.geometry.items()]
     elif isinstance(loaded, trimesh.Trimesh):
-        # No named o/g groups (or exactly one): the file may still separate
-        # geometry by material (a common Rhino export, e.g. usemtl Glass for
-        # panes + usemtl Wall for the box). Re-load grouping by material so
-        # each material becomes its own group -- a 'Glass' material then
-        # surfaces as a 'Glass' group that window auto-detection can see.
-        groups = _material_split_groups(path_str) or [(_FALLBACK_GROUP_NAME, loaded)]
+        # trimesh collapsed the file to one mesh: it has no `o` objects to split
+        # on. Recover named parts two ways, in order of reliability:
+        #   1. honor `g <name>` group directives (e.g. `g building`/`g window`),
+        #      which trimesh ignores -- names work even without the .mtl;
+        #   2. else split by material (a common Rhino export, e.g. usemtl Glass +
+        #      usemtl Wall), so a `Glass` material becomes a window-detectable
+        #      group (needs the .mtl for meaningful names).
+        groups = (
+            _group_directive_split(path_str)
+            or _material_split_groups(path_str)
+            or [(_FALLBACK_GROUP_NAME, loaded)]
+        )
     else:
         groups = []
 

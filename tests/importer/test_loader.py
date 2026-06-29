@@ -191,6 +191,61 @@ def test_material_only_obj_window_is_auto_detected(tmp_path):
     assert [n for n, _ in buckets["building"]] == ["Wall"]
 
 
+def _write_g_group_obj(tmp_path, name="gg.obj"):
+    """An OBJ that separates parts with `g <name>` group directives (not `o`,
+    not by material) and NO companion .mtl -- the shape trimesh ignores. Mirrors
+    an export with `g building` / `g window` groups."""
+    obj = tmp_path / name
+    obj.write_text(
+        "g building\n"
+        "usemtl diffuse_0\n"
+        "v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\n"
+        "f 1 2 3 4\n"
+        "g window\n"
+        "usemtl Glass\n"
+        "v 0 0.001 0.2\nv 1 0.001 0.2\nv 1 0.001 0.8\nv 0 0.001 0.8\n"
+        "f 5 6 7 8\n"
+    )
+    return obj
+
+
+def test_g_group_directives_are_honored(tmp_path):
+    """`g building` / `g window` group directives (which trimesh's split_objects
+    ignores) must be recovered as named groups even without a .mtl."""
+    obj = _write_g_group_obj(tmp_path)
+    groups = load_obj_groups(obj)
+    assert {name for name, _mesh in groups} == {"building", "window"}
+
+
+def test_g_group_window_auto_detected_without_mtl(tmp_path):
+    """The reported regression: a g-grouped OBJ whose filename contains a window
+    keyword used to misclassify every material-split part as a window (-> nothing
+    imported). Honoring the group names fixes it with no .mtl present."""
+    obj = _write_g_group_obj(tmp_path, name="window_test_v2.obj")
+    buckets = select_groups_by_role(load_obj_groups(obj))
+    assert [n for n, _ in buckets["building"]] == ["building"]
+    assert [n for n, _ in buckets["window"]] == ["window"]
+
+
+def test_material_split_without_mtl_does_not_misuse_filename(tmp_path):
+    """A material-only OBJ with no .mtl and a window keyword in its filename must
+    not have every material-split part auto-classified as a window (which would
+    leave no building -> nothing imported). Generic filename-derived names are
+    neutralised so role detection doesn't key off the filename."""
+    obj = tmp_path / "window_test.obj"  # filename contains 'window'
+    obj.write_text(
+        "usemtl Wall\n"
+        "v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nf 1 2 3 4\n"
+        "usemtl Glass\n"
+        "v 0 0.001 0.2\nv 1 0.001 0.2\nv 1 0.001 0.8\nv 0 0.001 0.8\nf 5 6 7 8\n"
+    )
+    buckets = select_groups_by_role(load_obj_groups(obj))
+    # No .mtl -> material names are lost, so neither part is detectable as a
+    # window; crucially they must NOT all become windows. At least one building.
+    assert len(buckets["building"]) >= 1
+    assert all("window_test" not in n for n, _ in buckets["building"])
+
+
 def test_single_material_obj_keeps_fallback_single_group(tmp_path):
     """A single-material OBJ with no named groups must stay one group with the
     fallback name -- material splitting only kicks in when it yields 2+ groups,

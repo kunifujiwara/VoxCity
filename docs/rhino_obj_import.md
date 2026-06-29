@@ -31,7 +31,9 @@ holes in the building solid).
 
 **Auto-detection.** A group is treated as a window when its object/layer name
 **or** its assigned OBJ material name contains `window`, `glass`, or `glazing`
-(case-insensitive). Override per group with `roles`, e.g.
+(case-insensitive). Both `o <name>` (object) and `g <name>` (group) directives
+are honored as names, so naming a group `window` works on its own — no `.mtl`
+needed. Override per group with `roles`, e.g.
 `roles={"Facade_North": "window"}` or force a glass-named group back to building
 with `roles={"Glass_Wall": "building"}`. Customize the keywords with
 `window_keywords=(...)` (e.g. add Japanese terms). Disable with
