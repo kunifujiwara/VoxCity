@@ -124,14 +124,22 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   // rotated grids.
   const phiDeg = useMemo(() => (geo ? domainRotationDeg(geo.grid_geom) : 0), [geo]);
 
-  const handleFile = useCallback(async (file: File | null) => {
-    if (!file) return;
+  const handleFile = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const all = Array.from(files);
+    // The .obj is the primary; anything else (the .mtl, textures) rides along
+    // as a sidecar so the server can resolve material names for window detection.
+    const obj = all.find((f) => f.name.toLowerCase().endsWith('.obj'));
+    if (!obj) { setError('Please choose a .obj file (you can also select its .mtl).'); return; }
+    const sidecars = all.filter((f) => f !== obj);
     setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
-      const res = await uploadImportObj(file);
+      const res = await uploadImportObj(obj, sidecars);
       setUpload(res);
       setRoles(Object.fromEntries(res.groups.map((g) => [g.name, g.role])));
-      setInfo(`Loaded ${res.groups.length} group(s). Position it and import.`);
+      const mtlNote = sidecars.some((f) => f.name.toLowerCase().endsWith('.mtl'))
+        ? '' : ' (tip: also select the .mtl so window materials are detected)';
+      setInfo(`Loaded ${res.groups.length} group(s). Position it and import.${mtlNote}`);
       onFigureChange(''); // clear any previous committed result so the live preview shows
     } catch (err: any) {
       setError(err.message || 'Upload failed');
@@ -206,16 +214,17 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={14} style={{ marginRight: 6 }} />
-              {upload ? 'Replace OBJ…' : 'Choose OBJ file…'}
+              {upload ? 'Replace OBJ…' : 'Choose OBJ (+ .mtl)…'}
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".obj"
+              accept=".obj,.mtl"
+              multiple
               disabled={busy}
               style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
                        overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
-              onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => handleFile(e.target.files)}
             />
           </GuidedSection>
 

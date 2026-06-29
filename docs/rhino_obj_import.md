@@ -42,9 +42,8 @@ geometry by material (a common default Rhino export, e.g. `usemtl Glass` for the
 panes), the loader splits it into one group per material and uses the material
 name as the group name — so a `Glass` material is auto-detected as a window with
 no extra setup. This requires the companion `.mtl` to be alongside the `.obj`
-(it carries the material names). In the web app, where only the `.obj` is
-uploaded, such groups still split apart but appear with generic names, so set
-their role with the dropdown.
+(it carries the material names); without it the geometry still splits by
+material but the groups get generic names and won't auto-detect.
 
 ```python
 vc = add_buildings_from_obj(
@@ -56,9 +55,12 @@ vc = add_buildings_from_obj(
 )
 ```
 
-**Web app note:** the import UI uploads only the `.obj`, so material-name
-detection requires the `.mtl` to be reachable; name-based detection always
-works. The per-group role dropdown lets you set **building / window / skip**.
+**Web app note:** in the import UI's file picker, select **both** the `.obj`
+and its `.mtl` (the picker accepts multiple files) so material-name window
+detection works just like the Python API — the `.mtl` is saved next to the
+`.obj` server-side. Name-based detection works with the `.obj` alone. Either
+way, the per-group role dropdown lets you override to **building / window /
+skip**.
 
 For procedural (non-geometry) windows, the `set_building_material_by_id`
 material utilities still apply to imported buildings.

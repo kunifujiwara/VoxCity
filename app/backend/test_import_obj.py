@@ -309,3 +309,44 @@ def test_commit_reports_window_voxels(client):
     r = client.post("/api/model/import_obj/commit", json=req)
     assert r.status_code == 200, r.text
     assert r.json()["n_window_voxels_added"] > 0
+
+
+# A material-only OBJ (no named o/g groups), separating a Glass pane from a Wall
+# box purely by material -- the shape of a default Rhino export. Window detection
+# here depends on the companion .mtl carrying the 'Glass' material name.
+_MATERIAL_ONLY_OBJ = (
+    "mtllib mm.mtl\n"
+    "usemtl Wall\n"
+    "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nf 1 2 3 4\n"
+    "usemtl Glass\n"
+    "v 0 0 1\nv 1 0 1\nv 1 1 1\nv 0 1 1\nf 5 6 7 8\n"
+).encode("utf-8")
+_MATERIAL_ONLY_MTL = (
+    "newmtl Wall\nKd 0.6 0.6 0.6\n"
+    "newmtl Glass\nKd 0.2 0.4 0.9\n"
+).encode("utf-8")
+
+
+def test_upload_with_mtl_detects_material_window(client):
+    """With the companion .mtl uploaded as a sidecar, the material name 'Glass'
+    survives and the material-split group auto-detects as a window."""
+    files = [
+        ("file", ("mm.obj", io.BytesIO(_MATERIAL_ONLY_OBJ), "text/plain")),
+        ("sidecars", ("mm.mtl", io.BytesIO(_MATERIAL_ONLY_MTL), "text/plain")),
+    ]
+    r = client.post("/api/model/import_obj/upload", files=files)
+    assert r.status_code == 200, r.text
+    roles = {g["name"]: g["role"] for g in r.json()["groups"]}
+    assert roles.get("Glass") == "window"
+    assert roles.get("Wall") == "building"
+
+
+def test_upload_without_mtl_misses_material_window(client):
+    """Without the .mtl the material name is lost: the file still splits by
+    material but the groups get generic names, so 'Glass' is not auto-detected.
+    Documents why the sidecar upload is needed."""
+    files = {"file": ("plain.obj", io.BytesIO(_MATERIAL_ONLY_OBJ), "text/plain")}
+    r = client.post("/api/model/import_obj/upload", files=files)
+    assert r.status_code == 200, r.text
+    names = {g["name"] for g in r.json()["groups"]}
+    assert "Glass" not in names

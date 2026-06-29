@@ -654,9 +654,15 @@ export interface ImportObjCommitResult {
   warning: string | null;
 }
 
-export async function uploadImportObj(file: File): Promise<ImportObjUploadResult> {
+export async function uploadImportObj(
+  file: File,
+  sidecars: File[] = [],
+): Promise<ImportObjUploadResult> {
   const form = new FormData();
   form.append('file', file);
+  // Companion files (e.g. the .mtl + textures) ride along so the server can
+  // resolve material names, which drive window auto-detection.
+  for (const sc of sidecars) form.append('sidecars', sc);
   const res = await fetch(`${BASE}/model/import_obj/upload`, { method: 'POST', body: form });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

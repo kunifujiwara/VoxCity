@@ -3234,8 +3234,17 @@ async def apply_edits(payload: dict):
 
 
 @app.post("/api/model/import_obj/upload")
-async def import_obj_upload(file: UploadFile = File(...)):
-    """Parse an uploaded OBJ into groups + preview geometry; register an import_id."""
+async def import_obj_upload(
+    file: UploadFile = File(...),
+    sidecars: List[UploadFile] = File(default=[]),
+):
+    """Parse an uploaded OBJ into groups + preview geometry; register an import_id.
+
+    Optional *sidecars* (e.g. the companion ``.mtl`` and any referenced texture
+    files) are saved alongside the ``.obj`` so trimesh can resolve ``mtllib`` /
+    ``usemtl`` and recover material names — which drive window auto-detection
+    for material-authored exports that have no named object/layer groups.
+    """
     _require_model()
     import uuid
     from voxcity.importer.loader import load_obj_groups, classify_roles, group_material_name
@@ -3246,6 +3255,17 @@ async def import_obj_upload(file: UploadFile = File(...)):
     obj_path = os.path.join(dest_dir, os.path.basename(file.filename) or "model.obj")
     with open(obj_path, "wb") as f:
         f.write(await file.read())
+    # Save sidecars by basename next to the .obj. Skip any that would clobber
+    # the primary .obj, and flatten any path components (basename only) so an
+    # uploaded filename can't write outside the import dir.
+    for sc in sidecars or []:
+        if not sc.filename:
+            continue
+        sc_path = os.path.join(dest_dir, os.path.basename(sc.filename))
+        if os.path.abspath(sc_path) == os.path.abspath(obj_path):
+            continue
+        with open(sc_path, "wb") as f:
+            f.write(await sc.read())
 
     try:
         groups = load_obj_groups(obj_path)  # [(name, trimesh), ...]; raises ValueError if no mesh
