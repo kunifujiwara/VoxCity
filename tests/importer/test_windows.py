@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import trimesh
 
-from voxcity.importer.windows import stamp_windows
+from voxcity.importer.windows import stamp_windows, _surface_cells
 from tests.importer.conftest import make_flat_voxcity
 
 GLASS_CODE = -16
@@ -40,6 +40,27 @@ def test_window_recolors_coincident_building_cells():
     assert np.all(np.where(glass)[1] == 4)
     # glass cells came out of the building set; no NEW occupancy was created
     assert int(np.sum(vc.voxels.classes == BUILDING_CODE)) == n_building_before - n
+
+
+def test_window_recolor_matches_pane_footprint_no_inflation():
+    """The glass skin must match the pane's lateral footprint, not a dilated
+    halo. Regression: the previous isotropic dilation grew windows ~1 voxel per
+    side in the facade plane, roughly doubling small windows."""
+    vc = _wall_voxcity()
+    pane = _vertical_pane(3.0, 6.5, 4.5, 2.0, 7.0)
+    raw = _surface_cells(pane, IDENTITY, vc.voxels.classes.shape)
+    n = stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0
+    # All glass stays at the wall plane (depth axis j=4); no lateral spread.
+    assert np.all(glass[:, 1] == 4)
+    # In-facade-plane extent (i, k) equals the raw pane footprint exactly --
+    # no +1 halo on any side.
+    assert glass[:, 0].min() == raw[:, 0].min()
+    assert glass[:, 0].max() == raw[:, 0].max()
+    assert glass[:, 2].min() == raw[:, 2].min()
+    assert glass[:, 2].max() == raw[:, 2].max()
 
 
 def test_window_far_from_building_is_skipped(caplog, propagate_voxcity_logs):
