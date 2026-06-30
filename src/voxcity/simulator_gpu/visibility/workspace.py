@@ -186,6 +186,11 @@ class SurfaceViewWorkspace:
         self.is_target = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
         self.is_opaque = ti.field(dtype=ti.i32, shape=(nx, ny, nz))
 
+        # 2-D footprint building-id grid for the self-occlusion guard. Reused in
+        # place (from_numpy/fill) by compute_surface_view_factor so the guarded
+        # path allocates no new Taichi fields per call.
+        self.building_ids = ti.field(dtype=ti.i32, shape=(nx, ny))
+
     def validate_face_data(self, face_centers: np.ndarray, face_normals: np.ndarray) -> None:
         n = int(face_centers.shape[0])
         if face_centers.shape != (n, 3) or face_normals.shape != (n, 3):

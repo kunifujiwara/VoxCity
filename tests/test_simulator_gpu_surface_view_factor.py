@@ -170,3 +170,85 @@ def test_reuse_reference_mesh_skips_create_voxel_mesh(monkeypatch):
 
 
 
+
+
+def _glazed_slot(same_building: bool):
+    """Two parallel glazed walls (window class -16) facing each other across a
+    ~4-voxel gap. When same_building, both share footprint id 1, so a window
+    face on wall A seeing wall B is a SELF view the guard must drop. When not,
+    the walls are buildings 1 and 2 and the guard must keep the cross view."""
+    voxel_data = np.zeros((12, 12, 8), dtype=np.int32)
+    voxel_data[3, 2:10, 1:6] = -16   # wall A (glazed), faces +u toward B
+    voxel_data[8, 2:10, 1:6] = -16   # wall B (glazed), faces -u toward A
+    building_ids = np.zeros((12, 12), dtype=np.int32)
+    building_ids[3, 2:10] = 1
+    building_ids[8, 2:10] = 1 if same_building else 2
+    return voxel_data, building_ids
+
+
+def test_surface_self_occlusion_guard_drops_same_building_targets():
+    pytest.importorskip("taichi")
+    from voxcity.simulator_gpu.visibility import get_surface_view_factor as gpu_svf
+
+    def run(same_building, **extra):
+        voxel_data, building_ids = _glazed_slot(same_building)
+        voxcity = _fake_voxcity(voxel_data, building_ids)
+        try:
+            mesh = gpu_svf(voxcity, target_values=(-16,), inclusion_mode=True,
+                           N_azimuth=48, N_elevation=12, **extra)
+        except Exception as error:
+            _skip_if_gpu_unavailable(error)
+        return mesh.metadata["view_factor_values"]
+
+    base = run(True)                                  # no guard arg
+    off = run(True, self_occlusion_guard=False)       # explicit off -> equals base
+    same_on = run(True, self_occlusion_guard=True)    # same building -> self view dropped
+    cross_on = run(False, self_occlusion_guard=True)  # different buildings -> view kept
+
+    np.testing.assert_allclose(np.nan_to_num(off), np.nan_to_num(base), rtol=0, atol=0)
+    assert np.nanmean(base) > 0.05, "scene should have a non-trivial across-gap window view"
+    assert np.nanmean(same_on) < np.nanmean(base) - 0.02, "guard must drop same-building self view"
+    assert np.nanmean(cross_on) > np.nanmean(base) - 0.005, "guard must keep cross-building view"
+
+
+def test_surface_guard_reuses_workspace_building_ids_field(monkeypatch):
+    """The guarded surface path must not allocate a new Taichi field per call.
+
+    The optimizer evaluates ``get_surface_view_factor`` once per candidate
+    through the cached ``SurfaceViewWorkspace``; allocating a fresh ``(nx, ny)``
+    building-id field on every call leaks GPU memory (Taichi cannot free fields
+    without ``ti.reset()``). The building-id grid must therefore live in the
+    workspace and be repopulated in place, like ``is_target``/``is_opaque``.
+    """
+    pytest.importorskip("taichi")
+    import taichi as ti
+    from voxcity.simulator_gpu.visibility import get_surface_view_factor as gpu_svf
+
+    voxel_data, building_ids = _glazed_slot(True)
+    voxcity = _fake_voxcity(voxel_data, building_ids)
+
+    call = dict(target_values=(-16,), inclusion_mode=True,
+               N_azimuth=24, N_elevation=6, self_occlusion_guard=True)
+
+    # Warm-up: legitimately allocates the domain + workspace fields once.
+    try:
+        gpu_svf(voxcity, **call)
+    except Exception as error:
+        _skip_if_gpu_unavailable(error)
+
+    # A second identical call reuses the cached workspace, so it must allocate
+    # zero new Taichi fields.
+    n_new = {"count": 0}
+    real_field = ti.field
+
+    def counting_field(*args, **kwargs):
+        n_new["count"] += 1
+        return real_field(*args, **kwargs)
+
+    monkeypatch.setattr(ti, "field", counting_field)
+    gpu_svf(voxcity, **call)
+
+    assert n_new["count"] == 0, (
+        f"guarded surface path allocated {n_new['count']} new Taichi field(s) on a "
+        "cached-workspace call; building_ids must be reused from the workspace"
+    )

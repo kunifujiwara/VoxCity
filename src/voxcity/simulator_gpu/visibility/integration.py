@@ -591,6 +591,7 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
     n_rays = kwargs.get('N_rays', kwargs.get('n_rays', None))
     tree_k = kwargs.get('tree_k', 0.6)
     tree_lad = kwargs.get('tree_lad', 1.0)
+    self_occlusion_guard = bool(kwargs.get('self_occlusion_guard', False))
     # None -> building-surface group (buildings + windows), resolved at mesh build.
     building_class_id = kwargs.get('building_class_id', None)
     target_selectors = kwargs.get('target_selectors', None)
@@ -703,6 +704,8 @@ def get_surface_view_factor(voxcity, mode=None, **kwargs):
         tree_k=tree_k,
         tree_lad=tree_lad,
         workspace=surface_workspace,
+        building_ids=building_id_grid,
+        self_occlusion_guard=self_occlusion_guard,
     )
 
     if target_face_indices is not None:
