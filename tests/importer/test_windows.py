@@ -242,11 +242,37 @@ def test_window_not_dropped_by_a_second_building_along_the_normal():
     assert ivals == {7}, f"glass must be on building A's wall (i=7), got {sorted(ivals)}"
 
 
+def _thick_box_window(x0, x1, z0, z1, y0, y1):
+    """A thick (3D) window block spanning y0..y1 in depth -- like a real OBJ
+    window mesh with frame depth, not a thin pane."""
+    box = trimesh.creation.box(extents=(x1 - x0, y1 - y0, z1 - z0))
+    box.apply_translation([(x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0])
+    return box
+
+
+def test_thick_window_collapses_to_single_depth_plane():
+    """A THICK window mesh on an axis-aligned facade must voxelize to a single
+    flat glass plane, not scatter glass across the pane's depth (which reads as
+    sparse/dashed from outside). Regression for imported window blocks."""
+    vc = make_flat_voxcity(nx=14, ny=14, nz=14, meshsize=1.0)
+    vc.voxels.classes[2:10, 4:7, 1:9] = BUILDING_CODE   # wall slab j in {4,5,6}
+    # thick window block sitting against the -y outer face (j=4), 3 voxels deep.
+    win = _thick_box_window(3.0, 7.0, 2.0, 7.0, 2.0, 5.0)
+    n = stamp_windows(vc, [("Windows", win)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0
+    jvals = set(glass[:, 1].tolist())
+    assert len(jvals) == 1, f"thick window must collapse to one depth plane, got j={sorted(jvals)}"
+    # and it sits on the outward face (smallest j of the wall)
+    assert jvals == {4}, f"glass must be on the outward face j=4, got {sorted(jvals)}"
+
+
 @pytest.mark.parametrize("angle", [20, 30, 45])
 def test_rotated_facade_grid_of_windows_all_survive(angle):
     """A grid of small panes on a ROTATED facade must all reach the staircased
     wall. Regression: the old axis-aligned per-column pick + tight normal gate
-    dropped most panes on diagonal walls; nearest-shell snapping follows the
+    dropped most panes on diagonal walls; nearest-hull snapping follows the
     staircase so coverage stays high."""
     from scipy import ndimage
     from trimesh.voxel import creation as _vc_creation

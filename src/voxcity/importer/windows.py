@@ -3,16 +3,15 @@
 Window groups are surface-voxelized (not volume-filled) so thin/planar panes
 rasterize reliably. Each physically-distinct window (a connected component of the
 surface cells) has its opening filled in the facade plane -- so a mullioned frame
-becomes a solid pane rather than thin bars. Each filled footprint cell is then
-snapped to the nearest building surface face, deciding the target per cell: a
-LATERAL wall face (exposed in +/-x or +/-y) if one is within ``skin_radius``,
-otherwise a ROOF/FLOOR face. Because a facade window cell always sits next to its
-own wall, it snaps sideways and never bleeds onto the roof -- even its top row --
-while a genuine skylight (no lateral wall nearby) still snaps to the roof. The
-glass ends up on the building surface exactly one voxel deep, at the window's true
-footprint, with no lateral halo and no sinking into thick walls, and it follows
-facades at any angle to the grid (a rotated wall voxelizes to a staircase that the
-nearest-face snap tracks). A window farther than ``skin_radius`` from any face
+becomes a solid pane rather than thin bars. The filled footprint is then snapped,
+one building voxel per facade column, onto the building's VISIBLE OUTER SURFACE
+(the hull facing exterior air, not interior room faces): a tight band scan along
+the window normal places a thick/recessed window mesh onto a single flat plane
+(no depth scatter, which reads as sparse/dashed from outside), with an
+EDT-nearest-hull fallback so a wall that is staircased relative to the window
+(rotated facades) is still reached. A facade window (normal x/y) snaps to the
+lateral hull only -- never the roof; a skylight (normal z) snaps to the
+roof/floor hull. A window farther than ``skin_radius`` from any matching surface
 snaps to nothing and is dropped (no floating glass). Windows never create new
 occupancy; they only reclassify existing building cells, so building
 footprint/height metadata is unaffected.
@@ -135,6 +134,36 @@ def _exposed_along_axis(building_mask, axis):
     return exposed
 
 
+def _exterior_air(building_mask):
+    """Air voxels connected to the grid boundary (the outside), not interior
+    pockets (enclosed rooms/courtyards). Used so window glass snaps to the
+    building's VISIBLE outer surface rather than an interior face."""
+    air = ~building_mask
+    labels, _ = ndimage.label(air)
+    boundary = set()
+    for ax in (0, 1, 2):
+        for sl in (0, -1):
+            idx = [slice(None), slice(None), slice(None)]
+            idx[ax] = sl
+            boundary.update(np.unique(labels[tuple(idx)]).tolist())
+    boundary.discard(0)
+    if not boundary:
+        return air  # no building (or fully enclosed grid): treat all air as outside
+    return np.isin(labels, list(boundary))
+
+
+def _exterior_hull(building_mask, exterior_air, axes):
+    """Building voxels adjacent to *exterior_air* along any of *axes* -- the
+    visible outer surface facing those directions (lateral walls for axes (0,1),
+    roof/floor for axis (2,))."""
+    hull = np.zeros_like(building_mask)
+    for ax in axes:
+        for shift in (-1, 1):
+            hull |= building_mask & np.roll(exterior_air, shift, axis=ax)
+    return hull
+
+
+
 def stamp_windows(
     voxcity,
     window_groups,
@@ -185,52 +214,90 @@ def stamp_windows(
     if skin_radius <= 0:
         recolor = building_mask & win_mask
     else:
-        # Snap each window's filled footprint onto the building surface. Decide
-        # per component whether it is a FACADE window or a SKYLIGHT by comparing
-        # how close its cells lie to lateral wall faces (exposed in +/-x or +/-y)
-        # versus roof/floor faces. A facade window snaps only to lateral faces --
-        # so glass stays on the wall and never bleeds onto the roof, and an
-        # interior top cell poking above the roofline (out of lateral reach) is
-        # dropped rather than spilled onto the roof. A skylight snaps only to
-        # roof/floor faces. Snapping to faces (not a flat plane) follows a rotated
-        # wall's staircase at any angle.
-        lateral = (
-            _exposed_along_axis(building_mask, 0)
-            | _exposed_along_axis(building_mask, 1)
-        )
-        horizontal = _exposed_along_axis(building_mask, 2)
+        # Snap each window onto the building's VISIBLE OUTER SURFACE (the hull
+        # facing exterior air, not interior room faces). Snap every filled
+        # footprint cell to its nearest hull voxel -- this follows a wall at any
+        # angle, including rotated facades that voxelize to a staircase. Then, if
+        # a component's snapped targets are nearly COPLANAR (an axis-aligned
+        # wall), collapse them onto that single plane and fill the footprint, so
+        # a thick/recessed window mesh becomes one flat glass pane instead of
+        # glass scattered across the pane's depth (which reads as sparse/dashed
+        # from outside). Rotated walls (non-coplanar targets) are left as the
+        # nearest-hull snap. A facade window (normal x/y) snaps to the lateral
+        # hull only -- never the roof; a skylight (normal z) to the roof/floor.
+        exterior_air = _exterior_air(building_mask)
+        hull_lat = _exterior_hull(building_mask, exterior_air, (0, 1))
+        hull_hor = _exterior_hull(building_mask, exterior_air, (2,))
         d_lat = n_lat = d_hor = n_hor = None
-        if lateral.any():
-            d_lat, n_lat = ndimage.distance_transform_edt(~lateral, return_indices=True)
-        if horizontal.any():
-            d_hor, n_hor = ndimage.distance_transform_edt(~horizontal, return_indices=True)
+        if hull_lat.any():
+            d_lat, n_lat = ndimage.distance_transform_edt(~hull_lat, return_indices=True)
+        if hull_hor.any():
+            d_hor, n_hor = ndimage.distance_transform_edt(~hull_hor, return_indices=True)
 
         recolor = np.zeros(grid_shape, dtype=bool)
         max_snap = skin_radius * np.sqrt(3.0) + 1e-6
         labels, n_lab = ndimage.label(win_mask, structure=iso_structure)
         for lab in range(1, n_lab + 1):
-            fill_cells = _component_fill_cells(labels == lab)
+            comp = labels == lab
+            cells = np.argwhere(comp)
+            fill_cells = _component_fill_cells(comp)
             if len(fill_cells) == 0:
                 continue
             ii, jj, kk = fill_cells[:, 0], fill_cells[:, 1], fill_cells[:, 2]
-            # Facade if the component sits closer to lateral walls than to the
-            # roof/floor on average; otherwise a horizontal skylight.
+            # Facade if the component sits closer to lateral hull than to the
+            # roof/floor hull on average; otherwise a horizontal skylight.
             mean_lat = d_lat[ii, jj, kk].mean() if d_lat is not None else np.inf
             mean_hor = d_hor[ii, jj, kk].mean() if d_hor is not None else np.inf
-            if mean_lat <= mean_hor:
+            if mean_lat <= mean_hor and d_lat is not None:
                 dist, nearest = d_lat, n_lat
             elif d_hor is not None:
                 dist, nearest = d_hor, n_hor
             else:
                 continue
+
+            # Snap every filled cell to its nearest hull voxel.
+            targets = []
             for ci, cj, ck in fill_cells:
-                if dist[ci, cj, ck] > max_snap:
-                    continue  # out of reach (e.g. above the roofline): drop
-                recolor[
-                    nearest[0, ci, cj, ck],
-                    nearest[1, ci, cj, ck],
-                    nearest[2, ci, cj, ck],
-                ] = True
+                if dist[ci, cj, ck] <= max_snap:
+                    targets.append((
+                        int(nearest[0, ci, cj, ck]),
+                        int(nearest[1, ci, cj, ck]),
+                        int(nearest[2, ci, cj, ck]),
+                    ))
+            if not targets:
+                continue
+            targets = np.array(targets, dtype=np.int64)
+
+            axis = _surface_normal_axis(cells)
+            collapsed = False
+            if axis is not None:
+                # If the targets are nearly coplanar along the window normal (an
+                # axis-aligned wall), collapse onto the dominant plane and fill
+                # the footprint -- one flat pane, no depth scatter.
+                depths = targets[:, axis]
+                vals, counts = np.unique(depths, return_counts=True)
+                modal = int(vals[np.argmax(counts)])
+                if counts.max() >= 0.7 * len(depths):
+                    perp = [d for d in (0, 1, 2) if d != axis]
+                    plane = targets[depths == modal]
+                    umin, vmin = plane[:, perp[0]].min(), plane[:, perp[1]].min()
+                    grid2d = np.zeros((
+                        plane[:, perp[0]].max() - umin + 1,
+                        plane[:, perp[1]].max() - vmin + 1,
+                    ), dtype=bool)
+                    grid2d[plane[:, perp[0]] - umin, plane[:, perp[1]] - vmin] = True
+                    grid2d = ndimage.binary_fill_holes(grid2d)
+                    for u, v in np.argwhere(grid2d):
+                        cell = [0, 0, 0]
+                        cell[perp[0]] = int(u) + int(umin)
+                        cell[perp[1]] = int(v) + int(vmin)
+                        cell[axis] = modal
+                        recolor[cell[0], cell[1], cell[2]] = True
+                    collapsed = True
+            if not collapsed:
+                recolor[targets[:, 0], targets[:, 1], targets[:, 2]] = True
+
+
 
     recolor &= building_mask
     n = int(recolor.sum())
