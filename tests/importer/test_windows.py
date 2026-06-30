@@ -241,3 +241,51 @@ def test_window_not_dropped_by_a_second_building_along_the_normal():
     # Glass sits on A's own outer face (i=7), never on B (i in {14..17}).
     assert ivals == {7}, f"glass must be on building A's wall (i=7), got {sorted(ivals)}"
 
+
+@pytest.mark.parametrize("angle", [20, 30, 45])
+def test_rotated_facade_grid_of_windows_all_survive(angle):
+    """A grid of small panes on a ROTATED facade must all reach the staircased
+    wall. Regression: the old axis-aligned per-column pick + tight normal gate
+    dropped most panes on diagonal walls; nearest-shell snapping follows the
+    staircase so coverage stays high."""
+    from scipy import ndimage
+    from trimesh.voxel import creation as _vc_creation
+
+    nx, ny, nz = 40, 40, 30
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    T = _rot_z(angle, 20.0, 20.0)
+    box = trimesh.creation.box(extents=(16, 12, 18))
+    box.apply_translation([20, 20, 9])
+    m = box.copy(); m.apply_transform(T)
+    vg = _vc_creation.voxelize_subdivide(m, pitch=1.0).fill()
+    pts = np.floor(np.asarray(vg.points)).astype(int)
+    ib = (
+        (pts[:, 0] >= 0) & (pts[:, 0] < nx)
+        & (pts[:, 1] >= 0) & (pts[:, 1] < ny)
+        & (pts[:, 2] >= 0) & (pts[:, 2] < nz)
+    )
+    pts = pts[ib]
+    vc.voxels.classes[pts[:, 0], pts[:, 1], pts[:, 2]] = BUILDING_CODE
+
+    groups = []
+    for x0 in (13.0, 17.0, 21.0, 25.0):       # 4 columns
+        for z0 in (3.0, 8.0, 13.0):           # 3 rows -> 12 panes
+            groups.append((f"w{x0}_{z0}", _y_pane(x0, x0 + 2.0, z0, z0 + 2.0, 26.0)))
+
+    n = stamp_windows(vc, groups, T)
+    glass = vc.voxels.classes == GLASS_CODE
+    # A flat 12-pane grid recolors ~108 cells; allow generous slack for the
+    # rotated staircase but require the bulk to survive (old code: ~48 at 30deg).
+    assert int(glass.sum()) >= 80, f"too few window cells at {angle}deg: {int(glass.sum())}"
+
+
+def _y_pane(x0, x1, z0, z1, y):
+    """A planar quad in the plane y=const, spanning x in [x0,x1], z in [z0,z1]
+    (a window on a y-facing facade)."""
+    verts = np.array(
+        [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
