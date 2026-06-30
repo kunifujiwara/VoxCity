@@ -91,6 +91,8 @@ def test_mullioned_window_fills_opening_to_solid_pane():
     assert glass[ilo:ihi + 1, 4, klo:khi + 1].all(), (
         "window opening not solidly filled (mullion gaps / strips remain)"
     )
+    # glass is a single depth layer (no inward smearing)
+    assert set(np.argwhere(glass)[:, 1].tolist()) == {4}
 
 
 def test_window_far_from_building_is_skipped(caplog, propagate_voxcity_logs):
@@ -118,3 +120,54 @@ def test_window_does_not_change_building_metadata():
 def test_no_window_groups_returns_zero():
     vc = _wall_voxcity()
     assert stamp_windows(vc, [], IDENTITY) == 0
+
+
+def _thick_wall_voxcity(jlo=4, jhi=6):
+    """Flat model with a wall slab THICKER than 1 voxel: j in [jlo, jhi],
+    i in [2,8), z in [1,9). Default 3 voxels thick (j=4,5,6)."""
+    vc = make_flat_voxcity(nx=12, ny=12, nz=14, meshsize=1.0)
+    vc.voxels.classes[2:8, jlo:jhi + 1, 1:9] = BUILDING_CODE
+    return vc
+
+
+def test_window_recolors_only_outward_skin_of_thick_wall():
+    """A pane at the OUTER face of a 3-voxel-thick wall recolors exactly the
+    outward layer (j=4), never the interior layers (j=5,6). Depth==1 alone is
+    insufficient; this asserts the correct face is chosen."""
+    vc = _thick_wall_voxcity(4, 6)            # wall j in {4,5,6}
+    pane = _vertical_pane(3.0, 6.5, 4.0, 2.0, 7.0)  # at the outer face (small j)
+    n = stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0
+    js = set(glass[:, 1].tolist())
+    assert js == {4}, f"glass must sit only on the outward face j=4, got {sorted(js)}"
+
+
+def test_window_skin_is_one_deep_and_full_footprint():
+    """Across the footprint, glass is exactly one voxel deep per (i,z) column and
+    covers the filled opening's (i,z) bounding box."""
+    vc = _thick_wall_voxcity(4, 6)
+    pane = _vertical_pane(3.0, 6.5, 4.0, 2.0, 7.0)
+    raw = _surface_cells(pane, IDENTITY, vc.voxels.classes.shape)
+    stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = vc.voxels.classes == GLASS_CODE
+    gi = np.argwhere(glass)
+
+    from collections import Counter
+    per_col = Counter((int(i), int(z)) for i, _j, z in gi)
+    assert per_col and all(c == 1 for c in per_col.values()), "glass must be 1 voxel deep per column"
+    assert gi[:, 0].min() == raw[:, 0].min() and gi[:, 0].max() == raw[:, 0].max()
+    assert gi[:, 2].min() == raw[:, 2].min() and gi[:, 2].max() == raw[:, 2].max()
+
+
+def test_centered_pane_in_even_wall_stays_one_layer():
+    """Pane centered in an even-thickness wall (air vote ties on both sides):
+    the mean tiebreaker still yields a single outer layer (either face OK)."""
+    vc = _thick_wall_voxcity(4, 5)                 # 2-thick wall j in {4,5}
+    pane = _vertical_pane(3.0, 6.5, 4.5, 2.0, 7.0)  # centered between j=4 and j=5
+    n = stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+    assert n > 0
+    js = set(glass[:, 1].tolist())
+    assert len(js) == 1 and js.issubset({4, 5}), f"expected one outer layer, got {sorted(js)}"
