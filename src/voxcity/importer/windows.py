@@ -4,15 +4,17 @@ Window groups are surface-voxelized (not volume-filled) so thin/planar panes
 rasterize reliably. Each physically-distinct window (a connected component of the
 surface cells) has its opening filled in the facade plane -- so a mullioned frame
 becomes a solid pane rather than thin bars. Each filled footprint cell is then
-snapped to its nearest building EXTERIOR-SHELL voxel (within ``skin_radius``),
-recoloring that surface voxel to glass. Snapping to the shell keeps the glass on
-the building's outer surface, exactly one voxel deep, at the window's true
-footprint -- with no lateral halo and no sinking into thick walls -- and it
-follows facades at any angle to the grid (a rotated wall voxelizes to a
-staircase; the nearest-shell snap tracks that staircase instead of an
-axis-aligned guess). A window that sits farther than ``skin_radius`` from any
-wall snaps to nothing and is dropped (no floating glass). Windows never create
-new occupancy; they only reclassify existing building cells, so building
+snapped to the nearest building surface face, deciding the target per cell: a
+LATERAL wall face (exposed in +/-x or +/-y) if one is within ``skin_radius``,
+otherwise a ROOF/FLOOR face. Because a facade window cell always sits next to its
+own wall, it snaps sideways and never bleeds onto the roof -- even its top row --
+while a genuine skylight (no lateral wall nearby) still snaps to the roof. The
+glass ends up on the building surface exactly one voxel deep, at the window's true
+footprint, with no lateral halo and no sinking into thick walls, and it follows
+facades at any angle to the grid (a rotated wall voxelizes to a staircase that the
+nearest-face snap tracks). A window farther than ``skin_radius`` from any face
+snaps to nothing and is dropped (no floating glass). Windows never create new
+occupancy; they only reclassify existing building cells, so building
 footprint/height metadata is unaffected.
 """
 from __future__ import annotations
@@ -115,6 +117,24 @@ def _component_fill_cells(comp):
     return np.argwhere(slab)
 
 
+def _exposed_along_axis(building_mask, axis):
+    """Building voxels with an air neighbor along +*axis* or -*axis*.
+
+    These are the faces perpendicular to *axis*: for ``axis`` 0/1 the vertical
+    facade faces, for ``axis`` 2 the roof/floor. Out-of-grid neighbors count as
+    air, so walls at the grid boundary are exposed.
+    """
+    air = ~building_mask
+    exposed = np.zeros_like(building_mask)
+    for shift in (-1, 1):
+        nb = np.roll(air, -shift, axis=axis)
+        edge = [slice(None), slice(None), slice(None)]
+        edge[axis] = -1 if shift < 0 else 0
+        nb[tuple(edge)] = True  # wall at the grid boundary faces open air
+        exposed |= building_mask & nb
+    return exposed
+
+
 def stamp_windows(
     voxcity,
     window_groups,
@@ -135,11 +155,11 @@ def stamp_windows(
         building_value: code identifying building cells eligible for recolor.
         skin_radius: how far (in voxels) a window may sit from the wall and still
             snap to it. Each filled footprint cell is mapped to its nearest
-            building exterior-shell voxel if that voxel is within
-            ``skin_radius`` (measured as a full diagonal, ``skin_radius*sqrt(3)``)
-            -- absorbing sub-voxel offsets between a pane plane and the wall. The
-            recolored glass is always one voxel deep (the shell) regardless of
-            this value; windows farther than the radius snap to nothing.
+            building surface face if that face is within ``skin_radius`` (measured
+            as a full diagonal, ``skin_radius*sqrt(3)``) -- absorbing sub-voxel
+            offsets between a pane plane and the wall. The recolored glass is
+            always one voxel deep regardless of this value; windows farther than
+            the radius snap to nothing.
 
     Returns:
         int: number of building cells recolored to *window_value*.
@@ -165,31 +185,52 @@ def stamp_windows(
     if skin_radius <= 0:
         recolor = building_mask & win_mask
     else:
-        # Snap each window's filled footprint onto the building's exterior shell.
-        # The shell is the 1-voxel-thick outer surface; mapping every filled cell
-        # to its nearest shell voxel keeps glass on the surface (1 deep, true
-        # footprint, no halo) and follows the wall at any angle -- a rotated wall
-        # voxelizes to a staircase that an axis-aligned guess would miss.
-        shell = building_mask & ~ndimage.binary_erosion(building_mask)
+        # Snap each window's filled footprint onto the building surface. Decide
+        # per component whether it is a FACADE window or a SKYLIGHT by comparing
+        # how close its cells lie to lateral wall faces (exposed in +/-x or +/-y)
+        # versus roof/floor faces. A facade window snaps only to lateral faces --
+        # so glass stays on the wall and never bleeds onto the roof, and an
+        # interior top cell poking above the roofline (out of lateral reach) is
+        # dropped rather than spilled onto the roof. A skylight snaps only to
+        # roof/floor faces. Snapping to faces (not a flat plane) follows a rotated
+        # wall's staircase at any angle.
+        lateral = (
+            _exposed_along_axis(building_mask, 0)
+            | _exposed_along_axis(building_mask, 1)
+        )
+        horizontal = _exposed_along_axis(building_mask, 2)
+        d_lat = n_lat = d_hor = n_hor = None
+        if lateral.any():
+            d_lat, n_lat = ndimage.distance_transform_edt(~lateral, return_indices=True)
+        if horizontal.any():
+            d_hor, n_hor = ndimage.distance_transform_edt(~horizontal, return_indices=True)
+
         recolor = np.zeros(grid_shape, dtype=bool)
-        if shell.any():
-            # Nearest shell voxel (and its index) for every grid cell.
-            dist, nearest = ndimage.distance_transform_edt(
-                ~shell, return_indices=True
-            )
-            # A window cell offset from the wall by up to skin_radius voxels in
-            # each axis (a full diagonal) still snaps; farther windows do not.
-            max_snap = skin_radius * np.sqrt(3.0) + 1e-6
-            labels, n_lab = ndimage.label(win_mask, structure=iso_structure)
-            for lab in range(1, n_lab + 1):
-                fill_cells = _component_fill_cells(labels == lab)
-                for ci, cj, ck in fill_cells:
-                    if dist[ci, cj, ck] <= max_snap:
-                        recolor[
-                            nearest[0, ci, cj, ck],
-                            nearest[1, ci, cj, ck],
-                            nearest[2, ci, cj, ck],
-                        ] = True
+        max_snap = skin_radius * np.sqrt(3.0) + 1e-6
+        labels, n_lab = ndimage.label(win_mask, structure=iso_structure)
+        for lab in range(1, n_lab + 1):
+            fill_cells = _component_fill_cells(labels == lab)
+            if len(fill_cells) == 0:
+                continue
+            ii, jj, kk = fill_cells[:, 0], fill_cells[:, 1], fill_cells[:, 2]
+            # Facade if the component sits closer to lateral walls than to the
+            # roof/floor on average; otherwise a horizontal skylight.
+            mean_lat = d_lat[ii, jj, kk].mean() if d_lat is not None else np.inf
+            mean_hor = d_hor[ii, jj, kk].mean() if d_hor is not None else np.inf
+            if mean_lat <= mean_hor:
+                dist, nearest = d_lat, n_lat
+            elif d_hor is not None:
+                dist, nearest = d_hor, n_hor
+            else:
+                continue
+            for ci, cj, ck in fill_cells:
+                if dist[ci, cj, ck] > max_snap:
+                    continue  # out of reach (e.g. above the roofline): drop
+                recolor[
+                    nearest[0, ci, cj, ck],
+                    nearest[1, ci, cj, ck],
+                    nearest[2, ci, cj, ck],
+                ] = True
 
     recolor &= building_mask
     n = int(recolor.sum())

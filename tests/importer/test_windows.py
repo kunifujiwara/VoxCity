@@ -289,3 +289,57 @@ def _y_pane(x0, x1, z0, z1, y):
     return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 
 
+def _z_pane(x0, x1, y0, y1, z):
+    """A horizontal planar quad in the plane z=const (a roof skylight)."""
+    verts = np.array(
+        [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
+def test_window_at_roofline_does_not_bleed_onto_roof():
+    """A facade window reaching the top of the wall must NOT spill glass onto the
+    horizontal roof. Regression: snapping to the nearest building surface let a
+    near-roof window cell map onto a roof voxel."""
+    nx, ny, nz = 16, 16, 22
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    vc.voxels.classes[4:12, 4:12, 1:18] = BUILDING_CODE   # roof top at z=17
+    ztop = 17
+    # Window on the +y facade (y=12), reaching the very top of the wall.
+    win = _y_pane(5.0, 11.0, 13.0, 17.0, 12.0)
+    stamp_windows(vc, [("Windows", win)], IDENTITY)
+
+    glass = vc.voxels.classes == GLASS_CODE
+    # No glass on an interior roof-top voxel (air above, building below, building
+    # on all four lateral sides).
+    bld = (vc.voxels.classes == BUILDING_CODE) | glass
+    interior_roof = np.zeros_like(glass)
+    interior_roof[1:-1, 1:-1, :-1] = (
+        ~bld[1:-1, 1:-1, 1:]            # air directly above
+        & bld[1:-1, 1:-1, :-1]         # building at this cell
+        & bld[2:, 1:-1, :-1] & bld[:-2, 1:-1, :-1]
+        & bld[1:-1, 2:, :-1] & bld[1:-1, :-2, :-1]
+    )
+    assert not (glass & interior_roof).any(), "window glass bled onto the roof top"
+    # The facade still got glass.
+    assert glass.any()
+    # All glass stays at or below the roofline.
+    assert np.argwhere(glass)[:, 2].max() <= ztop
+
+
+def test_skylight_snaps_to_the_roof():
+    """A horizontal window (skylight) over a flat roof must recolor the roof,
+    not be dropped as a missing facade window."""
+    nx, ny, nz = 16, 16, 22
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    vc.voxels.classes[4:12, 4:12, 1:18] = BUILDING_CODE   # roof top at z=17
+    sky = _z_pane(6.0, 10.0, 6.0, 10.0, 17.5)             # flat pane just above roof
+    n = stamp_windows(vc, [("Skylight", sky)], IDENTITY)
+
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+    assert n > 0, "skylight must recolor the roof"
+    assert set(glass[:, 2].tolist()) == {17}, "skylight glass must sit on the roof layer z=17"
+
+
+
