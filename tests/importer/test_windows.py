@@ -2,6 +2,7 @@
 import logging
 
 import numpy as np
+import pytest
 import trimesh
 
 from voxcity.importer.windows import stamp_windows, _surface_cells
@@ -91,6 +92,8 @@ def test_mullioned_window_fills_opening_to_solid_pane():
     assert glass[ilo:ihi + 1, 4, klo:khi + 1].all(), (
         "window opening not solidly filled (mullion gaps / strips remain)"
     )
+    # glass is a single depth layer (no inward smearing)
+    assert set(np.argwhere(glass)[:, 1].tolist()) == {4}
 
 
 def test_window_far_from_building_is_skipped(caplog, propagate_voxcity_logs):
@@ -118,3 +121,225 @@ def test_window_does_not_change_building_metadata():
 def test_no_window_groups_returns_zero():
     vc = _wall_voxcity()
     assert stamp_windows(vc, [], IDENTITY) == 0
+
+
+def _thick_wall_voxcity(jlo=4, jhi=6):
+    """Flat model with a wall slab THICKER than 1 voxel: j in [jlo, jhi],
+    i in [2,8), z in [1,9). Default 3 voxels thick (j=4,5,6)."""
+    vc = make_flat_voxcity(nx=12, ny=12, nz=14, meshsize=1.0)
+    vc.voxels.classes[2:8, jlo:jhi + 1, 1:9] = BUILDING_CODE
+    return vc
+
+
+def test_window_recolors_only_outward_skin_of_thick_wall():
+    """A pane at the OUTER face of a 3-voxel-thick wall recolors exactly the
+    outward layer (j=4), never the interior layers (j=5,6). Depth==1 alone is
+    insufficient; this asserts the correct face is chosen."""
+    vc = _thick_wall_voxcity(4, 6)            # wall j in {4,5,6}
+    pane = _vertical_pane(3.0, 6.5, 4.0, 2.0, 7.0)  # at the outer face (small j)
+    n = stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0
+    js = set(glass[:, 1].tolist())
+    assert js == {4}, f"glass must sit only on the outward face j=4, got {sorted(js)}"
+
+
+def test_window_skin_is_one_deep_and_full_footprint():
+    """Across the footprint, glass is exactly one voxel deep per (i,z) column and
+    covers the filled opening's (i,z) bounding box."""
+    vc = _thick_wall_voxcity(4, 6)
+    pane = _vertical_pane(3.0, 6.5, 4.0, 2.0, 7.0)
+    raw = _surface_cells(pane, IDENTITY, vc.voxels.classes.shape)
+    stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = vc.voxels.classes == GLASS_CODE
+    gi = np.argwhere(glass)
+
+    from collections import Counter
+    per_col = Counter((int(i), int(z)) for i, _j, z in gi)
+    assert per_col and all(c == 1 for c in per_col.values()), "glass must be 1 voxel deep per column"
+    assert gi[:, 0].min() == raw[:, 0].min() and gi[:, 0].max() == raw[:, 0].max()
+    assert gi[:, 2].min() == raw[:, 2].min() and gi[:, 2].max() == raw[:, 2].max()
+
+
+def test_centered_pane_in_even_wall_stays_one_layer():
+    """Pane centered in an even-thickness wall (air vote ties on both sides):
+    the mean tiebreaker still yields a single outer layer (either face OK)."""
+    vc = _thick_wall_voxcity(4, 5)                 # 2-thick wall j in {4,5}
+    pane = _vertical_pane(3.0, 6.5, 4.5, 2.0, 7.0)  # centered between j=4 and j=5
+    n = stamp_windows(vc, [("Windows", pane)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+    assert n > 0
+    js = set(glass[:, 1].tolist())
+    assert len(js) == 1 and js.issubset({4, 5}), f"expected one outer layer, got {sorted(js)}"
+
+
+def _rot_z(angle_deg, cx, cy):
+    a = np.radians(angle_deg)
+    c, s = np.cos(a), np.sin(a)
+    R = np.eye(4)
+    R[0, 0], R[0, 1] = c, -s
+    R[1, 0], R[1, 1] = s, c
+    pre = np.eye(4); pre[0, 3] = -cx; pre[1, 3] = -cy
+    post = np.eye(4); post[0, 3] = cx; post[1, 3] = cy
+    return post @ R @ pre
+
+
+@pytest.mark.parametrize("angle", [15, 30, 45])
+def test_rotated_facade_window_gap_free(angle):
+    from scipy import ndimage
+    vc = make_flat_voxcity(nx=24, ny=24, nz=14, meshsize=1.0)
+    T = _rot_z(angle, 12.0, 12.0)
+    # Bake a thick-ish wall from a rotated quad's surface cells, dilated once.
+    wall = _vertical_pane(6.0, 16.0, 12.0, 1.0, 9.0)
+    wcells = _surface_cells(wall, T, vc.voxels.classes.shape)
+    m = np.zeros(vc.voxels.classes.shape, dtype=bool)
+    m[wcells[:, 0], wcells[:, 1], wcells[:, 2]] = True
+    m = ndimage.binary_dilation(m, ndimage.generate_binary_structure(3, 1))
+    vc.voxels.classes[m] = BUILDING_CODE
+    win = _mullion_window(8.0, 14.0, 2.0, 8.0, 12.0)
+
+    n = stamp_windows(vc, [("Windows", win)], T)
+    assert n > 0
+    glass = vc.voxels.classes == GLASS_CODE
+    gi = np.argwhere(glass)
+    # Per z-row, glass along the facade run axis must be contiguous (no strips/gaps).
+    for z in sorted(set(gi[:, 2].tolist())):
+        sel = gi[gi[:, 2] == z]
+        spread_i = sel[:, 0].max() - sel[:, 0].min()
+        spread_j = sel[:, 1].max() - sel[:, 1].min()
+        run_axis = 0 if spread_i >= spread_j else 1
+        vals = np.sort(sel[:, run_axis])
+        assert np.all(np.diff(vals) <= 1), f"strips/gaps at z={z} angle={angle}"
+
+
+def _x_pane(y0, y1, z0, z1, x):
+    """A planar quad in the plane x=const, spanning y in [y0,y1], z in [z0,z1]
+    (a window on an x-facing facade)."""
+    verts = np.array(
+        [[x, y0, z0], [x, y1, z0], [x, y1, z1], [x, y0, z1]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
+def test_window_not_dropped_by_a_second_building_along_the_normal():
+    """A window on building A's facade must recolor A's own wall, even when
+    building B lies further along the window's normal line. Regression: selecting
+    the GLOBALLY outermost building voxel per column picked B's far face, which
+    the proximity gate then dropped -> the window vanished."""
+    vc = make_flat_voxcity(nx=24, ny=24, nz=14, meshsize=1.0)
+    vc.voxels.classes[4:8, 4:10, 1:9] = BUILDING_CODE     # box A: i in [4,8)
+    vc.voxels.classes[14:18, 4:10, 1:9] = BUILDING_CODE   # box B further along +x
+    win = _x_pane(4.5, 9.5, 2.0, 7.0, 8.0)                # pane on A's +x face (i=8)
+
+    n = stamp_windows(vc, [("Windows", win)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0, "window must not be dropped because of a second building"
+    ivals = set(glass[:, 0].tolist())
+    # Glass sits on A's own outer face (i=7), never on B (i in {14..17}).
+    assert ivals == {7}, f"glass must be on building A's wall (i=7), got {sorted(ivals)}"
+
+
+@pytest.mark.parametrize("angle", [20, 30, 45])
+def test_rotated_facade_grid_of_windows_all_survive(angle):
+    """A grid of small panes on a ROTATED facade must all reach the staircased
+    wall. Regression: the old axis-aligned per-column pick + tight normal gate
+    dropped most panes on diagonal walls; nearest-shell snapping follows the
+    staircase so coverage stays high."""
+    from scipy import ndimage
+    from trimesh.voxel import creation as _vc_creation
+
+    nx, ny, nz = 40, 40, 30
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    T = _rot_z(angle, 20.0, 20.0)
+    box = trimesh.creation.box(extents=(16, 12, 18))
+    box.apply_translation([20, 20, 9])
+    m = box.copy(); m.apply_transform(T)
+    vg = _vc_creation.voxelize_subdivide(m, pitch=1.0).fill()
+    pts = np.floor(np.asarray(vg.points)).astype(int)
+    ib = (
+        (pts[:, 0] >= 0) & (pts[:, 0] < nx)
+        & (pts[:, 1] >= 0) & (pts[:, 1] < ny)
+        & (pts[:, 2] >= 0) & (pts[:, 2] < nz)
+    )
+    pts = pts[ib]
+    vc.voxels.classes[pts[:, 0], pts[:, 1], pts[:, 2]] = BUILDING_CODE
+
+    groups = []
+    for x0 in (13.0, 17.0, 21.0, 25.0):       # 4 columns
+        for z0 in (3.0, 8.0, 13.0):           # 3 rows -> 12 panes
+            groups.append((f"w{x0}_{z0}", _y_pane(x0, x0 + 2.0, z0, z0 + 2.0, 26.0)))
+
+    n = stamp_windows(vc, groups, T)
+    glass = vc.voxels.classes == GLASS_CODE
+    # A flat 12-pane grid recolors ~108 cells; allow generous slack for the
+    # rotated staircase but require the bulk to survive (old code: ~48 at 30deg).
+    assert int(glass.sum()) >= 80, f"too few window cells at {angle}deg: {int(glass.sum())}"
+
+
+def _y_pane(x0, x1, z0, z1, y):
+    """A planar quad in the plane y=const, spanning x in [x0,x1], z in [z0,z1]
+    (a window on a y-facing facade)."""
+    verts = np.array(
+        [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
+def _z_pane(x0, x1, y0, y1, z):
+    """A horizontal planar quad in the plane z=const (a roof skylight)."""
+    verts = np.array(
+        [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
+def test_window_at_roofline_does_not_bleed_onto_roof():
+    """A facade window reaching the top of the wall must NOT spill glass onto the
+    horizontal roof. Regression: snapping to the nearest building surface let a
+    near-roof window cell map onto a roof voxel."""
+    nx, ny, nz = 16, 16, 22
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    vc.voxels.classes[4:12, 4:12, 1:18] = BUILDING_CODE   # roof top at z=17
+    ztop = 17
+    # Window on the +y facade (y=12), reaching the very top of the wall.
+    win = _y_pane(5.0, 11.0, 13.0, 17.0, 12.0)
+    stamp_windows(vc, [("Windows", win)], IDENTITY)
+
+    glass = vc.voxels.classes == GLASS_CODE
+    # No glass on an interior roof-top voxel (air above, building below, building
+    # on all four lateral sides).
+    bld = (vc.voxels.classes == BUILDING_CODE) | glass
+    interior_roof = np.zeros_like(glass)
+    interior_roof[1:-1, 1:-1, :-1] = (
+        ~bld[1:-1, 1:-1, 1:]            # air directly above
+        & bld[1:-1, 1:-1, :-1]         # building at this cell
+        & bld[2:, 1:-1, :-1] & bld[:-2, 1:-1, :-1]
+        & bld[1:-1, 2:, :-1] & bld[1:-1, :-2, :-1]
+    )
+    assert not (glass & interior_roof).any(), "window glass bled onto the roof top"
+    # The facade still got glass.
+    assert glass.any()
+    # All glass stays at or below the roofline.
+    assert np.argwhere(glass)[:, 2].max() <= ztop
+
+
+def test_skylight_snaps_to_the_roof():
+    """A horizontal window (skylight) over a flat roof must recolor the roof,
+    not be dropped as a missing facade window."""
+    nx, ny, nz = 16, 16, 22
+    vc = make_flat_voxcity(nx=nx, ny=ny, nz=nz, meshsize=1.0)
+    vc.voxels.classes[4:12, 4:12, 1:18] = BUILDING_CODE   # roof top at z=17
+    sky = _z_pane(6.0, 10.0, 6.0, 10.0, 17.5)             # flat pane just above roof
+    n = stamp_windows(vc, [("Skylight", sky)], IDENTITY)
+
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+    assert n > 0, "skylight must recolor the roof"
+    assert set(glass[:, 2].tolist()) == {17}, "skylight glass must sit on the roof layer z=17"
+
+
+
