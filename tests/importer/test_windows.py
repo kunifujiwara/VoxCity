@@ -211,3 +211,33 @@ def test_rotated_facade_window_gap_free(angle):
         run_axis = 0 if spread_i >= spread_j else 1
         vals = np.sort(sel[:, run_axis])
         assert np.all(np.diff(vals) <= 1), f"strips/gaps at z={z} angle={angle}"
+
+
+def _x_pane(y0, y1, z0, z1, x):
+    """A planar quad in the plane x=const, spanning y in [y0,y1], z in [z0,z1]
+    (a window on an x-facing facade)."""
+    verts = np.array(
+        [[x, y0, z0], [x, y1, z0], [x, y1, z1], [x, y0, z1]], dtype=float
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]])
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+
+
+def test_window_not_dropped_by_a_second_building_along_the_normal():
+    """A window on building A's facade must recolor A's own wall, even when
+    building B lies further along the window's normal line. Regression: selecting
+    the GLOBALLY outermost building voxel per column picked B's far face, which
+    the proximity gate then dropped -> the window vanished."""
+    vc = make_flat_voxcity(nx=24, ny=24, nz=14, meshsize=1.0)
+    vc.voxels.classes[4:8, 4:10, 1:9] = BUILDING_CODE     # box A: i in [4,8)
+    vc.voxels.classes[14:18, 4:10, 1:9] = BUILDING_CODE   # box B further along +x
+    win = _x_pane(4.5, 9.5, 2.0, 7.0, 8.0)                # pane on A's +x face (i=8)
+
+    n = stamp_windows(vc, [("Windows", win)], IDENTITY)
+    glass = np.argwhere(vc.voxels.classes == GLASS_CODE)
+
+    assert n > 0, "window must not be dropped because of a second building"
+    ivals = set(glass[:, 0].tolist())
+    # Glass sits on A's own outer face (i=7), never on B (i in {14..17}).
+    assert ivals == {7}, f"glass must be on building A's wall (i=7), got {sorted(ivals)}"
+

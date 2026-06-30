@@ -249,14 +249,16 @@ def stamp_windows(
                 int(cells[:, axis].min()), int(cells[:, axis].max()), grid_shape,
             )
             direction = _outward_direction(slab, building_mask, axis, cells)
-            skin = _exterior_skin_cells(slab, building_mask, axis, direction)
-            # Proximity gate: keep the skin only where it lies within skin_radius
-            # of the window plane along the normal, so a window far from any wall
-            # never recolors a distant building face.
+            # Restrict candidate wall voxels to the window's own facade: only
+            # building cells within skin_radius of the window plane along the
+            # normal. Gating BEFORE the outermost-per-column pick prevents
+            # selecting a DIFFERENT building's face that lies along the same
+            # column line (which would then be dropped, losing the window), and
+            # also drops windows far from any wall.
             near = ndimage.binary_dilation(
                 slab, structure=_axis_line_structure(axis), iterations=skin_radius
             )
-            recolor |= skin & near
+            recolor |= _exterior_skin_cells(slab, building_mask & near, axis, direction)
 
     recolor &= building_mask
     n = int(recolor.sum())
