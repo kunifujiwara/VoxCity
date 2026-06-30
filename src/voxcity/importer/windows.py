@@ -102,6 +102,73 @@ def _broadcast_along_axis(filled2d, axis, lo, hi, shape):
     return slab
 
 
+def _outward_direction(comp, building_mask, axis, window_cells):
+    """Return +1 or -1: which way along *axis* faces 'outside' for this window.
+
+    Primary signal: of the per-column most-+axis and most--axis building voxels
+    under the component footprint, whichever side has more air (non-building)
+    neighbors along *axis* is outward. Tie-break by sign(mean window - mean
+    building) along *axis*; final fallback +1.
+    """
+    n_axis = building_mask.shape[axis]
+    proj = comp.any(axis=axis)
+    perp = [d for d in (0, 1, 2) if d != axis]
+
+    pos_air = 0
+    neg_air = 0
+    for col in np.argwhere(proj):
+        idx = [slice(None), slice(None), slice(None)]
+        idx[perp[0]] = col[0]
+        idx[perp[1]] = col[1]
+        line = building_mask[tuple(idx)]
+        occ = np.flatnonzero(line)
+        if occ.size == 0:
+            continue
+        hi = int(occ.max())
+        lo = int(occ.min())
+        if hi + 1 >= n_axis or not line[hi + 1]:
+            pos_air += 1
+        if lo - 1 < 0 or not line[lo - 1]:
+            neg_air += 1
+
+    if pos_air != neg_air:
+        return 1 if pos_air > neg_air else -1
+
+    bld = np.argwhere(building_mask)
+    if window_cells.size and bld.size:
+        if window_cells[:, axis].mean() >= bld[:, axis].mean():
+            return 1
+        return -1
+    return 1
+
+
+def _exterior_skin_cells(comp, building_mask, axis, direction):
+    """Boolean grid: the single most-*direction* building voxel in each footprint
+    column of *comp* (1 voxel deep, the outward skin).
+
+    *direction* is +1 or -1 along *axis*. A column with no building voxel
+    contributes nothing.
+    """
+    out = np.zeros(building_mask.shape, dtype=bool)
+    proj = comp.any(axis=axis)
+    perp = [d for d in (0, 1, 2) if d != axis]
+    for col in np.argwhere(proj):
+        idx = [slice(None), slice(None), slice(None)]
+        idx[perp[0]] = col[0]
+        idx[perp[1]] = col[1]
+        line = building_mask[tuple(idx)]
+        occ = np.flatnonzero(line)
+        if occ.size == 0:
+            continue
+        a = int(occ.max()) if direction > 0 else int(occ.min())
+        cell = [0, 0, 0]
+        cell[perp[0]] = int(col[0])
+        cell[perp[1]] = int(col[1])
+        cell[axis] = a
+        out[cell[0], cell[1], cell[2]] = True
+    return out
+
+
 def stamp_windows(
     voxcity,
     window_groups,
@@ -150,13 +217,10 @@ def stamp_windows(
     if skin_radius <= 0:
         recolor = building_mask & win_mask
     else:
-        # Treat each physically-distinct window as a connected component of the
-        # surface cells (OBJ grouping is irrelevant; separate windows are
-        # separate components and never merge). For each component, fill its
-        # opening in the plane perpendicular to its normal -- so a mullioned
-        # frame voxelizes to a solid pane rather than thin bars -- then bridge to
-        # the wall along the normal ONLY, so the window keeps its true facade
-        # footprint without a lateral halo.
+        # Each physically-distinct window is a connected component of the surface
+        # cells. Fill its opening in the facade plane (mullion frame -> solid
+        # pane), then recolor ONLY the outward 1-voxel skin under that footprint,
+        # so glass never sinks into a thick wall.
         recolor = np.zeros(grid_shape, dtype=bool)
         labels, n_lab = ndimage.label(win_mask, structure=iso_structure)
         for lab in range(1, n_lab + 1):
@@ -164,26 +228,31 @@ def stamp_windows(
             cells = np.argwhere(comp)
             axis = _surface_normal_axis(cells)
             if axis is None:
-                # Degenerate (near-1D) cloud: no well-defined plane to fill.
-                # Fall back to an isotropic bridge of the raw cells.
+                # Degenerate (near-1D) cloud: no plane to fill. Isotropic bridge,
+                # but clamp to the building EXTERIOR SHELL so it cannot go deep.
                 bridged = ndimage.binary_dilation(
                     comp, structure=iso_structure, iterations=skin_radius
                 )
-                recolor |= building_mask & bridged
+                shell = building_mask & ~ndimage.binary_erosion(building_mask)
+                recolor |= shell & bridged
                 continue
-            # Fill the opening within the (perpendicular) facade plane, then
-            # re-expand across the component's thin normal span and bridge to the
-            # wall along the normal axis.
+            # Fill the opening in the facade plane, re-expand across the thin
+            # normal span, then keep only the outward skin column-by-column.
             proj = comp.any(axis=axis)
             filled2d = ndimage.binary_fill_holes(proj)
             slab = _broadcast_along_axis(
                 filled2d, axis,
                 int(cells[:, axis].min()), int(cells[:, axis].max()), grid_shape,
             )
-            bridged = ndimage.binary_dilation(
+            direction = _outward_direction(slab, building_mask, axis, cells)
+            skin = _exterior_skin_cells(slab, building_mask, axis, direction)
+            # Proximity gate: keep the skin only where it lies within skin_radius
+            # of the window plane along the normal, so a window far from any wall
+            # never recolors a distant building face.
+            near = ndimage.binary_dilation(
                 slab, structure=_axis_line_structure(axis), iterations=skin_radius
             )
-            recolor |= building_mask & bridged
+            recolor |= skin & near
 
     recolor &= building_mask
     n = int(recolor.sum())
