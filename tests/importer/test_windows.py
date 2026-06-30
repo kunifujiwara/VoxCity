@@ -2,6 +2,7 @@
 import logging
 
 import numpy as np
+import pytest
 import trimesh
 
 from voxcity.importer.windows import stamp_windows, _surface_cells
@@ -171,3 +172,42 @@ def test_centered_pane_in_even_wall_stays_one_layer():
     assert n > 0
     js = set(glass[:, 1].tolist())
     assert len(js) == 1 and js.issubset({4, 5}), f"expected one outer layer, got {sorted(js)}"
+
+
+def _rot_z(angle_deg, cx, cy):
+    a = np.radians(angle_deg)
+    c, s = np.cos(a), np.sin(a)
+    R = np.eye(4)
+    R[0, 0], R[0, 1] = c, -s
+    R[1, 0], R[1, 1] = s, c
+    pre = np.eye(4); pre[0, 3] = -cx; pre[1, 3] = -cy
+    post = np.eye(4); post[0, 3] = cx; post[1, 3] = cy
+    return post @ R @ pre
+
+
+@pytest.mark.parametrize("angle", [15, 30, 45])
+def test_rotated_facade_window_one_deep(angle):
+    from scipy import ndimage
+    vc = make_flat_voxcity(nx=24, ny=24, nz=14, meshsize=1.0)
+    T = _rot_z(angle, 12.0, 12.0)
+    # Bake a thick-ish wall from a rotated quad's surface cells, dilated once.
+    wall = _vertical_pane(6.0, 16.0, 12.0, 1.0, 9.0)
+    wcells = _surface_cells(wall, T, vc.voxels.classes.shape)
+    m = np.zeros(vc.voxels.classes.shape, dtype=bool)
+    m[wcells[:, 0], wcells[:, 1], wcells[:, 2]] = True
+    m = ndimage.binary_dilation(m, ndimage.generate_binary_structure(3, 1))
+    vc.voxels.classes[m] = BUILDING_CODE
+    win = _mullion_window(8.0, 14.0, 2.0, 8.0, 12.0)
+
+    n = stamp_windows(vc, [("Windows", win)], T)
+    assert n > 0
+    glass = vc.voxels.classes == GLASS_CODE
+    gi = np.argwhere(glass)
+    # Per z-row, glass along the facade run axis must be contiguous (no strips/gaps).
+    for z in sorted(set(gi[:, 2].tolist())):
+        sel = gi[gi[:, 2] == z]
+        spread_i = sel[:, 0].max() - sel[:, 0].min()
+        spread_j = sel[:, 1].max() - sel[:, 1].min()
+        run_axis = 0 if spread_i >= spread_j else 1
+        vals = np.sort(sel[:, run_axis])
+        assert np.all(np.diff(vals) <= 1), f"strips/gaps at z={z} angle={angle}"
