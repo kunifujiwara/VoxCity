@@ -209,3 +209,46 @@ def test_surface_self_occlusion_guard_drops_same_building_targets():
     assert np.nanmean(base) > 0.05, "scene should have a non-trivial across-gap window view"
     assert np.nanmean(same_on) < np.nanmean(base) - 0.02, "guard must drop same-building self view"
     assert np.nanmean(cross_on) > np.nanmean(base) - 0.005, "guard must keep cross-building view"
+
+
+def test_surface_guard_reuses_workspace_building_ids_field(monkeypatch):
+    """The guarded surface path must not allocate a new Taichi field per call.
+
+    The optimizer evaluates ``get_surface_view_factor`` once per candidate
+    through the cached ``SurfaceViewWorkspace``; allocating a fresh ``(nx, ny)``
+    building-id field on every call leaks GPU memory (Taichi cannot free fields
+    without ``ti.reset()``). The building-id grid must therefore live in the
+    workspace and be repopulated in place, like ``is_target``/``is_opaque``.
+    """
+    pytest.importorskip("taichi")
+    import taichi as ti
+    from voxcity.simulator_gpu.visibility import get_surface_view_factor as gpu_svf
+
+    voxel_data, building_ids = _glazed_slot(True)
+    voxcity = _fake_voxcity(voxel_data, building_ids)
+
+    call = dict(target_values=(-16,), inclusion_mode=True,
+               N_azimuth=24, N_elevation=6, self_occlusion_guard=True)
+
+    # Warm-up: legitimately allocates the domain + workspace fields once.
+    try:
+        gpu_svf(voxcity, **call)
+    except Exception as error:
+        _skip_if_gpu_unavailable(error)
+
+    # A second identical call reuses the cached workspace, so it must allocate
+    # zero new Taichi fields.
+    n_new = {"count": 0}
+    real_field = ti.field
+
+    def counting_field(*args, **kwargs):
+        n_new["count"] += 1
+        return real_field(*args, **kwargs)
+
+    monkeypatch.setattr(ti, "field", counting_field)
+    gpu_svf(voxcity, **call)
+
+    assert n_new["count"] == 0, (
+        f"guarded surface path allocated {n_new['count']} new Taichi field(s) on a "
+        "cached-workspace call; building_ids must be reused from the workspace"
+    )

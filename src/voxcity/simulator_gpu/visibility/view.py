@@ -733,7 +733,14 @@ class SurfaceViewFactorCalculator:
         att_cutoff = 0.01
         trees_are_targets = (-2 in target_values) and inclusion_mode
         
-        building_ids_ti = ti.field(dtype=ti.i32, shape=(self.nx, self.ny))
+        # Reuse the workspace's pre-allocated building-id field when running the
+        # cached path (the optimizer calls this once per candidate, so a fresh
+        # ti.field per call would leak GPU memory). Only the one-shot path
+        # allocates here.
+        if use_workspace:
+            building_ids_ti = workspace.building_ids
+        else:
+            building_ids_ti = ti.field(dtype=ti.i32, shape=(self.nx, self.ny))
         guard_on = 1 if (self_occlusion_guard and building_ids is not None) else 0
         if guard_on:
             building_ids_ti.from_numpy(np.ascontiguousarray(building_ids, dtype=np.int32))
