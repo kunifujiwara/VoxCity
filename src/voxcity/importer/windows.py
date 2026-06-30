@@ -3,12 +3,14 @@
 Window groups are surface-voxelized (not volume-filled) so thin/planar panes
 rasterize reliably. Each physically-distinct window (a connected component of the
 surface cells) has its opening filled in the facade plane -- so a mullioned frame
-becomes a solid pane rather than thin bars -- and is then bridged to the wall
-along the window normal only, recoloring the building (-3) cells it covers. This
-keeps the glass at the window's true footprint: no lateral halo (an isotropic
-match inflates small windows) and no strips (tracing the bare frame). Windows
-never create new occupancy; they only reclassify existing building cells, so
-building footprint/height metadata is unaffected.
+becomes a solid pane rather than thin bars. The glass is then stamped on the
+building's OUTWARD exterior skin only: the single most-outward building (-3)
+voxel in each filled footprint column (1 voxel deep), so glass never sinks into a
+thick wall. The outward direction is inferred from which side of the wall has
+more exposed air. A proximity gate keeps a window that sits far from any wall
+from recoloring a distant face. Windows never create new occupancy; they only
+reclassify existing building cells, so building footprint/height metadata is
+unaffected.
 """
 from __future__ import annotations
 
@@ -134,6 +136,9 @@ def _outward_direction(comp, building_mask, axis, window_cells):
     if pos_air != neg_air:
         return 1 if pos_air > neg_air else -1
 
+    # Assumes windows sit on the building's OUTER facade; deeply-inset or
+    # inner-courtyard panes within skin_radius of the outer face may pick the
+    # outer voxel.
     bld = np.argwhere(building_mask)
     if window_cells.size and bld.size:
         if window_cells[:, axis].mean() >= bld[:, axis].mean():
@@ -187,11 +192,10 @@ def stamp_windows(
             same matrix used to voxelize the buildings).
         window_value: code written for window cells (default -16, glass).
         building_value: code identifying building cells eligible for recolor.
-        skin_radius: depth-direction radius (in voxels) for matching window
-            surface cells to nearby building cells. ``1`` absorbs sub-voxel
-            offsets between a pane plane and the wall surface. Dilation is along
-            each window's normal axis only, so it does not inflate the window in
-            the facade plane.
+        skin_radius: proximity gate only -- the glass skin is always 1 voxel
+            deep regardless of this value. It controls how far (in voxels, along
+            the window normal) a window may sit from the wall and still recolor
+            it, absorbing sub-voxel offsets between a pane plane and the wall.
 
     Returns:
         int: number of building cells recolored to *window_value*.

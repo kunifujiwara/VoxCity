@@ -186,7 +186,7 @@ def _rot_z(angle_deg, cx, cy):
 
 
 @pytest.mark.parametrize("angle", [15, 30, 45])
-def test_rotated_facade_window_one_deep(angle):
+def test_rotated_facade_window_gap_free(angle):
     from scipy import ndimage
     vc = make_flat_voxcity(nx=24, ny=24, nz=14, meshsize=1.0)
     T = _rot_z(angle, 12.0, 12.0)
