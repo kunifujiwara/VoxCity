@@ -410,7 +410,7 @@ def get_cumulative_global_solar_irradiance(
             if kwargs.get("show_each_timestep", False):
                 vmin = kwargs.get("vmin", 0.0)
                 vmax = kwargs.get("vmax", max(direct_normal_irradiance_scaling, diffuse_irradiance_scaling) * 1000)
-                cmap = plt.cm.get_cmap(kwargs.get("colormap", "viridis")).copy()
+                cmap = plt.get_cmap(kwargs.get("colormap", "viridis")).copy()
                 cmap.set_bad(color="lightgray")
                 plt.figure(figsize=(10, 8))
                 plt.imshow(global_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
@@ -423,7 +423,7 @@ def get_cumulative_global_solar_irradiance(
     if kwargs.get("show_plot", True):
         vmin = kwargs.get("vmin", float(np.nanmin(cumulative_map)))
         vmax = kwargs.get("vmax", float(np.nanmax(cumulative_map)))
-        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap = plt.get_cmap(colormap).copy()
         cmap.set_bad(color="lightgray")
         plt.figure(figsize=(10, 8))
         plt.imshow(cumulative_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)

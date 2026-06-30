@@ -67,7 +67,7 @@ def get_direct_solar_irradiance_map(
     direct_map = transmittance_map * direct_normal_irradiance * sin_elev
 
     if show_plot:
-        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap = plt.get_cmap(colormap).copy()
         cmap.set_bad(color="lightgray")
         plt.figure(figsize=(10, 8))
         plt.imshow(direct_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
@@ -122,7 +122,7 @@ def get_diffuse_solar_irradiance_map(
     diffuse_map = SVF_map * diffuse_irradiance
 
     if show_plot:
-        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap = plt.get_cmap(colormap).copy()
         cmap.set_bad(color="lightgray")
         plt.figure(figsize=(10, 8))
         plt.imshow(diffuse_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
@@ -185,7 +185,7 @@ def get_global_solar_irradiance_map(
         colormap = kwargs.get("colormap", "magma")
         vmin = kwargs.get("vmin", 0.0)
         vmax = kwargs.get("vmax", max(float(np.nanmax(global_map)), 1.0))
-        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap = plt.get_cmap(colormap).copy()
         cmap.set_bad(color="lightgray")
         plt.figure(figsize=(10, 8))
         plt.imshow(global_map, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)

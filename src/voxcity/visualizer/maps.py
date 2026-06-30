@@ -54,7 +54,7 @@ def plot_grid(grid, origin, adjusted_meshsize, u_vec, v_vec, transformer, vertic
             vmax = np.nanmax(grid)
         norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
     elif data_type in ('green_view_index', 'sky_view_index'):
-        cmap = plt.cm.get_cmap('BuPu_r').copy() if data_type == 'sky_view_index' else plt.cm.Greens
+        cmap = plt.get_cmap('BuPu_r').copy() if data_type == 'sky_view_index' else plt.cm.Greens
         if vmin is None:
             vmin = np.nanmin(grid)
         if vmax is None:

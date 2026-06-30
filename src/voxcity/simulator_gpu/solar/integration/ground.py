@@ -260,7 +260,7 @@ def get_direct_solar_irradiance_map(
     if show_plot:
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(direct_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -337,7 +337,7 @@ def get_diffuse_solar_irradiance_map(
     if show_plot:
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(diffuse_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -432,7 +432,7 @@ def get_global_solar_irradiance_map(
         vmax = kwargs.get('vmax', max(float(np.nanmax(global_map)), 1.0))
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(global_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -741,7 +741,7 @@ def get_cumulative_global_solar_irradiance(
         vmin = kwargs.get('vmin', 0.0)
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(cumulative_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -1040,7 +1040,7 @@ def get_sunlight_hours(
             import matplotlib.pyplot as plt
             vmax = kwargs.get('vmax', potential_hours)
             vmin = kwargs.get('vmin', 0.0)
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(sunlight_hours_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)

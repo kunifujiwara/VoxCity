@@ -77,7 +77,7 @@ def get_view_index(voxcity, mode=None, hit_values=None, inclusion_mode=True, fas
     else:
         vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode, include_building_roofs=include_building_roofs)
 
-    cmap = plt.cm.get_cmap(colormap).copy()
+    cmap = plt.get_cmap(colormap).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
     plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -133,7 +133,7 @@ def get_sky_view_factor_map(voxcity, show_plot=False, **kwargs):
         ray_directions = _generate_ray_directions_grid(int(N_azimuth), int(N_elevation), elevation_min_degrees, elevation_max_degrees)
     vi_map = compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode, include_building_roofs=include_building_roofs)
     if show_plot:
-        cmap = plt.cm.get_cmap(colormap).copy()
+        cmap = plt.get_cmap(colormap).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
         plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)

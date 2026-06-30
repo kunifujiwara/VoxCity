@@ -21,7 +21,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-import matplotlib.cm as mcm
+from matplotlib import colormaps as mcm
 import matplotlib.colors as mcolors
 
 from voxcity.visualizer.palette import get_voxel_color_map

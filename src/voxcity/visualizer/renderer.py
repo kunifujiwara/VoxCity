@@ -8,7 +8,7 @@ try:
 except ImportError:  # optional dependency
     trimesh = None  # type: ignore
     _HAS_TRIMESH = False
-import matplotlib.cm as cm
+from matplotlib import colormaps as cm
 import matplotlib.colors as mcolors
 try:
     import plotly.graph_objects as go

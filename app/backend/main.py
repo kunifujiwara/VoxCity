@@ -609,7 +609,7 @@ _VOXEL_TRACE_NAMES = frozenset({'+x', '-x', '+y', '-y', '+z', '-z'})
 
 def _mpl_cmap_to_plotly_colorscale(cmap_name: str, n: int = 256) -> list:
     """Convert a matplotlib colormap name to a Plotly colorscale list."""
-    import matplotlib.cm as mcm
+    from matplotlib import colormaps as mcm
     try:
         cmap = mcm.get_cmap(cmap_name)
     except Exception:
@@ -641,7 +641,7 @@ def _build_sim_overlay_traces(
     Returns a list of trace dicts ready to splice into a cached figure.
     """
     import plotly.graph_objects as go
-    import matplotlib.cm as mcm
+    from matplotlib import colormaps as mcm
     import matplotlib.colors as mcolors
     from voxcity.geoprocessor.mesh import create_sim_surface_mesh
 

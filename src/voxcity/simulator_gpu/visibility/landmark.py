@@ -404,7 +404,7 @@ def compute_landmark_visibility(
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
 
-        cmap = plt.cm.get_cmap(colormap, 2).copy()
+        cmap = plt.get_cmap(colormap, 2).copy()
         cmap.set_bad(color='lightgray')
         plt.figure(figsize=(10, 8))
         plt.imshow(visibility_map, origin='lower', cmap=cmap, vmin=0, vmax=1)

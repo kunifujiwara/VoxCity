@@ -785,7 +785,7 @@ def export_netcdf_to_obj(
             "scikit-image is required for iso-surface generation. Install 'scikit-image'."
         ) from e
 
-    from matplotlib import cm
+    from matplotlib import colormaps as cm
 
     if opacity_points is None:
         opacity_points = [(-0.2, 0.00), (2.0, 1.00)]

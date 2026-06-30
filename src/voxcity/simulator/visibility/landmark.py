@@ -144,7 +144,7 @@ def compute_landmark_visibility(voxel_data, target_value=-30, view_height_voxel=
     unique_values = np.unique(voxel_data)
     opaque_values = np.array([v for v in unique_values if v != 0 and v != target_value], dtype=np.int32)
     visibility_map = compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel, include_building_roofs)
-    cmap = plt.cm.get_cmap(colormap, 2).copy()
+    cmap = plt.get_cmap(colormap, 2).copy()
     cmap.set_bad(color='lightgray')
     plt.figure(figsize=(10, 8))
     plt.imshow(visibility_map, origin='lower', cmap=cmap, vmin=0, vmax=1)
@@ -398,7 +398,7 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
         output_file_name = kwargs.get("output_file_name", "surface_landmark_visibility")
         os.makedirs(output_dir, exist_ok=True)
         try:
-            cmap = plt.cm.get_cmap(colormap)
+            cmap = plt.get_cmap(colormap)
             face_colors = np.zeros((len(visibility_values), 4))
             for i, val in enumerate(visibility_values):
                 if np.isnan(val):

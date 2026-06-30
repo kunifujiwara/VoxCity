@@ -269,7 +269,7 @@ def get_volumetric_solar_irradiance_map(
         vmax = kwargs.get('vmax', max(float(np.nanmax(volumetric_map)), 1.0))
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(volumetric_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -643,7 +643,7 @@ def get_cumulative_volumetric_solar_irradiance(
         vmax = kwargs.get('vmax', max(float(np.nanmax(cumulative_map)), 1.0))
         try:
             import matplotlib.pyplot as plt
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(cumulative_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)

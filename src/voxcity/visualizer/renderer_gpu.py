@@ -14,7 +14,7 @@ import math
 import numpy as np
 from typing import Optional, Tuple, Dict, Any, List
 
-import matplotlib.cm as cm
+from matplotlib import colormaps as cm
 import matplotlib.colors as mcolors
 
 from ..models import VoxCity, MeshCollection

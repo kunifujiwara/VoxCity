@@ -420,7 +420,7 @@ def get_view_index_gpu(
             vmin = kwargs.get('vmin', 0.0)
             vmax = kwargs.get('vmax', 1.0)
             
-            cmap = plt.cm.get_cmap(colormap).copy()
+            cmap = plt.get_cmap(colormap).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(vi_map, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
@@ -1001,7 +1001,7 @@ def get_surface_landmark_visibility(voxcity, building_gdf=None, **kwargs):
             output_file_name = kwargs.get('output_file_name', 'surface_landmark_visibility')
             os.makedirs(output_dir, exist_ok=True)
             
-            cmap = plt.cm.get_cmap(colormap)
+            cmap = plt.get_cmap(colormap)
             face_colors = np.zeros((len(visibility_values), 4))
             for i, val in enumerate(visibility_values):
                 if np.isnan(val):
@@ -1129,7 +1129,7 @@ def get_landmark_visibility_map_gpu(
             import matplotlib.patches as mpatches
             colormap = kwargs.get('colormap', 'viridis')
             
-            cmap = plt.cm.get_cmap(colormap, 2).copy()
+            cmap = plt.get_cmap(colormap, 2).copy()
             cmap.set_bad(color='lightgray')
             plt.figure(figsize=(10, 8))
             plt.imshow(visibility_map, origin='lower', cmap=cmap, vmin=0, vmax=1)
