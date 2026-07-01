@@ -8,10 +8,22 @@ This module provides cache dataclasses and management functions for:
 - Volumetric Flux Calculator
 """
 
+import hashlib
 import numpy as np
 import taichi as ti
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
+
+
+def _voxel_content_hash(voxel_data: np.ndarray) -> str:
+    """Stable content fingerprint for cache validity.
+
+    Replaces ``id(voxel_data)`` keys: CPython reuses ``id()`` after GC, so a new
+    per-individual voxel array can land on a freed address and be mistaken for
+    the cached one, silently reusing a stale field. Hashing the bytes is O(n)
+    but far cheaper than an SVF recompute.
+    """
+    return hashlib.blake2b(np.ascontiguousarray(voxel_data).tobytes(), digest_size=16).hexdigest()
 
 from .utils import (
     get_location_from_voxcity,
@@ -131,7 +143,7 @@ class CachedBuildingRadiationModel:
     mesh_geometry_signature: Optional[object] = None
     boundary_mask: Optional[np.ndarray] = None
     cached_building_mesh: object = None
-    voxel_data_id: int = 0
+    voxel_data_hash: str = ""
 
 
 @dataclass
@@ -145,7 +157,7 @@ class CachedGPURayTracer:
     trace_rays_kernel: object
     voxel_shape: Tuple[int, int, int]
     meshsize: float
-    voxel_data_id: int = 0
+    voxel_data_hash: str = ""
     mask_field: object = None
 
 
@@ -470,7 +482,8 @@ def get_or_create_building_radiation_model(
     ny_vc, nx_vc, nz = voxel_data.shape
     requested_n_azimuth = int(kwargs.get('n_azimuth', 40))
     requested_n_elevation = int(kwargs.get('n_elevation', 10))
-    
+    voxel_hash = _voxel_content_hash(voxel_data)
+
     # Check if cache is valid
     cache_valid = False
     needs_refresh = False
@@ -480,7 +493,7 @@ def get_or_create_building_radiation_model(
             cache.meshsize == meshsize and
             cache.n_azimuth == requested_n_azimuth and
             cache.n_elevation == requested_n_elevation):
-            if cache.voxel_data_id == id(voxel_data):
+            if cache.voxel_data_hash == voxel_hash:
                 if n_reflection_steps == 0 or cache.n_reflection_steps > 0:
                     cache_valid = True
                     if progress_report:
@@ -515,7 +528,7 @@ def get_or_create_building_radiation_model(
         domain = cache.model.domain
         domain.set_from_voxel_data(voxel_data, tree_code=-2)
         domain.set_lad_from_array(lad_np)
-        cache.voxel_data_id = id(voxel_data)
+        cache.voxel_data_hash = voxel_hash
         if progress_report:
             print("Refreshed Building RadiationModel domain with new voxel content")
         return cache.model, cache.is_building_surf
@@ -605,7 +618,7 @@ def get_or_create_building_radiation_model(
         building_svf_mesh=None,
         bldg_indices=bldg_indices,
         mesh_to_surface_idx=None,
-        voxel_data_id=id(voxel_data),
+        voxel_data_hash=voxel_hash,
     )
     
     return model, is_building_surf
@@ -630,19 +643,20 @@ def get_or_create_gpu_ray_tracer(
     ensure_initialized()
     
     nx, ny, nz = voxel_data.shape
-    
+    voxel_hash = _voxel_content_hash(voxel_data)
+
     # Check if cache is valid
     if _gpu_ray_tracer_cache is not None:
         cache = _gpu_ray_tracer_cache
         if cache.voxel_shape == (nx, ny, nz) and cache.meshsize == meshsize:
-            if cache.voxel_data_id == id(voxel_data):
+            if cache.voxel_data_hash == voxel_hash:
                 return cache
-            
+
             # Data changed, re-upload
             is_solid, lad_array = convert_voxel_data_to_arrays(voxel_data, tree_lad)
             cache.is_solid_field.from_numpy(is_solid)
             cache.lad_field.from_numpy(lad_array)
-            cache.voxel_data_id = id(voxel_data)
+            cache.voxel_data_hash = voxel_hash
 
             _compute_topo_gpu(cache.is_solid_field, cache.topo_top_field, nz)
             _compute_topo_roof_gpu(cache.is_solid_field, cache.topo_roof_field, nz)
@@ -677,7 +691,7 @@ def get_or_create_gpu_ray_tracer(
         trace_rays_kernel=trace_rays_kernel,
         voxel_shape=(nx, ny, nz),
         meshsize=meshsize,
-        voxel_data_id=id(voxel_data),
+        voxel_data_hash=voxel_hash,
         mask_field=mask_field
     )
 
@@ -706,7 +720,7 @@ def get_or_create_volumetric_calculator(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ni, nj, nk = voxel_data.shape
-    
+    voxel_hash = _voxel_content_hash(voxel_data)
 
     # Check if cache is valid.
     # Bugfix (Defect 4a, see reference/BUGFIX_SESSION_pareto_collapse.md):
@@ -717,7 +731,7 @@ def get_or_create_volumetric_calculator(
     # downstream swflux/SVF kernels never see the new tree placement →
     # objective values become bit-identical across individuals (Pareto
     # collapses to one point). Mirror the content-aware refresh that
-    # ``get_or_create_gpu_ray_tracer`` already does via id(voxel_data).
+    # ``get_or_create_gpu_ray_tracer`` already does via content hash.
     cache_valid = False
     needs_refresh = False
     if _volumetric_flux_cache is not None:
@@ -726,13 +740,12 @@ def get_or_create_volumetric_calculator(
             cache.get('meshsize') == meshsize and
             cache.get('n_azimuth') == n_azimuth and
             cache.get('n_zenith') == n_zenith):
-            if cache.get('voxel_data_id') == id(voxel_data):
+            if cache.get('voxel_data_hash') == voxel_hash:
                 cache_valid = True
                 if progress_report:
                     print("Using cached VolumetricFluxCalculator (SVF already computed)")
             else:
                 needs_refresh = True
-    print(f"[CACHE-CHECK] cache_present={_volumetric_flux_cache is not None} cache_valid={cache_valid} needs_refresh={needs_refresh} cur_id={id(voxel_data)} cached_id={(_volumetric_flux_cache or {}).get('voxel_data_id')}")
 
     if cache_valid:
         return _volumetric_flux_cache['calculator'], _volumetric_flux_cache['domain']
@@ -760,22 +773,8 @@ def get_or_create_volumetric_calculator(
         # array; LAD is then loaded from `lad_np`. Topography (`topo_top`) is
         # set once during initial domain creation and doesn't change across
         # tree-placement individuals, so no topo refresh is needed.
-        # DIAG: log content fingerprint BEFORE refresh
-        try:
-            _vd_sum = int((voxel_data == -2).sum())
-            _lad_sum_np = float(lad_np.sum())
-            _solid_before = float(domain.is_solid.to_numpy().sum())
-            _lad_before = float(domain.lad.to_numpy().sum())
-        except Exception:
-            _vd_sum = -1; _lad_sum_np = -1; _solid_before = -1; _lad_before = -1
         domain.set_from_voxel_data(voxel_data, tree_code=-2)
         domain.set_lad_from_array(lad_np)
-        try:
-            _solid_after = float(domain.is_solid.to_numpy().sum())
-            _lad_after = float(domain.lad.to_numpy().sum())
-        except Exception:
-            _solid_after = -1; _lad_after = -1
-        print(f"[CACHE-REFRESH] voxel_id={id(voxel_data)} vd_tree_count={_vd_sum} lad_np_sum={_lad_sum_np:.3f} | is_solid {_solid_before:.0f}->{_solid_after:.0f} | lad {_lad_before:.3f}->{_lad_after:.3f}")
 
         # SVF depends on both is_solid and lad → must recompute. Reset the
         # internal flag so compute_swflux_vol/compute_shadow_top see fresh
@@ -784,15 +783,8 @@ def get_or_create_volumetric_calculator(
         if progress_report:
             print("Refreshing cached VolumetricFluxCalculator with new voxel content...")
         calculator.compute_skyvf_vol(n_zenith=n_zenith)
-        try:
-            _svf_sum = float(calculator.skyvf_vol.to_numpy().sum())
-            _opaque_sum = float(calculator.opaque_top.to_numpy().sum())
-            _domain_lad_sum = float(domain.lad.to_numpy().sum())
-        except Exception as _e:
-            _svf_sum = -1; _opaque_sum = -1; _domain_lad_sum = -1
-        print(f"[CACHE-REFRESH-POST] svf_sum={_svf_sum:.3f} opaque_top_sum={_opaque_sum:.0f} domain.lad_sum={_domain_lad_sum:.3f}")
 
-        cache['voxel_data_id'] = id(voxel_data)
+        cache['voxel_data_hash'] = voxel_hash
         return calculator, domain
     
     if progress_report:
@@ -838,7 +830,7 @@ def get_or_create_volumetric_calculator(
         'meshsize': meshsize,
         'n_azimuth': n_azimuth,
         'n_zenith': n_zenith,
-        'voxel_data_id': id(voxel_data),
+        'voxel_data_hash': voxel_hash,
     }
     
     if progress_report:

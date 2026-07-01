@@ -517,7 +517,7 @@ def test_building_radiation_cache_warm_refreshes_for_new_voxel_array_same_shape(
         is_building_surf=np.array([True], dtype=bool),
         building_svf_mesh=None,
     )
-    seeded_cache.voxel_data_id = id(old_voxels)
+    seeded_cache.voxel_data_hash = caching._voxel_content_hash(old_voxels)
     caching.set_building_radiation_model_cache(seeded_cache)
 
     monkeypatch.setattr(caching, "get_location_from_voxcity", lambda vc: (0.0, 0.0))
@@ -541,7 +541,7 @@ def test_building_radiation_cache_warm_refreshes_for_new_voxel_array_same_shape(
     assert model is old_model, "Warm path must return cached model unchanged"
     assert len(set_from_voxel_data_calls) == 1
     assert len(set_lad_from_array_calls) == 1
-    assert caching.get_building_radiation_model_cache().voxel_data_id == id(new_voxels)
+    assert caching.get_building_radiation_model_cache().voxel_data_hash == caching._voxel_content_hash(new_voxels)
     caching.clear_building_radiation_model_cache()
 
 
@@ -560,7 +560,8 @@ def test_building_radiation_model_warm_refresh_reuses_domain(monkeypatch):
     nx, ny, nz = 4, 4, 4
     classes1 = np.zeros((nx, ny, nz), dtype=np.int32)
     classes1[1:3, 1:3, 0:2] = -3
-    classes2 = classes1.copy()  # same content, different id
+    classes2 = classes1.copy()  # different content → different hash → triggers warm-refresh
+    classes2[0, 0, 0] = -2  # add one tree voxel to distinguish from classes1
     assert id(classes1) != id(classes2)
 
     domain_init_calls = []
@@ -641,7 +642,7 @@ def test_building_radiation_model_warm_refresh_reuses_domain(monkeypatch):
         "compute_svf must not be called during warm refresh — SVF depends on solid "
         "building geometry which is constant across optimization individuals"
     )
-    # Cache must record the new voxel array's id
-    assert caching.get_building_radiation_model_cache().voxel_data_id == id(classes2)
+    # Cache must record the new voxel content's hash
+    assert caching.get_building_radiation_model_cache().voxel_data_hash == caching._voxel_content_hash(classes2)
 
     caching.clear_building_radiation_model_cache()
