@@ -204,9 +204,11 @@ def get_volumetric_solar_irradiance_map(
         voxcity, azimuth_degrees_ori, elevation_degrees
     )
 
-    # Compute ground_k for terrain-following extraction
-    ground_k = _compute_ground_k_from_voxels(voxel_data)
-    
+    # Extraction reference: terrain-following by default, roof-aware when
+    # include_building_roofs is requested (so rooftop zones are evaluated).
+    include_building_roofs = kwargs.pop('include_building_roofs', False)
+    ground_k = _compute_extraction_reference_k(voxel_data, include_building_roofs)
+
     # Compute volumetric flux
     if with_reflections:
         # Use full reflection model
@@ -385,7 +387,8 @@ def get_cumulative_volumetric_solar_irradiance(
     n_azimuth = kwargs.pop('n_azimuth', 36)
     n_zenith = kwargs.pop('n_zenith', 9)
     computation_mask = kwargs.pop('computation_mask', None)
-    
+    include_building_roofs = kwargs.pop('include_building_roofs', False)
+
     if df.empty:
         raise ValueError("No data in EPW dataframe.")
     
@@ -446,19 +449,20 @@ def get_cumulative_volumetric_solar_irradiance(
     # Initialize cumulative map
     time_step_hours = kwargs.get('time_step_hours', 1.0)
     
-    # Get radiation model for reflections if needed
+    # Extraction reference: terrain-following by default, roof-aware when
+    # include_building_roofs is requested. The reflection model (when enabled)
+    # uses its own internal ground_k; only the extraction slice reference is
+    # roof-aware here.
     model = None
-    ground_k = None
     if with_reflections:
         n_reflection_steps = kwargs.pop('n_reflection_steps', 2)
-        model, valid_ground, ground_k = get_or_create_radiation_model(
+        model, valid_ground, _model_ground_k = get_or_create_radiation_model(
             voxcity,
             n_reflection_steps=n_reflection_steps,
             progress_report=progress_report,
             **kwargs
         )
-    else:
-        ground_k = _compute_ground_k_from_voxels(voxel_data)
+    ground_k = _compute_extraction_reference_k(voxel_data, include_building_roofs)
     
     # Initialize GPU-side cumulative accumulation
     calculator.init_cumulative_accumulation(
