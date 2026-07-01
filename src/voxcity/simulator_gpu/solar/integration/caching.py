@@ -119,6 +119,7 @@ class CachedRadiationModel:
     voxcity_shape: Tuple[int, int, int]
     meshsize: float
     n_reflection_steps: int
+    voxel_data_hash: str = ""
     grid_indices: Optional[np.ndarray] = None
     surface_indices: Optional[np.ndarray] = None
     positions_np: Optional[np.ndarray] = None
@@ -327,14 +328,16 @@ def get_or_create_radiation_model(
     voxel_data = voxcity.voxels.classes
     meshsize = voxcity.voxels.meta.meshsize
     ni, nj, nk = voxel_data.shape
-    
+    voxel_hash = _voxel_content_hash(voxel_data)
+
     # Check if cache is valid
     cache_valid = False
     if _radiation_model_cache is not None:
         cache = _radiation_model_cache
         if (cache.voxcity_shape == voxel_data.shape and
             cache.meshsize == meshsize and
-            cache.n_reflection_steps == n_reflection_steps):
+            cache.n_reflection_steps == n_reflection_steps and
+            cache.voxel_data_hash == voxel_hash):
             cache_valid = True
             if progress_report:
                 print("Using cached RadiationModel (SVF/CSF already computed)")
@@ -439,6 +442,7 @@ def get_or_create_radiation_model(
         voxcity_shape=voxel_data.shape,
         meshsize=meshsize,
         n_reflection_steps=n_reflection_steps,
+        voxel_data_hash=voxel_hash,
         grid_indices=grid_indices,
         surface_indices=surface_indices,
         positions_np=positions,
