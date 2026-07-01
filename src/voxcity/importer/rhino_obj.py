@@ -17,6 +17,25 @@ from .windows import stamp_windows
 _logger = get_logger(__name__)
 
 
+def _transformed_top_k(mesh, transform):
+    """Exclusive upper bound on the k voxel index *mesh* reaches under *transform*.
+
+    Transforms the 8 corners of the mesh's axis-aligned bounding box into
+    voxel-index space and returns ``ceil(max_k) + 1``. Used to size the
+    vertical voxelization bound so tall imports are not clipped at the base
+    model's height; :func:`stamp_buildings` then grows the grid to fit.
+    """
+    b = np.asarray(mesh.bounds, dtype=float)  # (2, 3): [min, max]
+    corners = np.array(
+        [[b[xi, 0], b[yi, 1], b[zi, 2]]
+         for xi in (0, 1) for yi in (0, 1) for zi in (0, 1)],
+        dtype=float,
+    )
+    hom = np.column_stack([corners, np.ones(len(corners))])
+    kt = (hom @ np.asarray(transform, dtype=float).T)[:, 2]
+    return int(np.ceil(float(kt.max()))) + 1
+
+
 def add_buildings_from_obj(
     voxcity,
     obj_path,
@@ -179,9 +198,19 @@ def add_buildings_from_obj(
     )
     grid_shape = out.voxels.classes.shape
 
+    # voxelize_mesh clips k to [0, nz) by contract. Sizing that bound to the
+    # base model's height would silently cut the tops off imported buildings
+    # taller than the base scene. Size the vertical bound to the tallest import
+    # instead; stamp_buildings then grows the actual grid to fit.
+    base_nx, base_ny, base_nz = grid_shape
+    needed_nz = base_nz
+    for _name, mesh in building_groups:
+        needed_nz = max(needed_nz, _transformed_top_k(mesh, M))
+    voxelize_shape = (base_nx, base_ny, needed_nz)
+
     occupied_by_name = {}
     for name, mesh in building_groups:
-        occ = _voxelize(mesh, M, grid_shape)
+        occ = _voxelize(mesh, M, voxelize_shape)
         if len(occ):
             occupied_by_name[name] = occ
 

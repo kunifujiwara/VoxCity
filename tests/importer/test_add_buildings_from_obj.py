@@ -31,6 +31,30 @@ def test_end_to_end_box_import(box_obj_factory):
     assert out.buildings.ids.max() >= 1
 
 
+def test_tall_building_not_clipped_at_base_height(box_obj_factory):
+    """A building taller than the base model's vertical extent must not have
+    its top silently clipped: voxelize is sized to the import and
+    stamp_buildings grows the grid to fit (regression for the OBJ-import
+    height-clipping bug)."""
+    # Base grid is only 6 voxels tall; the imported box is 12 m tall.
+    vc = make_flat_voxcity(nx=20, ny=20, nz=6, meshsize=1.0)
+    geom = grid_geom_from_voxcity(vc)
+    obj = box_obj_factory(origin=(0.0, 0.0, 0.0), size=(3.0, 3.0, 12.0), name="tall")
+    out = add_buildings_from_obj(
+        vc, obj,
+        anchor_lonlat=(float(geom["origin"][0]), float(geom["origin"][1])),
+        anchor_elevation=0.0,
+        anchor_model_point=(0.0, 0.0, 0.0),
+        move=(5.0, 5.0, 0.0), rotation=0.0, units="m",
+    )
+    # The grid grew vertically past the base nz=6 to accommodate the building.
+    assert out.voxels.classes.shape[2] > 6
+    # At least one column is filled to the full ~12-voxel height (not clipped
+    # to ~5 as it would be if voxelize used the base grid height).
+    col_heights = (out.voxels.classes == BUILDING_CODE).sum(axis=2)
+    assert int(col_heights.max()) >= 11
+
+
 def test_missing_file_raises(flat_voxcity, tmp_path):
     with pytest.raises(FileNotFoundError):
         add_buildings_from_obj(
