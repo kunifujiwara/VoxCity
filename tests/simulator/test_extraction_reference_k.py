@@ -10,7 +10,7 @@ AIR, TREE, BUILDING, GROUND, WATER = 0, -2, -3, 1, 8
 
 def _column_world():
     # shape (2, 2, 6)
-    v = np.zeros((2, 2, 6), dtype=np.int8)
+    v = np.zeros((2, 2, 6), dtype=np.int32)
     v[:, :, 0] = GROUND                 # flat terrain everywhere at k0
     v[0, 1, 1:5] = BUILDING             # building col at (0,1): roof top k=4
     v[1, 0, 1:3] = TREE                 # tree over terrain at (1,0): not solid
@@ -51,3 +51,13 @@ def test_dispatcher_selects_reference():
     roof = _compute_extraction_reference_k(v, include_building_roofs=True)
     np.testing.assert_array_equal(ground, _compute_ground_k_from_voxels(v))
     np.testing.assert_array_equal(roof, _compute_surface_k_from_voxels(v))
+
+
+def test_water_codes_7_and_9_also_invalid():
+    v = np.zeros((2, 1, 6), dtype=np.int32)
+    v[:, :, 0] = 1           # terrain
+    v[0, 0, 0] = 7           # water code 7
+    v[1, 0, 0] = 9           # water code 9
+    s = _compute_surface_k_from_voxels(v)
+    assert s[0, 0] == -1     # water 7 → invalid
+    assert s[1, 0] == -1     # water 9 → invalid

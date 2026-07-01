@@ -88,6 +88,7 @@ def _compute_surface_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
         curr_is_air_or_tree = (curr == 0) | (curr == VOXCITY_TREE_CODE)
         below_is_air_or_tree = (below == 0) | (below == VOXCITY_TREE_CODE)
         below_is_water = (below == 7) | (below == 8) | (below == 9)
+        # opaque = terrain (positive), buildings (-3), underground codes; excludes tree (-2) and water (7-9)
         below_is_opaque = (~below_is_air_or_tree) & (~below_is_water)
         is_surface = curr_is_air_or_tree & below_is_opaque
         surface_k[is_surface & (surface_k == -1)] = k
@@ -98,7 +99,18 @@ def _compute_extraction_reference_k(
     voxel_data: np.ndarray,
     include_building_roofs: bool = False,
 ) -> np.ndarray:
-    """Select the terrain-following (default) or roof-aware extraction reference."""
+    """Select the terrain-following or roof-aware extraction reference.
+
+    Args:
+        voxel_data: 3D array of VoxCity voxel class codes (ni, nj, nk).
+        include_building_roofs: When True, return a roof-aware reference
+            (first air above topmost opaque solid including buildings).
+            When False (default), return the terrain-following reference
+            that excludes building footprints.
+
+    Returns:
+        2D int32 array (ni, nj). -1 means no valid reference found.
+    """
     if include_building_roofs:
         return _compute_surface_k_from_voxels(voxel_data)
     return _compute_ground_k_from_voxels(voxel_data)
