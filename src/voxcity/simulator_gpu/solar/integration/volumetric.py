@@ -184,7 +184,8 @@ def get_volumetric_solar_irradiance_map(
     n_azimuth = kwargs.pop('n_azimuth', 36)
     n_zenith = kwargs.pop('n_zenith', 9)
     computation_mask = kwargs.pop('computation_mask', None)
-    
+    include_building_roofs = kwargs.pop('include_building_roofs', False)
+
     # Get or create cached calculator
     calculator, domain = get_or_create_volumetric_calculator(
         voxcity,
@@ -206,7 +207,6 @@ def get_volumetric_solar_irradiance_map(
 
     # Extraction reference: terrain-following by default, roof-aware when
     # include_building_roofs is requested (so rooftop zones are evaluated).
-    include_building_roofs = kwargs.pop('include_building_roofs', False)
     ground_k = _compute_extraction_reference_k(voxel_data, include_building_roofs)
 
     # Compute volumetric flux
