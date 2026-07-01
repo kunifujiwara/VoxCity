@@ -51,22 +51,57 @@ VOXCITY_BUILDING_CODE = -3
 def _compute_ground_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
     """
     Compute ground surface k-level for each (i,j) cell from voxel data.
-    
+
     This finds the terrain top - the highest k where the cell below the first air
     cell is solid ground (not building). This is used for terrain-following
     height extraction in volumetric calculations.
-    
+
     Water areas (voxel classes 7, 8, 9) and building/underground cells (negative codes)
     are excluded and marked as -1.
-    
+
     Args:
         voxel_data: 3D array of voxel class codes
-        
+
     Returns:
         2D array of ground k-levels (ni, nj). -1 means no valid ground found.
     """
     _, ground_k = compute_valid_ground_vectorized(voxel_data)
     return ground_k
+
+
+def _compute_surface_k_from_voxels(voxel_data: np.ndarray) -> np.ndarray:
+    """Roof-aware extraction reference: first air/tree k above the *topmost*
+    opaque solid (terrain OR building) for each (i, j).
+
+    Mirrors :func:`_compute_ground_k_from_voxels` (which returns the first air
+    above terrain, excluding buildings) but keeps buildings as valid solid so a
+    rooftop cell resolves to ``roof_top + 1`` instead of ``-1``. Water columns
+    (codes 7/8/9) remain invalid and return -1.
+    """
+    ni, nj, nk = voxel_data.shape
+    surface_k = np.full((ni, nj), -1, dtype=np.int32)
+    # Scan top-to-bottom; the first (highest-k) air-above-solid transition is
+    # the topmost surface (the roof for building columns).
+    for k in range(nk - 1, 0, -1):
+        curr = voxel_data[:, :, k]
+        below = voxel_data[:, :, k - 1]
+        curr_is_air_or_tree = (curr == 0) | (curr == VOXCITY_TREE_CODE)
+        below_is_air_or_tree = (below == 0) | (below == VOXCITY_TREE_CODE)
+        below_is_water = (below == 7) | (below == 8) | (below == 9)
+        below_is_opaque = (~below_is_air_or_tree) & (~below_is_water)
+        is_surface = curr_is_air_or_tree & below_is_opaque
+        surface_k[is_surface & (surface_k == -1)] = k
+    return surface_k
+
+
+def _compute_extraction_reference_k(
+    voxel_data: np.ndarray,
+    include_building_roofs: bool = False,
+) -> np.ndarray:
+    """Select the terrain-following (default) or roof-aware extraction reference."""
+    if include_building_roofs:
+        return _compute_surface_k_from_voxels(voxel_data)
+    return _compute_ground_k_from_voxels(voxel_data)
 
 
 def _compute_volumetric_sun_direction(voxcity, azimuth_degrees: float, elevation_degrees: float):
