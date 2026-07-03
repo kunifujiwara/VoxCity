@@ -205,3 +205,13 @@ def export_geotiffs(city, output_directory, base_filename="voxcity", *,
             )
         written[layer] = str(out_path)
     return written
+
+
+class GeoTIFFExporter:
+    """Exporter adapter to write a VoxCity object's 2D layers to GeoTIFF files."""
+
+    def export(self, obj, output_directory, base_filename, **kwargs):
+        from ..models import VoxCity
+        if not isinstance(obj, VoxCity):
+            raise TypeError("GeoTIFFExporter expects a VoxCity instance")
+        return export_geotiffs(obj, output_directory, base_filename, **kwargs)

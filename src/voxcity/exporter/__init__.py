@@ -5,6 +5,7 @@ from .magicavoxel import *
 from .obj import *
 from .cityles import *
 from .netcdf import *
+from .geotiff import *
 
 
 @runtime_checkable
@@ -40,4 +41,8 @@ __all__ = [
     "NetCDFExporter",
     "voxel_to_xarray_dataset",
     "save_voxel_netcdf",
+    # geotiff
+    "GeoTIFFExporter",
+    "export_geotiffs",
+    "export_grid_geotiff",
 ]

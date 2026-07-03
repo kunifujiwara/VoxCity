@@ -192,3 +192,18 @@ def test_export_geotiffs_land_cover_unknown_source_warns(tmp_path):
     with pytest.warns(UserWarning):
         written = export_geotiffs(city, tmp_path)
     assert "land_cover" in written
+
+
+def test_geotiff_exporter_class(tmp_path):
+    from voxcity.exporter import GeoTIFFExporter  # must be re-exported
+    city = _make_voxcity(RECT, MESH)
+    written = GeoTIFFExporter().export(city, str(tmp_path), "city")
+    assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
+    for path in written.values():
+        assert Path(path).exists()
+
+
+def test_geotiff_exporter_rejects_non_voxcity(tmp_path):
+    from voxcity.exporter import GeoTIFFExporter
+    with pytest.raises(TypeError):
+        GeoTIFFExporter().export(object(), str(tmp_path), "x")
