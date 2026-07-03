@@ -17,7 +17,7 @@ import {
   Landmark as LandmarkIcon, FolderOpen, Boxes,
 } from 'lucide-react';
 import type { Zone } from './types/zones';
-import { healthCheck, resetSession } from './api';
+import { healthCheck, resetSession, getModelInfo } from './api';
 
 const TABS = [
   { id: 'area',       label: 'Target',   Icon: MapPin },
@@ -43,6 +43,8 @@ const App: React.FC = () => {
   const [viewFigureJson, setViewFigureJson] = useState('');
   const [landmarkFigureJson, setLandmarkFigureJson] = useState('');
   const [hasModel, setHasModel] = useState(false);
+  const [previewDisabled, setPreviewDisabled] = useState(false);
+  const [gridShape, setGridShape] = useState<number[] | null>(null);
   const [geometryToken, setGeometryToken] = useState(0);
   const [zones, setZones] = useState<Zone[]>([]);
   const [solarRunNonce, setSolarRunNonce] = useState(0);
@@ -113,6 +115,14 @@ const App: React.FC = () => {
       restoringFromSessionRef.current = { zones: restored?.zones };
       restoreSimNoncesRef.current = summary.sim_result_types ?? [];
       setHasModel(summary.has_voxcity);
+      if (summary.has_voxcity) {
+        getModelInfo()
+          .then((info) => {
+            setPreviewDisabled(Boolean(info.preview_disabled));
+            setGridShape(info.grid_shape ?? null);
+          })
+          .catch(() => {});
+      }
       setRectangle(summary.rectangle_vertices);
       setFigureJson('');
       setEditFigureJson('');
@@ -136,7 +146,19 @@ const App: React.FC = () => {
     didReset.current = true;
     resetSession()
       .then(() => healthCheck())
-      .then((h) => { if (!sessionLoadedRef.current) setHasModel(h.has_model); })
+      .then((h) => {
+        if (!sessionLoadedRef.current) {
+          setHasModel(h.has_model);
+          if (h.has_model) {
+            getModelInfo()
+              .then((info) => {
+                setPreviewDisabled(Boolean(info.preview_disabled));
+                setGridShape(info.grid_shape ?? null);
+              })
+              .catch(() => {});
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setInitialResetPending(false));
   }, []);
@@ -183,8 +205,12 @@ const App: React.FC = () => {
             rectangle={rectangle}
             figureJson={figureJson}
             onFigureChange={setFigureJson}
-            onModelReady={() => {
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
+            onModelReady={(info) => {
               setHasModel(true);
+              setPreviewDisabled(Boolean(info?.preview_disabled));
+              setGridShape(info?.grid_shape ?? null);
               setZones([]);
               setGeometryToken((t) => t + 1);
               setEditFigureJson('');
@@ -203,6 +229,8 @@ const App: React.FC = () => {
             figureJson={editFigureJson}
             onFigureChange={setEditFigureJson}
             onModelEdited={handleModelEdited}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {activeTab === 'import' && (
@@ -211,6 +239,8 @@ const App: React.FC = () => {
             figureJson={importFigureJson}
             onFigureChange={setImportFigureJson}
             onModelEdited={handleModelEdited}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {activeTab === 'zoning' && (
@@ -220,6 +250,8 @@ const App: React.FC = () => {
             zones={zones}
             onZonesChange={setZones}
             geometryToken={geometryToken}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {/*
@@ -239,6 +271,8 @@ const App: React.FC = () => {
                 onSimRun={() => setSolarRunNonce((n) => n + 1)}
                 geometryToken={geometryToken}
                 restoredSimTypes={restoredSimTypes}
+                previewDisabled={previewDisabled}
+                previewGridShape={gridShape}
               />
             </div>
             <div style={{ display: activeTab === 'view' ? 'contents' : 'none' }}>
@@ -251,6 +285,8 @@ const App: React.FC = () => {
                 onSimRun={() => setViewRunNonce((n) => n + 1)}
                 geometryToken={geometryToken}
                 restoredSimTypes={restoredSimTypes}
+                previewDisabled={previewDisabled}
+                previewGridShape={gridShape}
               />
             </div>
             <div style={{ display: activeTab === 'landmark' ? 'contents' : 'none' }}>
@@ -264,6 +300,8 @@ const App: React.FC = () => {
                 geometryToken={geometryToken}
                 restoredSimTypes={restoredSimTypes}
                 restoredLandmarkIds={restoredLandmarkIds}
+                previewDisabled={previewDisabled}
+                previewGridShape={gridShape}
               />
             </div>
           </>
@@ -277,6 +315,8 @@ const App: React.FC = () => {
             simRunNonce={solarRunNonce}
             onSimRun={() => setSolarRunNonce((n) => n + 1)}
             geometryToken={geometryToken}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {!hasModel && activeTab === 'view' && (
@@ -288,6 +328,8 @@ const App: React.FC = () => {
             simRunNonce={viewRunNonce}
             onSimRun={() => setViewRunNonce((n) => n + 1)}
             geometryToken={geometryToken}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {!hasModel && activeTab === 'landmark' && (
@@ -299,6 +341,8 @@ const App: React.FC = () => {
             simRunNonce={landmarkRunNonce}
             onSimRun={() => setLandmarkRunNonce((n) => n + 1)}
             geometryToken={geometryToken}
+            previewDisabled={previewDisabled}
+            previewGridShape={gridShape}
           />
         )}
         {activeTab === 'export' && (

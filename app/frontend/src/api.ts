@@ -65,6 +65,7 @@ export interface GenerateResult {
   grid_shape: number[];
   meshsize: number;
   figure_json: string;
+  preview_disabled?: boolean;
 }
 
 export interface SimulationResult {
@@ -78,6 +79,7 @@ export interface ModelInfo {
   n_buildings: number;
   rectangle_vertices: number[][] | null;
   land_cover_source: string;
+  preview_disabled?: boolean;
 }
 
 export interface AutoDetectResult {
