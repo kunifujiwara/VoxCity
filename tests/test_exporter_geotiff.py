@@ -83,3 +83,28 @@ def test_export_grid_geotiff_float_roundtrip(tmp_path):
 def test_export_grid_geotiff_rejects_non_2d(tmp_path):
     with pytest.raises(ValueError):
         export_grid_geotiff(np.zeros((2, 2, 2)), RECT, MESH, tmp_path / "x.tif")
+
+
+def test_export_grid_geotiff_color_table_and_names(tmp_path):
+    grid, cc = _voxcity_index_grid(RECT, MESH)
+    # Use small integer class indices for a categorical layer
+    nx, ny = cc["grid_size"]
+    classes = (np.arange(nx * ny).reshape(nx, ny) % 3).astype(np.uint8)
+
+    color_table = {0: (10, 20, 30), 1: (40, 50, 60), 2: (70, 80, 90)}
+    names = {0: "Water", 1: "Tree", 2: "Building"}
+    out = tmp_path / "lc.tif"
+
+    export_grid_geotiff(
+        classes, RECT, MESH, out, dtype="uint8",
+        color_table=color_table, category_names=names,
+    )
+
+    with rasterio.open(out) as src:
+        assert src.dtypes[0] == "uint8"
+        cmap = src.colormap(1)
+        assert cmap[0][:3] == (10, 20, 30)
+        assert cmap[2][:3] == (70, 80, 90)
+        tags = src.tags(1)
+        assert tags["0"] == "Water"
+        assert tags["2"] == "Building"

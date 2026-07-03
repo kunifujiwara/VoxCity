@@ -76,6 +76,8 @@ def export_grid_geotiff(
     dtype : optional output dtype; grid is cast to it before writing.
     nodata : optional nodata value written into the file.
     color_table : optional {int index: (r, g, b)} palette (categorical layers).
+        Requires an integer `dtype` (e.g. "uint8") -- GDAL colormaps only
+        support Byte/UInt16 bands.
     category_names : optional {int index: str} or list[str] of class names.
 
     Returns
