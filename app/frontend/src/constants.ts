@@ -91,3 +91,7 @@ export const VOXEL_CLASSES = [
   { id: 12, label: 'Road' },
   { id: 13, label: 'Building (ground)' },
 ] as const;
+
+/** Horizontal grid (nx*ny) above this many cells disables the 3D preview.
+ *  Mirrors PREVIEW_MAX_CELLS in app/backend/main.py. */
+export const PREVIEW_MAX_CELLS = 1_000_000;

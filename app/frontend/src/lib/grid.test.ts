@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildingsFullyContainedInPolygon, buildingsInPolygon, domainRotationDeg, type GridGeom } from './grid';
+import { estimateGridShape } from './grid';
 
 function polygonFeature(id: number, ring: [number, number][]) {
   return {
@@ -110,5 +111,25 @@ describe('domainRotationDeg', () => {
   it('is ~0 for an axis-aligned (north-up) grid', () => {
     const geom = { u_vec: [0, 1] } as unknown as GridGeom;
     expect(domainRotationDeg(geom)).toBeCloseTo(0, 9);
+  });
+});
+
+describe('estimateGridShape', () => {
+  // ~1.11 km per 0.01° lat; a 0.01° x 0.01° box at the equator is ~1113 m/side.
+  const box = [[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01]];
+
+  it('estimates [nx, ny] from side lengths / meshsize', () => {
+    const s = estimateGridShape(box, 10)!;
+    // ~1113 m / 10 m ≈ 111 cells per side (allow tolerance)
+    expect(s[0]).toBeGreaterThan(105);
+    expect(s[0]).toBeLessThan(118);
+    expect(s[1]).toBeGreaterThan(105);
+    expect(s[1]).toBeLessThan(118);
+  });
+
+  it('returns null on degenerate input', () => {
+    expect(estimateGridShape([[0, 0], [1, 1]], 10)).toBeNull();
+    expect(estimateGridShape(box, 0)).toBeNull();
+    expect(estimateGridShape(null as any, 10)).toBeNull();
   });
 });

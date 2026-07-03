@@ -537,3 +537,35 @@ export function sceneXYToLonLat(geo: GridGeom, eastM: number, northM: number): [
   const dlat = c * u_cell + d * v_cell;
   return [ox + dlon, oy + dlat];
 }
+
+/** Great-circle distance in metres between two [lon, lat] points (haversine). */
+export function haversineMeters(a: [number, number], b: [number, number]): number {
+  const R = 6371000;
+  const d2r = Math.PI / 180;
+  const dLat = (b[1] - a[1]) * d2r;
+  const dLon = (b[0] - a[0]) * d2r;
+  const lat1 = a[1] * d2r;
+  const lat2 = b[1] * d2r;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Estimate the voxcity grid dimensions [nx, ny] from the target rectangle and
+ * mesh size, matching compute_grid_geometry: nx = dist(v0→v1)/mesh,
+ * ny = dist(v0→v3)/mesh. Returns null for degenerate input.
+ */
+export function estimateGridShape(
+  rectangle: number[][],
+  meshsizeM: number,
+): [number, number] | null {
+  if (!rectangle || rectangle.length < 4 || !(meshsizeM > 0)) return null;
+  const v0 = rectangle[0] as [number, number];
+  const v1 = rectangle[1] as [number, number];
+  const v3 = rectangle[3] as [number, number];
+  const nx = Math.max(1, Math.round(haversineMeters(v0, v1) / meshsizeM));
+  const ny = Math.max(1, Math.round(haversineMeters(v0, v3) / meshsizeM));
+  return [nx, ny];
+}
