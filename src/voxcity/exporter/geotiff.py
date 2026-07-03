@@ -5,6 +5,7 @@ conventional north-up, single-band GeoTIFF files in EPSG:4326.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 import numpy as np
 import rasterio
@@ -123,3 +124,84 @@ def export_grid_geotiff(
             dst.update_tags(1, **items)
 
     return str(path)
+
+
+DEFAULT_LAYERS = ("land_cover", "building_height", "dem", "canopy_height")
+
+
+def _get_layer_grid(city, layer):
+    if layer == "land_cover":
+        return city.land_cover.classes
+    if layer == "building_height":
+        return city.buildings.heights
+    if layer == "dem":
+        return city.dem.elevation
+    if layer == "canopy_height":
+        return city.tree_canopy.top
+    raise ValueError(f"Unknown layer: {layer!r}")
+
+
+def _land_cover_color_table(city):
+    """Return (color_table, names) built from the active land-cover source,
+    or (None, None) if unavailable."""
+    source = city.extras.get("land_cover_source")
+    if not source:
+        warnings.warn("No 'land_cover_source' in extras; "
+                      "land cover written without a color table")
+        return None, None
+    try:
+        from ..utils.lc import get_land_cover_classes
+        classes = get_land_cover_classes(source)
+    except Exception:
+        warnings.warn(f"Could not load land cover classes for source {source!r}; "
+                      "writing land cover without a color table")
+        return None, None
+    color_table, names = {}, {}
+    for idx, ((r, g, b), name) in enumerate(classes.items()):
+        color_table[idx] = (r, g, b)
+        names[idx] = name
+    return color_table, names
+
+
+def export_geotiffs(city, output_directory, base_filename="voxcity", *,
+                    layers=DEFAULT_LAYERS, **kwargs):
+    """Export a VoxCity object's 2D layers as one GeoTIFF per layer.
+
+    Writes ``{base_filename}_{layer}.tif`` for each requested layer. Land cover
+    is written as uint8 with an embedded color table + class-name tags; building
+    height, DEM, and canopy height are float32 with NaN nodata (0 stays valid
+    data). Missing layers are skipped with a warning.
+
+    Returns a dict mapping written layer name -> path.
+    """
+    from ..models import VoxCity
+    if not isinstance(city, VoxCity):
+        raise TypeError("export_geotiffs expects a VoxCity instance")
+
+    rect = city.extras.get("rectangle_vertices")
+    if rect is None:
+        raise ValueError(
+            "city.extras['rectangle_vertices'] is required for GeoTIFF export"
+        )
+    meshsize = city.land_cover.meta.meshsize
+
+    written = {}
+    for layer in layers:
+        grid = _get_layer_grid(city, layer)
+        if grid is None:
+            warnings.warn(f"Layer {layer!r} is missing; skipping")
+            continue
+        out_path = Path(output_directory) / f"{base_filename}_{layer}.tif"
+        if layer == "land_cover":
+            color_table, names = _land_cover_color_table(city)
+            export_grid_geotiff(
+                np.asarray(grid).astype("uint8"), rect, meshsize, out_path,
+                dtype="uint8", color_table=color_table, category_names=names,
+            )
+        else:
+            export_grid_geotiff(
+                np.asarray(grid, dtype="float32"), rect, meshsize, out_path,
+                dtype="float32", nodata=float("nan"),
+            )
+        written[layer] = str(out_path)
+    return written

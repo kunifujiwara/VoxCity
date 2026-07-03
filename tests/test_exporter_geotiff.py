@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from affine import Affine
@@ -108,3 +110,66 @@ def test_export_grid_geotiff_color_table_and_names(tmp_path):
         tags = src.tags(1)
         assert tags["0"] == "Water"
         assert tags["2"] == "Building"
+
+
+from voxcity.exporter.geotiff import export_geotiffs
+from voxcity.models import (
+    VoxCity, GridMetadata, LandCoverGrid, BuildingGrid, DemGrid, CanopyGrid, VoxelGrid,
+)
+
+
+def _make_voxcity(rect, mesh, source="Standard"):
+    cc = compute_cell_center_coords(rect, mesh)
+    nx, ny = cc["grid_size"]
+    meta = GridMetadata(crs="EPSG:4326",
+                        bounds=(rect[0][0], rect[0][1], rect[2][0], rect[2][1]),
+                        meshsize=mesh)
+    classes = (np.arange(nx * ny).reshape(nx, ny) % 3).astype(np.int32)
+    heights = np.zeros((nx, ny), dtype=np.float64)
+    heights[0, 0] = 12.0
+    dem = np.full((nx, ny), 5.0, dtype=np.float64)
+    canopy = np.zeros((nx, ny), dtype=np.float64)
+    return VoxCity(
+        voxels=VoxelGrid(classes=np.zeros((nx, ny, 1)), meta=meta),
+        buildings=BuildingGrid(heights=heights,
+                               min_heights=np.empty((nx, ny), dtype=object),
+                               ids=np.zeros((nx, ny)), meta=meta),
+        land_cover=LandCoverGrid(classes=classes, meta=meta),
+        dem=DemGrid(elevation=dem, meta=meta),
+        tree_canopy=CanopyGrid(top=canopy, meta=meta),
+        extras={"rectangle_vertices": rect, "land_cover_source": source},
+    )
+
+
+def test_export_geotiffs_writes_all_layers(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    written = export_geotiffs(city, tmp_path, base_filename="city")
+
+    assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
+    for layer, path in written.items():
+        assert Path(path).exists()
+        with rasterio.open(path) as src:
+            assert src.crs.to_string() == "EPSG:4326"
+    # land cover is uint8 with a color table; heights are float32
+    with rasterio.open(written["land_cover"]) as src:
+        assert src.dtypes[0] == "uint8"
+        assert src.colormap(1)  # non-empty
+    with rasterio.open(written["building_height"]) as src:
+        assert src.dtypes[0] == "float32"
+        assert src.read(1)[src.height - 1, 0] == 12.0  # (i=0,j=0) -> row ny-1
+
+
+def test_export_geotiffs_requires_rectangle_vertices(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    city.extras.pop("rectangle_vertices")
+    with pytest.raises(ValueError):
+        export_geotiffs(city, tmp_path)
+
+
+def test_export_geotiffs_skips_missing_layer(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    city.dem.elevation = None
+    with pytest.warns(UserWarning):
+        written = export_geotiffs(city, tmp_path)
+    assert "dem" not in written
+    assert "land_cover" in written
