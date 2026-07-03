@@ -111,7 +111,9 @@ def export_grid_geotiff(
         profile["nodata"] = nodata
 
     with rasterio.open(path, "w", **profile) as dst:
-        dst.write(array, 1)
+        # Band-level colormap / color-interpretation tags must be set before
+        # the first write() call -- setting them after triggers a libtiff
+        # "Cannot modify tag ... while writing" ERROR-severity GDAL log line.
         if color_table:
             dst.write_colormap(
                 1, {int(i): (int(r), int(g), int(b), 255) for i, (r, g, b) in color_table.items()}
@@ -122,6 +124,7 @@ def export_grid_geotiff(
             else:
                 items = {str(i): str(v) for i, v in enumerate(category_names)}
             dst.update_tags(1, **items)
+        dst.write(array, 1)
 
     return str(path)
 
@@ -193,9 +196,16 @@ def export_geotiffs(city, output_directory, base_filename="voxcity", *,
             continue
         out_path = Path(output_directory) / f"{base_filename}_{layer}.tif"
         if layer == "land_cover":
+            grid_arr = np.asarray(grid)
+            if np.any(grid_arr < 0) or np.any(grid_arr > 255):
+                warnings.warn(
+                    "land_cover grid contains values outside the uint8 range "
+                    "[0, 255] (e.g. -1 for unmatched classes); these will "
+                    "wrap around silently when cast to uint8"
+                )
             color_table, names = _land_cover_color_table(city)
             export_grid_geotiff(
-                np.asarray(grid).astype("uint8"), rect, meshsize, out_path,
+                grid_arr.astype("uint8"), rect, meshsize, out_path,
                 dtype="uint8", color_table=color_table, category_names=names,
             )
         else:

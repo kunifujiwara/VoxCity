@@ -112,6 +112,33 @@ def test_export_grid_geotiff_color_table_and_names(tmp_path):
         assert tags["2"] == "Building"
 
 
+def test_export_grid_geotiff_color_table_no_gdal_write_error(tmp_path, caplog):
+    """Regression test: colormap/tags must be set before dst.write(), or
+    libtiff logs a 'Cannot modify tag ... while writing' GDAL error.
+
+    rasterio surfaces GDAL error/warning messages via the 'rasterio._env'
+    logger (see rasterio._err), so we capture at INFO level and assert the
+    known bad-ordering message never appears.
+    """
+    grid, cc = _voxcity_index_grid(RECT, MESH)
+    nx, ny = cc["grid_size"]
+    classes = (np.arange(nx * ny).reshape(nx, ny) % 3).astype(np.uint8)
+    color_table = {0: (10, 20, 30), 1: (40, 50, 60), 2: (70, 80, 90)}
+    names = {0: "Water", 1: "Tree", 2: "Building"}
+    out = tmp_path / "lc_gdal_check.tif"
+
+    with caplog.at_level("INFO", logger="rasterio._env"):
+        export_grid_geotiff(
+            classes, RECT, MESH, out, dtype="uint8",
+            color_table=color_table, category_names=names,
+        )
+
+    for record in caplog.records:
+        msg = record.getMessage()
+        assert "Cannot modify tag" not in msg
+        assert "TIFFSetField" not in msg
+
+
 from voxcity.exporter.geotiff import export_geotiffs
 from voxcity.models import (
     VoxCity, GridMetadata, LandCoverGrid, BuildingGrid, DemGrid, CanopyGrid, VoxelGrid,
@@ -192,6 +219,21 @@ def test_export_geotiffs_land_cover_unknown_source_warns(tmp_path):
     with pytest.warns(UserWarning):
         written = export_geotiffs(city, tmp_path)
     assert "land_cover" in written
+
+
+def test_export_geotiffs_land_cover_out_of_range_warns(tmp_path):
+    """Regression test: a -1 (unmatched-class) value must not silently
+    wrap around to 255 when cast to uint8 -- it should raise a warning."""
+    city = _make_voxcity(RECT, MESH)
+    city.land_cover.classes[0, 0] = -1
+    with pytest.warns(UserWarning, match="uint8 range"):
+        written = export_geotiffs(city, tmp_path)
+    assert "land_cover" in written
+    with rasterio.open(written["land_cover"]) as src:
+        assert src.dtypes[0] == "uint8"
+        # confirm the documented (if undesirable) wraparound actually happens,
+        # i.e. the warning corresponds to real behavior, not a phantom check
+        assert src.read(1)[src.height - 1, 0] == 255
 
 
 def test_geotiff_exporter_class(tmp_path):
