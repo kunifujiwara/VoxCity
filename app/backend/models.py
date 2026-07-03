@@ -120,6 +120,10 @@ class ExportObjRequest(BaseModel):
     export_netcdf: bool = False
 
 
+class ExportGeotiffRequest(BaseModel):
+    filename: str = "voxcity"
+
+
 class RerenderRequest(BaseModel):
     """Re-render the last simulation with new visualization parameters."""
     colormap: str = "viridis"

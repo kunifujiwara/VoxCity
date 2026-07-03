@@ -38,6 +38,7 @@ from .models import (
     AutoDetectSourcesRequest,
     BuildingSurfaceGeometryResponse,
     ExportCitylesRequest,
+    ExportGeotiffRequest,
     ExportObjRequest,
     GenerateRequest,
     GeocodeRequest,
@@ -1868,6 +1869,35 @@ async def export_obj_endpoint(req: ExportObjRequest):
             headers={"Content-Disposition": f"attachment; filename={req.filename}.zip"},
         )
 
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/export/geotiff")
+async def export_geotiff_endpoint(req: ExportGeotiffRequest):
+    """Export land cover, building height, DEM, and canopy height as a
+    zip of four georeferenced GeoTIFFs."""
+    if not app_state.has_model:
+        raise HTTPException(status_code=400, detail="No model generated yet")
+    try:
+        output_dir = os.path.join(BASE_OUTPUT_DIR, "geotiff")
+        os.makedirs(output_dir, exist_ok=True)
+
+        voxcity = app_state.voxcity
+        # export_geotiffs needs these in extras (mirror the cityles endpoint).
+        voxcity.extras.setdefault("rectangle_vertices", app_state.rectangle_vertices)
+        voxcity.extras.setdefault("land_cover_source", app_state.land_cover_source)
+
+        from voxcity.exporter.geotiff import export_geotiffs
+        written = export_geotiffs(voxcity, output_dir, req.filename)
+
+        zip_buf = app_state.zip_files_to_bytes(list(written.values()))
+        return StreamingResponse(
+            zip_buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={req.filename}_geotiff.zip"},
+        )
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
