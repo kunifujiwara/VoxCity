@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Package, Box, Download, Upload } from 'lucide-react';
-import { exportCityles, exportObj, loadSession, saveSession } from '../api';
+import { Package, Box, Download, Upload, Map } from 'lucide-react';
+import { exportCityles, exportObj, exportGeotiff, loadSession, saveSession } from '../api';
 import type { SessionLoadSummary } from '../api';
 import {
   buildRestoredFrontendState,
@@ -24,6 +24,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
   const [trunkHeightRatio, setTrunkHeightRatio] = useState(0.3);
   const [objFilename, setObjFilename] = useState('voxcity');
   const [exportNetcdf, setExportNetcdf] = useState(false);
+  const [geotiffFilename, setGeotiffFilename] = useState('voxcity');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -110,6 +111,10 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
         });
         downloadBlob(blob, 'cityles_outputs.zip');
         setSuccess('CityLES exported successfully!');
+      } else if (exportFormat === 'geotiff') {
+        const blob = await exportGeotiff({ filename: geotiffFilename });
+        downloadBlob(blob, `${geotiffFilename}_geotiff.zip`);
+        setSuccess('GeoTIFF exported successfully!');
       } else {
         const blob = await exportObj({
           filename: objFilename,
@@ -206,6 +211,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             options={[
               { id: 'cityles', label: 'CityLES', description: 'CityLES output archive', icon: Package },
               { id: 'obj', label: 'OBJ', description: 'Mesh export archive', icon: Box },
+              { id: 'geotiff', label: 'GeoTIFF', description: 'Georeferenced raster layers', icon: Map },
             ]}
           />
         </GuidedSection>
@@ -260,6 +266,23 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
               />
               <span>Also export NetCDF</span>
             </div>
+          </GuidedSection>
+        )}
+
+        {exportFormat === 'geotiff' && (
+          <GuidedSection index={2} label="GEOTIFF OPTIONS">
+            <div className="form-group">
+              <label>Output Filename</label>
+              <input
+                type="text"
+                value={geotiffFilename}
+                onChange={(e) => setGeotiffFilename(e.target.value)}
+              />
+            </div>
+            <p style={{ fontSize: '0.78rem', opacity: 0.8, margin: '0.25rem 0 0' }}>
+              Exports land cover, building height, DEM, and canopy height as four
+              georeferenced GeoTIFFs (EPSG:4326).
+            </p>
           </GuidedSection>
         )}
       </GuidedPanel>
