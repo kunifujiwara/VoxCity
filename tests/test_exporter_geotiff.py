@@ -43,3 +43,8 @@ def test_north_up_affine_and_array_orientation():
 def test_north_up_affine_and_array_shape_mismatch():
     with pytest.raises(ValueError):
         _north_up_affine_and_array(np.zeros((3, 3)), RECT, MESH)
+
+
+def test_north_up_affine_and_array_insufficient_vertices():
+    with pytest.raises(ValueError):
+        _north_up_affine_and_array(np.zeros((1, 1)), RECT[:2], MESH)
