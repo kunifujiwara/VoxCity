@@ -1123,8 +1123,10 @@ async def generate_model(req: GenerateRequest):
             land_cover_source=effective_lc,
         )
 
-        # Build 3D preview
-        fig_json = _make_plotly_json(
+        # Build 3D preview (skipped for large grids so generation can finish).
+        shape = app_state.voxcity.voxels.classes.shape
+        preview_disabled = _preview_disabled_for_shape(shape)
+        fig_json = _preview_figure_json(
             app_state.voxcity.voxels.classes,
             req.meshsize,
             {"title": "VoxCity 3D"},
@@ -1132,9 +1134,10 @@ async def generate_model(req: GenerateRequest):
 
         return {
             "status": "ok",
-            "grid_shape": list(app_state.voxcity.voxels.classes.shape),
+            "grid_shape": list(shape),
             "meshsize": req.meshsize,
             "figure_json": fig_json,
+            "preview_disabled": preview_disabled,
         }
 
     except Exception as e:
@@ -1969,6 +1972,7 @@ async def model_info():
         "n_buildings": n_buildings,
         "rectangle_vertices": app_state.rectangle_vertices,
         "land_cover_source": app_state.land_cover_source,
+        "preview_disabled": _preview_disabled_for_shape(vc.voxels.classes.shape),
     }
 
 
@@ -2634,9 +2638,10 @@ def _apply_paint_lc(vc, cells: List[List[int]], class_index: int) -> dict:
 def _render_edit_preview(vc, title: str = "Edit Model") -> str:
     """Render the standard edit-tab Plotly figure (with building IDs).
 
-    Reuses ``_make_plotly_json`` so the existing 500 MB safeguard applies.
+    Reuses ``_preview_figure_json`` so the existing 500 MB safeguard applies,
+    and the large-grid preview-disable gate applies too.
     """
-    return _make_plotly_json(
+    return _preview_figure_json(
         vc.voxels.classes,
         app_state.meshsize,
         {"building_id_grid": vc.buildings.ids, "title": title},
