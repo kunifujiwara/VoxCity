@@ -171,5 +171,24 @@ def test_export_geotiffs_skips_missing_layer(tmp_path):
     city.dem.elevation = None
     with pytest.warns(UserWarning):
         written = export_geotiffs(city, tmp_path)
-    assert "dem" not in written
+    assert set(written) == {"land_cover", "building_height", "canopy_height"}
+
+
+def test_export_geotiffs_land_cover_missing_source_warns(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    city.extras.pop("land_cover_source")
+    with pytest.warns(UserWarning):
+        written = export_geotiffs(city, tmp_path)
+    assert "land_cover" in written
+    with rasterio.open(written["land_cover"]) as src:
+        assert src.dtypes[0] == "uint8"
+        # no color table was available, so no colormap was ever set
+        with pytest.raises(ValueError):
+            src.colormap(1)
+
+
+def test_export_geotiffs_land_cover_unknown_source_warns(tmp_path):
+    city = _make_voxcity(RECT, MESH, source="NotARealSource")
+    with pytest.warns(UserWarning):
+        written = export_geotiffs(city, tmp_path)
     assert "land_cover" in written
