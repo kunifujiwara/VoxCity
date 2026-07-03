@@ -567,6 +567,19 @@ def _compact_fig_json(fig) -> str:
     return json.dumps(_round_values(fig_dict), separators=(',', ':'))
 
 
+# Horizontal grid (nx*ny) above this many cells disables the 3D preview so
+# large-scale models can still generate and export. Mirror in the frontend
+# constants.ts (PREVIEW_MAX_CELLS).
+PREVIEW_MAX_CELLS = 1_000_000
+
+
+def _preview_disabled_for_shape(shape) -> bool:
+    """True when the horizontal grid (nx*ny) exceeds PREVIEW_MAX_CELLS."""
+    if shape is None or len(shape) < 2:
+        return False
+    return (int(shape[0]) * int(shape[1])) > PREVIEW_MAX_CELLS
+
+
 def _make_plotly_json(
     voxcity_grid: np.ndarray,
     meshsize: float,
@@ -599,6 +612,14 @@ def _make_plotly_json(
             ),
         )
     return fig_json
+
+
+def _preview_figure_json(voxcity_grid, meshsize: float, plot_kwargs: dict) -> str:
+    """Like `_make_plotly_json`, but returns "" (no build) when the grid is
+    large enough to disable previews."""
+    if _preview_disabled_for_shape(getattr(voxcity_grid, "shape", None)):
+        return ""
+    return _make_plotly_json(voxcity_grid, meshsize, plot_kwargs)
 
 
 # ---------------------------------------------------------------------------
