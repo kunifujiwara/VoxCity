@@ -44,5 +44,7 @@ describe('guided tab action labels', () => {
     expect(exportActionLabel('cityles', true)).toBe('Exporting...');
     expect(exportActionLabel('obj', false)).toBe('Export OBJ');
     expect(exportActionLabel('obj', true)).toBe('Exporting...');
+    expect(exportActionLabel('geotiff', false)).toBe('Export GeoTIFF');
+    expect(exportActionLabel('geotiff', true)).toBe('Exporting...');
   });
 });

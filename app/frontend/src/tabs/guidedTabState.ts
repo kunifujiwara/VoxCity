@@ -1,6 +1,6 @@
 export type PrerequisiteTab = 'generation' | 'zoning' | 'solar' | 'view' | 'landmark' | 'export';
 export type TargetAreaMethod = 'draw' | 'coordinates';
-export type ExportFormat = 'cityles' | 'obj';
+export type ExportFormat = 'cityles' | 'obj' | 'geotiff';
 
 const MODEL_REQUIRED_BODY = 'Use the Generation tab to create a VoxCity model before using this workflow.';
 
@@ -32,5 +32,7 @@ export function simulationActionLabel(loading: boolean) {
 
 export function exportActionLabel(format: ExportFormat, loading: boolean) {
   if (loading) return 'Exporting...';
-  return format === 'cityles' ? 'Export CityLES' : 'Export OBJ';
+  if (format === 'cityles') return 'Export CityLES';
+  if (format === 'geotiff') return 'Export GeoTIFF';
+  return 'Export OBJ';
 }

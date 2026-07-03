@@ -249,6 +249,19 @@ export async function exportObj(params: {
   return res.blob();
 }
 
+export async function exportGeotiff(params: { filename?: string }) {
+  const res = await fetch(`${BASE}/export/geotiff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
 export async function getModelPreview() {
   return request<{ figure_json: string }>('/model/preview');
 }
