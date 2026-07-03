@@ -47,7 +47,6 @@ def test_preview_figure_json_skips_build_when_disabled(monkeypatch):
     assert called["n"] == 1
 
 
-# append to app/backend/test_preview_disable.py
 from types import SimpleNamespace
 from fastapi.testclient import TestClient
 import pytest

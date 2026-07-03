@@ -1948,7 +1948,7 @@ async def model_preview():
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
 
-    fig_json = _make_plotly_json(
+    fig_json = _preview_figure_json(
         app_state.voxcity.voxels.classes,
         app_state.meshsize,
         {"title": "VoxCity 3D"},
