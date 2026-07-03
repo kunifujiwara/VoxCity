@@ -48,3 +48,38 @@ def test_north_up_affine_and_array_shape_mismatch():
 def test_north_up_affine_and_array_insufficient_vertices():
     with pytest.raises(ValueError):
         _north_up_affine_and_array(np.zeros((1, 1)), RECT[:2], MESH)
+
+
+import rasterio
+from voxcity.exporter.geotiff import export_grid_geotiff
+
+
+def test_export_grid_geotiff_float_roundtrip(tmp_path):
+    grid, cc = _voxcity_index_grid(RECT, MESH)
+    nx, ny = cc["grid_size"]
+    out = tmp_path / "layer.tif"
+
+    path = export_grid_geotiff(
+        grid, RECT, MESH, out, dtype="float32", nodata=float("nan")
+    )
+
+    with rasterio.open(path) as src:
+        assert src.crs.to_string() == "EPSG:4326"
+        assert src.count == 1
+        assert src.dtypes[0] == "float32"
+        assert src.transform.e < 0                      # north-up
+        assert np.isnan(src.nodata)
+        data = src.read(1)
+        assert data.shape == (ny, nx)
+        # A zero value must survive as real data, not nodata
+        z = np.zeros((nx, ny), dtype=np.float32)
+        z_path = export_grid_geotiff(z, RECT, MESH, tmp_path / "z.tif",
+                                     dtype="float32", nodata=float("nan"))
+        with rasterio.open(z_path) as zsrc:
+            assert np.all(zsrc.read(1) == 0)
+            assert not np.isnan(zsrc.read(1)).any()
+
+
+def test_export_grid_geotiff_rejects_non_2d(tmp_path):
+    with pytest.raises(ValueError):
+        export_grid_geotiff(np.zeros((2, 2, 2)), RECT, MESH, tmp_path / "x.tif")
