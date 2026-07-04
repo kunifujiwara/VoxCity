@@ -75,6 +75,7 @@ from .scene_geometry import (
     build_voxel_buffers,
 )
 from .state import app_state, SimulationResultCache
+from . import config
 from .session_io import (
     DEFAULT_MAX_UPLOAD_BYTES,
     SessionLoadError,
@@ -165,23 +166,18 @@ except Exception:
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
-BASE_OUTPUT_DIR = os.environ.get("VOXCITY_OUTPUT_DIR", os.path.join(tempfile.gettempdir(), "voxcity_output"))
+BASE_OUTPUT_DIR = config.OUTPUT_DIR
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # In-memory registry of uploaded OBJ imports: import_id -> stored .obj path.
 import_obj_store: Dict[str, str] = {}
 
-APP_DIR = os.path.dirname(os.path.dirname(__file__))  # app/
-DEFAULT_TOKYO_EPW = os.path.join(
-    APP_DIR, "data", "temp", "epw_tokyo", "JPN_TK_Tokyo-Chiyoda.476620_TMYx.epw"
-)
-CITYGML_PATH = os.environ.get(
-    "CITYGML_PATH",
-    r"C:\Users\kunih\OneDrive\00_Codes\python\VoxelCity\app\data\plateau\13100_tokyo23-ku_2020_citygml_3_2_op",
-)
+APP_DIR = os.path.dirname(os.path.dirname(__file__))  # app/ (kept for any other refs)
+DEFAULT_TOKYO_EPW = config.DEFAULT_TOKYO_EPW
+CITYGML_PATH = config.CITYGML_PATH
 
 # nDSM cache path (Cloud-Optimized GeoTIFF for canopy refinement in plateau/Japan mode)
-NDSM_COG_PATH = os.path.join(APP_DIR, "data", "temp", "ndsm_cog.tif")
+NDSM_COG_PATH = config.NDSM_COG_PATH
 
 app = FastAPI(title="VoxCity Web API", version="1.0.0")
 
@@ -211,7 +207,7 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
 def _load_citygml_cache(rectangle_vertices):
     """Load cached CityGML buildings from GeoParquet/FlatGeobuf."""
     try:
-        cache_dir = os.path.join(APP_DIR, "data", "temp", "citygml_cache")
+        cache_dir = config.CITYGML_CACHE_DIR
         b_parquet = os.path.join(cache_dir, "buildings.parquet")
         b_fgb = os.path.join(cache_dir, "buildings.fgb")
         t_parquet = os.path.join(cache_dir, "terrain.parquet")
