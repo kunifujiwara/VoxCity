@@ -1220,7 +1220,7 @@ async def run_solar(req: SolarRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1304,7 +1304,7 @@ async def run_solar(req: SolarRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1394,7 +1394,7 @@ async def run_view(req: ViewRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1475,7 +1475,7 @@ async def run_view(req: ViewRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1580,7 +1580,7 @@ async def run_landmark(req: LandmarkRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1663,7 +1663,7 @@ async def run_landmark(req: LandmarkRequest):
             present_classes = np.unique(voxcity_grid[voxcity_grid != 0]).tolist()
             classes_include = [int(c) for c in present_classes if int(c) not in req.hidden_classes]
 
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 app_state.meshsize,
                 {
@@ -1744,7 +1744,7 @@ async def rerender(req: RerenderRequest):
                 "view": "View Index",
                 "landmark": "Landmark Visibility (Ground)",
             }
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid,
                 meshsize,
                 {
@@ -1788,7 +1788,7 @@ async def rerender(req: RerenderRequest):
             if app_state.last_sim_type == "solar":
                 plot_kwargs["building_opacity"] = 1.0
                 plot_kwargs["building_shaded"] = False
-            fig_json = _make_plotly_json(
+            fig_json = _preview_figure_json(
                 voxcity_grid, meshsize, plot_kwargs,
             )
 

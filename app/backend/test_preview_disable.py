@@ -87,3 +87,53 @@ def test_model_info_preview_enabled_for_small_grid(client):
     r = tc.get("/api/model/info")
     assert r.status_code == 200
     assert r.json()["preview_disabled"] is False
+
+
+def test_run_solar_skips_figure_build_when_grid_too_large(monkeypatch):
+    """A large grid must not crash /api/solar's figure-build step (fixes a gap
+    where run_solar called the ungated _make_plotly_json directly, which could
+    413/crash even though the simulation itself had already succeeded and been
+    cached in app_state)."""
+    import backend.main as backend_main
+    from backend.main import app, app_state
+
+    called = {"n": 0}
+
+    def spy(*a, **k):
+        called["n"] += 1
+        raise AssertionError("_make_plotly_json should not be called for an over-threshold grid")
+
+    monkeypatch.setattr(backend_main, "_make_plotly_json", spy)
+
+    # Bypass the expensive/real solar simulation and EPW resolution so the
+    # request actually reaches the figure-build step instead of failing
+    # earlier for unrelated reasons (missing EPW file, incomplete fake
+    # voxcity attributes, etc).
+    monkeypatch.setattr(backend_main, "DEFAULT_TOKYO_EPW", __file__)
+
+    big_shape = (1200, 1200, 5)
+
+    def fake_solar_grid(*a, **k):
+        return np.zeros(big_shape[:2], dtype=float)
+
+    monkeypatch.setattr(backend_main, "get_global_solar_irradiance_using_epw", fake_solar_grid)
+
+    voxcity = _fake_voxcity(big_shape)
+    voxcity.dem = SimpleNamespace(elevation=np.zeros(big_shape[:2], dtype=float))
+    app_state.voxcity = voxcity
+    app_state.rectangle_vertices = [[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1]]
+    app_state.land_cover_source = "OpenStreetMap"
+
+    tc = TestClient(app)
+
+    # We only need to prove _make_plotly_json is never invoked; the request
+    # may still fail for unrelated reasons in a stripped-down unit-test
+    # environment — assert on the spy call count, not on r.status_code.
+    tc.post("/api/solar", json={
+        "calc_type": "instantaneous",
+        "analysis_target": "ground",
+        "epw_source": "default",
+    })
+    assert called["n"] == 0, "expensive figure build must be skipped for an over-threshold grid"
+
+    app_state.voxcity = None
