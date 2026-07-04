@@ -18,7 +18,6 @@ import json
 import math
 import os
 import shutil
-import tempfile
 import traceback
 import uuid
 from pathlib import Path
@@ -172,7 +171,6 @@ os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 # In-memory registry of uploaded OBJ imports: import_id -> stored .obj path.
 import_obj_store: Dict[str, str] = {}
 
-APP_DIR = os.path.dirname(os.path.dirname(__file__))  # app/ (kept for any other refs)
 DEFAULT_TOKYO_EPW = config.DEFAULT_TOKYO_EPW
 CITYGML_PATH = config.CITYGML_PATH
 
