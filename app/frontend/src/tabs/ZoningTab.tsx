@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Square, Box, Hexagon, Plus, Trash2 } from 'lucide-react';
 import { getModelGeo, type ModelGeoResult, getBuildingAt } from '../api';
 import { SceneViewer } from '../three';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import PlanMapEditor, {
   Backdrop,
   BasemapKey,
@@ -47,6 +48,8 @@ interface ZoningTabProps {
   zones: Zone[];
   onZonesChange: (z: Zone[]) => void;
   geometryToken?: string | number;
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 function maxBuildingHeight(geo: ModelGeoResult | null): number {
@@ -66,7 +69,7 @@ interface DraftZoneGroup {
   shape: ZoneShape;
 }
 
-const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange, geometryToken }) => {
+const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange, geometryToken, previewDisabled = false, previewGridShape }) => {
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -684,7 +687,9 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           <h2>3D preview</h2>
         </div>
         <div className="visual-frame">
-          {hasModel ? (
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : hasModel ? (
             <SceneViewer
               geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
               downsample={1}

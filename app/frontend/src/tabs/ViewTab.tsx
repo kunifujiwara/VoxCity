@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Leaf, CloudSun, Sliders, Check, X, Layers, Box, Eye } from 'lucide-react';
 import { getModelGeo, ModelGeoResult, runView } from '../api';
 import { SceneViewer } from '../three';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
@@ -33,9 +34,11 @@ interface ViewTabProps {
   geometryToken?: string | number;
   /** Sim types restored from a loaded session; show this tab's overlay if listed. */
   restoredSimTypes?: string[];
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
-const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken, restoredSimTypes }) => {
+const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken, restoredSimTypes, previewDisabled = false, previewGridShape }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'view', simRunNonce);
   const [viewType, setViewType] = useState<'green' | 'sky' | 'custom'>('green');
@@ -271,21 +274,25 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
 
       <div className="panel visual-panel">
         <div className="visual-frame">
-          <SceneViewer
-            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-            downsample={1}
-            colorScheme="grayscale"
-            simKind={hasSimResult ? 'view' : null}
-            simToken={simRunNonce}
-            colormap={colormap}
-            vmin={vmin}
-            vmax={vmax}
-            zones={zones}
-            lonLatToXY={lonLatToXY}
-            showZones={showZones3D}
-            hiddenClasses={hiddenClasses}
-            surfaceZoneEdges={surfaceZoneEdges}
-          />
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : (
+            <SceneViewer
+              geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+              downsample={1}
+              colorScheme="grayscale"
+              simKind={hasSimResult ? 'view' : null}
+              simToken={simRunNonce}
+              colormap={colormap}
+              vmin={vmin}
+              vmax={vmax}
+              zones={zones}
+              lonLatToXY={lonLatToXY}
+              showZones={showZones3D}
+              hiddenClasses={hiddenClasses}
+              surfaceZoneEdges={surfaceZoneEdges}
+            />
+          )}
         </div>
       </div>
     </div>

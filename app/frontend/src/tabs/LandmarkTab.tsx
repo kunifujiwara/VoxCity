@@ -24,6 +24,7 @@ import {
   type MeshChunkDto,
 } from '../api';
 import { SceneViewer } from '../three';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import type { PickResult } from '../three/types';
 import ColorSettings from '../components/ColorSettings';
 import SamplingSettings from '../components/SamplingSettings';
@@ -50,6 +51,8 @@ interface LandmarkTabProps {
   restoredSimTypes?: string[];
   /** Landmark building IDs recovered from a restored landmark sim, for highlights. */
   restoredLandmarkIds?: number[];
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 const LandmarkTab: React.FC<LandmarkTabProps> = ({
@@ -60,6 +63,8 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   geometryToken,
   restoredSimTypes,
   restoredLandmarkIds,
+  previewDisabled = false,
+  previewGridShape,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'landmark', simRunNonce);
@@ -402,23 +407,27 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
 
       <div className="panel visual-panel">
         <div className="visual-frame">
-          <SceneViewer
-            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-            downsample={1}
-            colorScheme="grayscale"
-            simKind={showingSimResult ? 'landmark' : null}
-            simToken={simRunNonce}
-            colormap={colormap}
-            vmin={vmin}
-            vmax={vmax}
-            zones={zones}
-            lonLatToXY={lonLatToXY}
-            showZones={showZones3D}
-            hiddenClasses={hiddenClasses}
-            onPick={!showingSimResult ? handlePick : undefined}
-            highlightChunks={highlightChunks}
-            surfaceZoneEdges={surfaceZoneEdges}
-          />
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : (
+            <SceneViewer
+              geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+              downsample={1}
+              colorScheme="grayscale"
+              simKind={showingSimResult ? 'landmark' : null}
+              simToken={simRunNonce}
+              colormap={colormap}
+              vmin={vmin}
+              vmax={vmax}
+              zones={zones}
+              lonLatToXY={lonLatToXY}
+              showZones={showZones3D}
+              hiddenClasses={hiddenClasses}
+              onPick={!showingSimResult ? handlePick : undefined}
+              highlightChunks={highlightChunks}
+              surfaceZoneEdges={surfaceZoneEdges}
+            />
+          )}
         </div>
       </div>
     </div>

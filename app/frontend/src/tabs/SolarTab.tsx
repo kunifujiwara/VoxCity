@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, CalendarRange, Layers, Box, Sun } from 'lucide-react';
 import { getModelGeo, ModelGeoResult, runSolar } from '../api';
 import { SceneViewer } from '../three';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import ColorSettings from '../components/ColorSettings';
 import VoxelClassVisibility from '../components/VoxelClassVisibility';
 import ZoneStatsTable from '../components/ZoneStatsTable';
@@ -33,6 +34,8 @@ interface SolarTabProps {
   geometryToken?: string | number;
   /** Sim types restored from a loaded session; show this tab's overlay if listed. */
   restoredSimTypes?: string[];
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 const SolarTab: React.FC<SolarTabProps> = ({
@@ -42,6 +45,8 @@ const SolarTab: React.FC<SolarTabProps> = ({
   onSimRun,
   geometryToken,
   restoredSimTypes,
+  previewDisabled = false,
+  previewGridShape,
 }) => {
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'solar', simRunNonce);
@@ -246,21 +251,25 @@ const SolarTab: React.FC<SolarTabProps> = ({
 
       <div className="panel visual-panel">
         <div className="visual-frame">
-          <SceneViewer
-            geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
-            downsample={1}
-            colorScheme="grayscale"
-            simKind={hasSimResult ? 'solar' : null}
-            simToken={simRunNonce}
-            colormap={colormap}
-            vmin={vmin}
-            vmax={vmaxNum}
-            zones={zones}
-            lonLatToXY={lonLatToXY}
-            showZones={showZones3D}
-            hiddenClasses={hiddenClasses}
-            surfaceZoneEdges={surfaceZoneEdges}
-          />
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : (
+            <SceneViewer
+              geometryToken={hasModel ? (geometryToken ?? 'loaded') : 'none'}
+              downsample={1}
+              colorScheme="grayscale"
+              simKind={hasSimResult ? 'solar' : null}
+              simToken={simRunNonce}
+              colormap={colormap}
+              vmin={vmin}
+              vmax={vmaxNum}
+              zones={zones}
+              lonLatToXY={lonLatToXY}
+              showZones={showZones3D}
+              hiddenClasses={hiddenClasses}
+              surfaceZoneEdges={surfaceZoneEdges}
+            />
+          )}
         </div>
       </div>
     </div>
