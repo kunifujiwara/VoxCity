@@ -1,0 +1,24 @@
+services:
+  voxcity:
+    build:
+      context: .
+    image: voxcity-app-local:latest
+    container_name: voxcity-app-local
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      CITYGML_PATH: "${CITYGML_PATH:-}"
+    env_file:
+      - path: .env.docker
+        required: false
+    volumes:
+      - "${VOXCITY_HOST_ROOT:-/work-voxcity}:/work-voxcity"
+      - "${VOXCITY_HOST_OCEAN_CACHE:-/work-voxcity/voxcity_ocean_cache}:/tmp/voxcity_ocean_cache"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
