@@ -54,6 +54,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m pip install --upgrade pip \
     && printf 'numpy>=1.24,<2\nnumba<0.60\nxarray<2025.1\nrasterio==1.3.11\nfiona<1.10\n' > /tmp/constraints.txt \
+    && python -m pip install -c /tmp/constraints.txt numpy \
     && python -m pip install -c /tmp/constraints.txt GDAL==$(gdal-config --version) --no-build-isolation \
     && python -m pip install -c /tmp/constraints.txt ".[gpu]"
 
