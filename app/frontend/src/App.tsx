@@ -121,7 +121,9 @@ const App: React.FC = () => {
             setPreviewDisabled(Boolean(info.preview_disabled));
             setGridShape(info.grid_shape ?? null);
           })
-          .catch(() => {});
+          .catch((err) => {
+            console.warn('Failed to fetch model info for preview-disable state:', err);
+          });
       }
       setRectangle(summary.rectangle_vertices);
       setFigureJson('');
@@ -152,10 +154,13 @@ const App: React.FC = () => {
           if (h.has_model) {
             getModelInfo()
               .then((info) => {
+                if (sessionLoadedRef.current) return; // a session load raced ahead; drop this stale response
                 setPreviewDisabled(Boolean(info.preview_disabled));
                 setGridShape(info.grid_shape ?? null);
               })
-              .catch(() => {});
+              .catch((err) => {
+                console.warn('Failed to fetch model info for preview-disable state:', err);
+              });
           }
         }
       })
