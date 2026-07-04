@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Globe, Building2, Layers } from 'lucide-react';
 import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
+import { estimateGridShape } from '../lib/grid';
 import {
   BUILDING_SOURCES,
   BUILDING_COMPLEMENTARY_SOURCES,
   LAND_COVER_SOURCES,
   CANOPY_HEIGHT_SOURCES,
   DEM_SOURCES,
+  PREVIEW_MAX_CELLS,
 } from '../constants';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
 import { generationActionLabel, prerequisiteMessageForTab } from './guidedTabState';
@@ -16,7 +19,9 @@ interface GenerationTabProps {
   rectangle: number[][] | null;
   figureJson: string;
   onFigureChange: (json: string) => void;
-  onModelReady: () => void;
+  onModelReady: (info: { grid_shape: number[]; preview_disabled?: boolean }) => void;
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 const GenerationTab: React.FC<GenerationTabProps> = ({
@@ -24,6 +29,8 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   figureJson,
   onFigureChange,
   onModelReady,
+  previewDisabled = false,
+  previewGridShape,
 }) => {
   // Mode: "plateau" or "normal"
   const [mode, setMode] = useState<'plateau' | 'normal'>('normal');
@@ -104,12 +111,15 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       const result = await generateModel(params as any);
       setGridShape(result.grid_shape);
       onFigureChange(result.figure_json);
-      onModelReady();
+      onModelReady({ grid_shape: result.grid_shape, preview_disabled: result.preview_disabled });
     } catch (err: any) {
       setError(err.message);
     }
     setLoading(false);
   };
+
+  const estimate = rectangle ? estimateGridShape(rectangle, meshsize) : null;
+  const willDisablePreview = !!estimate && estimate[0] * estimate[1] > PREVIEW_MAX_CELLS;
 
   if (!rectangle) {
     const message = prerequisiteMessageForTab('generation');
@@ -167,6 +177,13 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
             <input type="number" value={meshsize} min={1} max={50} onChange={(e) => setMeshsize(Number(e.target.value))} />
           </div>
         </GuidedSection>
+
+        {willDisablePreview && estimate && (
+          <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0 0 0.75rem' }}>
+            Estimated grid ~{estimate[0]}×{estimate[1]} — the 3D preview will be
+            disabled at this size. Generation and export still work.
+          </div>
+        )}
 
         {mode === 'normal' && (
           <GuidedSection
@@ -330,7 +347,9 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       {/* Right – 3D preview */}
       <div className="panel visual-panel">
         <div className="visual-frame">
-          <ThreeViewer figureJson={figureJson} />
+          {previewDisabled
+            ? <PreviewDisabledNotice gridShape={previewGridShape} />
+            : <ThreeViewer figureJson={figureJson} />}
         </div>
       </div>
     </div>

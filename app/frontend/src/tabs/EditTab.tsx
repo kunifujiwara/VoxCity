@@ -21,6 +21,7 @@ import {
 } from '../api';
 import { ChoiceGroup, GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import PlanMapEditor, {
   Backdrop,
   BasemapKey,
@@ -56,6 +57,8 @@ interface EditTabProps {
   /** Called after a successful commit so the parent can invalidate Solar /
    *  View / Landmark figures (they're now stale). */
   onModelEdited?: () => void;
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 interface MethodSelectorProps {
@@ -92,7 +95,7 @@ function parameterSectionMeta(
 }
 
 
-const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited }) => {
+const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited, previewDisabled = false, previewGridShape }) => {
   const [workflow, setWorkflow] = useState(() => defaultWorkflowForTarget('building'));
   const mode = workflow.target;
   const action = actionForWorkflow(workflow);
@@ -875,7 +878,9 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           <h2>3D result</h2>
         </div>
         <div className="visual-frame">
-          {figureJson ? (
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : figureJson ? (
             <ThreeViewer figureJson={figureJson} />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>

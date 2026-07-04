@@ -18,6 +18,7 @@ import {
 } from '../api';
 import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
+import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import ObjPlacementMap from '../components/ObjPlacementMap';
 import { SceneViewer } from '../three';
 import { lonLatToUvM, domainRotationDeg } from '../lib/grid';
@@ -33,11 +34,13 @@ interface ImportTabProps {
   figureJson: string;
   onFigureChange: (s: string) => void;
   onModelEdited?: () => void;
+  previewDisabled?: boolean;
+  previewGridShape?: number[] | null;
 }
 
 const UNIT_OPTIONS: Units[] = ['m', 'cm', 'mm', 'ft', 'in'];
 
-const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited }) => {
+const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited, previewDisabled = false, previewGridShape }) => {
   const [upload, setUpload] = useState<ImportObjUploadResult | null>(null);
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [placement, setPlacement] = useState<Placement>(defaultPlacement);
@@ -384,7 +387,9 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       <div className="panel visual-panel">
         <div className="plan-panel-header"><h2>3D result</h2></div>
         <div className="visual-frame">
-          {upload && !figureJson ? (
+          {previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : upload && !figureJson ? (
             <SceneViewer
               geometryToken="import-preview"
               placementPreview={{
