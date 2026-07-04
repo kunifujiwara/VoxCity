@@ -3543,9 +3543,17 @@ async def import_obj_commit(req: ImportObjCommitRequest):
 @app.get("/{full_path:path}")
 async def _serve_frontend(full_path: str):
     dist = config.FRONTEND_DIST
-    if not dist or full_path == "api" or full_path.startswith("api/"):
+    lowered = full_path.lower()
+    if not dist or lowered == "api" or lowered.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
-    candidate = os.path.join(dist, full_path)
-    if full_path and os.path.isfile(candidate):
+
+    dist_root = os.path.realpath(dist)
+    candidate = os.path.realpath(os.path.join(dist, full_path))
+    is_within_dist = (
+        candidate == dist_root
+        or os.path.commonpath([candidate, dist_root]) == dist_root
+    )
+
+    if full_path and is_within_dist and os.path.isfile(candidate):
         return FileResponse(candidate)
     return FileResponse(os.path.join(dist, "index.html"))

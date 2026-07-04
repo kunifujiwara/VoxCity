@@ -46,3 +46,32 @@ def test_spa_404_when_dist_absent(monkeypatch):
     client = TestClient(m.app)
     r = client.get("/some/tab")
     assert r.status_code == 404
+
+
+def test_spa_blocks_path_traversal_outside_dist(tmp_path, monkeypatch):
+    # A secret file living OUTSIDE the served dist/, one level up.
+    secret = tmp_path / "secret.txt"
+    secret.write_text("TOP SECRET")
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>VoxCity SPA</title>")
+
+    import backend.main as m
+    monkeypatch.setattr(m.config, "FRONTEND_DIST", str(dist))
+    client = TestClient(m.app)
+
+    for path in ("/..%2Fsecret.txt", "/%2e%2e/secret.txt", "/../secret.txt"):
+        r = client.get(path)
+        assert "TOP SECRET" not in r.text, f"path traversal succeeded for {path!r}"
+        # Traversal attempts fall back to the SPA shell like any other unknown route.
+        assert "VoxCity SPA" in r.text
+
+
+def test_spa_api_guard_is_case_insensitive(monkeypatch):
+    import backend.main as m
+    monkeypatch.setattr(m.config, "FRONTEND_DIST", None)
+    client = TestClient(m.app)
+    for path in ("/API", "/Api/health", "/API/does-not-exist"):
+        r = client.get(path)
+        assert r.status_code == 404, f"{path!r} should 404 like its lowercase form"
