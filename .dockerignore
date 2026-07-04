@@ -1,0 +1,12 @@
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+app/frontend/node_modules
+app/frontend/dist
+app/data
+docs
+tests
+.env
+.env.*
+*.h5
