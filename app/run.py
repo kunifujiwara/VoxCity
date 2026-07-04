@@ -66,7 +66,7 @@ def run_frontend():
     print("[frontend] Starting Vite dev server on http://localhost:3000 ...")
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     return subprocess.Popen(
-        [npm_cmd, "run", "dev"],
+        [npm_cmd, "run", "dev", "--", "--host", "0.0.0.0"],
         cwd=str(FRONTEND_DIR),
     )
 
