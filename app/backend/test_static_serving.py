@@ -68,10 +68,28 @@ def test_spa_blocks_path_traversal_outside_dist(tmp_path, monkeypatch):
         assert "VoxCity SPA" in r.text
 
 
-def test_spa_api_guard_is_case_insensitive(monkeypatch):
+def test_spa_api_guard_is_case_insensitive(tmp_path, monkeypatch):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>VoxCity SPA</title>")
+
     import backend.main as m
-    monkeypatch.setattr(m.config, "FRONTEND_DIST", None)
+    monkeypatch.setattr(m.config, "FRONTEND_DIST", str(dist))
     client = TestClient(m.app)
+
     for path in ("/API", "/Api/health", "/API/does-not-exist"):
         r = client.get(path)
         assert r.status_code == 404, f"{path!r} should 404 like its lowercase form"
+
+
+def test_spa_handles_cross_drive_path_without_crashing(tmp_path, monkeypatch):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>VoxCity SPA</title>")
+
+    import backend.main as m
+    monkeypatch.setattr(m.config, "FRONTEND_DIST", str(dist))
+    client = TestClient(m.app)
+
+    r = client.get("/Z%3A%2Fsecret.txt")
+    assert r.status_code != 500, "malformed path should not crash the route"

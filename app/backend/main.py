@@ -3549,10 +3549,13 @@ async def _serve_frontend(full_path: str):
 
     dist_root = os.path.realpath(dist)
     candidate = os.path.realpath(os.path.join(dist, full_path))
-    is_within_dist = (
-        candidate == dist_root
-        or os.path.commonpath([candidate, dist_root]) == dist_root
-    )
+    try:
+        is_within_dist = (
+            candidate == dist_root
+            or os.path.commonpath([candidate, dist_root]) == dist_root
+        )
+    except ValueError:
+        is_within_dist = False
 
     if full_path and is_within_dist and os.path.isfile(candidate):
         return FileResponse(candidate)
