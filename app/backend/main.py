@@ -31,7 +31,7 @@ import numpy as np
 import requests
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from .models import (
     AutoDetectSourcesRequest,
@@ -3529,3 +3529,23 @@ async def import_obj_commit(req: ImportObjCommitRequest):
         n_window_voxels_added=int(n_window_added),
         warning=warning,
     )
+
+
+# ---------------------------------------------------------------------------
+# Frontend (SPA) serving
+#
+# Active only when a built frontend dist/ is available (production/container).
+# In local dev `config.FRONTEND_DIST` is None and the Vite dev server serves the
+# frontend, so this returns 404 for non-API paths. Registered LAST so it never
+# shadows the /api routes above; unmatched /api/* paths return 404 (not the SPA).
+# `config.FRONTEND_DIST` is read at request time so tests can toggle it.
+# ---------------------------------------------------------------------------
+@app.get("/{full_path:path}")
+async def _serve_frontend(full_path: str):
+    dist = config.FRONTEND_DIST
+    if not dist or full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = os.path.join(dist, full_path)
+    if full_path and os.path.isfile(candidate):
+        return FileResponse(candidate)
+    return FileResponse(os.path.join(dist, "index.html"))
