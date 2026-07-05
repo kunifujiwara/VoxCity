@@ -170,7 +170,7 @@ def _make_voxcity(rect, mesh, source="Standard"):
 
 def test_export_geotiffs_writes_all_layers(tmp_path):
     city = _make_voxcity(RECT, MESH)
-    written = export_geotiffs(city, tmp_path, base_filename="city")
+    written = export_geotiffs(city, tmp_path, base_filename="city", write_readme=False)
 
     assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
     for layer, path in written.items():
@@ -197,7 +197,7 @@ def test_export_geotiffs_skips_missing_layer(tmp_path):
     city = _make_voxcity(RECT, MESH)
     city.dem.elevation = None
     with pytest.warns(UserWarning):
-        written = export_geotiffs(city, tmp_path)
+        written = export_geotiffs(city, tmp_path, write_readme=False)
     assert set(written) == {"land_cover", "building_height", "canopy_height"}
 
 
@@ -236,10 +236,47 @@ def test_export_geotiffs_land_cover_out_of_range_warns(tmp_path):
         assert src.read(1)[src.height - 1, 0] == 255
 
 
+def test_export_geotiffs_writes_readme(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    written = export_geotiffs(city, tmp_path, base_filename="city")
+    assert "readme" in written
+    readme_path = Path(written["readme"])
+    assert readme_path.name == "README.md"
+    assert readme_path.exists()
+    text = readme_path.read_text(encoding="utf-8")
+    # references every written layer file
+    for layer in ("land_cover", "building_height", "dem", "canopy_height"):
+        assert f"city_{layer}.tif" in text
+    # georeferencing info
+    assert "EPSG:4326" in text
+    assert str(MESH) in text
+    # how-to-open guidance
+    assert "rasterio" in text.lower()
+    assert "qgis" in text.lower()
+
+
+def test_export_geotiffs_readme_can_be_disabled(tmp_path):
+    city = _make_voxcity(RECT, MESH)
+    written = export_geotiffs(city, tmp_path, base_filename="city", write_readme=False)
+    assert "readme" not in written
+    assert not (Path(tmp_path) / "README.md").exists()
+
+
+def test_export_geotiffs_readme_lists_land_cover_classes(tmp_path):
+    from voxcity.exporter.geotiff import _land_cover_color_table
+    city = _make_voxcity(RECT, MESH)  # source="Standard" has a class/color table
+    written = export_geotiffs(city, tmp_path, base_filename="city")
+    text = Path(written["readme"]).read_text(encoding="utf-8")
+    _, names = _land_cover_color_table(city)
+    assert names, "expected land-cover class names for the Standard source"
+    # at least one real class name is listed in the README
+    assert any(name in text for name in names.values())
+
+
 def test_geotiff_exporter_class(tmp_path):
     from voxcity.exporter import GeoTIFFExporter  # must be re-exported
     city = _make_voxcity(RECT, MESH)
-    written = GeoTIFFExporter().export(city, str(tmp_path), "city")
+    written = GeoTIFFExporter().export(city, str(tmp_path), "city", write_readme=False)
     assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
     for path in written.values():
         assert Path(path).exists()
@@ -325,7 +362,7 @@ def test_export_geotiffs_canonical_order_is_north_up(tmp_path):
     including the uint8 land-cover + colormap path. Runs in CI with a
     synthetic model, so it covers the wrapper without the demo fixture."""
     city = _make_voxcity(RECT_CANON, MESH)
-    written = export_geotiffs(city, tmp_path, base_filename="canon")
+    written = export_geotiffs(city, tmp_path, base_filename="canon", write_readme=False)
     assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
 
     cc = compute_cell_center_coords(RECT_CANON, MESH)
@@ -392,7 +429,7 @@ def test_export_geotiffs_real_model_is_north_up(tmp_path):
     from voxcity.io import load_voxcity
 
     city = load_voxcity(_TOKYO_H5)
-    written = export_geotiffs(city, tmp_path, base_filename="voxcity")
+    written = export_geotiffs(city, tmp_path, base_filename="voxcity", write_readme=False)
     assert set(written) >= {"building_height", "dem", "canopy_height", "land_cover"}
 
     rect = city.extras["rectangle_vertices"]
