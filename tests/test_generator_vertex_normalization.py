@@ -50,6 +50,9 @@ def test_get_dem_grid_normalizes_vertices_before_ee_fallback(tmp_path, monkeypat
         raise RuntimeError("EE unavailable (simulated, no network)")
 
     monkeypatch.setattr(grids, "initialize_earth_engine", raise_ee_unavailable)
+    # Patch on the source module, not grids: get_dem_grid imports
+    # compute_grid_shape lazily inside the function, so the name is resolved
+    # from voxcity.geoprocessor.raster.core at call time.
     monkeypatch.setattr(
         "voxcity.geoprocessor.raster.core.compute_grid_shape",
         fake_compute_grid_shape,
