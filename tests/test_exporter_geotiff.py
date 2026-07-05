@@ -317,3 +317,34 @@ def test_export_geotiff_georef_roundtrip_canonical(tmp_path):
             for j in range(0, ny, max(1, ny // 7)):
                 r, c = src.index(lons[i, j], lats[i, j])
                 assert arr[r, c] == grid[i, j], f"cell ({i},{j}) misplaced"
+
+
+def test_export_non_square_marker_placement(tmp_path):
+    """Non-square AOI: a marker near the NE corner lands at the correct
+    north-up raster corner, and the output raster shape spans (lat, lon)."""
+    # Non-square: ~2.7 km E-W by ~1.1 km N-S. Canonical [SW, NW, NE, SE] order.
+    lon0, lat0, dlon_deg, dlat_deg = 139.70, 35.60, 0.030, 0.010
+    rect = [
+        (lon0, lat0),                       # SW
+        (lon0, lat0 + dlat_deg),            # NW  -> side_1 = north
+        (lon0 + dlon_deg, lat0 + dlat_deg), # NE
+        (lon0 + dlon_deg, lat0),            # SE  -> side_2 = east
+    ]
+    cc = compute_cell_center_coords(rect, MESH)
+    nx, ny = cc["grid_size"]
+    assert nx != ny  # sanity: genuinely non-square
+    grid = np.zeros((nx, ny), dtype=np.float64)
+    grid[nx - 1, ny - 1] = 42.0  # NE corner cell
+
+    out = tmp_path / "nonsquare.tif"
+    export_grid_geotiff(grid, rect, MESH, out, dtype="float32", nodata=float("nan"))
+    with rasterio.open(out) as src:
+        assert src.transform.e < 0  # north-up
+        arr = src.read(1)
+        # north-up raster: rows span latitude, cols span longitude.
+        n_lat = len(np.unique(np.round(cc["lats"], 9)))
+        n_lon = len(np.unique(np.round(cc["lons"], 9)))
+        assert arr.shape == (n_lat, n_lon)
+        r, c = src.index(cc["lons"][nx - 1, ny - 1], cc["lats"][nx - 1, ny - 1])
+        assert arr[r, c] == 42.0
+        assert r <= 1 and c >= arr.shape[1] - 2  # top-right = NE
