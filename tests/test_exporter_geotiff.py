@@ -249,3 +249,175 @@ def test_geotiff_exporter_rejects_non_voxcity(tmp_path):
     from voxcity.exporter import GeoTIFFExporter
     with pytest.raises(TypeError):
         GeoTIFFExporter().export(object(), str(tmp_path), "x")
+
+
+# Canonical VoxCity vertex order [SW, NW, NE, SE] -> u_vec=north, v_vec=east.
+# This is what real generated models use (e.g. demo/output/tokyo/voxcity.h5).
+RECT_CANON = [
+    (139.75664, 35.67358),   # SW (origin)
+    (139.75664, 35.67809),   # NW  -> side_1 = north
+    (139.76216, 35.67809),   # NE
+    (139.76216, 35.67358),   # SE  -> side_2 = east
+]
+
+
+def test_north_up_affine_is_diagonal_for_canonical_order():
+    """For an axis-aligned AOI the affine must be north-up (diagonal), not rotated,
+    regardless of whether u_vec points east or north."""
+    grid, cc = _voxcity_index_grid(RECT_CANON, MESH)
+    array, transform = _north_up_affine_and_array(grid, RECT_CANON, MESH)
+    # North-up diagonal affine: zero rotation/shear terms, +x east, -y south.
+    assert abs(transform.b) < 1e-12, f"expected no shear, got b={transform.b}"
+    assert abs(transform.d) < 1e-12, f"expected no rotation, got d={transform.d}"
+    assert transform.a > 0
+    assert transform.e < 0
+
+
+def test_export_places_corner_marker_north_up_canonical(tmp_path):
+    """A marker at the geographic NE corner must land at the top-right of the
+    written raster (row 0 = north, last col = east) for the canonical order."""
+    cc = compute_cell_center_coords(RECT_CANON, MESH)
+    nx, ny = cc["grid_size"]
+    grid = np.zeros((nx, ny), dtype=np.float64)
+    # NE corner in cell-index space = (max east, max north). With u=north/v=east,
+    # east is axis j and north is axis i, so NE = (i=nx-1, j=ny-1) as always
+    # (cc.lons/lats are indexed [i,j] identically to grid).
+    grid[nx - 1, ny - 1] = 99.0
+    ne_lon, ne_lat = cc["lons"][nx - 1, ny - 1], cc["lats"][nx - 1, ny - 1]
+    sw_lon, sw_lat = cc["lons"][0, 0], cc["lats"][0, 0]
+
+    out = tmp_path / "canon.tif"
+    export_grid_geotiff(grid, RECT_CANON, MESH, out, dtype="float32", nodata=float("nan"))
+    with rasterio.open(out) as src:
+        assert src.transform.e < 0  # north-up
+        arr = src.read(1)
+        # Marker sampled at its TRUE lon/lat comes back as 99.
+        r, c = src.index(ne_lon, ne_lat)
+        assert arr[r, c] == 99.0
+        # NE geographic corner is at top-right of a north-up raster.
+        assert r <= 1, f"NE marker should be in the top (north) rows, got row {r}"
+        assert c >= arr.shape[1] - 2, f"NE marker should be in the right (east) cols, got col {c}"
+        # SW corner holds background (0), and sits bottom-left.
+        r0, c0 = src.index(sw_lon, sw_lat)
+        assert arr[r0, c0] == 0.0
+        assert r0 >= arr.shape[0] - 2 and c0 <= 1
+
+
+def test_export_geotiff_georef_roundtrip_canonical(tmp_path):
+    """Sampling the written raster at every cell's true lon/lat returns the
+    original grid value (georeferencing is exact for the canonical order)."""
+    grid, cc = _voxcity_index_grid(RECT_CANON, MESH)
+    nx, ny = cc["grid_size"]
+    lons, lats = cc["lons"], cc["lats"]
+    out = tmp_path / "canon_rt.tif"
+    export_grid_geotiff(grid, RECT_CANON, MESH, out, dtype="float64")
+    with rasterio.open(out) as src:
+        arr = src.read(1)
+        for i in range(0, nx, max(1, nx // 7)):
+            for j in range(0, ny, max(1, ny // 7)):
+                r, c = src.index(lons[i, j], lats[i, j])
+                assert arr[r, c] == grid[i, j], f"cell ({i},{j}) misplaced"
+
+
+def test_export_geotiffs_canonical_order_is_north_up(tmp_path):
+    """The high-level multi-layer export_geotiffs must produce north-up
+    (diagonal-affine) rasters for the canonical [SW, NW, NE, SE] order,
+    including the uint8 land-cover + colormap path. Runs in CI with a
+    synthetic model, so it covers the wrapper without the demo fixture."""
+    city = _make_voxcity(RECT_CANON, MESH)
+    written = export_geotiffs(city, tmp_path, base_filename="canon")
+    assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
+
+    cc = compute_cell_center_coords(RECT_CANON, MESH)
+    for layer, path in written.items():
+        with rasterio.open(path) as src:
+            assert abs(src.transform.b) < 1e-12 and abs(src.transform.d) < 1e-12, layer
+            assert src.transform.e < 0, layer  # north-up
+
+    # _make_voxcity puts the only tall building at grid cell (i=0, j=0) = SW
+    # corner, which must land at the bottom-left of a north-up raster.
+    with rasterio.open(written["building_height"]) as src:
+        arr = src.read(1)
+        r, c = src.index(cc["lons"][0, 0], cc["lats"][0, 0])
+        assert arr[r, c] == 12.0
+        assert r >= arr.shape[0] - 2 and c <= 1  # bottom-left = SW
+    # land cover stays uint8 with a colormap through the reindex path.
+    with rasterio.open(written["land_cover"]) as src:
+        assert src.dtypes[0] == "uint8"
+        assert src.colormap(1)
+
+
+def test_export_non_square_marker_placement(tmp_path):
+    """Non-square AOI: a marker near the NE corner lands at the correct
+    north-up raster corner, and the output raster shape spans (lat, lon)."""
+    # Non-square: ~2.7 km E-W by ~1.1 km N-S. Canonical [SW, NW, NE, SE] order.
+    lon0, lat0, dlon_deg, dlat_deg = 139.70, 35.60, 0.030, 0.010
+    rect = [
+        (lon0, lat0),                       # SW
+        (lon0, lat0 + dlat_deg),            # NW  -> side_1 = north
+        (lon0 + dlon_deg, lat0 + dlat_deg), # NE
+        (lon0 + dlon_deg, lat0),            # SE  -> side_2 = east
+    ]
+    cc = compute_cell_center_coords(rect, MESH)
+    nx, ny = cc["grid_size"]
+    assert nx != ny  # sanity: genuinely non-square
+    grid = np.zeros((nx, ny), dtype=np.float64)
+    grid[nx - 1, ny - 1] = 42.0  # NE corner cell
+
+    out = tmp_path / "nonsquare.tif"
+    export_grid_geotiff(grid, rect, MESH, out, dtype="float32", nodata=float("nan"))
+    with rasterio.open(out) as src:
+        assert src.transform.e < 0  # north-up
+        arr = src.read(1)
+        # north-up raster: rows span latitude, cols span longitude.
+        n_lat = len(np.unique(np.round(cc["lats"], 9)))
+        n_lon = len(np.unique(np.round(cc["lons"], 9)))
+        assert arr.shape == (n_lat, n_lon)
+        r, c = src.index(cc["lons"][nx - 1, ny - 1], cc["lats"][nx - 1, ny - 1])
+        assert arr[r, c] == 42.0
+        assert r <= 1 and c >= arr.shape[1] - 2  # top-right = NE
+
+
+import os
+
+from voxcity.exporter.geotiff import export_geotiffs
+
+_TOKYO_H5 = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "demo", "output", "tokyo", "voxcity.h5",
+)
+
+@pytest.mark.skipif(not os.path.exists(_TOKYO_H5), reason="demo tokyo model not present")
+def test_export_geotiffs_real_model_is_north_up(tmp_path):
+    from voxcity.io import load_voxcity
+
+    city = load_voxcity(_TOKYO_H5)
+    written = export_geotiffs(city, tmp_path, base_filename="voxcity")
+    assert set(written) >= {"building_height", "dem", "canopy_height", "land_cover"}
+
+    rect = city.extras["rectangle_vertices"]
+    ms = city.buildings.meta.meshsize
+    cc = compute_cell_center_coords(rect, ms)
+    lons, lats = cc["lons"], cc["lats"]
+    nx, ny = cc["grid_size"]
+
+    layer_grid = {
+        "building_height": np.asarray(city.buildings.heights, dtype=float),
+        "dem": np.asarray(city.dem.elevation, dtype=float),
+        "canopy_height": np.asarray(city.tree_canopy.top, dtype=float),
+    }
+    for layer, path in written.items():
+        with rasterio.open(path) as src:
+            # every written layer must be north-up (diagonal, -y south)
+            assert abs(src.transform.b) < 1e-12 and abs(src.transform.d) < 1e-12, layer
+            assert src.transform.e < 0, layer
+            # georef round-trip for the float layers we can compare exactly
+            if layer in layer_grid:
+                arr = src.read(1)
+                g = layer_grid[layer]
+                for i in range(0, nx, max(1, nx // 6)):
+                    for j in range(0, ny, max(1, ny // 6)):
+                        r, c = src.index(lons[i, j], lats[i, j])
+                        got, exp = arr[r, c], g[i, j]
+                        assert (np.isnan(got) and np.isnan(exp)) or np.isclose(got, exp), \
+                            f"{layer} cell ({i},{j}) misplaced"
