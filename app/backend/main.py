@@ -1895,7 +1895,7 @@ async def export_obj_endpoint(req: ExportObjRequest):
 @app.post("/api/export/geotiff")
 async def export_geotiff_endpoint(req: ExportGeotiffRequest):
     """Export land cover, building height, DEM, and canopy height as a
-    zip of four georeferenced GeoTIFFs."""
+    zip of four georeferenced GeoTIFFs plus a README.md with instructions."""
     if not app_state.has_model:
         raise HTTPException(status_code=400, detail="No model generated yet")
     try:

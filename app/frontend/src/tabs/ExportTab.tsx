@@ -281,7 +281,8 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             </div>
             <p style={{ fontSize: '0.78rem', opacity: 0.8, margin: '0.25rem 0 0' }}>
               Exports land cover, building height, DEM, and canopy height as four
-              georeferenced GeoTIFFs (EPSG:4326).
+              georeferenced GeoTIFFs (EPSG:4326), plus a README.md with layer
+              details and usage instructions.
             </p>
           </GuidedSection>
         )}
