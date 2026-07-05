@@ -35,6 +35,7 @@ from ..geoprocessor.raster import (
 
 from ..utils.lc import convert_land_cover_array, get_land_cover_classes, get_source_class_descriptions
 from ..geoprocessor.io import get_gdf_from_gpkg
+from ..geoprocessor.utils import normalize_rectangle_vertices
 from ..visualizer.grids import visualize_land_cover_grid, visualize_numerical_grid
 from ..utils.logging import get_logger
 from ..errors import ProcessingError
@@ -49,6 +50,9 @@ def get_last_effective_land_cover_source():
 
 
 def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_class_info=True, **kwargs):
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     quiet = kwargs.get('quiet', False)
     if not quiet:
         _logger.info("Creating Land Use Land Cover grid\n ")
@@ -144,6 +148,9 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
 
 
 def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, building_gdf=None, **kwargs):
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     ee_required_sources = {"Open Building 2.5D Temporal"}
     if source in ee_required_sources:
         initialize_earth_engine()
@@ -249,6 +256,9 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
 
 
 def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     quiet = kwargs.get('quiet', False)
     if not quiet:
         _logger.info("Creating Canopy Height grid\n ")
@@ -355,6 +365,9 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
 
 
 def get_dem_grid(rectangle_vertices, meshsize, source, output_dir, **kwargs):
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     quiet = kwargs.get('quiet', False)
     if not quiet:
         _logger.info("Creating Digital Elevation Model (DEM) grid\n ")

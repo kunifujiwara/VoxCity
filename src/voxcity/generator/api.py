@@ -26,6 +26,7 @@ from ..geoprocessor.raster import (
 )
 from ..utils.lc import get_land_cover_classes
 from ..geoprocessor.io import get_gdf_from_gpkg
+from ..geoprocessor.utils import normalize_rectangle_vertices
 from ..visualizer.grids import visualize_numerical_grid
 from ..utils.logging import get_logger
 
@@ -466,7 +467,9 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     Returns:
         VoxCity object containing the generated 3D city model
     """
-    
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     # Check if building_complementary_source was provided via kwargs (for backward compatibility)
     if building_complementary_source is None and 'building_complementary_source' in kwargs:
         building_complementary_source = kwargs.pop('building_complementary_source')
@@ -722,6 +725,9 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
 
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
+    if rectangle_vertices is not None:
+        rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
+
     output_dir = kwargs.get("output_dir", "output")
     os.makedirs(output_dir, exist_ok=True)
     kwargs.pop('output_dir', None)
