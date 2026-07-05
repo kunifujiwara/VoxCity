@@ -9,6 +9,7 @@ from pyproj import CRS, Transformer
 from ..utils import initialize_geod, calculate_distance, normalize_to_one_meter
 from .core import calculate_grid_size, compute_grid_geometry, compute_cell_center_coords, normalize_gdf_crs
 from ...utils.logging import get_logger
+from ...utils.orientation import from_rasterio_layout
 
 _logger = get_logger(__name__)
 
@@ -295,7 +296,7 @@ def create_canopy_grids_from_tree_gdf(tree_gdf, meshsize, rectangle_vertices):
                     transform=raster_transform,
                     all_touched=False
                 )
-                mask = np.ascontiguousarray(raw.T)  # shape (nx, ny), uv_m layout
+                mask = from_rasterio_layout(raw)  # shape (nx, ny), uv_m layout
                 
                 # Apply heights where mask is set (using maximum to preserve higher trees)
                 polygon_cells = mask == 1

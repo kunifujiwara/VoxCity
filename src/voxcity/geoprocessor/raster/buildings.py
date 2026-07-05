@@ -31,6 +31,7 @@ from ...downloader.gee import (
 )
 from .core import calculate_grid_size, create_cell_polygon, compute_grid_geometry, bbox_from_vertices
 from ...utils.logging import get_logger
+from ...utils.orientation import from_rasterio_layout
 
 _logger = get_logger(__name__)
 
@@ -407,12 +408,9 @@ def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u
                     dtype=np.float64
                 )
 
-    # Rasterio writes (rows=v_axis, cols=u_axis) → shape (ny, nx).
-    # Transpose to (nx, ny) = (u_axis, v_axis) uv_m layout.
-    # ascontiguousarray prevents silent performance degradation in Numba JIT.
-    building_height_grid = np.ascontiguousarray(height_raster.T)
-    building_id_grid     = np.ascontiguousarray(id_raster.T)
-    min_heights          = np.ascontiguousarray(min_heights_raster.T)
+    building_height_grid = from_rasterio_layout(height_raster)
+    building_id_grid     = from_rasterio_layout(id_raster)
+    min_heights          = from_rasterio_layout(min_heights_raster)
 
     flat_bmh = building_min_height_grid.reshape(-1)
     flat_height = building_height_grid.reshape(-1)

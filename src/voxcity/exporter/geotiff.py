@@ -12,6 +12,7 @@ import rasterio
 from affine import Affine
 
 from ..geoprocessor.raster.core import compute_grid_geometry, compute_cell_center_coords
+from ..utils.orientation import grid_to_rotated_raster
 
 __all__ = [
     "export_grid_geotiff",
@@ -105,7 +106,7 @@ def _north_up_affine_and_array(grid, rectangle_vertices, meshsize):
         dx * u_vec[0], -dy * v_vec[0], float(nw[0]),
         dx * u_vec[1], -dy * v_vec[1], float(nw[1]),
     )
-    array = np.ascontiguousarray(np.flipud(grid.T))
+    array = grid_to_rotated_raster(grid)
     return array, transform
 
 

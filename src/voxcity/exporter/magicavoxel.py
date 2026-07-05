@@ -25,6 +25,7 @@ from pyvox.writer import VoxWriter
 import os
 from ..visualizer import get_voxel_color_map
 from ..utils.logging import get_logger
+from ..utils.orientation import voxels_to_magicavoxel_axes
 
 _logger = get_logger(__name__)
 
@@ -212,11 +213,7 @@ def numpy_to_vox(array, color_map, output_file):
     value_mapping = create_mapping(color_map)
     value_mapping[0] = 0  # Ensure 0 maps to 0 (void)
 
-    # VoxCity arrays use (north, east, height). pyvox expects dense arrays as
-    # (y, z, x), and pyvox flips dense z internally when writing MagicaVoxel
-    # voxels. Pre-flip height so MagicaVoxel receives z=height.
-    array_flipped = np.flip(array, axis=2)
-    array_transposed = np.transpose(array_flipped, (0, 2, 1))  # (north, height, east)
+    array_transposed = voxels_to_magicavoxel_axes(array)  # (north, height, east)
     mapped_array = np.vectorize(value_mapping.get)(array_transposed, 0)
 
     # Create and save vox file

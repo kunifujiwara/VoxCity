@@ -21,6 +21,12 @@ from typing import List, Tuple, Optional
 import requests
 import numpy as np
 
+from ..utils.orientation import (
+    ensure_orientation,
+    ORIENTATION_NORTH_UP,
+    ORIENTATION_SOUTH_UP,
+)
+
 # Cache directory for ocean detection results (optional)
 CACHE_DIR = Path(tempfile.gettempdir()) / "voxcity_ocean_cache"
 
@@ -603,7 +609,7 @@ def apply_ocean_mask_to_grid(
         rectangle_vertices,
         grid.shape
     )
-    land_mask = np.flipud(land_mask)
+    land_mask = ensure_orientation(land_mask, ORIENTATION_NORTH_UP, ORIENTATION_SOUTH_UP)
     
     # Apply ocean class to cells that are:
     # 1. Not land (ocean according to OSM land polygons)
