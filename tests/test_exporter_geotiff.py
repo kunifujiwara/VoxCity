@@ -319,6 +319,34 @@ def test_export_geotiff_georef_roundtrip_canonical(tmp_path):
                 assert arr[r, c] == grid[i, j], f"cell ({i},{j}) misplaced"
 
 
+def test_export_geotiffs_canonical_order_is_north_up(tmp_path):
+    """The high-level multi-layer export_geotiffs must produce north-up
+    (diagonal-affine) rasters for the canonical [SW, NW, NE, SE] order,
+    including the uint8 land-cover + colormap path. Runs in CI with a
+    synthetic model, so it covers the wrapper without the demo fixture."""
+    city = _make_voxcity(RECT_CANON, MESH)
+    written = export_geotiffs(city, tmp_path, base_filename="canon")
+    assert set(written) == {"land_cover", "building_height", "dem", "canopy_height"}
+
+    cc = compute_cell_center_coords(RECT_CANON, MESH)
+    for layer, path in written.items():
+        with rasterio.open(path) as src:
+            assert abs(src.transform.b) < 1e-12 and abs(src.transform.d) < 1e-12, layer
+            assert src.transform.e < 0, layer  # north-up
+
+    # _make_voxcity puts the only tall building at grid cell (i=0, j=0) = SW
+    # corner, which must land at the bottom-left of a north-up raster.
+    with rasterio.open(written["building_height"]) as src:
+        arr = src.read(1)
+        r, c = src.index(cc["lons"][0, 0], cc["lats"][0, 0])
+        assert arr[r, c] == 12.0
+        assert r >= arr.shape[0] - 2 and c <= 1  # bottom-left = SW
+    # land cover stays uint8 with a colormap through the reindex path.
+    with rasterio.open(written["land_cover"]) as src:
+        assert src.dtypes[0] == "uint8"
+        assert src.colormap(1)
+
+
 def test_export_non_square_marker_placement(tmp_path):
     """Non-square AOI: a marker near the NE corner lands at the correct
     north-up raster corner, and the output raster shape spans (lat, lon)."""
