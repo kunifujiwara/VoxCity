@@ -5,7 +5,8 @@ while preserving the original public API under `voxcity.generator`.
 
 Orientation contract:
 - All 2D grids use uv_m/SOUTH_UP orientation (axis 0 = u/north, row 0 = southern origin edge; axis 1 = v/east).
-- 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
+- 3D voxel arrays index (i, j, k) with the same horizontal orientation as the
+  2D grids (row 0 = southern origin edge, i increases northward) and k = ground→up.
 """
 
 from .api import get_voxcity, get_voxcity_CityGML, auto_select_data_sources

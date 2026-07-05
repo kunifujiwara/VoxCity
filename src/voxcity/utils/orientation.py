@@ -31,6 +31,11 @@ Boundary layouts handled by helpers in this module:
       grid_to_rotated_raster().
   MagicaVoxel dense axes — voxels_to_magicavoxel_axes().
   OBJ mesher (k, i, j) axes — voxels_to_kji().
+
+Intentional exception: the ENVI-met exporter keeps SOUTH_UP internally and
+writes north-first rows itself (arr[::-1]) at the file-format boundary. It
+deliberately does NOT call ensure_orientation(); a guard test
+(tests/test_exporter_envimet.py::TestEnvimetSouthUpProcessing) enforces this.
 """
 
 from __future__ import annotations
