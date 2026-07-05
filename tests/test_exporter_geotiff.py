@@ -348,3 +348,48 @@ def test_export_non_square_marker_placement(tmp_path):
         r, c = src.index(cc["lons"][nx - 1, ny - 1], cc["lats"][nx - 1, ny - 1])
         assert arr[r, c] == 42.0
         assert r <= 1 and c >= arr.shape[1] - 2  # top-right = NE
+
+
+import os
+
+from voxcity.exporter.geotiff import export_geotiffs
+
+_TOKYO_H5 = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "demo", "output", "tokyo", "voxcity.h5",
+)
+
+@pytest.mark.skipif(not os.path.exists(_TOKYO_H5), reason="demo tokyo model not present")
+def test_export_geotiffs_real_model_is_north_up(tmp_path):
+    from voxcity.io import load_voxcity
+
+    city = load_voxcity(_TOKYO_H5)
+    written = export_geotiffs(city, tmp_path, base_filename="voxcity")
+    assert set(written) >= {"building_height", "dem", "canopy_height", "land_cover"}
+
+    rect = city.extras["rectangle_vertices"]
+    ms = city.buildings.meta.meshsize
+    cc = compute_cell_center_coords(rect, ms)
+    lons, lats = cc["lons"], cc["lats"]
+    nx, ny = cc["grid_size"]
+
+    layer_grid = {
+        "building_height": np.asarray(city.buildings.heights, dtype=float),
+        "dem": np.asarray(city.dem.elevation, dtype=float),
+        "canopy_height": np.asarray(city.tree_canopy.top, dtype=float),
+    }
+    for layer, path in written.items():
+        with rasterio.open(path) as src:
+            # every written layer must be north-up (diagonal, -y south)
+            assert abs(src.transform.b) < 1e-12 and abs(src.transform.d) < 1e-12, layer
+            assert src.transform.e < 0, layer
+            # georef round-trip for the float layers we can compare exactly
+            if layer in layer_grid:
+                arr = src.read(1)
+                g = layer_grid[layer]
+                for i in range(0, nx, max(1, nx // 6)):
+                    for j in range(0, ny, max(1, ny // 6)):
+                        r, c = src.index(lons[i, j], lats[i, j])
+                        got, exp = arr[r, c], g[i, j]
+                        assert (np.isnan(got) and np.isnan(exp)) or np.isclose(got, exp), \
+                            f"{layer} cell ({i},{j}) misplaced"
