@@ -260,6 +260,7 @@ RECT_CANON = [
     (139.76216, 35.67358),   # SE  -> side_2 = east
 ]
 
+
 def test_north_up_affine_is_diagonal_for_canonical_order():
     """For an axis-aligned AOI the affine must be north-up (diagonal), not rotated,
     regardless of whether u_vec points east or north."""
@@ -270,6 +271,7 @@ def test_north_up_affine_is_diagonal_for_canonical_order():
     assert abs(transform.d) < 1e-12, f"expected no rotation, got d={transform.d}"
     assert transform.a > 0
     assert transform.e < 0
+
 
 def test_export_places_corner_marker_north_up_canonical(tmp_path):
     """A marker at the geographic NE corner must land at the top-right of the
@@ -299,6 +301,7 @@ def test_export_places_corner_marker_north_up_canonical(tmp_path):
         r0, c0 = src.index(sw_lon, sw_lat)
         assert arr[r0, c0] == 0.0
         assert r0 >= arr.shape[0] - 2 and c0 <= 1
+
 
 def test_export_geotiff_georef_roundtrip_canonical(tmp_path):
     """Sampling the written raster at every cell's true lon/lat returns the

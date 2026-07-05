@@ -11,7 +11,7 @@ import numpy as np
 import rasterio
 from affine import Affine
 
-from ..geoprocessor.raster.core import compute_grid_geometry
+from ..geoprocessor.raster.core import compute_grid_geometry, compute_cell_center_coords
 
 __all__ = [
     "export_grid_geotiff",
@@ -21,23 +21,31 @@ __all__ = [
 
 
 def _north_up_affine_and_array(grid, rectangle_vertices, meshsize):
-    """Convert a VoxCity (nx, ny) east/north grid into a north-up raster array
-    and its rasterio Affine.
+    """Convert a VoxCity 2D grid into a raster array + rasterio ``Affine``.
 
-    VoxCity grids are indexed grid[i, j] with i along u_vec (east) and j along
-    v_vec (north). A conventional north-up GeoTIFF wants shape (rows=ny, cols=nx)
-    with row 0 = north. Returns (array, transform).
+    The grid is indexed ``grid[i, j]`` with ``i`` along ``u_vec`` (side_1) and
+    ``j`` along ``v_vec`` (side_2). The cell centre of ``grid[i, j]`` is at
+    ``(cc.lons[i, j], cc.lats[i, j])`` — this holds for *any* rectangle-vertex
+    order, so we orient the output from those cell centres rather than assuming
+    which axis is east/north.
+
+    For an axis-aligned AOI (the common case, incl. all real generated models,
+    whose canonical order ``[SW, NW, NE, SE]`` makes ``u_vec=north, v_vec=east``)
+    the result is a genuinely **north-up** raster: ``array[0]`` = north edge,
+    ``array[:, 0]`` = west edge, with a diagonal affine (``b == d == 0``).
+
+    For a rotated AOI a north-up raster is not representable without resampling,
+    so we emit a rotated — but still georeferenced-correct — affine (an
+    affine-aware GIS tool places every pixel correctly).
+
+    Returns ``(array, transform)``.
     """
     geom = compute_grid_geometry(rectangle_vertices, meshsize)
     if geom is None:
         raise ValueError(
             "Could not compute grid geometry; need at least 4 rectangle_vertices"
         )
-    origin = np.asarray(geom["origin"], dtype=float)
-    u_vec = np.asarray(geom["u_vec"], dtype=float)
-    v_vec = np.asarray(geom["v_vec"], dtype=float)
     nx, ny = geom["grid_size"]
-    dx, dy = geom["adj_mesh"]
 
     grid = np.asarray(grid)
     if grid.shape != (nx, ny):
@@ -45,13 +53,69 @@ def _north_up_affine_and_array(grid, rectangle_vertices, meshsize):
             f"grid shape {grid.shape} does not match expected (nx, ny) = {(nx, ny)}"
         )
 
-    nw = origin + ny * dy * v_vec  # NW corner = top-left in north-up
+    u_vec = np.asarray(geom["u_vec"], dtype=float)
+    v_vec = np.asarray(geom["v_vec"], dtype=float)
+
+    # An axis-aligned AOI has each side vector along a pure lon or lat axis.
+    axis_aligned = (
+        (abs(u_vec[0]) < 1e-12 or abs(u_vec[1]) < 1e-12)
+        and (abs(v_vec[0]) < 1e-12 or abs(v_vec[1]) < 1e-12)
+    )
+
+    if axis_aligned:
+        cc = compute_cell_center_coords(rectangle_vertices, meshsize)
+        lons = np.asarray(cc["lons"], dtype=float)  # shape (nx, ny), indexed like grid
+        lats = np.asarray(cc["lats"], dtype=float)
+
+        uniq_lon = np.unique(np.round(lons, 9))
+        uniq_lat = np.unique(np.round(lats, 9))
+        n_cols, n_rows = uniq_lon.size, uniq_lat.size
+
+        if n_cols * n_rows == grid.size:  # exact axis-aligned tiling
+            dlon = (
+                (uniq_lon[-1] - uniq_lon[0]) / (n_cols - 1)
+                if n_cols > 1
+                else _axis_spacing_deg(u_vec, v_vec, geom["adj_mesh"], lon=True)
+            )
+            dlat = (
+                (uniq_lat[-1] - uniq_lat[0]) / (n_rows - 1)
+                if n_rows > 1
+                else _axis_spacing_deg(u_vec, v_vec, geom["adj_mesh"], lon=False)
+            )
+            min_lon = float(uniq_lon[0])
+            max_lat = float(uniq_lat[-1])
+
+            out = np.empty((n_rows, n_cols), dtype=grid.dtype)
+            col_idx = np.rint((lons - min_lon) / dlon).astype(int)
+            row_idx = np.rint((max_lat - lats) / dlat).astype(int)
+            out[row_idx, col_idx] = grid  # bijective for an axis-aligned grid
+
+            transform = Affine(
+                dlon, 0.0, min_lon - dlon / 2.0,
+                0.0, -dlat, max_lat + dlat / 2.0,
+            )
+            return np.ascontiguousarray(out), transform
+
+    # Rotated AOI (or a degenerate 1-cell tiling that isn't axis-aligned):
+    # rotated but georeferenced-correct affine, matching the original behaviour.
+    origin = np.asarray(geom["origin"], dtype=float)
+    dx, dy = geom["adj_mesh"]
+    nw = origin + ny * dy * v_vec
     transform = Affine(
         dx * u_vec[0], -dy * v_vec[0], float(nw[0]),
         dx * u_vec[1], -dy * v_vec[1], float(nw[1]),
     )
     array = np.ascontiguousarray(np.flipud(grid.T))
     return array, transform
+
+
+def _axis_spacing_deg(u_vec, v_vec, adj_mesh, *, lon):
+    """Degrees-per-cell along the lon (``lon=True``) or lat axis for an
+    axis-aligned AOI. One of u_vec/v_vec is along lon, the other along lat;
+    pick the non-zero contribution. Used only for degenerate 1-wide grids."""
+    dx, dy = adj_mesh
+    comp = 0 if lon else 1
+    return max(abs(dx * u_vec[comp]), abs(dy * v_vec[comp]))
 
 
 def export_grid_geotiff(
