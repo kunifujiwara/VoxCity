@@ -270,7 +270,9 @@ def normalize_rectangle_vertices(vertices, warn=True):
         vertices: Sequence of 4 (lon, lat) pairs, or 5 where last == first.
         warn: If True (default), log a warning when the input order had to
             be changed. Callers that reorder by design (e.g. the draw UI)
-            pass False.
+            pass False. Only the reorder warning is gated by this flag; the
+            non-parallelogram warning always fires, since a skewed quad
+            signals malformed input regardless of ordering.
 
     Returns:
         list of 4 (lon, lat) tuples in [SW, NW, NE, SE] order. Idempotent.
@@ -315,18 +317,21 @@ def normalize_rectangle_vertices(vertices, warn=True):
         )
         for i in range(4)
     )
-    if perimeter > 0 and math.hypot(dev_x, dev_y) > 0.01 * perimeter:
+    deviation = math.hypot(dev_x, dev_y)
+    if perimeter > 0 and deviation > 0.01 * perimeter:
         logger.warning(
             "rectangle_vertices do not form a parallelogram (deviation %.1f%% "
             "of perimeter); grid geometry assumes an affine frame and may be "
             "distorted.",
-            100.0 * math.hypot(dev_x, dev_y) / perimeter,
+            100.0 * deviation / perimeter,
         )
 
     # Pick the edge whose Mercator bearing atan2(dx, dy) lies in [-90, 90)
-    # (the most-northward edge); it becomes v0->v1.
+    # (the most-northward edge); it becomes v0->v1. A tie (e.g. a square
+    # rotated exactly 45°) is resolved by iteration order — both candidate
+    # edges are geometrically valid "north" edges.
     best_i = 0
-    best_angle = 999.0
+    best_angle = float("inf")
     for i in range(4):
         j = (i + 1) % 4
         dx = proj[j][0] - proj[i][0]
