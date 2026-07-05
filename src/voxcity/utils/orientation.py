@@ -7,7 +7,10 @@ Contract:
   accept and return 2D grids in this orientation unless explicitly documented
   otherwise.
 - Visualization utilities may flip vertically for display purposes only.
-- 3D indexing follows (row, col, z) = (north→south, west→east, ground→up).
+- 3D voxel arrays index (i, j, k) with the same horizontal orientation as the
+  2D grids (row 0 = southern origin edge, i increases northward; j increases
+  eastward) and k = ground→up. The voxelizer applies no flip between 2D
+  grids and voxel layers.
 
 Utilities here are intentionally minimal to avoid introducing hidden behavior.
 They can be used at I/O boundaries (e.g., when reading rasters with south_up
@@ -17,6 +20,17 @@ Coordinate-frame vocabulary (see also voxcity.utils.projector):
   uv cell — cell index (i, j) in uv_m/SOUTH_UP (Phase 3); row 0 is south/origin.
   legacy ij_south — same layout as uv_m/SOUTH_UP; kept for backward compatibility.
   ensure_orientation() is the only legitimate place to convert between the two.
+
+Boundary layouts handled by helpers in this module:
+  north_up raster — row 0 = north (GeoTIFF, display, coastline masks).
+      uv <-> north_up is a pure vertical flip: ensure_orientation().
+  rasterio layout — shape (ny, nx): rows along v, cols along u, as produced/
+      consumed by rasterio.features.rasterize with the uv affine.
+      uv <-> rasterio is a pure transpose: to/from_rasterio_layout().
+  rotated raster — legacy layout for rotated-AOI GeoTIFFs:
+      grid_to_rotated_raster().
+  MagicaVoxel dense axes — voxels_to_magicavoxel_axes().
+  OBJ mesher (k, i, j) axes — voxels_to_kji().
 """
 
 from __future__ import annotations
@@ -53,4 +67,50 @@ def ensure_orientation(
     # Only two orientations supported; converting between them is a vertical flip
     return np.flipud(grid)
 
+
+def to_rasterio_layout(grid: np.ndarray) -> np.ndarray:
+    """Convert an internal uv grid (nx, ny) to rasterio layout (ny, nx).
+
+    Frames: uv_m/SOUTH_UP ``grid[i, j]`` (axis 0 = u, axis 1 = v) ->
+    rasterio ``arr[row, col]`` with rows along v and cols along u, as
+    consumed by ``rasterio.features.rasterize`` with the uv affine
+    ``Affine(du*u_vec[0], dv*v_vec[0], ox, du*u_vec[1], dv*v_vec[1], oy)``.
+    Pure transpose — no vertical flip. Returns a C-contiguous array
+    (prevents silent Numba performance degradation downstream).
+    """
+    return np.ascontiguousarray(np.asarray(grid).T)
+
+
+def from_rasterio_layout(arr: np.ndarray) -> np.ndarray:
+    """Convert a rasterio-layout array (ny, nx) to an internal uv grid (nx, ny).
+
+    Inverse of :func:`to_rasterio_layout`. Pure transpose — no vertical
+    flip. Returns a C-contiguous array.
+    """
+    return np.ascontiguousarray(np.asarray(arr).T)
+
+
+def grid_to_rotated_raster(grid: np.ndarray) -> np.ndarray:
+    """Convert a uv grid to the legacy rotated-raster layout for GeoTIFF.
+
+    ``flipud(grid.T)``: rows advance along -v, columns along +u. Only
+    meaningful together with the rotated affine whose origin is the AOI's
+    far-v corner (see the rotated-AOI fallback in ``exporter/geotiff.py``).
+    Axis-aligned AOIs use the cell-centre scatter path instead.
+    """
+    return np.ascontiguousarray(np.flipud(np.asarray(grid).T))
+
+
+def voxels_to_magicavoxel_axes(voxels: np.ndarray) -> np.ndarray:
+    """(u/north, v/east, z/height) voxels -> pyvox dense (y=north, z=height, x=east).
+
+    z is pre-flipped because pyvox inverts dense z when writing MagicaVoxel
+    voxels.
+    """
+    return np.transpose(np.flip(voxels, axis=2), (0, 2, 1))
+
+
+def voxels_to_kji(voxels: np.ndarray) -> np.ndarray:
+    """(u, v, z) voxels -> (k=z, i=u, j=v) axis order used by the OBJ mesher."""
+    return np.asarray(voxels).transpose(2, 0, 1)
 
