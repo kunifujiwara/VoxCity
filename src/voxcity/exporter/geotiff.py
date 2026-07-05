@@ -134,7 +134,8 @@ def export_grid_geotiff(
 
     Parameters
     ----------
-    grid : 2D array, VoxCity (nx, ny) east/north layout.
+    grid : 2D array, VoxCity ``(nx, ny)`` grid indexed along the AOI's
+        side_1/side_2 axes (either order supported for axis-aligned AOIs).
     rectangle_vertices, meshsize : AOI geometry used for georeferencing.
     output_path : destination .tif path (parent dirs created as needed).
     crs : output CRS string (default "EPSG:4326").
