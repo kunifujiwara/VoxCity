@@ -23,7 +23,7 @@ from ipyleaflet import (
 )
 from geopy import distance
 
-from ..utils import get_coordinates_from_cityname
+from ..utils import get_coordinates_from_cityname, normalize_rectangle_vertices
 
 
 def rotate_rectangle(m, rectangle_vertices, angle):
@@ -110,52 +110,14 @@ def _build_rect(clicks, to_merc, to_geo):
 
 
 def _normalize_rect_vertices(verts, to_merc):
-    """Reorder rectangle vertices to match the SW→NW→NE→SE convention.
+    """Reorder rectangle vertices to the canonical SW->NW->NE->SE order.
 
-    The pipeline expects:
-      [0]=SW, [1]=NW, [2]=NE, [3]=SE
-    so that the v0→v1 edge points roughly northward (rotation_angle ∈ [-90, 90]).
-
-    The algorithm:
-    1. Pick the edge (among the 4 consecutive edges) whose bearing from north
-       is in [-90, 90).  This becomes the v0→v1 edge.
-    2. Ensure v3 is to the RIGHT of v0→v1 (i.e. the eastward/SE side).
-       If not, use the opposite parallel northward edge instead.
+    Thin wrapper kept for backward compatibility. Delegates to
+    :func:`voxcity.geoprocessor.utils.normalize_rectangle_vertices`;
+    *to_merc* is ignored (the shared implementation caches its own
+    transformer). warn=False because the draw UI reorders by design.
     """
-    proj = [to_merc.transform(lon, lat) for lon, lat in verts]
-
-    # Find the edge whose bearing (atan2(dx, dy)) is in [-90, 90)
-    best_i = 0
-    best_angle = 999
-    for i in range(4):
-        j = (i + 1) % 4
-        dx = proj[j][0] - proj[i][0]
-        dy = proj[j][1] - proj[i][1]
-        angle = math.degrees(math.atan2(dx, dy))
-        if -90 <= angle < 90 and abs(angle) < abs(best_angle):
-            best_i = i
-            best_angle = angle
-
-    # Rotate list so that best_i becomes index 0
-    ordered = [verts[(best_i + k) % 4] for k in range(4)]
-    proj_ordered = [proj[(best_i + k) % 4] for k in range(4)]
-
-    # Check winding: v3 must be to the RIGHT of v0→v1 (i.e. the east/SE side).
-    # In standard 2D (x=east, y=north), "right of" = negative cross product.
-    # cross(v0→v1, v0→v3) < 0  ⟹  v3 is to the right  ⟹  correct.
-    # cross(v0→v1, v0→v3) > 0  ⟹  v3 is to the left   ⟹  need to fix.
-    dx01 = proj_ordered[1][0] - proj_ordered[0][0]
-    dy01 = proj_ordered[1][1] - proj_ordered[0][1]
-    dx03 = proj_ordered[3][0] - proj_ordered[0][0]
-    dy03 = proj_ordered[3][1] - proj_ordered[0][1]
-    cross = dx01 * dy03 - dy01 * dx03
-
-    if cross > 0:
-        # v3 is on the wrong (left/west) side.  Use the opposite parallel
-        # northward edge as v0→v1 by fully reversing the vertex list.
-        ordered = [ordered[3], ordered[2], ordered[1], ordered[0]]
-
-    return ordered
+    return normalize_rectangle_vertices(verts, warn=False)
 
 
 def draw_rectangle_map(center=(40, -100), zoom=4):

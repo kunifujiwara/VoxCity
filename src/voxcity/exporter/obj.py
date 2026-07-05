@@ -46,6 +46,7 @@ except ImportError:  # optional dependency
 from ..visualizer import get_voxel_color_map
 from ..errors import ConfigurationError
 from ..utils.logging import get_logger
+from ..utils.orientation import voxels_to_kji
 
 _logger = get_logger(__name__)
 
@@ -387,7 +388,7 @@ def export_obj(array, output_dir, file_name, voxel_size=None, voxel_color_map=No
     # scene-space vertices: X = v/east (axis 1 of original), Y = u/north (axis 0),
     # Z = height (axis 2). Consistent with the Phase 3 uv-domain contract in
     # src/voxcity/simulator/common/coordinates.py.
-    array = array.transpose(2, 0, 1)  # (nk=height, ni=north/u, nj=east/v)
+    array = voxels_to_kji(array)  # (nk=height, ni=north/u, nj=east/v)
     size_x, size_y, size_z = array.shape  # size_x=height, size_y=north, size_z=east
 
     # Initialize data structures

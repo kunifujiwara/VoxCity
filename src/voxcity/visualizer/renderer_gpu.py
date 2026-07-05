@@ -1096,9 +1096,11 @@ if _HAS_TAICHI:
             img = self.pixels.to_numpy()
             img = (img * 255).clip(0, 255).astype(np.uint8)
             # Transpose to (H, W, 3) and flip vertically
+            # Image-space conversion (Taichi buffer → row-major image);
+            # not a geographic frame conversion (see utils/orientation.py).
             img = np.transpose(img, (1, 0, 2))
             img = np.flipud(img)
-            
+
             return img
         
         def render_to_file(self, filepath: str, show_progress: bool = True):
@@ -1601,6 +1603,8 @@ class GPURenderer:
             self.taichi_renderer.render_to_file(output_path, show_progress)
             img = self.taichi_renderer.pixels.to_numpy()
             img = (img * 255).clip(0, 255).astype(np.uint8)
+            # Image-space conversion (Taichi buffer → row-major image);
+            # not a geographic frame conversion (see utils/orientation.py).
             img = np.transpose(img, (1, 0, 2))
             img = np.flipud(img)
             return img

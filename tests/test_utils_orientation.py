@@ -81,3 +81,56 @@ class TestEnsureOrientation:
         result = ensure_orientation(sample_grid, "south_up")
         expected = np.flipud(sample_grid)
         assert np.array_equal(result, expected)
+
+
+import numpy as np
+
+from voxcity.utils.orientation import (
+    ensure_orientation,
+    to_rasterio_layout,
+    from_rasterio_layout,
+    grid_to_rotated_raster,
+    voxels_to_magicavoxel_axes,
+    voxels_to_kji,
+)
+
+
+def test_to_rasterio_layout_matches_inline_transpose():
+    g = np.arange(12).reshape(3, 4)
+    out = to_rasterio_layout(g)
+    assert np.array_equal(out, g.T)
+    assert out.flags["C_CONTIGUOUS"]
+
+
+def test_rasterio_layout_round_trip():
+    g = np.arange(12).reshape(3, 4)
+    assert np.array_equal(from_rasterio_layout(to_rasterio_layout(g)), g)
+
+
+def test_from_rasterio_layout_matches_inline():
+    arr = np.arange(12).reshape(4, 3)
+    out = from_rasterio_layout(arr)
+    assert np.array_equal(out, arr.T)
+    assert out.flags["C_CONTIGUOUS"]
+
+
+def test_grid_to_rotated_raster_matches_inline():
+    g = np.arange(12).reshape(3, 4)
+    assert np.array_equal(grid_to_rotated_raster(g), np.flipud(g.T))
+
+
+def test_voxels_to_magicavoxel_axes_matches_inline():
+    a = np.arange(24).reshape(2, 3, 4)
+    expected = np.transpose(np.flip(a, axis=2), (0, 2, 1))
+    assert np.array_equal(voxels_to_magicavoxel_axes(a), expected)
+
+
+def test_voxels_to_kji_matches_inline():
+    a = np.arange(24).reshape(2, 3, 4)
+    assert np.array_equal(voxels_to_kji(a), a.transpose(2, 0, 1))
+
+
+def test_ensure_orientation_involution():
+    g = np.arange(12).reshape(3, 4)
+    flipped = ensure_orientation(g, "south_up", "north_up")
+    assert np.array_equal(ensure_orientation(flipped, "north_up", "south_up"), g)

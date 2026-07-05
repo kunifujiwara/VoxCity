@@ -250,6 +250,116 @@ def setup_transformer(from_crs, to_crs):
     """
     return Transformer.from_crs(from_crs, to_crs, always_xy=True)
 
+@functools.lru_cache(maxsize=1)
+def _web_mercator_transformer():
+    """Cached WGS84 -> Web Mercator transformer for vertex normalization."""
+    return Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+
+
+def normalize_rectangle_vertices(vertices, warn=True):
+    """Validate and reorder rectangle vertices to canonical [SW, NW, NE, SE].
+
+    The VoxCity pipeline assumes ``rectangle_vertices[0]`` is the grid origin
+    (SW) and the v0->v1 edge points roughly north (rotation_angle in
+    [-90, 90]). This function accepts 4 (lon, lat) pairs in any rotation or
+    winding — or a 5-point GeoJSON-style closed ring — and returns them in
+    canonical order. Rotated rectangles are supported: the most-northward
+    edge becomes v0->v1.
+
+    Args:
+        vertices: Sequence of 4 (lon, lat) pairs, or 5 where last == first.
+        warn: If True (default), log a warning when the input order had to
+            be changed. Callers that reorder by design (e.g. the draw UI)
+            pass False. Only the reorder warning is gated by this flag; the
+            non-parallelogram warning always fires, since a skewed quad
+            signals malformed input regardless of ordering.
+
+    Returns:
+        list of 4 (lon, lat) tuples in [SW, NW, NE, SE] order. Idempotent.
+
+    Raises:
+        ValueError: On wrong vertex count or coordinates outside valid
+            lon/lat ranges (with a hint about (lat, lon) argument order,
+            the most common cause).
+    """
+    verts = [(float(p[0]), float(p[1])) for p in vertices]
+
+    if (
+        len(verts) == 5
+        and math.isclose(verts[0][0], verts[4][0], abs_tol=1e-9)
+        and math.isclose(verts[0][1], verts[4][1], abs_tol=1e-9)
+    ):
+        verts = verts[:4]
+    if len(verts) != 4:
+        raise ValueError(
+            "rectangle_vertices must contain 4 (lon, lat) pairs "
+            f"(or a 5-point closed ring); got {len(verts)}"
+        )
+
+    for lon, lat in verts:
+        if abs(lon) > 180 or abs(lat) > 90:
+            raise ValueError(
+                f"Invalid coordinate (lon={lon}, lat={lat}): expected "
+                "|lon| <= 180 and |lat| <= 90. Vertices must be (lon, lat) "
+                "pairs — did you pass (lat, lon)?"
+            )
+
+    to_merc = _web_mercator_transformer()
+    proj = [to_merc.transform(lon, lat) for lon, lat in verts]
+
+    # Parallelogram check: v0->v2 should equal (v0->v1) + (v0->v3).
+    dev_x = (proj[1][0] - proj[0][0]) + (proj[3][0] - proj[0][0]) - (proj[2][0] - proj[0][0])
+    dev_y = (proj[1][1] - proj[0][1]) + (proj[3][1] - proj[0][1]) - (proj[2][1] - proj[0][1])
+    perimeter = sum(
+        math.hypot(
+            proj[(i + 1) % 4][0] - proj[i][0],
+            proj[(i + 1) % 4][1] - proj[i][1],
+        )
+        for i in range(4)
+    )
+    deviation = math.hypot(dev_x, dev_y)
+    if perimeter > 0 and deviation > 0.01 * perimeter:
+        logger.warning(
+            "rectangle_vertices do not form a parallelogram (deviation %.1f%% "
+            "of perimeter); grid geometry assumes an affine frame and may be "
+            "distorted.",
+            100.0 * deviation / perimeter,
+        )
+
+    # Pick the edge whose Mercator bearing atan2(dx, dy) lies in [-90, 90)
+    # (the most-northward edge); it becomes v0->v1. A tie (e.g. a square
+    # rotated exactly 45°) is resolved by iteration order — both candidate
+    # edges are geometrically valid "north" edges.
+    best_i = 0
+    best_angle = float("inf")
+    for i in range(4):
+        j = (i + 1) % 4
+        dx = proj[j][0] - proj[i][0]
+        dy = proj[j][1] - proj[i][1]
+        angle = math.degrees(math.atan2(dx, dy))
+        if -90 <= angle < 90 and abs(angle) < abs(best_angle):
+            best_i = i
+            best_angle = angle
+
+    ordered = [verts[(best_i + k) % 4] for k in range(4)]
+    proj_ordered = [proj[(best_i + k) % 4] for k in range(4)]
+
+    # v3 must lie to the RIGHT (east) of v0->v1; if not, reverse the ring.
+    dx01 = proj_ordered[1][0] - proj_ordered[0][0]
+    dy01 = proj_ordered[1][1] - proj_ordered[0][1]
+    dx03 = proj_ordered[3][0] - proj_ordered[0][0]
+    dy03 = proj_ordered[3][1] - proj_ordered[0][1]
+    if dx01 * dy03 - dy01 * dx03 > 0:
+        ordered = [ordered[3], ordered[2], ordered[1], ordered[0]]
+
+    if warn and ordered != verts:
+        logger.warning(
+            "rectangle_vertices were not in canonical [SW, NW, NE, SE] order "
+            "and have been reordered automatically. Pass vertices as "
+            "[SW, NW, NE, SE] (lon, lat) to silence this warning."
+        )
+    return ordered
+
 def transform_coords(transformer, lon, lat):
     """
     Transform coordinates using provided transformer with error handling.
