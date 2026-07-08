@@ -1,109 +1,85 @@
-# Dockerfile (updated)
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1.6
 
-ENV DEBIAN_FRONTEND=noninteractive
+FROM node:20-bookworm-slim AS frontend
 
-# Update package lists and install system dependencies
-RUN apt-get update && apt-get install -y \
-    # Basic tools
-    git python3 python3-pip python3-dev python3-venv \
-    wget curl vim nano htop \
-    build-essential cmake \
-    # Geospatial libraries
-    gdal-bin libgdal-dev python3-gdal \
-    libspatialindex-dev \
-    libproj-dev proj-data proj-bin \
-    libgeos-dev \
-    # Graphics and visualization libraries (for VoxCity 3D rendering)
-    libgl1-mesa-glx libglu1-mesa \
-    xvfb \
-    # Additional libraries that might be needed
-    libopenblas-dev \
-    liblapack-dev \
-    gfortran \
+WORKDIR /work
+
+COPY app/frontend/package.json app/frontend/package-lock.json ./
+RUN npm ci
+
+COPY app/frontend/ ./
+RUN npm run build
+
+FROM nvidia/cuda:12.3.2-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        gfortran \
+        gdal-bin \
+        libgdal-dev \
+        libgeos-dev \
+        libgl1 \
+        libglib2.0-0 \
+        liblapack-dev \
+        libopenblas-dev \
+        libproj-dev \
+        libspatialindex-dev \
+        proj-bin \
+        proj-data \
+        python3.10 \
+        python3.10-dev \
+        python3.10-venv \
+        python3-pip \
+        wget \
+        xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up Python environment (allow access to system site-packages for python3-gdal)
-RUN python3 -m venv /opt/venv --system-site-packages
-ENV PATH="/opt/venv/bin:$PATH"
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
-# Upgrade pip and install wheel
-RUN pip install --upgrade pip setuptools wheel
-
-# Constrain scientific stack to avoid NumPy 2 ABI issues
-RUN printf "numpy<2\nnumba<0.60\nxarray<2025.1\nrasterio==1.3.11\nfiona<1.10\n" > /tmp/constraints.txt
-
-# Install VoxCity and app dependencies under constraints
-RUN pip install -c /tmp/constraints.txt \
-    voxcity \
-    streamlit>=1.28.0 \
-    streamlit-folium>=0.15.0 \
-    folium>=0.14.0 \
-    matplotlib>=3.7.0 \
-    plotly>=5.17.0 \
-    pillow \
-    scipy \
-    scikit-image \
-    requests \
-    geopy \
-    seaborn \
-    contextily \
-    tqdm \
-    ipython \
-    pandas \
-    geopandas \
-    shapely \
-    pyproj \
-    earthengine-api \
-    geemap \
-    trimesh \
-    pyvista \
-    vtk \
-    open3d
-
-# Create a non-root user FIRST
-RUN useradd -m -s /bin/bash voxcity
-
-# Create workspace directory
 WORKDIR /app
 
-# Copy the web application file
-COPY app.py /app/
+# Install the voxcity library from this repo's own source (this repo IS voxcity).
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN python -m pip install --upgrade pip \
+    && printf 'numpy>=1.24,<2\nnumba<0.60\nxarray<2025.1\nrasterio==1.3.11\nfiona<1.10\n' > /tmp/constraints.txt \
+    && python -m pip install -c /tmp/constraints.txt numpy \
+    && python -m pip install -c /tmp/constraints.txt GDAL==$(gdal-config --version) --no-build-isolation \
+    && python -m pip install -c /tmp/constraints.txt ".[gpu]"
 
-# Prepare runtime output directories used by the app (/tmp/voxcity_output)
-RUN mkdir -p /tmp/voxcity_output/test \
-    /tmp/voxcity_output/envimet \
-    /tmp/voxcity_output/magicavoxel \
-    /tmp/voxcity_output/obj \
-    /tmp/voxcity_output/solar \
-    /tmp/voxcity_output/view \
-    /tmp/voxcity_output/epw \
-    /tmp/voxcity_output/netcdf \
-    /tmp/voxcity_output/3d_vis && \
-    chown -R voxcity:voxcity /tmp/voxcity_output && \
-    chmod -R 777 /tmp/voxcity_output
+# App code + backend runtime deps (fastapi/uvicorn/python-multipart/python-dotenv).
+COPY app ./app
+RUN python -m pip install -c /tmp/constraints.txt -r app/backend/requirements.txt
 
-# Switch to non-root user
-USER voxcity
+# Built frontend from the node stage → served by the backend SPA route.
+COPY --from=frontend /work/dist ./app/frontend/dist
 
-# Set environment variables for Earth Engine
-ENV EARTHENGINE_CREDENTIALS=/home/voxcity/.config/earthengine/credentials
+# Container defaults (override at run time via docker-compose / .env.docker).
+#   VOXCITY_DATA_DIR / VOXCITY_OUTPUT_DIR  base data + output roots (bind-mounted).
+#   VOXCITY_SESSION_MAX_UPLOAD_MB          max session upload size in MB (backend cap).
+# CITYGML_PATH is intentionally NOT baked here; supply it via docker-compose so the
+# image is not tied to a specific PLATEAU dataset name.
+# GEE_PROJECT (Earth Engine) is intentionally NOT baked; supply it per-deployment.
+ENV VOXCITY_DATA_DIR="/work-voxcity/data" \
+    VOXCITY_OUTPUT_DIR="/work-voxcity/output" \
+    VOXCITY_SESSION_MAX_UPLOAD_MB="500" \
+    DISPLAY=":99"
 
-# Expose Streamlit default port
-EXPOSE 8501
+RUN mkdir -p /work-voxcity/data /work-voxcity/output
 
-# Set up virtual display for headless 3D rendering
-ENV DISPLAY=:99
+EXPOSE 8000
 
-# Create an entrypoint script as voxcity user
-RUN echo '#!/bin/bash\n\
-# Start virtual display\n\
-Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &\n\
-# Wait for display to be ready\n\
-sleep 2\n\
-# Run streamlit app\n\
-/opt/venv/bin/streamlit run app.py --server.port=8501 --server.address=0.0.0.0' > /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh
-
-# Default command
-CMD ["/app/entrypoint.sh"]
+# Match app/run.py: uvicorn target `backend.main:app` with the app/ dir as CWD.
+WORKDIR /app/app
+ENTRYPOINT ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
