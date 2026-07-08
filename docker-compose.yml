@@ -1,3 +1,15 @@
+# Remote Linux GPU server deployment.
+#
+# Usage (on the server, from the repo root):
+#   docker compose up -d --build
+#   curl -fsS http://localhost:${HOST_PORT:-8000}/api/health
+#
+# Host paths and the published port are env-driven so the same file works across
+# servers. Override them in an (untracked) .env.docker file next to this one, e.g.:
+#   HOST_PORT=8000
+#   VOXCITY_HOST_ROOT=/work-voxcity
+#   VOXCITY_HOST_OCEAN_CACHE=/work-voxcity/voxcity_ocean_cache
+#   CITYGML_PATH=/work-voxcity/data/plateau/13100_tokyo23-ku_2022_citygml_1_2_op
 services:
   voxcity:
     build:
@@ -7,12 +19,16 @@ services:
     ports:
       - "${HOST_PORT:-8000}:8000"
     environment:
+      # CityGML dataset path inside the container (bind-mounted via VOXCITY_HOST_ROOT).
+      # Leave empty to run without a PLATEAU dataset; set it to enable Japan/plateau mode.
       CITYGML_PATH: "${CITYGML_PATH:-}"
     env_file:
       - path: .env.docker
         required: false
     volumes:
+      # Host data/output root -> container /work-voxcity.
       - "${VOXCITY_HOST_ROOT:-/work-voxcity}:/work-voxcity"
+      # Persist the voxcity ocean-tile cache (written to /tmp by default) across restarts.
       - "${VOXCITY_HOST_OCEAN_CACHE:-/work-voxcity/voxcity_ocean_cache}:/tmp/voxcity_ocean_cache"
     deploy:
       resources:

@@ -65,8 +65,12 @@ RUN python -m pip install -c /tmp/constraints.txt -r app/backend/requirements.tx
 # Built frontend from the node stage → served by the backend SPA route.
 COPY --from=frontend /work/dist ./app/frontend/dist
 
-# Container defaults (override via docker-compose / .env.docker).
-# CITYGML_PATH is intentionally NOT baked so the image is not tied to a dataset name.
+# Container defaults (override at run time via docker-compose / .env.docker).
+#   VOXCITY_DATA_DIR / VOXCITY_OUTPUT_DIR  base data + output roots (bind-mounted).
+#   VOXCITY_SESSION_MAX_UPLOAD_MB          max session upload size in MB (backend cap).
+# CITYGML_PATH is intentionally NOT baked here; supply it via docker-compose so the
+# image is not tied to a specific PLATEAU dataset name.
+# GEE_PROJECT (Earth Engine) is intentionally NOT baked; supply it per-deployment.
 ENV VOXCITY_DATA_DIR="/work-voxcity/data" \
     VOXCITY_OUTPUT_DIR="/work-voxcity/output" \
     VOXCITY_SESSION_MAX_UPLOAD_MB="500" \
