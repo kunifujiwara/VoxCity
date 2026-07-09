@@ -320,3 +320,40 @@ class TestAggregateWeatherToSkyPatches:
         
         # Only one patch should be active
         assert result['n_active_patches'] == 1
+
+
+import pandas as pd
+from voxcity.simulator_gpu.solar.integration.utils import filter_df_to_period
+
+
+def _year_df():
+    idx = pd.date_range("2000-01-01 00:00:00", "2000-12-31 23:00:00", freq="h")
+    return pd.DataFrame({"DNI": 1.0, "DHI": 1.0}, index=idx)
+
+
+def test_filter_df_daily_hour_window_crosses_date_range():
+    df = _year_df()
+    out = filter_df_to_period(
+        df, "07-01 00:00:00", "08-31 23:00:00", tz=0.0,
+        daily_start_hour=6, daily_end_hour=11,
+    )
+    hours = out.index.hour.unique().tolist()
+    assert min(hours) >= 6 and max(hours) <= 11
+    months = out.index.month.unique().tolist()
+    assert set(months) == {7, 8}
+
+
+def test_filter_df_daily_hour_wraparound():
+    df = _year_df()
+    out = filter_df_to_period(
+        df, "07-01 00:00:00", "07-02 23:00:00", tz=0.0,
+        daily_start_hour=22, daily_end_hour=3,
+    )
+    assert set(out.index.hour.unique().tolist()) <= {22, 23, 0, 1, 2, 3}
+
+
+def test_filter_df_none_daily_hours_unchanged():
+    df = _year_df()
+    out = filter_df_to_period(df, "07-01 06:00:00", "07-01 11:00:00", tz=0.0)
+    # Continuous span: all 6 hours present, no daily narrowing.
+    assert len(out) == 6
