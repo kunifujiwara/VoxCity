@@ -367,6 +367,8 @@ def get_cumulative_volumetric_solar_irradiance(
         **kwargs: Additional parameters:
             - start_time (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 05:00:00')
             - end_time (str): End time 'MM-DD HH:MM:SS' (default: '01-01 20:00:00')
+            - daily_start_hour (int): Optional inclusive hour-of-day lower bound (0-23)
+            - daily_end_hour (int): Optional inclusive hour-of-day upper bound (0-23)
             - use_sky_patches (bool): Use sky patch optimization (default: True)
             - sky_discretization (str): 'tregenza', 'reinhart', 'uniform', 'fibonacci'
             - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
@@ -382,6 +384,8 @@ def get_cumulative_volumetric_solar_irradiance(
     progress_report = kwargs.pop('progress_report', False)
     start_time = kwargs.pop('start_time', '01-01 05:00:00')
     end_time = kwargs.pop('end_time', '01-01 20:00:00')
+    daily_start_hour = kwargs.pop('daily_start_hour', None)
+    daily_end_hour = kwargs.pop('daily_end_hour', None)
     use_sky_patches = kwargs.pop('use_sky_patches', True)
     sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
     n_azimuth = kwargs.pop('n_azimuth', 36)
@@ -411,6 +415,16 @@ def get_cumulative_volumetric_solar_irradiance(
         df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
     else:
         df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    # Optional daily hour-of-day window (crossed with the date range above).
+    # Mirrors filter_df_to_period in integration/utils.py; applied on the local
+    # naive index before UTC conversion.
+    if daily_start_hour is not None and daily_end_hour is not None:
+        hod = df_period.index.hour
+        if daily_start_hour <= daily_end_hour:
+            df_period = df_period[(hod >= daily_start_hour) & (hod <= daily_end_hour)]
+        else:  # wraparound, mirrors the continuous-span branch above
+            df_period = df_period[(hod >= daily_start_hour) | (hod <= daily_end_hour)]
     
     if df_period.empty:
         raise ValueError("No EPW data in the specified period.")

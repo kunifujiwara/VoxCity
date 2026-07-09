@@ -233,7 +233,7 @@ def parse_time_period(
     return start_dt, end_dt
 
 
-def filter_df_to_period(df, start_time: str, end_time: str, tz: float):
+def filter_df_to_period(df, start_time: str, end_time: str, tz: float, daily_start_hour: Optional[int] = None, daily_end_hour: Optional[int] = None):
     """
     Filter weather DataFrame to specified time period and convert to UTC.
     
@@ -242,6 +242,11 @@ def filter_df_to_period(df, start_time: str, end_time: str, tz: float):
         start_time: Start time in format 'MM-DD HH:MM:SS'
         end_time: End time in format 'MM-DD HH:MM:SS'
         tz: Timezone offset in hours
+        daily_start_hour: Optional inclusive hour-of-day lower bound (0-23) for a
+            daily window crossed with the date range. None disables the daily filter.
+        daily_end_hour: Optional inclusive hour-of-day upper bound (0-23). None
+            disables the daily filter. Supports wraparound when start > end
+            (e.g. 22-3 spans overnight).
         
     Returns:
         Tuple of (df_period_utc, df with hour_of_year column)
@@ -268,6 +273,14 @@ def filter_df_to_period(df, start_time: str, end_time: str, tz: float):
         df_period = df[(df['hour_of_year'] >= start_hour) & (df['hour_of_year'] <= end_hour)]
     else:
         df_period = df[(df['hour_of_year'] >= start_hour) | (df['hour_of_year'] <= end_hour)]
+    
+    # Optional daily hour-of-day window (crossed with the date range above).
+    if daily_start_hour is not None and daily_end_hour is not None:
+        hod = df_period.index.hour
+        if daily_start_hour <= daily_end_hour:
+            df_period = df_period[(hod >= daily_start_hour) & (hod <= daily_end_hour)]
+        else:  # wraparound, mirrors the continuous-span branch above
+            df_period = df_period[(hod >= daily_start_hour) | (hod <= daily_end_hour)]
     
     if df_period.empty:
         raise ValueError("No weather data in the specified period.")

@@ -493,6 +493,8 @@ def get_cumulative_global_solar_irradiance(
             - computation_mask (np.ndarray): Optional 2D boolean mask
             - start_time (str): Start time 'MM-DD HH:MM:SS'
             - end_time (str): End time 'MM-DD HH:MM:SS'
+            - daily_start_hour (int): Optional inclusive hour-of-day lower bound (0-23)
+            - daily_end_hour (int): Optional inclusive hour-of-day upper bound (0-23)
             - view_point_height (float): Observer height
             - use_sky_patches (bool): Use sky patch optimization (default: True)
             - sky_discretization (str): 'tregenza', 'reinhart', etc.
@@ -511,6 +513,8 @@ def get_cumulative_global_solar_irradiance(
     colormap = kwargs.pop('colormap', 'magma')
     start_time = kwargs.pop('start_time', '01-01 05:00:00')
     end_time = kwargs.pop('end_time', '01-01 20:00:00')
+    daily_start_hour = kwargs.pop('daily_start_hour', None)
+    daily_end_hour = kwargs.pop('daily_end_hour', None)
     progress_report = kwargs.pop('progress_report', False)
     use_sky_patches = kwargs.pop('use_sky_patches', True)
     sky_discretization = kwargs.pop('sky_discretization', 'tregenza')
@@ -519,7 +523,9 @@ def get_cumulative_global_solar_irradiance(
         raise ValueError("No data in EPW dataframe.")
     
     # Filter dataframe to period
-    df_period_utc = filter_df_to_period(df, start_time, end_time, tz)
+    df_period_utc = filter_df_to_period(df, start_time, end_time, tz,
+                                        daily_start_hour=daily_start_hour,
+                                        daily_end_hour=daily_end_hour)
     
     # Get solar positions
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)

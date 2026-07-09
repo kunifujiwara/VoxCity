@@ -320,3 +320,118 @@ class TestAggregateWeatherToSkyPatches:
         
         # Only one patch should be active
         assert result['n_active_patches'] == 1
+
+
+import pandas as pd
+from voxcity.simulator_gpu.solar.integration.utils import filter_df_to_period
+
+
+def _year_df():
+    idx = pd.date_range("2000-01-01 00:00:00", "2000-12-31 23:00:00", freq="h")
+    return pd.DataFrame({"DNI": 1.0, "DHI": 1.0}, index=idx)
+
+
+def test_filter_df_daily_hour_window_crosses_date_range():
+    df = _year_df()
+    out = filter_df_to_period(
+        df, "07-01 00:00:00", "08-31 23:00:00", tz=0.0,
+        daily_start_hour=6, daily_end_hour=11,
+    )
+    hours = out.index.hour.unique().tolist()
+    assert min(hours) >= 6 and max(hours) <= 11
+    months = out.index.month.unique().tolist()
+    assert set(months) == {7, 8}
+
+
+def test_filter_df_daily_hour_wraparound():
+    df = _year_df()
+    out = filter_df_to_period(
+        df, "07-01 00:00:00", "07-02 23:00:00", tz=0.0,
+        daily_start_hour=22, daily_end_hour=3,
+    )
+    assert set(out.index.hour.unique().tolist()) <= {22, 23, 0, 1, 2, 3}
+
+
+def test_filter_df_none_daily_hours_unchanged():
+    df = _year_df()
+    out = filter_df_to_period(df, "07-01 06:00:00", "07-01 11:00:00", tz=0.0)
+    # Continuous span: all 6 hours present, no daily narrowing.
+    assert len(out) == 6
+
+
+from unittest.mock import patch
+
+
+def test_cumulative_global_forwards_daily_hours():
+    """Ground cumulative entry point must forward daily hour kwargs to filter_df_to_period."""
+    import voxcity.simulator_gpu.solar.integration as integ
+    # Patch filter_df_to_period as resolved inside the caller's own module.
+    target_module = integ.get_cumulative_global_solar_irradiance.__module__
+    with patch(f"{target_module}.filter_df_to_period") as mock_filter:
+        # Stop execution right after the filter call so no heavy work runs.
+        mock_filter.side_effect = RuntimeError("stop after filter")
+        try:
+            integ.get_cumulative_global_solar_irradiance(
+                voxcity=None, df=_year_df(), lon=0.0, lat=0.0, tz=0.0,
+                start_time="07-01 00:00:00", end_time="08-31 23:00:00",
+                daily_start_hour=6, daily_end_hour=11,
+            )
+        except Exception:
+            pass
+        assert mock_filter.called, "filter_df_to_period was not reached"
+        _, called_kwargs = mock_filter.call_args
+        assert called_kwargs.get("daily_start_hour") == 6
+        assert called_kwargs.get("daily_end_hour") == 11
+
+
+def test_cumulative_volumetric_applies_daily_hours():
+    """Volumetric cumulative entry point filters inline; verify the daily window is applied.
+
+    volumetric.get_cumulative_volumetric_solar_irradiance does NOT call
+    filter_df_to_period (it filters inline), so we prove the daily-hour bounds
+    reach the filtering by inspecting the timestamps passed to the first
+    downstream consumer (get_solar_positions_astral).
+    """
+    import voxcity.simulator_gpu.solar.integration as integ
+    mod = integ.get_cumulative_volumetric_solar_irradiance.__module__
+    captured = {}
+
+    def fake_solar_positions(index, lon, lat):
+        captured["hours"] = sorted(set(index.hour.tolist()))
+        raise RuntimeError("stop after filter")
+
+    with patch(f"{mod}.get_solar_positions_astral", side_effect=fake_solar_positions):
+        try:
+            integ.get_cumulative_volumetric_solar_irradiance(
+                voxcity=None, df=_year_df(), lon=0.0, lat=0.0, tz=0.0,
+                start_time="07-01 00:00:00", end_time="08-31 23:00:00",
+                daily_start_hour=6, daily_end_hour=11,
+            )
+        except Exception:
+            pass
+    assert captured.get("hours"), "get_solar_positions_astral was not reached"
+    assert set(captured["hours"]) == {6, 7, 8, 9, 10, 11}
+
+
+def test_building_cumulative_forwards_daily_hours():
+    """Building-surface cumulative entry point must forward daily hour kwargs
+    to filter_df_to_period."""
+    import voxcity.simulator_gpu.solar.integration.building as bld
+    with patch.object(bld, "filter_df_to_period") as mock_filter:
+        # Stop execution right after the filter call so no heavy work runs.
+        mock_filter.side_effect = RuntimeError("stop after filter")
+        try:
+            bld.get_cumulative_building_solar_irradiance(
+                voxcity=None,
+                building_svf_mesh=None,
+                weather_df=_year_df(),
+                lon=0.0, lat=0.0, tz=0.0,
+                period_start="07-01 00:00:00", period_end="08-31 23:00:00",
+                daily_start_hour=6, daily_end_hour=11,
+            )
+        except Exception:
+            pass
+        assert mock_filter.called, "filter_df_to_period was not reached"
+        _, called_kwargs = mock_filter.call_args
+        assert called_kwargs.get("daily_start_hour") == 6
+        assert called_kwargs.get("daily_end_hour") == 11
