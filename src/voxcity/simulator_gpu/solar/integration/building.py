@@ -405,6 +405,8 @@ def get_cumulative_building_solar_irradiance(
     kwargs = dict(kwargs)
     period_start = kwargs.pop('period_start', '01-01 00:00:00')
     period_end = kwargs.pop('period_end', '12-31 23:59:59')
+    daily_start_hour = kwargs.pop('daily_start_hour', None)
+    daily_end_hour = kwargs.pop('daily_end_hour', None)
     time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
     progress_report = kwargs.pop('progress_report', False)
     use_sky_patches = kwargs.pop('use_sky_patches', False)
@@ -415,7 +417,9 @@ def get_cumulative_building_solar_irradiance(
         raise ValueError("No data in weather dataframe.")
     
     # Filter dataframe
-    df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz)
+    df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz,
+                                        daily_start_hour=daily_start_hour,
+                                        daily_end_hour=daily_end_hour)
     
     # Get solar positions
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)
@@ -660,6 +664,8 @@ def get_building_sunlight_hours(
     kwargs = dict(kwargs)
     period_start = kwargs.pop('period_start', '01-01 00:00:00')
     period_end = kwargs.pop('period_end', '12-31 23:59:59')
+    daily_start_hour = kwargs.pop('daily_start_hour', None)
+    daily_end_hour = kwargs.pop('daily_end_hour', None)
     time_step_hours = float(kwargs.pop('time_step_hours', 1.0))
     progress_report = kwargs.pop('progress_report', False)
     computation_mask = kwargs.pop('computation_mask', None)
@@ -700,7 +706,9 @@ def get_building_sunlight_hours(
             raise ValueError("Weather dataframe must have 'DNI' column for PSH mode.")
     
     # Filter dataframe
-    df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz)
+    df_period_utc = filter_df_to_period(weather_df, period_start, period_end, tz,
+                                        daily_start_hour=daily_start_hour,
+                                        daily_end_hour=daily_end_hour)
     
     # Get solar positions
     solar_positions = get_solar_positions_astral(df_period_utc.index, lon, lat)

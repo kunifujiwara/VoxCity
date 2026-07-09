@@ -411,3 +411,27 @@ def test_cumulative_volumetric_applies_daily_hours():
             pass
     assert captured.get("hours"), "get_solar_positions_astral was not reached"
     assert set(captured["hours"]) == {6, 7, 8, 9, 10, 11}
+
+
+def test_building_cumulative_forwards_daily_hours():
+    """Building-surface cumulative entry point must forward daily hour kwargs
+    to filter_df_to_period."""
+    import voxcity.simulator_gpu.solar.integration.building as bld
+    with patch.object(bld, "filter_df_to_period") as mock_filter:
+        # Stop execution right after the filter call so no heavy work runs.
+        mock_filter.side_effect = RuntimeError("stop after filter")
+        try:
+            bld.get_cumulative_building_solar_irradiance(
+                voxcity=None,
+                building_svf_mesh=None,
+                weather_df=_year_df(),
+                lon=0.0, lat=0.0, tz=0.0,
+                period_start="07-01 00:00:00", period_end="08-31 23:00:00",
+                daily_start_hour=6, daily_end_hour=11,
+            )
+        except Exception:
+            pass
+        assert mock_filter.called, "filter_df_to_period was not reached"
+        _, called_kwargs = mock_filter.call_args
+        assert called_kwargs.get("daily_start_hour") == 6
+        assert called_kwargs.get("daily_end_hour") == 11
