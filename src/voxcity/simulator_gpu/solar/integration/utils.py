@@ -233,7 +233,7 @@ def parse_time_period(
     return start_dt, end_dt
 
 
-def filter_df_to_period(df, start_time: str, end_time: str, tz: float, daily_start_hour: int = None, daily_end_hour: int = None):
+def filter_df_to_period(df, start_time: str, end_time: str, tz: float, daily_start_hour: Optional[int] = None, daily_end_hour: Optional[int] = None):
     """
     Filter weather DataFrame to specified time period and convert to UTC.
     
