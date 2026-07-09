@@ -410,4 +410,4 @@ def test_cumulative_volumetric_applies_daily_hours():
         except Exception:
             pass
     assert captured.get("hours"), "get_solar_positions_astral was not reached"
-    assert min(captured["hours"]) >= 6 and max(captured["hours"]) <= 11
+    assert set(captured["hours"]) == {6, 7, 8, 9, 10, 11}

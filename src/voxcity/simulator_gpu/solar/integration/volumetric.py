@@ -367,6 +367,8 @@ def get_cumulative_volumetric_solar_irradiance(
         **kwargs: Additional parameters:
             - start_time (str): Start time 'MM-DD HH:MM:SS' (default: '01-01 05:00:00')
             - end_time (str): End time 'MM-DD HH:MM:SS' (default: '01-01 20:00:00')
+            - daily_start_hour (int): Optional inclusive hour-of-day lower bound (0-23)
+            - daily_end_hour (int): Optional inclusive hour-of-day upper bound (0-23)
             - use_sky_patches (bool): Use sky patch optimization (default: True)
             - sky_discretization (str): 'tregenza', 'reinhart', 'uniform', 'fibonacci'
             - computation_mask (np.ndarray): Optional 2D boolean mask of shape (nx, ny).
