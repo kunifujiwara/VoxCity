@@ -29,7 +29,11 @@ from ...downloader.gee import (
     get_roi,
     save_geotiff_open_buildings_temporal,
 )
-from .core import calculate_grid_size, create_cell_polygon, compute_grid_geometry, bbox_from_vertices
+from .core import calculate_grid_size, compute_grid_geometry, bbox_from_vertices
+from .buildings_precise import (
+    _process_with_geometry_intersection,
+    _CELL_INTERSECTION_THRESHOLD,
+)
 from ...utils.logging import get_logger
 from ...utils.orientation import from_rasterio_layout
 
@@ -41,10 +45,6 @@ _OVERLAP_HIGH = 0.15        # >15 % overlap → always use precise mode
 _OVERLAP_MEDIUM = 0.08      # >8 % overlap in a dense scene → use precise mode
 _DENSITY_MEDIUM = 0.15      # density threshold paired with _OVERLAP_MEDIUM
 _OVERLAP_LOW_SMALL = 0.05   # >5 % overlap in a small dataset (≤200 buildings)
-
-# Fraction of a grid cell's area that a building must cover to be assigned
-# that building's height.  Below this the cell is left as ground.
-_CELL_INTERSECTION_THRESHOLD = 0.3
 
 
 def _validate_meshsize(meshsize: float) -> None:
@@ -195,128 +195,6 @@ def create_building_height_grid_from_gdf_polygon(
         filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec,
         rectangle_vertices, complement_height
     )
-
-
-def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, complement_height):
-    building_height_grid = np.zeros(grid_size)
-    building_id_grid = np.zeros(grid_size)
-    building_min_height_grid = np.empty(grid_size, dtype=object)
-    for idx_flat in range(building_min_height_grid.size):
-        building_min_height_grid.flat[idx_flat] = []
-
-    building_polygons = []
-    for idx_b, row in filtered_gdf.iterrows():
-        polygon = row.geometry
-        height = row.get('height', None)
-        if complement_height is not None and (height == 0 or height is None or pd.isna(height)):
-            height = complement_height
-        min_height = row.get('min_height', 0)
-        if pd.isna(min_height):
-            min_height = 0
-        is_inner = row.get('is_inner', False)
-        # Fix: Handle NaN values for is_inner (NaN is truthy, causing buildings to be skipped)
-        if pd.isna(is_inner):
-            is_inner = False
-        feature_id = row.get('id', idx_b)
-        if not polygon.is_valid:
-            try:
-                polygon = polygon.buffer(0)
-                if not polygon.is_valid:
-                    polygon = polygon.simplify(1e-8)
-            except (GEOSException, ValueError):
-                _logger.debug("Could not repair invalid building polygon (id=%s)", feature_id)
-        bounding_box = polygon.bounds
-        building_polygons.append((
-            polygon, bounding_box, height, min_height, is_inner, feature_id
-        ))
-
-    idx = index.Index()
-    for i_b, (poly, bbox, _, _, _, _) in enumerate(building_polygons):
-        idx.insert(i_b, bbox)
-
-    INTERSECTION_THRESHOLD = _CELL_INTERSECTION_THRESHOLD
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            cell = create_cell_polygon(origin, i, j, adjusted_meshsize, u_vec, v_vec)
-            if not cell.is_valid:
-                cell = cell.buffer(0)
-            cell_area = cell.area
-            potential = list(idx.intersection(cell.bounds))
-            if not potential:
-                continue
-            cell_buildings = []
-            for k in potential:
-                bpoly, bbox, height, minh, inr, fid = building_polygons[k]
-                sort_val = height if (height is not None) else -float('inf')
-                cell_buildings.append((k, bpoly, bbox, height, minh, inr, fid, sort_val))
-            cell_buildings.sort(key=lambda x: x[-1], reverse=True)
-
-            found_intersection = False
-            all_zero_or_nan = True
-            for (k, polygon, bbox, height, min_height, is_inner, feature_id, _) in cell_buildings:
-                try:
-                    minx_p, miny_p, maxx_p, maxy_p = bbox
-                    minx_c, miny_c, maxx_c, maxy_c = cell.bounds
-                    overlap_minx = max(minx_p, minx_c)
-                    overlap_miny = max(miny_p, miny_c)
-                    overlap_maxx = min(maxx_p, maxx_c)
-                    overlap_maxy = min(maxy_p, maxy_c)
-                    if (overlap_maxx <= overlap_minx) or (overlap_maxy <= overlap_miny):
-                        continue
-                    bbox_intersect_area = (overlap_maxx - overlap_minx) * (overlap_maxy - overlap_miny)
-                    if bbox_intersect_area < INTERSECTION_THRESHOLD * cell_area:
-                        continue
-                    if not polygon.is_valid:
-                        polygon = polygon.buffer(0)
-                    if cell.intersects(polygon):
-                        intersection = cell.intersection(polygon)
-                        inter_area = intersection.area
-                        if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
-                            found_intersection = True
-                            if not is_inner:
-                                building_min_height_grid[i, j].append([min_height, height])
-                                building_id_grid[i, j] = feature_id
-                                if (height is not None and not np.isnan(height) and height > 0):
-                                    all_zero_or_nan = False
-                                    current_height = building_height_grid[i, j]
-                                    if (current_height == 0 or np.isnan(current_height) or current_height < height):
-                                        building_height_grid[i, j] = height
-                            else:
-                                building_min_height_grid[i, j] = [[0, 0]]
-                                building_height_grid[i, j] = 0
-                                found_intersection = True
-                                all_zero_or_nan = False
-                                break
-                except (GEOSException, ValueError):
-                    try:
-                        simplified_polygon = polygon.simplify(1e-8)
-                        if simplified_polygon.is_valid:
-                            intersection = cell.intersection(simplified_polygon)
-                            inter_area = intersection.area
-                            if (inter_area / cell_area) > INTERSECTION_THRESHOLD:
-                                found_intersection = True
-                                if not is_inner:
-                                    building_min_height_grid[i, j].append([min_height, height])
-                                    building_id_grid[i, j] = feature_id
-                                    if (height is not None and not np.isnan(height) and height > 0):
-                                        all_zero_or_nan = False
-                                        if (building_height_grid[i, j] == 0 or 
-                                            np.isnan(building_height_grid[i, j]) or 
-                                            building_height_grid[i, j] < height):
-                                            building_height_grid[i, j] = height
-                                else:
-                                    building_min_height_grid[i, j] = [[0, 0]]
-                                    building_height_grid[i, j] = 0
-                                    found_intersection = True
-                                    all_zero_or_nan = False
-                                    break
-                    except GEOSException:
-                        _logger.debug("Skipping geometry intersection at cell (%d,%d)", i, j)
-                        continue
-            if found_intersection and all_zero_or_nan:
-                building_height_grid[i, j] = np.nan
-
-    return building_height_grid, building_min_height_grid, building_id_grid, filtered_gdf
 
 
 def _process_with_rasterio(filtered_gdf, grid_size, adjusted_meshsize, origin, u_vec, v_vec, rectangle_vertices, complement_height):

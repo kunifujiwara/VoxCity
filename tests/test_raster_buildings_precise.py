@@ -15,8 +15,9 @@ import pandas as pd
 import pytest
 from shapely.geometry import Polygon
 
-buildings_mod = pytest.importorskip("voxcity.geoprocessor.raster.buildings")
-_process = buildings_mod._process_with_geometry_intersection
+from voxcity.geoprocessor.raster.buildings_precise import (
+    _process_with_geometry_intersection as _process,
+)
 
 ORIGIN = np.array([0.0, 0.0])
 U_VEC = np.array([0.0, 1.0])
@@ -178,3 +179,10 @@ def test_rotated_grid_frame():
     assert bid[1, 1] == 6
     others = [(i, j) for i in range(3) for j in range(3) if (i, j) != (1, 1)]
     assert all(h[i, j] == 0.0 for (i, j) in others)
+
+
+def test_backcompat_import_from_buildings():
+    """The legacy import path must keep working (buildings re-exports)."""
+    buildings_mod = pytest.importorskip("voxcity.geoprocessor.raster.buildings")
+    assert buildings_mod._process_with_geometry_intersection is _process
+    assert buildings_mod._CELL_INTERSECTION_THRESHOLD == pytest.approx(0.3)
