@@ -30,9 +30,12 @@ from ...downloader.gee import (
     save_geotiff_open_buildings_temporal,
 )
 from .core import calculate_grid_size, compute_grid_geometry, bbox_from_vertices
+# Re-exported for backward compatibility: callers historically imported these
+# from this module. _CELL_INTERSECTION_THRESHOLD is re-exported only (unused
+# here), hence the noqa.
 from .buildings_precise import (
     _process_with_geometry_intersection,
-    _CELL_INTERSECTION_THRESHOLD,
+    _CELL_INTERSECTION_THRESHOLD,  # noqa: F401
 )
 from ...utils.logging import get_logger
 from ...utils.orientation import from_rasterio_layout

@@ -31,8 +31,18 @@ _CELL_INTERSECTION_THRESHOLD = 0.3
 # Safety margin (in cells) added around each building's projected uv index
 # range. Guarantees the per-cell candidate lists are a SUPERSET of what the
 # legacy rtree bbox query produced (the exact bbox filter downstream then
-# yields the identical qualifying set). 1 cell covers the parallelogram
-# bbox slack for any grid rotation; +1 absorbs float rounding.
+# yields the identical qualifying set, so a larger-than-needed margin only
+# costs a few extra cheap bbox checks, never a wrong result).
+#
+# Adequacy assumes the grid affine is near-orthonormal in projection space,
+# which holds for every grid built by compute_grid_geometry(): u_vec and
+# v_vec come from perpendicular rectangle sides. On top of this explicit
+# 2-cell margin there is further implicit slack because the range uses
+# floor(min)-margin .. ceil(max)+margin. Validated by a differential test
+# vs the legacy implementation across 1500 random axis-aligned and rotated
+# scenes (zero under-coverage). A heavily *sheared* affine (not produced by
+# compute_grid_geometry) could in principle need more; do not lower this
+# margin without re-running that differential test.
 _CANDIDATE_CELL_MARGIN = 2
 
 
@@ -79,8 +89,10 @@ def _candidate_cells_by_building(building_polygons, grid_size, adjusted_meshsize
     ni, nj = int(grid_size[0]), int(grid_size[1])
     n_buildings = len(building_polygons)
     du, dv = float(adjusted_meshsize[0]), float(adjusted_meshsize[1])
-    a = du * float(u_vec[0]); b = dv * float(v_vec[0])
-    c = du * float(u_vec[1]); d = dv * float(v_vec[1])
+    a = du * float(u_vec[0])
+    b = dv * float(v_vec[0])
+    c = du * float(u_vec[1])
+    d = dv * float(v_vec[1])
     det = a * d - b * c
     candidates = {}
     if abs(det) < 1e-30:
@@ -95,7 +107,7 @@ def _candidate_cells_by_building(building_polygons, grid_size, adjusted_meshsize
     inv_a, inv_b = d / det, -b / det
     inv_c, inv_d = -c / det, a / det
     ox, oy = float(origin[0]), float(origin[1])
-    m = _CANDIDATE_CELL_MARGIN
+    margin = _CANDIDATE_CELL_MARGIN
     for k, (_, bbox, _, _, _, _) in enumerate(building_polygons):
         if not bbox or len(bbox) < 4:
             # Empty geometry after failed repair: legacy code crashed here
@@ -107,10 +119,10 @@ def _candidate_cells_by_building(building_polygons, grid_size, adjusted_meshsize
             dx, dy = px - ox, py - oy
             us.append(inv_a * dx + inv_b * dy)
             vs.append(inv_c * dx + inv_d * dy)
-        i_lo = max(0, int(math.floor(min(us))) - m)
-        i_hi = min(ni - 1, int(math.ceil(max(us))) + m)
-        j_lo = max(0, int(math.floor(min(vs))) - m)
-        j_hi = min(nj - 1, int(math.ceil(max(vs))) + m)
+        i_lo = max(0, int(math.floor(min(us))) - margin)
+        i_hi = min(ni - 1, int(math.ceil(max(us))) + margin)
+        j_lo = max(0, int(math.floor(min(vs))) - margin)
+        j_hi = min(nj - 1, int(math.ceil(max(vs))) + margin)
         if i_lo > i_hi or j_lo > j_hi:
             continue
         for i in range(i_lo, i_hi + 1):
