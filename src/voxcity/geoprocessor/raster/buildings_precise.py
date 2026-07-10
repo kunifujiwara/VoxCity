@@ -2,9 +2,16 @@
 
 Split out of buildings.py so this path has no Earth Engine import and can
 be unit-tested directly. Output-equivalent to the legacy implementation
-except for one documented change: among equal-height buildings overlapping
-the same cell, processing order is now deterministic (height desc, then
-building index asc) instead of rtree-iteration-order dependent.
+except for one documented change: when several buildings overlap the same
+cell and their relative order was ill-defined under the legacy code, the
+new code processes them in a deterministic order (height descending, then
+building index ascending). This affects the last-wins ``building_id_grid``
+value and the ``building_min_height_grid`` list order only when heights
+tie or are None/NaN (the legacy order there depended on rtree iteration
+order and, for NaN, was corrupted by NaN sort-key comparisons). A
+differential test against the legacy implementation confirms byte-identical
+output on all cells whose overlapping buildings have distinct, non-NaN
+heights.
 """
 import math
 
@@ -134,10 +141,21 @@ def _process_with_geometry_intersection(filtered_gdf, grid_size, adjusted_meshsi
         cell_buildings = []
         for k in cand_ks:
             bpoly, bbox, height, minh, inr, fid = building_polygons[k]
-            sort_val = height if (height is not None) else -float('inf')
+            # None OR NaN height sorts lowest. Leaving NaN in the sort key
+            # poisons the ordering (all NaN comparisons are False), which,
+            # combined with the superset candidate list, would make the
+            # per-cell processing order — and thus the last-wins id and the
+            # min-height list order — non-deterministic.
+            if height is None or (isinstance(height, float) and math.isnan(height)):
+                sort_val = -float('inf')
+            else:
+                sort_val = height
             cell_buildings.append((k, bpoly, bbox, height, minh, inr, fid, sort_val))
-        # Height descending; ties broken by ascending building index (the
-        # one documented divergence from the rtree-order legacy behavior).
+        # Height descending; ties broken by ascending building index. This
+        # deterministic ordering is the one documented divergence from the
+        # legacy rtree-iteration-order behavior, and it also covers the
+        # previously ill-defined ordering among equal-, None-, or NaN-height
+        # buildings overlapping the same cell.
         cell_buildings.sort(key=lambda x: (x[-1], -x[0]), reverse=True)
 
         found_intersection = False

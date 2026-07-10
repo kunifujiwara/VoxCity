@@ -186,3 +186,33 @@ def test_backcompat_import_from_buildings():
     buildings_mod = pytest.importorskip("voxcity.geoprocessor.raster.buildings")
     assert buildings_mod._process_with_geometry_intersection is _process
     assert buildings_mod._CELL_INTERSECTION_THRESHOLD == pytest.approx(0.3)
+
+
+def test_nan_height_candidate_does_not_perturb_ordering():
+    """NaN height sorts lowest (like None), giving a deterministic order.
+
+    Regression guard: the candidate list is a superset of strictly
+    overlapping buildings, so a NaN-height building can share a cell's
+    candidate list. If NaN leaked into the sort key it would make the
+    per-cell processing order non-deterministic. Instead NaN is mapped to
+    -inf, exactly like a None height in the legacy code: it sorts last in
+    the height-descending order. Here real (h=10, id=1) and a NaN-height
+    building (id=2) both fully cover cell (0,0). Deterministic outcome:
+    real processed first, NaN last -> the NaN building wins the last-wins
+    id, and the real height still wins the height grid.
+    """
+    gdf = gpd.GeoDataFrame({
+        "height": [10.0, np.nan],
+        "min_height": [0.0, 0.0],
+        "is_inner": [False, False],
+        "id": [1, 2],
+        "geometry": [_rect(0, 0, 1, 1), _rect(0, 0, 1, 1)],
+    })
+    h, mh, bid, _ = _run(gdf)
+    # Real height wins the height grid (NaN never sets it).
+    assert h[0, 0] == 10.0
+    # NaN sorts last -> processed last -> wins the id (same as None would).
+    assert bid[0, 0] == 2
+    # min-height list: real (h=10) appended first, NaN last.
+    assert mh[0, 0][0] == [0.0, 10.0]
+    assert mh[0, 0][1][0] == 0.0 and np.isnan(mh[0, 0][1][1])
