@@ -9,7 +9,6 @@ import geopandas as gpd
 import pandas as pd
 from shapely.errors import GEOSException
 from shapely.geometry import shape
-from rtree import index
 import rasterio
 from pyproj import Transformer, CRS
 from ..utils.logging import get_logger
@@ -33,10 +32,17 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
     count_1 = 0
     count_2 = 0
 
-    spatial_index = index.Index()
-    for i, geom in enumerate(gdf_ref.geometry):
-        if geom.is_valid:
-            spatial_index.insert(i, geom.bounds)
+    # Positional arrays: one numpy indexing op per candidate instead of a
+    # full pandas row construction (.iloc), which dominated the runtime.
+    ref_geoms = gdf_ref.geometry.values
+    ref_heights = gdf_ref['height'].to_numpy()
+    # Invalid ref geometries never enter the spatial index (legacy rule).
+    ref_valid = np.array(
+        [g is not None and g.is_valid for g in ref_geoms], dtype=bool
+    )
+    # geopandas' built-in STRtree; query() without predicate is a pure bbox
+    # query, mirroring the rtree bbox query it replaces.
+    ref_sindex = gdf_ref.sindex if len(gdf_ref) else None
 
     for idx_primary, row in gdf_primary.iterrows():
         if row['height'] <= 0 or pd.isna(row['height']):
@@ -46,24 +52,27 @@ def extract_building_heights_from_gdf(gdf_0: gpd.GeoDataFrame, gdf_1: gpd.GeoDat
             overlapping_height_area = 0
             overlapping_area = 0
 
-            potential_matches = list(spatial_index.intersection(geom.bounds))
+            if ref_sindex is not None:
+                potential_matches = ref_sindex.query(geom)
+            else:
+                potential_matches = []
 
             for ref_idx in potential_matches:
-                if ref_idx >= len(gdf_ref):
+                if not ref_valid[ref_idx]:
                     continue
-
-                ref_row = gdf_ref.iloc[ref_idx]
+                ref_geom = ref_geoms[ref_idx]
+                ref_height = ref_heights[ref_idx]
                 try:
-                    if geom.intersects(ref_row.geometry):
-                        overlap_area = geom.intersection(ref_row.geometry).area
-                        overlapping_height_area += ref_row['height'] * overlap_area
+                    if geom.intersects(ref_geom):
+                        overlap_area = geom.intersection(ref_geom).area
+                        overlapping_height_area += ref_height * overlap_area
                         overlapping_area += overlap_area
                 except GEOSException:
                     try:
-                        fixed_ref_geom = ref_row.geometry.buffer(0)
+                        fixed_ref_geom = ref_geom.buffer(0)
                         if geom.intersects(fixed_ref_geom):
                             overlap_area = geom.intersection(fixed_ref_geom).area
-                            overlapping_height_area += ref_row['height'] * overlap_area
+                            overlapping_height_area += ref_height * overlap_area
                             overlapping_area += overlap_area
                     except Exception:
                         _logger.warning("Failed to fix polygon")
