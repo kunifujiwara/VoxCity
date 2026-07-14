@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="VoxCity logo" width="520">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="VoxCity" width="520">
 </p>
-
-<h1 align="center">VoxCity</h1>
 
 <p align="center">
   <strong>Generate grid-based 3D city models anywhere on Earth from open geospatial data —<br>then simulate solar, view, and microclimate.</strong>
@@ -31,10 +29,6 @@
 <!-- TODO: replace concept.png below with an animated demo at images/demo.gif once available -->
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual diagram of VoxCity" width="820">
-</p>
-
-<p align="center">
-  ⭐ <strong>If VoxCity helps your work, please <a href="https://github.com/kunifujiwara/VoxCity">star the repo</a></strong> — it helps others discover it and supports development.
 </p>
 
 ---
@@ -672,7 +666,6 @@ VoxCity integrates many open datasets. Expand for full provenance (coverage, res
 
 VoxCity is open source and community-driven — contributions of all kinds are welcome.
 
-- ⭐ **Star the repo** to support development and help others discover it.
 - 🐛 **Report bugs or request features** via the [issue tracker](https://github.com/kunifujiwara/VoxCity/issues).
 - 💬 **Ask questions and share your work** in [Discussions](https://github.com/kunifujiwara/VoxCity/discussions).
 - 🤝 **Contribute code** — see [CONTRIBUTING.rst](CONTRIBUTING.rst). To get started:
