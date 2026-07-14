@@ -56,7 +56,7 @@ autoapi_own_page_level = "class"
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "superpowers/**"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "superpowers/**", "README.md"]
 
 # -- Options for HTML output -------------------------------------------------
 
