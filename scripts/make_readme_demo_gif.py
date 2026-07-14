@@ -165,8 +165,10 @@ def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
     # bottom caption bar
     bar_h = max(24, h // 12)
     draw.rectangle([0, h - bar_h, w, h], fill=(20, 20, 24, 190))
-    font = _load_font(max(14, bar_h // 2))
-    draw.text((16, h - bar_h + (bar_h - font.size) // 2), caption, fill=(255, 255, 255, 255), font=font)
+    font_size = max(14, bar_h // 2)
+    font = _load_font(font_size)
+    font_size = getattr(font, "size", font_size)
+    draw.text((16, h - bar_h + (bar_h - font_size) // 2), caption, fill=(255, 255, 255, 255), font=font)
     return np.asarray(img, dtype=np.uint8)
 
 
@@ -220,7 +222,8 @@ def _downscale(frames, factor: float):
 
 
 def _write_gif(frames, out: Path, fps: int) -> int:
-    duration = 1.0 / max(1, fps)
+    # imageio/Pillow GIF duration is in milliseconds; GIF rounds to centiseconds.
+    duration = 1000.0 / max(1, fps)
     imageio.mimsave(out, frames, format="GIF", duration=duration, loop=0)
     return out.stat().st_size
 
@@ -241,14 +244,23 @@ def encode_gif(frames, out: Path, fps: int, max_bytes: int) -> int:
     raise RuntimeError(f"GIF still {size} bytes > budget {max_bytes} after fallback ladder")
 
 
+_GPU_AVAILABLE = None
+
+
 def gpu_available() -> bool:
-    """Check whether Taichi can initialize a CUDA-backed GPU device."""
-    try:
-        import taichi as ti
-        ti.init(arch=ti.cuda)
-        return True
-    except Exception:
-        return False
+    """Check whether Taichi can initialize a CUDA-backed GPU device.
+
+    Memoized at module scope so ti.init() only runs once per process.
+    """
+    global _GPU_AVAILABLE
+    if _GPU_AVAILABLE is None:
+        try:
+            import taichi as ti
+            ti.init(arch=ti.cuda)
+            _GPU_AVAILABLE = True
+        except Exception:
+            _GPU_AVAILABLE = False
+    return _GPU_AVAILABLE
 
 
 def load_inputs(cfg):

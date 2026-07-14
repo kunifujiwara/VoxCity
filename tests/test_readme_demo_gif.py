@@ -44,7 +44,6 @@ def test_mask_classes_cumulative():
 def test_isometric_camera_geometry():
     m = load_module()
     pos, look = m.isometric_camera((200, 200, 58), 5.0)
-    cx, cy = 100 * 5.0 / 2, 100 * 5.0 / 2  # not exact; just sanity on look-at centering
     # look-at is centered over the horizontal extent
     assert abs(look[0] - (200 * 5.0) / 2) < 1e-6
     assert abs(look[1] - (200 * 5.0) / 2) < 1e-6
@@ -110,6 +109,24 @@ def test_encode_gif_ladder_shrinks(tmp_path):
     size = m.encode_gif(frames, out, fps=15, max_bytes=400 * 1024)
     assert out.exists()
     assert size <= 400 * 1024
+
+
+def test_encode_gif_frame_duration_nonzero(tmp_path):
+    m = load_module()
+    frames = [np.full((16, 16, 3), i * 20, dtype=np.uint8) for i in range(6)]
+    out = tmp_path / "d.gif"
+    m.encode_gif(frames, out, fps=15, max_bytes=50 * 1024 * 1024)
+    from PIL import Image
+    im = Image.open(out)
+    durs = []
+    try:
+        while True:
+            durs.append(im.info.get("duration"))
+            im.seek(im.tell() + 1)
+    except EOFError:
+        pass
+    # every stored per-frame delay must be > 0 (the 1.0/fps bug stored 0ms => too-fast playback)
+    assert all(d and d > 0 for d in durs), f"zero/None frame durations: {durs}"
 
 
 import pytest
