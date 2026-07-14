@@ -11,8 +11,11 @@ build:
 sphinx:
   configuration: docs/conf.py
 
+# Only build the epub format alongside HTML. The PDF (LaTeX/pdflatex) build
+# fails on Unicode emoji and Japanese (CJK) content in the docs, which pdfTeX
+# cannot render, causing the whole Read the Docs build to fail. HTML and epub
+# handle this content fine.
 formats:
-  - pdf
   - epub
 
 # Install the voxcity package (path: .) so autodoc/autoapi and any imports
