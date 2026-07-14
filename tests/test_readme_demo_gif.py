@@ -77,3 +77,17 @@ def test_compose_preserves_shape_and_draws():
     # something was drawn (pixels changed vs. flat input)
     assert not np.array_equal(out, frame)
     assert len(m.STAGES) == 6
+
+
+def test_crossfade_and_stitch():
+    m = load_module()
+    a = np.zeros((4, 4, 3), dtype=np.uint8)
+    b = np.full((4, 4, 3), 255, dtype=np.uint8)
+    mid = m.crossfade(a, b, 3)
+    assert len(mid) == 3
+    # monotonic increase in brightness
+    means = [float(f.mean()) for f in mid]
+    assert means[0] < means[1] < means[2]
+    stitched = m.stitch([[a, a], [b, b]], fade=2)
+    assert len(stitched) == 2 + 2 + 2  # stage A + fade + stage B
+    assert stitched[0].shape == (4, 4, 3)

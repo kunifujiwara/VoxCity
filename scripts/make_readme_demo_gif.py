@@ -165,3 +165,41 @@ def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
     font = _load_font(max(14, bar_h // 2))
     draw.text((16, h - bar_h + (bar_h - font.size) // 2), caption, fill=(255, 255, 255, 255), font=font)
     return np.asarray(img, dtype=np.uint8)
+
+
+def crossfade(a, b, n: int):
+    """Generate n intermediate frames blending a → b (exclusive of endpoints).
+    
+    Args:
+        a: Source frame (H, W, C) uint8 array.
+        b: Target frame (H, W, C) uint8 array.
+        n: Number of intermediate frames to generate.
+    
+    Returns:
+        List of n intermediate uint8 frames.
+    """
+    a = a.astype(np.float32)
+    b = b.astype(np.float32)
+    out = []
+    for k in range(1, n + 1):
+        t = k / (n + 1)
+        out.append(np.clip(a * (1 - t) + b * t, 0, 255).astype(np.uint8))
+    return out
+
+
+def stitch(stages, fade: int):
+    """Concatenate per-stage frame lists with fade dissolve frames between stages.
+    
+    Args:
+        stages: List of per-stage frame lists, each a list of uint8 arrays.
+        fade: Number of dissolve frames between consecutive stages.
+    
+    Returns:
+        List of uint8 frames with stages concatenated and dissolves inserted.
+    """
+    frames: list = []
+    for i, stage in enumerate(stages):
+        if i > 0 and fade > 0 and frames and stage:
+            frames.extend(crossfade(frames[-1], stage[0], fade))
+        frames.extend(stage)
+    return frames
