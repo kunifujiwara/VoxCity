@@ -1,3 +1,3 @@
-```{include} ../CODE_OF_CONDUCT.rst
-:parser: rst
+```{eval-rst}
+.. include:: ../CODE_OF_CONDUCT.rst
 ```

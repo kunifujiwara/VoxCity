@@ -1,3 +1,3 @@
-```{include} ../HISTORY.rst
-:parser: rst
+```{eval-rst}
+.. include:: ../HISTORY.rst
 ```

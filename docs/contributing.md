@@ -1,3 +1,3 @@
-```{include} ../CONTRIBUTING.rst
-:parser: rst
+```{eval-rst}
+.. include:: ../CONTRIBUTING.rst
 ```
