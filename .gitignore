@@ -28,6 +28,7 @@ wheels/
 *.egg
 app/data/
 reference/
+!docs/reference/
 output/
 data/
 
