@@ -14,6 +14,12 @@ from pathlib import Path
 
 import numpy as np
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+from PIL import Image
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CANVAS_DEFAULT = (820, 512)          # (width, height)
 FPS_DEFAULT = 15
@@ -77,3 +83,39 @@ class Config:
     overlay: str = "solar"
     voxcity_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "voxcity.h5")
     results_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "simulation_results.h5")
+
+
+def raster_to_rgb(arr, cmap: str = "viridis", vmin=None, vmax=None):
+    """Convert a 2D raster array to RGB using a colormap.
+    
+    NaNs are rendered as light gray.
+    
+    Returns (H, W, 3) uint8 array.
+    """
+    a = np.asarray(arr, dtype=float)
+    finite = np.isfinite(a)
+    if vmin is None:
+        vmin = float(np.nanmin(a)) if finite.any() else 0.0
+    if vmax is None:
+        vmax = float(np.nanmax(a)) if finite.any() else 1.0
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    mapper = cm.ScalarMappable(norm=norm, cmap=cmap)
+    rgba = mapper.to_rgba(np.nan_to_num(a, nan=vmin), bytes=True)
+    rgb = rgba[..., :3].copy()
+    rgb[~finite] = (230, 230, 230)  # light gray for NaN
+    return rgb.astype(np.uint8)
+
+
+def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
+    """Letterbox/resize an RGB frame to fit a canvas size.
+    
+    Returns (height, width, 3) uint8 array.
+    """
+    width, height = size
+    img = Image.fromarray(rgb)
+    img.thumbnail((width, height), Image.LANCZOS)
+    canvas = Image.new("RGB", (width, height), pad_rgb)
+    canvas.paste(img, ((width - img.width) // 2, (height - img.height) // 2))
+    return np.asarray(canvas, dtype=np.uint8)

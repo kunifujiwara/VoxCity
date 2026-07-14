@@ -51,3 +51,17 @@ def test_isometric_camera_geometry():
     # camera is above and outside the box
     assert pos[2] > look[2]
     assert pos != look
+
+
+def test_raster_to_rgb_and_fit_canvas():
+    m = load_module()
+    arr = np.array([[0.0, 1.0], [2.0, np.nan]], dtype=float)
+    rgb = m.raster_to_rgb(arr, cmap="viridis")
+    assert rgb.shape == (2, 2, 3)
+    assert rgb.dtype == np.uint8
+    # NaN cell is light gray (all channels high and roughly equal)
+    r, g, b = rgb[1, 1]
+    assert min(int(r), int(g), int(b)) > 200 and max(abs(int(r)-int(g)), abs(int(g)-int(b))) < 20
+    fitted = m.fit_canvas(rgb, (820, 512))
+    assert fitted.shape == (512, 820, 3)
+    assert fitted.dtype == np.uint8
