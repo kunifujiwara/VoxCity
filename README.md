@@ -418,7 +418,7 @@ voxcity = add_buildings_from_obj(
 )
 ```
 
-See [docs/rhino_obj_import.md](docs/rhino_obj_import.md) for the full Rhino export guide.
+See [docs/guides/rhino_obj_import.md](docs/guides/rhino_obj_import.md) for the full Rhino export guide.
 
 </details>
 
