@@ -9,6 +9,7 @@ Run:
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -237,3 +238,146 @@ def encode_gif(frames, out: Path, fps: int, max_bytes: int) -> int:
         if size <= max_bytes:
             return size
     raise RuntimeError(f"GIF still {size} bytes > budget {max_bytes} after fallback ladder")
+
+
+def gpu_available() -> bool:
+    """Check whether Taichi can initialize a CUDA-backed GPU device."""
+    try:
+        import taichi as ti
+        ti.init(arch=ti.cuda)
+        return True
+    except Exception:
+        return False
+
+
+def load_inputs(cfg):
+    """Load the cached VoxCity model and simulation results referenced by *cfg*."""
+    from voxcity.io import load_voxcity, load_results_h5
+    city = load_voxcity(str(cfg.voxcity_h5))
+    results = load_results_h5(str(cfg.results_h5))
+    return city, results
+
+
+def _masked_city(city, keep: str):
+    """Return a shallow copy of *city* with its voxel classes masked to *keep*."""
+    c2 = copy.copy(city)
+    c2.voxels = copy.copy(city.voxels)
+    c2.voxels.classes = mask_classes(city.voxels.classes, keep)
+    return c2
+
+
+def render_voxel(city, cfg, keep=None, camera=None, arch=None) -> np.ndarray:
+    """Render a single GPU still of the (optionally masked) city, fit to the canvas."""
+    from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
+    target = _masked_city(city, keep) if keep else city
+    if camera is None:
+        camera = isometric_camera(city.voxels.classes.shape, city.voxels.meta.meshsize)
+    cam_pos, cam_look = camera
+    spp = 8 if cfg.quick else 48
+    img = visualize_voxcity_gpu(
+        target, width=cfg.width, height=cfg.height,
+        samples_per_pixel=spp, camera_position=cam_pos, camera_look_at=cam_look,
+        arch=(arch or ("gpu" if gpu_available() else "cpu")),
+        output_path=None, show_progress=False,
+    )
+    img = np.asarray(img)
+    if img.dtype != np.uint8:
+        img = np.clip(img * (255 if img.max() <= 1.0 else 1), 0, 255).astype(np.uint8)
+    return fit_canvas(img[..., :3], (cfg.width, cfg.height))
+
+
+def _beats(cfg, n_full: int) -> int:
+    return 2 if cfg.quick else n_full
+
+
+def stage_settings(city, cfg):
+    """Stage 1 — establishing shot of the target area's terrain elevation."""
+    base = fit_canvas(raster_to_rgb(city.dem.elevation, cmap="terrain"), (cfg.width, cfg.height))
+    caption = "1 · Settings — target area · data sources · mesh size"
+    return [compose(base, 0, caption, cfg) for _ in range(_beats(cfg, 12))]
+
+
+def stage_download(city, cfg):
+    """Stage 2 — cycle through the raw downloaded data layers."""
+    dem = city.dem.elevation
+    lc = city.land_cover.classes
+    bh = city.buildings.heights
+    ch = city.tree_canopy.top
+    layers = [("Terrain elevation", dem, "terrain"),
+              ("Land cover", lc, "tab20"),
+              ("Building height", bh, "magma"),
+              ("Canopy height", ch, "Greens")]
+    frames = []
+    per = _beats(cfg, 12)
+    for name, arr, cmap in layers:
+        base = fit_canvas(raster_to_rgb(arr, cmap=cmap), (cfg.width, cfg.height))
+        frames += [compose(base, 1, f"2 · Download — {name}", cfg) for _ in range(per)]
+    return frames
+
+
+def stage_voxelize(city, cfg, camera):
+    """Stage 3 — cumulative voxel build-up: terrain → land cover → buildings → trees."""
+    order = [("terrain", "Terrain"), ("landcover", "Land cover"),
+             ("buildings", "Buildings"), ("trees", "Trees")]
+    frames = []
+    per = _beats(cfg, 12)
+    for keep, name in order:
+        img = render_voxel(city, cfg, keep=keep, camera=camera)
+        frames += [compose(img, 2, f"3 · Voxelize — + {name}", cfg) for _ in range(per)]
+    return frames
+
+
+def stage_integrate(city, cfg):
+    """Stage 4 — a rotating view of the fully integrated voxel city model."""
+    from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
+    import tempfile
+    nframes = 4 if cfg.quick else 48
+    with tempfile.TemporaryDirectory() as td:
+        paths = visualize_voxcity_gpu(
+            city, width=cfg.width, height=cfg.height,
+            samples_per_pixel=8 if cfg.quick else 32,
+            arch=("gpu" if gpu_available() else "cpu"),
+            rotation=True, rotation_frames=nframes, output_directory=td,
+            show_progress=False,
+        )
+        frames = []
+        for p in paths:
+            path = p[0] if isinstance(p, tuple) else p
+            img = fit_canvas(np.asarray(Image.open(path).convert("RGB")), (cfg.width, cfg.height))
+            frames.append(compose(img, 3, "4 · Integrate — voxel city model", cfg))
+    return frames
+
+
+def stage_simulate(city, results, cfg, camera):
+    """Stage 5 — fixed-camera still with the solar irradiance ground overlay."""
+    from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
+    ground = results.get("ground", {})
+    grid = np.asarray(ground["solar_irradiance_instantaneous"]) if "solar_irradiance_instantaneous" in ground else None
+    dem = city.dem.elevation
+    cam_pos, cam_look = camera
+    img = visualize_voxcity_gpu(
+        city, width=cfg.width, height=cfg.height,
+        samples_per_pixel=8 if cfg.quick else 40,
+        camera_position=cam_pos, camera_look_at=cam_look,
+        arch=("gpu" if gpu_available() else "cpu"),
+        ground_sim_grid=grid, ground_dem_grid=dem, ground_colormap="inferno",
+        show_progress=False, output_path=None,
+    )
+    img = np.asarray(img)
+    if img.dtype != np.uint8:
+        img = np.clip(img * (255 if img.max() <= 1.0 else 1), 0, 255).astype(np.uint8)
+    img = fit_canvas(img[..., :3], (cfg.width, cfg.height))
+    return [compose(img, 4, "5 · Simulate — solar irradiance", cfg) for _ in range(_beats(cfg, 16))]
+
+
+def stage_export(city, cfg):
+    """Stage 6 — closing card naming the export/visualization formats."""
+    base = np.full((cfg.height, cfg.width, 3), 245, dtype=np.uint8)
+    labels = "OBJ · ENVI-met · MagicaVoxel · NetCDF · NumPy"
+    canvas = Image.fromarray(base)
+    draw = ImageDraw.Draw(canvas)
+    font = _load_font(max(18, cfg.height // 18))
+    tw = draw.textlength(labels, font=font)
+    draw.text(((cfg.width - tw) / 2, cfg.height / 2 - font.size), labels, fill=(40, 40, 60), font=font)
+    frame = compose(np.asarray(canvas, dtype=np.uint8), 5, "6 · Export & visualize", cfg)
+    return [frame for _ in range(_beats(cfg, 12))]

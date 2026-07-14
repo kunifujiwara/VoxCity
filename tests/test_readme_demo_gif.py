@@ -110,3 +110,27 @@ def test_encode_gif_ladder_shrinks(tmp_path):
     size = m.encode_gif(frames, out, fps=15, max_bytes=400 * 1024)
     assert out.exists()
     assert size <= 400 * 1024
+
+
+import pytest
+
+
+def _cached_present(m):
+    cfg = m.Config()
+    return cfg.voxcity_h5.exists() and cfg.results_h5.exists()
+
+
+def test_load_inputs_and_render_voxel():
+    m = load_module()
+    if not _cached_present(m):
+        pytest.skip("cached demo h5 not present")
+    if not m.gpu_available():
+        pytest.skip("no Taichi GPU backend")
+    cfg = m.Config(quick=True)
+    city, results = m.load_inputs(cfg)
+    assert city.voxels.classes.ndim == 3
+    assert "ground" in results
+    cam_pos, cam_look = m.isometric_camera(city.voxels.classes.shape, city.voxels.meta.meshsize)
+    frame = m.render_voxel(city, cfg, keep="terrain", camera=(cam_pos, cam_look))
+    assert frame.shape == (cfg.height, cfg.width, 3)
+    assert frame.dtype == np.uint8
