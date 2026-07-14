@@ -134,3 +134,21 @@ def test_load_inputs_and_render_voxel():
     frame = m.render_voxel(city, cfg, keep="terrain", camera=(cam_pos, cam_look))
     assert frame.shape == (cfg.height, cfg.width, 3)
     assert frame.dtype == np.uint8
+
+
+def test_smoke_quick_build(tmp_path):
+    m = load_module()
+    cfg = m.Config(quick=True)
+    if not (cfg.voxcity_h5.exists() and cfg.results_h5.exists() and m.gpu_available()):
+        pytest.skip("cached h5 or GPU unavailable")
+    cfg = m.Config(quick=True, out=tmp_path / "demo.gif", width=320, height=200)
+    size = m.run(cfg)
+    assert cfg.out.exists()
+    assert size == cfg.out.stat().st_size > 0
+
+
+def test_parse_args_overrides():
+    m = load_module()
+    cfg = m.parse_args(["--width", "640", "--fps", "12", "--quick", "--out", "/tmp/z.gif"])
+    assert cfg.width == 640 and cfg.fps == 12 and cfg.quick is True
+    assert str(cfg.out) == "/tmp/z.gif"

@@ -9,6 +9,7 @@ Run:
 """
 from __future__ import annotations
 
+import argparse
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -381,3 +382,55 @@ def stage_export(city, cfg):
     draw.text(((cfg.width - tw) / 2, cfg.height / 2 - font.size), labels, fill=(40, 40, 60), font=font)
     frame = compose(np.asarray(canvas, dtype=np.uint8), 5, "6 · Export & visualize", cfg)
     return [frame for _ in range(_beats(cfg, 12))]
+
+
+def build_frames(cfg):
+    """Run all six pipeline stages and stitch their frames into one sequence."""
+    city, results = load_inputs(cfg)
+    camera = isometric_camera(city.voxels.classes.shape, city.voxels.meta.meshsize)
+    stages = [
+        stage_settings(city, cfg),
+        stage_download(city, cfg),
+        stage_voxelize(city, cfg, camera),
+        stage_integrate(city, cfg),
+        stage_simulate(city, results, cfg, camera),
+        stage_export(city, cfg),
+    ]
+    fade = 2 if cfg.quick else max(2, cfg.fps // 3)
+    return stitch(stages, fade=fade)
+
+
+def run(cfg) -> int:
+    """Build frames, encode the GIF (and optional MP4), returning the GIF byte size."""
+    frames = build_frames(cfg)
+    size = encode_gif(frames, cfg.out, cfg.fps, MAX_BYTES_DEFAULT)
+    if cfg.mp4:
+        mp4_path = cfg.out.with_suffix(".mp4")
+        imageio.mimsave(mp4_path, frames, format="FFMPEG", fps=cfg.fps)
+    return size
+
+
+def parse_args(argv=None) -> Config:
+    """Parse CLI arguments into a Config."""
+    p = argparse.ArgumentParser(description="Generate the VoxCity README demo GIF.")
+    p.add_argument("--out", type=Path, default=Config().out)
+    p.add_argument("--width", type=int, default=Config().width)
+    p.add_argument("--height", type=int, default=Config().height)
+    p.add_argument("--fps", type=int, default=Config().fps)
+    p.add_argument("--overlay", default="solar", choices=["solar", "gvi"])
+    p.add_argument("--mp4", action="store_true")
+    p.add_argument("--quick", action="store_true")
+    a = p.parse_args(argv)
+    return Config(width=a.width, height=a.height, fps=a.fps, out=a.out,
+                  mp4=a.mp4, quick=a.quick, overlay=a.overlay)
+
+
+def main(argv=None) -> int:
+    cfg = parse_args(argv)
+    size = run(cfg)
+    print(f"wrote {cfg.out} ({size/1024/1024:.2f} MB)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
