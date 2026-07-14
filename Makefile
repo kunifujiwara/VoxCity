@@ -87,3 +87,7 @@ dist: clean ## builds source and wheel package
 
 install: clean ## install the package to the active Python's site-packages
 	python setup.py install
+
+.PHONY: demo-gif
+demo-gif: ## Regenerate the README pipeline demo GIF from cached artifacts
+	LC_ALL=C.UTF-8 LANG=C.UTF-8 python scripts/make_readme_demo_gif.py --out images/demo.gif --width 820 --fps 15
