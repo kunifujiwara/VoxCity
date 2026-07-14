@@ -3,5 +3,6 @@ sphinx-autoapi
 furo
 sphinxcontrib-bibtex
 sphinx
+sphinx-design
 # Install voxcity in editable mode for documentation generation
 -e .
