@@ -49,11 +49,15 @@ If builds fail:
 
 ## Documentation Structure
 
-- `index.md`: Main landing page
-- `example.ipynb`: Quick start guide (rendered via myst-nb)
-- `examples/`: Tutorial examples
+- `index.md`: Landing page (bespoke, with navigation cards)
+- `installation.md`: Get Started installation guide
+- `examples/`: Tutorial notebooks (rendered via myst-nb)
+- `guides/`: Task-focused how-to guides
+- `concepts/`: Background and explanation pages
+- `reference/`: Data source and land cover reference pages
 - `autoapi/`: Auto-generated API documentation
-- `references.bib`: Bibliography for citations
+- `bibliography.md`: How to cite VoxCity and the full bibliography
+- `references.bib`: BibTeX source for citations
 
 ## Documentation Branch Deployment
 

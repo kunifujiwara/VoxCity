@@ -1,36 +1,138 @@
-[![PyPi version](https://img.shields.io/pypi/v/voxcity.svg)](https://pypi.python.org/pypi/voxcity)
-[![Python versions](https://img.shields.io/pypi/pyversions/voxcity.svg)](https://pypi.org/project/voxcity/)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing)
-[![License](https://img.shields.io/pypi/l/voxcity.svg)](https://pypi.org/project/voxcity/)
-[![Downloads](https://pepy.tech/badge/voxcity)](https://pepy.tech/project/voxcity)
-[![Documentation Status](https://readthedocs.org/projects/voxcity/badge/?version=latest)](https://voxcity.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/kunifujiwara/VoxCity/graph/badge.svg)](https://codecov.io/gh/kunifujiwara/VoxCity)
-[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.compenvurbsys.2025.102366-blue)](https://doi.org/10.1016/j.compenvurbsys.2025.102366)
-<!-- [![License: CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/80x15.png)](https://creativecommons.org/licenses/by-sa/4.0/) -->
-
 <p align="center">
-  Tutorial preview: <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">[Google Colab]</a> | Documentation: <a href="https://voxcity.readthedocs.io/en/latest">[Read the Docs]</a> | Video tutorial: <a href="https://youtu.be/qHusvKB07qk">[Watch on YouTube]</a>
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="VoxCity" width="520">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/logo.png" alt="Voxcity logo" width="550">
+  <strong>Generate grid-based 3D city models anywhere on Earth from open geospatial data —<br>then simulate solar, view, and microclimate.</strong>
 </p>
 
- 
-
-# VoxCity
-
-**voxcity** is a Python package that provides a seamless solution for grid-based 3D city model generation and urban simulation for cities worldwide. VoxCity's generator module automatically downloads building heights, tree canopy heights, land cover, and terrain elevation within a specified target area, and voxelizes buildings, trees, land cover, and terrain to generate an integrated voxel city model. The simulator module enables users to conduct environmental simulations, including solar radiation and view index analyses. Users can export the generated models using several file formats compatible with external software, such as ENVI-met (INX), Blender, and Rhino (OBJ). Try it out using the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or your local environment. For detailed documentation, API reference, and tutorials, visit our [Read the Docs](https://voxcity.readthedocs.io/en/latest) page.
-
-<!-- <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png">
-    <img src="https://github.com/kunifujiwara/VoxCity/blob/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
-  </picture>
-</p> -->
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual Diagram of voxcity" width="800">
+  <a href="https://pypi.python.org/pypi/voxcity"><img src="https://img.shields.io/pypi/v/voxcity.svg" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/voxcity/"><img src="https://img.shields.io/pypi/pyversions/voxcity.svg" alt="Python versions"></a>
+  <a href="https://pypi.org/project/voxcity/"><img src="https://img.shields.io/pypi/l/voxcity.svg" alt="License"></a>
+  <a href="https://pepy.tech/project/voxcity"><img src="https://pepy.tech/badge/voxcity" alt="Downloads"></a>
+  <br>
+  <a href="https://voxcity.readthedocs.io/en/latest/?badge=latest"><img src="https://readthedocs.org/projects/voxcity/badge/?version=latest" alt="Documentation Status"></a>
+  <a href="https://codecov.io/gh/kunifujiwara/VoxCity"><img src="https://codecov.io/gh/kunifujiwara/VoxCity/graph/badge.svg" alt="codecov"></a>
+  <a href="https://doi.org/10.1016/j.compenvurbsys.2025.102366"><img src="https://img.shields.io/badge/DOI-10.1016%2Fj.compenvurbsys.2025.102366-blue" alt="DOI"></a>
+  <a href="https://github.com/kunifujiwara/VoxCity/stargazers"><img src="https://img.shields.io/github/stars/kunifujiwara/VoxCity?style=social" alt="GitHub stars"></a>
 </p>
+
+<p align="center">
+  🚀 <a href="https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing">Try in Colab</a> ·
+  📖 <a href="https://voxcity.readthedocs.io/en/latest">Docs</a> ·
+  🎬 <a href="https://youtu.be/qHusvKB07qk">Video</a> ·
+  📄 <a href="https://doi.org/10.1016/j.compenvurbsys.2025.102366">Paper</a> ·
+  💬 <a href="https://github.com/kunifujiwara/VoxCity/issues">Issues</a>
+</p>
+
+<!-- TODO: replace concept.png below with an animated demo at images/demo.gif once available -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual diagram of VoxCity" width="820">
+</p>
+
+---
+
+## Table of Contents
+
+- [Why VoxCity?](#why-voxcity)
+- [Gallery](#gallery)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Tutorial](#tutorial)
+- [Key Features](#key-features)
+- [Usage Guide](#usage-guide)
+- [Land Cover Classes](#voxcity-standard-land-cover-classes-used-in-voxel-grids)
+- [Data Sources](#references-of-data-sources)
+- [Community & Contributing](#community--contributing)
+- [Citation](#citation)
+- [Credits](#credit)
+
+---
+
+## Why VoxCity?
+
+VoxCity turns open geospatial data into a single, simulation-ready 3D voxel model of any place on Earth — in a few lines of Python.
+
+- 🌍 **Global by default** — automatically selects the best open data source for any location worldwide.
+- 🧱 **One integrated voxel model** — buildings, trees, land cover, and terrain fused into a single semantic 3D grid.
+- ☀️ **Built-in simulation** — solar irradiance, sky/green view index, landmark visibility, and network analysis.
+- 🔄 **Export anywhere** — ENVI-met (INX/EDB), OBJ (Blender/Rhino/Twinmotion), and MagicaVoxel (VOX).
+- 🧩 **Reproducible & open** — open data with documented provenance and a peer-reviewed method.
+
+The **generator** module downloads building heights, tree canopy heights, land cover, and terrain elevation for a target area and voxelizes them into an integrated voxel city model. The **simulator** module runs environmental analyses such as solar radiation and view index. Try it in the [Google Colab Demo](https://colab.research.google.com/drive/1Lofd3RawKMr6QuUsamGaF48u2MN0hfrP?usp=sharing) or locally, and see the [documentation](https://voxcity.readthedocs.io/en/latest) for the full API reference and tutorials.
+
+## Gallery
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/solar.png" width="260"><br><sub>☀️ Solar irradiance</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/view_index.png" width="260"><br><sub>👁️ Sky / Green view index</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/envimet.png" width="260"><br><sub>🌡️ ENVI-met microclimate</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/obj.png" width="260"><br><sub>🏙️ OBJ in Rhino / Blender</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/vox.png" width="260"><br><sub>🧊 MagicaVoxel</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/network.png" width="260"><br><sub>🕸️ Network analysis</sub></td>
+  </tr>
+</table>
+
+## Quick Start
+
+```bash
+pip install voxcity   # see Installation for GDAL + Earth Engine setup
+```
+
+```python
+import ee
+from voxcity.generator import get_voxcity
+
+ee.Initialize(project="your-project-id")
+
+# A ~450 m box in Seattle (lon, lat corners)
+rectangle_vertices = [
+    (-122.3359, 47.5983), (-122.3359, 47.6028),
+    (-122.3292, 47.6028), (-122.3292, 47.5983),
+]
+
+# Auto-selects the best data sources for the location
+voxcity = get_voxcity(rectangle_vertices, meshsize=5)
+```
+
+That's it — see the [Usage Guide](#usage-guide) to visualize, export, and simulate your model.
+
+## Installation
+
+Make sure you have Python 3.12 installed. GDAL is the one dependency best installed via conda; everything else comes from pip.
+
+### For Local Environment
+
+```bash
+conda create --name voxcity python=3.12
+conda activate voxcity
+conda install -c conda-forge gdal timezonefinder
+pip install voxcity
+```
+
+### For Google Colab
+
+```python
+!pip install voxcity
+```
+
+### Setup for Earth Engine
+
+Many data sources are served through Google Earth Engine. Set up an Earth Engine enabled Cloud Project by following the [official guide](https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup), then authenticate:
+
+```bash
+# Local environment
+earthengine authenticate
+```
+
+```python
+# Google Colab: click the displayed link, generate a token, then paste it
+!earthengine authenticate --auth_mode=notebook
+```
 
 ## Tutorial
 
@@ -84,46 +186,10 @@
 - **Analytical Tools:**
   - **View Index Simulations**: Compute sky view index (SVI) and green view index (GVI) from a specified viewpoint.
   - **Landmark Visibility Maps**: Assess the visibility of selected landmarks within the voxelized environment.
-## Installation
 
-Make sure you have Python 3.12 installed. Install voxcity with:
+## Usage Guide
 
-### For Local Environment
-
-```bash
-conda create --name voxcity python=3.12
-conda activate voxcity
-conda install -c conda-forge gdal timezonefinder
-pip install voxcity
-```
-
-### For Google Colab
-
-```python
-!pip install voxcity
-```
-
-## Setup for Earth Engine
-
-To use Earth Engine data, set up your Earth Engine enabled Cloud Project by following the instructions here:
-https://developers.google.com/earth-engine/cloud/earthengine_cloud_project_setup
-
-After setting up, authenticate and initialize Earth Engine:
-
-### For Local Environment
-
-```bash
-earthengine authenticate
-```
-
-### For Google Colab
-
-```python
-# Click displayed link, generate token, copy and paste the token
-!earthengine authenticate --auth_mode=notebook
-```
-
-## Usage Overview
+> Authenticate Earth Engine, define an area, generate the model, then export or simulate. The core path is shown open; advanced steps are collapsed.
 
 ### 1. Authenticate Earth Engine
 
@@ -134,6 +200,9 @@ ee.Initialize(project='your-project-id')
 ```
 
 ### 2. Define Target Area
+
+<details>
+<summary>🗺️ Three ways to define your target area (coordinates, draw, or center + size)</summary>
 
 You can define your target area in three ways:
 
@@ -174,6 +243,8 @@ m
 <p align="center">
   <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/draw_rect.png" alt="Draw Rectangle on Map GUI" width="400">
 </p>
+
+</details>
 
 ### 3. Set Parameters
 
@@ -243,6 +314,11 @@ voxcity = get_voxcity(
 
 ### 5. Exporting Files
 
+Export your model to the format your downstream tool expects — each target is collapsed below.
+
+<details>
+<summary>🌡️ ENVI-met (INX/EDB) — microclimate simulation</summary>
+
 #### ENVI-MET INX/EDB Files:
 [ENVI-MET](https://www.envi-met.com/) is an advanced microclimate simulation software specialized in modeling urban environments. It simulates the interactions between buildings, vegetation, and various climate parameters like temperature, wind flow, humidity, and radiation. The software is used widely in urban planning, architecture, and environmental studies (Commercial, offers educational licenses).
 
@@ -288,6 +364,11 @@ generate_edb_file(lad=envimet_kwargs["lad"])
   <em>Example Output Exported in INX and Inported in ENVI-met</em>
 </p>
 
+</details>
+
+<details>
+<summary>🏙️ OBJ — Blender / Rhino / Twinmotion</summary>
+
 #### OBJ Files:
 
 ```python
@@ -311,6 +392,11 @@ The generated OBJ files can be opened and rendered in the following 3D visualiza
   <em>Example Output Exported in OBJ and Rendered in Rhino</em>
 </p>
 
+</details>
+
+<details>
+<summary>📥 Import Rhino / OBJ buildings into a model</summary>
+
 #### Importing Rhino Models (OBJ):
 
 You can import buildings authored in Rhino into a VoxCity model:
@@ -326,7 +412,12 @@ voxcity = add_buildings_from_obj(
 )
 ```
 
-See [docs/rhino_obj_import.md](docs/rhino_obj_import.md) for the full Rhino export guide.
+See [docs/guides/rhino_obj_import.md](docs/guides/rhino_obj_import.md) for the full Rhino export guide.
+
+</details>
+
+<details>
+<summary>🧊 MagicaVoxel (VOX) — voxel art editor</summary>
 
 #### MagicaVoxel VOX Files:
 
@@ -347,7 +438,14 @@ export_magicavoxel_vox(voxcity, output_path, base_filename=base_filename)
   <em>Example Output Exported in VOX and Rendered in MagicaVoxel</em>
 </p>
 
+</details>
+
 ### 6. Additional Use Cases
+
+Run environmental analyses directly on the generated voxel model. Each is collapsed below.
+
+<details>
+<summary>☀️ Solar irradiance (instantaneous & cumulative)</summary>
 
 #### Compute Solar Irradiance:
 
@@ -401,6 +499,11 @@ cum_solar_grid = get_global_solar_irradiance_using_epw(
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
 </p>
 
+</details>
+
+<details>
+<summary>👁️ Green View Index (GVI) & Sky View Index (SVI)</summary>
+
 #### Compute Green View Index (GVI) and Sky View Index (SVI):
 
 ```python
@@ -432,6 +535,11 @@ svi_grid = get_view_index(voxcity, mode='sky', **view_kwargs)
   <em>Example Results Saved as OBJ and Rendered in Rhino</em>
 </p>
 
+</details>
+
+<details>
+<summary>🗼 Landmark visibility map</summary>
+
 #### Landmark Visibility Map:
 
 ```python
@@ -453,6 +561,11 @@ landmark_vis_map, _ = get_landmark_visibility_map(voxcity, voxcity.extras.get('b
 <p align="center">
   <em>Example Result Saved as OBJ and Rendered in Rhino</em>
 </p>
+
+</details>
+
+<details>
+<summary>🕸️ Network analysis (map values onto a street network)</summary>
 
 #### Network Analysis:
 
@@ -486,6 +599,8 @@ G, edge_gdf = get_network_values(
   <em>Cumulative Global Solar Irradiance (kW/m²·hour) on Road Network</em>
 </p>
 
+</details>
+
 ## VoxCity Standard Land Cover Classes (used in voxel grids)
 
 | Index | Class | Index | Class |
@@ -499,6 +614,11 @@ G, edge_gdf = get_network_values(
 | 7 | Wet land | 14 | No Data |
 
 ## References of Data Sources
+
+VoxCity integrates many open datasets. Expand for full provenance (coverage, resolution, and acquisition).
+
+<details>
+<summary>📚 Full data source tables (buildings, canopy height, land cover, terrain)</summary>
 
 ### Building 
 
@@ -539,6 +659,25 @@ G, edge_gdf = get_network_values(
 | [England 1m Composite DTM](https://environment.data.gov.uk/dataset/13787b9a-26a4-4775-8523-806d13af58fc) | England | 1 m | Aerial LiDAR / 2000-2022 |
 | [Australian 5M DEM](https://ecat.ga.gov.au/geonetwork/srv/eng/catalog.search#/metadata/89644) | Australia | 5 m | Aerial LiDAR / 2001-2015 |
 | [RGE Alti](https://geoservices.ign.fr/rgealti) | France | 1 m | Aerial LiDAR |
+
+</details>
+
+## Community & Contributing
+
+VoxCity is open source and community-driven — contributions of all kinds are welcome.
+
+- 🐛 **Report bugs or request features** via the [issue tracker](https://github.com/kunifujiwara/VoxCity/issues).
+- 💬 **Ask questions and share your work** in [Discussions](https://github.com/kunifujiwara/VoxCity/discussions).
+- 🤝 **Contribute code** — see [CONTRIBUTING.rst](CONTRIBUTING.rst). To get started:
+
+  ```bash
+  git clone https://github.com/kunifujiwara/VoxCity.git
+  cd VoxCity
+  pip install -r requirements_dev.txt
+  pytest
+  ```
+
+Please also review our [Code of Conduct](CODE_OF_CONDUCT.rst).
 
 ## Citation
 
