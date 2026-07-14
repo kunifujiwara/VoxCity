@@ -65,3 +65,15 @@ def test_raster_to_rgb_and_fit_canvas():
     fitted = m.fit_canvas(rgb, (820, 512))
     assert fitted.shape == (512, 820, 3)
     assert fitted.dtype == np.uint8
+
+
+def test_compose_preserves_shape_and_draws():
+    m = load_module()
+    cfg = m.Config()
+    frame = np.full((cfg.height, cfg.width, 3), 128, dtype=np.uint8)
+    out = m.compose(frame, stage_index=1, caption="2 · Download data", cfg=cfg)
+    assert out.shape == frame.shape
+    assert out.dtype == np.uint8
+    # something was drawn (pixels changed vs. flat input)
+    assert not np.array_equal(out, frame)
+    assert len(m.STAGES) == 6

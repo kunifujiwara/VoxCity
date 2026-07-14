@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CANVAS_DEFAULT = (820, 512)          # (width, height)
@@ -119,3 +119,49 @@ def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
     canvas = Image.new("RGB", (width, height), pad_rgb)
     canvas.paste(img, ((width - img.width) // 2, (height - img.height) // 2))
     return np.asarray(canvas, dtype=np.uint8)
+
+
+STAGES = ["Settings", "Download", "Voxelize", "Integrate", "Simulate", "Export"]
+
+
+def _load_font(size: int):
+    """Load a TrueType font, falling back to default if DejaVu is unavailable."""
+    for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
+    """Burn a bottom caption bar and top progress strip onto a frame.
+    
+    Args:
+        frame: Input (H, W, 3) uint8 RGB array.
+        stage_index: Current stage index (0-5), used to highlight the progress strip.
+        caption: Caption text for the bottom bar.
+        cfg: Config object with width and height.
+    
+    Returns:
+        (H, W, 3) uint8 RGB array with overlays drawn.
+    """
+    img = Image.fromarray(frame).convert("RGB")
+    draw = ImageDraw.Draw(img, "RGBA")
+    w, h = img.size
+
+    # top progress strip
+    n = len(STAGES)
+    seg = w / n
+    strip_h = max(6, h // 60)
+    for i in range(n):
+        active = i <= stage_index
+        color = (45, 110, 235, 255) if active else (200, 200, 200, 255)
+        draw.rectangle([i * seg + 2, 0, (i + 1) * seg - 2, strip_h], fill=color)
+
+    # bottom caption bar
+    bar_h = max(24, h // 12)
+    draw.rectangle([0, h - bar_h, w, h], fill=(20, 20, 24, 190))
+    font = _load_font(max(14, bar_h // 2))
+    draw.text((16, h - bar_h + (bar_h - font.size) // 2), caption, fill=(255, 255, 255, 255), font=font)
+    return np.asarray(img, dtype=np.uint8)
