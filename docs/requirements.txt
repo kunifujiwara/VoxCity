@@ -4,5 +4,6 @@ furo
 sphinxcontrib-bibtex
 sphinx
 sphinx-design
-# Install voxcity in editable mode for documentation generation
--e .
+# Note: the voxcity package itself is installed separately (see
+# .readthedocs.yml `python.install: path: .` and the docs workflow), not via
+# an editable "-e ." entry here, so Dependabot can update these doc deps.
