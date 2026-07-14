@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import imageio.v2 as imageio
 
 import matplotlib
 matplotlib.use("Agg")
@@ -203,3 +204,36 @@ def stitch(stages, fade: int):
             frames.extend(crossfade(frames[-1], stage[0], fade))
         frames.extend(stage)
     return frames
+
+
+def _downscale(frames, factor: float):
+    if factor >= 0.999:
+        return frames
+    out = []
+    for f in frames:
+        h, w = f.shape[:2]
+        img = Image.fromarray(f).resize((max(1, int(w * factor)), max(1, int(h * factor))), Image.LANCZOS)
+        out.append(np.asarray(img, dtype=np.uint8))
+    return out
+
+
+def _write_gif(frames, out: Path, fps: int) -> int:
+    duration = 1.0 / max(1, fps)
+    imageio.mimsave(out, frames, format="GIF", duration=duration, loop=0)
+    return out.stat().st_size
+
+
+def encode_gif(frames, out: Path, fps: int, max_bytes: int) -> int:
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # (scale, fps, frame_stride) ladder — progressively cheaper
+    ladder = [(1.0, fps, 1), (0.78, fps, 1), (0.78, max(10, fps - 3), 1),
+              (0.62, max(10, fps - 3), 1), (0.62, max(8, fps - 5), 2),
+              (0.5, max(8, fps - 7), 2), (0.4, max(6, fps - 9), 2)]
+    size = 0
+    for scale, f_fps, stride in ladder:
+        fr = _downscale(frames, scale)[::stride]
+        size = _write_gif(fr, out, f_fps)
+        if size <= max_bytes:
+            return size
+    raise RuntimeError(f"GIF still {size} bytes > budget {max_bytes} after fallback ladder")

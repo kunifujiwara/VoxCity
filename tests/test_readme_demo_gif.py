@@ -91,3 +91,22 @@ def test_crossfade_and_stitch():
     stitched = m.stitch([[a, a], [b, b]], fade=2)
     assert len(stitched) == 2 + 2 + 2  # stage A + fade + stage B
     assert stitched[0].shape == (4, 4, 3)
+
+
+def test_encode_gif_writes_and_reports(tmp_path):
+    m = load_module()
+    frames = [np.random.randint(0, 255, (64, 100, 3), dtype=np.uint8) for _ in range(6)]
+    out = tmp_path / "x.gif"
+    size = m.encode_gif(frames, out, fps=10, max_bytes=50 * 1024 * 1024)
+    assert out.exists()
+    assert size == out.stat().st_size > 0
+
+
+def test_encode_gif_ladder_shrinks(tmp_path):
+    m = load_module()
+    # noisy frames are hard to compress; force the ladder with a tiny budget
+    frames = [np.random.randint(0, 255, (240, 400, 3), dtype=np.uint8) for _ in range(20)]
+    out = tmp_path / "y.gif"
+    size = m.encode_gif(frames, out, fps=15, max_bytes=400 * 1024)
+    assert out.exists()
+    assert size <= 400 * 1024
