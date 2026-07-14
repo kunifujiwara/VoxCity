@@ -23,5 +23,5 @@ examples/index
 changelog
 contributing
 conduct
-references
+bibliography
 ```
