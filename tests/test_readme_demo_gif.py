@@ -39,3 +39,15 @@ def test_mask_classes_cumulative():
     assert set(np.unique(trees)) == {0, -1, 1, -3, -2}
     # original untouched
     assert c[0, 0, 2] == -3
+
+
+def test_isometric_camera_geometry():
+    m = load_module()
+    pos, look = m.isometric_camera((200, 200, 58), 5.0)
+    cx, cy = 100 * 5.0 / 2, 100 * 5.0 / 2  # not exact; just sanity on look-at centering
+    # look-at is centered over the horizontal extent
+    assert abs(look[0] - (200 * 5.0) / 2) < 1e-6
+    assert abs(look[1] - (200 * 5.0) / 2) < 1e-6
+    # camera is above and outside the box
+    assert pos[2] > look[2]
+    assert pos != look

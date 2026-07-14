@@ -44,6 +44,28 @@ def mask_classes(classes: np.ndarray, keep: str) -> np.ndarray:
     return np.where(mask, classes, 0).astype(classes.dtype)
 
 
+def isometric_camera(shape, meshsize, distance_factor: float = 1.6, height_factor: float = 0.9):
+    """Compute a fixed isometric camera (position, look_at) for a voxel grid.
+
+    Reused for every build-up beat and the sim overlay so the model does not
+    jump between frames.
+    """
+    nx, ny, nz = shape
+    ex, ey, ez = nx * meshsize, ny * meshsize, nz * meshsize
+    center = (ex / 2.0, ey / 2.0, ez * 0.25)
+    diag = float(np.hypot(ex, ey))
+    # canonical isometric direction (1, 1, ~0.7), normalized, pushed out by diag
+    d = np.array([1.0, 1.0, 0.7])
+    d = d / np.linalg.norm(d)
+    dist = diag * distance_factor
+    pos = (
+        center[0] + d[0] * dist,
+        center[1] + d[1] * dist,
+        center[2] + d[2] * dist * height_factor + ez,
+    )
+    return pos, center
+
+
 @dataclass
 class Config:
     width: int = CANVAS_DEFAULT[0]
