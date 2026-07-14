@@ -11,6 +11,9 @@ def load_module():
     spec.loader.exec_module(mod)
     return mod
 
+import numpy as np
+
+
 def test_config_defaults():
     m = load_module()
     cfg = m.Config()
@@ -20,3 +23,19 @@ def test_config_defaults():
     assert cfg.overlay == "solar"
     assert cfg.out.name == "demo.gif"
     assert m.MAX_BYTES_DEFAULT == 8 * 1024 * 1024
+
+
+def test_mask_classes_cumulative():
+    m = load_module()
+    # one voxel of each kind stacked in z
+    c = np.array([[[-1, 1, -3, -2, 0]]], dtype=np.int8)  # ground, landcover, building, tree, air
+    terrain = m.mask_classes(c, "terrain")
+    assert set(np.unique(terrain)) == {0, -1}
+    landcover = m.mask_classes(c, "landcover")
+    assert set(np.unique(landcover)) == {0, -1, 1}
+    buildings = m.mask_classes(c, "buildings")
+    assert set(np.unique(buildings)) == {0, -1, 1, -3}
+    trees = m.mask_classes(c, "trees")
+    assert set(np.unique(trees)) == {0, -1, 1, -3, -2}
+    # original untouched
+    assert c[0, 0, 2] == -3
