@@ -137,31 +137,21 @@ def _cached_present(m):
     return cfg.voxcity_h5.exists() and cfg.results_h5.exists()
 
 
-def test_load_inputs_and_render_voxel():
+def test_render_still_has_symbol():
     m = load_module()
-    if not _cached_present(m):
-        pytest.skip("cached demo h5 not present")
-    if not m.gpu_available():
-        pytest.skip("no Taichi GPU backend")
-    cfg = m.Config(quick=True)
-    city, results = m.load_inputs(cfg)
-    assert city.voxels.classes.ndim == 3
-    assert "ground" in results
-    cam_pos, cam_look = m.isometric_camera(city.voxels.classes.shape, city.voxels.meta.meshsize)
-    frame = m.render_voxel(city, cfg, keep="terrain", camera=(cam_pos, cam_look))
-    assert frame.shape == (cfg.height, cfg.width, 3)
-    assert frame.dtype == np.uint8
+    assert hasattr(m, "render_still")
 
 
-def test_smoke_quick_build(tmp_path):
+def test_render_still_shape():
     m = load_module()
-    cfg = m.Config(quick=True)
-    if not (cfg.voxcity_h5.exists() and cfg.results_h5.exists() and m.gpu_available()):
+    if not _cached_present(m) or not m.gpu_available():
         pytest.skip("cached h5 or GPU unavailable")
-    cfg = m.Config(quick=True, out=tmp_path / "demo.gif", width=320, height=200)
-    size = m.run(cfg)
-    assert cfg.out.exists()
-    assert size == cfg.out.stat().st_size > 0
+    cfg = m.Config(quick=True, width=320, height=200)
+    city, _ = m.load_inputs(cfg)
+    cam = m.isometric_camera(city.voxels.classes.shape, city.voxels.meta.meshsize)
+    img = m.render_still(city, cfg, cam)
+    assert img.shape == (200, 320, 3) and img.dtype == np.uint8
+
 
 
 def test_parse_args_overrides():
