@@ -31,6 +31,9 @@ MAX_BYTES_DEFAULT = 8 * 1024 * 1024  # safety ceiling; WebP stays well under
 # Cumulative keep-sets for the voxelization build-up. Each level adds voxels.
 _BUILD_LEVELS = ("terrain", "landcover", "buildings", "trees")
 
+# Per-layer scene builder; non-cumulative layers for exploded assembly.
+LAYERS = ("terrain", "landcover", "buildings", "trees")
+
 
 def _keep_mask(classes: np.ndarray, level: str) -> np.ndarray:
     """Boolean mask of voxels visible at a cumulative build-up *level*."""
@@ -51,6 +54,63 @@ def mask_classes(classes: np.ndarray, keep: str) -> np.ndarray:
     """Return a copy of *classes* with voxels above cumulative *keep* set to air (0)."""
     mask = _keep_mask(classes, keep)
     return np.where(mask, classes, 0).astype(classes.dtype)
+
+
+def layer_mask(classes, layer):
+    """Boolean mask of voxels belonging to exactly one pipeline layer."""
+    c = np.asarray(classes)
+    if layer == "terrain":
+        return c == -1
+    if layer == "landcover":
+        return c >= 1
+    if layer == "buildings":
+        return c <= -3
+    if layer == "trees":
+        return c == -2
+    raise ValueError(f"unknown layer {layer!r}")
+
+
+def z_shift_classes(classes, dz: int):
+    """Translate a class grid up by dz voxels along axis 2 (zero-filled)."""
+    c = np.asarray(classes)
+    out = np.zeros_like(c)
+    if dz <= 0:
+        if dz == 0:
+            return c.copy()
+        src = slice(-dz, None); dst = slice(0, c.shape[2] + dz)
+    else:
+        src = slice(0, c.shape[2] - dz); dst = slice(dz, None)
+    out[:, :, dst] = c[:, :, src]
+    return out
+
+
+def _scale_layer_height(layer_classes, scale: float):
+    """Flatten a single-layer voxel grid toward the ground by keeping only the
+    lowest `scale` fraction of each column's occupied height (scale in (0,1])."""
+    if scale >= 0.999:
+        return layer_classes
+    c = layer_classes.copy()
+    nz = c.shape[2]
+    keep_z = max(1, int(round(nz * scale)))
+    c[:, :, keep_z:] = 0
+    return c
+
+
+def explode_city(city, offsets, scales=None):
+    """Build one synthetic VoxCity combining the requested layers, each z-shifted
+    by offsets[layer] voxels and optionally height-scaled by scales[layer]."""
+    scales = scales or {}
+    base = np.asarray(city.voxels.classes)
+    combined = np.zeros_like(base)
+    for layer, dz in offsets.items():
+        layer_c = np.where(layer_mask(base, layer), base, 0).astype(base.dtype)
+        layer_c = _scale_layer_height(layer_c, scales.get(layer, 1.0))
+        layer_c = z_shift_classes(layer_c, int(dz))
+        combined = np.where(layer_c != 0, layer_c, combined)
+    c2 = copy.copy(city)
+    c2.voxels = copy.copy(city.voxels)
+    c2.voxels.classes = combined
+    return c2
 
 
 def isometric_camera(shape, meshsize, distance_factor: float = 1.6, height_factor: float = 0.9):

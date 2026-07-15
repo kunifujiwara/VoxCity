@@ -192,3 +192,31 @@ def test_land_cover_rgb_uses_lut():
     # first class color equals the first LUT RGB key
     first_rgb = list(lut.keys())[0]
     assert tuple(int(c) for c in rgb[0, 0]) == tuple(int(c) for c in first_rgb)
+
+
+def test_layer_mask_is_partition():
+    m = load_module()
+    c = np.array([[[-1, 1, -3, -2, 0]]], dtype=np.int8)
+    assert set(np.unique(np.where(m.layer_mask(c, "terrain"), c, 0))) == {0, -1}
+    assert set(np.unique(np.where(m.layer_mask(c, "landcover"), c, 0))) == {0, 1}
+    assert set(np.unique(np.where(m.layer_mask(c, "buildings"), c, 0))) == {0, -3}
+    assert set(np.unique(np.where(m.layer_mask(c, "trees"), c, 0))) == {0, -2}
+
+
+def test_z_shift_moves_voxels_up():
+    m = load_module()
+    c = np.zeros((1, 1, 4), dtype=np.int8)
+    c[0, 0, 0] = -1
+    up = m.z_shift_classes(c, 2)
+    assert up[0, 0, 2] == -1 and up[0, 0, 0] == 0
+    assert up.shape == c.shape
+
+
+def test_explode_city_omits_absent_layers():
+    m = load_module()
+    if not _cached_present(m):
+        pytest.skip("cached demo h5 not present")
+    city, _ = m.load_inputs(m.Config(quick=True))
+    only_terrain = m.explode_city(city, offsets={"terrain": 0})
+    vals = set(np.unique(only_terrain.voxels.classes))
+    assert vals.issubset({0, -1})  # only terrain voxels survive
