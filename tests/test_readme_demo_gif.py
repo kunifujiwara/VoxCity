@@ -271,3 +271,16 @@ def test_build_timeline_structure():
     assert ts[0] <= 0.01 and ts[-1] >= 0.99
     # quick mode is short
     assert len(m.build_timeline(m.Config(quick=True))) <= 24
+
+
+def test_draw_labels_and_chips_change_pixels():
+    m = load_module()
+    f = np.full((200, 320, 3), 128, dtype=np.uint8)
+    out1 = m.draw_labels(f, [("Terrain", "terrain"), ("Building", "viridis")])
+    assert out1.shape == f.shape and not np.array_equal(out1, f)
+    out2 = m.draw_export_chips(f, 1.0)
+    assert out2.shape == f.shape and not np.array_equal(out2, f)
+    assert m.EXPORT_FORMATS[0] == "OBJ"
+    # chips fan out: at t=0 they cluster near center, at t=1 they spread wider
+    early = m.draw_export_chips(f, 0.0)
+    assert not np.array_equal(early, out2)

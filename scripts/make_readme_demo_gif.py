@@ -21,6 +21,7 @@ import imageio.v2 as imageio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.cm as cm
+import matplotlib.cm as _cm
 import matplotlib.colors as mcolors
 from PIL import Image, ImageDraw, ImageFont
 
@@ -322,6 +323,53 @@ def _load_font(size: int):
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+EXPORT_FORMATS = ["OBJ", "ENVI-met", "MagicaVoxel", "netCDF", "CityLES", "GeoTIFF"]
+
+
+def _cmap_swatch(hint):
+    if hint == "landcover":
+        return (90, 150, 70)
+    try:
+        r, g, b, _ = _cm.get_cmap(hint)(0.7)
+        return (int(r * 255), int(g * 255), int(b * 255))
+    except Exception:
+        return (80, 120, 200)
+
+
+def draw_labels(frame, labels):
+    img = Image.fromarray(frame).convert("RGB")
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _load_font(max(14, img.height // 26))
+    fs = getattr(font, "size", 14)
+    y = int(img.height * 0.10)
+    for name, hint in labels:
+        sw = _cmap_swatch(hint)
+        draw.rectangle([16, y, 16 + fs, y + fs], fill=(*sw, 255))
+        draw.text((16 + fs + 8, y), name, fill=(255, 255, 255, 255), font=font)
+        y += fs + 8
+    return np.asarray(img, dtype=np.uint8)
+
+
+def draw_export_chips(frame, t):
+    img = Image.fromarray(frame).convert("RGB")
+    draw = ImageDraw.Draw(img, "RGBA")
+    font = _load_font(max(13, img.height // 30))
+    cx, cy = img.width / 2, img.height * 0.45
+    n = len(EXPORT_FORMATS)
+    spread = 0.12 + 0.30 * float(np.clip(t, 0, 1))
+    for i, name in enumerate(EXPORT_FORMATS):
+        ang = 2 * np.pi * i / n
+        px = cx + np.cos(ang) * img.width * spread
+        py = cy + np.sin(ang) * img.height * spread
+        tw = draw.textlength(name, font=font)
+        fs = getattr(font, "size", 13)
+        draw.rounded_rectangle([px - tw / 2 - 8, py - fs / 2 - 5,
+                                px + tw / 2 + 8, py + fs / 2 + 5],
+                               radius=6, fill=(30, 34, 44, 220))
+        draw.text((px - tw / 2, py - fs / 2), name, fill=(255, 255, 255, 255), font=font)
+    return np.asarray(img, dtype=np.uint8)
 
 
 def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
