@@ -78,55 +78,28 @@ def test_compose_preserves_shape_and_draws():
     assert len(m.STAGES) == 6
 
 
-def test_crossfade_and_stitch():
+
+
+def test_encode_webp_animates_with_nonzero_duration(tmp_path):
     m = load_module()
-    a = np.zeros((4, 4, 3), dtype=np.uint8)
-    b = np.full((4, 4, 3), 255, dtype=np.uint8)
-    mid = m.crossfade(a, b, 3)
-    assert len(mid) == 3
-    # monotonic increase in brightness
-    means = [float(f.mean()) for f in mid]
-    assert means[0] < means[1] < means[2]
-    stitched = m.stitch([[a, a], [b, b]], fade=2)
-    assert len(stitched) == 2 + 2 + 2  # stage A + fade + stage B
-    assert stitched[0].shape == (4, 4, 3)
-
-
-def test_encode_gif_writes_and_reports(tmp_path):
-    m = load_module()
-    frames = [np.random.randint(0, 255, (64, 100, 3), dtype=np.uint8) for _ in range(6)]
-    out = tmp_path / "x.gif"
-    size = m.encode_gif(frames, out, fps=10, max_bytes=50 * 1024 * 1024)
-    assert out.exists()
-    assert size == out.stat().st_size > 0
-
-
-def test_encode_gif_ladder_shrinks(tmp_path):
-    m = load_module()
-    # noisy frames are hard to compress; force the ladder with a tiny budget
-    frames = [np.random.randint(0, 255, (240, 400, 3), dtype=np.uint8) for _ in range(20)]
-    out = tmp_path / "y.gif"
-    size = m.encode_gif(frames, out, fps=15, max_bytes=400 * 1024)
-    assert out.exists()
-    assert size <= 400 * 1024
-
-
-def test_encode_gif_frame_duration_nonzero(tmp_path):
-    m = load_module()
-    frames = [np.full((16, 16, 3), i * 20, dtype=np.uint8) for i in range(6)]
-    out = tmp_path / "d.gif"
-    m.encode_gif(frames, out, fps=15, max_bytes=50 * 1024 * 1024)
+    frames = [np.full((32, 48, 3), i * 30, dtype=np.uint8) for i in range(8)]
+    out = tmp_path / "d.webp"
+    size = m.encode_webp(frames, out, fps=24, quality=80)
+    assert out.exists() and size == out.stat().st_size > 0
     from PIL import Image
     im = Image.open(out)
+    assert getattr(im, "n_frames", 1) == 8
     durs = []
     try:
         while True:
+            im.seek(im.tell())
+            im.load()
             durs.append(im.info.get("duration"))
             im.seek(im.tell() + 1)
     except EOFError:
         pass
-    # every stored per-frame delay must be > 0 (the 1.0/fps bug stored 0ms => too-fast playback)
-    assert all(d and d > 0 for d in durs), f"zero/None frame durations: {durs}"
+    assert all(d and d > 0 for d in durs), f"zero/None durations: {durs}"
+    assert abs(durs[0] - (1000.0 / 24)) < 5  # ~41ms
 
 
 import pytest

@@ -407,76 +407,16 @@ def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
     return np.asarray(img, dtype=np.uint8)
 
 
-def crossfade(a, b, n: int):
-    """Generate n intermediate frames blending a → b (exclusive of endpoints).
-    
-    Args:
-        a: Source frame (H, W, C) uint8 array.
-        b: Target frame (H, W, C) uint8 array.
-        n: Number of intermediate frames to generate.
-    
-    Returns:
-        List of n intermediate uint8 frames.
-    """
-    a = a.astype(np.float32)
-    b = b.astype(np.float32)
-    out = []
-    for k in range(1, n + 1):
-        t = k / (n + 1)
-        out.append(np.clip(a * (1 - t) + b * t, 0, 255).astype(np.uint8))
-    return out
-
-
-def stitch(stages, fade: int):
-    """Concatenate per-stage frame lists with fade dissolve frames between stages.
-    
-    Args:
-        stages: List of per-stage frame lists, each a list of uint8 arrays.
-        fade: Number of dissolve frames between consecutive stages.
-    
-    Returns:
-        List of uint8 frames with stages concatenated and dissolves inserted.
-    """
-    frames: list = []
-    for i, stage in enumerate(stages):
-        if i > 0 and fade > 0 and frames and stage:
-            frames.extend(crossfade(frames[-1], stage[0], fade))
-        frames.extend(stage)
-    return frames
-
-
-def _downscale(frames, factor: float):
-    if factor >= 0.999:
-        return frames
-    out = []
-    for f in frames:
-        h, w = f.shape[:2]
-        img = Image.fromarray(f).resize((max(1, int(w * factor)), max(1, int(h * factor))), Image.LANCZOS)
-        out.append(np.asarray(img, dtype=np.uint8))
-    return out
-
-
-def _write_gif(frames, out: Path, fps: int) -> int:
-    # imageio/Pillow GIF duration is in milliseconds; GIF rounds to centiseconds.
-    duration = frame_duration_ms(fps)
-    imageio.mimsave(out, frames, format="GIF", duration=duration, loop=0)
-    return out.stat().st_size
-
-
-def encode_gif(frames, out: Path, fps: int, max_bytes: int) -> int:
+def encode_webp(frames, out: Path, fps: int, quality: int = 80) -> int:
+    """Write frames as an animated, looping WebP with millisecond frame delays."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    # (scale, fps, frame_stride) ladder — progressively cheaper
-    ladder = [(1.0, fps, 1), (0.78, fps, 1), (0.78, max(10, fps - 3), 1),
-              (0.62, max(10, fps - 3), 1), (0.62, max(8, fps - 5), 2),
-              (0.5, max(8, fps - 7), 2), (0.4, max(6, fps - 9), 2)]
-    size = 0
-    for scale, f_fps, stride in ladder:
-        fr = _downscale(frames, scale)[::stride]
-        size = _write_gif(fr, out, f_fps)
-        if size <= max_bytes:
-            return size
-    raise RuntimeError(f"GIF still {size} bytes > budget {max_bytes} after fallback ladder")
+    duration = frame_duration_ms(fps)
+    imgs = [Image.fromarray(np.asarray(f, dtype=np.uint8)).convert("RGB") for f in frames]
+    imgs[0].save(out, format="WEBP", save_all=True, append_images=imgs[1:],
+                 duration=int(round(duration)), loop=0, quality=quality, method=6)
+    return out.stat().st_size
+
 
 
 _GPU_AVAILABLE = None
@@ -565,9 +505,9 @@ def build_frames(cfg):
 
 
 def run(cfg) -> int:
-    """Build frames, encode the GIF (and optional MP4), returning the GIF byte size."""
+    """Build frames, encode the WebP, returning the byte size."""
     frames = build_frames(cfg)
-    size = encode_gif(frames, cfg.out, cfg.fps, MAX_BYTES_DEFAULT)
+    size = encode_webp(frames, cfg.out, cfg.fps)
     return size
 
 
