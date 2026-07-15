@@ -135,6 +135,31 @@ def isometric_camera(shape, meshsize, distance_factor: float = 1.6, height_facto
     return pos, center
 
 
+def _ease_in_out(t):
+    """Cosine ease-in-out interpolation: 0 at t=0, 1 at t=1."""
+    return 0.5 - 0.5 * np.cos(np.pi * t)
+
+
+def orbit_path(shape, meshsize, n, sweep_deg=90.0, elev_factor=0.9,
+               dist_factor=1.7, start_deg=45.0):
+    """N eased camera poses orbiting the scene center at fixed elevation."""
+    nx, ny, nz = shape
+    ex, ey, ez = nx * meshsize, ny * meshsize, nz * meshsize
+    center = (ex / 2.0, ey / 2.0, ez * 0.25)
+    diag = float(np.hypot(ex, ey))
+    radius = diag * dist_factor
+    height = center[2] + diag * 0.7 * elev_factor + ez
+    poses = []
+    for i in range(n):
+        t = 0.0 if n == 1 else i / (n - 1)
+        ang = np.deg2rad(start_deg + sweep_deg * _ease_in_out(t))
+        pos = (center[0] + radius * np.cos(ang),
+               center[1] + radius * np.sin(ang),
+               height)
+        poses.append((pos, center))
+    return poses
+
+
 @dataclass
 class Config:
     width: int = CANVAS_DEFAULT[0]

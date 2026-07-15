@@ -220,3 +220,21 @@ def test_explode_city_omits_absent_layers():
     only_terrain = m.explode_city(city, offsets={"terrain": 0})
     vals = set(np.unique(only_terrain.voxels.classes))
     assert vals.issubset({0, -1})  # only terrain voxels survive
+
+
+def test_orbit_path_smooth_and_bounded():
+    m = load_module()
+    poses = m.orbit_path((100, 120, 40), 5.0, n=48, sweep_deg=90.0)
+    assert len(poses) == 48
+    center = poses[0][1]
+    # look-at is constant (camera orbits a fixed target)
+    for _, look in poses:
+        assert np.allclose(look, center, atol=1e-6)
+    # radius from center is ~constant (true orbit, not a zoom)
+    import math
+    radii = [math.hypot(p[0] - center[0], p[1] - center[1]) for p, _ in poses]
+    assert max(radii) - min(radii) < 1e-3 * max(radii)
+    # azimuth advances monotonically and total sweep ~90 deg
+    az = [math.atan2(p[1] - center[1], p[0] - center[0]) for p, _ in poses]
+    unwrapped = np.unwrap(az)
+    assert abs(math.degrees(unwrapped[-1] - unwrapped[0]) - 90.0) < 5.0
