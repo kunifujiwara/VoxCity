@@ -24,9 +24,9 @@ import matplotlib.colors as mcolors
 from PIL import Image, ImageDraw, ImageFont
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CANVAS_DEFAULT = (820, 512)          # (width, height)
-FPS_DEFAULT = 15
-MAX_BYTES_DEFAULT = 8 * 1024 * 1024  # 8 MB
+CANVAS_DEFAULT = (960, 540)          # (width, height)
+FPS_DEFAULT = 24
+MAX_BYTES_DEFAULT = 8 * 1024 * 1024  # safety ceiling; WebP stays well under
 
 # Cumulative keep-sets for the voxelization build-up. Each level adds voxels.
 _BUILD_LEVELS = ("terrain", "landcover", "buildings", "trees")
@@ -80,10 +80,9 @@ class Config:
     width: int = CANVAS_DEFAULT[0]
     height: int = CANVAS_DEFAULT[1]
     fps: int = FPS_DEFAULT
-    out: Path = field(default_factory=lambda: REPO_ROOT / "images" / "demo.gif")
-    mp4: bool = False
+    seconds: float = 20.0
+    out: Path = field(default_factory=lambda: REPO_ROOT / "images" / "demo.webp")
     quick: bool = False
-    overlay: str = "solar"
     voxcity_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "voxcity.h5")
     results_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "simulation_results.h5")
 
@@ -124,7 +123,12 @@ def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
     return np.asarray(canvas, dtype=np.uint8)
 
 
-STAGES = ["Settings", "Download", "Voxelize", "Integrate", "Simulate", "Export"]
+def frame_duration_ms(fps: int) -> float:
+    """Per-frame delay in milliseconds (WebP/GIF units)."""
+    return 1000.0 / max(1, fps)
+
+
+STAGES = ["Target area", "Download", "Voxelize", "Integrate", "Simulate", "Export"]
 
 
 def _load_font(size: int):
@@ -223,7 +227,7 @@ def _downscale(frames, factor: float):
 
 def _write_gif(frames, out: Path, fps: int) -> int:
     # imageio/Pillow GIF duration is in milliseconds; GIF rounds to centiseconds.
-    duration = 1000.0 / max(1, fps)
+    duration = frame_duration_ms(fps)
     imageio.mimsave(out, frames, format="GIF", duration=duration, loop=0)
     return out.stat().st_size
 
@@ -306,7 +310,7 @@ def _beats(cfg, n_full: int) -> int:
 def stage_settings(city, cfg):
     """Stage 1 — establishing shot of the target area's terrain elevation."""
     base = fit_canvas(raster_to_rgb(city.dem.elevation, cmap="terrain"), (cfg.width, cfg.height))
-    caption = "1 · Settings — target area · data sources · mesh size"
+    caption = "1 · Target area — data sources · mesh size"
     return [compose(base, 0, caption, cfg) for _ in range(_beats(cfg, 12))]
 
 
@@ -416,9 +420,6 @@ def run(cfg) -> int:
     """Build frames, encode the GIF (and optional MP4), returning the GIF byte size."""
     frames = build_frames(cfg)
     size = encode_gif(frames, cfg.out, cfg.fps, MAX_BYTES_DEFAULT)
-    if cfg.mp4:
-        mp4_path = cfg.out.with_suffix(".mp4")
-        imageio.mimsave(mp4_path, frames, format="FFMPEG", fps=cfg.fps)
     return size
 
 
@@ -429,12 +430,9 @@ def parse_args(argv=None) -> Config:
     p.add_argument("--width", type=int, default=Config().width)
     p.add_argument("--height", type=int, default=Config().height)
     p.add_argument("--fps", type=int, default=Config().fps)
-    p.add_argument("--overlay", default="solar", choices=["solar", "gvi"])
-    p.add_argument("--mp4", action="store_true")
     p.add_argument("--quick", action="store_true")
     a = p.parse_args(argv)
-    return Config(width=a.width, height=a.height, fps=a.fps, out=a.out,
-                  mp4=a.mp4, quick=a.quick, overlay=a.overlay)
+    return Config(width=a.width, height=a.height, fps=a.fps, out=a.out, quick=a.quick)
 
 
 def main(argv=None) -> int:

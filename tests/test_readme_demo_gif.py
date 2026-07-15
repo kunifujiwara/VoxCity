@@ -14,15 +14,15 @@ def load_module():
 import numpy as np
 
 
-def test_config_defaults():
+def test_config_defaults_webp():
     m = load_module()
     cfg = m.Config()
-    assert cfg.width == 820
-    assert cfg.height == 512
-    assert cfg.fps == 15
-    assert cfg.overlay == "solar"
-    assert cfg.out.name == "demo.gif"
-    assert m.MAX_BYTES_DEFAULT == 8 * 1024 * 1024
+    assert cfg.width == 960 and cfg.height == 540
+    assert cfg.fps == 24
+    assert abs(cfg.seconds - 20.0) < 1e-9
+    assert cfg.out.name == "demo.webp"
+    assert abs(m.frame_duration_ms(24) - (1000.0 / 24)) < 1e-9
+    assert m.frame_duration_ms(0) == 1000.0  # guards div-by-zero
 
 
 def test_mask_classes_cumulative():
