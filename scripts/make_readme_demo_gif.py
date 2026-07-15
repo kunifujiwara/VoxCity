@@ -502,6 +502,23 @@ def stage_export(city, cfg):
     return [frame for _ in range(_beats(cfg, 12))]
 
 
+def to_uv_layout(grid, ref_shape):
+    """Return `grid` in the (u,v) order of ref_shape=(nu,nv) WITHOUT flipping.
+
+    VoxCity contract (src/voxcity/geoprocessor/mesh.py header): sim arrays are
+    uv-layout (axis0=u/north, axis1=v/east); the renderer remaps axes to scene
+    (x=v, y=u, z). So we must NOT flipud/fliplr — only transpose if the caller
+    handed us a (v,u) grid.
+    """
+    g = np.asarray(grid)
+    nu, nv = ref_shape
+    if g.shape == (nu, nv):
+        return g
+    if g.shape == (nv, nu):
+        return g.T
+    raise ValueError(f"sim grid {g.shape} incompatible with ref {ref_shape}")
+
+
 def build_frames(cfg):
     """Run all six pipeline stages and stitch their frames into one sequence."""
     city, results = load_inputs(cfg)

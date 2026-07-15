@@ -238,3 +238,29 @@ def test_orbit_path_smooth_and_bounded():
     az = [math.atan2(p[1] - center[1], p[0] - center[0]) for p, _ in poses]
     unwrapped = np.unwrap(az)
     assert abs(math.degrees(unwrapped[-1] - unwrapped[0]) - 90.0) < 5.0
+
+
+def test_to_uv_layout_no_flip():
+    m = load_module()
+    ref = (3, 5)  # (nu, nv)
+    g = np.arange(15).reshape(3, 5)
+    out = m.to_uv_layout(g, ref)
+    assert np.array_equal(out, g)  # already uv-layout => untouched (no flip/transpose)
+
+
+def test_to_uv_layout_transpose_only():
+    m = load_module()
+    ref = (3, 5)
+    gt = np.arange(15).reshape(5, 3)  # transposed
+    out = m.to_uv_layout(gt, ref)
+    assert out.shape == ref
+    assert np.array_equal(out, gt.T)  # transpose to match, still no flip
+
+
+def test_to_uv_layout_never_flips_marker():
+    m = load_module()
+    # asymmetric marker in the north-west corner (u=0,v=0) must stay there
+    ref = (4, 6)
+    g = np.zeros(ref); g[0, 0] = 9.0
+    out = m.to_uv_layout(g, ref)
+    assert out[0, 0] == 9.0
