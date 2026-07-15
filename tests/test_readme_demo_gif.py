@@ -169,3 +169,26 @@ def test_parse_args_overrides():
     cfg = m.parse_args(["--width", "640", "--fps", "12", "--quick", "--out", "/tmp/z.gif"])
     assert cfg.width == 640 and cfg.fps == 12 and cfg.quick is True
     assert str(cfg.out) == "/tmp/z.gif"
+
+
+def test_layer_cmap_defaults():
+    m = load_module()
+    assert m.LAYER_CMAP["terrain"] == "terrain"
+    assert m.LAYER_CMAP["buildings"] == "viridis"
+    assert m.LAYER_CMAP["trees"] == "Greens"
+
+
+def test_land_cover_rgb_uses_lut():
+    m = load_module()
+    from voxcity.utils.lc import get_land_cover_classes
+    lut = get_land_cover_classes("Standard")  # {(r,g,b): name}
+    names = list(lut.values())
+    grid = np.zeros((1, len(names)), dtype=int)
+    for j, _ in enumerate(names):
+        grid[0, j] = j  # class-index encoding matches land_cover_rgb's mapping
+    rgb = m.land_cover_rgb(grid, source="Standard")
+    assert rgb.shape == (1, len(names), 3)
+    assert rgb.dtype == np.uint8
+    # first class color equals the first LUT RGB key
+    first_rgb = list(lut.keys())[0]
+    assert tuple(int(c) for c in rgb[0, 0]) == tuple(int(c) for c in first_rgb)

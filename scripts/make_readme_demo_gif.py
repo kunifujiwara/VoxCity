@@ -123,6 +123,23 @@ def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
     return np.asarray(canvas, dtype=np.uint8)
 
 
+LAYER_CMAP = {"terrain": "terrain", "buildings": "viridis", "trees": "Greens"}
+
+
+def land_cover_rgb(classes, source: str = "Standard"):
+    """Color a 2D land-cover class-index grid with VoxCity's own class->RGB LUT.
+
+    Uses voxcity.utils.lc.get_land_cover_classes(source), an ordered dict of
+    {(r,g,b): name}. Grid values index into that ordered list of colors.
+    """
+    from voxcity.utils.lc import get_land_cover_classes
+    lut = get_land_cover_classes(source)
+    colors = np.array(list(lut.keys()), dtype=np.uint8)  # (K, 3)
+    idx = np.asarray(classes)
+    idx = np.clip(idx.astype(int), 0, len(colors) - 1)
+    return colors[idx].astype(np.uint8)
+
+
 def frame_duration_ms(fps: int) -> float:
     """Per-frame delay in milliseconds (WebP/GIF units)."""
     return 1000.0 / max(1, fps)
