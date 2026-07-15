@@ -134,6 +134,26 @@ def test_parse_args_overrides():
     assert str(cfg.out) == "/tmp/z.gif"
 
 
+def test_parse_args_webp_overrides():
+    m = load_module()
+    cfg = m.parse_args(["--width", "640", "--fps", "20", "--seconds", "10",
+                        "--quick", "--out", "/tmp/z.webp"])
+    assert cfg.width == 640 and cfg.fps == 20 and cfg.quick is True
+    assert abs(cfg.seconds - 10.0) < 1e-9 and str(cfg.out) == "/tmp/z.webp"
+
+
+def test_smoke_quick_build_webp(tmp_path):
+    m = load_module()
+    base = m.Config()
+    if not (base.voxcity_h5.exists() and base.results_h5.exists() and m.gpu_available()):
+        pytest.skip("cached h5 or GPU unavailable")
+    cfg = m.Config(quick=True, out=tmp_path / "demo.webp", width=320, height=200)
+    size = m.run(cfg)
+    assert cfg.out.exists() and size == cfg.out.stat().st_size > 0
+    from PIL import Image
+    assert getattr(Image.open(cfg.out), "n_frames", 1) > 1
+
+
 def test_layer_cmap_defaults():
     m = load_module()
     assert m.LAYER_CMAP["terrain"] == "terrain"

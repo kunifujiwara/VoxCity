@@ -250,6 +250,7 @@ class Config:
     seconds: float = 20.0
     out: Path = field(default_factory=lambda: REPO_ROOT / "images" / "demo.webp")
     quick: bool = False
+    quality: int = 80
     voxcity_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "voxcity.h5")
     results_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "simulation_results.h5")
 
@@ -498,29 +499,86 @@ def to_uv_layout(grid, ref_shape):
     raise ValueError(f"sim grid {g.shape} incompatible with ref {ref_shape}")
 
 
+def _overlay_inputs(city, results, overlay):
+    """Return (ground_grid, ground_dem, building_mesh, building_value) for a beat.
+
+    Real `simulation_results.h5` layout (see load_results_h5): top-level
+    ``results["ground"]`` holds 2D (nu, nv) arrays keyed by metric name
+    (``solar_irradiance_instantaneous``, ``green_view_index``,
+    ``sky_view_index``, ``landmark_visibility``); ``results["building"]`` only
+    carries layout metadata in the cached demo data (no mesh). When no
+    building mesh is available the "building" sub-beat falls back to the
+    ground overlay so it never crashes.
+    """
+    if overlay is None:
+        return None, None, None, None
+    ground = results.get("ground", {}) if isinstance(results, dict) else {}
+    ground_grid = None
+    for key in ("solar_irradiance_instantaneous", "green_view_index",
+                "sky_view_index", "landmark_visibility"):
+        if key in ground:
+            ground_grid = np.asarray(ground[key])
+            break
+    ground_dem = np.asarray(city.dem.elevation) if ground_grid is not None else None
+    if overlay == "building":
+        b = results.get("building", {}) if isinstance(results, dict) else {}
+        mesh = b.get("mesh") if isinstance(b, dict) else None
+        if mesh is not None:
+            value = b.get("value_name") if isinstance(b, dict) else None
+            return None, None, mesh, value
+        # no building mesh in the cached results -> fall back to ground overlay
+        return ground_grid, ground_dem, None, None
+    return ground_grid, ground_dem, None, None
+
+
+def render_timeline(city, results, cfg):
+    """Render every beat of `build_timeline(cfg)` into a list of uint8 frames."""
+    shape = city.voxels.classes.shape
+    meshsize = city.voxels.meta.meshsize
+    tl = build_timeline(cfg)
+    poses = orbit_path(shape, meshsize, n=len(tl))
+    frames = []
+    for i, fs in enumerate(tl):
+        scene = explode_city(city, fs.offsets, fs.scales) if fs.offsets is not None else city
+        gg, gd, bm, bv = _overlay_inputs(city, results, fs.overlay)
+        img = render_still(scene, cfg, poses[i], ground_grid=gg, ground_dem=gd,
+                           building_mesh=bm, building_value=bv)
+        img = compose(img, fs.stage, fs.caption, cfg)
+        if fs.labels:
+            img = draw_labels(img, fs.labels)
+        if fs.chips:
+            img = draw_export_chips(img, fs.camera_t)
+        frames.append(img)
+    return frames
+
+
 def build_frames(cfg):
     """Run the pipeline and stitch frames into one sequence."""
-    raise NotImplementedError("render pipeline rewired in Task 10 (render_timeline)")
-
+    city, results = load_inputs(cfg)
+    return render_timeline(city, results, cfg)
 
 
 def run(cfg) -> int:
     """Build frames, encode the WebP, returning the byte size."""
     frames = build_frames(cfg)
-    size = encode_webp(frames, cfg.out, cfg.fps)
-    return size
+    return encode_webp(frames, cfg.out, cfg.fps, quality=getattr(cfg, "quality", 80))
 
 
 def parse_args(argv=None) -> Config:
     """Parse CLI arguments into a Config."""
-    p = argparse.ArgumentParser(description="Generate the VoxCity README demo GIF.")
+    p = argparse.ArgumentParser(description="Generate the VoxCity README demo reel (WebP).")
     p.add_argument("--out", type=Path, default=Config().out)
     p.add_argument("--width", type=int, default=Config().width)
     p.add_argument("--height", type=int, default=Config().height)
     p.add_argument("--fps", type=int, default=Config().fps)
+    p.add_argument("--seconds", type=float, default=Config().seconds)
+    p.add_argument("--quality", type=int, default=80)
     p.add_argument("--quick", action="store_true")
     a = p.parse_args(argv)
-    return Config(width=a.width, height=a.height, fps=a.fps, out=a.out, quick=a.quick)
+    cfg = Config(width=a.width, height=a.height, fps=a.fps, seconds=a.seconds,
+                 out=a.out, quick=a.quick)
+    cfg.quality = a.quality
+    return cfg
 
 
 def main(argv=None) -> int:
