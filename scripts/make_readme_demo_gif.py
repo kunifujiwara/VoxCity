@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import copy
 from dataclasses import dataclass, field
+from dataclasses import dataclass as _dataclass
 from pathlib import Path
 
 import numpy as np
@@ -158,6 +159,86 @@ def orbit_path(shape, meshsize, n, sweep_deg=90.0, elev_factor=0.9,
                height)
         poses.append((pos, center))
     return poses
+
+
+@_dataclass
+class FrameSpec:
+    stage: int
+    caption: str
+    labels: list
+    offsets: dict | None
+    scales: dict | None
+    overlay: str | None
+    chips: bool
+    camera_t: float
+
+
+_LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land cover", "landcover"),
+                "buildings": ("Building", "viridis"), "trees": ("Tree", "Greens")}
+_EXPLODE = {"terrain": 0, "landcover": 10, "buildings": 20, "trees": 30}
+
+
+def _beat_lengths(cfg):
+    if cfg.quick:
+        return [2, 4, 4, 4, 4, 2]           # 20 frames
+    total = round(cfg.fps * cfg.seconds)
+    weights = [0.12, 0.22, 0.22, 0.16, 0.18, 0.10]
+    lens = [max(1, round(total * w)) for w in weights]
+    return lens
+
+
+def build_timeline(cfg):
+    lens = _beat_lengths(cfg)
+    total = sum(lens)
+    specs = []
+    done = 0
+    def cam_t():
+        return 0.0 if total <= 1 else min(1.0, done / (total - 1))
+
+    b = lens[0]  # Beat 1: terrain tile rises
+    for i in range(b):
+        t = i / max(1, b - 1)
+        specs.append(FrameSpec(0, "1 · Set target area",
+            [("Terrain", "terrain")], {"terrain": int(round((1 - t) * 4))},
+            {"terrain": 0.15}, None, False, cam_t())); done += 1
+
+    b = lens[1]  # Beat 2: download slabs fan out (thin), exploded
+    for i in range(b):
+        t = i / max(1, b - 1)
+        offs = {k: int(round(v * _ease_in_out(t))) for k, v in _EXPLODE.items()}
+        specs.append(FrameSpec(1, "2 · Download data",
+            [_LAYER_LABEL[k] for k in LAYERS], offs,
+            {k: 0.15 for k in LAYERS}, None, False, cam_t())); done += 1
+
+    b = lens[2]  # Beat 3: morph thin -> full voxels (still exploded)
+    for i in range(b):
+        t = i / max(1, b - 1)
+        scales = {k: 0.15 + 0.85 * _ease_in_out(t) for k in LAYERS}
+        specs.append(FrameSpec(2, "3 · Voxelize layers",
+            [_LAYER_LABEL[k] for k in LAYERS], dict(_EXPLODE),
+            scales, None, False, cam_t())); done += 1
+
+    b = lens[3]  # Beat 4: ease down + assemble
+    for i in range(b):
+        t = i / max(1, b - 1)
+        offs = {k: int(round(v * (1 - _ease_in_out(t)))) for k, v in _EXPLODE.items()}
+        specs.append(FrameSpec(3, "4 · Integrate → voxel city",
+            [], offs, None, None, False, cam_t())); done += 1
+
+    b = lens[4]  # Beat 5: ground then building overlay
+    half = b // 2
+    for i in range(b):
+        overlay = "ground" if i < half else "building"
+        cap = "5 · Simulate — Ground-level" if i < half else "5 · Simulate — Building surface"
+        specs.append(FrameSpec(4, cap, [], {k: 0 for k in LAYERS}, None,
+            overlay, False, cam_t())); done += 1
+
+    b = lens[5]  # Beat 6: export chips fan out
+    for i in range(b):
+        specs.append(FrameSpec(5, "6 · Export", [], {k: 0 for k in LAYERS},
+            None, None, True, cam_t())); done += 1
+
+    return specs
 
 
 @dataclass

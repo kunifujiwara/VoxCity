@@ -254,3 +254,20 @@ def test_to_uv_layout_never_flips_marker():
     g = np.zeros(ref); g[0, 0] = 9.0
     out = m.to_uv_layout(g, ref)
     assert out[0, 0] == 9.0
+
+
+def test_build_timeline_structure():
+    m = load_module()
+    cfg = m.Config(seconds=20.0, fps=24)
+    tl = m.build_timeline(cfg)
+    total = len(tl)
+    assert round(cfg.fps * cfg.seconds) * 0.8 <= total <= round(cfg.fps * cfg.seconds) * 1.2
+    stages = [fs.stage for fs in tl]
+    assert set(stages) == {0, 1, 2, 3, 4, 5}       # all six beats present
+    assert stages == sorted(stages)                 # beats appear in order
+    # camera parameter is monotonic non-decreasing across the whole loop
+    ts = [fs.camera_t for fs in tl]
+    assert all(b >= a - 1e-9 for a, b in zip(ts, ts[1:]))
+    assert ts[0] <= 0.01 and ts[-1] >= 0.99
+    # quick mode is short
+    assert len(m.build_timeline(m.Config(quick=True))) <= 24
