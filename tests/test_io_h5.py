@@ -789,6 +789,31 @@ class TestNetworkResultHelpers:
         assert list(edges["solar"]) == list(gdf["solar"])
         assert len(edges) == len(gdf)
 
+    def test_write_read_network_group_object_column_fallback(self, tmp_path):
+        """A non-parquet-friendly object column triggers the stringify fallback."""
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=3, value_cols=("solar",))
+        # Mixed bytes/None/int object column that pyarrow cannot serialize
+        # directly, forcing the stringify-and-retry fallback path.
+        gdf["label"] = [b"a", None, 5]
+        path = str(tmp_path / "net_fallback.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, gdf)
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        edges = out["edges"]
+        assert len(edges) == len(gdf)
+        assert list(edges["label"]) == ["a", "", "5"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        # Edge identity columns survive the fallback round-trip.
+        assert list(edges["u"]) == list(gdf["u"])
+        assert list(edges["v"]) == list(gdf["v"])
+        assert list(edges["key"]) == list(gdf["key"])
+
 
 class TestNetworkResultsH5:
     def test_network_gdf_round_trip(self, tmp_path):

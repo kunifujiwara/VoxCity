@@ -512,6 +512,9 @@ def load_results_h5(input_path):
             nested dict of named simulation results grouped by simulation
             type, e.g. ``data['simulations']['ground']['solar_cumulative']``
             or ``data['simulations']['building_surface']['sky_view_factor']``.
+            Network results appear as
+            ``data['simulations']['network'][name]``, a dict with an
+            ``'edges'`` GeoDataFrame plus scalar metadata.
             Legacy top-level ``'ground'`` and ``'building'`` groups are also
             exposed as ``'default'`` entries in this nested structure.
         ``'meta'``
