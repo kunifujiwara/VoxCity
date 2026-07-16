@@ -841,6 +841,39 @@ class TestNetworkResultsH5:
         assert set(nets) == {"walk", "drive"}
         assert len(nets["drive"]["edges"]) == len(drive)
 
+    def test_network_alongside_ground_and_building_surface(self, tmp_path):
+        """All three simulation types compose in one nested save/load."""
+        city = _make_voxcity()
+        ny, nx = city.voxels.classes.shape[:2]
+        ground = {"cumulative_global": np.random.rand(ny, nx)}
+        n_faces = 14
+        mesh = _FakeMesh(
+            n_verts=24,
+            n_faces=n_faces,
+            metadata={"global": np.random.rand(n_faces)},
+        )
+        gdf = _make_edge_gdf(n_edges=6, value_cols=("solar",))
+        path = str(tmp_path / "network_combined.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={
+                "ground": {"solar": ground},
+                "building_surface": {"solar": mesh},
+                "network": {"solar": gdf},
+            },
+        )
+        data = load_results_h5(path)
+
+        sims = data["simulations"]
+        np.testing.assert_array_almost_equal(
+            sims["ground"]["solar"]["cumulative_global"], ground["cumulative_global"]
+        )
+        np.testing.assert_array_almost_equal(
+            sims["building_surface"]["solar"]["global"], mesh.metadata["global"]
+        )
+        assert list(sims["network"]["solar"]["edges"]["solar"]) == list(gdf["solar"])
+
     def test_network_edges_missing_raises(self, tmp_path):
         city = _make_voxcity()
         path = str(tmp_path / "network_bad.h5")
