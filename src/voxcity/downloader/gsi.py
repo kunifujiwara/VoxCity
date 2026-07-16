@@ -23,7 +23,10 @@ import time
 
 import numpy as np
 import requests
-from osgeo import gdal, osr
+try:
+    from osgeo import gdal, osr
+except ImportError:  # GDAL is optional: only save_gsi_dem_as_geotiff needs it.
+    gdal = osr = None
 
 __all__ = ["save_gsi_dem_as_geotiff"]
 

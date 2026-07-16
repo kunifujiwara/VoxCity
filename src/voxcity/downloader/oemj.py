@@ -24,7 +24,10 @@ from PIL import Image, ImageDraw
 from io import BytesIO
 import math
 import numpy as np
-from osgeo import gdal, osr
+try:
+    from osgeo import gdal, osr
+except ImportError:  # GDAL is optional: only save_oemj_as_geotiff needs it.
+    gdal = osr = None
 import pyproj
 
 __all__ = ["save_oemj_as_geotiff"]
