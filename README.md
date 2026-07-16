@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/demo.gif" alt="VoxCity pipeline: download geospatial layers, voxelize, integrate, simulate, and export a 3D city model" width="820">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/demo.webp" alt="VoxCity pipeline: set target area, download geospatial layers, voxelize each layer, integrate them into a voxel city model, simulate the urban environment, and export a 3D city model" width="820">
 </p>
 
 ---
