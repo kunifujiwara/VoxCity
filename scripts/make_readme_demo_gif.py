@@ -160,7 +160,7 @@ class FrameSpec:
 _LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land Cover", "landcover"),
                 "buildings": ("Building", "viridis"), "trees": ("Tree", "Greens")}
 _CALLOUT_ANCHOR = (0.72, 0.32)
-_EXPLODE = {"terrain": 0, "landcover": 10, "buildings": 20, "trees": 30}
+_EXPLODE = {"terrain": 0, "landcover": 30, "buildings": 60, "trees": 90}
 
 
 def _beat_lengths(cfg):
@@ -186,20 +186,30 @@ def build_timeline(cfg):
         n_rev = int(np.clip(int(t * len(LAYERS)) + 1, 1, len(LAYERS)))
         reveal = {L: (1 if j < n_rev else 0) for j, L in enumerate(LAYERS)}
         labels = [_LAYER_LABEL[L] for L in LAYERS if reveal[L]]
-        cur = LAYERS[n_rev - 1]
-        callouts = [(CALLOUT[f"dl_{cur}"], _CALLOUT_ANCHOR)]
         specs.append(FrameSpec(0, "download", "Download geospatial data",
-            labels, callouts, reveal, None, None, cam_t())); done += 1
+            labels, [], reveal, None, None, cam_t())); done += 1
 
-    # Beat 2: voxelize — thin -> full, exploded
+    # Beat 2: voxelize — reveal layers one-by-one (terrain -> land cover ->
+    # buildings -> trees). Terrain/land-cover/trees grow from thin to full;
+    # buildings appear instantaneously (full height as soon as they are active).
     b = lens[1]
+    order = list(LAYERS)
     for i in range(b):
         t = i / max(1, b - 1)
-        scales = {k: 0.15 + 0.85 * _ease_in_out(t) for k in LAYERS}
-        cur = LAYERS[min(len(LAYERS) - 1, int(t * len(LAYERS)))]
+        pos = t * len(order)
+        active = min(len(order) - 1, int(pos))
+        local_t = min(1.0, pos - active)
+        offsets, scales = {}, {}
+        for j, L in enumerate(order):
+            if j < active:
+                offsets[L] = _EXPLODE[L]; scales[L] = 1.0
+            elif j == active:
+                offsets[L] = _EXPLODE[L]
+                scales[L] = 1.0 if L == "buildings" else (0.15 + 0.85 * _ease_in_out(local_t))
+            # not-yet-revealed layers are omitted entirely
+        labels = [_LAYER_LABEL[order[j]] for j in range(active + 1)]
         specs.append(FrameSpec(1, "voxelize", "Voxelize urban elements",
-            [_LAYER_LABEL[k] for k in LAYERS], [(CALLOUT[f"vx_{cur}"], _CALLOUT_ANCHOR)],
-            {}, dict(_EXPLODE), scales, cam_t())); done += 1
+            labels, [], {}, offsets, scales, cam_t())); done += 1
 
     # Beat 3: integrate — ease offsets to zero
     b = lens[2]
@@ -213,19 +223,19 @@ def build_timeline(cfg):
     b = lens[3]
     for i in range(b):
         specs.append(FrameSpec(3, "city", "Voxel City model",
-            [], [(CALLOUT["city"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
+            [], [], {}, None, None, cam_t())); done += 1
 
     # Beat 5: simulate ground
     b = lens[4]
     for i in range(b):
         specs.append(FrameSpec(4, "sim_ground", "Simulate — Ground level",
-            [], [(CALLOUT["sim_ground"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
+            [], [], {}, None, None, cam_t())); done += 1
 
     # Beat 6: simulate building surface
     b = lens[5]
     for i in range(b):
         specs.append(FrameSpec(5, "sim_building", "Simulate — Building surface",
-            [], [(CALLOUT["sim_building"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
+            [], [], {}, None, None, cam_t())); done += 1
 
     return specs
 
@@ -521,15 +531,40 @@ def load_inputs(cfg):
 
 
 def load_building_mesh(cfg):
-    """Load the building GVI surface mesh + per-face view factors from H5."""
+    """Load the building GVI surface mesh + per-face view factors from H5.
+
+    The cached simulation mesh stores vertices in (x=u, y=v) order, transposed
+    relative to VoxCity's voxel meshes (which map grid (u,v,z) -> scene
+    (x=v, y=u, z); see geoprocessor/mesh.py). Swap the x/y columns so the GVI
+    surface lands exactly on the voxel-city buildings instead of floating over
+    empty ground.
+    """
     import h5py, trimesh
     with h5py.File(str(cfg.results_h5), "r") as f:
         v = np.asarray(f["/building/green_view_index/mesh/vertices"])
         fc = np.asarray(f["/building/green_view_index/mesh/faces"])
         vals = np.asarray(f["/building/green_view_index/view_factor_values"])
+    v = v.copy()
+    v[:, [0, 1]] = v[:, [1, 0]]
     mesh = trimesh.Trimesh(vertices=v, faces=fc, process=False)
     mesh.metadata["view_factor_values"] = vals
     return mesh
+
+
+def grayscale_voxel_color_map():
+    """Default voxel palette mapped to neutral grays (per-class luminance).
+
+    Used for the background city during the simulation beats so the magma
+    ground overlay and viridis building-surface overlay stand out against a
+    monochrome model.
+    """
+    from voxcity.visualizer.palette import get_voxel_color_map
+    out = {}
+    for k, val in get_voxel_color_map("default").items():
+        r, g, b = (float(c) for c in val[:3])
+        y = int(round(0.299 * r + 0.587 * g + 0.114 * b))
+        out[int(k)] = [y, y, y]
+    return out
 
 
 def ground_overlay(city, results):
@@ -596,6 +631,7 @@ def render_timeline(city, results, cfg):
     poses = orbit_path(shape, meshsize, n=len(tl))
     maps = load_download_maps(cfg)
     building_mesh = None
+    gray_cmap = grayscale_voxel_color_map()
     frames = []
     for i, fs in enumerate(tl):
         pose = poses[i]
@@ -610,20 +646,18 @@ def render_timeline(city, results, cfg):
         elif fs.scene_kind == "sim_ground":
             gg, gd = ground_overlay(city, results)
             img = render_still(city, cfg, pose, ground_grid=gg, ground_dem=gd,
-                               ground_cmap="magma")
+                               ground_cmap="magma", voxel_color_map=gray_cmap)
         elif fs.scene_kind == "sim_building":
             if building_mesh is None:
                 building_mesh = load_building_mesh(cfg)
             img = render_still(city, cfg, pose, building_mesh=building_mesh,
                                building_value="view_factor_values",
-                               building_cmap="viridis")
+                               building_cmap="viridis", voxel_color_map=gray_cmap)
         else:
             raise ValueError(f"unknown scene_kind {fs.scene_kind!r}")
         img = compose(img, fs.stage, fs.caption, cfg)
         if fs.labels:
             img = draw_labels(img, fs.labels)
-        if fs.callouts:
-            img = draw_callouts(img, fs.callouts)
         frames.append(img)
     return frames
 

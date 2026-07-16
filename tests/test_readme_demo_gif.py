@@ -348,6 +348,34 @@ def test_load_building_mesh_shapes():
     assert len(vals) == len(mesh.faces)
 
 
+def test_building_mesh_aligns_with_voxel_footprint():
+    # The cached GVI mesh is stored transposed vs the voxel model; load_building_mesh
+    # swaps x/y so the surface footprint lands on the voxel-city buildings.
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config()
+    city, _ = m.load_inputs(cfg)
+    cls = np.asarray(city.voxels.classes)
+    ms = city.voxels.meta.meshsize
+    nx, ny = cls.shape[0], cls.shape[1]
+    bvox = (cls <= -3).any(axis=2)                      # (u, v) footprint
+    v = np.asarray(m.load_building_mesh(cfg).vertices)  # already swapped
+    vc = np.clip((v[:, 0] / ms).astype(int), 0, ny - 1)
+    uc = np.clip((v[:, 1] / ms).astype(int), 0, nx - 1)
+    bmesh = np.zeros((nx, ny), bool)
+    bmesh[uc, vc] = True
+    inter = (bvox & bmesh).sum()
+    iou = inter / max(1, (bvox | bmesh).sum())
+    assert iou > 0.5     # transposed mesh overlaps the voxel buildings
+
+
+def test_grayscale_voxel_color_map_is_neutral():
+    import scripts.make_readme_demo_gif as m
+    gm = m.grayscale_voxel_color_map()
+    assert gm and all(isinstance(k, int) for k in gm)
+    for r, g, b in gm.values():
+        assert r == g == b and 0 <= r <= 255
+
+
 def test_render_still_accepts_voxel_color_map(monkeypatch):
     import scripts.make_readme_demo_gif as m
     captured = {}
