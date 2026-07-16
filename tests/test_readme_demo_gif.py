@@ -110,6 +110,14 @@ def test_render_still_shape():
     assert img.shape == (200, 320, 3) and img.dtype == np.uint8
 
 
+def test_stage_vocabulary_v3():
+    m = load_module()
+    assert m.STAGES == ["Download", "Voxelize", "Integrate",
+                        "Voxel City", "Ground level", "Building surface"]
+    assert not hasattr(m, "EXPORT_FORMATS")
+    assert m.PLATE_BASE_ID["landcover"] == 160
+    assert set(m.LAYER_CMAP2) == {"terrain", "buildings", "trees"}
+
 
 def test_parse_args_overrides():
     m = load_module()
