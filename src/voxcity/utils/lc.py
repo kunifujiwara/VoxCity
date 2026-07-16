@@ -248,6 +248,9 @@ def convert_land_cover(input_array, land_cover_source='Urbanwatch'):
         mapping = {0: 9, 1: 5, 2: 2, 3: 7, 4: 4, 5: 3, 6: 11, 7: 1, 8: 10}    
     elif land_cover_source == "OpenEarthMapJapan":
         mapping = {-1: 14, 0: 1, 1: 2, 2: 11, 3: 12, 4: 5, 5: 9, 6: 4, 7: 13, 8: 14}
+    elif land_cover_source == "Standard":
+        # Already-standard 1..14 codes: pass through unchanged.
+        return input_array.copy()
     else:
         # If unknown source, return as-is with +1 offset for consistency
         return input_array.copy() + 1
@@ -292,6 +295,14 @@ def get_class_priority(source):
         - Natural Non-Vegetation: Lower priority (often default classifications)
         - Uncertain/No Data: Lowest priority
     """
+    if source == "Standard":
+        # Lowest number is drawn LAST and wins (mirrors the OpenStreetMap dict).
+        return {
+            'Road': 1, 'Building': 2, 'Developed space': 3, 'Water': 4,
+            'Wet land': 5, 'Mangrove': 6, 'Moss and lichen': 7, 'Tree': 8,
+            'Agriculture land': 9, 'Shrub': 10, 'Rangeland': 11, 'Snow and ice': 12,
+            'Bareland': 13, 'No Data': 14,
+        }
     if source == "OpenStreetMap":
         return {
             # Built Environment (highest priority as they're most definitively mapped)
