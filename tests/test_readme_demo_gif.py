@@ -25,22 +25,6 @@ def test_config_defaults_webp():
     assert m.frame_duration_ms(0) == 1000.0  # guards div-by-zero
 
 
-def test_mask_classes_cumulative():
-    m = load_module()
-    # one voxel of each kind stacked in z
-    c = np.array([[[-1, 1, -3, -2, 0]]], dtype=np.int8)  # ground, landcover, building, tree, air
-    terrain = m.mask_classes(c, "terrain")
-    assert set(np.unique(terrain)) == {0, -1}
-    landcover = m.mask_classes(c, "landcover")
-    assert set(np.unique(landcover)) == {0, -1, 1}
-    buildings = m.mask_classes(c, "buildings")
-    assert set(np.unique(buildings)) == {0, -1, 1, -3}
-    trees = m.mask_classes(c, "trees")
-    assert set(np.unique(trees)) == {0, -1, 1, -3, -2}
-    # original untouched
-    assert c[0, 0, 2] == -3
-
-
 def test_isometric_camera_geometry():
     m = load_module()
     pos, look = m.isometric_camera((200, 200, 58), 5.0)

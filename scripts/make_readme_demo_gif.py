@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import copy
 from dataclasses import dataclass, field
-from dataclasses import dataclass as _dataclass
 from pathlib import Path
 
 import numpy as np
@@ -20,42 +19,17 @@ import imageio.v2 as imageio
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib
 import matplotlib.cm as cm
-import matplotlib.cm as _cm
 import matplotlib.colors as mcolors
 from PIL import Image, ImageDraw, ImageFont
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CANVAS_DEFAULT = (960, 540)          # (width, height)
 FPS_DEFAULT = 24
-MAX_BYTES_DEFAULT = 8 * 1024 * 1024  # safety ceiling; WebP stays well under
-
-# Cumulative keep-sets for the voxelization build-up. Each level adds voxels.
-_BUILD_LEVELS = ("terrain", "landcover", "buildings", "trees")
 
 # Per-layer scene builder; non-cumulative layers for exploded assembly.
 LAYERS = ("terrain", "landcover", "buildings", "trees")
-
-
-def _keep_mask(classes: np.ndarray, level: str) -> np.ndarray:
-    """Boolean mask of voxels visible at a cumulative build-up *level*."""
-    if level not in _BUILD_LEVELS:
-        raise ValueError(f"unknown level {level!r}; expected one of {_BUILD_LEVELS}")
-    idx = _BUILD_LEVELS.index(level)
-    mask = classes == -1                       # terrain / subsurface
-    if idx >= 1:
-        mask |= classes >= 1                   # land-cover surface
-    if idx >= 2:
-        mask |= classes <= -3                  # buildings (all building material codes)
-    if idx >= 3:
-        mask |= classes == -2                  # tree canopy
-    return mask
-
-
-def mask_classes(classes: np.ndarray, keep: str) -> np.ndarray:
-    """Return a copy of *classes* with voxels above cumulative *keep* set to air (0)."""
-    mask = _keep_mask(classes, keep)
-    return np.where(mask, classes, 0).astype(classes.dtype)
 
 
 def layer_mask(classes, layer):
@@ -162,7 +136,7 @@ def orbit_path(shape, meshsize, n, sweep_deg=90.0, elev_factor=0.9,
     return poses
 
 
-@_dataclass
+@dataclass
 class FrameSpec:
     stage: int
     caption: str
@@ -333,7 +307,7 @@ def _cmap_swatch(hint):
     if hint == "landcover":
         return (90, 150, 70)
     try:
-        r, g, b, _ = _cm.get_cmap(hint)(0.7)
+        r, g, b, _ = matplotlib.colormaps[hint](0.7)
         return (int(r * 255), int(g * 255), int(b * 255))
     except Exception:
         return (80, 120, 200)
@@ -447,14 +421,6 @@ def load_inputs(cfg):
     return city, results
 
 
-def _masked_city(city, keep: str):
-    """Return a shallow copy of *city* with its voxel classes masked to *keep*."""
-    c2 = copy.copy(city)
-    c2.voxels = copy.copy(city.voxels)
-    c2.voxels.classes = mask_classes(city.voxels.classes, keep)
-    return c2
-
-
 def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
                  ground_cmap="magma", building_mesh=None, building_value=None,
                  building_cmap="viridis"):
@@ -471,7 +437,9 @@ def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
     if ground_grid is not None:
         nu, nv = city.voxels.classes.shape[0], city.voxels.classes.shape[1]
         kwargs.update(ground_sim_grid=to_uv_layout(ground_grid, (nu, nv)),
-                      ground_dem_grid=ground_dem, ground_colormap=ground_cmap)
+                      ground_dem_grid=(to_uv_layout(ground_dem, (nu, nv))
+                                       if ground_dem is not None else None),
+                      ground_colormap=ground_cmap)
     if building_mesh is not None:
         kwargs.update(building_sim_mesh=building_mesh,
                       building_value_name=building_value,
@@ -561,7 +529,7 @@ def build_frames(cfg):
 def run(cfg) -> int:
     """Build frames, encode the WebP, returning the byte size."""
     frames = build_frames(cfg)
-    return encode_webp(frames, cfg.out, cfg.fps, quality=getattr(cfg, "quality", 80))
+    return encode_webp(frames, cfg.out, cfg.fps, quality=cfg.quality)
 
 
 def parse_args(argv=None) -> Config:
