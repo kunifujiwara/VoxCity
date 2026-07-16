@@ -146,6 +146,22 @@ def test_smoke_quick_build_webp(tmp_path):
     assert getattr(Image.open(cfg.out), "n_frames", 1) > 1
 
 
+def test_quick_build_writes_animated_webp(tmp_path):
+    import scripts.make_readme_demo_gif as m
+    if not m.gpu_available():
+        import pytest; pytest.skip("no GPU")
+    out = tmp_path / "demo_quick.webp"
+    m.main(["--quick", "--out", str(out)])
+    from PIL import Image
+    im = Image.open(out)
+    assert getattr(im, "n_frames", 1) > 1
+    durs = []
+    for i in range(im.n_frames):
+        im.seek(i); im.load()
+        durs.append(im.info.get("duration"))
+    assert all(d and d > 0 for d in durs)
+
+
 def test_layer_cmap_defaults():
     m = load_module()
     assert m.LAYER_CMAP["terrain"] == "terrain"
