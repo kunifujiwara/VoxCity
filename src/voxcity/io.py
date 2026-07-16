@@ -761,6 +761,82 @@ def _read_building_result_group(group, h5py_module):
     return result
 
 
+def _write_network_result_group(group, result):
+    """Write one network simulation result (edge GeoDataFrame) to an HDF5 group.
+
+    ``result`` may be a GeoDataFrame of edges, or a dict with an ``'edges'``
+    GeoDataFrame plus an optional ``'metadata'`` dict of JSON-serializable
+    scalars. Edges are stored as GeoParquet bytes.
+    """
+    import io as _io
+    import numpy as np
+
+    try:
+        import geopandas as gpd  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "geopandas is required to save network simulation results. "
+            "Install it with: pip install geopandas"
+        )
+
+    if hasattr(result, 'geometry') and hasattr(result, 'columns'):
+        edges = result
+        meta_dict = {}
+    elif isinstance(result, dict):
+        edges = result.get('edges')
+        meta_dict = result.get('metadata') or {}
+        if edges is None:
+            raise ValueError("Network results dict must contain an 'edges' GeoDataFrame")
+    else:
+        raise TypeError(
+            "Network results must be a GeoDataFrame or a dict with an 'edges' key"
+        )
+
+    buf = _io.BytesIO()
+    try:
+        edges.to_parquet(buf)
+    except (ValueError, TypeError):
+        # Non-parquet-friendly object columns: stringify them and retry so the
+        # save still succeeds (mirrors the extras_gdf fallback).
+        buf = _io.BytesIO()
+        edges_clean = edges.copy()
+        geom_col = edges_clean.geometry.name
+        for col in edges_clean.columns:
+            if col == geom_col:
+                continue
+            if edges_clean[col].dtype == object:
+                edges_clean[col] = edges_clean[col].apply(
+                    lambda x: x.decode('utf-8', 'replace')
+                    if isinstance(x, (bytes, bytearray))
+                    else ('' if x is None else str(x))
+                )
+        edges_clean.to_parquet(buf)
+
+    group.create_dataset('edges', data=np.void(buf.getvalue()))
+
+    for key, value in meta_dict.items():
+        if _is_attr_serializable(value):
+            _store_attr(group.attrs, key, value)
+
+
+def _read_network_result_group(group, h5py_module):
+    """Read one network simulation result from an HDF5 group."""
+    import io as _io
+
+    result = {}
+    if 'edges' in group:
+        try:
+            import geopandas as gpd
+            raw = bytes(group['edges'][()])
+            result['edges'] = gpd.read_parquet(_io.BytesIO(raw))
+        except ImportError:
+            pass  # geopandas not installed – skip edge GeoDataFrame
+
+    for key, value in group.attrs.items():
+        result[key] = _decode_attr(value)
+    return result
+
+
 # =============================================================================
 # HDF5 attribute helpers (private)
 # =============================================================================

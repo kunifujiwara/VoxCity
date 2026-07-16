@@ -109,6 +109,25 @@ class _FakeMesh:
         self.metadata = metadata or {}
 
 
+def _make_edge_gdf(n_edges=5, value_cols=("solar",)):
+    """Minimal edge GeoDataFrame stand-in for a street network result."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    rows = []
+    for i in range(n_edges):
+        row = {
+            "u": i,
+            "v": i + 1,
+            "key": 0,
+            "geometry": LineString([(i, i), (i + 1, i + 1)]),
+        }
+        for col in value_cols:
+            row[col] = float(np.random.rand())
+        rows.append(row)
+    return gpd.GeoDataFrame(rows, crs="EPSG:4326")
+
+
 # ---------------------------------------------------------------------------
 # save_results_h5 / load_results_h5 round-trip
 # ---------------------------------------------------------------------------
@@ -729,3 +748,27 @@ class TestCanonicalImport:
     def test_load_results_h5_importable(self):
         from voxcity.io import load_results_h5 as fn
         assert callable(fn)
+
+
+# ---------------------------------------------------------------------------
+# Network simulation result helpers
+# ---------------------------------------------------------------------------
+
+class TestNetworkResultHelpers:
+    def test_write_read_network_group_round_trip(self, tmp_path):
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=6, value_cols=("solar", "diffuse"))
+        path = str(tmp_path / "net_group.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, {"edges": gdf, "metadata": {"network_type": "walk"}})
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        assert out["network_type"] == "walk"
+        edges = out["edges"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        assert len(edges) == len(gdf)
+        assert edges.geometry.geom_type.iloc[0] == "LineString"
