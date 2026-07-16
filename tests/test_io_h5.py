@@ -772,3 +772,19 @@ class TestNetworkResultHelpers:
         assert list(edges["solar"]) == list(gdf["solar"])
         assert len(edges) == len(gdf)
         assert edges.geometry.geom_type.iloc[0] == "LineString"
+
+    def test_write_read_network_group_bare_gdf(self, tmp_path):
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=4, value_cols=("solar",))
+        path = str(tmp_path / "net_bare.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, gdf)
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        edges = out["edges"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        assert len(edges) == len(gdf)

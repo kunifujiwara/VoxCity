@@ -795,7 +795,7 @@ def _write_network_result_group(group, result):
     buf = _io.BytesIO()
     try:
         edges.to_parquet(buf)
-    except (ValueError, TypeError):
+    except Exception:
         # Non-parquet-friendly object columns: stringify them and retry so the
         # save still succeeds (mirrors the extras_gdf fallback).
         buf = _io.BytesIO()
