@@ -269,3 +269,42 @@ def test_draw_labels_and_chips_change_pixels():
     # chips fan out: at t=0 they cluster near center, at t=1 they spread wider
     early = m.draw_export_chips(f, 0.0)
     assert not np.array_equal(early, out2)
+
+
+def test_colormap_plate_bins_and_colors():
+    import scripts.make_readme_demo_gif as m
+    vals = np.linspace(0.0, 1.0, 100).reshape(10, 10)
+    ids, cd = m.colormap_plate(vals, "viridis", nbins=16, base_id=100)
+    assert ids.shape == (10, 10)
+    assert ids.min() >= 100 and ids.max() <= 115
+    assert len(cd) == 16
+    assert all(len(v) == 3 and all(0 <= c <= 255 for c in v) for v in cd.values())
+
+
+def test_landcover_plate_uses_lut_ids():
+    import scripts.make_readme_demo_gif as m
+    lc = np.array([[0, 1], [2, 3]])
+    ids, cd = m.landcover_plate(lc, base_id=160)
+    assert ids.min() >= 160
+    assert set(np.unique(ids)).issubset(set(cd.keys()))
+
+
+def test_build_download_scene_reveal(monkeypatch):
+    import scripts.make_readme_demo_gif as m
+    # tiny fake city
+    class V:  # noqa
+        pass
+    import copy
+    base = np.zeros((4, 4, 6), dtype=np.int8)
+    city = type("C", (), {})()
+    city.voxels = type("Vx", (), {})()
+    city.voxels.classes = base
+    maps = {"terrain": np.ones((4, 4)), "landcover": np.zeros((4, 4), int),
+            "buildings": np.ones((4, 4)), "trees": np.ones((4, 4))}
+    scene, cmap = m.build_download_scene(city, maps,
+        reveal={"terrain": 1, "landcover": 0, "buildings": 0, "trees": 0})
+    g = np.asarray(scene.voxels.classes)
+    assert g.dtype == np.int32
+    # exactly the terrain z-slice populated
+    assert (g[:, :, m._EXPLODE["terrain"]] >= 100).all()
+    assert (g[:, :, m._EXPLODE["landcover"]] == 0).all()

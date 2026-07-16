@@ -268,6 +268,76 @@ def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
 LAYER_CMAP = {"terrain": "terrain", "buildings": "viridis", "trees": "Greens"}
 LAYER_CMAP2 = {"terrain": "terrain", "buildings": "viridis", "trees": "Greens"}
 PLATE_BASE_ID = {"terrain": 100, "buildings": 120, "trees": 140, "landcover": 160}
+
+
+def colormap_plate(values2d, cmap, nbins=16, base_id=100):
+    """Bin a continuous 2D map into nbins synthetic voxel class ids plus a
+    class_id -> [r,g,b] color dict sampled from `cmap`."""
+    a = np.asarray(values2d, dtype=float)
+    finite = np.isfinite(a)
+    vmin = float(np.nanmin(a[finite])) if finite.any() else 0.0
+    vmax = float(np.nanmax(a[finite])) if finite.any() else 1.0
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    norm = (np.clip(np.nan_to_num(a, nan=vmin), vmin, vmax) - vmin) / (vmax - vmin)
+    bins = np.clip(np.round(norm * (nbins - 1)).astype(int), 0, nbins - 1)
+    ids = (base_id + bins).astype(np.int32)
+    mapper = cm.get_cmap(cmap)
+    cmap_dict = {}
+    for b in range(nbins):
+        r, g, bl, _ = mapper(b / max(1, nbins - 1))
+        cmap_dict[base_id + b] = [int(r * 255), int(g * 255), int(bl * 255)]
+    return ids, cmap_dict
+
+
+def landcover_plate(lc2d, base_id=160, source="Standard"):
+    """Map land-cover class indices to synthetic ids + VoxCity LUT colors."""
+    from voxcity.utils.lc import get_land_cover_classes
+    lut = list(get_land_cover_classes(source).keys())  # list of (r,g,b)
+    idx = np.clip(np.asarray(lc2d).astype(int), 0, len(lut) - 1)
+    ids = (base_id + idx).astype(np.int32)
+    cmap_dict = {base_id + i: list(map(int, lut[i])) for i in range(len(lut))}
+    return ids, cmap_dict
+
+
+def load_download_maps(cfg):
+    """Read the four 2D source maps directly from voxcity.h5."""
+    import h5py
+    with h5py.File(str(cfg.voxcity_h5), "r") as f:
+        return {
+            "terrain": np.asarray(f["/voxcity/dem"]),
+            "landcover": np.asarray(f["/voxcity/land_cover"]),
+            "buildings": np.asarray(f["/voxcity/building_height"]),
+            "trees": np.asarray(f["/voxcity/canopy/top"]),
+        }
+
+
+def build_download_scene(city, maps, reveal, z_by_layer=None):
+    """One flat plate per revealed layer at its explode z-offset."""
+    from voxcity.visualizer.palette import get_voxel_color_map
+    z_by_layer = z_by_layer or _EXPLODE
+    base = np.asarray(city.voxels.classes)
+    nx, ny, nz_base = base.shape
+    # Grid must be tall enough to hold every configured explode z-offset, not
+    # just the source city's height (the offsets can exceed a tiny/quick city).
+    nz = max(nz_base, max(z_by_layer.values()) + 1)
+    grid = np.zeros((nx, ny, nz), dtype=np.int32)
+    color_map = {int(k): list(v) for k, v in get_voxel_color_map("default").items()}
+    for layer in LAYERS:
+        if int(reveal.get(layer, 0)) <= 0:
+            continue
+        if layer == "landcover":
+            ids2d, cd = landcover_plate(maps["landcover"], PLATE_BASE_ID["landcover"])
+        else:
+            ids2d, cd = colormap_plate(maps[layer], LAYER_CMAP2[layer],
+                                       base_id=PLATE_BASE_ID[layer])
+        color_map.update(cd)
+        z = int(np.clip(z_by_layer[layer], 0, nz - 1))
+        grid[:, :, z] = ids2d
+    c2 = copy.copy(city)
+    c2.voxels = copy.copy(city.voxels)
+    c2.voxels.classes = grid
+    return c2, color_map
 CALLOUT = {
     "dl_terrain": "2D Terrain Elevation map",
     "dl_landcover": "2D Land Cover map",
