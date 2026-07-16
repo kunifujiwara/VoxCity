@@ -139,27 +139,28 @@ def orbit_path(shape, meshsize, n, sweep_deg=90.0, elev_factor=0.9,
 @dataclass
 class FrameSpec:
     stage: int
+    scene_kind: str
     caption: str
     labels: list
+    callouts: list
+    reveal: dict
     offsets: dict | None
     scales: dict | None
-    overlay: str | None
-    chips: bool
     camera_t: float
 
 
-_LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land cover", "landcover"),
+_LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land Cover", "landcover"),
                 "buildings": ("Building", "viridis"), "trees": ("Tree", "Greens")}
+_CALLOUT_ANCHOR = (0.72, 0.32)
 _EXPLODE = {"terrain": 0, "landcover": 10, "buildings": 20, "trees": 30}
 
 
 def _beat_lengths(cfg):
     if cfg.quick:
-        return [2, 4, 4, 4, 4, 2]           # 20 frames
+        return [2, 2, 2, 2, 2, 2]
     total = round(cfg.fps * cfg.seconds)
-    weights = [0.12, 0.22, 0.22, 0.16, 0.18, 0.10]
-    lens = [max(1, round(total * w)) for w in weights]
-    return lens
+    weights = [0.30, 0.20, 0.15, 0.12, 0.115, 0.115]  # download..sim_building
+    return [max(1, round(total * w)) for w in weights]
 
 
 def build_timeline(cfg):
@@ -170,48 +171,53 @@ def build_timeline(cfg):
     def cam_t():
         return 0.0 if total <= 1 else min(1.0, done / (total - 1))
 
-    b = lens[0]  # Beat 1: terrain tile rises
+    # Beat 1: download — reveal layers one-by-one
+    b = lens[0]
     for i in range(b):
         t = i / max(1, b - 1)
-        specs.append(FrameSpec(0, "1 · Set target area",
-            [("Terrain", "terrain")], {"terrain": int(round((1 - t) * 4))},
-            {"terrain": 0.15}, None, False, cam_t())); done += 1
+        n_rev = int(np.clip(int(t * len(LAYERS)) + 1, 1, len(LAYERS)))
+        reveal = {L: (1 if j < n_rev else 0) for j, L in enumerate(LAYERS)}
+        labels = [_LAYER_LABEL[L] for L in LAYERS if reveal[L]]
+        cur = LAYERS[n_rev - 1]
+        callouts = [(CALLOUT[f"dl_{cur}"], _CALLOUT_ANCHOR)]
+        specs.append(FrameSpec(0, "download", "Download geospatial data",
+            labels, callouts, reveal, None, None, cam_t())); done += 1
 
-    b = lens[1]  # Beat 2: download slabs fan out (thin), exploded
-    for i in range(b):
-        t = i / max(1, b - 1)
-        offs = {k: int(round(v * _ease_in_out(t))) for k, v in _EXPLODE.items()}
-        specs.append(FrameSpec(1, "2 · Download data",
-            [_LAYER_LABEL[k] for k in LAYERS], offs,
-            {k: 0.15 for k in LAYERS}, None, False, cam_t())); done += 1
-
-    b = lens[2]  # Beat 3: morph thin -> full voxels (still exploded)
+    # Beat 2: voxelize — thin -> full, exploded
+    b = lens[1]
     for i in range(b):
         t = i / max(1, b - 1)
         scales = {k: 0.15 + 0.85 * _ease_in_out(t) for k in LAYERS}
-        specs.append(FrameSpec(2, "3 · Voxelize layers",
-            [_LAYER_LABEL[k] for k in LAYERS], dict(_EXPLODE),
-            scales, None, False, cam_t())); done += 1
+        cur = LAYERS[min(len(LAYERS) - 1, int(t * len(LAYERS)))]
+        specs.append(FrameSpec(1, "voxelize", "Voxelize urban elements",
+            [_LAYER_LABEL[k] for k in LAYERS], [(CALLOUT[f"vx_{cur}"], _CALLOUT_ANCHOR)],
+            {}, dict(_EXPLODE), scales, cam_t())); done += 1
 
-    b = lens[3]  # Beat 4: ease down + assemble
+    # Beat 3: integrate — ease offsets to zero
+    b = lens[2]
     for i in range(b):
         t = i / max(1, b - 1)
         offs = {k: int(round(v * (1 - _ease_in_out(t)))) for k, v in _EXPLODE.items()}
-        specs.append(FrameSpec(3, "4 · Integrate → voxel city",
-            [], offs, None, None, False, cam_t())); done += 1
+        specs.append(FrameSpec(2, "integrate", "Integrate voxelized elements",
+            [], [], {}, offs, None, cam_t())); done += 1
 
-    b = lens[4]  # Beat 5: ground then building overlay
-    half = b // 2
+    # Beat 4: voxel city
+    b = lens[3]
     for i in range(b):
-        overlay = "ground" if i < half else "building"
-        cap = "5 · Simulate — Ground-level" if i < half else "5 · Simulate — Building surface"
-        specs.append(FrameSpec(4, cap, [], {k: 0 for k in LAYERS}, None,
-            overlay, False, cam_t())); done += 1
+        specs.append(FrameSpec(3, "city", "Voxel City model",
+            [], [(CALLOUT["city"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
 
-    b = lens[5]  # Beat 6: export chips fan out
+    # Beat 5: simulate ground
+    b = lens[4]
     for i in range(b):
-        specs.append(FrameSpec(5, "6 · Export", [], {k: 0 for k in LAYERS},
-            None, None, True, cam_t())); done += 1
+        specs.append(FrameSpec(4, "sim_ground", "Simulate — Ground level",
+            [], [(CALLOUT["sim_ground"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
+
+    # Beat 6: simulate building surface
+    b = lens[5]
+    for i in range(b):
+        specs.append(FrameSpec(5, "sim_building", "Simulate — Building surface",
+            [], [(CALLOUT["sim_building"], _CALLOUT_ANCHOR)], {}, None, None, cam_t())); done += 1
 
     return specs
 

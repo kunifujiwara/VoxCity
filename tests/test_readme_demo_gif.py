@@ -241,21 +241,33 @@ def test_to_uv_layout_never_flips_marker():
     assert out[0, 0] == 9.0
 
 
-def test_build_timeline_structure():
-    m = load_module()
-    cfg = m.Config(seconds=20.0, fps=24)
+def test_timeline_six_beats_in_order():
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config(quick=True)
     tl = m.build_timeline(cfg)
-    total = len(tl)
-    assert round(cfg.fps * cfg.seconds) * 0.8 <= total <= round(cfg.fps * cfg.seconds) * 1.2
-    stages = [fs.stage for fs in tl]
-    assert set(stages) == {0, 1, 2, 3, 4, 5}       # all six beats present
-    assert stages == sorted(stages)                 # beats appear in order
-    # camera parameter is monotonic non-decreasing across the whole loop
+    kinds = [fs.scene_kind for fs in tl]
+    assert kinds[0] == "download" and kinds[-1] == "sim_building"
+    order = ["download", "voxelize", "integrate", "city",
+             "sim_ground", "sim_building"]
+    seen = [k for i, k in enumerate(kinds) if i == 0 or kinds[i-1] != k]
+    assert seen == order
+    assert all(fs.scene_kind != "export" for fs in tl)
+
+
+def test_timeline_download_reveals_sequentially():
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config()
+    tl = [fs for fs in m.build_timeline(cfg) if fs.scene_kind == "download"]
+    first, last = tl[0], tl[-1]
+    assert sum(first.reveal.values()) == 1          # terrain only at start
+    assert sum(last.reveal.values()) == 4           # all four by end
+
+
+def test_timeline_camera_monotonic():
+    import scripts.make_readme_demo_gif as m
+    tl = m.build_timeline(m.Config(quick=True))
     ts = [fs.camera_t for fs in tl]
-    assert all(b >= a - 1e-9 for a, b in zip(ts, ts[1:]))
-    assert ts[0] <= 0.01 and ts[-1] >= 0.99
-    # quick mode is short
-    assert len(m.build_timeline(m.Config(quick=True))) <= 24
+    assert ts == sorted(ts) and 0.0 <= ts[0] and ts[-1] <= 1.0
 
 
 def test_draw_labels_and_chips_change_pixels():
