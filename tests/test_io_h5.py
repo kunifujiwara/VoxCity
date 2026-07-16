@@ -109,6 +109,25 @@ class _FakeMesh:
         self.metadata = metadata or {}
 
 
+def _make_edge_gdf(n_edges=5, value_cols=("solar",)):
+    """Minimal edge GeoDataFrame stand-in for a street network result."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+
+    rows = []
+    for i in range(n_edges):
+        row = {
+            "u": i,
+            "v": i + 1,
+            "key": 0,
+            "geometry": LineString([(i, i), (i + 1, i + 1)]),
+        }
+        for col in value_cols:
+            row[col] = float(np.random.rand())
+        rows.append(row)
+    return gpd.GeoDataFrame(rows, crs="EPSG:4326")
+
+
 # ---------------------------------------------------------------------------
 # save_results_h5 / load_results_h5 round-trip
 # ---------------------------------------------------------------------------
@@ -729,3 +748,167 @@ class TestCanonicalImport:
     def test_load_results_h5_importable(self):
         from voxcity.io import load_results_h5 as fn
         assert callable(fn)
+
+
+# ---------------------------------------------------------------------------
+# Network simulation result helpers
+# ---------------------------------------------------------------------------
+
+class TestNetworkResultHelpers:
+    def test_write_read_network_group_round_trip(self, tmp_path):
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=6, value_cols=("solar", "diffuse"))
+        path = str(tmp_path / "net_group.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, {"edges": gdf, "metadata": {"network_type": "walk"}})
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        assert out["network_type"] == "walk"
+        edges = out["edges"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        assert len(edges) == len(gdf)
+        assert edges.geometry.geom_type.iloc[0] == "LineString"
+
+    def test_write_read_network_group_bare_gdf(self, tmp_path):
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=4, value_cols=("solar",))
+        path = str(tmp_path / "net_bare.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, gdf)
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        edges = out["edges"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        assert len(edges) == len(gdf)
+
+    def test_write_read_network_group_object_column_fallback(self, tmp_path):
+        """A non-parquet-friendly object column triggers the stringify fallback."""
+        import h5py
+        from voxcity.io import _write_network_result_group, _read_network_result_group
+
+        gdf = _make_edge_gdf(n_edges=3, value_cols=("solar",))
+        # Mixed bytes/None/int object column that pyarrow cannot serialize
+        # directly, forcing the stringify-and-retry fallback path.
+        gdf["label"] = [b"a", None, 5]
+        path = str(tmp_path / "net_fallback.h5")
+        with h5py.File(path, "w") as f:
+            grp = f.create_group("net")
+            _write_network_result_group(grp, gdf)
+        with h5py.File(path, "r") as f:
+            out = _read_network_result_group(f["net"], h5py)
+
+        edges = out["edges"]
+        assert len(edges) == len(gdf)
+        assert list(edges["label"]) == ["a", "", "5"]
+        assert list(edges["solar"]) == list(gdf["solar"])
+        # Edge identity columns survive the fallback round-trip.
+        assert list(edges["u"]) == list(gdf["u"])
+        assert list(edges["v"]) == list(gdf["v"])
+        assert list(edges["key"]) == list(gdf["key"])
+
+
+class TestNetworkResultsH5:
+    def test_network_gdf_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        gdf = _make_edge_gdf(n_edges=7, value_cols=("solar",))
+        path = str(tmp_path / "network.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={"network": {"solar": gdf}},
+        )
+        data = load_results_h5(path)
+
+        net = data["simulations"]["network"]["solar"]
+        assert list(net["edges"]["solar"]) == list(gdf["solar"])
+        assert len(net["edges"]) == len(gdf)
+
+        import h5py
+        with h5py.File(path, "r") as f:
+            assert f.attrs["__format__"] == "voxcity_results.v2"
+            assert "simulations/network/solar/edges" in f
+
+    def test_network_dict_with_metadata_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        gdf = _make_edge_gdf(n_edges=4, value_cols=("direct", "diffuse", "global"))
+        path = str(tmp_path / "network_meta.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={
+                "network": {
+                    "solar": {"edges": gdf, "metadata": {"network_type": "walk"}},
+                },
+            },
+        )
+        data = load_results_h5(path)
+
+        net = data["simulations"]["network"]["solar"]
+        assert net["network_type"] == "walk"
+        assert list(net["edges"]["global"]) == list(gdf["global"])
+
+    def test_multiple_named_network_results_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        walk = _make_edge_gdf(n_edges=3, value_cols=("solar",))
+        drive = _make_edge_gdf(n_edges=5, value_cols=("solar",))
+        path = str(tmp_path / "network_multi.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={"network": {"walk": walk, "drive": drive}},
+        )
+        data = load_results_h5(path)
+
+        nets = data["simulations"]["network"]
+        assert set(nets) == {"walk", "drive"}
+        assert len(nets["drive"]["edges"]) == len(drive)
+
+    def test_network_alongside_ground_and_building_surface(self, tmp_path):
+        """All three simulation types compose in one nested save/load."""
+        city = _make_voxcity()
+        ny, nx = city.voxels.classes.shape[:2]
+        ground = {"cumulative_global": np.random.rand(ny, nx)}
+        n_faces = 14
+        mesh = _FakeMesh(
+            n_verts=24,
+            n_faces=n_faces,
+            metadata={"global": np.random.rand(n_faces)},
+        )
+        gdf = _make_edge_gdf(n_edges=6, value_cols=("solar",))
+        path = str(tmp_path / "network_combined.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={
+                "ground": {"solar": ground},
+                "building_surface": {"solar": mesh},
+                "network": {"solar": gdf},
+            },
+        )
+        data = load_results_h5(path)
+
+        sims = data["simulations"]
+        np.testing.assert_array_almost_equal(
+            sims["ground"]["solar"]["cumulative_global"], ground["cumulative_global"]
+        )
+        np.testing.assert_array_almost_equal(
+            sims["building_surface"]["solar"]["global"], mesh.metadata["global"]
+        )
+        assert list(sims["network"]["solar"]["edges"]["solar"]) == list(gdf["solar"])
+
+    def test_network_edges_missing_raises(self, tmp_path):
+        city = _make_voxcity()
+        path = str(tmp_path / "network_bad.h5")
+        with pytest.raises(ValueError, match="edges"):
+            save_results_h5(
+                path, city,
+                simulation_results={"network": {"solar": {"metadata": {}}}},
+            )
