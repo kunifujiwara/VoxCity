@@ -415,6 +415,28 @@ def draw_labels(frame, labels):
     return np.asarray(img, dtype=np.uint8)
 
 
+def draw_callouts(frame, callouts):
+    if not callouts:
+        return np.asarray(frame, dtype=np.uint8)
+    img = Image.fromarray(frame).convert("RGB")
+    draw = ImageDraw.Draw(img, "RGBA")
+    w, h = img.size
+    font = _load_font(max(13, h // 32))
+    fs = getattr(font, "size", 13)
+    for text, (xf, yf) in callouts:
+        ax, ay = int(w * xf), int(h * yf)
+        tw = draw.textlength(text, font=font)
+        bx = int(w * 0.98 - tw)
+        by = ay - fs
+        draw.ellipse([ax - 4, ay - 4, ax + 4, ay + 4], fill=(255, 220, 80, 255))
+        draw.line([(ax, ay), (bx - 10, ay), (bx - 10, by + fs // 2)],
+                  fill=(255, 220, 80, 230), width=2)
+        draw.rounded_rectangle([bx - 8, by - 4, bx + tw + 8, by + fs + 4],
+                               radius=6, fill=(20, 20, 24, 200))
+        draw.text((bx, by), text, fill=(255, 255, 255, 255), font=font)
+    return np.asarray(img, dtype=np.uint8)
+
+
 def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
     """Burn a bottom caption bar and top progress strip onto a frame.
     

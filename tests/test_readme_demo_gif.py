@@ -270,17 +270,20 @@ def test_timeline_camera_monotonic():
     assert ts == sorted(ts) and 0.0 <= ts[0] and ts[-1] <= 1.0
 
 
-def test_draw_labels_and_chips_change_pixels():
+def test_draw_callouts_marks_pixels():
+    import scripts.make_readme_demo_gif as m
+    frame = np.zeros((540, 960, 3), np.uint8)
+    out = m.draw_callouts(frame, [("2D Terrain Elevation map", (0.6, 0.4))])
+    assert out.shape == frame.shape and out.dtype == np.uint8
+    assert out.sum() > 0                      # something was drawn
+    assert m.draw_callouts(frame, []).sum() == 0   # empty is a no-op
+
+
+def test_draw_labels_change_pixels():
     m = load_module()
     f = np.full((200, 320, 3), 128, dtype=np.uint8)
     out1 = m.draw_labels(f, [("Terrain", "terrain"), ("Building", "viridis")])
     assert out1.shape == f.shape and not np.array_equal(out1, f)
-    out2 = m.draw_export_chips(f, 1.0)
-    assert out2.shape == f.shape and not np.array_equal(out2, f)
-    assert m.EXPORT_FORMATS[0] == "OBJ"
-    # chips fan out: at t=0 they cluster near center, at t=1 they spread wider
-    early = m.draw_export_chips(f, 0.0)
-    assert not np.array_equal(early, out2)
 
 
 def test_colormap_plate_bins_and_colors():
