@@ -116,7 +116,7 @@ def test_stage_vocabulary_v3():
                         "Voxel City", "Ground level", "Building surface"]
     assert not hasattr(m, "EXPORT_FORMATS")
     assert m.PLATE_BASE_ID["landcover"] == 160
-    assert set(m.LAYER_CMAP2) == {"terrain", "buildings", "trees"}
+    assert set(m.LAYER_CMAP) == {"terrain", "buildings", "trees"}
 
 
 def test_parse_args_overrides():
@@ -323,9 +323,6 @@ def test_landcover_plate_uses_lut_ids():
 def test_build_download_scene_reveal(monkeypatch):
     import scripts.make_readme_demo_gif as m
     # tiny fake city
-    class V:  # noqa
-        pass
-    import copy
     base = np.zeros((4, 4, 6), dtype=np.int8)
     city = type("C", (), {})()
     city.voxels = type("Vx", (), {})()

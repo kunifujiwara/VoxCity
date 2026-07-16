@@ -5,7 +5,7 @@ VoxCity workflow from cached artifacts (no Google Earth Engine, no live compute)
 
 Run:
     export LC_ALL=C.UTF-8 LANG=C.UTF-8
-    venv/bin/python scripts/make_readme_demo_gif.py --out images/demo.gif
+    venv/bin/python scripts/make_readme_demo_gif.py --out images/demo.webp
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ import imageio.v2 as imageio
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from PIL import Image, ImageDraw, ImageFont
@@ -281,7 +280,6 @@ def fit_canvas(rgb, size, pad_rgb=(245, 245, 245)):
 
 
 LAYER_CMAP = {"terrain": "terrain", "buildings": "viridis", "trees": "Greens"}
-LAYER_CMAP2 = {"terrain": "terrain", "buildings": "viridis", "trees": "Greens"}
 PLATE_BASE_ID = {"terrain": 100, "buildings": 120, "trees": 140, "landcover": 160}
 
 
@@ -297,7 +295,7 @@ def colormap_plate(values2d, cmap, nbins=16, base_id=100):
     norm = (np.clip(np.nan_to_num(a, nan=vmin), vmin, vmax) - vmin) / (vmax - vmin)
     bins = np.clip(np.round(norm * (nbins - 1)).astype(int), 0, nbins - 1)
     ids = (base_id + bins).astype(np.int32)
-    mapper = cm.get_cmap(cmap)
+    mapper = matplotlib.colormaps[cmap]
     cmap_dict = {}
     for b in range(nbins):
         r, g, bl, _ = mapper(b / max(1, nbins - 1))
@@ -344,7 +342,7 @@ def build_download_scene(city, maps, reveal, z_by_layer=None):
         if layer == "landcover":
             ids2d, cd = landcover_plate(maps["landcover"], PLATE_BASE_ID["landcover"])
         else:
-            ids2d, cd = colormap_plate(maps[layer], LAYER_CMAP2[layer],
+            ids2d, cd = colormap_plate(maps[layer], LAYER_CMAP[layer],
                                        base_id=PLATE_BASE_ID[layer])
         color_map.update(cd)
         z = int(np.clip(z_by_layer[layer], 0, nz - 1))
@@ -353,6 +351,8 @@ def build_download_scene(city, maps, reveal, z_by_layer=None):
     c2.voxels = copy.copy(city.voxels)
     c2.voxels.classes = grid
     return c2, color_map
+
+
 CALLOUT = {
     "dl_terrain": "2D Terrain Elevation map",
     "dl_landcover": "2D Land Cover map",
