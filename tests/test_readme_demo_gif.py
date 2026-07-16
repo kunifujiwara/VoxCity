@@ -352,3 +352,29 @@ def test_render_still_accepts_voxel_color_map(monkeypatch):
     m.render_still(city, cfg, ((0, 0, 0), (0, 0, 0)),
                    voxel_color_map={100: [1, 2, 3]})
     assert captured["voxel_color_map"] == {100: [1, 2, 3]}
+
+
+def test_render_timeline_dispatch(monkeypatch):
+    import numpy as np, scripts.make_readme_demo_gif as m
+    cfg = m.Config(quick=True)
+    calls = []
+    def fake_render_still(city, cfg, camera, **kw):
+        calls.append(kw)
+        return np.zeros((cfg.height, cfg.width, 3), np.uint8)
+    monkeypatch.setattr(m, "render_still", fake_render_still)
+    monkeypatch.setattr(m, "load_download_maps",
+        lambda cfg: {k: np.ones((4, 4)) for k in m.LAYERS})
+    monkeypatch.setattr(m, "load_building_mesh", lambda cfg: object())
+    monkeypatch.setattr(m, "build_download_scene",
+        lambda *a, **k: (a[0], {100: [1, 2, 3]}))
+    city = type("C", (), {})()
+    city.voxels = type("Vx", (), {})()
+    city.voxels.classes = np.zeros((4, 4, 6), np.int8)
+    city.voxels.meta = type("Mt", (), {"meshsize": 5.0})()
+    city.dem = type("D", (), {"elevation": np.zeros((4, 4))})()
+    results = {"ground": {"solar_irradiance_instantaneous": np.ones((4, 4))}}
+    frames = m.render_timeline(city, results, cfg)
+    assert len(frames) == len(m.build_timeline(cfg))
+    assert any("voxel_color_map" in c for c in calls)   # download beat
+    assert any("ground_grid" in c for c in calls)       # sim_ground
+    assert any("building_mesh" in c for c in calls)     # sim_building

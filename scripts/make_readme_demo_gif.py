@@ -77,6 +77,15 @@ def explode_city(city, offsets, scales=None):
     by offsets[layer] voxels and optionally height-scaled by scales[layer]."""
     scales = scales or {}
     base = np.asarray(city.voxels.classes)
+    nx, ny, nz_base = base.shape
+    # Pad the z-axis so a shift by the largest offset never truncates voxels
+    # that started at the top of the grid (matches build_download_scene, which
+    # grows nz the same way for tiny/quick cities).
+    max_dz = max([int(dz) for dz in offsets.values()] + [0])
+    if max_dz > 0:
+        padded = np.zeros((nx, ny, nz_base + max_dz), dtype=base.dtype)
+        padded[:, :, :nz_base] = base
+        base = padded
     combined = np.zeros_like(base)
     for layer, dz in offsets.items():
         layer_c = np.where(layer_mask(base, layer), base, 0).astype(base.dtype)
@@ -579,55 +588,42 @@ def to_uv_layout(grid, ref_shape):
     raise ValueError(f"sim grid {g.shape} incompatible with ref {ref_shape}")
 
 
-def _overlay_inputs(city, results, overlay):
-    """Return (ground_grid, ground_dem, building_mesh, building_value) for a beat.
-
-    Real `simulation_results.h5` layout (see load_results_h5): top-level
-    ``results["ground"]`` holds 2D (nu, nv) arrays keyed by metric name
-    (``solar_irradiance_instantaneous``, ``green_view_index``,
-    ``sky_view_index``, ``landmark_visibility``); ``results["building"]`` only
-    carries layout metadata in the cached demo data (no mesh). When no
-    building mesh is available the "building" sub-beat falls back to the
-    ground overlay so it never crashes.
-    """
-    if overlay is None:
-        return None, None, None, None
-    ground = results.get("ground", {}) if isinstance(results, dict) else {}
-    ground_grid = None
-    for key in ("solar_irradiance_instantaneous", "green_view_index",
-                "sky_view_index", "landmark_visibility"):
-        if key in ground:
-            ground_grid = np.asarray(ground[key])
-            break
-    ground_dem = np.asarray(city.dem.elevation) if ground_grid is not None else None
-    if overlay == "building":
-        b = results.get("building", {}) if isinstance(results, dict) else {}
-        mesh = b.get("mesh") if isinstance(b, dict) else None
-        if mesh is not None:
-            value = b.get("value_name") if isinstance(b, dict) else None
-            return None, None, mesh, value
-        # no building mesh in the cached results -> fall back to ground overlay
-        return ground_grid, ground_dem, None, None
-    return ground_grid, ground_dem, None, None
-
-
 def render_timeline(city, results, cfg):
     """Render every beat of `build_timeline(cfg)` into a list of uint8 frames."""
     shape = city.voxels.classes.shape
     meshsize = city.voxels.meta.meshsize
     tl = build_timeline(cfg)
     poses = orbit_path(shape, meshsize, n=len(tl))
+    maps = load_download_maps(cfg)
+    building_mesh = None
     frames = []
     for i, fs in enumerate(tl):
-        scene = explode_city(city, fs.offsets, fs.scales) if fs.offsets is not None else city
-        gg, gd, bm, bv = _overlay_inputs(city, results, fs.overlay)
-        img = render_still(scene, cfg, poses[i], ground_grid=gg, ground_dem=gd,
-                           building_mesh=bm, building_value=bv)
+        pose = poses[i]
+        if fs.scene_kind == "download":
+            scene, cmap = build_download_scene(city, maps, fs.reveal)
+            img = render_still(scene, cfg, pose, voxel_color_map=cmap)
+        elif fs.scene_kind in ("voxelize", "integrate"):
+            scene = explode_city(city, fs.offsets, fs.scales)
+            img = render_still(scene, cfg, pose)
+        elif fs.scene_kind == "city":
+            img = render_still(city, cfg, pose)
+        elif fs.scene_kind == "sim_ground":
+            gg, gd = ground_overlay(city, results)
+            img = render_still(city, cfg, pose, ground_grid=gg, ground_dem=gd,
+                               ground_cmap="magma")
+        elif fs.scene_kind == "sim_building":
+            if building_mesh is None:
+                building_mesh = load_building_mesh(cfg)
+            img = render_still(city, cfg, pose, building_mesh=building_mesh,
+                               building_value="view_factor_values",
+                               building_cmap="viridis")
+        else:
+            raise ValueError(f"unknown scene_kind {fs.scene_kind!r}")
         img = compose(img, fs.stage, fs.caption, cfg)
         if fs.labels:
             img = draw_labels(img, fs.labels)
-        if fs.chips:
-            pass  # draw_export_chips was removed in v3 refactor; TODO: reimplement chips drawing
+        if fs.callouts:
+            img = draw_callouts(img, fs.callouts)
         frames.append(img)
     return frames
 
