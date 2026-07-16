@@ -330,10 +330,13 @@ def save_results_h5(
                     'solar_cumulative': trimesh_obj,
                     'sky_view_factor': {'mesh': trimesh_obj, 'metadata': {...}},
                 },
+                'network': {
+                    'solar': edge_geodataframe,  # LineString edges + value columns
+                },
             }
 
-        Supported simulation types are ``'ground'`` and
-        ``'building_surface'``.  The legacy ``ground_results`` and
+        Supported simulation types are ``'ground'``, ``'building_surface'``
+        and ``'network'``.  The legacy ``ground_results`` and
         ``building_results`` arguments remain supported for saving one
         unnamed/default result of each type.
 
@@ -473,6 +476,12 @@ def save_results_h5(
                 for result_name, result in building_surface_named.items():
                     result_group = building_root.create_group(_validate_h5_result_name(result_name))
                     _write_building_result_group(result_group, result)
+            network_named = simulation_results.get('network', {})
+            if network_named:
+                network_root = sim_root.create_group('network')
+                for result_name, result in network_named.items():
+                    result_group = network_root.create_group(_validate_h5_result_name(result_name))
+                    _write_network_result_group(result_group, result)
 
     print(f"VoxCity results saved to {output_path}")
 
@@ -633,6 +642,12 @@ def load_results_h5(input_path):
                     simulations['building_surface'][result_name] = _read_building_result_group(
                         sim_root['building_surface'][result_name], h5py
                     )
+            if 'network' in sim_root:
+                simulations['network'] = {}
+                for result_name in sim_root['network']:
+                    simulations['network'][result_name] = _read_network_result_group(
+                        sim_root['network'][result_name], h5py
+                    )
             results['simulations'] = simulations
 
         simulations = results.get('simulations', {})
@@ -666,7 +681,7 @@ def _validate_simulation_results(simulation_results):
     if not isinstance(simulation_results, dict):
         raise TypeError("simulation_results must be a dictionary")
 
-    supported_types = {'ground', 'building_surface'}
+    supported_types = {'ground', 'building_surface', 'network'}
     for simulation_type, named_results in simulation_results.items():
         if simulation_type not in supported_types:
             raise ValueError(f"Unsupported simulation result type: {simulation_type}")

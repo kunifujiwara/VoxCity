@@ -788,3 +788,64 @@ class TestNetworkResultHelpers:
         edges = out["edges"]
         assert list(edges["solar"]) == list(gdf["solar"])
         assert len(edges) == len(gdf)
+
+
+class TestNetworkResultsH5:
+    def test_network_gdf_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        gdf = _make_edge_gdf(n_edges=7, value_cols=("solar",))
+        path = str(tmp_path / "network.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={"network": {"solar": gdf}},
+        )
+        data = load_results_h5(path)
+
+        net = data["simulations"]["network"]["solar"]
+        assert list(net["edges"]["solar"]) == list(gdf["solar"])
+        assert len(net["edges"]) == len(gdf)
+
+    def test_network_dict_with_metadata_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        gdf = _make_edge_gdf(n_edges=4, value_cols=("direct", "diffuse", "global"))
+        path = str(tmp_path / "network_meta.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={
+                "network": {
+                    "solar": {"edges": gdf, "metadata": {"network_type": "walk"}},
+                },
+            },
+        )
+        data = load_results_h5(path)
+
+        net = data["simulations"]["network"]["solar"]
+        assert net["network_type"] == "walk"
+        assert list(net["edges"]["global"]) == list(gdf["global"])
+
+    def test_multiple_named_network_results_round_trip(self, tmp_path):
+        city = _make_voxcity()
+        walk = _make_edge_gdf(n_edges=3, value_cols=("solar",))
+        drive = _make_edge_gdf(n_edges=5, value_cols=("solar",))
+        path = str(tmp_path / "network_multi.h5")
+
+        save_results_h5(
+            path, city,
+            simulation_results={"network": {"walk": walk, "drive": drive}},
+        )
+        data = load_results_h5(path)
+
+        nets = data["simulations"]["network"]
+        assert set(nets) == {"walk", "drive"}
+        assert len(nets["drive"]["edges"]) == len(drive)
+
+    def test_network_edges_missing_raises(self, tmp_path):
+        city = _make_voxcity()
+        path = str(tmp_path / "network_bad.h5")
+        with pytest.raises(ValueError, match="edges"):
+            save_results_h5(
+                path, city,
+                simulation_results={"network": {"solar": {"metadata": {}}}},
+            )
