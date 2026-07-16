@@ -806,6 +806,11 @@ class TestNetworkResultsH5:
         assert list(net["edges"]["solar"]) == list(gdf["solar"])
         assert len(net["edges"]) == len(gdf)
 
+        import h5py
+        with h5py.File(path, "r") as f:
+            assert f.attrs["__format__"] == "voxcity_results.v2"
+            assert "simulations/network/solar/edges" in f
+
     def test_network_dict_with_metadata_round_trip(self, tmp_path):
         city = _make_voxcity()
         gdf = _make_edge_gdf(n_edges=4, value_cols=("direct", "diffuse", "global"))
