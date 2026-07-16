@@ -483,9 +483,30 @@ def load_inputs(cfg):
     return city, results
 
 
+def load_building_mesh(cfg):
+    """Load the building GVI surface mesh + per-face view factors from H5."""
+    import h5py, trimesh
+    with h5py.File(str(cfg.results_h5), "r") as f:
+        v = np.asarray(f["/building/green_view_index/mesh/vertices"])
+        fc = np.asarray(f["/building/green_view_index/mesh/faces"])
+        vals = np.asarray(f["/building/green_view_index/view_factor_values"])
+    mesh = trimesh.Trimesh(vertices=v, faces=fc, process=False)
+    mesh.metadata["view_factor_values"] = vals
+    return mesh
+
+
+def ground_overlay(city, results):
+    """Ground solar irradiance grid + DEM for the ground-level sim beat."""
+    ground = results.get("ground", {}) if isinstance(results, dict) else {}
+    grid = np.asarray(ground["solar_irradiance_instantaneous"])
+    dem = np.asarray(city.dem.elevation)
+    return grid, dem
+
+
 def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
-                 ground_cmap="magma", building_mesh=None, building_value=None,
-                 building_cmap="viridis"):
+                 ground_cmap="magma", building_mesh=None,
+                 building_value="view_factor_values", building_cmap="viridis",
+                 voxel_color_map="default"):
     """Render one GPU still of `city` at `camera`, fit to the canvas."""
     from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
     cam_pos, cam_look = camera
@@ -495,6 +516,7 @@ def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
         camera_position=cam_pos, camera_look_at=cam_look,
         arch=("gpu" if gpu_available() else "cpu"),
         output_path=None, show_progress=False,
+        voxel_color_map=voxel_color_map,
     )
     if ground_grid is not None:
         nu, nv = city.voxels.classes.shape[0], city.voxels.classes.shape[1]

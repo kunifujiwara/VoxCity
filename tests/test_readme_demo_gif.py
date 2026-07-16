@@ -308,3 +308,32 @@ def test_build_download_scene_reveal(monkeypatch):
     # exactly the terrain z-slice populated
     assert (g[:, :, m._EXPLODE["terrain"]] >= 100).all()
     assert (g[:, :, m._EXPLODE["landcover"]] == 0).all()
+
+
+def test_load_building_mesh_shapes():
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config()
+    mesh = m.load_building_mesh(cfg)
+    assert mesh.vertices.shape == (106366, 3)
+    assert mesh.faces.shape == (207926, 3)
+    vals = mesh.metadata["view_factor_values"]
+    assert len(vals) == len(mesh.faces)
+
+
+def test_render_still_accepts_voxel_color_map(monkeypatch):
+    import scripts.make_readme_demo_gif as m
+    captured = {}
+    cfg = m.Config(quick=True)
+
+    def fake_vis(city, **kw):
+        captured.update(kw)
+        return np.zeros((cfg.height, cfg.width, 3), np.uint8)
+    monkeypatch.setattr(
+        "voxcity.visualizer.renderer_gpu.visualize_voxcity_gpu", fake_vis)
+    monkeypatch.setattr(m, "gpu_available", lambda: False)
+    city = type("C", (), {})()
+    city.voxels = type("Vx", (), {})()
+    city.voxels.classes = np.zeros((4, 4, 6), np.int32)
+    m.render_still(city, cfg, ((0, 0, 0), (0, 0, 0)),
+                   voxel_color_map={100: [1, 2, 3]})
+    assert captured["voxel_color_map"] == {100: [1, 2, 3]}
