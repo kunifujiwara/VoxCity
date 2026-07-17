@@ -419,3 +419,58 @@ def test_render_timeline_dispatch(monkeypatch):
     assert any("voxel_color_map" in c for c in calls)   # download beat
     assert any("ground_grid" in c for c in calls)       # sim_ground
     assert any("building_mesh" in c for c in calls)     # sim_building
+
+
+def test_ground_overlay_flips_to_align_with_footprint():
+    # The stored solar grid is south-first; ground_overlay flips it north-south
+    # so zero/masked cells coincide with the voxel building footprint.
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config()
+    city, results = m.load_inputs(cfg)
+    cls = np.asarray(city.voxels.classes)
+    bldg = (cls <= -3).any(axis=2)
+    grid, _ = m.ground_overlay(city, results)
+    assert grid.shape == bldg.shape
+    low = ~np.isfinite(grid) | (grid <= 1e-6)
+    inside = low[bldg].mean()
+    outside = low[~bldg].mean()
+    assert inside > 0.9 and inside > outside * 1.5   # zeros land on buildings
+
+
+def test_build_voxelize_scene_mixes_plates_and_voxels():
+    import scripts.make_readme_demo_gif as m
+    base = np.zeros((4, 4, 6), dtype=np.int8)
+    base[:, :, 0] = -1            # terrain
+    base[1, 1, :3] = -3           # a building column
+    city = type("C", (), {})()
+    city.voxels = type("Vx", (), {})()
+    city.voxels.classes = base
+    maps = {"terrain": np.ones((4, 4)), "landcover": np.zeros((4, 4), int),
+            "buildings": np.ones((4, 4)), "trees": np.ones((4, 4))}
+    offsets = dict(m._EXPLODE)
+    scene, cmap = m.build_voxelize_scene(
+        city, maps, plate_layers=["landcover", "trees"],
+        voxel_scales={"terrain": 1.0, "buildings": 1.0}, offsets=offsets)
+    g = np.asarray(scene.voxels.classes)
+    # plate layers appear as synthetic colormap ids at their z-offset
+    assert (g[:, :, m._EXPLODE["landcover"]] >= 100).any()
+    assert (g[:, :, m._EXPLODE["trees"]] >= 100).any()
+    # voxel layers keep their real (negative) class ids
+    assert (g == -1).any() and (g == -3).any()
+
+
+def test_timeline_voxelize_starts_with_four_slabs():
+    import scripts.make_readme_demo_gif as m
+    tl = [fs for fs in m.build_timeline(m.Config()) if fs.scene_kind == "voxelize"]
+    first = tl[0]
+    # every layer is shown from the first voxelize frame (as slab or thin voxel)
+    shown = set(first.plates or []) | set((first.scales or {}).keys())
+    assert shown == set(m.LAYERS)
+    assert len(first.labels) == 4
+    # land cover stays a flat plate throughout the voxelize beat
+    assert all("landcover" in (fs.plates or []) for fs in tl)
+    # buildings, once active, are full height instantly (never a partial scale)
+    for fs in tl:
+        if "buildings" in (fs.scales or {}):
+            assert fs.scales["buildings"] == 1.0
+

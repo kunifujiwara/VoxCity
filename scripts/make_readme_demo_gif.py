@@ -155,6 +155,7 @@ class FrameSpec:
     offsets: dict | None
     scales: dict | None
     camera_t: float
+    plates: list | None = None
 
 
 _LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land Cover", "landcover"),
@@ -189,9 +190,12 @@ def build_timeline(cfg):
         specs.append(FrameSpec(0, "download", "Download geospatial data",
             labels, [], reveal, None, None, cam_t())); done += 1
 
-    # Beat 2: voxelize — reveal layers one-by-one (terrain -> land cover ->
-    # buildings -> trees). Terrain/land-cover/trees grow from thin to full;
-    # buildings appear instantaneously (full height as soon as they are active).
+    # Beat 2: voxelize — start with all four flat colormap slabs, then convert
+    # them into voxels one layer at a time (terrain -> land cover -> buildings
+    # -> trees). Layers awaiting their turn stay as flat slabs. Land cover is
+    # shown as its final flat colormap slab throughout the voxelize beat; it is
+    # only fitted onto the voxelized terrain later, during the integrate beat.
+    # Terrain/trees grow from thin to full height; buildings appear instantly.
     b = lens[1]
     order = list(LAYERS)
     for i in range(b):
@@ -199,17 +203,20 @@ def build_timeline(cfg):
         pos = t * len(order)
         active = min(len(order) - 1, int(pos))
         local_t = min(1.0, pos - active)
-        offsets, scales = {}, {}
+        offsets = {L: _EXPLODE[L] for L in order}
+        plates, scales = [], {}
         for j, L in enumerate(order):
-            if j < active:
-                offsets[L] = _EXPLODE[L]; scales[L] = 1.0
+            if L == "landcover":
+                plates.append(L)                       # always a flat slab here
+            elif j < active:
+                scales[L] = 1.0                        # already voxelized
             elif j == active:
-                offsets[L] = _EXPLODE[L]
-                scales[L] = 1.0 if L == "buildings" else (0.15 + 0.85 * _ease_in_out(local_t))
-            # not-yet-revealed layers are omitted entirely
-        labels = [_LAYER_LABEL[order[j]] for j in range(active + 1)]
+                scales[L] = 1.0 if L == "buildings" else max(0.06, _ease_in_out(local_t))
+            else:
+                plates.append(L)                       # awaiting its turn
+        labels = [_LAYER_LABEL[L] for L in order]      # all four visible
         specs.append(FrameSpec(1, "voxelize", "Voxelize urban elements",
-            labels, [], {}, offsets, scales, cam_t())); done += 1
+            labels, [], {}, offsets, scales, cam_t(), plates=plates)); done += 1
 
     # Beat 3: integrate — ease offsets to zero
     b = lens[2]
@@ -249,6 +256,14 @@ class Config:
     out: Path = field(default_factory=lambda: REPO_ROOT / "images" / "demo.webp")
     quick: bool = False
     quality: int = 80
+    # Ray-tracing quality. TEMPORARILY lowered for fast flow iteration; restore
+    # spp=40, max_depth=8 for the final high-quality render.
+    spp: int = 16
+    max_depth: int = 5
+    # Softer lighting: reduced directional intensity + raised ambient fill so
+    # shadowed faces stay visible (ambient is applied by renderer_gpu's tracer).
+    direct: tuple = (0.55, 0.55, 0.52)
+    ambient: tuple = (0.40, 0.40, 0.43)
     voxcity_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "voxcity.h5")
     results_h5: Path = field(default_factory=lambda: REPO_ROOT / "demo" / "output" / "simulation_results.h5")
 
@@ -357,6 +372,50 @@ def build_download_scene(city, maps, reveal, z_by_layer=None):
         color_map.update(cd)
         z = int(np.clip(z_by_layer[layer], 0, nz - 1))
         grid[:, :, z] = ids2d
+    c2 = copy.copy(city)
+    c2.voxels = copy.copy(city.voxels)
+    c2.voxels.classes = grid
+    return c2, color_map
+
+
+def build_voxelize_scene(city, maps, plate_layers, voxel_scales, offsets):
+    """Hybrid scene for the voxelize beat: some layers as flat colormap slabs
+    and others as real (height-scaled) voxels, each at its explode z-offset.
+
+    plate_layers   : layers rendered as a one-voxel-thick colormap plate.
+    voxel_scales   : {layer: height_scale} for layers rendered as real voxels.
+    offsets        : {layer: z-offset} for every shown layer.
+
+    Real voxel layers use the default palette; plate layers contribute their own
+    synthetic colormap ids, mirroring build_download_scene so the transition from
+    the download beat and into the integrate beat stays visually continuous.
+    """
+    from voxcity.visualizer.palette import get_voxel_color_map
+    base = np.asarray(city.voxels.classes)
+    nx, ny, nz_base = base.shape
+    max_off = max([int(o) for o in offsets.values()] + [0])
+    nz = nz_base + max_off
+    grid = np.zeros((nx, ny, nz), dtype=np.int32)
+    color_map = {int(k): list(v) for k, v in get_voxel_color_map("default").items()}
+    # Real voxel layers (terrain / buildings / trees as they voxelize).
+    for layer, scale in voxel_scales.items():
+        layer_c = np.where(layer_mask(base, layer), base, 0).astype(base.dtype)
+        layer_c = _scale_layer_height(layer_c, scale)
+        padded = np.zeros((nx, ny, nz), dtype=np.int32)
+        padded[:, :, :nz_base] = layer_c
+        shifted = z_shift_classes(padded, int(offsets[layer]))
+        grid = np.where(shifted != 0, shifted, grid)
+    # Flat colormap plates (land cover + layers awaiting their turn).
+    for layer in plate_layers:
+        if layer == "landcover":
+            ids2d, cd = landcover_plate(maps["landcover"], PLATE_BASE_ID["landcover"])
+        else:
+            ids2d, cd = colormap_plate(maps[layer], LAYER_CMAP[layer],
+                                       base_id=PLATE_BASE_ID[layer])
+        color_map.update(cd)
+        z = int(np.clip(offsets[layer], 0, nz - 1))
+        cell = grid[:, :, z]
+        grid[:, :, z] = np.where(cell == 0, ids2d, cell)
     c2 = copy.copy(city)
     c2.voxels = copy.copy(city.voxels)
     c2.voxels.classes = grid
@@ -568,10 +627,18 @@ def grayscale_voxel_color_map():
 
 
 def ground_overlay(city, results):
-    """Ground solar irradiance grid + DEM for the ground-level sim beat."""
+    """Ground solar irradiance grid + DEM for the ground-level sim beat.
+
+    The cached ground grids are stored row-major with row 0 at the SOUTH edge,
+    whereas the voxel model has row 0 at the NORTH edge (see voxcity_results_h5
+    notebook: display uses np.flipud). Flip north-south so the overlay lands on
+    the correct cells: verified against the voxel building footprint, flipud
+    puts ~99.9% of zero/masked solar cells inside building footprints vs ~64%
+    for the raw grid.
+    """
     ground = results.get("ground", {}) if isinstance(results, dict) else {}
-    grid = np.asarray(ground["solar_irradiance_instantaneous"])
-    dem = np.asarray(city.dem.elevation)
+    grid = np.flipud(np.asarray(ground["solar_irradiance_instantaneous"]))
+    dem = np.flipud(np.asarray(city.dem.elevation))
     return grid, dem
 
 
@@ -582,13 +649,15 @@ def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
     """Render one GPU still of `city` at `camera`, fit to the canvas."""
     from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
     cam_pos, cam_look = camera
-    spp = 8 if cfg.quick else 40
+    spp = 4 if cfg.quick else cfg.spp
     kwargs = dict(
         width=cfg.width, height=cfg.height, samples_per_pixel=spp,
+        max_depth=cfg.max_depth,
         camera_position=cam_pos, camera_look_at=cam_look,
         arch=("gpu" if gpu_available() else "cpu"),
         output_path=None, show_progress=False,
         voxel_color_map=voxel_color_map,
+        direct=cfg.direct, ambient=cfg.ambient,
     )
     if ground_grid is not None:
         nu, nv = city.voxels.classes.shape[0], city.voxels.classes.shape[1]
@@ -638,7 +707,11 @@ def render_timeline(city, results, cfg):
         if fs.scene_kind == "download":
             scene, cmap = build_download_scene(city, maps, fs.reveal)
             img = render_still(scene, cfg, pose, voxel_color_map=cmap)
-        elif fs.scene_kind in ("voxelize", "integrate"):
+        elif fs.scene_kind == "voxelize":
+            scene, cmap = build_voxelize_scene(city, maps, fs.plates or [],
+                                               fs.scales or {}, fs.offsets)
+            img = render_still(scene, cfg, pose, voxel_color_map=cmap)
+        elif fs.scene_kind == "integrate":
             scene = explode_city(city, fs.offsets, fs.scales)
             img = render_still(scene, cfg, pose)
         elif fs.scene_kind == "city":
@@ -683,11 +756,17 @@ def parse_args(argv=None) -> Config:
     p.add_argument("--fps", type=int, default=Config().fps)
     p.add_argument("--seconds", type=float, default=Config().seconds)
     p.add_argument("--quality", type=int, default=80)
+    p.add_argument("--spp", type=int, default=Config().spp,
+                   help="ray-tracing samples per pixel (higher = slower/cleaner)")
+    p.add_argument("--max-depth", type=int, default=Config().max_depth,
+                   help="ray bounce depth")
     p.add_argument("--quick", action="store_true")
     a = p.parse_args(argv)
     cfg = Config(width=a.width, height=a.height, fps=a.fps, seconds=a.seconds,
                  out=a.out, quick=a.quick)
     cfg.quality = a.quality
+    cfg.spp = a.spp
+    cfg.max_depth = a.max_depth
     return cfg
 
 
