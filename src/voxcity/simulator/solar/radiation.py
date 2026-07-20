@@ -8,6 +8,7 @@ from numba import njit, prange
 
 from ...models import VoxCity
 from ...exporter.obj import grid_to_obj
+from ...utils.orientation import direction_to_axis_vector
 from ..visibility import get_sky_view_factor_map
 from ..common.coordinates import scene_points_to_uv_domain, scene_vectors_to_uv_domain
 from ..common.raytracing import trace_ray_generic
@@ -42,12 +43,7 @@ def get_direct_solar_irradiance_map(
     if isinstance(extras, dict):
         rotation_angle = extras.get('rotation_angle', 0)
 
-    azimuth_radians = np.deg2rad(azimuth_degrees_ori - rotation_angle)
-    elevation_radians = np.deg2rad(elevation_degrees)
-    dx = np.cos(elevation_radians) * np.cos(azimuth_radians)
-    dy = np.cos(elevation_radians) * np.sin(azimuth_radians)
-    dz = np.sin(elevation_radians)
-    sun_direction = (dx, dy, dz)
+    sun_direction = tuple(direction_to_axis_vector(azimuth_degrees_ori, elevation_degrees, rotation_angle))
 
     hit_values = (0,)
     inclusion_mode = False
@@ -63,7 +59,7 @@ def get_direct_solar_irradiance_map(
         include_building_roofs,
     )
 
-    sin_elev = dz
+    sin_elev = sun_direction[2]
     direct_map = transmittance_map * direct_normal_irradiance * sin_elev
 
     if show_plot:
@@ -571,12 +567,7 @@ def get_building_solar_irradiance(
         rotation_angle = extras.get('rotation_angle', 0)
 
     # Sun vector
-    az_rad = np.deg2rad(azimuth_degrees - rotation_angle)
-    el_rad = np.deg2rad(elevation_degrees)
-    sun_dx = np.cos(el_rad) * np.cos(az_rad)
-    sun_dy = np.cos(el_rad) * np.sin(az_rad)
-    sun_dz = np.sin(el_rad)
-    sun_direction = np.array([sun_dx, sun_dy, sun_dz], dtype=np.float64)
+    sun_direction = direction_to_axis_vector(azimuth_degrees, elevation_degrees, rotation_angle)
 
     # SVF
     if hasattr(building_svf_mesh, 'metadata') and ('svf' in building_svf_mesh.metadata):
