@@ -1,26 +1,16 @@
 import numpy as np
 from numba import njit
 
+from ...utils.orientation import direction_to_axis_vector
+
 
 def _generate_ray_directions_grid(N_azimuth: int, N_elevation: int, elevation_min_degrees: float, elevation_max_degrees: float) -> np.ndarray:
-    azimuth_angles = np.linspace(0.0, 2.0 * np.pi, int(N_azimuth), endpoint=False)
-    elevation_angles = np.deg2rad(
-        np.linspace(float(elevation_min_degrees), float(elevation_max_degrees), int(N_elevation))
-    )
-    ray_directions = np.empty((len(azimuth_angles) * len(elevation_angles), 3), dtype=np.float64)
-    out_idx = 0
-    for elevation in elevation_angles:
-        cos_elev = np.cos(elevation)
-        sin_elev = np.sin(elevation)
-        for azimuth in azimuth_angles:
-            dx = cos_elev * np.cos(azimuth)
-            dy = cos_elev * np.sin(azimuth)
-            dz = sin_elev
-            ray_directions[out_idx, 0] = dx
-            ray_directions[out_idx, 1] = dy
-            ray_directions[out_idx, 2] = dz
-            out_idx += 1
-    return ray_directions
+    azimuth_deg = np.linspace(0.0, 360.0, int(N_azimuth), endpoint=False)
+    elevation_deg = np.linspace(float(elevation_min_degrees), float(elevation_max_degrees), int(N_elevation))
+    # Broadcast: elevations vary along rows (outer loop), azimuths along
+    # columns (inner loop) — same ordering as the historical nested loop.
+    dirs = direction_to_axis_vector(azimuth_deg[None, :], elevation_deg[:, None])
+    return np.ascontiguousarray(dirs.reshape(-1, 3))
 
 
 def _generate_ray_directions_fibonacci(N_rays: int, elevation_min_degrees: float, elevation_max_degrees: float) -> np.ndarray:
