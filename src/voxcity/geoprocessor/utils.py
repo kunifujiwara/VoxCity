@@ -256,6 +256,39 @@ def _web_mercator_transformer():
     return Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
 
 
+def compute_rotation_angle(rectangle_vertices):
+    """Return the rotation angle (degrees) of a rectangle from its vertices.
+
+    The angle is the clockwise bearing of the v0->v1 (SW->NW) edge measured
+    in Web Mercator space. For an axis-aligned rectangle the edge points due
+    north and the returned angle is 0. Angles are wrapped to (-180, 180].
+
+    This is the single producer of the ``rotation_angle`` stored in
+    ``VoxCity.extras`` and in v3 HDF5 files (see voxcity.utils.orientation).
+    """
+    if rectangle_vertices is None or len(rectangle_vertices) < 2:
+        return 0
+
+    to_merc = _web_mercator_transformer()
+    x0, y0 = to_merc.transform(rectangle_vertices[0][0], rectangle_vertices[0][1])
+    x1, y1 = to_merc.transform(rectangle_vertices[1][0], rectangle_vertices[1][1])
+    dx = x1 - x0
+    dy = y1 - y0
+
+    # atan2(east, north) gives clockwise-from-north bearing
+    angle_deg = math.degrees(math.atan2(dx, dy))
+
+    # Snap near-zero values to exactly 0 (floating-point noise)
+    if abs(angle_deg) < 1e-6:
+        return 0
+    # Wrap to (-180, 180]
+    if angle_deg > 180:
+        angle_deg -= 360
+    elif angle_deg <= -180:
+        angle_deg += 360
+    return round(angle_deg, 6)
+
+
 def normalize_rectangle_vertices(vertices, warn=True):
     """Validate and reorder rectangle vertices to canonical [SW, NW, NE, SE].
 
