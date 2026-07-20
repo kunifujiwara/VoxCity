@@ -112,3 +112,32 @@ class TestCheckAxes:
         with h5py.File(p, "w") as f:
             f.attrs["axes"] = AXES_ATTR
         check_axes(str(p))  # no raise
+
+
+class TestTopLevelReExports:
+    def test_public_api_importable_from_package_root(self):
+        import voxcity
+
+        assert voxcity.AXES == ("north", "east", "up")
+        assert callable(voxcity.direction_to_axis_vector)
+        assert callable(voxcity.check_axes)
+        assert hasattr(voxcity.GridProjector, "from_h5")
+
+    def test_bare_import_voxcity_stays_lightweight(self):
+        import subprocess
+        import sys
+
+        code = (
+            "import sys, voxcity; "
+            "heavy = [m for m in "
+            "('h5py','xarray','geopandas','pyproj','shapely','rtree','pandas','rasterio') "
+            "if m in sys.modules]; "
+            "print(heavy)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "[]", (
+            f"import voxcity eagerly loaded heavy modules: {result.stdout.strip()}"
+        )
