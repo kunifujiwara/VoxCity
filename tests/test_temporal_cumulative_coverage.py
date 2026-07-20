@@ -71,6 +71,30 @@ class TestGetCumulativeGlobalSolarIrradiance:
 
     @patch("voxcity.simulator.solar.temporal.get_direct_solar_irradiance_map")
     @patch("voxcity.simulator.solar.temporal.get_diffuse_solar_irradiance_map")
+    def test_non_leap_year_post_february_window(self, mock_diffuse, mock_direct):
+        """Regression: the [start,end] window must key off the EPW's own year,
+        not a hardcoded leap year. A non-leap EPW covering only one post-February
+        day used to compute the day-of-year against datetime(2000) (leap), landing
+        the window one day off and selecting nothing -> ValueError."""
+        from voxcity.simulator.solar.temporal import get_cumulative_global_solar_irradiance
+        vc = _make_voxcity(nx=4, ny=4, nz=8)
+        # a single non-leap-year day, well after Feb 29 (where leap/non-leap diverge)
+        idx = pd.date_range("2023-06-21 00:00:00", periods=24, freq="h")
+        rng = np.random.RandomState(7)
+        df = pd.DataFrame({"DNI": rng.uniform(0, 800, 24),
+                           "DHI": rng.uniform(0, 300, 24)}, index=idx)
+        mock_direct.return_value = np.full((4, 4), 100.0)
+        mock_diffuse.return_value = np.full((4, 4), 0.5)
+        result = get_cumulative_global_solar_irradiance(
+            vc, df, lon=139.75, lat=35.65, tz=9.0,
+            start_time="06-21 00:00:00", end_time="06-21 23:00:00",
+            show_plot=False, obj_export=False,
+        )
+        assert result.shape == (4, 4)
+        assert len(result[~np.isnan(result)]) > 0
+
+    @patch("voxcity.simulator.solar.temporal.get_direct_solar_irradiance_map")
+    @patch("voxcity.simulator.solar.temporal.get_diffuse_solar_irradiance_map")
     def test_empty_df_raises(self, mock_diffuse, mock_direct):
         from voxcity.simulator.solar.temporal import get_cumulative_global_solar_irradiance
         vc = _make_voxcity()
