@@ -18,8 +18,16 @@ conventions) to normalize to the internal orientation.
 
 Coordinate-frame vocabulary (see also voxcity.utils.projector):
   uv cell — cell index (i, j) in uv_m/SOUTH_UP (Phase 3); row 0 is south/origin.
-  legacy ij_south — same layout as uv_m/SOUTH_UP; kept for backward compatibility.
-  ensure_orientation() is the only legitimate place to convert between the two.
+
+File format (voxcity_results.v3, written by voxcity.io):
+  Every saved HDF5 file declares this contract: attribute
+  ``axes = "north,east,up"`` (root, `voxcity` group, and
+  `voxcity/voxel_grid` dataset), attribute ``rotation_angle`` (degrees
+  clockwise; the axes tokens apply in the frame rotated by this angle), and
+  root dataset ``rectangle_vertices`` (4x2 lon/lat, [SW, NW, NE, SE]).
+  ``axes`` and ``rotation_angle`` are a documented pair: axis 0 points
+  north *rotated clockwise by rotation_angle*. Use check_axes() to assert
+  the contract; pre-v3 files are converted with voxcity.io.migrate_h5().
 
 Boundary layouts handled by helpers in this module:
   north_up raster — row 0 = north (GeoTIFF, display, coastline masks).
@@ -40,12 +48,93 @@ deliberately does NOT call ensure_orientation(); a guard test
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 import numpy as np
 
 # Public constants to reference orientation in docs and code
 ORIENTATION_NORTH_UP: Literal["north_up"] = "north_up"
 ORIENTATION_SOUTH_UP: Literal["south_up"] = "south_up"
+
+# --- Axis contract ---------------------------------------------------------
+
+AXES = ("north", "east", "up")
+"""Geographic direction of increasing index for array axes 0, 1, 2, in the
+un-rotated frame. Axis 0 points north rotated clockwise by the AOI's
+``rotation_angle`` degrees (axis 1 likewise for east; axis 2 is up); for
+axis-aligned AOIs (``rotation_angle == 0``) the tokens are literally true."""
+
+AXES_ATTR = ",".join(AXES)
+"""The exact string stored as the ``axes`` attribute in v3 HDF5 files
+(root, ``voxcity`` group, and ``voxcity/voxel_grid`` dataset)."""
+
+
+def direction_to_axis_vector(azimuth_deg, elevation_deg=0.0, rotation_angle_deg=0.0):
+    """Unit direction ``(d_axis0, d_axis1, d_axis2)`` for a compass azimuth.
+
+    Parameters
+    ----------
+    azimuth_deg : float or np.ndarray
+        Compass azimuth in degrees, clockwise from north — a **toward**
+        direction (where the ray points). Meteorological *from*-directions
+        (wind direction, "the sun stands at azimuth X") must be converted by
+        the caller: ``az_toward = az_from + 180``.
+    elevation_deg : float or np.ndarray, default 0.0
+        Elevation above the horizontal plane, degrees.
+    rotation_angle_deg : float or np.ndarray, default 0.0
+        AOI rotation in degrees clockwise, as stored in v3 files. The
+        azimuth is geographic; subtracting this maps it into the rotated
+        grid frame.
+
+    Returns
+    -------
+    np.ndarray
+        Scalar inputs → shape ``(3,)``; array inputs broadcast → shape
+        ``broadcast + (3,)``. Components are **array-axis** deltas:
+        component 0 is along axis 0 = **north** (not east!), component 1
+        along axis 1 = east, component 2 along axis 2 = up. Unit-norm by
+        construction; no re-normalization is applied (bit-parity with the
+        historical inline call sites).
+    """
+    az_deg = np.asarray(azimuth_deg, dtype=np.float64) - np.asarray(
+        rotation_angle_deg, dtype=np.float64
+    )
+    el_deg = np.asarray(elevation_deg, dtype=np.float64)
+    az, el = np.broadcast_arrays(np.deg2rad(az_deg), np.deg2rad(el_deg))
+    cos_el = np.cos(el)
+    return np.stack((cos_el * np.cos(az), cos_el * np.sin(az), np.sin(el)), axis=-1)
+
+
+def check_axes(file_or_attrs) -> None:
+    """Raise ``ValueError`` unless *file_or_attrs* declares the v3 axis contract.
+
+    Accepts an ``h5py`` File/Group/Dataset (anything with ``.attrs``), a
+    plain attrs mapping, or a path to an HDF5 file. Passes silently when the
+    ``axes`` attribute equals :data:`AXES_ATTR`.
+    """
+    if isinstance(file_or_attrs, (str, os.PathLike)):
+        import h5py
+
+        with h5py.File(file_or_attrs, "r") as f:
+            return check_axes(f)
+    attrs = getattr(file_or_attrs, "attrs", file_or_attrs)
+    val = attrs.get("axes")
+    if val is None:
+        raise ValueError(
+            "no 'axes' attribute: this is a pre-v3 VoxCity file or foreign "
+            "data. VoxCity arrays are [i=north, j=east, k=up] only when the "
+            "file declares it; convert pre-v3 VoxCity files once with "
+            "voxcity.io.migrate_h5(src, dst)."
+        )
+    if isinstance(val, bytes):
+        val = val.decode("utf-8")
+    if str(val) != AXES_ATTR:
+        raise ValueError(
+            f"file declares axes={val!r}; this voxcity version expects "
+            f"{AXES_ATTR!r} (axis 0 = north, row 0 = south edge; axis 1 = "
+            "east; axis 2 = up — in the frame rotated clockwise by the "
+            "file's rotation_angle)."
+        )
 
 
 def ensure_orientation(
