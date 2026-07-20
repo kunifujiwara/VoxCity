@@ -55,6 +55,66 @@ class VoxCity:
     tree_canopy: CanopyGrid
     extras: Dict[str, Any] = field(default_factory=dict)
 
+    def to_xarray(self):
+        """Named-dimension view of the model's grids as an ``xarray.Dataset``.
+
+        Dims are the axis-contract tokens (``voxel``: ``("north", "east",
+        "up")``; 2-D grids: ``("north", "east")``), so every access carries
+        its axis names — ``ds.dem.isel(north=0)`` is unambiguously the south
+        edge. Coordinates are cell-centre metres in the (possibly rotated)
+        grid frame: ``(index + 0.5) * meshsize``. DataArrays wrap the
+        existing ndarrays without copying. ``min_heights`` (object dtype)
+        and ``extras`` are not representable and stay on the dataclass.
+        lon/lat is derivable via ``voxcity.utils.projector.GridProjector``.
+        ``rotation_angle`` is derived from ``extras['rectangle_vertices']``
+        when present (the same source of truth ``save_results_h5`` uses),
+        falling back to ``extras['rotation_angle']`` then ``0.0``.
+        """
+        import xarray as xr
+
+        from .utils.orientation import AXES, AXES_ATTR
+        from .geoprocessor.utils import compute_rotation_angle
+
+        ms = float(self.voxels.meta.meshsize)
+        ni, nj, nk = self.voxels.classes.shape
+        coords = {
+            AXES[0]: (np.arange(ni) + 0.5) * ms,
+            AXES[1]: (np.arange(nj) + 0.5) * ms,
+            AXES[2]: (np.arange(nk) + 0.5) * ms,
+        }
+        dims2 = AXES[:2]
+        data_vars = {
+            "voxel": (AXES, self.voxels.classes),
+            "building_height": (dims2, self.buildings.heights),
+            "building_id": (dims2, self.buildings.ids),
+            "land_cover": (dims2, self.land_cover.classes),
+            "dem": (dims2, self.dem.elevation),
+        }
+        if self.tree_canopy is not None and self.tree_canopy.top is not None:
+            data_vars["canopy_top"] = (dims2, self.tree_canopy.top)
+        if self.tree_canopy is not None and self.tree_canopy.bottom is not None:
+            data_vars["canopy_bottom"] = (dims2, self.tree_canopy.bottom)
+
+        extras = self.extras or {}
+        rect = extras.get("rectangle_vertices")
+        if rect is not None:
+            # rectangle_vertices is the source of truth (as at save time), so
+            # derive the angle rather than trust a possibly-stale
+            # extras['rotation_angle']; this keeps the view consistent with the
+            # file the same city would save to.
+            rot = compute_rotation_angle(rect)
+        else:
+            rot = extras.get("rotation_angle", 0.0)
+        attrs = {
+            "axes": AXES_ATTR,
+            "rotation_angle": float(rot),
+            "meshsize": ms,
+            "crs": self.voxels.meta.crs,
+        }
+        if rect is not None:
+            attrs["rectangle_vertices"] = np.asarray(rect, dtype=np.float64)
+        return xr.Dataset(data_vars, coords=coords, attrs=attrs)
+
 
 @dataclass
 class PipelineConfig:
