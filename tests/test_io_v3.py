@@ -1,7 +1,6 @@
 """Tests for the strict v3 HDF5 format: save stamps, strict load, migrate_h5, CLI."""
 
 import json
-import math
 
 import numpy as np
 import pytest
@@ -10,50 +9,8 @@ h5py = pytest.importorskip("h5py")
 
 from voxcity.io import save_results_h5, load_results_h5, FORMAT_V3
 from voxcity.utils.orientation import AXES_ATTR, check_axes
-from voxcity.models import (
-    GridMetadata,
-    VoxelGrid,
-    BuildingGrid,
-    LandCoverGrid,
-    DemGrid,
-    CanopyGrid,
-    VoxCity,
-)
 
-RECT = [(0.0, 0.0), (0.0, 0.01), (0.01, 0.01), (0.01, 0.0)]  # axis-aligned, ~1.1 km
-
-
-def make_city(shape=(4, 5, 6), meshsize=2.0, extras=None):
-    ny, nx, nz = shape
-    meta = GridMetadata(crs="EPSG:4326", bounds=(0.0, 0.0, 0.01, 0.01), meshsize=meshsize)
-    min_heights = np.empty((ny, nx), dtype=object)
-    for idx in np.ndindex((ny, nx)):
-        min_heights[idx] = []
-    return VoxCity(
-        voxels=VoxelGrid(classes=np.zeros(shape, dtype=np.int8), meta=meta),
-        buildings=BuildingGrid(
-            heights=np.zeros((ny, nx)),
-            min_heights=min_heights,
-            ids=np.zeros((ny, nx)),
-            meta=meta,
-        ),
-        land_cover=LandCoverGrid(classes=np.ones((ny, nx), dtype=int), meta=meta),
-        dem=DemGrid(elevation=np.zeros((ny, nx)), meta=meta),
-        tree_canopy=CanopyGrid(top=np.zeros((ny, nx)), meta=meta),
-        extras=dict(extras) if extras is not None else {"rectangle_vertices": RECT},
-    )
-
-
-def rotated_rect(angle_deg, size_deg=0.01):
-    a = math.radians(angle_deg)
-    d1 = (size_deg * math.sin(a), size_deg * math.cos(a))
-    d2 = (size_deg * math.cos(a), -size_deg * math.sin(a))
-    return [
-        (0.0, 0.0),
-        (d1[0], d1[1]),
-        (d1[0] + d2[0], d1[1] + d2[1]),
-        (d2[0], d2[1]),
-    ]
+from tests.conftest import make_city, rotated_rect, write_v2_file, RECT  # shared fixtures
 
 
 class TestV3Save:
@@ -127,27 +84,6 @@ class TestV3Save:
         )
         with pytest.raises(ValueError):
             save_results_h5(p, city)
-
-
-def write_v2_file(path, with_vertices=True):
-    """Hand-write a minimal pre-v3 (v2) file, as 1.x versions produced."""
-    ny, nx, nz = 4, 5, 6
-    extras = {"source": "test"}
-    if with_vertices:
-        extras["rectangle_vertices"] = RECT
-    with h5py.File(path, "w") as f:
-        f.attrs["__format__"] = "voxcity_results.v2"
-        f.attrs["crs"] = "EPSG:4326"
-        f.attrs["meshsize"] = 2.0
-        f.attrs["bounds"] = [0.0, 0.0, 0.01, 0.01]
-        vc = f.create_group("voxcity")
-        vc.create_dataset("voxel_grid", data=np.zeros((ny, nx, nz), dtype=np.int8))
-        vc.create_dataset("building_height", data=np.zeros((ny, nx)))
-        vc.create_dataset("building_id", data=np.zeros((ny, nx)))
-        vc.create_dataset("dem", data=np.zeros((ny, nx)))
-        vc.create_dataset("land_cover", data=np.ones((ny, nx), dtype=int))
-        vc.attrs["extras_json"] = json.dumps(extras)
-    return str(path)
 
 
 class TestStrictLoad:

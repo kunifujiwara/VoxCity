@@ -89,6 +89,60 @@ class GridProjector:
         self._inv11 = self._a / det
 
     # ------------------------------------------------------------------
+    # Factories
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_city(cls, city) -> "GridProjector":
+        """Build a projector from a VoxCity instance.
+
+        Uses ``extras['rectangle_vertices']`` and the voxel grid's meshsize;
+        falls back to an axis-aligned rectangle from ``meta.bounds`` when the
+        extras carry no vertices (mirrors the v3 save fallback).
+        """
+        # Lazy import: geoprocessor.raster.core imports GridGeom from this module.
+        from ..geoprocessor.raster.core import compute_grid_geometry
+
+        extras = getattr(city, "extras", None) or {}
+        rect = extras.get("rectangle_vertices")
+        if rect is None:
+            lon0, lat0, lon1, lat1 = city.voxels.meta.bounds
+            rect = [(lon0, lat0), (lon0, lat1), (lon1, lat1), (lon1, lat0)]
+        geom = compute_grid_geometry([tuple(p) for p in rect], city.voxels.meta.meshsize)
+        if geom is None:
+            raise ValueError("could not compute grid geometry from the city's rectangle_vertices")
+        return cls(geom)
+
+    @classmethod
+    def from_h5(cls, path) -> "GridProjector":
+        """Build a projector from a v3 VoxCity HDF5 file.
+
+        Reads the first-class v3 geometry (``rectangle_vertices`` dataset,
+        ``meshsize`` attr). Raises the migrate-pointing ``ValueError`` on
+        pre-v3 files (no JSON parsing, no fallback ladder).
+        """
+        import h5py
+
+        from .orientation import check_axes
+        # Lazy import: geoprocessor.raster.core imports GridGeom from this module.
+        from ..geoprocessor.raster.core import compute_grid_geometry
+
+        with h5py.File(path, "r") as f:
+            check_axes(f)
+            if "rectangle_vertices" not in f or "meshsize" not in f.attrs:
+                raise ValueError(
+                    f"{path}: declares the v3 axes contract but is missing "
+                    "rectangle_vertices/meshsize; the file may be truncated or "
+                    "corrupted."
+                )
+            rect = [tuple(p) for p in f["rectangle_vertices"][:].tolist()]
+            meshsize = float(f.attrs["meshsize"])
+        geom = compute_grid_geometry(rect, meshsize)
+        if geom is None:
+            raise ValueError(f"{path}: could not compute grid geometry from rectangle_vertices")
+        return cls(geom)
+
+    # ------------------------------------------------------------------
     # Primary: lon_lat ↔ uv_m
     # ------------------------------------------------------------------
 
