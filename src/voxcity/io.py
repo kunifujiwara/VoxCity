@@ -5,6 +5,7 @@ Provides:
 - ``save_voxcity`` / ``load_voxcity`` – pickle-based VoxCity model I/O
 - ``save_h5`` / ``load_h5`` – HDF5-based VoxCity model I/O (recommended)
 - ``save_results_h5`` / ``load_results_h5`` – HDF5-based combined model + results I/O
+- ``migrate_h5`` – one-shot converter from pre-v3 HDF5 files to the strict v3 format
 """
 
 FORMAT_V3 = 'voxcity_results.v3'
@@ -196,6 +197,100 @@ def load_h5(input_path):
     """
     results = load_results_h5(input_path)
     return results['voxcity']
+
+
+def migrate_h5(src, dst):
+    """Convert a pre-v3 VoxCity HDF5 file to the v3 format, one shot.
+
+    Copies *src* to *dst*, then stamps the v3 contract on the copy: the
+    ``axes`` attribute (root, ``voxcity`` group, ``voxcity/voxel_grid``
+    dataset), a derived ``rotation_angle``, and a structured root
+    ``rectangle_vertices`` dataset. Geometry comes from
+    ``extras_json['rectangle_vertices']`` when present, else an axis-aligned
+    rectangle is constructed from the ``bounds`` attribute (pre-v3 files
+    without stored vertices were produced axis-aligned).
+
+    Provenance attrs are recorded on *dst* so inferred geometry stays
+    auditable: ``migrated_from`` (the source's original ``__format__``, or
+    ``"unknown"``) and ``geometry_source`` (``"extras"`` or ``"bounds"``).
+
+    *src* is fully validated read-only before *dst* is written, so a failed
+    migration never overwrites an existing *dst*.
+
+    Raises
+    ------
+    ValueError
+        If *src* and *dst* are the same file (the converter never works
+        in place), *src* is already v3, or *src* has no usable geometry.
+    """
+    import os
+    import json
+    import shutil
+    import numpy as np
+
+    try:
+        import h5py
+    except ImportError:
+        raise ImportError(
+            "h5py is required for HDF5 save/load. "
+            "Install it with: pip install h5py"
+        )
+
+    from .utils.orientation import AXES_ATTR
+    from .geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
+
+    if os.path.abspath(str(src)) == os.path.abspath(str(dst)):
+        raise ValueError(
+            "migrate_h5 refuses to overwrite its input; pass a different dst"
+        )
+
+    # Validate src read-only and derive everything BEFORE touching dst, so a
+    # rejected migration can never clobber a pre-existing dst file.
+    with h5py.File(src, 'r') as f:
+        old_fmt = f.attrs.get('__format__', 'unknown')
+        if isinstance(old_fmt, bytes):
+            old_fmt = old_fmt.decode('utf-8')
+        old_fmt = str(old_fmt)
+        if old_fmt == FORMAT_V3:
+            raise ValueError(f"{src} is already a {FORMAT_V3} file")
+
+        extras = {}
+        if 'voxcity' in f and 'extras_json' in f['voxcity'].attrs:
+            extras = json.loads(f['voxcity'].attrs['extras_json'])
+
+        rect = extras.get('rectangle_vertices')
+        if rect:
+            source = 'extras'
+        else:
+            if 'bounds' not in f.attrs:
+                raise ValueError(
+                    f"{src}: cannot derive geometry — no rectangle_vertices "
+                    "in extras and no bounds attribute"
+                )
+            b = [float(x) for x in f.attrs['bounds']]
+            rect = [(b[0], b[1]), (b[0], b[3]), (b[2], b[3]), (b[2], b[1])]
+            source = 'bounds'
+
+    # Canonicalize (accepts a 5-point closed ring, enforces [SW,NW,NE,SE],
+    # validates lon/lat) exactly as save_results_h5 does.
+    rect_norm = normalize_rectangle_vertices(rect, warn=False)
+    rect_arr = np.asarray(rect_norm, dtype=np.float64)
+    rotation_angle = float(compute_rotation_angle(rect_norm))
+
+    # Validation passed — safe to write dst now.
+    shutil.copyfile(src, dst)
+    with h5py.File(dst, 'a') as f:
+        f.attrs['__format__'] = FORMAT_V3
+        f.attrs['axes'] = AXES_ATTR
+        f.attrs['rotation_angle'] = rotation_angle
+        f.attrs['migrated_from'] = old_fmt
+        f.attrs['geometry_source'] = source
+        f.create_dataset('rectangle_vertices', data=rect_arr)
+        if 'voxcity' in f:
+            f['voxcity'].attrs['axes'] = AXES_ATTR
+            if 'voxel_grid' in f['voxcity']:
+                f['voxcity']['voxel_grid'].attrs['axes'] = AXES_ATTR
+    return dst
 
 
 # =============================================================================

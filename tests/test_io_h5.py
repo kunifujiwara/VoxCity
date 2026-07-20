@@ -419,9 +419,10 @@ class TestSaveLoadResultsH5:
         loaded_extras = data["voxcity"].extras
         assert loaded_extras["source"] == "test"
         assert loaded_extras["count"] == 42
-        # Tuples become lists via JSON
-        assert loaded_extras["rectangle_vertices"] == [
-            [0, 0], [0, 10], [10, 10], [10, 0]
+        # v3: structured root geometry wins, and is returned as a list of
+        # tuples (not JSON-serialized lists).
+        assert [tuple(v) for v in loaded_extras["rectangle_vertices"]] == [
+            (0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)
         ]
 
 
@@ -487,7 +488,11 @@ class TestVoxCityFields:
         path = str(tmp_path / "fields.h5")
         save_results_h5(path, city)
         loaded = load_results_h5(path)["voxcity"]
-        assert loaded.extras == {}
+        # v3: the loader always injects the structured root geometry
+        # (rectangle_vertices/rotation_angle) into extras, even when the
+        # model carried no other extras.
+        assert set(loaded.extras.keys()) == {"rectangle_vertices", "rotation_angle"}
+        assert loaded.extras["rotation_angle"] == 0.0
 
     def test_geodataframe_extras_round_trip(self, tmp_path):
         """GeoDataFrame extras survive the HDF5 round-trip via GeoParquet."""
@@ -833,7 +838,7 @@ class TestNetworkResultsH5:
 
         import h5py
         with h5py.File(path, "r") as f:
-            assert f.attrs["__format__"] == "voxcity_results.v2"
+            assert f.attrs["__format__"] == "voxcity_results.v3"
             assert "simulations/network/solar/edges" in f
 
     def test_network_dict_with_metadata_round_trip(self, tmp_path):

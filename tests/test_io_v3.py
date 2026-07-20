@@ -186,3 +186,98 @@ class TestStrictLoad:
             f.attrs["axes"] = AXES_ATTR
         with pytest.raises(ValueError, match="corrupted"):
             load_results_h5(p)
+
+
+class TestMigrateH5:
+    def test_migrated_file_loads_and_passes_check_axes(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = write_v2_file(tmp_path / "old.h5")
+        dst = str(tmp_path / "new.h5")
+        migrate_h5(src, dst)
+        out = load_results_h5(dst)
+        assert out["meta"]["rotation_angle"] == 0.0
+        check_axes(dst)
+
+    def test_provenance_extras_geometry(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = write_v2_file(tmp_path / "old.h5", with_vertices=True)
+        dst = str(tmp_path / "new.h5")
+        migrate_h5(src, dst)
+        with h5py.File(dst, "r") as f:
+            assert f.attrs["migrated_from"] == "voxcity_results.v2"
+            assert f.attrs["geometry_source"] == "extras"
+            np.testing.assert_allclose(
+                f["rectangle_vertices"][:], np.asarray(RECT, dtype=np.float64)
+            )
+
+    def test_provenance_bounds_fallback(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = write_v2_file(tmp_path / "old.h5", with_vertices=False)
+        dst = str(tmp_path / "new.h5")
+        migrate_h5(src, dst)
+        with h5py.File(dst, "r") as f:
+            assert f.attrs["geometry_source"] == "bounds"
+            np.testing.assert_allclose(
+                f["rectangle_vertices"][:],
+                [[0.0, 0.0], [0.0, 0.01], [0.01, 0.01], [0.01, 0.0]],
+            )
+
+    def test_refuses_in_place(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = write_v2_file(tmp_path / "old.h5")
+        with pytest.raises(ValueError, match="overwrite"):
+            migrate_h5(src, src)
+
+    def test_refuses_already_v3(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        p = str(tmp_path / "v3.h5")
+        save_results_h5(p, make_city())
+        with pytest.raises(ValueError, match="already"):
+            migrate_h5(p, str(tmp_path / "v3b.h5"))
+
+    def test_source_untouched(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = write_v2_file(tmp_path / "old.h5")
+        migrate_h5(src, str(tmp_path / "new.h5"))
+        with h5py.File(src, "r") as f:
+            assert f.attrs["__format__"] == "voxcity_results.v2"
+
+    def test_existing_dst_preserved_when_src_already_v3(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        v3 = str(tmp_path / "already.h5")
+        save_results_h5(v3, make_city())
+        dst = tmp_path / "dst.h5"
+        dst.write_bytes(b"precious original contents")
+        with pytest.raises(ValueError, match="already"):
+            migrate_h5(v3, str(dst))
+        # dst must be untouched — validation happens before any copy.
+        assert dst.read_bytes() == b"precious original contents"
+
+    def test_five_point_ring_via_extras_migrates_to_four(self, tmp_path):
+        from voxcity.io import migrate_h5
+
+        src = str(tmp_path / "ring.h5")
+        ring = RECT + [RECT[0]]  # closed 5-point ring in extras_json
+        with h5py.File(src, "w") as f:
+            f.attrs["__format__"] = "voxcity_results.v2"
+            f.attrs["crs"] = "EPSG:4326"
+            f.attrs["meshsize"] = 2.0
+            f.attrs["bounds"] = [0.0, 0.0, 0.01, 0.01]
+            vc = f.create_group("voxcity")
+            vc.create_dataset("voxel_grid", data=np.zeros((4, 5, 6), dtype=np.int8))
+            vc.attrs["extras_json"] = json.dumps({"rectangle_vertices": ring})
+        dst = str(tmp_path / "ring_v3.h5")
+        migrate_h5(src, dst)
+        with h5py.File(dst, "r") as f:
+            assert f["rectangle_vertices"].shape == (4, 2)
+            assert f.attrs["geometry_source"] == "extras"
+            np.testing.assert_allclose(
+                f["rectangle_vertices"][:], np.asarray(RECT, dtype=np.float64)
+            )
