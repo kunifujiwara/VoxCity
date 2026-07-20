@@ -127,3 +127,62 @@ class TestV3Save:
         )
         with pytest.raises(ValueError):
             save_results_h5(p, city)
+
+
+def write_v2_file(path, with_vertices=True):
+    """Hand-write a minimal pre-v3 (v2) file, as 1.x versions produced."""
+    ny, nx, nz = 4, 5, 6
+    extras = {"source": "test"}
+    if with_vertices:
+        extras["rectangle_vertices"] = RECT
+    with h5py.File(path, "w") as f:
+        f.attrs["__format__"] = "voxcity_results.v2"
+        f.attrs["crs"] = "EPSG:4326"
+        f.attrs["meshsize"] = 2.0
+        f.attrs["bounds"] = [0.0, 0.0, 0.01, 0.01]
+        vc = f.create_group("voxcity")
+        vc.create_dataset("voxel_grid", data=np.zeros((ny, nx, nz), dtype=np.int8))
+        vc.create_dataset("building_height", data=np.zeros((ny, nx)))
+        vc.create_dataset("building_id", data=np.zeros((ny, nx)))
+        vc.create_dataset("dem", data=np.zeros((ny, nx)))
+        vc.create_dataset("land_cover", data=np.ones((ny, nx), dtype=int))
+        vc.attrs["extras_json"] = json.dumps(extras)
+    return str(path)
+
+
+class TestStrictLoad:
+    def test_v3_round_trip(self, tmp_path):
+        p = str(tmp_path / "rt.h5")
+        save_results_h5(p, make_city())
+        out = load_results_h5(p)
+        assert out["meta"]["rotation_angle"] == 0.0
+        assert [tuple(v) for v in out["meta"]["rectangle_vertices"]] == [
+            (0.0, 0.0), (0.0, 0.01), (0.01, 0.01), (0.01, 0.0)
+        ]
+        ex = out["voxcity"].extras
+        assert ex["rotation_angle"] == 0.0
+        assert [tuple(v) for v in ex["rectangle_vertices"]] == [
+            (0.0, 0.0), (0.0, 0.01), (0.01, 0.01), (0.01, 0.0)
+        ]
+
+    def test_v2_file_refused_with_migrate_pointer(self, tmp_path):
+        p = write_v2_file(tmp_path / "old.h5")
+        with pytest.raises(ValueError, match="migrate_h5"):
+            load_results_h5(p)
+
+    def test_foreign_file_refused(self, tmp_path):
+        p = str(tmp_path / "foreign.h5")
+        with h5py.File(p, "w") as f:
+            f.create_dataset("data", data=np.zeros(3))
+        with pytest.raises(ValueError, match="migrate_h5"):
+            load_results_h5(p)
+
+    def test_v3_tag_but_missing_geometry_raises_clear_error(self, tmp_path):
+        # A file that declares v3 but was truncated before the geometry was
+        # written must give a clear error, not a raw h5py KeyError.
+        p = str(tmp_path / "truncated.h5")
+        with h5py.File(p, "w") as f:
+            f.attrs["__format__"] = FORMAT_V3
+            f.attrs["axes"] = AXES_ATTR
+        with pytest.raises(ValueError, match="corrupted"):
+            load_results_h5(p)

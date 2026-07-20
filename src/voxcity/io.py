@@ -555,13 +555,27 @@ def load_results_h5(input_path):
             Legacy top-level ``'ground'`` and ``'building'`` groups are also
             exposed as ``'default'`` entries in this nested structure.
         ``'meta'``
-            dict with ``'crs'``, ``'meshsize'``, ``'bounds'``.
+            dict with ``'crs'``, ``'meshsize'``, ``'bounds'``,
+            ``'rotation_angle'`` and ``'rectangle_vertices'``.
+
+    Raises
+    ------
+    ValueError
+        If the file does not declare the ``voxcity_results.v3`` format (via
+        the root ``__format__`` attribute) or otherwise fails the v3 axis
+        contract (see :func:`voxcity.utils.orientation.check_axes`). This
+        loader is strict: pre-v3 (e.g. ``voxcity_results.v2``) and foreign
+        HDF5 files are rejected outright, with the error message pointing
+        to :func:`migrate_h5` to convert the file once.
 
     Notes
     -----
     The returned ``'voxcity'`` object is a fully reconstructed
     :class:`VoxCity` dataclass – it can be passed directly to any
-    simulator or visualizer function.
+    simulator or visualizer function. Its ``.extras`` dict also carries
+    ``'rectangle_vertices'`` and ``'rotation_angle'``, taken from the
+    file's structured v3 geometry (these override any stale copies that
+    may exist in ``extras_json``).
     """
     import json
     import numpy as np
@@ -578,13 +592,43 @@ def load_results_h5(input_path):
 
     results = {}
 
+    from .utils.orientation import check_axes
+
     with h5py.File(input_path, 'r') as f:
+        # -- v3 contract (strict) ----------------------------------------------
+        fmt = f.attrs.get('__format__')
+        if isinstance(fmt, bytes):
+            fmt = fmt.decode('utf-8')
+        if fmt != FORMAT_V3:
+            raise ValueError(
+                f"{input_path}: not a {FORMAT_V3} file (found __format__={fmt!r}). "
+                "This voxcity version only loads v3 files; convert older VoxCity "
+                "files once with voxcity.io.migrate_h5(src, dst) or "
+                "'python -m voxcity.migrate <file>'."
+            )
+        check_axes(f)
+        if 'rotation_angle' not in f.attrs or 'rectangle_vertices' not in f:
+            raise ValueError(
+                f"{input_path}: declares {FORMAT_V3} but is missing required v3 "
+                "fields (rotation_angle attr and/or rectangle_vertices dataset); "
+                "the file may be truncated or corrupted."
+            )
+        rotation_angle = float(f.attrs['rotation_angle'])
+        rect_arr = f['rectangle_vertices'][:]
+        rect_list = [tuple(p) for p in rect_arr.tolist()]
+
         # -- Root metadata -----------------------------------------------------
         crs = str(f.attrs['crs'])
         meshsize = float(f.attrs['meshsize'])
         bounds = tuple(f.attrs['bounds'])
         meta = GridMetadata(crs=crs, bounds=bounds, meshsize=meshsize)
-        results['meta'] = {'crs': crs, 'meshsize': meshsize, 'bounds': bounds}
+        results['meta'] = {
+            'crs': crs,
+            'meshsize': meshsize,
+            'bounds': bounds,
+            'rotation_angle': rotation_angle,
+            'rectangle_vertices': rect_list,
+        }
 
         # -- VoxCity model -----------------------------------------------------
         vc = f['voxcity']
@@ -635,6 +679,10 @@ def load_results_h5(input_path):
         if 'extras_np' in vc:
             for k in vc['extras_np']:
                 extras[k] = vc['extras_np'][k][:]
+
+        # Structured v3 geometry wins over any stale extras_json copies
+        extras['rectangle_vertices'] = rect_list
+        extras['rotation_angle'] = rotation_angle
 
         voxels = VoxelGrid(classes=voxel_grid, meta=meta)
         buildings = BuildingGrid(
