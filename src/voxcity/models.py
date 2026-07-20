@@ -73,7 +73,7 @@ class VoxCity:
         import xarray as xr
 
         from .utils.orientation import AXES, AXES_ATTR
-        from .geoprocessor.utils import compute_rotation_angle
+        from .geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
 
         ms = float(self.voxels.meta.meshsize)
         ni, nj, nk = self.voxels.classes.shape
@@ -100,8 +100,10 @@ class VoxCity:
         if rect is not None:
             # rectangle_vertices is the source of truth (as at save time), so
             # derive the angle rather than trust a possibly-stale
-            # extras['rotation_angle']; this keeps the view consistent with the
-            # file the same city would save to.
+            # extras['rotation_angle']. Normalize to canonical [SW,NW,NE,SE]
+            # first, exactly as save_results_h5 does, so the view's geometry
+            # and rotation match the file the same city would save to.
+            rect = normalize_rectangle_vertices(rect, warn=False)
             rot = compute_rotation_angle(rect)
         else:
             rot = extras.get("rotation_angle", 0.0)

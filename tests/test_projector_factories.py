@@ -31,6 +31,21 @@ class TestFromCity:
         lon, lat = proj.cell_to_lon_lat(0, 0)
         assert 0.0 < lon < 0.01 and 0.0 < lat < 0.01
 
+    def test_noncanonical_rect_matches_from_h5(self, tmp_path):
+        # A non-canonical vertex order in extras must project identically to
+        # from_h5 (which reads the file's normalized geometry): from_city
+        # normalizes just like save does, so the two agree.
+        from voxcity.io import save_results_h5
+
+        noncanonical = RECT[2:] + RECT[:2]  # [NE, SE, SW, NW]
+        city = make_city(meshsize=5.0, extras={"rectangle_vertices": noncanonical})
+        p = str(tmp_path / "c.h5")
+        save_results_h5(p, city)
+
+        a = GridProjector.from_city(city)
+        b = GridProjector.from_h5(p)
+        np.testing.assert_allclose(a.cell_to_lon_lat(2, 3), b.cell_to_lon_lat(2, 3))
+
 
 class TestFromH5:
     def test_equals_from_city(self, tmp_path):

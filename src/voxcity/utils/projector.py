@@ -102,12 +102,17 @@ class GridProjector:
         """
         # Lazy import: geoprocessor.raster.core imports GridGeom from this module.
         from ..geoprocessor.raster.core import compute_grid_geometry
+        from ..geoprocessor.utils import normalize_rectangle_vertices
 
         extras = getattr(city, "extras", None) or {}
         rect = extras.get("rectangle_vertices")
         if rect is None:
             lon0, lat0, lon1, lat1 = city.voxels.meta.bounds
             rect = [(lon0, lat0), (lon0, lat1), (lon1, lat1), (lon1, lat0)]
+        else:
+            # Canonicalize to [SW,NW,NE,SE] as save_results_h5 does, since
+            # compute_grid_geometry assumes that ordering (origin=v0, side_1=v1-v0).
+            rect = normalize_rectangle_vertices(rect, warn=False)
         geom = compute_grid_geometry([tuple(p) for p in rect], city.voxels.meta.meshsize)
         if geom is None:
             raise ValueError("could not compute grid geometry from the city's rectangle_vertices")

@@ -71,3 +71,24 @@ class TestToXarray:
         assert "min_heights" not in ds.variables
         assert "building_min_heights" not in ds.variables
         assert "custom_key" not in ds.attrs
+
+    def test_noncanonical_rect_agrees_with_save(self, tmp_path):
+        # A non-canonical vertex order in extras must not make the view disagree
+        # with the file the same city would save to: to_xarray normalizes just
+        # like save_results_h5, so rotation_angle and stored rectangle match.
+        import h5py
+        from voxcity.io import save_results_h5
+
+        # RECT is [SW, NW, NE, SE]; rotate the list so v0 is no longer SW.
+        noncanonical = RECT[2:] + RECT[:2]  # [NE, SE, SW, NW]
+        city = make_city(extras={"rectangle_vertices": noncanonical})
+
+        ds = city.to_xarray()
+        p = str(tmp_path / "c.h5")
+        save_results_h5(p, city)
+        with h5py.File(p, "r") as f:
+            file_rot = float(f.attrs["rotation_angle"])
+            file_rect = f["rectangle_vertices"][:]
+
+        assert ds.attrs["rotation_angle"] == pytest.approx(file_rot, abs=1e-9)
+        np.testing.assert_allclose(ds.attrs["rectangle_vertices"], file_rect)
