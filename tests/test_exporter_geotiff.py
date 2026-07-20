@@ -426,9 +426,15 @@ _TOKYO_H5 = os.path.join(
 
 @pytest.mark.skipif(not os.path.exists(_TOKYO_H5), reason="demo tokyo model not present")
 def test_export_geotiffs_real_model_is_north_up(tmp_path):
-    from voxcity.io import load_voxcity
+    from voxcity.io import load_voxcity, migrate_h5
 
-    city = load_voxcity(_TOKYO_H5)
+    # The committed demo fixture is a pre-v3 (v1) file; migrate it to a v3 copy
+    # so the strict loader accepts it. This test checks north-up geotiff export
+    # on a real model, not loader/version behavior — and both the export and
+    # the georef assertions below use the same loaded rectangle, so the check
+    # stays self-consistent regardless of the migrated geometry source.
+    v3_path = migrate_h5(_TOKYO_H5, str(tmp_path / "voxcity_v3.h5"))
+    city = load_voxcity(v3_path)
     written = export_geotiffs(city, tmp_path, base_filename="voxcity", write_readme=False)
     assert set(written) >= {"building_height", "dem", "canopy_height", "land_cover"}
 
