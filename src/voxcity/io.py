@@ -7,6 +7,12 @@ Provides:
 - ``save_results_h5`` / ``load_results_h5`` – HDF5-based combined model + results I/O
 """
 
+FORMAT_V3 = 'voxcity_results.v3'
+
+# Save-time tolerance (degrees) between extras['rotation_angle'] and the
+# angle derived from rectangle_vertices before the mismatch is an error.
+_ROTATION_TOL_DEG = 0.1
+
 
 # =============================================================================
 # Pickle-based VoxCity model save/load
@@ -345,6 +351,9 @@ def save_results_h5(
     * Requires the ``h5py`` package (``pip install h5py``).
     * The file is self-contained – no pickle dependency at load time.
     * Datasets use ``compression='gzip'`` by default for compact files.
+    * Files are written in the ``voxcity_results.v3`` format: root attrs
+      ``axes``, ``rotation_angle`` and root dataset ``rectangle_vertices``
+      declare the coordinate contract (see voxcity.utils.orientation).
     """
     import os
     import json
@@ -366,15 +375,43 @@ def save_results_h5(
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
 
     with h5py.File(output_path, 'w') as f:
-        # -- Root attributes ---------------------------------------------------
-        f.attrs['__format__'] = 'voxcity_results.v2' if simulation_results is not None else 'voxcity_results.v1'
+        # -- Root attributes (v3: self-describing axes + geometry) -------------
+        from .utils.orientation import AXES_ATTR
+        from .geoprocessor.utils import compute_rotation_angle, normalize_rectangle_vertices
+
+        extras_in = getattr(city, 'extras', None) or {}
+        rect = extras_in.get('rectangle_vertices')
+        if rect is None:
+            lon0, lat0, lon1, lat1 = city.voxels.meta.bounds
+            rect = [(lon0, lat0), (lon0, lat1), (lon1, lat1), (lon1, lat0)]
+        # Reuse the canonical validator: accepts 4 (lon, lat) pairs or a
+        # 5-point closed ring, and returns [SW, NW, NE, SE] order — the same
+        # ordering the generator used when it computed extras['rotation_angle'],
+        # so the mismatch guard below compares like with like.
+        rect_norm = normalize_rectangle_vertices(rect, warn=False)
+        rect_arr = np.asarray(rect_norm, dtype=np.float64)
+        rotation_angle = float(compute_rotation_angle(rect_norm))
+        extras_rot = extras_in.get('rotation_angle')
+        if extras_rot is not None and abs(float(extras_rot) - rotation_angle) > _ROTATION_TOL_DEG:
+            raise ValueError(
+                f"extras['rotation_angle'] = {float(extras_rot):.6f} deg disagrees with the "
+                f"angle derived from rectangle_vertices ({rotation_angle:.6f} deg) by more "
+                f"than {_ROTATION_TOL_DEG} deg; fix the model's extras before saving"
+            )
+
+        f.attrs['__format__'] = FORMAT_V3
+        f.attrs['axes'] = AXES_ATTR
+        f.attrs['rotation_angle'] = rotation_angle
         f.attrs['crs'] = city.voxels.meta.crs
         f.attrs['meshsize'] = city.voxels.meta.meshsize
         f.attrs['bounds'] = list(city.voxels.meta.bounds)
+        f.create_dataset('rectangle_vertices', data=rect_arr)
 
         # -- VoxCity model group -----------------------------------------------
         vc = f.create_group('voxcity')
+        vc.attrs['axes'] = AXES_ATTR
         vc.create_dataset('voxel_grid', data=np.asarray(city.voxels.classes), compression='gzip')
+        vc['voxel_grid'].attrs['axes'] = AXES_ATTR
         vc.create_dataset('building_height', data=np.asarray(city.buildings.heights), compression='gzip')
         vc.create_dataset('building_id', data=np.asarray(city.buildings.ids), compression='gzip')
         vc.create_dataset('dem', data=np.asarray(city.dem.elevation), compression='gzip')
