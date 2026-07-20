@@ -281,3 +281,56 @@ class TestMigrateH5:
             np.testing.assert_allclose(
                 f["rectangle_vertices"][:], np.asarray(RECT, dtype=np.float64)
             )
+
+
+class TestMigrateCli:
+    def test_default_destination(self, tmp_path):
+        from voxcity.migrate import main
+
+        src = write_v2_file(tmp_path / "old.h5")
+        assert main([src]) == 0
+        dst = str(tmp_path / "old_v3.h5")
+        check_axes(dst)
+
+    def test_out_flag(self, tmp_path):
+        from voxcity.migrate import main
+
+        src = write_v2_file(tmp_path / "old.h5")
+        dst = str(tmp_path / "explicit.h5")
+        assert main([src, "--out", dst]) == 0
+        check_axes(dst)
+
+    def test_out_with_multiple_inputs_rejected(self, tmp_path):
+        from voxcity.migrate import main
+
+        a = write_v2_file(tmp_path / "a.h5")
+        b = write_v2_file(tmp_path / "b.h5")
+        with pytest.raises(SystemExit):
+            main([a, b, "--out", str(tmp_path / "x.h5")])
+
+    def test_batch(self, tmp_path):
+        from voxcity.migrate import main
+
+        a = write_v2_file(tmp_path / "a.h5")
+        b = write_v2_file(tmp_path / "b.h5")
+        assert main([a, b]) == 0
+        check_axes(str(tmp_path / "a_v3.h5"))
+        check_axes(str(tmp_path / "b_v3.h5"))
+
+    def test_batch_continues_past_failure_and_reports_nonzero(self, tmp_path):
+        from voxcity.migrate import main
+
+        missing = str(tmp_path / "does_not_exist.h5")
+        good = write_v2_file(tmp_path / "good.h5")
+        # The missing file errors but the good one still migrates; overall nonzero.
+        rc = main([missing, good])
+        assert rc == 1
+        check_axes(str(tmp_path / "good_v3.h5"))
+
+    def test_nonexistent_input_is_clean_error(self, tmp_path, capsys):
+        from voxcity.migrate import main
+
+        rc = main([str(tmp_path / "nope.h5")])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "nope.h5" in err
