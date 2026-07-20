@@ -261,10 +261,13 @@ def filter_df_to_period(df, start_time: str, end_time: str, tz: float, daily_sta
     # Add hour_of_year column
     df = df.copy()
     df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
-    
-    # Calculate start/end hours
-    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
-    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+
+    # Calculate start/end hours. Key the day-of-year off the EPW's own year so it
+    # matches df.index.dayofyear above; a hardcoded (leap) reference year would
+    # shift the window a day for any non-leap EPW after February.
+    ref_year = int(df.index[0].year)
+    start_doy = datetime(ref_year, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(ref_year, end_dt.month, end_dt.day).timetuple().tm_yday
     start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
     end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
     
@@ -295,21 +298,24 @@ def filter_df_to_period(df, start_time: str, end_time: str, tz: float, daily_sta
     return df_period_utc
 
 
-def get_hour_range_from_period(start_time: str, end_time: str) -> Tuple[int, int]:
+def get_hour_range_from_period(start_time: str, end_time: str, year: int) -> Tuple[int, int]:
     """
     Get hour-of-year range from time period strings.
-    
+
     Args:
         start_time: Start time in format 'MM-DD HH:MM:SS'
         end_time: End time in format 'MM-DD HH:MM:SS'
-        
+        year: Calendar year the hour-of-year is measured against. Must match the
+            EPW's own year, otherwise leap/non-leap day-of-year numbering diverges
+            after February and the returned window is off by a day.
+
     Returns:
         Tuple of (start_hour, end_hour) as hour-of-year values
     """
     start_dt, end_dt = parse_time_period(start_time, end_time)
-    
-    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
-    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+
+    start_doy = datetime(year, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(year, end_dt.month, end_dt.day).timetuple().tm_yday
     start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
     end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
     

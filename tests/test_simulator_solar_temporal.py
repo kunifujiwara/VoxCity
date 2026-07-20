@@ -359,6 +359,29 @@ def test_filter_df_none_daily_hours_unchanged():
     assert len(out) == 6
 
 
+def test_filter_df_non_leap_year_post_february_window():
+    # Regression: the [start,end] window must key off the EPW's own (non-leap)
+    # year, not a hardcoded leap year. A post-February single day used to compute
+    # its day-of-year against datetime(2000) (leap), landing one day off and
+    # selecting nothing -> "No weather data in the specified period".
+    idx = pd.date_range("2023-06-21 00:00:00", "2023-06-21 23:00:00", freq="h")
+    df = pd.DataFrame({"DNI": 1.0, "DHI": 1.0}, index=idx)
+    out = filter_df_to_period(df, "06-21 00:00:00", "06-21 23:00:00", tz=0.0)
+    assert len(out) == 24
+
+
+def test_get_hour_range_from_period_uses_given_year():
+    from datetime import datetime as _dt
+
+    from voxcity.simulator_gpu.solar.integration.utils import get_hour_range_from_period
+    # non-leap year: the window's hour-of-year must match that year's calendar
+    start_hour, end_hour = get_hour_range_from_period(
+        "06-21 00:00:00", "06-21 23:00:00", year=2023)
+    doy = _dt(2023, 6, 21).timetuple().tm_yday
+    assert start_hour == (doy - 1) * 24 + 0 + 1
+    assert end_hour == (doy - 1) * 24 + 23 + 1
+
+
 from unittest.mock import patch
 
 

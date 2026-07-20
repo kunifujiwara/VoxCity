@@ -406,8 +406,11 @@ def get_cumulative_volumetric_solar_irradiance(
     # Filter dataframe to period
     df = df.copy()
     df['hour_of_year'] = (df.index.dayofyear - 1) * 24 + df.index.hour + 1
-    start_doy = datetime(2000, start_dt.month, start_dt.day).timetuple().tm_yday
-    end_doy = datetime(2000, end_dt.month, end_dt.day).timetuple().tm_yday
+    # Key the day-of-year off the EPW's own year (see filter_df_to_period): a
+    # hardcoded leap-year reference shifts the window a day for non-leap EPWs.
+    ref_year = int(df.index[0].year)
+    start_doy = datetime(ref_year, start_dt.month, start_dt.day).timetuple().tm_yday
+    end_doy = datetime(ref_year, end_dt.month, end_dt.day).timetuple().tm_yday
     start_hour = (start_doy - 1) * 24 + start_dt.hour + 1
     end_hour = (end_doy - 1) * 24 + end_dt.hour + 1
     
