@@ -246,6 +246,37 @@ m
 
 </details>
 
+#### Coordinate system
+
+VoxCity arrays follow one convention everywhere, and every saved file
+declares it:
+
+- **Array axes**: `grid[i, j]` / `voxels[i, j, k]` with **axis 0 = north**
+  (row 0 is the **south** edge, i increases northward), **axis 1 = east**,
+  **axis 2 = up**. Note this differs from the common `(x=east, y=north)`
+  habit — component 0 of a direction vector is the **northward** one.
+- **Azimuths** are compass degrees clockwise from north, *toward*
+  directions. Meteorological *from*-directions must be converted first —
+  e.g. for wind: `az_toward = az_from + 180`, then
+  `d = voxcity.direction_to_axis_vector(az_toward)` gives
+  `(d_north, d_east, d_up)`.
+- **Rotated AOIs**: files store the `axes` / `rotation_angle` attribute
+  pair. The axis tokens apply in the frame rotated clockwise by
+  `rotation_angle` degrees; for axis-aligned AOIs (`rotation_angle = 0`)
+  they are literally true.
+- **Vertical datum**: `k` indexes cells above the domain base plane; a cell
+  centre sits at height `(k + 0.5) * meshsize`. The DEM is filled in as
+  solid voxels, so height-above-ground requires subtracting local terrain.
+- **Self-describing files**: HDF5 outputs are `voxcity_results.v3` — they
+  carry `axes = "north,east,up"`, `rotation_angle`, and the
+  `rectangle_vertices` geometry. Assert the contract from any consumer with
+  `voxcity.check_axes(path)`. Files from VoxCity 1.x must be converted once:
+  `python -m voxcity.migrate old_results.h5`.
+- **Named-dimension access**: prefer `city.to_xarray()` over raw-array
+  indexing — dims are `("north", "east", "up")`, so
+  `ds.dem.isel(north=0)` is unambiguously the south edge and silent
+  transposes are impossible.
+
 ### 3. Set Parameters
 
 Define mesh size (required) and optional data sources:
