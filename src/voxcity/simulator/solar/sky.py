@@ -16,6 +16,8 @@ Supported methods:
 import numpy as np
 from numba import njit
 
+from ...utils.orientation import direction_to_axis_vector
+
 
 # =============================================================================
 # Tregenza Sky Subdivision (145 patches)
@@ -64,10 +66,6 @@ def generate_tregenza_patches():
     solid_angles = []
     
     for band_idx, (elev_center, n_patches) in enumerate(TREGENZA_BANDS):
-        elev_rad = np.deg2rad(elev_center)
-        cos_elev = np.cos(elev_rad)
-        sin_elev = np.sin(elev_rad)
-        
         # Solid angle calculation for band
         if band_idx == 0:
             elev_low = 0.0
@@ -84,13 +82,10 @@ def generate_tregenza_patches():
         for i in range(n_patches):
             # Azimuth at patch center
             az_deg = (i + 0.5) * 360.0 / n_patches
-            az_rad = np.deg2rad(az_deg)
-            
+
             # Direction vector
-            dx = cos_elev * np.cos(az_rad)
-            dy = cos_elev * np.sin(az_rad)
-            dz = sin_elev
-            
+            dx, dy, dz = direction_to_axis_vector(az_deg, elev_center)
+
             patches.append((az_deg, elev_center))
             directions.append((dx, dy, dz))
             solid_angles.append(patch_solid_angle)
@@ -248,11 +243,7 @@ def generate_reinhart_patches(mf=4):
             sub_elev_low = elev_low + sub_band * elev_range / n_sub_bands
             sub_elev_high = elev_low + (sub_band + 1) * elev_range / n_sub_bands
             sub_elev_center = (sub_elev_low + sub_elev_high) / 2.0
-            
-            elev_rad = np.deg2rad(sub_elev_center)
-            cos_elev = np.cos(elev_rad)
-            sin_elev = np.sin(elev_rad)
-            
+
             # Solid angle of sub-band
             sub_band_solid_angle = 2 * np.pi * (
                 np.sin(np.deg2rad(sub_elev_high)) - np.sin(np.deg2rad(sub_elev_low))
@@ -269,12 +260,9 @@ def generate_reinhart_patches(mf=4):
             
             for i in range(n_az):
                 az_deg = (i + 0.5) * 360.0 / n_az
-                az_rad = np.deg2rad(az_deg)
-                
-                dx = cos_elev * np.cos(az_rad)
-                dy = cos_elev * np.sin(az_rad)
-                dz = sin_elev
-                
+
+                dx, dy, dz = direction_to_axis_vector(az_deg, sub_elev_center)
+
                 patches.append((az_deg, sub_elev_center))
                 directions.append((dx, dy, dz))
                 solid_angles.append(patch_solid_angle)
@@ -324,11 +312,7 @@ def generate_uniform_grid_patches(n_azimuth=36, n_elevation=9):
         elev_low = j * elev_step
         elev_high = (j + 1) * elev_step
         elev_center = (elev_low + elev_high) / 2.0
-        
-        elev_rad = np.deg2rad(elev_center)
-        cos_elev = np.cos(elev_rad)
-        sin_elev = np.sin(elev_rad)
-        
+
         # Solid angle for this elevation band
         band_solid_angle = 2 * np.pi * (
             np.sin(np.deg2rad(elev_high)) - np.sin(np.deg2rad(elev_low))
@@ -337,12 +321,9 @@ def generate_uniform_grid_patches(n_azimuth=36, n_elevation=9):
         
         for i in range(n_azimuth):
             az_center = (i + 0.5) * az_step
-            az_rad = np.deg2rad(az_center)
-            
-            dx = cos_elev * np.cos(az_rad)
-            dy = cos_elev * np.sin(az_rad)
-            dz = sin_elev
-            
+
+            dx, dy, dz = direction_to_axis_vector(az_center, elev_center)
+
             patches.append((az_center, elev_center))
             directions.append((dx, dy, dz))
             solid_angles.append(patch_solid_angle)
@@ -493,13 +474,7 @@ def bin_sun_positions_to_patches(
             patch_idx = get_tregenza_patch_index(az, elev)
         else:
             # For other methods, find nearest patch by direction
-            elev_rad = np.deg2rad(elev)
-            az_rad = np.deg2rad(az)
-            sun_dir = np.array([
-                np.cos(elev_rad) * np.cos(az_rad),
-                np.cos(elev_rad) * np.sin(az_rad),
-                np.sin(elev_rad)
-            ])
+            sun_dir = direction_to_axis_vector(az, elev)
             # Dot product with all patch directions
             dots = np.sum(directions * sun_dir, axis=1)
             patch_idx = np.argmax(dots)

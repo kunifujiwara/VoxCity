@@ -57,3 +57,51 @@ class TestRayFanParity:
         # deg2rad(linspace(0, 360)) — identical to within 1 ulp of the
         # angle, hence the tight tolerance instead of array_equal.
         np.testing.assert_allclose(new, old, rtol=0.0, atol=1e-12)
+
+
+class TestSkyPatchParity:
+    """Each generator returns patches as an (N, 2) array of
+    (azimuth_degrees, elevation_degrees) and directions as an (N, 3) array
+    of (dx, dy, dz); every direction must equal the old inline formula
+    applied to its own patch's (az_deg, elev_deg) — exactly, since all sky
+    sites are degree-based."""
+
+    @staticmethod
+    def _old_formula(az_deg, elev_deg):
+        az_rad = np.deg2rad(az_deg)
+        elev_rad = np.deg2rad(elev_deg)
+        dx = np.cos(elev_rad) * np.cos(az_rad)
+        dy = np.cos(elev_rad) * np.sin(az_rad)
+        dz = np.sin(elev_rad)
+        return dx, dy, dz
+
+    def _assert_directions_match(self, patches, directions):
+        assert len(patches) == len(directions) > 0
+        for (az_deg, elev_deg), d in zip(patches, directions):
+            np.testing.assert_array_equal(
+                np.asarray(d, dtype=np.float64),
+                np.asarray(self._old_formula(az_deg, elev_deg), dtype=np.float64),
+            )
+
+    def test_tregenza(self):
+        from voxcity.simulator.solar.sky import generate_tregenza_patches
+        # Returns (patches, directions, solid_angles); patches is (145, 2)
+        # of (az_deg, elev_deg), directions is (145, 3) of (dx, dy, dz).
+        patches, directions, solid_angles = generate_tregenza_patches()
+        self._assert_directions_match(patches, directions)
+
+    def test_reinhart(self):
+        from voxcity.simulator.solar.sky import generate_reinhart_patches
+        # Returns (patches, directions, solid_angles); same (N, 2)/(N, 3)
+        # shapes as generate_tregenza_patches.
+        patches, directions, solid_angles = generate_reinhart_patches(mf=2)
+        self._assert_directions_match(patches, directions)
+
+    def test_uniform_grid(self):
+        from voxcity.simulator.solar.sky import generate_uniform_grid_patches
+        # Returns (patches, directions, solid_angles); same (N, 2)/(N, 3)
+        # shapes as generate_tregenza_patches.
+        patches, directions, solid_angles = generate_uniform_grid_patches(
+            n_azimuth=12, n_elevation=4
+        )
+        self._assert_directions_match(patches, directions)
