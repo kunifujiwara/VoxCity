@@ -1004,6 +1004,12 @@ if _HAS_TAICHI:
                         if not shadow_hit:
                             # Light contribution (like voxel-challenge)
                             color += throughput * self.light_color[None] * n_dot_l
+
+                    # Ambient fill: unconditional sky light applied on the first
+                    # surface interaction so shadowed faces stay visible. Uses the
+                    # configurable ambient color (previously set but unused).
+                    if first_bounce_depth == 0:
+                        color += throughput * self.ambient_color[None]
                 else:
                     # Hit background
                     hit_background = 1

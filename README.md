@@ -26,9 +26,8 @@
   💬 <a href="https://github.com/kunifujiwara/VoxCity/issues">Issues</a>
 </p>
 
-<!-- TODO: replace concept.png below with an animated demo at images/demo.gif once available -->
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/concept.png" alt="Conceptual diagram of VoxCity" width="820">
+  <img src="https://raw.githubusercontent.com/kunifujiwara/VoxCity/main/images/demo.webp" alt="VoxCity pipeline: download geospatial layers, voxelize each urban element, integrate them into a voxel city model, and simulate the urban environment (e.g., solar irradiance and green view index)" width="820">
 </p>
 
 ---

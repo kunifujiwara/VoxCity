@@ -1,4 +1,4 @@
-.PHONY: clean clean-build clean-pyc clean-test coverage dist docs help install lint lint/flake8
+.PHONY: clean clean-build clean-pyc clean-test coverage dist docs help install lint lint/flake8 demo-reel demo-gif
 
 .DEFAULT_GOAL := help
 
@@ -53,6 +53,11 @@ lint/flake8: ## check style with flake8
 
 
 lint: lint/flake8 ## check style
+
+demo-reel: ## regenerate the animated WebP README hero reel
+	LC_ALL=C.UTF-8 LANG=C.UTF-8 venv/bin/python scripts/make_readme_demo_gif.py --out images/demo.webp --quality 45
+
+demo-gif: demo-reel ## alias for demo-reel (retained for muscle memory)
 
 test: ## run tests quickly with the default Python
 	python setup.py test
