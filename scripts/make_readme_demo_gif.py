@@ -848,7 +848,7 @@ def render_timeline(city, results, cfg):
     shape = city.voxels.classes.shape
     meshsize = city.voxels.meta.meshsize
     tl = build_timeline(cfg)
-    poses = orbit_path(shape, meshsize, n=len(tl), sweep_deg=180.0, start_deg=45.0)
+    poses = orbit_path(shape, meshsize, n=len(tl), sweep_deg=180.0, start_deg=67.5)
     maps = load_download_maps(cfg)
     building_mesh = None
     gray_cmap = grayscale_voxel_color_map()
