@@ -148,8 +148,8 @@ def test_smoke_quick_build_webp(tmp_path):
 
 def test_quick_build_writes_animated_webp(tmp_path):
     import scripts.make_readme_demo_gif as m
-    if not m.gpu_available():
-        import pytest; pytest.skip("no GPU")
+    if not _cached_present(m) or not m.gpu_available():
+        pytest.skip("cached h5 or GPU unavailable")
     out = tmp_path / "demo_quick.webp"
     m.main(["--quick", "--out", str(out)])
     from PIL import Image
@@ -338,6 +338,8 @@ def test_build_download_scene_reveal(monkeypatch):
 
 def test_load_building_mesh_shapes():
     import scripts.make_readme_demo_gif as m
+    if not _cached_present(m):
+        pytest.skip("cached demo h5 not present")
     cfg = m.Config()
     mesh = m.load_building_mesh(cfg)
     assert mesh.vertices.shape == (106366, 3)
@@ -350,6 +352,8 @@ def test_building_mesh_aligns_with_voxel_footprint():
     # The cached GVI mesh is stored transposed vs the voxel model; load_building_mesh
     # swaps x/y so the surface footprint lands on the voxel-city buildings.
     import scripts.make_readme_demo_gif as m
+    if not _cached_present(m):
+        pytest.skip("cached demo h5 not present")
     cfg = m.Config()
     city, _ = m.load_inputs(cfg)
     cls = np.asarray(city.voxels.classes)
@@ -440,6 +444,8 @@ def test_ground_overlay_flips_to_align_with_footprint():
     # The stored solar grid is south-first; ground_overlay flips it north-south
     # so zero/masked cells coincide with the voxel building footprint.
     import scripts.make_readme_demo_gif as m
+    if not _cached_present(m):
+        pytest.skip("cached demo h5 not present")
     cfg = m.Config()
     city, results = m.load_inputs(cfg)
     cls = np.asarray(city.voxels.classes)
