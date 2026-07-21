@@ -217,16 +217,14 @@ def test_orbit_path_smooth_and_bounded():
     m = load_module()
     poses = m.orbit_path((100, 120, 40), 5.0, n=48, sweep_deg=90.0)
     assert len(poses) == 48
-    center = poses[0][1]
-    # look-at is constant (camera orbits a fixed target)
-    for _, look in poses:
-        assert np.allclose(look, center, atol=1e-6)
-    # radius from center is ~constant (true orbit, not a zoom)
     import math
-    radii = [math.hypot(p[0] - center[0], p[1] - center[1]) for p, _ in poses]
+    # radius/azimuth are measured relative to each pose's own look-at: a constant
+    # screen-space pan shifts camera + look-at together each frame, so it cancels
+    # here and the underlying orbit stays a true (non-zooming) circular sweep.
+    radii = [math.hypot(p[0] - look[0], p[1] - look[1]) for p, look in poses]
     assert max(radii) - min(radii) < 1e-3 * max(radii)
     # azimuth advances monotonically and total sweep ~90 deg
-    az = [math.atan2(p[1] - center[1], p[0] - center[0]) for p, _ in poses]
+    az = [math.atan2(p[1] - look[1], p[0] - look[0]) for p, look in poses]
     unwrapped = np.unwrap(az)
     assert abs(math.degrees(unwrapped[-1] - unwrapped[0]) - 90.0) < 5.0
 
@@ -298,7 +296,7 @@ def test_draw_callouts_marks_pixels():
 def test_draw_labels_change_pixels():
     m = load_module()
     f = np.full((200, 320, 3), 128, dtype=np.uint8)
-    out1 = m.draw_labels(f, [("Terrain", "terrain"), ("Building", "viridis")])
+    out1 = m.draw_labels(f, [("Terrain", 0.62, "terrain"), ("Building", 0.30, "building")])
     assert out1.shape == f.shape and not np.array_equal(out1, f)
 
 
@@ -358,7 +356,7 @@ def test_building_mesh_aligns_with_voxel_footprint():
     ms = city.voxels.meta.meshsize
     nx, ny = cls.shape[0], cls.shape[1]
     bvox = (cls <= -3).any(axis=2)                      # (u, v) footprint
-    v = np.asarray(m.load_building_mesh(cfg).vertices)  # already swapped
+    v = np.asarray(m.load_building_mesh(cfg, y_extent=nx * ms).vertices)  # swapped + y-flipped
     vc = np.clip((v[:, 0] / ms).astype(int), 0, ny - 1)
     uc = np.clip((v[:, 1] / ms).astype(int), 0, nx - 1)
     bmesh = np.zeros((nx, ny), bool)
@@ -366,6 +364,23 @@ def test_building_mesh_aligns_with_voxel_footprint():
     inter = (bvox & bmesh).sum()
     iou = inter / max(1, (bvox | bmesh).sum())
     assert iou > 0.5     # transposed mesh overlaps the voxel buildings
+
+
+def test_download_maps_align_with_voxel_footprint():
+    # load_download_maps must flip the south-first h5 grids to north-first so the
+    # flat plates land on the same cells their voxelized counterparts occupy.
+    import scripts.make_readme_demo_gif as m
+    cfg = m.Config()
+    if not cfg.voxcity_h5.exists():
+        import pytest
+        pytest.skip("cached voxcity.h5 not available")
+    city, _ = m.load_inputs(cfg)
+    cls = np.asarray(city.voxels.classes)
+    maps = m.load_download_maps(cfg)
+    bvox = (cls <= -3).any(axis=2)                 # building voxel footprint
+    bmap = np.nan_to_num(np.asarray(maps["buildings"])) > 0
+    iou = (bvox & bmap).sum() / max(1, (bvox | bmap).sum())
+    assert iou > 0.9     # plate map now aligned (flipud) with the voxel model
 
 
 def test_grayscale_voxel_color_map_is_neutral():
@@ -405,7 +420,7 @@ def test_render_timeline_dispatch(monkeypatch):
     monkeypatch.setattr(m, "render_still", fake_render_still)
     monkeypatch.setattr(m, "load_download_maps",
         lambda cfg: {k: np.ones((4, 4)) for k in m.LAYERS})
-    monkeypatch.setattr(m, "load_building_mesh", lambda cfg: object())
+    monkeypatch.setattr(m, "load_building_mesh", lambda cfg, **kw: object())
     monkeypatch.setattr(m, "build_download_scene",
         lambda *a, **k: (a[0], {100: [1, 2, 3]}))
     city = type("C", (), {})()
@@ -467,10 +482,48 @@ def test_timeline_voxelize_starts_with_four_slabs():
     shown = set(first.plates or []) | set((first.scales or {}).keys())
     assert shown == set(m.LAYERS)
     assert len(first.labels) == 4
-    # land cover stays a flat plate throughout the voxelize beat
-    assert all("landcover" in (fs.plates or []) for fs in tl)
-    # buildings, once active, are full height instantly (never a partial scale)
+    # land cover starts as a flat plate and voxelizes (recolors) at its turn:
+    # it is a plate at the start and a real voxel (scale) by the end.
+    assert "landcover" in (tl[0].plates or [])
+    assert "landcover" in (tl[-1].scales or {})
+    # buildings & land cover, once active, are full height instantly.
     for fs in tl:
-        if "buildings" in (fs.scales or {}):
-            assert fs.scales["buildings"] == 1.0
+        for L in ("buildings", "landcover"):
+            if L in (fs.scales or {}):
+                assert fs.scales[L] == 1.0
+
+
+def test_timeline_voxelize_landcover_recolors_not_thickens():
+    # land cover's visible step is a recolor (2D grid colormap plate -> 3D voxel
+    # palette), NOT a thickness change. No frame should carry plate_thick.
+    import scripts.make_readme_demo_gif as m
+    tl = [fs for fs in m.build_timeline(m.Config()) if fs.scene_kind == "voxelize"]
+    assert all(getattr(fs, "plate_thick", None) in (None, {}) for fs in tl)
+    # land cover transitions from plate (early) to voxel scale (late)
+    early = tl[0]
+    late = tl[-1]
+    assert "landcover" in (early.plates or [])
+    assert "landcover" in (late.scales or {})
+
+
+def test_build_voxelize_scene_plate_thickness_extrudes():
+    import scripts.make_readme_demo_gif as m
+    base = np.zeros((4, 4, 6), dtype=np.int8)
+    city = type("C", (), {})()
+    city.voxels = type("Vx", (), {})()
+    city.voxels.classes = base
+    maps = {"terrain": np.ones((4, 4)), "landcover": np.zeros((4, 4), int),
+            "buildings": np.ones((4, 4)), "trees": np.ones((4, 4))}
+    offsets = dict(m._EXPLODE)
+    scene, _ = m.build_voxelize_scene(
+        city, maps, plate_layers=["landcover"], voxel_scales={}, offsets=offsets,
+        plate_thick={"landcover": 3})
+    g = np.asarray(scene.voxels.classes)
+    z = m._EXPLODE["landcover"]
+    # three stacked z-layers populated (extruded slab), not just one
+    assert (g[:, :, z] >= 100).all()
+    assert (g[:, :, z - 1] >= 100).all()
+    assert (g[:, :, z - 2] >= 100).all()
+    assert (g[:, :, z - 3] == 0).all()
+
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import copy
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -124,23 +125,64 @@ def _ease_in_out(t):
     return 0.5 - 0.5 * np.cos(np.pi * t)
 
 
+def _ease_out_tail(t, hold: float = 0.7):
+    """Constant speed for the first `hold` fraction of the sweep, then a smooth
+    cosine deceleration to a full stop at t=1.
+
+    Velocity is continuous at the junction (no visible kink) and reaches exactly
+    0 at t=1, so the rotation reads as steady with a gentle settle at the end
+    (unlike _ease_in_out, which also slows the start). Returns progress in [0, 1].
+    """
+    t = float(np.clip(t, 0.0, 1.0))
+    tau = 1.0 - hold
+    if tau <= 0:
+        return t
+    v = 1.0 / (hold + 2.0 * tau / np.pi)          # constant-phase speed
+    if t <= hold:
+        return v * t
+    return v * hold + v * (2.0 * tau / np.pi) * np.sin(0.5 * np.pi * (t - hold) / tau)
+
+
+# Horizontal framing: shift the model right by this fraction of the scene
+# diagonal so the left caption column and the right empty space stay balanced.
+_FRAME_PAN_FRAC = 0.12
+
+
 def orbit_path(shape, meshsize, n, sweep_deg=90.0, elev_factor=0.9,
-               dist_factor=1.7, start_deg=45.0):
-    """N eased camera poses orbiting the scene center at fixed elevation."""
+               dist_factor=1.7, start_deg=45.0, pan_frac=None):
+    """N eased camera poses orbiting the scene center at fixed elevation.
+
+    `pan_frac` shifts each pose horizontally in screen space (camera and look-at
+    translated together along screen-left) so the model sits further right in the
+    frame — balancing the left-hand caption column against the right-hand empty
+    space. The pan cancels in look-relative geometry, so the orbit radius and
+    azimuth are unchanged. Defaults to _FRAME_PAN_FRAC.
+    """
+    if pan_frac is None:
+        pan_frac = _FRAME_PAN_FRAC
     nx, ny, nz = shape
     ex, ey, ez = nx * meshsize, ny * meshsize, nz * meshsize
-    center = (ex / 2.0, ey / 2.0, ez * 0.25)
+    center = np.array([ex / 2.0, ey / 2.0, ez * 0.25])
     diag = float(np.hypot(ex, ey))
     radius = diag * dist_factor
     height = center[2] + diag * 0.7 * elev_factor + ez
+    up = np.array([0.0, 0.0, 1.0])
     poses = []
     for i in range(n):
         t = 0.0 if n == 1 else i / (n - 1)
-        ang = np.deg2rad(start_deg + sweep_deg * _ease_in_out(t))
-        pos = (center[0] + radius * np.cos(ang),
-               center[1] + radius * np.sin(ang),
-               height)
-        poses.append((pos, center))
+        ang = np.deg2rad(start_deg + sweep_deg * _ease_out_tail(t))
+        pos = np.array([center[0] + radius * np.cos(ang),
+                        center[1] + radius * np.sin(ang),
+                        height])
+        look = center.copy()
+        if pan_frac:
+            r = np.cross(look - pos, up)          # screen-right (horizontal)
+            nrm = np.linalg.norm(r)
+            if nrm > 1e-9:
+                pan = (-pan_frac * diag) * (r / nrm)   # screen-left => model right
+                pos = pos + pan
+                look = look + pan
+        poses.append((tuple(pos), tuple(look)))
     return poses
 
 
@@ -156,20 +198,53 @@ class FrameSpec:
     scales: dict | None
     camera_t: float
     plates: list | None = None
+    plate_thick: dict | None = None
 
 
 _LAYER_LABEL = {"terrain": ("Terrain", "terrain"), "landcover": ("Land Cover", "landcover"),
                 "buildings": ("Building", "viridis"), "trees": ("Tree", "Greens")}
+# Layer caption -> Lucide icon asset (scripts/icons/<key>.png), monochrome white.
+_LAYER_ICON = {"Tree": "tree", "Building": "building",
+               "Land Cover": "landcover", "Terrain": "terrain"}
 _CALLOUT_ANCHOR = (0.72, 0.32)
 _EXPLODE = {"terrain": 0, "landcover": 30, "buildings": 60, "trees": 90}
+
+# Caption vertical placement. Calibrated so a fully-exploded slab (offset 90 =
+# Tree) sits near the top and the ground slab (offset 0 = Terrain) near the
+# bottom, with in-between layers linearly interpolated. Reused during integrate
+# so captions ride down with their slabs and converge onto Terrain's row.
+_LABEL_Y_TOP = 0.10   # height fraction for a fully raised slab (offset = max)
+_LABEL_Y_BOT = 0.62   # height fraction for the ground slab (offset = 0)
+_SIDE_MARGIN_FRAC = 0.04   # left inset for all on-frame captions (fraction of width)
+
+
+def _offset_to_yfrac(offset):
+    """Map a layer's z explode-offset to a caption y (fraction of frame height)."""
+    maxoff = _EXPLODE["trees"] or 1
+    return _LABEL_Y_BOT - (offset / maxoff) * (_LABEL_Y_BOT - _LABEL_Y_TOP)
+
+
+def _layer_caption(layer, offset):
+    """(text, y_fraction, icon_key) caption tuple for a layer at a z-offset."""
+    name = _LAYER_LABEL[layer][0]
+    return (name, _offset_to_yfrac(offset), _LAYER_ICON.get(name, ""))
 
 
 def _beat_lengths(cfg):
     if cfg.quick:
         return [2, 2, 2, 2, 2, 2]
     total = round(cfg.fps * cfg.seconds)
-    weights = [0.30, 0.20, 0.15, 0.12, 0.115, 0.115]  # download..sim_building
-    return [max(1, round(total * w)) for w in weights]
+    # Download and voxelize are pinned to fixed absolute durations so each of
+    # their four layers gets a steady interval (e.g. 5.0s / 4 = 1.25s/layer).
+    dl = max(1, round(cfg.fps * cfg.download_seconds))
+    vx = max(1, round(cfg.fps * cfg.voxelize_seconds))
+    # Remaining beats (integrate, city, sim_ground, sim_building) split the
+    # leftover time in their original proportions.
+    rest_w = [0.15, 0.12, 0.115, 0.115]
+    rest_total = max(len(rest_w), total - dl - vx)
+    wsum = sum(rest_w)
+    rest = [max(1, round(rest_total * w / wsum)) for w in rest_w]
+    return [dl, vx] + rest
 
 
 def build_timeline(cfg):
@@ -186,16 +261,17 @@ def build_timeline(cfg):
         t = i / max(1, b - 1)
         n_rev = int(np.clip(int(t * len(LAYERS)) + 1, 1, len(LAYERS)))
         reveal = {L: (1 if j < n_rev else 0) for j, L in enumerate(LAYERS)}
-        labels = [_LAYER_LABEL[L] for L in LAYERS if reveal[L]]
+        labels = [_layer_caption(L, _EXPLODE[L]) for L in LAYERS if reveal[L]]
         specs.append(FrameSpec(0, "download", "Download geospatial data",
             labels, [], reveal, None, None, cam_t())); done += 1
 
     # Beat 2: voxelize — start with all four flat colormap slabs, then convert
     # them into voxels one layer at a time (terrain -> land cover -> buildings
-    # -> trees). Layers awaiting their turn stay as flat slabs. Land cover is
-    # shown as its final flat colormap slab throughout the voxelize beat; it is
-    # only fitted onto the voxelized terrain later, during the integrate beat.
-    # Terrain/trees grow from thin to full height; buildings appear instantly.
+    # -> trees). Layers awaiting their turn stay as flat 2D-colormap slabs.
+    # When a layer voxelizes it switches to the real voxel palette; land cover's
+    # visible step IS this recolor (2D grid colormap -> 3D voxel colormap), with
+    # no change in thickness. Only terrain grows from thin to full height;
+    # land cover, buildings and trees appear instantly.
     b = lens[1]
     order = list(LAYERS)
     for i in range(b):
@@ -206,43 +282,56 @@ def build_timeline(cfg):
         offsets = {L: _EXPLODE[L] for L in order}
         plates, scales = [], {}
         for j, L in enumerate(order):
-            if L == "landcover":
-                plates.append(L)                       # always a flat slab here
-            elif j < active:
+            if j < active:
                 scales[L] = 1.0                        # already voxelized
             elif j == active:
-                scales[L] = 1.0 if L == "buildings" else max(0.06, _ease_in_out(local_t))
+                if L in ("buildings", "landcover", "trees"):
+                    scales[L] = 1.0                    # instant voxelize
+                else:
+                    scales[L] = max(0.06, _ease_in_out(local_t))
             else:
-                plates.append(L)                       # awaiting its turn
-        labels = [_LAYER_LABEL[L] for L in order]      # all four visible
+                plates.append(L)                       # awaiting its turn (flat slab)
+        labels = [_layer_caption(L, _EXPLODE[L]) for L in order]   # all four
         specs.append(FrameSpec(1, "voxelize", "Voxelize urban elements",
-            labels, [], {}, offsets, scales, cam_t(), plates=plates)); done += 1
+            labels, [], {}, offsets, scales, cam_t(),
+            plates=plates)); done += 1
 
-    # Beat 3: integrate — ease offsets to zero
+    # Beat 3: integrate — ease offsets to zero. Captions ride down with their
+    # slabs (terrain, offset 0, stays put); once merged they become the single
+    # "Voxel City Model" caption that carries into the city beat.
     b = lens[2]
     for i in range(b):
         t = i / max(1, b - 1)
-        offs = {k: int(round(v * (1 - _ease_in_out(t)))) for k, v in _EXPLODE.items()}
+        merge = _ease_in_out(t)
+        offs_f = {k: v * (1 - merge) for k, v in _EXPLODE.items()}
+        offs = {k: int(round(v)) for k, v in offs_f.items()}
+        if merge >= 0.9:
+            labels = [("Voxel City Model", _LABEL_Y_BOT, "")]
+        else:
+            labels = [_layer_caption(L, offs_f[L]) for L in LAYERS]
         specs.append(FrameSpec(2, "integrate", "Integrate voxelized elements",
-            [], [], {}, offs, None, cam_t())); done += 1
+            labels, [], {}, offs, None, cam_t())); done += 1
 
-    # Beat 4: voxel city
+    # Beat 4: voxel city — keep the merged caption parked at the convergence row.
     b = lens[3]
     for i in range(b):
-        specs.append(FrameSpec(3, "city", "Voxel City model",
-            [], [], {}, None, None, cam_t())); done += 1
+        specs.append(FrameSpec(3, "city", "Integrate voxelized elements",
+            [("Voxel City Model", _LABEL_Y_BOT, "")], [], {}, None, None,
+            cam_t())); done += 1
 
-    # Beat 5: simulate ground
+    # Beat 5: simulate ground — caption parked at the same lower-center slot.
     b = lens[4]
     for i in range(b):
-        specs.append(FrameSpec(4, "sim_ground", "Simulate — Ground level",
-            [], [], {}, None, None, cam_t())); done += 1
+        specs.append(FrameSpec(4, "sim_ground", "Simulate urban environment",
+            [("e.g., Solar Irradiance", _LABEL_Y_BOT, "")], [], {}, None, None,
+            cam_t())); done += 1
 
-    # Beat 6: simulate building surface
+    # Beat 6: simulate building surface — caption at the same lower-center slot.
     b = lens[5]
     for i in range(b):
-        specs.append(FrameSpec(5, "sim_building", "Simulate — Building surface",
-            [], [], {}, None, None, cam_t())); done += 1
+        specs.append(FrameSpec(5, "sim_building", "Simulate urban environment",
+            [("e.g., Green View Index", _LABEL_Y_BOT, "")], [], {}, None, None,
+            cam_t())); done += 1
 
     return specs
 
@@ -253,6 +342,10 @@ class Config:
     height: int = CANVAS_DEFAULT[1]
     fps: int = FPS_DEFAULT
     seconds: float = 20.0
+    # Fixed absolute durations (seconds) for the two "reveal" beats. The other
+    # four beats share whatever time is left (seconds - download - voxelize).
+    download_seconds: float = 4.0
+    voxelize_seconds: float = 4.0
     out: Path = field(default_factory=lambda: REPO_ROOT / "images" / "demo.webp")
     quick: bool = False
     quality: int = 80
@@ -339,7 +432,12 @@ def landcover_plate(lc2d, base_id=160, source="Standard"):
 
 
 def load_download_maps(cfg):
-    """Read the four 2D source maps directly from voxcity.h5."""
+    """Read the four 2D source maps directly from voxcity.h5.
+
+    Returned in their native (correct, north-up) orientation. The voxel model
+    is flipped to match these maps at load time (see load_inputs), so both the
+    flat plates and the voxelized model share this single correct orientation.
+    """
     import h5py
     with h5py.File(str(cfg.voxcity_h5), "r") as f:
         return {
@@ -378,19 +476,23 @@ def build_download_scene(city, maps, reveal, z_by_layer=None):
     return c2, color_map
 
 
-def build_voxelize_scene(city, maps, plate_layers, voxel_scales, offsets):
+def build_voxelize_scene(city, maps, plate_layers, voxel_scales, offsets, plate_thick=None):
     """Hybrid scene for the voxelize beat: some layers as flat colormap slabs
     and others as real (height-scaled) voxels, each at its explode z-offset.
 
-    plate_layers   : layers rendered as a one-voxel-thick colormap plate.
+    plate_layers   : layers rendered as a colormap plate (flat map).
     voxel_scales   : {layer: height_scale} for layers rendered as real voxels.
     offsets        : {layer: z-offset} for every shown layer.
+    plate_thick    : {layer: thickness} extruding a plate downward into a thin
+                     voxel slab (default 1 = single flat layer). Used to give
+                     land cover a visible "voxelize" step while staying flat.
 
     Real voxel layers use the default palette; plate layers contribute their own
     synthetic colormap ids, mirroring build_download_scene so the transition from
     the download beat and into the integrate beat stays visually continuous.
     """
     from voxcity.visualizer.palette import get_voxel_color_map
+    plate_thick = plate_thick or {}
     base = np.asarray(city.voxels.classes)
     nx, ny, nz_base = base.shape
     max_off = max([int(o) for o in offsets.values()] + [0])
@@ -413,9 +515,11 @@ def build_voxelize_scene(city, maps, plate_layers, voxel_scales, offsets):
             ids2d, cd = colormap_plate(maps[layer], LAYER_CMAP[layer],
                                        base_id=PLATE_BASE_ID[layer])
         color_map.update(cd)
-        z = int(np.clip(offsets[layer], 0, nz - 1))
-        cell = grid[:, :, z]
-        grid[:, :, z] = np.where(cell == 0, ids2d, cell)
+        z_top = int(np.clip(offsets[layer], 0, nz - 1))
+        thick = max(1, int(plate_thick.get(layer, 1)))
+        for z in range(max(0, z_top - thick + 1), z_top + 1):
+            cell = grid[:, :, z]
+            grid[:, :, z] = np.where(cell == 0, ids2d, cell)
     c2 = copy.copy(city)
     c2.voxels = copy.copy(city.voxels)
     c2.voxels.classes = grid
@@ -459,8 +563,22 @@ def frame_duration_ms(fps: int) -> float:
 STAGES = ["Download", "Voxelize", "Integrate", "Voxel City", "Ground level", "Building surface"]
 
 
-def _load_font(size: int):
-    """Load a TrueType font, falling back to default if DejaVu is unavailable."""
+MONTSERRAT_PATH = REPO_ROOT / "scripts" / "fonts" / "Montserrat.ttf"
+
+
+def _load_font(size: int, weight: str = "Bold"):
+    """Primary font for all text: Montserrat (a free, geometric sans in the
+    Gotham vein) at the given size and named weight. Falls back to DejaVu Bold
+    then PIL's default if the bundled font is unavailable."""
+    try:
+        f = ImageFont.truetype(str(MONTSERRAT_PATH), size)
+        try:
+            f.set_variation_by_name(weight)
+        except Exception:
+            pass
+        return f
+    except OSError:
+        pass
     for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
         try:
             return ImageFont.truetype(name, size)
@@ -469,27 +587,49 @@ def _load_font(size: int):
     return ImageFont.load_default()
 
 
-def _cmap_swatch(hint):
-    if hint == "landcover":
-        return (90, 150, 70)
-    try:
-        r, g, b, _ = matplotlib.colormaps[hint](0.7)
-        return (int(r * 255), int(g * 255), int(b * 255))
-    except Exception:
-        return (80, 120, 200)
+ICON_DIR = REPO_ROOT / "scripts" / "icons"
+
+
+@lru_cache(maxsize=64)
+def _load_icon(name: str, size: int):
+    """Return a white, monochrome Lucide icon (RGBA) at `size` px, or None.
+
+    Icons are pre-rasterized from lucide-react's SVGs (scripts/icons/<name>.png)
+    so the render only needs Pillow. Cached per (name, size).
+    """
+    if not name:
+        return None
+    path = ICON_DIR / f"{name}.png"
+    if not path.exists():
+        return None
+    return Image.open(path).convert("RGBA").resize((size, size), Image.LANCZOS)
 
 
 def draw_labels(frame, labels):
+    """Draw left-aligned captions.
+
+    `labels` is a list of (text, y_fraction, icon_key) tuples. Each caption is
+    left-aligned at a fixed side margin at its own y_fraction; the optional Lucide
+    icon (a white PNG in scripts/icons/) is composited just left of the text.
+    """
     img = Image.fromarray(frame).convert("RGB")
     draw = ImageDraw.Draw(img, "RGBA")
-    font = _load_font(max(14, img.height // 26))
-    fs = getattr(font, "size", 14)
-    y = int(img.height * 0.10)
-    for name, hint in labels:
-        sw = _cmap_swatch(hint)
-        draw.rectangle([16, y, 16 + fs, y + fs], fill=(*sw, 255))
-        draw.text((16 + fs + 8, y), name, fill=(255, 255, 255, 255), font=font)
-        y += fs + 8
+    w, h = img.size
+    size = max(12, h // 30)
+    font = _load_font(size)
+    gap = int(round(draw.textlength(" ", font=font)))
+    icon_px = int(round(size * 1.2))
+    white = (255, 255, 255, 255)
+    x0 = int(w * _SIDE_MARGIN_FRAC)
+    for text, yfrac, icon in labels:
+        y = int(h * yfrac)
+        x = x0
+        ic = _load_icon(icon, icon_px)
+        if ic is not None:
+            iy = y + int(round((size - icon_px) / 2))   # center icon on text line
+            img.paste(ic, (x, iy), ic)
+            x += icon_px + gap
+        draw.text((x, y), text, fill=white, font=font)
     return np.asarray(img, dtype=np.uint8)
 
 
@@ -516,14 +656,15 @@ def draw_callouts(frame, callouts):
 
 
 def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
-    """Burn a bottom caption bar and top progress strip onto a frame.
-    
+    """Burn a bottom caption bar onto a frame.
+
     Args:
         frame: Input (H, W, 3) uint8 RGB array.
-        stage_index: Current stage index (0-5), used to highlight the progress strip.
+        stage_index: Current stage index (0-5); accepted for call-site
+            compatibility (the top progress strip was removed).
         caption: Caption text for the bottom bar.
         cfg: Config object with width and height.
-    
+
     Returns:
         (H, W, 3) uint8 RGB array with overlays drawn.
     """
@@ -531,22 +672,15 @@ def compose(frame, stage_index: int, caption: str, cfg) -> np.ndarray:
     draw = ImageDraw.Draw(img, "RGBA")
     w, h = img.size
 
-    # top progress strip
-    n = len(STAGES)
-    seg = w / n
-    strip_h = max(6, h // 60)
-    for i in range(n):
-        active = i <= stage_index
-        color = (45, 110, 235, 255) if active else (200, 200, 200, 255)
-        draw.rectangle([i * seg + 2, 0, (i + 1) * seg - 2, strip_h], fill=color)
-
-    # bottom caption bar
+    # bottom caption bar (left-aligned at the side margin)
     bar_h = max(24, h // 12)
     draw.rectangle([0, h - bar_h, w, h], fill=(20, 20, 24, 190))
     font_size = max(14, bar_h // 2)
     font = _load_font(font_size)
     font_size = getattr(font, "size", font_size)
-    draw.text((16, h - bar_h + (bar_h - font_size) // 2), caption, fill=(255, 255, 255, 255), font=font)
+    x0 = int(w * _SIDE_MARGIN_FRAC)
+    draw.text((x0, h - bar_h + (bar_h - font_size) // 2), caption,
+              fill=(255, 255, 255, 255), font=font)
     return np.asarray(img, dtype=np.uint8)
 
 
@@ -582,21 +716,33 @@ def gpu_available() -> bool:
 
 
 def load_inputs(cfg):
-    """Load the cached VoxCity model and simulation results referenced by *cfg*."""
+    """Load the cached VoxCity model and simulation results referenced by *cfg*.
+
+    The cached voxel classes are stored flipped north-south relative to the 2D
+    source maps and to the correct geographic orientation (verified: the raw
+    building map has IoU 1.0 with the building voxel footprint only after
+    np.flipud). Flip the voxel model along axis 0 so the whole demo — flat
+    plates (from the native maps), the voxelized model, and the sim overlays —
+    renders in one correct, upright orientation.
+    """
     from voxcity.io import load_voxcity, load_results_h5
     city = load_voxcity(str(cfg.voxcity_h5))
+    city.voxels.classes = np.flipud(np.asarray(city.voxels.classes))
     results = load_results_h5(str(cfg.results_h5))
     return city, results
 
 
-def load_building_mesh(cfg):
+def load_building_mesh(cfg, y_extent=None):
     """Load the building GVI surface mesh + per-face view factors from H5.
 
     The cached simulation mesh stores vertices in (x=u, y=v) order, transposed
     relative to VoxCity's voxel meshes (which map grid (u,v,z) -> scene
     (x=v, y=u, z); see geoprocessor/mesh.py). Swap the x/y columns so the GVI
-    surface lands exactly on the voxel-city buildings instead of floating over
-    empty ground.
+    surface lands on the voxel-city buildings.
+
+    Because the voxel model is flipped along axis 0 (north-south) at load time
+    (see load_inputs), the mesh's scene-y (=u) axis must be flipped to match:
+    pass ``y_extent = nx * meshsize`` so ``y -> y_extent - y``.
     """
     import h5py, trimesh
     with h5py.File(str(cfg.results_h5), "r") as f:
@@ -605,6 +751,8 @@ def load_building_mesh(cfg):
         vals = np.asarray(f["/building/green_view_index/view_factor_values"])
     v = v.copy()
     v[:, [0, 1]] = v[:, [1, 0]]
+    if y_extent is not None:
+        v[:, 1] = float(y_extent) - v[:, 1]
     mesh = trimesh.Trimesh(vertices=v, faces=fc, process=False)
     mesh.metadata["view_factor_values"] = vals
     return mesh
@@ -629,22 +777,21 @@ def grayscale_voxel_color_map():
 def ground_overlay(city, results):
     """Ground solar irradiance grid + DEM for the ground-level sim beat.
 
-    The cached ground grids are stored row-major with row 0 at the SOUTH edge,
-    whereas the voxel model has row 0 at the NORTH edge (see voxcity_results_h5
-    notebook: display uses np.flipud). Flip north-south so the overlay lands on
-    the correct cells: verified against the voxel building footprint, flipud
-    puts ~99.9% of zero/masked solar cells inside building footprints vs ~64%
-    for the raw grid.
+    The voxel model is flipped to the native map orientation at load time (see
+    load_inputs), which is the same orientation the cached ground grid and DEM
+    are stored in. So no extra flip is needed here \u2014 the overlay already lands
+    on the correct cells (verified against the voxel building footprint).
     """
     ground = results.get("ground", {}) if isinstance(results, dict) else {}
-    grid = np.flipud(np.asarray(ground["solar_irradiance_instantaneous"]))
-    dem = np.flipud(np.asarray(city.dem.elevation))
+    grid = np.asarray(ground["solar_irradiance_instantaneous"])
+    dem = np.asarray(city.dem.elevation)
     return grid, dem
 
 
 def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
                  ground_cmap="magma", building_mesh=None,
                  building_value="view_factor_values", building_cmap="viridis",
+                 building_vmin=None, building_vmax=None,
                  voxel_color_map="default"):
     """Render one GPU still of `city` at `camera`, fit to the canvas."""
     from voxcity.visualizer.renderer_gpu import visualize_voxcity_gpu
@@ -669,6 +816,10 @@ def render_still(city, cfg, camera, *, ground_grid=None, ground_dem=None,
         kwargs.update(building_sim_mesh=building_mesh,
                       building_value_name=building_value,
                       building_colormap=building_cmap)
+        if building_vmin is not None:
+            kwargs["building_vmin"] = building_vmin
+        if building_vmax is not None:
+            kwargs["building_vmax"] = building_vmax
     img = np.asarray(visualize_voxcity_gpu(city, **kwargs))
     if img.dtype != np.uint8:
         img = np.clip(img * (255 if img.max() <= 1.0 else 1), 0, 255).astype(np.uint8)
@@ -697,7 +848,7 @@ def render_timeline(city, results, cfg):
     shape = city.voxels.classes.shape
     meshsize = city.voxels.meta.meshsize
     tl = build_timeline(cfg)
-    poses = orbit_path(shape, meshsize, n=len(tl))
+    poses = orbit_path(shape, meshsize, n=len(tl), sweep_deg=180.0, start_deg=45.0)
     maps = load_download_maps(cfg)
     building_mesh = None
     gray_cmap = grayscale_voxel_color_map()
@@ -709,7 +860,8 @@ def render_timeline(city, results, cfg):
             img = render_still(scene, cfg, pose, voxel_color_map=cmap)
         elif fs.scene_kind == "voxelize":
             scene, cmap = build_voxelize_scene(city, maps, fs.plates or [],
-                                               fs.scales or {}, fs.offsets)
+                                               fs.scales or {}, fs.offsets,
+                                               plate_thick=fs.plate_thick)
             img = render_still(scene, cfg, pose, voxel_color_map=cmap)
         elif fs.scene_kind == "integrate":
             scene = explode_city(city, fs.offsets, fs.scales)
@@ -722,10 +874,11 @@ def render_timeline(city, results, cfg):
                                ground_cmap="magma", voxel_color_map=gray_cmap)
         elif fs.scene_kind == "sim_building":
             if building_mesh is None:
-                building_mesh = load_building_mesh(cfg)
+                building_mesh = load_building_mesh(cfg, y_extent=shape[0] * meshsize)
             img = render_still(city, cfg, pose, building_mesh=building_mesh,
                                building_value="view_factor_values",
-                               building_cmap="viridis", voxel_color_map=gray_cmap)
+                               building_cmap="viridis", building_vmax=0.2,
+                               voxel_color_map=gray_cmap)
         else:
             raise ValueError(f"unknown scene_kind {fs.scene_kind!r}")
         img = compose(img, fs.stage, fs.caption, cfg)
