@@ -218,7 +218,7 @@ def get_global_solar_irradiance_map(
 # Building-surface irradiance
 # --------------------------
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True)
 def compute_solar_irradiance_for_all_faces(
     face_centers,
     face_normals,

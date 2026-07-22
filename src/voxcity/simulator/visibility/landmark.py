@@ -19,7 +19,7 @@ def mark_building_by_id(voxcity_grid_ori, building_id_grid_ori, ids, mark):
     return voxcity_grid
 
 
-@njit
+@njit(cache=True)
 def trace_ray_to_target(voxel_data, origin, target, opaque_values):
     nx, ny, nz = voxel_data.shape
     x0, y0, z0 = origin
@@ -85,7 +85,7 @@ def trace_ray_to_target(voxel_data, origin, target, opaque_values):
                 k += step_z
 
 
-@njit
+@njit(cache=True)
 def compute_visibility_to_all_landmarks(observer_location, landmark_positions, voxel_data, opaque_values):
     for idx in range(landmark_positions.shape[0]):
         target = landmark_positions[idx].astype(np.float64)
@@ -95,7 +95,7 @@ def compute_visibility_to_all_landmarks(observer_location, landmark_positions, v
     return 0
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True)
 def compute_visibility_map(voxel_data, landmark_positions, opaque_values, view_height_voxel, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     visibility_map = np.full((nx, ny), np.nan)

@@ -29,7 +29,7 @@ def _generate_ray_directions_fibonacci(N_rays: int, elevation_min_degrees: float
     return np.stack((x, y, z), axis=1).astype(np.float64)
 
 
-@njit
+@njit(cache=True)
 def rotate_vector_axis_angle(vec, axis, angle):
     axis_len = np.sqrt(axis[0]**2 + axis[1]**2 + axis[2]**2)
     if axis_len < 1e-12:
