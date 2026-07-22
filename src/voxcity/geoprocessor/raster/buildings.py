@@ -25,10 +25,6 @@ from ..heights import (
 from ..overlap import (
     process_building_footprints_by_overlap,
 )
-from ...downloader.gee import (
-    get_roi,
-    save_geotiff_open_buildings_temporal,
-)
 from .core import calculate_grid_size, compute_grid_geometry, bbox_from_vertices
 # Re-exported for backward compatibility: callers historically imported these
 # from this module. _CELL_INTERSECTION_THRESHOLD is re-exported only (unused
@@ -310,6 +306,8 @@ def create_building_height_grid_from_open_building_temporal_polygon(meshsize, re
     """
     Create a building height grid from OpenBuildings temporal data within a polygon.
     """
+    from ...downloader.gee import get_roi, save_geotiff_open_buildings_temporal
+
     _validate_meshsize(meshsize)
     roi = get_roi(rectangle_vertices)
     os.makedirs(output_dir, exist_ok=True)

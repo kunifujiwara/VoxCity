@@ -20,8 +20,12 @@ Note: Most functions require Earth Engine authentication to be set up beforehand
 """
 
 # Earth Engine and geospatial imports
-import ee
-import geemap
+from ..utils.lazy import lazy_import
+
+# Deferred: earthengine-api and geemap together cost ~2.4 s to import and are
+# only needed for GEE-backed data sources. They load on first attribute use.
+ee = lazy_import("ee")
+geemap = lazy_import("geemap")
 import json
 import os
 
