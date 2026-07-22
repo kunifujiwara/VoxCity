@@ -195,7 +195,7 @@ def get_landmark_visibility_map(voxcity, building_gdf=None, **kwargs):
         colormap=colormap, include_building_roofs=include_building_roofs
     )
     obj_export = kwargs.get("obj_export")
-    if obj_export is True:
+    if obj_export:
         dem_grid = kwargs.get("dem_grid", voxcity.dem.elevation if voxcity.dem else np.zeros_like(landmark_vis_map))
         output_dir = kwargs.get("output_directory", "output")
         output_file_name = kwargs.get("output_file_name", "landmark_visibility")        
