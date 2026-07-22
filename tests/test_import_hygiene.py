@@ -83,3 +83,26 @@ def test_simulator_gpu_import_does_not_mutate_numba_cache_env():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert json.loads(proc.stdout.strip().splitlines()[-1]) is True
+
+
+def test_reverse_geocoder_uses_single_process_mode(monkeypatch):
+    """rg.search must pass mode=1: the default mode 2 spawns a cpu_count()
+    multiprocessing pool (~600 MB per worker) and can re-execute unguarded
+    user scripts on Windows."""
+    import types
+
+    calls = {}
+
+    def fake_search(coords, mode=2):
+        calls["mode"] = mode
+        return [{"cc": "JP", "name": "Tokyo"}]
+
+    monkeypatch.setitem(
+        sys.modules, "reverse_geocoder", types.SimpleNamespace(search=fake_search)
+    )
+    from voxcity.geoprocessor import utils
+
+    utils._country_name_cache.clear()
+    name = utils.get_country_name(139.6503, 35.6762)
+    assert calls["mode"] == 1
+    assert name == "Japan"
