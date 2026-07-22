@@ -411,7 +411,7 @@ def create_xml_content(building_height_grid, building_id_grid, land_cover_veg_gr
     
     # Configure telescoping grid settings if enabled
     useTelescoping_grid = kwargs.get('useTelescoping_grid')
-    if (useTelescoping_grid is None) or (useTelescoping_grid == False):
+    if (useTelescoping_grid is None) or (useTelescoping_grid is False):
         useTelescoping_grid = 0
         verticalStretch = 0
         startStretch = 0

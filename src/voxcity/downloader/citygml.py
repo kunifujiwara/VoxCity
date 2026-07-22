@@ -463,7 +463,7 @@ def extract_vegetation_info(file_path, namespaces):
                     y = float(coords_text[i+1])
                     # z = float(coords_text[i+2])  # If you need Z
                     coords.append((x, y))
-                except:
+                except Exception:
                     pass
             if len(coords) >= 3:
                 polygon = Polygon(coords)
@@ -539,7 +539,7 @@ def extract_vegetation_info(file_path, namespaces):
                 # Treat sentinel values like -9999 as missing
                 if vegetation_height <= -9998:
                     vegetation_height = None
-            except:
+            except Exception:
                 vegetation_height = None
         else:
             vegetation_height = None
@@ -570,7 +570,7 @@ def extract_vegetation_info(file_path, namespaces):
                 # Treat sentinel values like -9999 as missing
                 if veg_height <= -9998:
                     veg_height = None
-            except:
+            except Exception:
                 veg_height = None
         else:
             veg_height = None
@@ -805,7 +805,7 @@ def parse_file(file_path, file_type=None):
                     file_type = 'citygml'
                 else:
                     file_type = 'xml'
-            except:
+            except Exception:
                 file_type = 'xml'
         elif file_ext in ['.json', '.geojson']:
             file_type = 'geojson'

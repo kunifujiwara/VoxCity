@@ -1,0 +1,22 @@
+line-length = 120
+target-version = "py310"
+
+[lint]
+# Start with correctness-focused rules only (pyflakes + pycodestyle errors).
+# Style/refactor rule expansion is Batch 5 scope.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E731",  # lambda assignment — used intentionally in kernels/config
+    "E741",  # ambiguous variable names (l, I) — common in math kernels
+    # TODO(batch5): high-volume mechanical cleanups deferred from quick-wins.
+    "F401",  # unused imports (185) — many are re-exports; needs per-file audit
+    "F811",  # redefinition (23) — includes real duplicate-def smells to investigate
+    "F841",  # unused local variable (46)
+    "F541",  # f-string without placeholders (14)
+    "E402",  # module import not at top (15) — some intentional
+    "E702",  # multiple statements (semicolon) (99)
+    "E701",  # multiple statements (colon) (2)
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401", "F403", "F405"]  # re-export pattern

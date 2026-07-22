@@ -1,10 +1,13 @@
-from typing import Optional, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Dict, List, Tuple, Union
 from pathlib import Path
 import requests
 import re
 import xml.etree.ElementTree as ET
 import json
 import zipfile
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from .files import safe_extract, safe_rename
 from .epw import process_epw
