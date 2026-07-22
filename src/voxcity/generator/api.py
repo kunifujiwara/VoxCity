@@ -532,7 +532,12 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
             dem_source = auto_sources['dem_source']
         if building_complementary_source is None:
             building_complementary_source = auto_sources.get('building_complementary_source', 'None')
-        
+
+        # A raster-only base source has no vector footprints for a complementary
+        # raster to merge into; never pair one with it, even auto-selected.
+        if building_source in _RASTER_ONLY_SOURCES and building_complementary_source not in (None, 'None'):
+            building_complementary_source = 'None'
+
         # Auto-set complement height if not provided
         if 'building_complement_height' not in kwargs:
             kwargs['building_complement_height'] = 10
