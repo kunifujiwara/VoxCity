@@ -297,6 +297,7 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
         print("Fetching weather station data from Climate.OneBuilding.Org...")
         all_stations = []
         scanned_urls = set()
+        last_scan_error = None
         for region_name, url in regions_to_scan.items():
             if url in scanned_urls:
                 continue
@@ -351,8 +352,10 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
                             stations.append(station_data)
             except requests.exceptions.RequestException as e:
                 print(f"Error accessing KML file {url}: {e}")
+                last_scan_error = e
             except Exception as e:
                 print(f"Error processing KML file {url}: {e}")
+                last_scan_error = e
 
             all_stations.extend(stations)
             print(f"Found {len(stations)} stations in {region_name}")
@@ -392,11 +395,16 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
                                 station_data['kml_source'] = url
                                 all_stations.append(station_data)
                         print(f"Found {len(all_stations)} stations in {region_name}")
-                    except Exception:
-                        pass
+                    except Exception as scan_err:
+                        last_scan_error = scan_err
                 print(f"\nTotal stations found after global scan: {len(all_stations)}")
             if not all_stations:
-                raise ValueError("No weather stations found")
+                if last_scan_error is not None:
+                    raise ValueError(
+                        f"No weather stations found (last error while scanning "
+                        f"Climate.OneBuilding.Org: {last_scan_error})"
+                    )
+                raise ValueError("No weather stations found near the given location")
 
         stations_with_distances = [
             (station, haversine_distance(longitude, latitude, station['longitude'], station['latitude']))
@@ -475,7 +483,10 @@ def get_nearest_epw_from_climate_onebuilding(longitude: float, latitude: float, 
 
         return str(final_epw), df, headers
     except Exception as e:
-        print(f"Error processing data: {e}")
-        return None, None, None
+        raise RuntimeError(
+            f"EPW download from Climate.OneBuilding.Org failed: {e}. "
+            "If this is an SSL certificate error, retry with allow_insecure_ssl=True "
+            "or allow_http_fallback=True. If no station was found, widen max_distance."
+        ) from e
 
 
