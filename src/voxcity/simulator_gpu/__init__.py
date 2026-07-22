@@ -19,12 +19,7 @@ Example:
     gvi = visibility.get_view_index(voxcity, mode='green')
 """
 
-import os
 import warnings
-
-# Disable Numba caching to prevent stale cache issues
-os.environ.setdefault("NUMBA_CACHE_DIR", "")
-os.environ.setdefault("NUMBA_DISABLE_JIT", "0")
 
 # Taichi-dependent imports are optional; pure-Python utilities (e.g.
 # solar.integration.utils) can be used without taichi installed.

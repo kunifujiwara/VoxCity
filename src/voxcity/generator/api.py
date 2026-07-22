@@ -13,11 +13,10 @@ from ..downloader.osm import load_gdf_from_openstreetmap
 from ..downloader.eubucco import load_gdf_from_eubucco
 from ..downloader.overture import load_gdf_from_overture
 from ..downloader.gba import load_gdf_from_gba
-from ..downloader.gee import (
-    get_roi,
-    save_geotiff_open_buildings_temporal,
-    save_geotiff_dsm_minus_dtm,
-)
+# NOTE: ``..downloader.gee`` (ee/geemap, ~2.4 s) and ``..visualizer.grids``
+# (plotting stack) are imported lazily, locally, where they are actually
+# used below — importing them here would leak that cost into every
+# ``import voxcity.generator``.
 
 from ..geoprocessor.raster import (
     create_building_height_grid_from_gdf_polygon,
@@ -27,7 +26,6 @@ from ..geoprocessor.raster import (
 from ..utils.lc import get_land_cover_classes
 from ..geoprocessor.io import get_gdf_from_gpkg
 from ..geoprocessor.utils import normalize_rectangle_vertices, compute_rotation_angle
-from ..visualizer.grids import visualize_numerical_grid
 from ..utils.logging import get_logger
 
 
@@ -695,6 +693,13 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
 
 
 def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_source, meshsize, url_citygml=None, citygml_path=None, **kwargs):
+    from ..downloader.gee import (
+        get_roi,
+        save_geotiff_open_buildings_temporal,
+        save_geotiff_dsm_minus_dtm,
+    )
+    from ..visualizer.grids import visualize_numerical_grid
+
     if rectangle_vertices is not None:
         rectangle_vertices = normalize_rectangle_vertices(rectangle_vertices)
 

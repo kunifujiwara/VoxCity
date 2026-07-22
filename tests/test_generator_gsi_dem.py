@@ -25,7 +25,7 @@ def test_gsi_source_calls_downloader_and_builds_grid(tmp_path):
         return filepath
 
     with patch("voxcity.downloader.gsi.save_gsi_dem_as_geotiff", side_effect=fake_save), \
-         patch("voxcity.generator.grids.initialize_earth_engine") as init_ee:
+         patch("voxcity.downloader.gee.initialize_earth_engine") as init_ee:
         grid = get_dem_grid(
             VERTS, meshsize=10, source="GSI DEM Japan",
             output_dir=str(tmp_path), gsi_dem_type="dem10b", gridvis=False,

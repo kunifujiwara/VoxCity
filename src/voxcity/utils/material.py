@@ -191,7 +191,7 @@ def set_building_material_by_gdf(voxelcity_grid_ori, building_id_grid, gdf_build
     voxelcity_grid = voxelcity_grid_ori.copy()
     
     # Use default material dictionary if none provided
-    if material_id_dict == None:
+    if material_id_dict is None:
         material_id_dict = get_material_dict()
 
     # Process each building in the GeoDataFrame

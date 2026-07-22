@@ -2,12 +2,12 @@ import numpy as np
 from numba import njit, prange
 
 
-@njit
+@njit(cache=True)
 def calculate_transmittance(length, tree_k=0.6, tree_lad=1.0):
     return np.exp(-tree_k * tree_lad * length)
 
 
-@njit
+@njit(cache=True)
 def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     nx, ny, nz = voxel_data.shape
     x0, y0, z0 = origin
@@ -156,7 +156,7 @@ def trace_ray_generic(voxel_data, origin, direction, hit_values, meshsize, tree_
     return False, cumulative_transmittance
 
 
-@njit
+@njit(cache=True)
 def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True):
     total_rays = ray_directions.shape[0]
     visibility_sum = 0.0
@@ -176,7 +176,7 @@ def compute_vi_generic(observer_location, voxel_data, ray_directions, hit_values
     return visibility_sum / total_rays
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True)
 def compute_vi_map_generic(voxel_data, ray_directions, view_height_voxel, hit_values, meshsize, tree_k, tree_lad, inclusion_mode=True, include_building_roofs=False):
     nx, ny, nz = voxel_data.shape
     vi_map = np.full((nx, ny), np.nan)

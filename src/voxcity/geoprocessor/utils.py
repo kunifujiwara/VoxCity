@@ -717,7 +717,7 @@ def get_city_country_name_from_rectangle(coordinates):
         # Fallback to offline reverse_geocoder at coarse resolution
         try:
             import reverse_geocoder as rg
-            results = rg.search((center_lat, center_lon))
+            results = rg.search((center_lat, center_lon), mode=1)
             name = results[0].get('name') or ''
             country = get_country_name(center_lon, center_lat) or ''
             if name or country:
@@ -969,7 +969,7 @@ def get_country_name(lon, lat):
 
     # Use reverse geocoder to get country code (lazy import to avoid slow startup)
     import reverse_geocoder as rg
-    results = rg.search((lat, lon))
+    results = rg.search((lat, lon), mode=1)
     country_code = results[0]['cc']
     
     # Convert country code to full name using pycountry

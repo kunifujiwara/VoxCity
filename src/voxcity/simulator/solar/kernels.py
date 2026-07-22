@@ -7,7 +7,7 @@ import numpy as np
 from ..common.raytracing import trace_ray_generic
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True)
 def compute_direct_solar_irradiance_map_binary(
     voxel_data,
     sun_direction,

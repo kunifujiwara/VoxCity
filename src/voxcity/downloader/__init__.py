@@ -1,12 +1,45 @@
 from .mbfp import *
 from .utils import *
-from .gee import *
 from .osm import *
 from .oemj import *
 from .gsi import *
 from .eubucco import *
 from .overture import *
 from .gba import *
+
+# ``gee`` pulls in Earth Engine + geemap (~2.4 s combined) and is resolved
+# lazily (PEP 562) below, so importing this package — or any sibling
+# submodule that triggers its init — does not pay that cost up front.
+_GEE_ATTRS = {
+    "initialize_earth_engine",
+    "get_roi",
+    "get_center_point",
+    "get_ee_image_collection",
+    "get_ee_image",
+    "save_geotiff",
+    "get_dem_image",
+    "save_geotiff_esa_land_cover",
+    "save_geotiff_dynamic_world_v1",
+    "save_geotiff_esri_landcover",
+    "save_geotiff_open_buildings_temporal",
+    "save_geotiff_dsm_minus_dtm",
+}
+
+
+def __getattr__(name):
+    if name == "gee":
+        import importlib
+        return importlib.import_module(".gee", __name__)
+    if name in _GEE_ATTRS:
+        import importlib
+        module = importlib.import_module(".gee", __name__)
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | {"gee"} | _GEE_ATTRS)
+
 
 __all__ = [
     # mbfp
