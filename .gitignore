@@ -131,6 +131,9 @@ app/output/
 app/cache/
 .superpowers/
 
+# Root-level download/experiment cache
+/cache/
+
 
 # Git worktrees
 .worktrees/
