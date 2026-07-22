@@ -560,8 +560,12 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
               Example: ``{2: {'veg': '0200H1'}, 12: {'mat': '0200AR'}}``
             - rooftop_vegetation (bool): If True, keep 1D vegetation (grass, shrubs)
               on building cells (e.g. green roofs). Default False (remove them).
+            - generate_plant_db (bool): If True (default), also write
+              projectdatabase.edb next to the INX so 3D-plant IDs resolve in
+              ENVI-met. Register it as the project plant database in ENVI-met
+              Spaces.
             - Other kwargs are passed to create_xml_content().
-            
+
     Notes:
         - Creates output directory if it doesn't exist
         - Handles grid preparation and transformation
@@ -575,6 +579,7 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
 
     # Extract mapping overrides from kwargs
     envimet_mapping = kwargs.pop('envimet_mapping', None)
+    generate_plant_db = kwargs.pop('generate_plant_db', True)
 
     # Prepare grids
     building_height_grid_inx, building_id_grid, land_cover_veg_grid_inx, land_cover_mat_grid_inx, canopy_height_grid_inx, dem_grid_inx = prepare_grids(
@@ -595,6 +600,16 @@ def export_inx(city: VoxCity, output_directory: str, file_basename: str = 'voxci
     os.makedirs(output_dir, exist_ok=True)
     output_file_path = os.path.join(output_dir, f"{file_basename}.INX")
     save_file(xml_content, output_file_path)
+
+    # Emit the plant database so the HxxW01 3D-plant IDs referenced in the INX
+    # resolve when the model is opened in ENVI-met. Register this file as the
+    # project plant database in ENVI-met Spaces (project settings).
+    if generate_plant_db:
+        generate_edb_file(
+            output_dir=output_dir,
+            lad=kwargs.get('lad'),
+            trunk_height_ratio=kwargs.get('trunk_height_ratio'),
+        )
 
 
 class EnvimetExporter:
