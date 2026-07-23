@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 from shapely.geometry import mapping
 
+from ..utils.cache import cached_download
+
 __all__ = ["load_gdf_from_overture"]
 
 def convert_numpy_to_python(obj):
@@ -185,6 +187,7 @@ def join_gdfs_vertically(gdf1, gdf2):
     
     return combined_gdf
 
+@cached_download
 def load_gdf_from_overture(rectangle_vertices, floor_height=3.0):
     """
     Download and process building footprint data from Overture Maps.

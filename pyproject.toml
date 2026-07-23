@@ -68,6 +68,7 @@ fastapi = "*"
 httpx = "*"
 python-multipart = "*"
 manifold3d = "*"
+pytest-benchmark = "*"
 
 [tool.poetry.extras]
 gpu = ["taichi"]

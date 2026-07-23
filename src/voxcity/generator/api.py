@@ -426,7 +426,14 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         terrain_gdf: Optional pre-loaded terrain GeoDataFrame
         **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O.
                   Performance options include:
-                  - parallel_download: bool, if True downloads run concurrently (default: False)
+                  - parallel_download: bool, if True downloads run concurrently (default: True; set False to force sequential downloads)
+                  - use_download_cache: bool, if True (default) vector downloads (OSM, MBFP,
+                    EUBUCCO, Overture, GBA) are cached on disk and re-runs of the same
+                    rectangle/source/params reuse the cached result instead of re-downloading.
+                    Cache dir resolves from VOXCITY_CACHE_DIR env var, else ~/.voxcity/cache.
+                    Set False to always download fresh.
+                  - force_refresh: bool, if True bypasses any existing cache entry and
+                    re-downloads, refreshing the cache (default: False)
                   I/O options include:
                   - output_dir: Directory for intermediate/downloaded data (default: "output")
                   - save_path: Full file path to save the VoxCity object (overrides output_dir default)
@@ -609,7 +616,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     io_options = {k: v for k, v in kwargs.items() if k in io_keys}
 
     # Parallel download mode
-    parallel_download = kwargs.get("parallel_download", False)
+    parallel_download = kwargs.get("parallel_download", True)
 
     cfg = PipelineConfig(
         rectangle_vertices=rectangle_vertices,
@@ -769,18 +776,24 @@ def get_voxcity_CityGML(rectangle_vertices, land_cover_source, canopy_height_sou
 
     if (building_complementary_source is not None) and (building_complementary_source != "None"):
         floor_height = kwargs.get("floor_height", 3.0)
+        # Forward the on-disk download cache controls to the @cached_download
+        # downloader calls below (consumed there, not by this function).
+        _cache_kwargs = {
+            "use_download_cache": kwargs.get("use_download_cache", True),
+            "force_refresh": kwargs.get("force_refresh", False),
+        }
         if building_complementary_source == 'Microsoft Building Footprints':
-            gdf_comp = get_mbfp_gdf(kwargs.get("output_dir", "output"), rectangle_vertices)
+            gdf_comp = get_mbfp_gdf(kwargs.get("output_dir", "output"), rectangle_vertices, **_cache_kwargs)
         elif building_complementary_source == 'OpenStreetMap':
-            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
+            gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
         elif building_complementary_source == 'EUBUCCO v0.1':
-            gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"))
+            gdf_comp = load_gdf_from_eubucco(rectangle_vertices, kwargs.get("output_dir", "output"), **_cache_kwargs)
         elif building_complementary_source == 'Overture':
-            gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+            gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
         elif building_complementary_source in ("GBA", "Global Building Atlas"):
             clip_gba = kwargs.get("gba_clip", False)
             gba_download_dir = kwargs.get("gba_download_dir")
-            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
+            gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba, **_cache_kwargs)
         elif building_complementary_source == 'Local file':
             comp_path = kwargs.get("building_complementary_path")
             if comp_path is not None:
