@@ -143,7 +143,7 @@ class VoxCityPipeline:
         dem_strategy = DemSourceFactory.create(cfg.dem_source)
 
         # Check if parallel download is enabled
-        parallel_download = getattr(cfg, 'parallel_download', False)
+        parallel_download = getattr(cfg, 'parallel_download', True)
 
         if parallel_download and cfg.canopy_height_source != "Static":
             # All 4 downloads are independent - run in parallel

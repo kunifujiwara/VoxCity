@@ -426,7 +426,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
         terrain_gdf: Optional pre-loaded terrain GeoDataFrame
         **kwargs: Additional options for building, land cover, canopy, DEM, visualization, and I/O.
                   Performance options include:
-                  - parallel_download: bool, if True downloads run concurrently (default: False)
+                  - parallel_download: bool, if True downloads run concurrently (default: True; set False to force sequential downloads)
                   - use_download_cache: bool, if True (default) vector downloads (OSM, MBFP,
                     EUBUCCO, Overture, GBA) are cached on disk and re-runs of the same
                     rectangle/source/params reuse the cached result instead of re-downloading.
@@ -616,7 +616,7 @@ def get_voxcity(rectangle_vertices, meshsize, building_source=None, land_cover_s
     io_options = {k: v for k, v in kwargs.items() if k in io_keys}
 
     # Parallel download mode
-    parallel_download = kwargs.get("parallel_download", False)
+    parallel_download = kwargs.get("parallel_download", True)
 
     cfg = PipelineConfig(
         rectangle_vertices=rectangle_vertices,
