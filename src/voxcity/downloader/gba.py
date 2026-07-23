@@ -32,6 +32,8 @@ import pandas as pd
 import requests
 from shapely.geometry import Polygon
 
+from ..utils.cache import cached_download
+
 __all__ = ["load_gdf_from_gba"]
 
 
@@ -138,6 +140,7 @@ def _filter_to_rectangle(gdf: gpd.GeoDataFrame, rectangle: Polygon, clip: bool) 
     return gdf
 
 
+@cached_download
 def load_gdf_from_gba(
     rectangle_vertices: Sequence[Tuple[float, float]],
     base_url: str = "https://data.source.coop/tge-labs/globalbuildingatlas-lod1",

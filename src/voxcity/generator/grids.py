@@ -59,6 +59,13 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
         if print_class_info:
             _logger.info(get_source_class_descriptions(source))
 
+    # Forward the on-disk download cache controls to any @cached_download
+    # downloader calls below (they are consumed there, not by this function).
+    _cache_kwargs = {
+        "use_download_cache": kwargs.get("use_download_cache", True),
+        "force_refresh": kwargs.get("force_refresh", False),
+    }
+
     if source not in ["OpenStreetMap", "OpenEarthMapJapan"]:
         try:
             initialize_earth_engine()
@@ -86,7 +93,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             if not quiet:
                 _logger.info("Urbanwatch coverage not found for AOI; falling back to OpenStreetMap (reason: %s)", e)
             effective_source = 'OpenStreetMap'
-            land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
+            land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     elif source == 'ESA WorldCover':
         roi = get_roi(rectangle_vertices)
         save_geotiff_esa_land_cover(roi, geotiff_path)
@@ -133,7 +140,7 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
                 "You can try setting ssl_verify=False or allow_http_fallback=True in kwargs."
             )
     elif source == 'OpenStreetMap':
-        land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
+        land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices, **_cache_kwargs)
     else:
         raise ValueError(
             f"Unknown land_cover_source: {source!r}. Valid sources are: "
@@ -188,6 +195,13 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
         _logger.info("Creating Building Height grid\n ")
         _logger.info(f"Base data source: {source}")
 
+    # Forward the on-disk download cache controls to any @cached_download
+    # downloader calls below (they are consumed there, not by this function).
+    _cache_kwargs = {
+        "use_download_cache": kwargs.get("use_download_cache", True),
+        "force_refresh": kwargs.get("force_refresh", False),
+    }
+
     os.makedirs(output_dir, exist_ok=True)
 
     if building_gdf is not None:
@@ -197,19 +211,19 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     else:
         floor_height = kwargs.get("floor_height", 3.0)
         if source == 'Microsoft Building Footprints':
-            gdf = get_mbfp_gdf(output_dir, rectangle_vertices)
+            gdf = get_mbfp_gdf(output_dir, rectangle_vertices, **_cache_kwargs)
         elif source == 'OpenStreetMap':
-            gdf = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
+            gdf = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
         elif source == "Open Building 2.5D Temporal":
             building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_open_building_temporal_polygon(meshsize, rectangle_vertices, output_dir)
         elif source == 'EUBUCCO v0.1':
-            gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir)
+            gdf = load_gdf_from_eubucco(rectangle_vertices, output_dir, **_cache_kwargs)
         elif source == "Overture":
-            gdf = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+            gdf = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
         elif source in ("GBA", "Global Building Atlas"):
             clip_gba = kwargs.get("gba_clip", False)
             gba_download_dir = kwargs.get("gba_download_dir")
-            gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
+            gdf = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba, **_cache_kwargs)
         elif source == "Local file":
             _, extension = os.path.splitext(kwargs["building_path"])
             if extension == ".gpkg":
@@ -265,17 +279,17 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
                 building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
         else:
             if building_complementary_source == 'Microsoft Building Footprints':
-                gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices)
+                gdf_comp = get_mbfp_gdf(output_dir, rectangle_vertices, **_cache_kwargs)
             elif building_complementary_source == 'OpenStreetMap':
-                gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height)
+                gdf_comp = load_gdf_from_openstreetmap(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
             elif building_complementary_source == 'EUBUCCO v0.1':
-                gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir)
+                gdf_comp = load_gdf_from_eubucco(rectangle_vertices, output_dir, **_cache_kwargs)
             elif building_complementary_source == "Overture":
-                gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height)
+                gdf_comp = load_gdf_from_overture(rectangle_vertices, floor_height=floor_height, **_cache_kwargs)
             elif building_complementary_source in ("GBA", "Global Building Atlas"):
                 clip_gba = kwargs.get("gba_clip", False)
                 gba_download_dir = kwargs.get("gba_download_dir")
-                gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba)
+                gdf_comp = load_gdf_from_gba(rectangle_vertices, download_dir=gba_download_dir, clip_to_rectangle=clip_gba, **_cache_kwargs)
             elif building_complementary_source == "Local file":
                 _, extension = os.path.splitext(kwargs["building_complementary_path"])
                 if extension == ".gpkg":

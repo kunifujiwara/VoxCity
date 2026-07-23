@@ -28,6 +28,7 @@ import pandas as pd
 import geopandas as gpd
 
 from ..errors import DownloaderError
+from ..utils.cache import cached_download
 from ..utils.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -530,6 +531,7 @@ def create_rings_from_ways(way_ids, ways, nodes):
     
     return rings
 
+@cached_download
 def load_gdf_from_openstreetmap(rectangle_vertices, floor_height=3.0):
     """Download and process building footprint data from OpenStreetMap.
     
@@ -1012,6 +1014,7 @@ def get_classification(tags):
         return 11, 'Road'
     return None, None
 
+@cached_download
 def load_land_cover_gdf_from_osm(rectangle_vertices_ori):
     """Load and classify land cover data from OpenStreetMap.
     

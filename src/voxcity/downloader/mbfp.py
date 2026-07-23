@@ -21,6 +21,7 @@ import os
 from .utils import download_file
 from ..geoprocessor.utils import tile_from_lat_lon, quadkey_to_tile
 from ..geoprocessor.io import load_gdf_from_multiple_gz
+from ..utils.cache import cached_download
 
 __all__ = ["get_mbfp_gdf"]
 
@@ -101,6 +102,7 @@ def find_row_for_location(df, lon, lat):
             print(f"Error processing row {index}: {e}")
     return None
 
+@cached_download
 def get_mbfp_gdf(output_dir, rectangle_vertices):
     """Download and process building footprint data for a rectangular region.
     

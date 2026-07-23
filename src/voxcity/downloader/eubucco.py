@@ -42,6 +42,7 @@ import geopandas as gpd
 from ..errors import DownloaderError
 
 from ..geoprocessor.utils import get_country_name
+from ..utils.cache import cached_download
 
 __all__ = ["load_gdf_from_eubucco", "get_gdf_from_eubucco"]
 
@@ -344,6 +345,7 @@ def get_gdf_from_eubucco(rectangle_vertices, country_links, output_dir, file_nam
     
     return gdf
 
+@cached_download
 def load_gdf_from_eubucco(rectangle_vertices, output_dir):
     """
     Downloads EUBUCCO data and loads it as GeoJSON.
