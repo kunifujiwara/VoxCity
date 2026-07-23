@@ -28,6 +28,9 @@ import pandas as pd
 import geopandas as gpd
 
 from ..errors import DownloaderError
+from ..utils.logging import get_logger
+
+_logger = get_logger(__name__)
 
 __all__ = [
     "load_gdf_from_openstreetmap",
@@ -46,16 +49,20 @@ OVERPASS_ENDPOINTS = [
 ]
 
 
-def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5.0, 
-                                 backoff_factor=2.0, endpoints=None):
+def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5.0,
+                                 backoff_factor=2.0, endpoints=None, connect_timeout=8.0):
     """Fetch data from Overpass API with retry logic and exponential backoff.
-    
+
     This function tries multiple Overpass API endpoints and retries on transient
-    failures with exponential backoff delays between attempts.
-    
+    failures with exponential backoff delays between attempts. Endpoints that fail
+    to connect at all (DNS/connect-timeout/refused) are treated as dead for the
+    remainder of the call and skipped on subsequent attempts/cycles, so a single
+    unreachable mirror can't stall every retry.
+
     Args:
         query (str): The Overpass QL query to execute
-        timeout (int): Request timeout in seconds. Defaults to 30.
+        timeout (int): Read timeout in seconds, applied once a connection is
+            established. Defaults to 60.
         max_retries (int): Maximum number of retry attempts per full endpoint cycle.
             Defaults to 3.
         initial_delay (float): Initial delay in seconds before first retry.
@@ -64,45 +71,62 @@ def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5
             Defaults to 2.0 (delays: 5s, 10s, 20s, ...).
         endpoints (list, optional): List of Overpass API endpoint URLs to try.
             Defaults to OVERPASS_ENDPOINTS.
-            
+        connect_timeout (float): TCP connect timeout in seconds, kept short so a
+            dead endpoint fails fast instead of stalling for the full read
+            timeout. Defaults to 8.0.
+
     Returns:
         dict: Parsed JSON response from Overpass API containing 'elements' key
-        
+
     Raises:
-        RuntimeError: If all endpoints and retries are exhausted without success
+        DownloaderError: If all endpoints and retries are exhausted without success
     """
     if endpoints is None:
         endpoints = OVERPASS_ENDPOINTS
-    
+
     headers = {"User-Agent": "voxcity/ci (https://github.com/voxcity)"}
     last_error = None
-    
+    dead_endpoints = set()
+
     for retry in range(max_retries):
         if retry > 0:
             delay = initial_delay * (backoff_factor ** (retry - 1))
-            print(f"  Retry {retry}/{max_retries - 1}: waiting {delay:.1f}s before next attempt...")
+            _logger.info(
+                "Retry %d/%d: waiting %.1fs before next attempt...",
+                retry, max_retries - 1, delay,
+            )
             time.sleep(delay)
-        
+
         for overpass_url in endpoints:
+            if overpass_url in dead_endpoints:
+                continue
             try:
                 response = requests.get(
-                    overpass_url, 
-                    params={"data": query}, 
-                    headers=headers, 
-                    timeout=timeout
+                    overpass_url,
+                    params={"data": query},
+                    headers=headers,
+                    timeout=(connect_timeout, timeout)
                 )
-                
+
                 # Check for rate limiting (HTTP 429) or server errors (5xx)
                 if response.status_code == 429:
                     last_error = Exception(f"Rate limited (HTTP 429) from {overpass_url}")
+                    _logger.info("Overpass attempt failed: rate limited (HTTP 429) from %s", overpass_url)
                     continue
                 if response.status_code >= 500:
                     last_error = Exception(f"Server error (HTTP {response.status_code}) from {overpass_url}")
+                    _logger.info(
+                        "Overpass attempt failed: server error (HTTP %s) from %s",
+                        response.status_code, overpass_url,
+                    )
                     continue
                 if response.status_code != 200:
                     last_error = Exception(f"HTTP {response.status_code} from {overpass_url}")
+                    _logger.info(
+                        "Overpass attempt failed: HTTP %s from %s", response.status_code, overpass_url
+                    )
                     continue
-                
+
                 # Some servers return HTML/plain text on rate-limit; guard JSON parsing
                 content_type = response.headers.get("Content-Type", "")
                 if "json" not in content_type.lower():
@@ -111,28 +135,52 @@ def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5
                         data = response.json()
                     except Exception as e:
                         last_error = e
+                        _logger.info(
+                            "Overpass attempt failed: non-JSON response from %s (%s)", overpass_url, e
+                        )
                         continue
                 else:
                     data = response.json()
-                
+
                 # Validate structure
                 if not isinstance(data, dict) or "elements" not in data:
                     last_error = Exception(f"Malformed Overpass response from {overpass_url}")
+                    _logger.info("Overpass attempt failed: malformed response from %s", overpass_url)
                     continue
-                
+
                 # Success!
                 return data
-                
-            except requests.exceptions.Timeout:
-                last_error = Exception(f"Timeout after {timeout}s from {overpass_url}")
-                continue
+
             except requests.exceptions.ConnectionError as e:
+                # NOTE: requests.exceptions.ConnectTimeout subclasses BOTH
+                # ConnectionError and Timeout, so this except clause must come
+                # before the generic Timeout handler below. A ConnectionError
+                # (including a connect-timeout) means the endpoint is
+                # unreachable rather than merely slow, so mark it dead for the
+                # rest of this call instead of paying the full timeout again
+                # on every retry cycle.
                 last_error = Exception(f"Connection error from {overpass_url}: {e}")
+                dead_endpoints.add(overpass_url)
+                _logger.info(
+                    "Overpass endpoint unreachable, marking dead for this call: %s (%s)",
+                    overpass_url, e,
+                )
+                continue
+            except requests.exceptions.Timeout:
+                # A read timeout (connection succeeded, server was slow) is
+                # transient - the endpoint stays eligible for later retries.
+                last_error = Exception(f"Timeout after {timeout}s from {overpass_url}")
+                _logger.info("Overpass attempt failed: timeout after %ss from %s", timeout, overpass_url)
                 continue
             except Exception as e:
                 last_error = e
+                _logger.info("Overpass attempt failed: %s from %s", e, overpass_url)
                 continue
-    
+
+        if endpoints and all(ep in dead_endpoints for ep in endpoints):
+            _logger.info("All Overpass endpoints are dead; aborting early without further backoff.")
+            break
+
     raise DownloaderError(
         f"Failed to fetch OSM data from Overpass endpoints after {max_retries} attempts. "
         f"Last error: {last_error}"
