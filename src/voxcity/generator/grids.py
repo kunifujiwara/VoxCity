@@ -227,10 +227,12 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     building_complement_height = kwargs.get("building_complement_height")
     overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
-    if source == "Open Building 2.5D Temporal":
+    if source == "Open Building 2.5D Temporal" and building_gdf is None:
         # Raster-only base source already produced the height grids above and
         # has no vector `gdf` to merge a complementary raster into. Ignore any
         # complementary source rather than dereferencing an unassigned `gdf`.
+        # (When a caller supplies building_gdf explicitly, fall through to the
+        # gdf-merge branches below so their provided footprints are used.)
         if building_complementary_source not in (None, "", "None") and not quiet:
             _logger.info(
                 "Ignoring complementary source %r: base source %r is raster-only (no vector footprints).",

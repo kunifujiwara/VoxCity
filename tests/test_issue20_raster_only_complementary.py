@@ -65,3 +65,46 @@ def test_raster_only_base_with_complementary_does_not_raise(monkeypatch):
         quiet=True,
     )
     assert np.array_equal(height, sentinel_height)
+
+
+def test_temporal_source_with_provided_gdf_uses_the_gdf(monkeypatch):
+    """When a caller supplies building_gdf AND labels the source raster-only,
+    the temporal-raster branch is skipped (grids are not computed there), so
+    the provided gdf must flow through the vector-merge path instead of
+    leaving the return grids unassigned (would UnboundLocalError)."""
+    import geopandas as gpd
+
+    rect = [(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.001)]
+    shape = (4, 4)
+    merged_height = np.full(shape, 3.0)
+
+    monkeypatch.setattr(gee_mod, "initialize_earth_engine", lambda *a, **k: None)
+
+    # The temporal raster builder must NOT run when a gdf is provided.
+    def fail_temporal(*a, **k):
+        raise AssertionError("temporal raster builder must not run when building_gdf is provided")
+
+    monkeypatch.setattr(
+        grids_mod,
+        "create_building_height_grid_from_open_building_temporal_polygon",
+        fail_temporal,
+    )
+
+    # The provided gdf must be merged via the vector path.
+    def fake_from_gdf(gdf_, *a, **k):
+        return merged_height, np.zeros(shape), np.zeros(shape, dtype=int), gdf_
+
+    monkeypatch.setattr(grids_mod, "create_building_height_grid_from_gdf_polygon", fake_from_gdf)
+
+    provided = gpd.GeoDataFrame()
+    height, _min, _ids, _bld = grids_mod.get_building_height_grid(
+        rect,
+        5.0,
+        source="Open Building 2.5D Temporal",
+        output_dir="output",
+        building_gdf=provided,
+        building_complementary_source="None",
+        gridvis=False,
+        quiet=True,
+    )
+    assert np.array_equal(height, merged_height)
