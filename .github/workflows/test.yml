@@ -99,3 +99,56 @@ jobs:
         run: python -m pip install ruff==0.15.22
       - name: Ruff check
         run: ruff check src
+
+  bench:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: "3.12"
+          channels: conda-forge
+          miniforge-variant: Miniforge3
+          use-mamba: true
+
+      - name: Install conda dependencies (with retry via mamba)
+        shell: bash -l {0}
+        run: |
+          conda config --set channel_priority strict
+          for attempt in {1..5}; do \
+            mamba install -y \
+              gdal proj geos libspatialindex \
+              fiona rasterio shapely pyproj rtree \
+              geopandas llvmlite numba osmnx && break || { \
+                echo "mamba install failed (attempt $attempt). Retrying in 15s..."; \
+                sleep 15; \
+              }; \
+          done
+
+      - name: Install package + benchmark deps
+        shell: bash -l {0}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-benchmark fastapi httpx python-multipart manifold3d
+          python -m pip install .
+
+      - name: Run benchmarks
+        shell: bash -l {0}
+        env:
+          NUMBA_DISABLE_JIT: "0"
+        run: pytest bench --benchmark-only --benchmark-json=bench.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench.json
