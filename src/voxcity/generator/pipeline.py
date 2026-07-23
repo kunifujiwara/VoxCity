@@ -472,7 +472,24 @@ class VoxCityPipeline:
         bh, bmin, bid, building_gdf_out = results['building']
         canopy_top, canopy_bottom = results['canopy']
         dem = results['dem']
-        
+
+        # The canopy worker runs before land cover is available and receives a
+        # 1x1 placeholder grid. A canopy source that falls back to the Static
+        # land-cover mask (e.g. Earth Engine unavailable) therefore returns a
+        # 1x1 grid — detectable as a shape mismatch. Now that the real land
+        # cover grid exists, recompute static canopy from it so parallel mode
+        # degrades exactly like sequential mode.
+        if canopy_top.shape != land_cover_grid.shape:
+            logger.info(
+                "Repairing canopy grid from land cover after parallel downloads "
+                "(canopy source %r fell back without a usable land-cover mask).",
+                cfg.canopy_height_source,
+            )
+            canopy_top, canopy_bottom = StaticCanopyStrategy(cfg).build_grids(
+                cfg.rectangle_vertices, cfg.meshsize, land_cover_grid, cfg.output_dir,
+                **{**canopy_opts, **parallel_kwargs},
+            )
+
         return land_cover_grid, bh, bmin, bid, building_gdf_out, canopy_top, canopy_bottom, dem, lc_src_effective
 
     def _run_parallel_downloads_static_canopy(

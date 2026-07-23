@@ -331,8 +331,18 @@ def get_canopy_height_grid(rectangle_vertices, meshsize, source, output_dir, **k
     if source == 'Static':
         land_cover_grid = kwargs.get('land_cover_like')
         if land_cover_grid is None:
-            # Minimal fallback if caller didn't provide land_cover_like
-            canopy_top = np.zeros((1, 1), dtype=float)
+            # No land-cover mask provided: return zero canopy at the correct
+            # grid shape so downstream shape checks hold for direct callers.
+            # (The parallel pipeline passes a 1x1 placeholder instead of None;
+            # that flows through the mask path below, and the resulting 1x1
+            # grid is the signal _run_parallel_downloads uses to recompute
+            # static canopy from the real land cover grid after the join.)
+            if rectangle_vertices is not None:
+                from ..geoprocessor.raster.core import compute_grid_shape
+                shape = compute_grid_shape(rectangle_vertices, meshsize)
+            else:
+                shape = (1, 1)
+            canopy_top = np.zeros(shape, dtype=float)
             trunk_height_ratio = kwargs.get('trunk_height_ratio')
             if trunk_height_ratio is None:
                 trunk_height_ratio = 11.76 / 19.98
