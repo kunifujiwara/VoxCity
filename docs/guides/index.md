@@ -10,6 +10,7 @@ noted, Google Earth Engine authenticated.
 earth_engine
 data_sources
 rhino_obj_import
+envimet_export
 ```
 
 ## Guides at a glance
@@ -19,3 +20,5 @@ rhino_obj_import
 - {doc}`data_sources` — choose and mix building, land cover, canopy height, and
   terrain sources for your area.
 - {doc}`rhino_obj_import` — import an exported OBJ model into Rhino.
+- {doc}`envimet_export` — export to ENVI-met and register the plant database
+  so tree IDs resolve.

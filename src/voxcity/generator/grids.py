@@ -90,14 +90,29 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
     elif source == 'ESA WorldCover':
         roi = get_roi(rectangle_vertices)
         save_geotiff_esa_land_cover(roi, geotiff_path)
+        if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
+            raise ProcessingError(
+                f"{source} export produced no file at {geotiff_path}. The AOI may "
+                f"lack coverage for this dataset, or the Earth Engine export failed."
+            )
     elif source == 'ESRI 10m Annual Land Cover':
         esri_landcover_year = kwargs.get("esri_landcover_year")
         roi = get_roi(rectangle_vertices)
         save_geotiff_esri_landcover(roi, geotiff_path, year=esri_landcover_year)
+        if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
+            raise ProcessingError(
+                f"{source} export produced no file at {geotiff_path}. The AOI may "
+                f"lack coverage for this dataset, or the Earth Engine export failed."
+            )
     elif source == 'Dynamic World V1':
         dynamic_world_date = kwargs.get("dynamic_world_date")
         roi = get_roi(rectangle_vertices)
         save_geotiff_dynamic_world_v1(roi, geotiff_path, dynamic_world_date)
+        if (not os.path.exists(geotiff_path)) or (os.path.getsize(geotiff_path) == 0):
+            raise ProcessingError(
+                f"{source} export produced no file at {geotiff_path}. The AOI may "
+                f"lack coverage for this dataset, or the Earth Engine export failed."
+            )
     elif source == 'OpenEarthMapJapan':
         ssl_verify = kwargs.get('ssl_verify', kwargs.get('verify', True))
         allow_insecure_ssl = kwargs.get('allow_insecure_ssl', False)
@@ -119,6 +134,12 @@ def get_land_cover_grid(rectangle_vertices, meshsize, source, output_dir, print_
             )
     elif source == 'OpenStreetMap':
         land_cover_gdf = load_land_cover_gdf_from_osm(rectangle_vertices)
+    else:
+        raise ValueError(
+            f"Unknown land_cover_source: {source!r}. Valid sources are: "
+            "'OpenStreetMap', 'OpenEarthMapJapan', 'ESA WorldCover', "
+            "'ESRI 10m Annual Land Cover', 'Dynamic World V1', 'Urbanwatch'."
+        )
 
     land_cover_classes = get_land_cover_classes(effective_source)
 
@@ -206,9 +227,19 @@ def get_building_height_grid(rectangle_vertices, meshsize, source, output_dir, b
     building_complement_height = kwargs.get("building_complement_height")
     overlapping_footprint = kwargs.get("overlapping_footprint", "auto")
 
-    if (building_complementary_source is None) or (building_complementary_source=='None'):
-        if source != "Open Building 2.5D Temporal":
-            building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
+    if source == "Open Building 2.5D Temporal" and building_gdf is None:
+        # Raster-only base source already produced the height grids above and
+        # has no vector `gdf` to merge a complementary raster into. Ignore any
+        # complementary source rather than dereferencing an unassigned `gdf`.
+        # (When a caller supplies building_gdf explicitly, fall through to the
+        # gdf-merge branches below so their provided footprints are used.)
+        if building_complementary_source not in (None, "", "None") and not quiet:
+            _logger.info(
+                "Ignoring complementary source %r: base source %r is raster-only (no vector footprints).",
+                building_complementary_source, source,
+            )
+    elif (building_complementary_source is None) or (building_complementary_source=='None'):
+        building_height_grid, building_min_height_grid, building_id_grid, filtered_buildings = create_building_height_grid_from_gdf_polygon(gdf, meshsize, rectangle_vertices, complement_height=building_complement_height, overlapping_footprint=overlapping_footprint)
     else:
         if building_complementary_source == "Open Building 2.5D Temporal":
             try:
