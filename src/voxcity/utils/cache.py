@@ -15,6 +15,11 @@ failure falls back to a fresh download. Layout:
 
 The cache directory resolves, in order: the VOXCITY_CACHE_DIR environment
 variable, else ``~/.voxcity/cache``.
+
+Entries never expire on their own: a cached rectangle is reused until the
+caller passes ``force_refresh=True`` or ``clear_download_cache()`` is run.
+Empty results (None or a zero-length GeoDataFrame/collection) are NOT cached,
+so a transient upstream outage cannot poison future runs.
 """
 
 import functools
@@ -70,6 +75,16 @@ def _cache_key(func, args, kwargs) -> str:
     return hashlib.blake2b(digest_input, digest_size=16).hexdigest()
 
 
+def _is_empty_result(value) -> bool:
+    """True when a download produced no usable data (never worth caching)."""
+    if value is None:
+        return True
+    try:
+        return len(value) == 0
+    except TypeError:
+        return False
+
+
 def cached_download(func):
     """Cache a downloader's return value on disk, keyed by its arguments.
 
@@ -98,9 +113,18 @@ def cached_download(func):
                 _logger.info("Cache read failed for %s (%s); re-downloading", func.__name__, e)
 
         value = func(*args, **kwargs)
+        if _is_empty_result(value):
+            # A stressed server can return a valid-but-empty payload; caching
+            # it would silently pin "no data" for this rectangle forever.
+            _logger.info("Not caching empty %s result", func.__name__)
+            return value
         try:
-            with open(path, "wb") as f:
+            # Write via a temp file + atomic replace so a concurrent reader or
+            # an interrupted run can never observe a torn pickle.
+            tmp_path = path.with_suffix(".pkl.tmp")
+            with open(tmp_path, "wb") as f:
                 pickle.dump(value, f)
+            os.replace(tmp_path, path)
             meta = {"function": func.__qualname__, "created": time.time()}
             with open(path.with_suffix(".meta.json"), "w") as f:
                 json.dump(meta, f)

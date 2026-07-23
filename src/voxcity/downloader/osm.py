@@ -65,7 +65,7 @@ def _fetch_overpass_with_retry(query, timeout=60, max_retries=5, initial_delay=5
         timeout (int): Read timeout in seconds, applied once a connection is
             established. Defaults to 60.
         max_retries (int): Maximum number of retry attempts per full endpoint cycle.
-            Defaults to 3.
+            Defaults to 5.
         initial_delay (float): Initial delay in seconds before first retry.
             Defaults to 5.0 seconds.
         backoff_factor (float): Multiplier for delay between retries (exponential backoff).

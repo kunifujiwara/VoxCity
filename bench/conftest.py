@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -7,8 +8,18 @@ from pathlib import Path
 # the real tests/conftest.py module.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
 
+# tests/conftest.py sets NUMBA_DISABLE_JIT=1 for fast unit tests. Benchmarks
+# exist to measure the JIT-compiled kernels, so restore the caller's setting
+# (default: JIT enabled) before numba is first imported by any bench module.
+_pre_import_jit = os.environ.get("NUMBA_DISABLE_JIT")
+
 import pytest
 from conftest import make_city  # tests/conftest.py
+
+if _pre_import_jit is None:
+    os.environ["NUMBA_DISABLE_JIT"] = "0"
+else:
+    os.environ["NUMBA_DISABLE_JIT"] = _pre_import_jit
 
 
 @pytest.fixture

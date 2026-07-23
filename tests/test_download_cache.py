@@ -102,6 +102,26 @@ def test_output_dir_excluded_from_cache_key(isolated_cache_dir):
     assert calls["n"] == 1
 
 
+def _one_building_payload():
+    """Minimal valid Overpass response: one closed building way.
+
+    The production query uses ``out geom;``, so ways carry an inline
+    ``geometry`` list of {lat, lon} points (see osm.py's element processing).
+    Non-empty on purpose: empty results are deliberately never cached, so the
+    caching assertion below needs a payload that yields at least one feature.
+    """
+    corners = [(0.0002, 0.0002), (0.0006, 0.0002), (0.0006, 0.0006), (0.0002, 0.0006)]
+    ring = corners + [corners[0]]
+    way = {
+        "type": "way",
+        "id": 100,
+        "nodes": [1, 2, 3, 4, 1],
+        "geometry": [{"lon": lon, "lat": lat} for lon, lat in ring],
+        "tags": {"building": "yes", "height": "12"},
+    }
+    return {"elements": [way]}
+
+
 def test_osm_download_cached_end_to_end(isolated_cache_dir, monkeypatch):
     from voxcity.downloader import osm as osm_mod
 
@@ -109,13 +129,29 @@ def test_osm_download_cached_end_to_end(isolated_cache_dir, monkeypatch):
 
     def fake_fetch(query, **kw):
         calls["n"] += 1
-        return {"elements": []}
+        return _one_building_payload()
 
     monkeypatch.setattr(osm_mod, "_fetch_overpass_with_retry", fake_fetch)
     rect = [(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.001)]
-    osm_mod.load_gdf_from_openstreetmap(rect)
-    osm_mod.load_gdf_from_openstreetmap(rect)
+    first = osm_mod.load_gdf_from_openstreetmap(rect)
+    second = osm_mod.load_gdf_from_openstreetmap(rect)
+    assert len(first) > 0, "payload must produce a feature or the cache path is untested"
     assert calls["n"] == 1
+    assert len(second) == len(first)
+
+
+def test_empty_download_result_is_not_cached(isolated_cache_dir):
+    calls = {"n": 0}
+
+    @cache_mod.cached_download
+    def fake_download(rectangle_vertices=None):
+        calls["n"] += 1
+        return []  # empty: must not be cached
+
+    rect = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    fake_download(rect)
+    fake_download(rect)
+    assert calls["n"] == 2
 
 
 def test_use_download_cache_and_force_refresh_reach_downloader(isolated_cache_dir, monkeypatch):
