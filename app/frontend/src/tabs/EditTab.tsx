@@ -20,6 +20,7 @@ import {
   PendingEditDto,
 } from '../api';
 import { ChoiceGroup, GuidedSection } from '../components/guided';
+import { useT } from '../i18n';
 import ThreeViewer from '../components/ThreeViewer';
 import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import PlanMapEditor, {
@@ -68,34 +69,39 @@ interface MethodSelectorProps {
   onMethodChange: (m: import('./editWorkflow').EditMethod) => void;
 }
 
-const MethodSelector: React.FC<MethodSelectorProps> = ({ target, task, method, onMethodChange }) => (
-  <div className="form-group">
-    <div className="guided-section-label">Method</div>
-    <ChoiceGroup
-      variant="checks"
-      ariaLabel="Edit method"
-      value={method}
-      onChange={onMethodChange}
-      options={methodOptionsForTask(target, task).map(({ tone: _tone, ...option }) => option)}
-    />
-  </div>
-);
+const MethodSelector: React.FC<MethodSelectorProps> = ({ target, task, method, onMethodChange }) => {
+  const t = useT();
+  return (
+    <div className="form-group">
+      <div className="guided-section-label">{t('editTab.methodLabel')}</div>
+      <ChoiceGroup
+        variant="checks"
+        ariaLabel={t('editTab.editMethodAria')}
+        value={method}
+        onChange={onMethodChange}
+        options={methodOptionsForTask(target, task).map(({ tone: _tone, ...option }) => option)}
+      />
+    </div>
+  );
+};
 
 function parameterSectionMeta(
+  t: ReturnType<typeof useT>,
   target: import('./editWorkflow').EditTarget,
   task: import('./editWorkflow').EditTask,
 ): { label: string; tone: 'default' | 'danger' } {
-  if (target === 'building' && task === 'add') return { label: 'ADD BUILDING', tone: 'default' };
-  if (target === 'building' && task === 'height') return { label: 'EDIT HEIGHT', tone: 'default' };
-  if (target === 'building' && task === 'remove') return { label: 'REMOVE BUILDING', tone: 'default' };
-  if (target === 'tree' && task === 'add') return { label: 'ADD TREE', tone: 'default' };
-  if (target === 'tree' && task === 'remove') return { label: 'REMOVE TREE', tone: 'default' };
-  if (target === 'land_cover' && task === 'paint') return { label: 'PAINT LAND COVER', tone: 'default' };
-  return { label: 'PARAMETERS', tone: 'default' };
+  if (target === 'building' && task === 'add') return { label: t('editTab.metaAddBuilding'), tone: 'default' };
+  if (target === 'building' && task === 'height') return { label: t('editTab.metaEditHeight'), tone: 'default' };
+  if (target === 'building' && task === 'remove') return { label: t('editTab.metaRemoveBuilding'), tone: 'default' };
+  if (target === 'tree' && task === 'add') return { label: t('editTab.metaAddTree'), tone: 'default' };
+  if (target === 'tree' && task === 'remove') return { label: t('editTab.metaRemoveTree'), tone: 'default' };
+  if (target === 'land_cover' && task === 'paint') return { label: t('editTab.metaPaintLandCover'), tone: 'default' };
+  return { label: t('editTab.metaParameters'), tone: 'default' };
 }
 
 
 const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited, previewDisabled = false, previewGridShape }) => {
+  const t = useT();
   const [workflow, setWorkflow] = useState(() => defaultWorkflowForTarget('building'));
   const mode = workflow.target;
   const action = actionForWorkflow(workflow);
@@ -223,11 +229,11 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
         setClassIndex(editable[0].index);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load map');
+      setError(err.message || t('editTab.errLoadMap'));
     } finally {
       setLoading(false);
     }
-  }, [hasModel, classIndex]);
+  }, [hasModel, classIndex, t]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -354,29 +360,29 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           if (cells.length === 0) return;
           addPending(
             { kind: 'add_trees', cells, tops, bottoms, height_m: treeTop, bottom_m: treeBottom },
-            `Buffered: add ellipsoid tree over ${cells.length} cell(s).`,
+            t('editTab.msgAddTree', { n: cells.length }),
           );
         } else if (mode === 'tree' && action === 'remove_click') {
           const cells = discCells(cell[0], cell[1], treeDiameter);
           if (cells.length === 0) return;
           addPending(
             { kind: 'delete_trees', cells },
-            `Buffered: clear canopy on ${cells.length} cell(s).`,
+            t('editTab.msgClearCanopy', { n: cells.length }),
           );
         } else if (mode === 'land_cover' && action === 'paint_click') {
           const color =
             editableClasses.find((c) => c.index === classIndex)?.color || '#888888';
           addPending(
             { kind: 'paint_lc', cells: [cell], class_index: classIndex, color },
-            `Buffered: repaint 1 cell.`,
+            t('editTab.msgRepaintOne'),
           );
         }
       } catch (err: any) {
-        setError(err.message || 'Edit failed');
+        setError(err.message || t('editTab.errEditFailed'));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, action, treeDiameter, treeTop, treeBottom, classIndex, geo, editableClasses, addPending, meshsize],
+    [mode, action, treeDiameter, treeTop, treeBottom, classIndex, geo, editableClasses, addPending, meshsize, t],
   );
 
   const handlePickBuilding = useCallback((bid: number) => {
@@ -384,14 +390,14 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
     if (action === 'remove_click') {
       addPending(
         { kind: 'delete_building', building_id: bid },
-        `Buffered: delete building #${bid}.`,
+        t('editTab.msgDeleteBuilding', { id: bid }),
       );
     } else if (action === 'set_height_click') {
       setSelectedBuildingIds((prev) =>
         prev.includes(bid) ? prev.filter((id) => id !== bid) : [...prev, bid],
       );
     }
-  }, [mode, action, addPending]);
+  }, [mode, action, addPending, t]);
 
   const handlePolygonComplete = useCallback(
     (ring: [number, number][]) => {
@@ -399,7 +405,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       try {
         if (mode === 'building' && (action === 'add_rect' || action === 'add_polygon')) {
           const cells = polygonCells(ring);
-          if (cells.length === 0) throw new Error('Footprint covers no cells.');
+          if (cells.length === 0) throw new Error(t('editTab.errFootprintNoCells'));
           addPending(
             {
               kind: 'add_building',
@@ -408,53 +414,53 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
               height_m: buildingHeight,
               min_height_m: buildingMinHeight,
             },
-            `Buffered: add building over ${cells.length} cell(s).`,
+            t('editTab.msgAddBuilding', { n: cells.length }),
           );
         } else if (mode === 'building' && action === 'remove_area') {
           const ids = buildingsInPolygon(geo.building_geojson, ring);
-          if (ids.length === 0) throw new Error('No buildings inside the polygon.');
+          if (ids.length === 0) throw new Error(t('editTab.errNoBuildingsInPolygon'));
           setPendingEdits((p) => [
             ...p,
             ...ids.map<PendingEdit>((bid) => ({ kind: 'delete_building', building_id: bid })),
           ]);
-          setInfo(`Buffered: delete ${ids.length} building(s).`);
+          setInfo(t('editTab.msgDeleteBuildings', { n: ids.length }));
           setError(null);
         } else if (mode === 'building' && action === 'set_height_area') {
           const ids = buildingsFullyContainedInPolygon(geo.building_geojson, ring);
-          if (ids.length === 0) throw new Error('No buildings fully inside the polygon.');
+          if (ids.length === 0) throw new Error(t('editTab.errNoBuildingsFullyInPolygon'));
           setSelectedBuildingIds(ids);
-          setInfo(`Selected ${ids.length} building(s) for height edit.`);
+          setInfo(t('editTab.msgSelectedForHeight', { n: ids.length }));
           setError(null);
         } else if (mode === 'tree' && action === 'add_area') {
           const cells = polygonCells(ring);
-          if (cells.length === 0) throw new Error('Polygon covers no cells.');
+          if (cells.length === 0) throw new Error(t('editTab.errPolygonNoCells'));
           addPending(
             { kind: 'add_trees', cells, height_m: treeTop, bottom_m: treeBottom },
-            `Buffered: add trees over ${cells.length} cell(s).`,
+            t('editTab.msgAddTrees', { n: cells.length }),
           );
         } else if (mode === 'tree' && action === 'remove_area') {
           const cells = polygonCells(ring);
-          if (cells.length === 0) throw new Error('Polygon covers no cells.');
+          if (cells.length === 0) throw new Error(t('editTab.errPolygonNoCells'));
           addPending(
             { kind: 'delete_trees', cells },
-            `Buffered: clear canopy on ${cells.length} cell(s).`,
+            t('editTab.msgClearCanopy', { n: cells.length }),
           );
         } else if (mode === 'land_cover' && action === 'paint_area') {
           const cells = polygonCells(ring);
-          if (cells.length === 0) throw new Error('Polygon covers no cells.');
+          if (cells.length === 0) throw new Error(t('editTab.errPolygonNoCells'));
           const color =
             editableClasses.find((c) => c.index === classIndex)?.color || '#888888';
           addPending(
             { kind: 'paint_lc', cells, class_index: classIndex, color },
-            `Buffered: repaint ${cells.length} cell(s).`,
+            t('editTab.msgRepaintCells', { n: cells.length }),
           );
         }
       } catch (err: any) {
-        setError(err.message || 'Edit failed');
+        setError(err.message || t('editTab.errEditFailed'));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, action, geo, buildingHeight, buildingMinHeight, treeTop, treeBottom, classIndex, editableClasses, addPending],
+    [mode, action, geo, buildingHeight, buildingMinHeight, treeTop, treeBottom, classIndex, editableClasses, addPending, t],
   );
 
   const handleApplyHeightEdit = useCallback(() => {
@@ -473,10 +479,10 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
         height_m: validated.height,
         ...(validated.minHeight != null ? { min_height_m: validated.minHeight } : {}),
       },
-      `Buffered: set height to ${validated.height} m for ${selectedBuildingIds.length} building(s).`,
+      t('editTab.msgSetHeight', { h: validated.height, n: selectedBuildingIds.length }),
     );
     setSelectedBuildingIds([]);
-  }, [selectedBuildingIds, heightEditValue, useMinHeightEdit, heightEditMinValue, addPending]);
+  }, [selectedBuildingIds, heightEditValue, useMinHeightEdit, heightEditMinValue, addPending, t]);
 
   /* ── Buffer management ─────────────────────────────────── */
   const handleUndoLast = useCallback(() => {
@@ -534,12 +540,12 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       onFigureChange(r.figure_json);
       onModelEdited?.();
       setPendingEdits([]);
-      setInfo(`Committed ${r.n_edits} edit(s); ${r.n_changed_total} cell(s) changed.`);
+      setInfo(t('editTab.msgCommitted', { edits: r.n_edits, cells: r.n_changed_total }));
       // Refresh baseline so newly created/deleted features appear in the
       // backdrop for the next round of edits.
       await reload();
     } catch (err: any) {
-      setError(err.message || '3D regeneration failed');
+      setError(err.message || t('editTab.errRegenFailed'));
     } finally {
       setCommitting(false);
     }
@@ -548,8 +554,8 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
   if (!hasModel) {
     return (
       <div className="panel">
-        <h2>Edit Model</h2>
-        <div className="alert alert-info">Generate a model first to enable editing.</div>
+        <h2>{t('editTab.heading')}</h2>
+        <div className="alert alert-info">{t('editTab.noModelBody')}</div>
       </div>
     );
   }
@@ -578,22 +584,22 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       {/* Controls */}
       <div className="panel edit-control-panel">
         <div className="edit-control-scroll">
-          <h2>Edit Model</h2>
+          <h2>{t('editTab.heading')}</h2>
 
-          <GuidedSection index={1} label="TARGET">
+          <GuidedSection index={1} label={t('editTab.targetHeading')}>
             <ChoiceGroup
               variant="checks"
-              ariaLabel="Edit target"
+              ariaLabel={t('editTab.editTargetAria')}
               value={mode}
               onChange={setTarget}
               options={targetOptionsWithIcons}
             />
           </GuidedSection>
 
-          <GuidedSection index={2} label="OPERATIONS">
+          <GuidedSection index={2} label={t('editTab.operationsHeading')}>
             <ChoiceGroup
               variant="checks"
-              ariaLabel="Edit workflow"
+              ariaLabel={t('editTab.editWorkflowAria')}
               value={workflow.task}
               onChange={setTask}
               options={taskOptionsWithIcons}
@@ -601,19 +607,19 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           </GuidedSection>
 
           {(() => {
-            const meta = parameterSectionMeta(workflow.target, workflow.task);
+            const meta = parameterSectionMeta(t, workflow.target, workflow.task);
             return (
               <GuidedSection index={3} label={meta.label} tone={meta.tone}>
                 {mode === 'building' && workflow.task === 'add' && (
                   <div className="guided-tool-details">
                     <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
                     <div className="form-group">
-                      <label>Height (m)</label>
+                      <label>{t('editTab.height')}</label>
                       <input type="number" min={1} step={0.5} value={buildingHeight}
                              onChange={(e) => setBuildingHeight(parseFloat(e.target.value))} />
                     </div>
                     <div className="form-group">
-                      <label>Min height / base (m)</label>
+                      <label>{t('editTab.minHeightBase')}</label>
                       <input type="number" min={0} step={0.5} value={buildingMinHeight}
                              onChange={(e) => setBuildingMinHeight(parseFloat(e.target.value))} />
                     </div>
@@ -625,16 +631,16 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                     <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
                     <div className="guided-tool-hint">
                       {action === 'set_height_click'
-                        ? 'Click buildings to select/deselect.'
-                        : 'Draw a polygon to select fully-contained buildings.'}
+                        ? t('editTab.hintClickBuildings')
+                        : t('editTab.hintDrawSelectBuildings')}
                     </div>
                     {selectedBuildingIds.length > 0 && (
                       <div style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--vc-text)' }}>
-                        {selectedBuildingIds.length} building(s) selected
+                        {t('editTab.buildingsSelected', { n: selectedBuildingIds.length })}
                       </div>
                     )}
                     <div className="form-group">
-                      <label>Top height (m)</label>
+                      <label>{t('editTab.topHeight')}</label>
                       <input
                         type="number"
                         min={0.1}
@@ -650,7 +656,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                           checked={useMinHeightEdit}
                           onChange={(e) => setUseMinHeightEdit(e.target.checked)}
                         />
-                        Set min height (m)
+                        {t('editTab.setMinHeight')}
                       </label>
                     </div>
                     {useMinHeightEdit && (
@@ -672,7 +678,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                       type="button"
                     >
                       <Check size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-                      Apply to {selectedBuildingIds.length || 0} building(s)
+                      {t('editTab.applyToBuildings', { n: selectedBuildingIds.length || 0 })}
                     </button>
                   </div>
                 )}
@@ -682,8 +688,8 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                     <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
                     <div className="guided-tool-hint">
                       {action === 'remove_click'
-                        ? 'Click a footprint on the map to delete it.'
-                        : 'Draw a polygon to delete every building inside.'}
+                        ? t('editTab.hintClickDeleteFootprint')
+                        : t('editTab.hintDrawDeleteBuildings')}
                     </div>
                   </div>
                 )}
@@ -692,17 +698,17 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                   <div className="guided-tool-details">
                     <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
                     <div className="form-group">
-                      <label>Top (m)</label>
+                      <label>{t('editTab.top')}</label>
                       <input type="number" min={1} step={0.5} value={treeTop}
                              onChange={(e) => onTreeTopChange(parseFloat(e.target.value))} />
                     </div>
                     <div className="form-group">
-                      <label>Trunk / bottom (m)</label>
+                      <label>{t('editTab.trunkBottom')}</label>
                       <input type="number" min={0} step={0.5} value={treeBottom}
                              onChange={(e) => onTreeBottomChange(parseFloat(e.target.value))} />
                     </div>
                     <div className="form-group">
-                      <label>Diameter (m) — disc brush radius {treeBrushRadius} cell(s)</label>
+                      <label>{t('editTab.diameterBrush', { n: treeBrushRadius })}</label>
                       <input type="number" min={1} step={0.5} value={treeDiameter}
                              onChange={(e) => onTreeDiameterChange(parseFloat(e.target.value))} />
                     </div>
@@ -710,7 +716,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                         <input type="checkbox" checked={treeFixedProp}
                                onChange={(e) => onTreeFixedPropToggle(e.target.checked)} />
-                        Fixed proportion
+                        {t('editTab.fixedProportion')}
                       </label>
                     </div>
                   </div>
@@ -721,8 +727,8 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                     <MethodSelector target={mode} task={workflow.task} method={workflow.method} onMethodChange={setMethod} />
                     <div className="guided-tool-hint">
                       {action === 'remove_click'
-                        ? 'Click a cell to clear its canopy.'
-                        : 'Draw a polygon to clear all canopy cells inside.'}
+                        ? t('editTab.hintClickClearCanopy')
+                        : t('editTab.hintDrawClearCanopy')}
                     </div>
                   </div>
                 )}
@@ -753,35 +759,35 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
 
           <GuidedSection
             index={4}
-            label={`SESSION${pendingEdits.length > 0 ? ` · ${pendingEdits.length} PENDING` : ''}`}
+            label={`${t('editTab.sessionHeading')}${pendingEdits.length > 0 ? t('editTab.sessionPending', { n: pendingEdits.length }) : ''}`}
             action={(
               <>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleUndoLast}
                   disabled={pendingEdits.length === 0 || committing}
-                  title="Discard the most recent buffered edit"
+                  title={t('editTab.discardRecent')}
                   type="button"
                 >
                   <Undo2 size={12} aria-hidden="true" style={{ marginRight: 4 }} />
-                  Undo
+                  {t('editTab.undo')}
                 </button>
                 <button
                   className="btn btn-secondary btn-sm danger"
                   onClick={handleClearEdits}
                   disabled={pendingEdits.length === 0 || committing}
-                  title="Discard all buffered edits"
+                  title={t('editTab.discardAll')}
                   type="button"
                   style={{ marginLeft: 6 }}
                 >
                   <Trash2 size={12} aria-hidden="true" style={{ marginRight: 4 }} />
-                  Clear
+                  {t('editTab.clear')}
                 </button>
               </>
             )}
           >
             <div style={{ color: 'var(--vc-muted)', fontSize: '0.78rem' }}>
-              Edits are buffered locally. Click Update 3D model to apply.
+              {t('editTab.bufferedHint')}
             </div>
           </GuidedSection>
 
@@ -798,16 +804,16 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             disabled={pendingEdits.length === 0 || committing || loading}
             title={
               pendingEdits.length === 0
-                ? 'No pending edits'
-                : `Re-voxelize and render the ${pendingEdits.length} pending edit(s).`
+                ? t('editTab.noPendingEdits')
+                : t('editTab.rerenderHint', { n: pendingEdits.length })
             }
             type="button"
           >
             {committing && <span className="spinner" />}
             <Layers size={14} aria-hidden="true" style={{ marginRight: 6 }} />
             {committing
-              ? 'Updating...'
-              : `Update 3D model${pendingEdits.length > 0 ? ` · ${pendingEdits.length}` : ''}`}
+              ? t('editTab.updating')
+              : `${t('editTab.update3dModel')}${pendingEdits.length > 0 ? ` · ${pendingEdits.length}` : ''}`}
           </button>
         </div>
       </div>
@@ -816,13 +822,13 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       <div className="panel visual-panel">
         <div className="plan-panel-header">
           <div>
-            <h2>2D plan editor</h2>
+            <h2>{t('editTab.planEditorHeading')}</h2>
           </div>
           <details className="display-menu" ref={displayMenuRef}>
-            <summary>Display</summary>
+            <summary>{t('editTab.display')}</summary>
             <div className="display-menu-popover">
               <div className="form-group">
-                <label>Basemap</label>
+                <label>{t('editTab.basemap')}</label>
                 <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
                   <option value="CartoDB Positron">CartoDB Positron</option>
                   <option value="Google Satellite">Google Satellite</option>
@@ -830,12 +836,12 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                 </select>
               </div>
               <div className="form-group">
-                <label>Overlay</label>
+                <label>{t('editTab.overlay')}</label>
                 <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
-                  <option value="buildings">Buildings</option>
-                  <option value="canopy">Canopy</option>
-                  <option value="land_cover">Land cover</option>
-                  <option value="none">None</option>
+                  <option value="buildings">{t('editTab.ovBuildings')}</option>
+                  <option value="canopy">{t('editTab.ovCanopy')}</option>
+                  <option value="land_cover">{t('editTab.ovLandCover')}</option>
+                  <option value="none">{t('editTab.ovNone')}</option>
                 </select>
               </div>
               {backdrop === 'buildings' && (
@@ -845,13 +851,13 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
                     checked={showBuildingHeightLabels}
                     onChange={(e) => setShowBuildingHeightLabels(e.target.checked)}
                   />
-                  Show height labels
+                  {t('editTab.showHeightLabels')}
                 </label>
               )}
             </div>
           </details>
         </div>
-        {loading && <div className="alert alert-info">Loading map…</div>}
+        {loading && <div className="alert alert-info">{t('editTab.loadingMap')}</div>}
         <div className="visual-frame">
         {geo && (
           <PlanMapEditor
@@ -875,7 +881,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       {/* 3D viewer */}
       <div className="panel visual-panel">
         <div className="plan-panel-header">
-          <h2>3D result</h2>
+          <h2>{t('editTab.resultHeading')}</h2>
         </div>
         <div className="visual-frame">
           {previewDisabled ? (
@@ -884,7 +890,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             <ThreeViewer figureJson={figureJson} />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>
-              Apply an edit and click <strong>Update 3D model</strong> to render the 3D result here.
+              {t('editTab.applyHint', { action: t('editTab.update3dModel') })}
             </div>
           )}
         </div>
