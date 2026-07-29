@@ -36,6 +36,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id'];
 
 const App: React.FC = () => {
+  const initialShareToken = parseShareToken(window.location.pathname);
   const [activeTab, setActiveTab] = useState<TabId>('area');
   const [rectangle, setRectangle] = useState<number[][] | null>(null);
   const [figureJson, setFigureJson] = useState('');
@@ -53,13 +54,13 @@ const App: React.FC = () => {
   const [viewRunNonce, setViewRunNonce] = useState(0);
   const [landmarkRunNonce, setLandmarkRunNonce] = useState(0);
 
-  const shareTokenRef = useRef<string | null>(parseShareToken(window.location.pathname));
+  const shareTokenRef = useRef<string | null>(initialShareToken);
   const [shareLoad, setShareLoad] = useState<{ status: 'idle' | 'loading' | 'error'; message?: string }>(
-    () => (parseShareToken(window.location.pathname) ? { status: 'loading' } : { status: 'idle' }),
+    () => (initialShareToken ? { status: 'loading' } : { status: 'idle' }),
   );
 
   const [splashOpen, setSplashOpen] = useState(() => {
-    if (parseShareToken(window.location.pathname)) return false;
+    if (initialShareToken) return false;
     try { return localStorage.getItem(SPLASH_DISMISSED_KEY) !== '1'; } catch { return true; }
   });
   const [initialResetPending, setInitialResetPending] = useState(true);
@@ -202,12 +203,12 @@ const App: React.FC = () => {
           }}
         >
           {shareLoad.status === 'loading' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} role="status" aria-live="polite">
               <span className="spinner" />
               Loading shared session…
             </div>
           ) : (
-            <div style={{ textAlign: 'center', maxWidth: 420 }}>
+            <div style={{ textAlign: 'center', maxWidth: 420 }} role="alert" aria-live="assertive">
               <p style={{ fontWeight: 600 }}>Could not load shared session</p>
               <p style={{ margin: '8px 0 16px' }}>{shareLoad.message}</p>
               <button
