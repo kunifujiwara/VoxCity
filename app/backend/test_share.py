@@ -171,3 +171,32 @@ def test_share_roundtrip_creates_then_loads(client):
     res = client.post(f"/api/share/{token}/load")
     assert res.status_code == 200
     assert res.json()["has_voxcity"] is True
+
+
+def test_post_share_400_when_no_scene(client, monkeypatch):
+    def boom(state, **kwargs):
+        raise ValueError("no scene has been generated")
+    monkeypatch.setattr(share, "save_session_to_zip", boom)
+    res = client.post("/api/share")
+    assert res.status_code == 400
+
+
+def test_load_corrupt_share_is_500(client, monkeypatch):
+    from backend.session_io import SessionLoadError
+    token = client.post("/api/share").json()["token"]
+
+    def boom(stream, max_bytes=None):
+        raise SessionLoadError("corrupt zip")
+    monkeypatch.setattr("backend.main.parse_session_zip", boom)
+    res = client.post(f"/api/share/{token}/load")
+    assert res.status_code == 500
+
+
+def test_load_apply_failure_is_500(client, monkeypatch):
+    token = client.post("/api/share").json()["token"]
+
+    def boom(parsed, state):
+        raise RuntimeError("apply failed")
+    monkeypatch.setattr("backend.main.apply_session_to_state", boom)
+    res = client.post(f"/api/share/{token}/load")
+    assert res.status_code == 500
