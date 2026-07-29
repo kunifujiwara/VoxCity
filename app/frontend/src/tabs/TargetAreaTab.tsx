@@ -78,9 +78,9 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
     <div className="two-col">
       {/* Left panel – controls */}
       <GuidedPanel
-        title="Target Area"
-        subtitle="Choose the city area used by model generation."
-        status={rectangle ? <GuidedStatus tone="success">Target area is ready.</GuidedStatus> : undefined}
+        title={t('targetAreaTab.title')}
+        subtitle={t('targetAreaTab.subtitle')}
+        status={rectangle ? <GuidedStatus tone="success">{t('targetAreaTab.ready')}</GuidedStatus> : undefined}
         footer={(
           <GuidedFooter>
             <button
@@ -96,9 +96,9 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
           </GuidedFooter>
         )}
       >
-        <GuidedSection label="LOCATION" index={++idx}>
+        <GuidedSection label={t('targetAreaTab.location')} index={++idx}>
           <div className="form-group">
-            <label>City name</label>
+            <label>{t('targetAreaTab.cityName')}</label>
             <input
               type="text"
               value={cityName}
@@ -108,41 +108,41 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
           </div>
         </GuidedSection>
 
-        <GuidedSection label="DEFINE TARGET AREA" index={++idx}>
+        <GuidedSection label={t('targetAreaTab.defineArea')} index={++idx}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Target area input method"
+            ariaLabel={t('targetAreaTab.inputMethodAria')}
             value={areaMethod}
             onChange={setAreaMethod}
             options={[
-              { id: 'draw', label: 'Map draw', icon: PenTool },
-              { id: 'coordinates', label: 'Coordinates', icon: Hash },
+              { id: 'draw', label: t('targetAreaTab.mapDraw'), icon: PenTool },
+              { id: 'coordinates', label: t('targetAreaTab.coordinates'), icon: Hash },
             ]}
           />
         </GuidedSection>
 
         {areaMethod === 'draw' && (
-          <GuidedSection label="DRAWING MODE" index={++idx}>
+          <GuidedSection label={t('targetAreaTab.drawingMode')} index={++idx}>
             <ChoiceGroup
               variant="checks"
-              ariaLabel="Target area drawing mode"
+              ariaLabel={t('targetAreaTab.drawingModeAria')}
               value={selectionMode}
               onChange={setSelectionMode}
               columns={1}
               options={[
-                { id: 'draw', label: 'Free hand', icon: PenTool },
-                { id: 'rotated', label: 'Rotated', icon: RotateCw },
-                { id: 'dimensions', label: 'Set dimensions', icon: Ruler },
+                { id: 'draw', label: t('targetAreaTab.freeHand'), icon: PenTool },
+                { id: 'rotated', label: t('targetAreaTab.rotated'), icon: RotateCw },
+                { id: 'dimensions', label: t('targetAreaTab.setDimensions'), icon: Ruler },
               ]}
             />
           </GuidedSection>
         )}
 
         {areaMethod === 'draw' && selectionMode === 'dimensions' && (
-          <GuidedSection label="DIMENSIONS" index={++idx}>
+          <GuidedSection label={t('targetAreaTab.dimensions')} index={++idx}>
             <div className="form-row">
               <div>
-                <label>Width (m)</label>
+                <label>{t('targetAreaTab.width')}</label>
                 <input
                   type="number"
                   value={widthM}
@@ -153,7 +153,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                 />
               </div>
               <div>
-                <label>Height (m)</label>
+                <label>{t('targetAreaTab.height')}</label>
                 <input
                   type="number"
                   value={heightM}
@@ -164,7 +164,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                 />
               </div>
               <div>
-                <label>Rotation (°)</label>
+                <label>{t('targetAreaTab.rotation')}</label>
                 <input
                   type="number"
                   value={rotationDeg}
@@ -179,11 +179,11 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
         )}
 
         {areaMethod === 'coordinates' && (
-          <GuidedSection label="RECTANGLE VERTICES" index={++idx}>
+          <GuidedSection label={t('targetAreaTab.rectangleVertices')} index={++idx}>
             {(['sw', 'nw', 'ne', 'se'] as const).map((corner) => (
               <div className="form-row" key={corner}>
                 <div>
-                  <label>{corner.toUpperCase()} Lon</label>
+                  <label>{corner.toUpperCase()} {t('targetAreaTab.lon')}</label>
                   <input
                     type="number"
                     step="0.000001"
@@ -194,7 +194,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
                   />
                 </div>
                 <div>
-                  <label>{corner.toUpperCase()} Lat</label>
+                  <label>{corner.toUpperCase()} {t('targetAreaTab.lat')}</label>
                   <input
                     type="number"
                     step="0.000001"
@@ -210,7 +210,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
         )}
 
         {rectangle && summaryText && (
-          <GuidedSection label="SUMMARY" index={++idx}>
+          <GuidedSection label={t('targetAreaTab.summary')} index={++idx}>
             <div style={{ color: 'var(--vc-muted)', fontSize: '0.85rem' }}>{summaryText}</div>
           </GuidedSection>
         )}
@@ -218,7 +218,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
 
       {/* Right panel – map */}
       <div className="panel" style={{ padding: 0, position: 'relative' }}>
-        {rectangle && <div className="panel-overlay-status">Target area set</div>}
+        {rectangle && <div className="panel-overlay-status">{t('targetAreaTab.areaSet')}</div>}
         <div className="map-container" style={{ height: '100%', minHeight: 500 }}>
           <MapPicker
             center={mapCenter}
