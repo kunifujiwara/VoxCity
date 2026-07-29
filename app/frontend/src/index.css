@@ -899,15 +899,16 @@ input:focus, select:focus {
   margin-top: 0.55rem;
 }
 
+/* Floats the Display (表示) menu over the map's top-right corner so the 2D
+   editor fills its card flush — no reserved header row. */
 .plan-panel-header {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1200;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 0.75rem;
-  min-height: 2.4rem;
-  margin-bottom: 0.75rem;
-  position: relative;
-  z-index: 1200;
 }
 
 .plan-panel-header h2 {

@@ -821,7 +821,6 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
       {/* 2D editor */}
       <div className="panel visual-panel">
         <div className="plan-panel-header">
-          <div />
           <details className="display-menu" ref={displayMenuRef}>
             <summary>{t('editTab.display')}</summary>
             <div className="display-menu-popover">
