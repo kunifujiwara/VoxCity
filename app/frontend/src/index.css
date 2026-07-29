@@ -1168,3 +1168,25 @@ input:focus, select:focus {
 .role-table select {
   min-width: 92px;
 }
+
+/* Language toggle (i18n) */
+.lang-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  gap: 2px;
+  border: 1px solid var(--vc-ring, #F0F0F0);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lang-btn {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--vc-muted, #9CA3AF);
+}
+.lang-btn.active {
+  background: var(--vc-accent, #6666FF);
+  color: #fff;
+}

@@ -19,6 +19,7 @@ import {
   Landmark as LandmarkIcon, FolderOpen, Boxes,
 } from 'lucide-react';
 import type { Zone } from './types/zones';
+import { useT, useLanguage, type TranslationKey } from './i18n';
 import { healthCheck, resetSession, getModelInfo, loadShare } from './api';
 
 const TABS = [
@@ -38,6 +39,8 @@ type TabId = (typeof TABS)[number]['id'];
 const App: React.FC = () => {
   const initialShareToken = parseShareToken(window.location.pathname);
   const [activeTab, setActiveTab] = useState<TabId>('area');
+  const t = useT();
+  const { lang, setLang } = useLanguage();
   const [rectangle, setRectangle] = useState<number[][] | null>(null);
   const [figureJson, setFigureJson] = useState('');
   const [editFigureJson, setEditFigureJson] = useState('');
@@ -241,11 +244,27 @@ const App: React.FC = () => {
                 onClick={() => setActiveTab(tab.id)}
               >
                 <Icon size={14} aria-hidden="true" />
-                <span>{tab.label}</span>
+                <span>{t(`nav.${tab.id}` as TranslationKey)}</span>
               </button>
             );
           })}
         </nav>
+        <div className="lang-toggle" role="group" aria-label={t('language.label')}>
+          <button
+            type="button"
+            className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
+            onClick={() => setLang('en')}
+          >
+            {t('language.english')}
+          </button>
+          <button
+            type="button"
+            className={`lang-btn ${lang === 'ja' ? 'active' : ''}`}
+            onClick={() => setLang('ja')}
+          >
+            {t('language.japanese')}
+          </button>
+        </div>
       </header>
 
       {/* Tab content */}
