@@ -349,6 +349,8 @@ export interface ModelGeoResult {
   building_geojson: any;
   canopy_geojson: any;
   land_cover_geojson: any;
+  // Baked DXF auxiliary lines in absolute lon/lat (backend-authoritative).
+  auxiliary_lines?: AuxiliaryLineDto[];
 }
 
 export async function getModelGeo() {
@@ -720,6 +722,74 @@ export async function commitImportObj(req: ImportObjCommitRequestDto) {
   return request<ImportObjCommitResult>('/model/import_obj/commit', {
     method: 'POST',
     body: JSON.stringify(req),
+  });
+}
+
+export interface AuxiliaryLineDto {
+  id: string;
+  file_name: string;
+  layer: string;
+  color: string;
+  points: [number, number][]; // [lon, lat]
+}
+
+export interface DxfLayerInfoDto { name: string; color: string; n_segments: number; }
+export interface DxfPreviewLayerDto { name: string; color: string; polylines: [number, number][][]; }
+
+export interface ImportDxfUploadResult {
+  import_id: string;
+  layers: DxfLayerInfoDto[];
+  model_bounds: [number, number][];
+  model_center: [number, number];
+  detected_units: string | null;
+  preview: { layers: DxfPreviewLayerDto[] };
+  warning: string | null;
+}
+
+export interface DxfPlacementDto {
+  anchor_lonlat: [number, number];
+  anchor_model_point: [number, number];
+  rotation: number;
+  move: [number, number];
+  units: string;
+}
+
+export interface ImportDxfCommitRequestDto {
+  import_id: string;
+  placement: DxfPlacementDto;
+  layer_visibility: Record<string, boolean>;
+}
+
+export interface ImportDxfCommitResult {
+  auxiliary_lines: AuxiliaryLineDto[];
+  warning: string | null;
+}
+
+export async function uploadImportDxf(file: File): Promise<ImportDxfUploadResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/model/import_dxf/upload`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function commitImportDxf(req: ImportDxfCommitRequestDto) {
+  return request<ImportDxfCommitResult>('/model/import_dxf/commit', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+export async function clearAuxiliaryLines(params: { fileName?: string; id?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.fileName) qs.set('file_name', params.fileName);
+  if (params.id) qs.set('id', params.id);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<{ auxiliary_lines: AuxiliaryLineDto[] }>(`/model/auxiliary_lines${suffix}`, {
+    method: 'DELETE',
   });
 }
 
