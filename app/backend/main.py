@@ -35,13 +35,21 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from .models import (
     AutoDetectSourcesRequest,
+    AuxiliaryLine,
     BuildingSurfaceGeometryResponse,
+    DxfLayerInfo,
+    DxfPlacement,
+    DxfPreviewLayer,
     ExportCitylesRequest,
     ExportGeotiffRequest,
     ExportObjRequest,
     GenerateRequest,
     GeocodeRequest,
     GeocodeResponse,
+    ImportDxfCommitRequest,
+    ImportDxfCommitResponse,
+    ImportDxfPreview,
+    ImportDxfUploadResponse,
     ImportObjCommitRequest,
     ImportObjCommitResponse,
     ImportObjGroup,
@@ -171,6 +179,13 @@ os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # In-memory registry of uploaded OBJ imports: import_id -> stored .obj path.
 import_obj_store: Dict[str, str] = {}
+
+from .dxf_import import parse_dxf, bake_polylines_to_lonlat, DxfParseError, ParsedDxf
+
+# import_id -> ParsedDxf (uploaded-but-not-yet-committed DXF documents).
+import_dxf_store: Dict[str, "ParsedDxf"] = {}
+
+_MAX_PREVIEW_SEGMENTS = 20000
 
 DEFAULT_TOKYO_EPW = config.DEFAULT_TOKYO_EPW
 CITYGML_PATH = config.CITYGML_PATH
@@ -2787,6 +2802,7 @@ async def model_geo():
                 "grid_size": [int(grid_geom["grid_size"][0]), int(grid_geom["grid_size"][1])],
             },
             "land_cover_source": lc_source,
+            "auxiliary_lines": list(app_state.auxiliary_lines),
             "building_geojson": building_fc,
             "canopy_geojson": canopy_fc,
             "land_cover_geojson": land_cover_fc,
@@ -3563,6 +3579,129 @@ async def import_obj_commit(req: ImportObjCommitRequest):
         n_window_voxels_added=int(n_window_added),
         warning=warning,
     )
+
+
+@app.post("/api/model/import_dxf/upload", response_model=ImportDxfUploadResponse)
+async def import_dxf_upload(file: UploadFile = File(...)):
+    """Parse an uploaded DXF into per-layer polylines + preview; register import_id."""
+    _require_model()
+    import uuid
+    data = await file.read()
+    try:
+        parsed = parse_dxf(data)
+    except DxfParseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    import_id = uuid.uuid4().hex
+    parsed.file_name = file.filename or "import.dxf"
+    import_dxf_store[import_id] = parsed
+
+    total = sum(len(pl) for layer in parsed.layers for pl in layer.polylines)
+    stride = max(1, (total + _MAX_PREVIEW_SEGMENTS - 1) // _MAX_PREVIEW_SEGMENTS)
+    layer_infos: List[DxfLayerInfo] = []
+    preview_layers: List[DxfPreviewLayer] = []
+    for layer in parsed.layers:
+        n_seg = sum(max(0, len(pl) - 1) for pl in layer.polylines)
+        layer_infos.append(DxfLayerInfo(name=layer.name, color=layer.color, n_segments=n_seg))
+        preview_polys = layer.polylines if stride == 1 else [pl for i, pl in enumerate(layer.polylines) if i % stride == 0]
+        preview_layers.append(DxfPreviewLayer(name=layer.name, color=layer.color, polylines=preview_polys))
+
+    warning = None
+    if not parsed.layers:
+        if parsed.insert_count > 0:
+            warning = ("Supported geometry was found only inside block/INSERT references, which "
+                       "are not imported; no auxiliary lines were extracted.")
+        else:
+            warning = "No LINE/LWPOLYLINE/POLYLINE geometry found in the DXF."
+    elif parsed.detected_units is None:
+        warning = "DXF has no $INSUNITS; assuming meters — set the units before placing if that's wrong."
+
+    return ImportDxfUploadResponse(
+        import_id=import_id,
+        layers=layer_infos,
+        model_bounds=parsed.bounds,
+        model_center=parsed.center,
+        detected_units=parsed.detected_units,
+        preview=ImportDxfPreview(layers=preview_layers),
+        warning=warning,
+    )
+
+
+@app.post("/api/model/import_dxf/commit", response_model=ImportDxfCommitResponse)
+async def import_dxf_commit(req: ImportDxfCommitRequest):
+    """Bake the placed DXF polylines to lon/lat and store as auxiliary lines."""
+    _require_model()
+    import uuid
+    from voxcity.importer.transform import build_placement_transform
+    from voxcity.geoprocessor.draw._common import compute_grid_geometry
+
+    parsed = import_dxf_store.get(req.import_id)
+    if parsed is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired import_id; please re-upload.")
+
+    p = req.placement
+    for name, vec, n in (("anchor_lonlat", p.anchor_lonlat, 2), ("anchor_model_point", p.anchor_model_point, 2), ("move", p.move, 2)):
+        if len(vec) != n or not all(math.isfinite(float(x)) for x in vec):
+            raise HTTPException(status_code=400, detail=f"{name} must be {n} finite numbers")
+    if not math.isfinite(float(p.rotation)):
+        raise HTTPException(status_code=400, detail="rotation must be finite")
+
+    rect = app_state.rectangle_vertices
+    if rect is None and isinstance(app_state.voxcity.extras, dict):
+        rect = app_state.voxcity.extras.get("rectangle_vertices")
+    if rect is None:
+        raise HTTPException(status_code=400, detail="Model has no rectangle_vertices")
+    grid_geom = compute_grid_geometry(rect, float(app_state.meshsize))
+    if grid_geom is None:
+        raise HTTPException(status_code=500, detail="compute_grid_geometry returned None")
+
+    mat = build_placement_transform(
+        app_state.voxcity,
+        anchor_lonlat=(float(p.anchor_lonlat[0]), float(p.anchor_lonlat[1])),
+        anchor_elevation=0.0,   # DXF is 2D; height output ignored
+        anchor_model_point=(float(p.anchor_model_point[0]), float(p.anchor_model_point[1]), 0.0),
+        rotation=float(p.rotation),
+        move=(float(p.move[0]), float(p.move[1]), 0.0),
+        units=p.units,
+    )
+
+    new_lines: List[Dict[str, Any]] = []
+    file_name = parsed.file_name or "import.dxf"
+    for layer in parsed.layers:
+        if req.layer_visibility and req.layer_visibility.get(layer.name) is False:
+            continue
+        baked = bake_polylines_to_lonlat(layer.polylines, mat, grid_geom)
+        for ring in baked:
+            new_lines.append({
+                "id": uuid.uuid4().hex,
+                "file_name": file_name,
+                "layer": layer.name,
+                "color": layer.color,
+                "points": ring,
+            })
+    app_state.auxiliary_lines.extend(new_lines)
+    import_dxf_store.pop(req.import_id, None)
+
+    return ImportDxfCommitResponse(
+        auxiliary_lines=[AuxiliaryLine(**ln) for ln in new_lines],
+        warning=None if new_lines else "No visible layers were committed.",
+    )
+
+
+@app.delete("/api/model/auxiliary_lines")
+async def delete_auxiliary_lines(file_name: Optional[str] = None, id: Optional[str] = None):
+    """Clear auxiliary lines (all, or filtered by file_name/id). Idempotent."""
+    if file_name is None and id is None:
+        app_state.auxiliary_lines = []
+    else:
+        def _matches(ln: Dict[str, Any]) -> bool:
+            if file_name is not None and ln.get("file_name") == file_name:
+                return True
+            if id is not None and ln.get("id") == id:
+                return True
+            return False
+        app_state.auxiliary_lines = [ln for ln in app_state.auxiliary_lines if not _matches(ln)]
+    return {"auxiliary_lines": app_state.auxiliary_lines}
 
 
 # ---------------------------------------------------------------------------
