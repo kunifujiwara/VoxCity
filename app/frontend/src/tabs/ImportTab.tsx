@@ -34,6 +34,7 @@ import {
   Units,
 } from '../lib/objPlacement';
 import { anchorSceneUp } from './importAnchorScene';
+import { useT } from '../i18n';
 
 interface ImportTabProps {
   hasModel: boolean;
@@ -47,6 +48,7 @@ interface ImportTabProps {
 const UNIT_OPTIONS: Units[] = ['m', 'cm', 'mm', 'ft', 'in'];
 
 const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureChange, onModelEdited, previewDisabled = false, previewGridShape }) => {
+  const t = useT();
   const [upload, setUpload] = useState<ImportObjUploadResult | null>(null);
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [placement, setPlacement] = useState<Placement>(defaultPlacement);
@@ -159,7 +161,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     // The .obj is the primary; anything else (the .mtl, textures) rides along
     // as a sidecar so the server can resolve material names for window detection.
     const obj = all.find((f) => f.name.toLowerCase().endsWith('.obj'));
-    if (!obj) { setError('Please choose a .obj file (you can also select its .mtl).'); return; }
+    if (!obj) { setError(t('importTab.errNoObj')); return; }
     const sidecars = all.filter((f) => f !== obj);
     setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
@@ -167,20 +169,20 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       setUpload(res);
       setRoles(Object.fromEntries(res.groups.map((g) => [g.name, g.role])));
       const mtlNote = sidecars.some((f) => f.name.toLowerCase().endsWith('.mtl'))
-        ? '' : ' (tip: also select the .mtl so window materials are detected)';
-      setInfo(`Loaded ${res.groups.length} group(s). Position it and import.${mtlNote}`);
+        ? '' : t('importTab.mtlTip');
+      setInfo(t('importTab.objLoaded', { n: res.groups.length, tip: mtlNote }));
       onFigureChange(''); // clear any previous committed result so the live preview shows
     } catch (err: any) {
-      setError(err.message || 'Upload failed');
+      setError(err.message || t('importTab.errUpload'));
     } finally {
       setBusy(false);
     }
-  }, [onFigureChange]);
+  }, [onFigureChange, t]);
 
   const handleImport = useCallback(async () => {
     if (!upload) return;
     const anchorLonLat = placement.anchorLonLat;
-    if (!anchorLonLat) { setError('Click the map to set an anchor first.'); return; }
+    if (!anchorLonLat) { setError(t('importTab.errNoAnchor')); return; }
     setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
       const r = await commitImportObj({
@@ -205,24 +207,28 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         setInfo(null);
       } else {
         setWarning(null);
+        const windowPart = r.n_window_voxels_added > 0
+          ? t('importTab.windowVoxelsPart', { n: r.n_window_voxels_added })
+          : '';
         setInfo(
-          `Imported ${r.imported_building_ids.length} building(s); ` +
-          `${r.n_building_voxels_added} voxel(s) added` +
-          (r.n_window_voxels_added > 0 ? `, ${r.n_window_voxels_added} window voxel(s)` : '') +
-          `.`,
+          t('importTab.objImported', {
+            n: r.imported_building_ids.length,
+            voxels: r.n_building_voxels_added,
+            windowPart,
+          }),
         );
       }
     } catch (err: any) {
-      setError(err.message || 'Import failed');
+      setError(err.message || t('importTab.errImport'));
     } finally {
       setBusy(false);
     }
-  }, [upload, placement, roles, onFigureChange, onModelEdited]);
+  }, [upload, placement, roles, onFigureChange, onModelEdited, t]);
 
   const handleDxfFile = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = Array.from(files).find((f) => f.name.toLowerCase().endsWith('.dxf'));
-    if (!file) { setError('Please choose a .dxf file.'); return; }
+    if (!file) { setError(t('importTab.errNoDxf')); return; }
     setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
       const res = await uploadImportDxf(file);
@@ -235,18 +241,18 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         anchorModelPoint: [res.model_center[0], res.model_center[1], 0],
       }));
       if (res.warning) setWarning(res.warning);
-      setInfo(`Loaded ${res.layers.length} layer(s). Position it and add reference lines.`);
+      setInfo(t('importTab.dxfLoaded', { n: res.layers.length }));
     } catch (err: any) {
-      setError(err.message || 'DXF upload failed');
+      setError(err.message || t('importTab.errDxfUpload'));
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [t]);
 
   const handleDxfImport = useCallback(async () => {
     if (!dxfUpload) return;
     const anchorLonLat = dxfPlacement.anchorLonLat;
-    if (!anchorLonLat) { setError('Click the map to set an anchor first.'); return; }
+    if (!anchorLonLat) { setError(t('importTab.errNoAnchor')); return; }
     setBusy(true); setError(null); setInfo(null); setWarning(null);
     try {
       const r = await commitImportDxf({
@@ -265,16 +271,16 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         setAuxVisibility((v) => ({ ...v, [fileName]: { ...dxfVisibility } }));
       }
       setWarning(r.warning);
-      setInfo(r.warning ? null : `Added ${r.auxiliary_lines.length} auxiliary line(s).`);
+      setInfo(r.warning ? null : t('importTab.dxfAdded', { n: r.auxiliary_lines.length }));
       setDxfUpload(null);
       refreshGeo();       // pull committed lines into geo.auxiliary_lines for the 3D overlay
       onModelEdited?.();
     } catch (err: any) {
-      setError(err.message || 'DXF import failed');
+      setError(err.message || t('importTab.errDxfImport'));
     } finally {
       setBusy(false);
     }
-  }, [dxfUpload, dxfPlacement, dxfVisibility, refreshGeo, onModelEdited]);
+  }, [dxfUpload, dxfPlacement, dxfVisibility, refreshGeo, onModelEdited, t]);
 
   const handleRemoveAuxFile = useCallback(async (fileName: string) => {
     try {
@@ -283,15 +289,15 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       refreshGeo();
       onModelEdited?.();
     } catch (err: any) {
-      setError(err.message || 'Failed to remove auxiliary lines');
+      setError(err.message || t('importTab.errRemoveAux'));
     }
-  }, [refreshGeo, onModelEdited]);
+  }, [refreshGeo, onModelEdited, t]);
 
   if (!hasModel) {
     return (
       <div className="panel">
-        <h2>Import OBJ</h2>
-        <div className="alert alert-info">Generate a model first to enable import.</div>
+        <h2>{t('importTab.noModelHeading')}</h2>
+        <div className="alert alert-info">{t('importTab.noModelBody')}</div>
       </div>
     );
   }
@@ -300,19 +306,19 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     <div className="three-col">
       <div className="panel edit-control-panel">
         <div className="edit-control-scroll">
-          <h2>Import</h2>
+          <h2>{t('importTab.heading')}</h2>
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button type="button" disabled={busy}
                     className={`btn btn-xs${importMode === 'obj' ? ' btn-primary' : ' btn-ghost'}`}
-                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('obj'); }}>OBJ buildings</button>
+                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('obj'); }}>{t('importTab.modeObj')}</button>
             <button type="button" disabled={busy}
                     className={`btn btn-xs${importMode === 'dxf' ? ' btn-primary' : ' btn-ghost'}`}
-                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('dxf'); }}>DXF reference lines</button>
+                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('dxf'); }}>{t('importTab.modeDxf')}</button>
           </div>
 
           {importMode === 'obj' && (
           <>
-          <GuidedSection index={1} label="UPLOAD">
+          <GuidedSection index={1} label={t('importTab.uploadHeading')}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -321,7 +327,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={14} style={{ marginRight: 6 }} />
-              {upload ? 'Replace OBJ…' : 'Choose OBJ (+ .mtl)…'}
+              {upload ? t('importTab.replaceObj') : t('importTab.chooseObj')}
             </button>
             <input
               ref={fileInputRef}
@@ -336,7 +342,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           </GuidedSection>
 
           {upload && (
-            <GuidedSection index={2} label="GROUPS / ROLES">
+            <GuidedSection index={2} label={t('importTab.groupsRoles')}>
               <table className="role-table" style={{ width: '100%', fontSize: '0.8rem' }}>
                 <tbody>
                   {upload.groups.map((g) => (
@@ -358,16 +364,16 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           )}
 
           {upload && (
-            <GuidedSection index={3} label="PLACEMENT">
+            <GuidedSection index={3} label={t('importTab.placementHeading')}>
               <div className="guided-tool-hint">
                 {placement.anchorLonLat
-                  ? 'Edit the anchor below or click the map to set it.'
-                  : 'Click the map or enter lat/lon below to set the anchor.'}
+                  ? t('importTab.hintEditAnchor')
+                  : t('importTab.hintClickAnchor')}
               </div>
               <div className="form-group">
-                <label>Anchor latitude / longitude</label>
+                <label>{t('importTab.anchorLatLon')}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <input type="number" step="any" placeholder="lat" disabled={busy}
+                  <input type="number" step="any" placeholder={t('importTab.phLat')} disabled={busy}
                          value={placement.anchorLonLat ? placement.anchorLonLat[1] : ''}
                          onChange={(e) => {
                            const lat = parseFloat(e.target.value);
@@ -377,7 +383,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                              anchorLonLat: [p.anchorLonLat ? p.anchorLonLat[0] : 0, lat],
                            }));
                          }} />
-                  <input type="number" step="any" placeholder="lon" disabled={busy}
+                  <input type="number" step="any" placeholder={t('importTab.phLon')} disabled={busy}
                          value={placement.anchorLonLat ? placement.anchorLonLat[0] : ''}
                          onChange={(e) => {
                            const lon = parseFloat(e.target.value);
@@ -390,7 +396,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 </div>
               </div>
               <div className="form-group">
-                <label>Anchor elevation (m, blank = auto from terrain)</label>
+                <label>{t('importTab.anchorElevation')}</label>
                 <input type="number" step={0.5} disabled={busy}
                        value={placement.anchorElevation ?? ''}
                        onChange={(e) => setPlacement((p) => ({
@@ -399,27 +405,27 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                        }))} />
               </div>
               <div className="form-group">
-                <label>3D gizmo mode</label>
+                <label>{t('importTab.gizmoModeLabel')}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" disabled={busy}
                           className={`btn btn-sm ${gizmoMode === 'translate' ? 'btn-primary' : 'btn-secondary'}`}
                           onClick={() => setGizmoMode('translate')}>
-                    Move
+                    {t('importTab.move')}
                   </button>
                   <button type="button" disabled={busy}
                           className={`btn btn-sm ${gizmoMode === 'rotate' ? 'btn-primary' : 'btn-secondary'}`}
                           onClick={() => setGizmoMode('rotate')}>
-                    Rotate
+                    {t('importTab.rotate')}
                   </button>
                 </div>
               </div>
               <div className="form-group">
-                <label>Rotation (deg)</label>
+                <label>{t('importTab.rotationDeg')}</label>
                 <input type="number" step={1} value={placement.rotation} disabled={busy}
                        onChange={(e) => setPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
               </div>
               <div className="form-group">
-                <label>Move east / north / up (m)</label>
+                <label>{t('importTab.moveEnu')}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[0, 1, 2].map((k) => (
                     <input key={k} type="number" step={0.5} value={placement.move[k]} disabled={busy}
@@ -428,7 +434,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 </div>
               </div>
               <div className="form-group">
-                <label>Units</label>
+                <label>{t('importTab.units')}</label>
                 <select value={placement.units} disabled={busy}
                         onChange={(e) => setPlacement((p) => ({ ...p, units: e.target.value as Units }))}>
                   {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -436,16 +442,16 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               </div>
 
               <details open={advanced} onToggle={(e) => setAdvanced((e.target as HTMLDetailsElement).open)}>
-                <summary>Advanced</summary>
+                <summary>{t('importTab.advanced')}</summary>
                 <label className="checkbox-row">
                   <input type="checkbox" checked={placement.zUp} disabled={busy}
                          onChange={(e) => setPlacement((p) => ({ ...p, zUp: e.target.checked }))} />
-                  Z-up (uncheck for Y-up exports)
+                  {t('importTab.zUpLabel')}
                 </label>
                 <label className="checkbox-row">
                   <input type="checkbox" checked={placement.swapYz} disabled={busy}
                          onChange={(e) => setPlacement((p) => ({ ...p, swapYz: e.target.checked }))} />
-                  Swap Y/Z
+                  {t('importTab.swapYzLabel')}
                 </label>
               </details>
             </GuidedSection>
@@ -455,7 +461,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
           {importMode === 'dxf' && (
           <>
-          <GuidedSection index={1} label="UPLOAD DXF">
+          <GuidedSection index={1} label={t('importTab.uploadDxfHeading')}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -464,7 +470,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               onClick={() => dxfFileInputRef.current?.click()}
             >
               <Upload size={14} style={{ marginRight: 6 }} />
-              {dxfUpload ? 'Replace DXF…' : 'Choose DXF…'}
+              {dxfUpload ? t('importTab.replaceDxf') : t('importTab.chooseDxf')}
             </button>
             <input
               ref={dxfFileInputRef}
@@ -478,7 +484,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           </GuidedSection>
 
           {dxfUpload && (
-            <GuidedSection index={2} label="LAYERS">
+            <GuidedSection index={2} label={t('importTab.layersHeading')}>
               <table className="role-table" style={{ width: '100%', fontSize: '0.8rem' }}>
                 <tbody>
                   {dxfUpload.layers.map((l) => (
@@ -500,23 +506,23 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           )}
 
           {dxfUpload && (
-            <GuidedSection index={3} label="PLACEMENT">
+            <GuidedSection index={3} label={t('importTab.placementHeading')}>
               <div className="guided-tool-hint">
                 {dxfPlacement.anchorLonLat
-                  ? 'Edit the anchor below or click the map to set it.'
-                  : 'Click the map or enter lat/lon below to set the anchor.'}
+                  ? t('importTab.hintEditAnchor')
+                  : t('importTab.hintClickAnchor')}
               </div>
               <div className="form-group">
-                <label>Anchor latitude / longitude</label>
+                <label>{t('importTab.anchorLatLon')}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <input type="number" step="any" placeholder="lat" disabled={busy}
+                  <input type="number" step="any" placeholder={t('importTab.phLat')} disabled={busy}
                          value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[1] : ''}
                          onChange={(e) => {
                            const lat = parseFloat(e.target.value);
                            if (Number.isNaN(lat)) return;
                            setDxfPlacement((p) => ({ ...p, anchorLonLat: [p.anchorLonLat ? p.anchorLonLat[0] : 0, lat] }));
                          }} />
-                  <input type="number" step="any" placeholder="lon" disabled={busy}
+                  <input type="number" step="any" placeholder={t('importTab.phLon')} disabled={busy}
                          value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[0] : ''}
                          onChange={(e) => {
                            const lon = parseFloat(e.target.value);
@@ -526,12 +532,12 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 </div>
               </div>
               <div className="form-group">
-                <label>Rotation (deg)</label>
+                <label>{t('importTab.rotationDeg')}</label>
                 <input type="number" step={1} value={dxfPlacement.rotation} disabled={busy}
                        onChange={(e) => setDxfPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
               </div>
               <div className="form-group">
-                <label>Move east / north (m)</label>
+                <label>{t('importTab.moveEn')}</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[0, 1].map((k) => (
                     <input key={k} type="number" step={0.5} value={dxfPlacement.move[k]} disabled={busy}
@@ -544,7 +550,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                 </div>
               </div>
               <div className="form-group">
-                <label>Units</label>
+                <label>{t('importTab.units')}</label>
                 <select value={dxfPlacement.units} disabled={busy}
                         onChange={(e) => setDxfPlacement((p) => ({ ...p, units: e.target.value as Units }))}>
                   {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -579,7 +585,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                     type="button">
               {busy && <span className="spinner" />}
               <Boxes size={14} style={{ marginRight: 6 }} />
-              {busy ? 'Importing…' : 'Import building(s)'}
+              {busy ? t('importTab.importing') : t('importTab.importBuildings')}
             </button>
           ) : (
             <button className="btn btn-primary pending-update-btn"
@@ -588,7 +594,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
                     type="button">
               {busy && <span className="spinner" />}
               <Boxes size={14} style={{ marginRight: 6 }} />
-              {busy ? 'Adding…' : 'Add reference lines'}
+              {busy ? t('importTab.adding') : t('importTab.addReferenceLines')}
             </button>
           )}
         </div>
@@ -596,7 +602,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
       {/* 2D map */}
       <div className="panel visual-panel">
-        <div className="plan-panel-header"><h2>2D placement</h2></div>
+        <div className="plan-panel-header"><h2>{t('importTab.heading2d')}</h2></div>
         <div className="visual-frame">
           {importMode === 'obj' && (geo && upload ? (
             <ObjPlacementMap
@@ -606,7 +612,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               onAnchor={(lonLat) => setPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
             />
           ) : (
-            <div className="alert alert-info">Upload an OBJ, then click the map to set the anchor.</div>
+            <div className="alert alert-info">{t('importTab.placeholderObjMap')}</div>
           ))}
           {importMode === 'dxf' && (geo && dxfUpload ? (
             <DxfPlacementMap
@@ -617,14 +623,14 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               onAnchor={(lonLat) => setDxfPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
             />
           ) : (
-            <div className="alert alert-info">Upload a DXF, then click the map to set the anchor.</div>
+            <div className="alert alert-info">{t('importTab.placeholderDxfMap')}</div>
           ))}
         </div>
       </div>
 
       {/* 3D result */}
       <div className="panel visual-panel">
-        <div className="plan-panel-header"><h2>3D result</h2></div>
+        <div className="plan-panel-header"><h2>{t('importTab.heading3d')}</h2></div>
         <div className="visual-frame">
           {importMode === 'dxf' ? (
             previewDisabled ? (
@@ -638,8 +644,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               />
             ) : (
               <div className="alert alert-info">
-                DXF reference lines are a flat overlay added to the 2D map and the
-                3D scene without changing the voxel model. Add lines to see them here.
+                {t('importTab.dxfOverlayNote')}
               </div>
             )
           ) : previewDisabled ? (
@@ -663,7 +668,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           ) : figureJson ? (
             <ThreeViewer figureJson={figureJson} />
           ) : (
-            <div className="alert alert-info">Upload an OBJ to place it in 3D.</div>
+            <div className="alert alert-info">{t('importTab.placeholderObj3d')}</div>
           )}
         </div>
       </div>
