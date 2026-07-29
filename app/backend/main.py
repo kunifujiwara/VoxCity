@@ -83,6 +83,7 @@ from .session_io import (
     parsed_session_temp_root,
     save_session_to_zip,
 )
+from .share import create_share, share_zip_path
 from .surface_zone_edges import build_surface_zone_edge_payloads
 from .surface_zones import stats_for_surface_zone, _surface_meta_from_cached_mesh, attach_surface_face_meta
 from .zoning import (
@@ -902,6 +903,39 @@ async def load_session_endpoint(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to apply loaded session: {exc}",
+        ) from exc
+    finally:
+        shutil.rmtree(parsed_session_temp_root(parsed), ignore_errors=True)
+
+
+@app.post("/api/share")
+async def create_share_endpoint(frontend_state: Optional[str] = Form(None)):
+    """Persist a server-side share snapshot; return its token and URL path."""
+    try:
+        token = create_share(app_state, frontend_state=frontend_state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"token": token, "path": f"/share/{token}"}
+
+
+@app.post("/api/share/{token}/load")
+async def load_share_endpoint(token: str):
+    """Load a persisted share snapshot into the global session."""
+    zip_path = share_zip_path(token)
+    if zip_path is None:
+        raise HTTPException(status_code=404, detail="Unknown share link.")
+    try:
+        with open(zip_path, "rb") as fh:
+            parsed = parse_session_zip(fh, max_bytes=_max_session_upload_bytes())
+    except SessionLoadError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Stored share is unreadable: {exc}"
+        ) from exc
+    try:
+        return apply_session_to_state(parsed, app_state)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to apply shared session: {exc}"
         ) from exc
     finally:
         shutil.rmtree(parsed_session_temp_root(parsed), ignore_errors=True)
