@@ -10,16 +10,22 @@ import { Upload, Boxes } from 'lucide-react';
 import {
   uploadImportObj,
   commitImportObj,
+  uploadImportDxf,
+  commitImportDxf,
+  clearAuxiliaryLines,
   getModelGeo,
   getAnchorGround,
   AnchorGroundResult,
   ImportObjUploadResult,
+  ImportDxfUploadResult,
   ModelGeoResult,
 } from '../api';
 import { GuidedSection } from '../components/guided';
 import ThreeViewer from '../components/ThreeViewer';
 import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import ObjPlacementMap from '../components/ObjPlacementMap';
+import DxfPlacementMap from '../components/DxfPlacementMap';
+import AuxiliaryLinesControl from '../components/AuxiliaryLinesControl';
 import { SceneViewer } from '../three';
 import { lonLatToUvM, domainRotationDeg } from '../lib/grid';
 import {
@@ -55,6 +61,18 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
   const [anchorGround, setAnchorGround] = useState<AnchorGroundResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [importMode, setImportMode] = useState<'obj' | 'dxf'>('obj');
+  // DXF auxiliary-line import state.
+  const [dxfUpload, setDxfUpload] = useState<ImportDxfUploadResult | null>(null);
+  const [dxfPlacement, setDxfPlacement] = useState<Placement>(defaultPlacement);
+  const [dxfVisibility, setDxfVisibility] = useState<Record<string, boolean>>({});
+  const [auxVisibility, setAuxVisibility] = useState<Record<string, Record<string, boolean>>>({});
+  const dxfFileInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshGeo = useCallback(() => {
+    getModelGeo().then(setGeo).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (hasModel) getModelGeo().then(setGeo).catch(() => {});
   }, [hasModel]);
@@ -71,6 +89,14 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       p.anchorLonLat ? p : { ...p, anchorLonLat: [geo.center[1], geo.center[0]] },
     );
   }, [upload, geo]);
+
+  // Same default-anchor behaviour as the OBJ effect above, for the DXF flow.
+  useEffect(() => {
+    if (!dxfUpload || !geo) return;
+    setDxfPlacement((p) =>
+      p.anchorLonLat ? p : { ...p, anchorLonLat: [geo.center[1], geo.center[0]] },
+    );
+  }, [dxfUpload, geo]);
 
   // Fetch the DEM datum at the anchor cell whenever the anchor moves. The 3D
   // preview uses this so `move_up = 0` seats the building on the ground at the
@@ -193,6 +219,74 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     }
   }, [upload, placement, roles, onFigureChange, onModelEdited]);
 
+  const handleDxfFile = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = Array.from(files).find((f) => f.name.toLowerCase().endsWith('.dxf'));
+    if (!file) { setError('Please choose a .dxf file.'); return; }
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
+    try {
+      const res = await uploadImportDxf(file);
+      setDxfUpload(res);
+      setDxfVisibility(Object.fromEntries(res.layers.map((l) => [l.name, true])));
+      setDxfPlacement((p) => ({
+        ...defaultPlacement(),
+        anchorLonLat: p.anchorLonLat,
+        units: (res.detected_units as Units) ?? 'm',
+        anchorModelPoint: [res.model_center[0], res.model_center[1], 0],
+      }));
+      if (res.warning) setWarning(res.warning);
+      setInfo(`Loaded ${res.layers.length} layer(s). Position it and add reference lines.`);
+    } catch (err: any) {
+      setError(err.message || 'DXF upload failed');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const handleDxfImport = useCallback(async () => {
+    if (!dxfUpload) return;
+    const anchorLonLat = dxfPlacement.anchorLonLat;
+    if (!anchorLonLat) { setError('Click the map to set an anchor first.'); return; }
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
+    try {
+      const r = await commitImportDxf({
+        import_id: dxfUpload.import_id,
+        placement: {
+          anchor_lonlat: anchorLonLat,
+          anchor_model_point: [dxfPlacement.anchorModelPoint[0], dxfPlacement.anchorModelPoint[1]],
+          rotation: dxfPlacement.rotation,
+          move: [dxfPlacement.move[0], dxfPlacement.move[1]],
+          units: dxfPlacement.units,
+        },
+        layer_visibility: dxfVisibility,
+      });
+      const fileName = r.auxiliary_lines[0]?.file_name;
+      if (fileName) {
+        setAuxVisibility((v) => ({ ...v, [fileName]: { ...dxfVisibility } }));
+      }
+      setWarning(r.warning);
+      setInfo(r.warning ? null : `Added ${r.auxiliary_lines.length} auxiliary line(s).`);
+      setDxfUpload(null);
+      refreshGeo();       // pull committed lines into geo.auxiliary_lines for the 3D overlay
+      onModelEdited?.();
+    } catch (err: any) {
+      setError(err.message || 'DXF import failed');
+    } finally {
+      setBusy(false);
+    }
+  }, [dxfUpload, dxfPlacement, dxfVisibility, refreshGeo, onModelEdited]);
+
+  const handleRemoveAuxFile = useCallback(async (fileName: string) => {
+    try {
+      await clearAuxiliaryLines({ fileName });
+      setAuxVisibility((v) => { const n = { ...v }; delete n[fileName]; return n; });
+      refreshGeo();
+      onModelEdited?.();
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove auxiliary lines');
+    }
+  }, [refreshGeo, onModelEdited]);
+
   if (!hasModel) {
     return (
       <div className="panel">
@@ -206,8 +300,18 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
     <div className="three-col">
       <div className="panel edit-control-panel">
         <div className="edit-control-scroll">
-          <h2>Import OBJ</h2>
+          <h2>Import</h2>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button type="button" disabled={busy}
+                    className={`btn btn-xs${importMode === 'obj' ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => setImportMode('obj')}>OBJ buildings</button>
+            <button type="button" disabled={busy}
+                    className={`btn btn-xs${importMode === 'dxf' ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => setImportMode('dxf')}>DXF reference lines</button>
+          </div>
 
+          {importMode === 'obj' && (
+          <>
           <GuidedSection index={1} label="UPLOAD">
             <button
               type="button"
@@ -346,6 +450,119 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
               </details>
             </GuidedSection>
           )}
+          </>
+          )}
+
+          {importMode === 'dxf' && (
+          <>
+          <GuidedSection index={1} label="UPLOAD DXF">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: '100%', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+              disabled={busy}
+              onClick={() => dxfFileInputRef.current?.click()}
+            >
+              <Upload size={14} style={{ marginRight: 6 }} />
+              {dxfUpload ? 'Replace DXF…' : 'Choose DXF…'}
+            </button>
+            <input
+              ref={dxfFileInputRef}
+              type="file"
+              accept=".dxf"
+              disabled={busy}
+              style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+                       overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
+              onChange={(e) => handleDxfFile(e.target.files)}
+            />
+          </GuidedSection>
+
+          {dxfUpload && (
+            <GuidedSection index={2} label="LAYERS">
+              <table className="role-table" style={{ width: '100%', fontSize: '0.8rem' }}>
+                <tbody>
+                  {dxfUpload.layers.map((l) => (
+                    <tr key={l.name}>
+                      <td>
+                        <span style={{ display: 'inline-block', width: 10, height: 10,
+                                       background: l.color, marginRight: 6, border: '1px solid #0003' }} />
+                        {l.name}
+                      </td>
+                      <td style={{ textAlign: 'right' }} title={`${l.n_segments} segments`}>
+                        <input type="checkbox" checked={dxfVisibility[l.name] !== false} disabled={busy}
+                               onChange={(e) => setDxfVisibility((v) => ({ ...v, [l.name]: e.target.checked }))} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </GuidedSection>
+          )}
+
+          {dxfUpload && (
+            <GuidedSection index={3} label="PLACEMENT">
+              <div className="guided-tool-hint">
+                {dxfPlacement.anchorLonLat
+                  ? 'Edit the anchor below or click the map to set it.'
+                  : 'Click the map or enter lat/lon below to set the anchor.'}
+              </div>
+              <div className="form-group">
+                <label>Anchor latitude / longitude</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="number" step="any" placeholder="lat" disabled={busy}
+                         value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[1] : ''}
+                         onChange={(e) => {
+                           const lat = parseFloat(e.target.value);
+                           if (Number.isNaN(lat)) return;
+                           setDxfPlacement((p) => ({ ...p, anchorLonLat: [p.anchorLonLat ? p.anchorLonLat[0] : 0, lat] }));
+                         }} />
+                  <input type="number" step="any" placeholder="lon" disabled={busy}
+                         value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[0] : ''}
+                         onChange={(e) => {
+                           const lon = parseFloat(e.target.value);
+                           if (Number.isNaN(lon)) return;
+                           setDxfPlacement((p) => ({ ...p, anchorLonLat: [lon, p.anchorLonLat ? p.anchorLonLat[1] : 0] }));
+                         }} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Rotation (deg)</label>
+                <input type="number" step={1} value={dxfPlacement.rotation} disabled={busy}
+                       onChange={(e) => setDxfPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
+              </div>
+              <div className="form-group">
+                <label>Move east / north (m)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[0, 1].map((k) => (
+                    <input key={k} type="number" step={0.5} value={dxfPlacement.move[k]} disabled={busy}
+                           onChange={(e) => setDxfPlacement((p) => {
+                             const move = [...p.move] as [number, number, number];
+                             move[k] = parseFloat(e.target.value) || 0;
+                             return { ...p, move };
+                           })} />
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Units</label>
+                <select value={dxfPlacement.units} disabled={busy}
+                        onChange={(e) => setDxfPlacement((p) => ({ ...p, units: e.target.value as Units }))}>
+                  {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+            </GuidedSection>
+          )}
+
+          <AuxiliaryLinesControl
+            geo={geo}
+            visibility={auxVisibility}
+            onToggle={(file, layer, visible) =>
+              setAuxVisibility((v) => ({ ...v, [file]: { ...(v[file] ?? {}), [layer]: visible } }))}
+            onRemoveFile={handleRemoveAuxFile}
+            style={{ marginTop: 8 }}
+          />
+          </>
+          )}
 
           <div className="guided-feedback-slot">
             {error && <div className="alert alert-error">{error}</div>}
@@ -355,14 +572,25 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         </div>
 
         <div className="pending-edit-footer">
-          <button className="btn btn-primary pending-update-btn"
-                  onClick={handleImport}
-                  disabled={!upload || busy || !placement.anchorLonLat}
-                  type="button">
-            {busy && <span className="spinner" />}
-            <Boxes size={14} style={{ marginRight: 6 }} />
-            {busy ? 'Importing…' : 'Import building(s)'}
-          </button>
+          {importMode === 'obj' ? (
+            <button className="btn btn-primary pending-update-btn"
+                    onClick={handleImport}
+                    disabled={!upload || busy || !placement.anchorLonLat}
+                    type="button">
+              {busy && <span className="spinner" />}
+              <Boxes size={14} style={{ marginRight: 6 }} />
+              {busy ? 'Importing…' : 'Import building(s)'}
+            </button>
+          ) : (
+            <button className="btn btn-primary pending-update-btn"
+                    onClick={handleDxfImport}
+                    disabled={!dxfUpload || busy || !dxfPlacement.anchorLonLat}
+                    type="button">
+              {busy && <span className="spinner" />}
+              <Boxes size={14} style={{ marginRight: 6 }} />
+              {busy ? 'Adding…' : 'Add reference lines'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -370,7 +598,7 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       <div className="panel visual-panel">
         <div className="plan-panel-header"><h2>2D placement</h2></div>
         <div className="visual-frame">
-          {geo && upload ? (
+          {importMode === 'obj' && (geo && upload ? (
             <ObjPlacementMap
               geo={geo}
               placement={placement}
@@ -379,7 +607,18 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
             />
           ) : (
             <div className="alert alert-info">Upload an OBJ, then click the map to set the anchor.</div>
-          )}
+          ))}
+          {importMode === 'dxf' && (geo && dxfUpload ? (
+            <DxfPlacementMap
+              geo={geo}
+              placement={dxfPlacement}
+              layers={dxfUpload.preview.layers}
+              visibility={dxfVisibility}
+              onAnchor={(lonLat) => setDxfPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
+            />
+          ) : (
+            <div className="alert alert-info">Upload a DXF, then click the map to set the anchor.</div>
+          ))}
         </div>
       </div>
 
@@ -387,11 +626,19 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
       <div className="panel visual-panel">
         <div className="plan-panel-header"><h2>3D result</h2></div>
         <div className="visual-frame">
-          {previewDisabled ? (
+          {importMode === 'dxf' ? (
+            <div className="alert alert-info">
+              DXF reference lines are a flat overlay; they are added to the 2D map and
+              the 3D scenes without changing the voxel model.
+            </div>
+          ) : previewDisabled ? (
             <PreviewDisabledNotice gridShape={previewGridShape} />
           ) : upload && !figureJson ? (
             <SceneViewer
               geometryToken="import-preview"
+              lonLatToXY={geo ? lonLatToUvM({ grid_geom: geo.grid_geom }) : undefined}
+              auxiliaryLines={geo?.auxiliary_lines}
+              auxiliaryLineVisibility={auxVisibility}
               placementPreview={{
                 vertices: upload.preview.vertices,
                 indices: upload.preview.indices,
