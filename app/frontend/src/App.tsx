@@ -12,12 +12,14 @@ import StartSplash, { SPLASH_DISMISSED_KEY } from './components/StartSplash';
 import type { RestoredFrontendState } from './lib/sessionRestore';
 export type { RestoredFrontendState };
 import type { SessionLoadSummary } from './api';
+import { parseShareToken } from './lib/shareLink';
+import { parsePersistedFrontendState, buildRestoredFrontendState } from './lib/sessionRestore';
 import {
   MapPin, Layers, Pencil, Grid3x3, Sun, Camera,
   Landmark as LandmarkIcon, FolderOpen, Boxes,
 } from 'lucide-react';
 import type { Zone } from './types/zones';
-import { healthCheck, resetSession, getModelInfo } from './api';
+import { healthCheck, resetSession, getModelInfo, loadShare } from './api';
 
 const TABS = [
   { id: 'area',       label: 'Target',   Icon: MapPin },
@@ -51,7 +53,13 @@ const App: React.FC = () => {
   const [viewRunNonce, setViewRunNonce] = useState(0);
   const [landmarkRunNonce, setLandmarkRunNonce] = useState(0);
 
+  const shareTokenRef = useRef<string | null>(parseShareToken(window.location.pathname));
+  const [shareLoad, setShareLoad] = useState<{ status: 'idle' | 'loading' | 'error'; message?: string }>(
+    () => (parseShareToken(window.location.pathname) ? { status: 'loading' } : { status: 'idle' }),
+  );
+
   const [splashOpen, setSplashOpen] = useState(() => {
+    if (parseShareToken(window.location.pathname)) return false;
     try { return localStorage.getItem(SPLASH_DISMISSED_KEY) !== '1'; } catch { return true; }
   });
   const [initialResetPending, setInitialResetPending] = useState(true);
@@ -165,11 +173,54 @@ const App: React.FC = () => {
         }
       })
       .catch(() => {})
+      .then(() => {
+        const token = shareTokenRef.current;
+        if (!token) return;
+        return loadShare(token)
+          .then((summary) => {
+            const persisted = parsePersistedFrontendState(summary.frontend_state);
+            const { restored } = buildRestoredFrontendState(persisted);
+            handleSessionLoaded(summary, restored);
+            window.history.replaceState(null, '', '/');
+            setShareLoad({ status: 'idle' });
+          })
+          .catch((err: any) => {
+            setShareLoad({ status: 'error', message: err?.message ?? String(err) });
+          });
+      })
       .finally(() => setInitialResetPending(false));
   }, []);
 
   return (
     <div className="app-container">
+      {shareLoad.status !== 'idle' && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255, 255, 255, 0.96)',
+          }}
+        >
+          {shareLoad.status === 'loading' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="spinner" />
+              Loading shared session…
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', maxWidth: 420 }}>
+              <p style={{ fontWeight: 600 }}>Could not load shared session</p>
+              <p style={{ margin: '8px 0 16px' }}>{shareLoad.message}</p>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => { window.history.replaceState(null, '', '/'); setShareLoad({ status: 'idle' }); }}
+              >
+                Start fresh
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <StartSplash
         open={splashOpen}
         onClose={() => setSplashOpen(false)}
