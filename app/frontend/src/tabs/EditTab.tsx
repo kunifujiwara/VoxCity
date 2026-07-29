@@ -854,8 +854,8 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
             </div>
           </details>
         </div>
-        {loading && <div className="alert alert-info">{t('editTab.loadingMap')}</div>}
         <div className="visual-frame">
+        {loading && <div className="alert alert-info">{t('editTab.loadingMap')}</div>}
         {geo && (
           <PlanMapEditor
             geo={geo}
@@ -883,7 +883,7 @@ const EditTab: React.FC<EditTabProps> = ({ hasModel, figureJson, onFigureChange,
           ) : figureJson ? (
             <ThreeViewer figureJson={figureJson} />
           ) : (
-            <div className="alert alert-info" style={{ marginTop: 0 }}>
+            <div className="alert alert-info">
               {t('editTab.applyHint', { action: t('editTab.update3dModel') })}
             </div>
           )}

@@ -664,8 +664,8 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             </div>
           </details>
         </div>
-        {loading && <div className="alert alert-info">{t('zoningTab.loadingMap')}</div>}
         <div className="visual-frame">
+          {loading && <div className="alert alert-info">{t('zoningTab.loadingMap')}</div>}
           {geo && (
             <PlanMapEditor
               geo={geo}
@@ -697,7 +697,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               surfaceSelection={surfaceSelection}
             />
           ) : (
-            <div className="alert alert-info" style={{ marginTop: 0 }}>
+            <div className="alert alert-info">
               {t('zoningTab.generateModelHint')}
             </div>
           )}
