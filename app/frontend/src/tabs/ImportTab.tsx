@@ -602,7 +602,6 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
       {/* 2D map */}
       <div className="panel visual-panel">
-        <div className="plan-panel-header"><h2>{t('importTab.heading2d')}</h2></div>
         <div className="visual-frame">
           {importMode === 'obj' && (geo && upload ? (
             <ObjPlacementMap
@@ -630,7 +629,6 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
 
       {/* 3D result */}
       <div className="panel visual-panel">
-        <div className="plan-panel-header"><h2>{t('importTab.heading3d')}</h2></div>
         <div className="visual-frame">
           {importMode === 'dxf' ? (
             previewDisabled ? (

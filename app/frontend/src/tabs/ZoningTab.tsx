@@ -641,9 +641,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       {/* Center: 2D editor */}
       <div className="panel visual-panel">
         <div className="plan-panel-header">
-          <div>
-            <h2>{t('zoningTab.editorHeading')}</h2>
-          </div>
+          <div />
           <details className="display-menu" ref={displayMenuRef}>
             <summary>{t('zoningTab.display')}</summary>
             <div className="display-menu-popover">
@@ -685,9 +683,6 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
       {/* Right: 3D viewer */}
       <div className="panel visual-panel">
-        <div className="plan-panel-header">
-          <h2>{t('zoningTab.previewHeading')}</h2>
-        </div>
         <div className="visual-frame">
           {previewDisabled ? (
             <PreviewDisabledNotice gridShape={previewGridShape} />
