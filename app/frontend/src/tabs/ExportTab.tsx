@@ -130,7 +130,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
       const blob = await saveSession(frontendStateJson, sessionIncludeSim);
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
       downloadBlob(blob, `voxcity-session-${ts}.zip`);
-      setSessionSuccess('Session saved.');
+      setSessionSuccess(t('export.sessionSaved'));
     } catch (err: any) {
       setSessionError(err.message);
     } finally {
@@ -152,8 +152,8 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
       onSessionLoaded?.(summary, restored);
       setSessionSuccess(
         malformed || skippedFrontendState
-          ? 'Session loaded; some frontend state was not restored.'
-          : 'Session loaded.',
+          ? t('export.sessionLoadedPartial')
+          : t('export.sessionLoaded'),
       );
     } catch (err: any) {
       setSessionError(err.message);
@@ -175,18 +175,18 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
           trunk_height_ratio: trunkHeightRatio,
         });
         downloadBlob(blob, 'cityles_outputs.zip');
-        setSuccess('CityLES exported successfully!');
+        setSuccess(t('export.citylesExported'));
       } else if (exportFormat === 'geotiff') {
         const blob = await exportGeotiff({ filename: geotiffFilename });
         downloadBlob(blob, `${geotiffFilename}_geotiff.zip`);
-        setSuccess('GeoTIFF exported successfully!');
+        setSuccess(t('export.geotiffExported'));
       } else {
         const blob = await exportObj({
           filename: objFilename,
           export_netcdf: exportNetcdf,
         });
         downloadBlob(blob, `${objFilename}.zip`);
-        setSuccess('OBJ exported successfully!');
+        setSuccess(t('export.objExported'));
       }
     } catch (err: any) {
       setError(err.message);
@@ -197,8 +197,8 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
   return (
     <div style={{ maxWidth: 600 }}>
       <GuidedPanel
-        title="Save / Load Session"
-        subtitle="Move the current scene and zones between browser sessions."
+        title={t('export.sessionTitle')}
+        subtitle={t('export.sessionSubtitle')}
         status={
           sessionError ? <GuidedStatus tone="error">{sessionError}</GuidedStatus>
             : sessionSuccess ? <GuidedStatus tone="success">{sessionSuccess}</GuidedStatus>
@@ -214,7 +214,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             >
               {sessionLoading && <span className="spinner" />}
               <Download size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              Save Session
+              {t('export.saveSession')}
             </button>
             <button
               className="btn"
@@ -223,7 +223,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              Load Session
+              {t('export.loadSession')}
             </button>
             <input
               ref={fileInputRef}
@@ -240,12 +240,12 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             >
               {shareLoading && <span className="spinner" />}
               <Link2 size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              Copy Share Link
+              {t('export.shareLink')}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="SESSION OPTIONS">
+        <GuidedSection index={1} label={t('export.sessionOptions')}>
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -253,12 +253,12 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
               disabled={!hasModel || sessionLoading}
               onChange={(e) => setSessionIncludeSim(e.target.checked)}
             />
-            <span>Include simulation results (larger file, lets overlays render without re-running)</span>
+            <span>{t('export.includeSim')}</span>
           </label>
         </GuidedSection>
 
         {(shareUrl || shareError) && (
-          <GuidedSection index={2} label="SHARE LINK">
+          <GuidedSection index={2} label={t('export.shareSectionLabel')}>
             {shareError ? (
               <GuidedStatus tone="error">{shareError}</GuidedStatus>
             ) : (
@@ -268,19 +268,19 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
                     ref={shareUrlInputRef}
                     readOnly
                     value={shareUrl ?? ''}
-                    aria-label="Share URL"
+                    aria-label={t('export.shareUrlLabel')}
                     onFocus={(e) => e.currentTarget.select()}
                     style={{ flex: 1, minWidth: 0 }}
                   />
                   <button className="btn" type="button" onClick={handleCopyShareUrl}>
                     <Copy size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-                    Copy
+                    {t('export.shareCopy')}
                   </button>
                 </div>
                 <GuidedStatus tone="success">
                   {shareCopied
-                    ? 'Link copied to clipboard.'
-                    : 'Share link created — copy it below.'}
+                    ? t('export.shareCopied')
+                    : t('export.shareCreated')}
                 </GuidedStatus>
               </>
             )}
@@ -289,8 +289,8 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
       </GuidedPanel>
 
       <GuidedPanel
-        title="Export"
-        subtitle="Download the VoxCity model in your preferred format."
+        title={t('export.exportTitle')}
+        subtitle={t('export.exportSubtitle')}
         status={
           error ? (
             <GuidedStatus tone="error">{error}</GuidedStatus>
@@ -308,39 +308,39 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="EXPORT FORMAT">
+        <GuidedSection index={1} label={t('export.formatHeading')}>
           <ChoiceGroup
-            ariaLabel="Export format"
+            ariaLabel={t('export.formatAria')}
             value={exportFormat}
             onChange={setExportFormat}
             options={[
-              { id: 'cityles', label: 'CityLES', description: 'CityLES output archive', icon: Package },
-              { id: 'obj', label: 'OBJ', description: 'Mesh export archive', icon: Box },
-              { id: 'geotiff', label: 'GeoTIFF', description: 'Georeferenced raster layers', icon: Map },
+              { id: 'cityles', label: t('export.optCitylesLabel'), description: t('export.optCitylesDesc'), icon: Package },
+              { id: 'obj', label: t('export.optObjLabel'), description: t('export.optObjDesc'), icon: Box },
+              { id: 'geotiff', label: t('export.optGeotiffLabel'), description: t('export.optGeotiffDesc'), icon: Map },
             ]}
           />
         </GuidedSection>
 
         {exportFormat === 'cityles' && (
-          <GuidedSection index={2} label="CITYLES OPTIONS">
+          <GuidedSection index={2} label={t('export.citylesOptions')}>
             <div className="form-group">
-              <label>Building Material</label>
+              <label>{t('export.buildingMaterial')}</label>
               <select value={buildingMaterial} onChange={(e) => setBuildingMaterial(e.target.value)}>
-                <option value="default">Default</option>
-                <option value="concrete">Concrete</option>
-                <option value="brick">Brick</option>
+                <option value="default">{t('export.matDefault')}</option>
+                <option value="concrete">{t('export.matConcrete')}</option>
+                <option value="brick">{t('export.matBrick')}</option>
               </select>
             </div>
             <div className="form-group">
-              <label>Tree Type</label>
+              <label>{t('export.treeType')}</label>
               <select value={treeType} onChange={(e) => setTreeType(e.target.value)}>
-                <option value="default">Default</option>
-                <option value="deciduous">Deciduous</option>
-                <option value="conifer">Conifer</option>
+                <option value="default">{t('export.treeDefault')}</option>
+                <option value="deciduous">{t('export.treeDeciduous')}</option>
+                <option value="conifer">{t('export.treeConifer')}</option>
               </select>
             </div>
             <div className="form-group">
-              <label>Trunk Height Ratio</label>
+              <label>{t('export.trunkHeightRatio')}</label>
               <input
                 type="number"
                 value={trunkHeightRatio}
@@ -354,9 +354,9 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
         )}
 
         {exportFormat === 'obj' && (
-          <GuidedSection index={2} label="OBJ OPTIONS">
+          <GuidedSection index={2} label={t('export.objOptions')}>
             <div className="form-group">
-              <label>Output Filename</label>
+              <label>{t('export.outputFilename')}</label>
               <input
                 type="text"
                 value={objFilename}
@@ -369,15 +369,15 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
                 checked={exportNetcdf}
                 onChange={(e) => setExportNetcdf(e.target.checked)}
               />
-              <span>Also export NetCDF</span>
+              <span>{t('export.alsoNetcdf')}</span>
             </div>
           </GuidedSection>
         )}
 
         {exportFormat === 'geotiff' && (
-          <GuidedSection index={2} label="GEOTIFF OPTIONS">
+          <GuidedSection index={2} label={t('export.geotiffOptions')}>
             <div className="form-group">
-              <label>Output Filename</label>
+              <label>{t('export.outputFilename')}</label>
               <input
                 type="text"
                 value={geotiffFilename}
@@ -385,9 +385,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
               />
             </div>
             <p style={{ fontSize: '0.78rem', opacity: 0.8, margin: '0.25rem 0 0' }}>
-              Exports land cover, building height, DEM, and canopy height as four
-              georeferenced GeoTIFFs (EPSG:4326), plus a README.md with layer
-              details and usage instructions.
+              {t('export.geotiffHint')}
             </p>
           </GuidedSection>
         )}
