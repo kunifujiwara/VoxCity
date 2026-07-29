@@ -90,3 +90,25 @@ def test_create_share_leaves_no_staging_dir_on_success(monkeypatch, tmp_path):
     share.create_share(_fake_state())
     base = share.share_base_dir()
     assert not list(base.glob(".tmp-*"))
+
+
+def test_create_share_cleans_up_staging_and_reraises_on_write_failure(monkeypatch):
+    import io
+
+    def fake_save(state, **kwargs):
+        buf = io.BytesIO()
+        buf.write(b"zipbytes")
+        buf.seek(0)
+        return buf
+
+    monkeypatch.setattr(share, "save_session_to_zip", fake_save)
+    # Fail AFTER the staging dir + session.zip are created, while writing meta.json.
+    monkeypatch.setattr(share.json, "dumps", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        share.create_share(_fake_state())
+
+    base = share.share_base_dir()
+    # No staging dir and no committed token dir should remain.
+    assert not list(base.glob(".tmp-*"))
+    assert not any(p.is_dir() and p.name != "" and not p.name.startswith(".tmp-") for p in base.glob("*"))
