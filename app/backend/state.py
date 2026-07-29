@@ -52,6 +52,12 @@ class AppState:
     rectangle_vertices: Optional[List[List[float]]] = None  # [[lon, lat], ...] WGS84
     land_cover_source: str = "OpenStreetMap"
 
+    # Baked auxiliary reference lines imported from DXF, in absolute lon/lat,
+    # for the 2D/3D overlay. Single source of truth for this geometry; never
+    # voxelized. Each entry: {"id": str, "file_name": str, "layer": str,
+    # "color": "#rrggbb", "points": [[lon, lat], ...]}.
+    auxiliary_lines: List[Dict[str, Any]] = field(default_factory=list)
+
     # Last simulation results (kept for re-rendering without re-running)
     last_sim_type: Optional[str] = None          # "solar" | "view" | "landmark"
     last_sim_target: Optional[str] = None        # "ground" | "building"
@@ -174,6 +180,9 @@ class AppState:
             "meshsize": meshsize,
             "rectangle_vertices": rectangle_vertices,
         }
+        # A freshly generated model invalidates any previously imported DXF
+        # overlay (its lon/lat geometry belongs to the old grid).
+        self.auxiliary_lines = []
 
     @property
     def meshsize(self) -> float:
