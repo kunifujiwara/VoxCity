@@ -21,6 +21,7 @@ import {
 } from '../api';
 import type { Zone } from '../types/zones';
 
+import { AuxiliaryLineLayer } from './AuxiliaryLineLayer';
 import { CameraControls } from './CameraControls';
 import { ColorBar } from './ColorBar';
 import { MeshLayer } from './MeshLayer';
@@ -111,6 +112,11 @@ export interface SceneViewerProps {
     mode: 'translate' | 'rotate';
     onChange: (next: Partial<import('../lib/objPlacement').Placement>) => void;
   } | null;
+
+  /** Baked DXF auxiliary lines (lon/lat) draped at ground height. */
+  auxiliaryLines?: import('../api').AuxiliaryLineDto[] | null;
+  /** Per-file/per-layer visibility for auxiliary lines. */
+  auxiliaryLineVisibility?: Record<string, Record<string, boolean>>;
 }
 
 const DEFAULT_BG = '#1a1a2e';
@@ -137,6 +143,8 @@ export function SceneViewer({
   style,
   background = DEFAULT_BG,
   placementPreview = null,
+  auxiliaryLines = null,
+  auxiliaryLineVisibility,
 }: SceneViewerProps) {
   const pickableSurfaceEnabled = shouldMountPickableSurface(onPick, surfaceSelection);
   const [scene, setScene] = useState<SceneGeometryResponse | null>(null);
@@ -324,6 +332,15 @@ export function SceneViewer({
               domainRotationDeg={placementPreview.domainRotationDeg}
               mode={placementPreview.mode}
               onChange={placementPreview.onChange}
+            />
+          )}
+
+          {auxiliaryLines && auxiliaryLines.length > 0 && (
+            <AuxiliaryLineLayer
+              lines={auxiliaryLines}
+              lonLatToXY={lonLatToXY}
+              visibility={auxiliaryLineVisibility}
+              zHeight={scene ? (scene.ground_top_m ?? 0) + scene.meshsize_m : 0.5}
             />
           )}
 
