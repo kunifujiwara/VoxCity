@@ -20,7 +20,8 @@ import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface SolarTabProps {
   hasModel: boolean;
@@ -48,6 +49,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   previewDisabled = false,
   previewGridShape,
 }) => {
+  const t = useT() as Translate;
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'solar', simRunNonce);
   const [calcType, setCalcType] = useState<'instantaneous' | 'cumulative'>('instantaneous');
@@ -93,7 +95,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
   }, [restoredSimTypes]);
 
   if (!hasModel) {
-    const message = prerequisiteMessageForTab('solar');
+    const message = prerequisiteMessageForTab(t, 'solar');
     return (
       <div className="two-col">
         <GuidedStatus tone="warning">
@@ -152,7 +154,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
             <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
               {loading && <span className="spinner" />}
               <Sun size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {simulationActionLabel(loading)}
+              {simulationActionLabel(t, loading)}
             </button>
           </GuidedFooter>
         )}

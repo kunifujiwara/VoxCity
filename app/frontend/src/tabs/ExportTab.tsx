@@ -9,7 +9,8 @@ import {
 } from '../lib/sessionRestore';
 import type { Zone } from '../types/zones';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { ExportFormat, exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
+import { useT } from '../i18n';
+import { ExportFormat, Translate, exportActionLabel, prerequisiteMessageForTab } from './guidedTabState';
 
 interface ExportTabProps {
   hasModel: boolean;
@@ -18,6 +19,7 @@ interface ExportTabProps {
 }
 
 const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded }) => {
+  const t = useT() as Translate;
   const [exportFormat, setExportFormat] = useState<ExportFormat>('cityles');
   const [buildingMaterial, setBuildingMaterial] = useState('default');
   const [treeType, setTreeType] = useState('default');
@@ -99,7 +101,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
   };
 
   if (!hasModel) {
-    const message = prerequisiteMessageForTab('export');
+    const message = prerequisiteMessageForTab(t, 'export');
     return (
       <div style={{ maxWidth: 600 }}>
         <GuidedStatus tone="warning">
@@ -301,7 +303,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             <button className="btn btn-primary" onClick={handleExport} disabled={loading} type="button">
               {loading && <span className="spinner" />}
               <Download size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {exportActionLabel(exportFormat, loading)}
+              {exportActionLabel(t, exportFormat, loading)}
             </button>
           </GuidedFooter>
         )}

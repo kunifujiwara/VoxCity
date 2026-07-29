@@ -13,7 +13,8 @@ import {
   PREVIEW_MAX_CELLS,
 } from '../constants';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { generationActionLabel, prerequisiteMessageForTab } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, generationActionLabel, prerequisiteMessageForTab } from './guidedTabState';
 
 interface GenerationTabProps {
   rectangle: number[][] | null;
@@ -32,6 +33,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   previewDisabled = false,
   previewGridShape,
 }) => {
+  const t = useT() as Translate;
   // Mode: "plateau" or "normal"
   const [mode, setMode] = useState<'plateau' | 'normal'>('normal');
 
@@ -122,7 +124,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const willDisablePreview = !!estimate && estimate[0] * estimate[1] > PREVIEW_MAX_CELLS;
 
   if (!rectangle) {
-    const message = prerequisiteMessageForTab('generation');
+    const message = prerequisiteMessageForTab(t, 'generation');
     return (
       <div className="two-col">
         <GuidedStatus tone="warning">
@@ -153,7 +155,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
             <button className="btn btn-primary" onClick={handleGenerate} disabled={loading} type="button">
               {loading && <span className="spinner" />}
               <Layers size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {generationActionLabel(loading)}
+              {generationActionLabel(t, loading)}
             </button>
           </GuidedFooter>
         )}

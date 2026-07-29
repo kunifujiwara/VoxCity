@@ -1,6 +1,7 @@
 import React from 'react';
 import { EyeOff } from 'lucide-react';
 import { PREVIEW_MAX_CELLS } from '../constants';
+import { useT } from '../i18n';
 
 interface PreviewDisabledNoticeProps {
   gridShape?: number[] | null;
@@ -12,6 +13,7 @@ interface PreviewDisabledNoticeProps {
  * export still work.
  */
 const PreviewDisabledNotice: React.FC<PreviewDisabledNoticeProps> = ({ gridShape }) => {
+  const t = useT();
   const dims =
     gridShape && gridShape.length >= 2 ? `${gridShape[0]}×${gridShape[1]}` : null;
   return (
@@ -24,12 +26,11 @@ const PreviewDisabledNotice: React.FC<PreviewDisabledNoticeProps> = ({ gridShape
       }}
     >
       <EyeOff size={32} aria-hidden="true" />
-      <strong>3D preview disabled</strong>
+      <strong>{t('previewNotice.heading')}</strong>
       <p style={{ maxWidth: 360, fontSize: '0.85rem', margin: 0 }}>
-        {dims ? <>The grid ({dims}) exceeds the preview limit of{' '}</>
-              : <>This grid exceeds the preview limit of{' '}</>}
-        {PREVIEW_MAX_CELLS.toLocaleString()} cells. Generation, editing,
-        simulation results, and export still work.
+        {dims
+          ? t('previewNotice.bodyWithDims', { dims, cells: PREVIEW_MAX_CELLS.toLocaleString() })
+          : t('previewNotice.bodyNoDims', { cells: PREVIEW_MAX_CELLS.toLocaleString() })}
       </p>
     </div>
   );

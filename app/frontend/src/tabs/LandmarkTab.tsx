@@ -35,7 +35,8 @@ import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface LandmarkTabProps {
   hasModel: boolean;
@@ -66,6 +67,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   previewDisabled = false,
   previewGridShape,
 }) => {
+  const t = useT() as Translate;
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'landmark', simRunNonce);
   const [analysisTarget, setAnalysisTarget] = useState<'ground' | 'building'>('ground');
@@ -212,7 +214,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   }, [hasModel, selectedBuildingIds, highlightAsSimResult, colormap]);
 
   if (!hasModel) {
-    const message = prerequisiteMessageForTab('landmark');
+    const message = prerequisiteMessageForTab(t, 'landmark');
     return (
       <div className="two-col">
         <GuidedStatus tone="warning">
@@ -288,7 +290,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
             >
               {loading && <span className="spinner" />}
               <Flag size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {simulationActionLabel(loading)}
+              {simulationActionLabel(t, loading)}
             </button>
           </GuidedFooter>
         )}

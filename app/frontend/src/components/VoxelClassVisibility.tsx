@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { VOXEL_CLASSES } from '../constants';
+import { useT } from '../i18n';
 
 interface VoxelClassVisibilityProps {
   hiddenClasses: Set<number>;
@@ -11,6 +12,7 @@ const VoxelClassVisibility: React.FC<VoxelClassVisibilityProps> = ({
   hiddenClasses,
   onHiddenClassesChange,
 }) => {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   const toggle = (id: number) => {
@@ -22,12 +24,12 @@ const VoxelClassVisibility: React.FC<VoxelClassVisibilityProps> = ({
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Visualization Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
+        {t('voxelVisibility.heading')} <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">
           <label style={{ fontSize: '0.85rem', color: 'var(--vc-muted)' }}>
-            Hide element classes
+            {t('voxelVisibility.hideClasses')}
           </label>
           <div
             style={{

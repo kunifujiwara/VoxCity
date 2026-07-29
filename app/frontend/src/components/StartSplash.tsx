@@ -8,6 +8,7 @@ import {
   type RestoredFrontendState,
 } from '../lib/sessionRestore';
 import { GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from './guided';
+import { useT } from '../i18n';
 
 export const SPLASH_DISMISSED_KEY = 'voxcity:splash:dismissed';
 
@@ -24,6 +25,7 @@ const StartSplash: React.FC<StartSplashProps> = ({
   onSessionLoaded,
   disableOpen = false,
 }) => {
+  const t = useT();
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ const StartSplash: React.FC<StartSplashProps> = ({
       onSessionLoaded(summary, restored);
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load session.');
+      setError(err instanceof Error ? err.message : t('splash.loadFailed'));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
       setLoading(false);
@@ -95,21 +97,21 @@ const StartSplash: React.FC<StartSplashProps> = ({
         <button
           type="button"
           className="btn btn-icon"
-          aria-label="Close"
+          aria-label={t('common.close')}
           onClick={handleClose}
           style={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
         >
           <X size={16} aria-hidden="true" />
         </button>
         <GuidedPanel
-          title={<span id="start-splash-title">Welcome to VoxCity</span>}
-          subtitle="Start a new urban model, or open a saved session."
+          title={<span id="start-splash-title">{t('splash.title')}</span>}
+          subtitle={t('splash.subtitle')}
           status={error ? <GuidedStatus tone="error">{error}</GuidedStatus> : undefined}
           footer={(
             <GuidedFooter>
               <button type="button" className="btn btn-primary" onClick={handleClose}>
                 <Plus size={14} aria-hidden="true" />
-                New session
+                {t('common.newSession')}
               </button>
               <button
                 type="button"
@@ -118,7 +120,7 @@ const StartSplash: React.FC<StartSplashProps> = ({
                 disabled={loading || disableOpen}
               >
                 <Upload size={14} aria-hidden="true" />
-                Open session...
+                {t('common.openSession')}
               </button>
               <input
                 ref={fileInputRef}
@@ -130,14 +132,14 @@ const StartSplash: React.FC<StartSplashProps> = ({
             </GuidedFooter>
           )}
         >
-          <GuidedSection index={1} label="GET STARTED">
+          <GuidedSection index={1} label={t('common.getStarted')}>
             <label className="checkbox-row">
               <input
                 type="checkbox"
                 checked={dontShowAgain}
                 onChange={(event) => setDontShowAgain(event.target.checked)}
               />
-              <span>Don't show this again</span>
+              <span>{t('common.dontShowAgain')}</span>
             </label>
           </GuidedSection>
         </GuidedPanel>

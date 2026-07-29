@@ -3,7 +3,8 @@ import { PenTool, Hash, RotateCw, Ruler, Check } from 'lucide-react';
 import MapPicker from '../components/MapPicker';
 import { geocodeCity } from '../api';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { targetAreaActionLabel } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, targetAreaActionLabel } from './guidedTabState';
 
 interface TargetAreaTabProps {
   rectangle: number[][] | null;
@@ -11,6 +12,7 @@ interface TargetAreaTabProps {
 }
 
 const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleChange }) => {
+  const t = useT() as Translate;
   const [areaMethod, setAreaMethod] = useState<'draw' | 'coordinates'>('draw');
   const [selectionMode, setSelectionMode] = useState<'draw' | 'dimensions' | 'rotated'>('draw');
   const [cityName, setCityName] = useState('Tokyo');
@@ -89,7 +91,7 @@ const TargetAreaTab: React.FC<TargetAreaTabProps> = ({ rectangle, onRectangleCha
             >
               {loading && areaMethod === 'draw' && <span className="spinner" />}
               <Check size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {targetAreaActionLabel(areaMethod, loading)}
+              {targetAreaActionLabel(t, areaMethod, loading)}
             </button>
           </GuidedFooter>
         )}

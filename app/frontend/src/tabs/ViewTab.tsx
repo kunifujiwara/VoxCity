@@ -20,7 +20,8 @@ import { useZoneStats } from '../hooks/useZoneStats';
 import { useSurfaceZoneEdges } from '../hooks/useSurfaceZoneEdges';
 import { Zone } from '../types/zones';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, prerequisiteMessageForTab, simulationActionLabel } from './guidedTabState';
 
 interface ViewTabProps {
   hasModel: boolean;
@@ -39,6 +40,7 @@ interface ViewTabProps {
 }
 
 const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRun, geometryToken, restoredSimTypes, previewDisabled = false, previewGridShape }) => {
+  const t = useT() as Translate;
   const [showZones3D, setShowZones3D] = useState(true);
   const { stats: zoneStats, loading: zoneStatsLoading } = useZoneStats(zones, 'view', simRunNonce);
   const [viewType, setViewType] = useState<'green' | 'sky' | 'custom'>('green');
@@ -86,7 +88,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   }, [restoredSimTypes]);
 
   if (!hasModel) {
-    const message = prerequisiteMessageForTab('view');
+    const message = prerequisiteMessageForTab(t, 'view');
     return (
       <div className="two-col">
         <GuidedStatus tone="warning">
@@ -148,7 +150,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
             <button className="btn btn-primary" onClick={handleRun} disabled={loading} type="button">
               {loading && <span className="spinner" />}
               <Eye size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              {simulationActionLabel(loading)}
+              {simulationActionLabel(t, loading)}
             </button>
           </GuidedFooter>
         )}

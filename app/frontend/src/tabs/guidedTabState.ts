@@ -2,37 +2,40 @@ export type PrerequisiteTab = 'generation' | 'zoning' | 'solar' | 'view' | 'land
 export type TargetAreaMethod = 'draw' | 'coordinates';
 export type ExportFormat = 'cityles' | 'obj' | 'geotiff';
 
-const MODEL_REQUIRED_BODY = 'Use the Generation tab to create a VoxCity model before using this workflow.';
+// Typed loosely (`key: string`) so this module stays decoupled from the app's
+// `TranslationKey` union. `useT()`'s return type is a stricter function (its
+// `key` param is the `TranslationKey` union, not plain `string`), so callers
+// pass it in as `useT() as Translate` — safe because every literal passed to
+// `t(...)` below is a valid `TranslationKey`, TypeScript just can't see that
+// through this deliberately-widened signature.
+export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
-export function prerequisiteMessageForTab(tab: PrerequisiteTab): { title: string; body: string } {
+export function prerequisiteMessageForTab(
+  t: Translate,
+  tab: PrerequisiteTab,
+): { title: string; body: string } {
   if (tab === 'generation') {
-    return {
-      title: 'Set a target area first',
-      body: 'Use the Target Area tab to choose the city area before generating a model.',
-    };
+    return { title: t('guided.setAreaTitle'), body: t('guided.setAreaBody') };
   }
-  return {
-    title: 'Generate a model first',
-    body: MODEL_REQUIRED_BODY,
-  };
+  return { title: t('guided.modelRequiredTitle'), body: t('guided.modelRequiredBody') };
 }
 
-export function targetAreaActionLabel(method: TargetAreaMethod, loading: boolean) {
-  if (method === 'coordinates') return 'Set Rectangle';
-  return loading ? 'Loading map...' : 'Load Map';
+export function targetAreaActionLabel(t: Translate, method: TargetAreaMethod, loading: boolean) {
+  if (method === 'coordinates') return t('guided.actionSetRectangle');
+  return loading ? t('guided.actionLoadingMap') : t('guided.actionLoadMap');
 }
 
-export function generationActionLabel(loading: boolean) {
-  return loading ? 'Generating...' : 'Generate VoxCity Model';
+export function generationActionLabel(t: Translate, loading: boolean) {
+  return loading ? t('guided.actionGenerating') : t('guided.actionGenerate');
 }
 
-export function simulationActionLabel(loading: boolean) {
-  return loading ? 'Running...' : 'Run Simulation';
+export function simulationActionLabel(t: Translate, loading: boolean) {
+  return loading ? t('guided.actionRunning') : t('guided.actionRunSimulation');
 }
 
-export function exportActionLabel(format: ExportFormat, loading: boolean) {
-  if (loading) return 'Exporting...';
-  if (format === 'cityles') return 'Export CityLES';
-  if (format === 'geotiff') return 'Export GeoTIFF';
-  return 'Export OBJ';
+export function exportActionLabel(t: Translate, format: ExportFormat, loading: boolean) {
+  if (loading) return t('guided.actionExporting');
+  if (format === 'cityles') return t('guided.actionExportCityles');
+  if (format === 'geotiff') return t('guided.actionExportGeotiff');
+  return t('guided.actionExportObj');
 }

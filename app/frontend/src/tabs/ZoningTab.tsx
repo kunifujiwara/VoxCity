@@ -40,7 +40,8 @@ import type { PickResult } from '../three/types';
 import { useSurfaceZoneSelection } from '../hooks/useSurfaceZoneSelection';
 import { getSurfaceZones, shouldEnableZoningSurfaceSelection } from '../three/surfaceSelection';
 import { ChoiceGroup, GuidedFooter, GuidedPanel, GuidedSection, GuidedStatus } from '../components/guided';
-import { prerequisiteMessageForTab } from './guidedTabState';
+import { useT } from '../i18n';
+import { Translate, prerequisiteMessageForTab } from './guidedTabState';
 
 interface ZoningTabProps {
   hasModel: boolean;
@@ -70,6 +71,7 @@ interface DraftZoneGroup {
 }
 
 const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZonesChange, geometryToken, previewDisabled = false, previewGridShape }) => {
+  const t = useT() as Translate;
   const [geo, setGeo] = useState<ModelGeoResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -385,7 +387,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
   const colorOverride = undefined;
 
   if (!hasModel) {
-    const message = prerequisiteMessageForTab('zoning');
+    const message = prerequisiteMessageForTab(t, 'zoning');
     return (
       <div className="three-col">
         <GuidedStatus tone="warning">
