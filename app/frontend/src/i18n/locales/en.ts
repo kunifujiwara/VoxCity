@@ -390,6 +390,13 @@ export const en = {
     sampling: 'SAMPLING',
     errLoadBuildings: 'Failed to load buildings: {message}',
   },
+  samplingSettings: {
+    header: 'Sampling Settings',
+    nAzimuth: 'N_azimuth',
+    nElevation: 'N_elevation',
+    elevMin: 'Elev min (°)',
+    elevMax: 'Elev max (°)',
+  },
 };
 
 export type Messages = typeof en;

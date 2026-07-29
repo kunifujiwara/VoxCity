@@ -392,4 +392,11 @@ export const ja: Messages = {
     sampling: 'サンプリング',
     errLoadBuildings: '建物の読み込みに失敗しました: {message}',
   },
+  samplingSettings: {
+    header: 'サンプリング設定',
+    nAzimuth: 'N_azimuth',
+    nElevation: 'N_elevation',
+    elevMin: '仰角 最小 (°)',
+    elevMax: '仰角 最大 (°)',
+  },
 };

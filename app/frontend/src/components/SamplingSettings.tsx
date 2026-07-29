@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { useT } from '../i18n';
 
 interface SamplingSettingsProps {
   nAzimuth: number;
@@ -26,17 +27,18 @@ const SamplingSettings: React.FC<SamplingSettingsProps> = ({
   showElevationRange = true,
 }) => {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Sampling Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
+        {t('samplingSettings.header')} <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">
           <div className="form-row">
             <div>
-              <label>N_azimuth</label>
+              <label>{t('samplingSettings.nAzimuth')}</label>
               <input
                 type="number"
                 value={nAzimuth}
@@ -46,7 +48,7 @@ const SamplingSettings: React.FC<SamplingSettingsProps> = ({
               />
             </div>
             <div>
-              <label>N_elevation</label>
+              <label>{t('samplingSettings.nElevation')}</label>
               <input
                 type="number"
                 value={nElevation}
@@ -59,7 +61,7 @@ const SamplingSettings: React.FC<SamplingSettingsProps> = ({
           {showElevationRange && (
             <div className="form-row">
               <div>
-                <label>Elev min (°)</label>
+                <label>{t('samplingSettings.elevMin')}</label>
                 <input
                   type="number"
                   value={elevMin}
@@ -67,7 +69,7 @@ const SamplingSettings: React.FC<SamplingSettingsProps> = ({
                 />
               </div>
               <div>
-                <label>Elev max (°)</label>
+                <label>{t('samplingSettings.elevMax')}</label>
                 <input
                   type="number"
                   value={elevMax}
