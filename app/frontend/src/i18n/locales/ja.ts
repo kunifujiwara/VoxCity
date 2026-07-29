@@ -399,4 +399,9 @@ export const ja: Messages = {
     elevMin: '仰角 最小 (°)',
     elevMax: '仰角 最大 (°)',
   },
+  colorSettings: {
+    header: 'カラー設定',
+    colormap: 'カラーマップ',
+    vmaxAuto: 'vmax（空欄で自動）',
+  },
 };

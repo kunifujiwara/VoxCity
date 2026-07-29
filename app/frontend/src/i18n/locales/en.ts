@@ -397,6 +397,11 @@ export const en = {
     elevMin: 'Elev min (°)',
     elevMax: 'Elev max (°)',
   },
+  colorSettings: {
+    header: 'Color Settings',
+    colormap: 'Colormap',
+    vmaxAuto: 'vmax (empty = auto)',
+  },
 };
 
 export type Messages = typeof en;

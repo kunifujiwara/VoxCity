@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { COLORMAPS } from '../constants';
+import { useT } from '../i18n';
 
 interface ColorSettingsProps {
   colormap: string;
@@ -23,16 +24,17 @@ const ColorSettings: React.FC<ColorSettingsProps> = ({
   vmaxAsText = false,
 }) => {
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   return (
     <div className="expander">
       <div className="expander-header" onClick={() => setOpen(!open)}>
-        Color Settings <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
+        {t('colorSettings.header')} <span className={`expander-chevron ${open ? 'open' : ''}`}><ChevronDown size={16} /></span>
       </div>
       {open && (
         <div className="expander-body">
           <div className="form-group">
-            <label>Colormap</label>
+            <label>{t('colorSettings.colormap')}</label>
             <select value={colormap} onChange={(e) => onColormapChange(e.target.value)}>
               {COLORMAPS.map((cm) => (
                 <option key={cm} value={cm}>{cm}</option>
@@ -50,7 +52,7 @@ const ColorSettings: React.FC<ColorSettingsProps> = ({
               />
             </div>
             <div>
-              <label>{vmaxAsText ? 'vmax (empty = auto)' : 'vmax'}</label>
+              <label>{vmaxAsText ? t('colorSettings.vmaxAuto') : 'vmax'}</label>
               {vmaxAsText ? (
                 <input
                   type="text"
