@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Package, Box, Download, Upload, Map } from 'lucide-react';
-import { exportCityles, exportObj, exportGeotiff, loadSession, saveSession } from '../api';
+import { Package, Box, Download, Upload, Map, Link2, Copy } from 'lucide-react';
+import { createShare, exportCityles, exportObj, exportGeotiff, loadSession, saveSession } from '../api';
 import type { SessionLoadSummary } from '../api';
 import {
   buildRestoredFrontendState,
@@ -34,6 +34,66 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [sessionSuccess, setSessionSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const shareUrlInputRef = useRef<HTMLInputElement | null>(null);
+
+  const copyToClipboard = async (url: string): Promise<boolean> => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        return true;
+      }
+    } catch {
+      // Async write can fail on insecure origins or after gesture activation
+      // expires (a network await ran between click and write). Fall through.
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '0';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCreateShare = async () => {
+    setShareLoading(true);
+    setShareError(null);
+    setShareUrl(null);
+    setShareCopied(false);
+    try {
+      const result = await createShare(JSON.stringify({ zones }));
+      const url = `${window.location.origin}${result.path}`;
+      setShareUrl(url);
+      setShareCopied(await copyToClipboard(url));
+    } catch (err: any) {
+      setShareError(err.message);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShareUrl = async () => {
+    if (!shareUrl) return;
+    const copied = await copyToClipboard(shareUrl);
+    setShareCopied(copied);
+    // On plain-http origins (common for a remote Docker host) the Clipboard API
+    // is unavailable, so writeText fails silently. Select the URL text instead.
+    if (!copied) shareUrlInputRef.current?.select();
+  };
 
   if (!hasModel) {
     const message = prerequisiteMessageForTab('export');
@@ -144,7 +204,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             <button
               className="btn btn-primary"
               type="button"
-              disabled={!hasModel || sessionLoading}
+              disabled={!hasModel || sessionLoading || shareLoading}
               onClick={handleSaveSession}
             >
               {sessionLoading && <span className="spinner" />}
@@ -154,7 +214,7 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             <button
               className="btn"
               type="button"
-              disabled={sessionLoading}
+              disabled={sessionLoading || shareLoading}
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload size={14} aria-hidden="true" style={{ marginRight: 6 }} />
@@ -167,6 +227,16 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
               style={{ display: 'none' }}
               onChange={handleLoadSession}
             />
+            <button
+              className="btn"
+              type="button"
+              disabled={!hasModel || sessionLoading || shareLoading}
+              onClick={handleCreateShare}
+            >
+              {shareLoading && <span className="spinner" />}
+              <Link2 size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+              Copy Share Link
+            </button>
           </GuidedFooter>
         )}
       >
@@ -181,6 +251,36 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
             <span>Include simulation results (larger file, lets overlays render without re-running)</span>
           </label>
         </GuidedSection>
+
+        {(shareUrl || shareError) && (
+          <GuidedSection index={2} label="SHARE LINK">
+            {shareError ? (
+              <GuidedStatus tone="error">{shareError}</GuidedStatus>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    ref={shareUrlInputRef}
+                    readOnly
+                    value={shareUrl ?? ''}
+                    aria-label="Share URL"
+                    onFocus={(e) => e.currentTarget.select()}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <button className="btn" type="button" onClick={handleCopyShareUrl}>
+                    <Copy size={14} aria-hidden="true" style={{ marginRight: 6 }} />
+                    Copy
+                  </button>
+                </div>
+                <GuidedStatus tone="success">
+                  {shareCopied
+                    ? 'Link copied to clipboard.'
+                    : 'Share link created — copy it below.'}
+                </GuidedStatus>
+              </>
+            )}
+          </GuidedSection>
+        )}
       </GuidedPanel>
 
       <GuidedPanel
