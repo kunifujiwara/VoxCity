@@ -3655,30 +3655,34 @@ async def import_dxf_commit(req: ImportDxfCommitRequest):
     if grid_geom is None:
         raise HTTPException(status_code=500, detail="compute_grid_geometry returned None")
 
-    mat = build_placement_transform(
-        app_state.voxcity,
-        anchor_lonlat=(float(p.anchor_lonlat[0]), float(p.anchor_lonlat[1])),
-        anchor_elevation=0.0,   # DXF is 2D; height output ignored
-        anchor_model_point=(float(p.anchor_model_point[0]), float(p.anchor_model_point[1]), 0.0),
-        rotation=float(p.rotation),
-        move=(float(p.move[0]), float(p.move[1]), 0.0),
-        units=p.units,
-    )
+    try:
+        mat = build_placement_transform(
+            app_state.voxcity,
+            anchor_lonlat=(float(p.anchor_lonlat[0]), float(p.anchor_lonlat[1])),
+            anchor_elevation=0.0,   # DXF is 2D; height output ignored
+            anchor_model_point=(float(p.anchor_model_point[0]), float(p.anchor_model_point[1]), 0.0),
+            rotation=float(p.rotation),
+            move=(float(p.move[0]), float(p.move[1]), 0.0),
+            units=p.units,
+        )
 
-    new_lines: List[Dict[str, Any]] = []
-    file_name = parsed.file_name or "import.dxf"
-    for layer in parsed.layers:
-        if req.layer_visibility and req.layer_visibility.get(layer.name) is False:
-            continue
-        baked = bake_polylines_to_lonlat(layer.polylines, mat, grid_geom)
-        for ring in baked:
-            new_lines.append({
-                "id": uuid.uuid4().hex,
-                "file_name": file_name,
-                "layer": layer.name,
-                "color": layer.color,
-                "points": ring,
-            })
+        new_lines: List[Dict[str, Any]] = []
+        file_name = parsed.file_name or "import.dxf"
+        for layer in parsed.layers:
+            if req.layer_visibility and req.layer_visibility.get(layer.name) is False:
+                continue
+            baked = bake_polylines_to_lonlat(layer.polylines, mat, grid_geom)
+            for ring in baked:
+                new_lines.append({
+                    "id": uuid.uuid4().hex,
+                    "file_name": file_name,
+                    "layer": layer.name,
+                    "color": layer.color,
+                    "points": ring,
+                })
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     app_state.auxiliary_lines.extend(new_lines)
     import_dxf_store.pop(req.import_id, None)
 

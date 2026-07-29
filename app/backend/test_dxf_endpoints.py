@@ -213,3 +213,15 @@ def test_commit_does_not_mutate_voxels(client):
         "layer_visibility": {}})
     after = int(np.asarray(app_state.voxcity.voxels.classes).sum())
     assert before == after
+
+
+def test_commit_bad_units_is_400(client):
+    up = client.post("/api/model/import_dxf/upload",
+                     files={"file": ("t.dxf", _dxf_bytes(), "application/dxf")}).json()
+    anchor = client.get("/api/model/geo").json()["center"][::-1]
+    res = client.post("/api/model/import_dxf/commit", json={
+        "import_id": up["import_id"],
+        "placement": {"anchor_lonlat": anchor, "anchor_model_point": up["model_center"],
+                      "rotation": 0, "move": [0, 0], "units": "furlongs"},
+        "layer_visibility": {}})
+    assert res.status_code == 400
