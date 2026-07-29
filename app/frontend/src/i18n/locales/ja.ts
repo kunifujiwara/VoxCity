@@ -404,4 +404,13 @@ export const ja: Messages = {
     colormap: 'カラーマップ',
     vmaxAuto: 'vmax（空欄で自動）',
   },
+  shareLoad: {
+    loading: '共有セッションを読み込み中…',
+    failedTitle: '共有セッションを読み込めませんでした',
+    startFresh: '最初から始める',
+  },
+  auxLines: {
+    dxfTooltip: 'インポートされた DXF 補助線',
+    removeFile: '{file} を削除',
+  },
 };

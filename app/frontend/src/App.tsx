@@ -208,18 +208,18 @@ const App: React.FC = () => {
           {shareLoad.status === 'loading' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} role="status" aria-live="polite">
               <span className="spinner" />
-              Loading shared session…
+              {t('shareLoad.loading')}
             </div>
           ) : (
             <div style={{ textAlign: 'center', maxWidth: 420 }} role="alert" aria-live="assertive">
-              <p style={{ fontWeight: 600 }}>Could not load shared session</p>
+              <p style={{ fontWeight: 600 }}>{t('shareLoad.failedTitle')}</p>
               <p style={{ margin: '8px 0 16px' }}>{shareLoad.message}</p>
               <button
                 className="btn btn-primary"
                 type="button"
                 onClick={() => { window.history.replaceState(null, '', '/'); setShareLoad({ status: 'idle' }); }}
               >
-                Start fresh
+                {t('shareLoad.startFresh')}
               </button>
             </div>
           )}

@@ -6,6 +6,7 @@
 import React from 'react';
 import type { ModelGeoResult } from '../api';
 import { groupAuxLineLayers, isAuxLayerVisible } from '../lib/auxiliaryLines';
+import { useT } from '../i18n';
 
 interface Props {
   geo: ModelGeoResult | null;
@@ -18,6 +19,7 @@ interface Props {
 }
 
 const AuxiliaryLinesControl: React.FC<Props> = ({ geo, visibility, onToggle, onRemoveFile, style }) => {
+  const t = useT();
   const lines = geo?.auxiliary_lines ?? [];
   if (lines.length === 0) return null;
 
@@ -28,7 +30,7 @@ const AuxiliaryLinesControl: React.FC<Props> = ({ geo, visibility, onToggle, onR
       className="aux-lines-control"
       style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, fontSize: '0.72rem', ...style }}
     >
-      <span style={{ opacity: 0.6, marginRight: 2 }} title="Imported DXF auxiliary lines">DXF</span>
+      <span style={{ opacity: 0.6, marginRight: 2 }} title={t('auxLines.dxfTooltip')}>DXF</span>
       {grouped.map(({ fileName, layers }) => (
         <React.Fragment key={fileName}>
           {layers.map(({ layer, color }) => {
@@ -55,8 +57,8 @@ const AuxiliaryLinesControl: React.FC<Props> = ({ geo, visibility, onToggle, onR
             <button
               type="button"
               className="btn btn-xs btn-ghost"
-              title={`Remove ${fileName}`}
-              aria-label={`Remove ${fileName}`}
+              title={t('auxLines.removeFile', { file: fileName })}
+              aria-label={t('auxLines.removeFile', { file: fileName })}
               onClick={() => onRemoveFile(fileName)}
             >
               ×

@@ -402,6 +402,15 @@ export const en = {
     colormap: 'Colormap',
     vmaxAuto: 'vmax (empty = auto)',
   },
+  shareLoad: {
+    loading: 'Loading shared session…',
+    failedTitle: 'Could not load shared session',
+    startFresh: 'Start fresh',
+  },
+  auxLines: {
+    dxfTooltip: 'Imported DXF auxiliary lines',
+    removeFile: 'Remove {file}',
+  },
 };
 
 export type Messages = typeof en;
