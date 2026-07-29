@@ -140,13 +140,13 @@ const SolarTab: React.FC<SolarTabProps> = ({
   return (
     <div className="two-col">
       <GuidedPanel
-        title="Solar Radiation"
-        subtitle="Compute irradiance on ground or building surfaces."
+        title={t('solarTab.title')}
+        subtitle={t('solarTab.subtitle')}
         status={
           error ? (
             <GuidedStatus tone="error">{error}</GuidedStatus>
           ) : hasSimResult ? (
-            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+            <GuidedStatus tone="success">{t('sim.complete')}</GuidedStatus>
           ) : undefined
         }
         footer={(
@@ -159,51 +159,51 @@ const SolarTab: React.FC<SolarTabProps> = ({
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="TEMPORAL TYPE">
+        <GuidedSection index={1} label={t('solarTab.temporalType')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Calculation type"
+            ariaLabel={t('solarTab.calculationTypeAria')}
             value={calcType}
             onChange={setCalcType}
             options={[
-              { id: 'instantaneous', label: 'Instantaneous', icon: Clock },
-              { id: 'cumulative', label: 'Cumulative', icon: CalendarRange },
+              { id: 'instantaneous', label: t('solarTab.instantaneous'), icon: Clock },
+              { id: 'cumulative', label: t('solarTab.cumulative'), icon: CalendarRange },
             ]}
           />
           {calcType === 'instantaneous' ? (
             <div className="form-row">
               <div>
-                <label>Date (MM-DD)</label>
+                <label>{t('solarTab.dateLabel')}</label>
                 <input type="text" value={calcDate} onChange={(e) => setCalcDate(e.target.value)} />
               </div>
               <div>
-                <label>Time (HH:MM:SS)</label>
+                <label>{t('solarTab.timeLabel')}</label>
                 <input type="text" value={calcTime} onChange={(e) => setCalcTime(e.target.value)} />
               </div>
             </div>
           ) : (
             <>
               <div className="form-group">
-                <label>Start (MM-DD HH:MM:SS)</label>
+                <label>{t('solarTab.startLabel')}</label>
                 <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>End (MM-DD HH:MM:SS)</label>
+                <label>{t('solarTab.endLabel')}</label>
                 <input type="text" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
               </div>
             </>
           )}
         </GuidedSection>
 
-        <GuidedSection index={2} label="SPATIAL TYPE">
+        <GuidedSection index={2} label={t('solarTab.spatialType')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Analysis target"
+            ariaLabel={t('sim.analysisTarget')}
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level', icon: Layers },
-              { id: 'building', label: 'Building surfaces', icon: Box },
+              { id: 'ground', label: t('sim.groundLevel'), icon: Layers },
+              { id: 'building', label: t('sim.buildingSurfaces'), icon: Box },
             ]}
           />
           {analysisTarget === 'ground' && (
@@ -213,12 +213,12 @@ const SolarTab: React.FC<SolarTabProps> = ({
                 checked={includeBuildingRoofs}
                 onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
               />
-              Include building rooftops
+              {t('sim.includeRooftops')}
             </label>
           )}
         </GuidedSection>
 
-        <GuidedSection index={3} label="DISPLAY">
+        <GuidedSection index={3} label={t('sim.display')}>
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -235,7 +235,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection index={4} label="ZONES AND RESULTS">
+          <GuidedSection index={4} label={t('sim.zonesAndResults')}>
             <div className="form-group">
               <label>
                 <input
@@ -243,7 +243,7 @@ const SolarTab: React.FC<SolarTabProps> = ({
                   checked={showZones3D}
                   onChange={(e) => setShowZones3D(e.target.checked)}
                 />{' '}
-                Show zones in 3D
+                {t('sim.showZonesIn3d')}
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />

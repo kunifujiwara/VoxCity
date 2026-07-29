@@ -136,13 +136,13 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
   return (
     <div className="two-col">
       <GuidedPanel
-        title="View Index"
-        subtitle="Analyse sky, green, or custom view from any point."
+        title={t('viewTab.title')}
+        subtitle={t('viewTab.subtitle')}
         status={
           error ? (
             <GuidedStatus tone="error">{error}</GuidedStatus>
           ) : hasSimResult ? (
-            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+            <GuidedStatus tone="success">{t('sim.complete')}</GuidedStatus>
           ) : undefined
         }
         footer={(
@@ -155,31 +155,31 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="VIEW TYPE">
+        <GuidedSection index={1} label={t('viewTab.viewType')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="View type"
+            ariaLabel={t('viewTab.viewTypeAria')}
             value={viewType}
             onChange={setViewType}
             columns={1}
             options={[
-              { id: 'green', label: 'Green View Index', icon: Leaf },
-              { id: 'sky', label: 'Sky View Index', icon: CloudSun },
-              { id: 'custom', label: 'Custom (select classes)', icon: Sliders },
+              { id: 'green', label: t('viewTab.green'), icon: Leaf },
+              { id: 'sky', label: t('viewTab.sky'), icon: CloudSun },
+              { id: 'custom', label: t('viewTab.custom'), icon: Sliders },
             ]}
           />
         </GuidedSection>
 
         {viewType === 'custom' && (
-          <GuidedSection index={2} label="CUSTOM CLASSES">
+          <GuidedSection index={2} label={t('viewTab.customClasses')}>
             <ChoiceGroup
               variant="checks"
-              ariaLabel="Custom class mode"
+              ariaLabel={t('viewTab.customClassModeAria')}
               value={inclusionMode ? 'include' : 'exclude'}
               onChange={(next) => setInclusionMode(next === 'include')}
               options={[
-                { id: 'include', label: 'Inclusion', icon: Check },
-                { id: 'exclude', label: 'Exclusion', icon: X },
+                { id: 'include', label: t('viewTab.inclusion'), icon: Check },
+                { id: 'exclude', label: t('viewTab.exclusion'), icon: X },
               ]}
             />
             <div style={{ maxHeight: 160, overflowY: 'auto' }}>
@@ -197,19 +197,19 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           </GuidedSection>
         )}
 
-        <GuidedSection index={3} label="SAMPLING">
+        <GuidedSection index={3} label={t('viewTab.sampling')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Analysis target"
+            ariaLabel={t('sim.analysisTarget')}
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level', icon: Layers },
-              { id: 'building', label: 'Building surfaces', icon: Box },
+              { id: 'ground', label: t('sim.groundLevel'), icon: Layers },
+              { id: 'building', label: t('sim.buildingSurfaces'), icon: Box },
             ]}
           />
           <div className="form-group">
-            <label>View point height (m)</label>
+            <label>{t('viewTab.viewPointHeight')}</label>
             <input
               type="number"
               value={viewPointHeight}
@@ -226,7 +226,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
                 checked={includeBuildingRoofs}
                 onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
               />
-              Include building rooftops
+              {t('sim.includeRooftops')}
             </label>
           )}
           <SamplingSettings
@@ -242,7 +242,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
           />
         </GuidedSection>
 
-        <GuidedSection index={4} label="DISPLAY">
+        <GuidedSection index={4} label={t('sim.display')}>
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -258,7 +258,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection index={5} label="ZONES AND RESULTS">
+          <GuidedSection index={5} label={t('sim.zonesAndResults')}>
             <div className="form-group">
               <label>
                 <input
@@ -266,7 +266,7 @@ const ViewTab: React.FC<ViewTabProps> = ({ hasModel, zones, simRunNonce, onSimRu
                   checked={showZones3D}
                   onChange={(e) => setShowZones3D(e.target.checked)}
                 />{' '}
-                Show zones in 3D
+                {t('sim.showZonesIn3d')}
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />

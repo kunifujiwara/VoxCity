@@ -110,7 +110,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
       .catch(() => {});
     getBuildingsList()
       .then((r) => { if (!cancelled) setBuildings(r.buildings); })
-      .catch((err) => { if (!cancelled) setError(`Failed to load buildings: ${err.message}`); });
+      .catch((err) => { if (!cancelled) setError(t('landmarkTab.errLoadBuildings', { message: err.message })); });
     return () => { cancelled = true; };
   }, [hasModel]);
   const lonLatToXY = useMemo(() => lonLatToUvM(geo), [geo]);
@@ -260,13 +260,13 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
   return (
     <div className="two-col">
       <GuidedPanel
-        title="Landmark Visibility"
-        subtitle="Select buildings as landmarks and analyse how visible they are."
+        title={t('landmarkTab.title')}
+        subtitle={t('landmarkTab.subtitle')}
         status={
           error ? (
             <GuidedStatus tone="error">{error}</GuidedStatus>
           ) : hasSimResult ? (
-            <GuidedStatus tone="success">Simulation complete.</GuidedStatus>
+            <GuidedStatus tone="success">{t('sim.complete')}</GuidedStatus>
           ) : undefined
         }
         footer={(
@@ -279,7 +279,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
                 disabled={loading}
               >
                 <ArrowLeft size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-                Back to selection
+                {t('landmarkTab.backToSelection')}
               </button>
             )}
             <button
@@ -295,36 +295,36 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="ANALYSIS TARGET">
+        <GuidedSection index={1} label={t('landmarkTab.analysisTargetHeading')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Analysis target"
+            ariaLabel={t('sim.analysisTarget')}
             value={analysisTarget}
             onChange={setAnalysisTarget}
             options={[
-              { id: 'ground', label: 'Ground level', icon: Layers },
-              { id: 'building', label: 'Building surfaces', icon: Box },
+              { id: 'ground', label: t('sim.groundLevel'), icon: Layers },
+              { id: 'building', label: t('sim.buildingSurfaces'), icon: Box },
             ]}
           />
         </GuidedSection>
 
-        <GuidedSection index={2} label="LANDMARK BUILDINGS">
+        <GuidedSection index={2} label={t('landmarkTab.landmarkBuildings')}>
           {!showingSimResult && (
             <div className="selection-toolbar">
-              <span className="hint">Click a building in the 3D viewer to toggle it.</span>
+              <span className="hint">{t('landmarkTab.clickToggleHint')}</span>
               <button
                 className="selection-toolbar-btn clear-btn"
                 onClick={handleClearSelection}
-                title="Clear all selections"
+                title={t('landmarkTab.clearAllTitle')}
                 disabled={selectedBuildingIds.length === 0}
               >
-                Clear
+                {t('landmarkTab.clear')}
               </button>
             </div>
           )}
           {selectedBuildingIds.length > 0 && (
             <div className="form-group">
-              <label>Selected Buildings ({selectedBuildingIds.length})</label>
+              <label>{t('landmarkTab.selectedCount', { n: selectedBuildingIds.length })}</label>
               <div className="building-chips">
                 {selectedBuildingIds.map((id) => (
                   <span key={id} className="building-chip">
@@ -341,17 +341,17 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
             </div>
           )}
           <div className="form-group">
-            <label>Landmark Building IDs (comma-separated, empty = center building)</label>
+            <label>{t('landmarkTab.landmarkIdsLabel')}</label>
             <input
               type="text"
               value={landmarkIdsText}
               onChange={(e) => handleIdsTextChange(e.target.value)}
-              placeholder="e.g. 12, 34, 56"
+              placeholder={t('landmarkTab.landmarkIdsPlaceholder')}
             />
           </div>
         </GuidedSection>
 
-        <GuidedSection index={3} label="SAMPLING">
+        <GuidedSection index={3} label={t('landmarkTab.sampling')}>
           <SamplingSettings
             nAzimuth={nAzimuth}
             onNAzimuthChange={setNAzimuth}
@@ -370,12 +370,12 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
                 checked={includeBuildingRoofs}
                 onChange={(e) => setIncludeBuildingRoofs(e.target.checked)}
               />
-              Include building rooftops
+              {t('sim.includeRooftops')}
             </label>
           )}
         </GuidedSection>
 
-        <GuidedSection index={4} label="DISPLAY">
+        <GuidedSection index={4} label={t('sim.display')}>
           <ColorSettings
             colormap={colormap}
             onColormapChange={setColormap}
@@ -391,7 +391,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
         </GuidedSection>
 
         {zones.length > 0 && (
-          <GuidedSection index={5} label="ZONES AND RESULTS">
+          <GuidedSection index={5} label={t('sim.zonesAndResults')}>
             <div className="form-group">
               <label>
                 <input
@@ -399,7 +399,7 @@ const LandmarkTab: React.FC<LandmarkTabProps> = ({
                   checked={showZones3D}
                   onChange={(e) => setShowZones3D(e.target.checked)}
                 />{' '}
-                Show zones in 3D
+                {t('sim.showZonesIn3d')}
               </label>
             </div>
             <ZoneStatsTable zones={zones} stats={zoneStats} loading={zoneStatsLoading} />
