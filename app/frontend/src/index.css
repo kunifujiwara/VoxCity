@@ -40,7 +40,7 @@ html, body, #root {
   height: 56px;
   background: var(--vc-surface);
   border-bottom: 1px solid var(--vc-ring);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   flex-shrink: 0;
 }
 
@@ -283,7 +283,6 @@ input:focus, select:focus {
   min-height: 500px;
   height: 100%;
   position: relative;
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -641,8 +640,6 @@ input:focus, select:focus {
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
-  border: 1px solid var(--vc-ring);
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -650,10 +647,8 @@ input:focus, select:focus {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.visual-panel > h2 {
-  min-height: 2rem;
+  position: relative;
+  padding: 0;
 }
 
 .visual-frame {
@@ -661,15 +656,21 @@ input:focus, select:focus {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
   overflow: hidden;
 }
 
 .visual-frame > * {
   flex: 1 1 auto;
   min-height: 0;
-  border-radius: inherit;
   overflow: hidden;
+}
+
+/* Empty/loading messages centre themselves on the bare card surface. */
+.visual-frame > .alert,
+.visual-frame > .guided-status {
+  flex: 0 0 auto;
+  margin: auto;
+  max-width: 80%;
 }
 
 .building-height-label {
@@ -962,11 +963,11 @@ input:focus, select:focus {
 }
 
 /* ── Zoning ─────────────────────────────────────────────── */
-.zone-list { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
-.zone-row  { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.zone-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.zone-row  { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 8px; padding: 6px; border-radius: 4px; cursor: pointer; }
 .zone-row.selected { background: rgba(0, 0, 0, 0.06); }
 .zone-row .swatch  { width: 14px; height: 14px; border-radius: 3px; flex: 0 0 14px; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; }
-.zone-row .name    { flex: 1; }
+.zone-row .name    { flex: 1 1 0; min-width: 0; }
 .zone-row .zone-type-badge { flex: 0 0 auto; min-width: 32px; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); background: rgba(0,0,0,0.05); color: #334155; font-size: 0.72rem; font-weight: 700; line-height: 1.45; text-align: center; }
 .zone-row .zone-type-badge.two-d { background: rgba(37, 99, 235, 0.12); border-color: rgba(37, 99, 235, 0.22); color: #1e3a8a; }
 .zone-row .zone-type-badge.building { background: rgba(5, 150, 105, 0.13); border-color: rgba(5, 150, 105, 0.24); color: #064e3b; }
@@ -984,7 +985,7 @@ input:focus, select:focus {
 .zone-stats-table { margin-top: 12px; font-size: 13px; }
 .zone-stats-table .header { font-weight: 600; margin-bottom: 4px; }
 .zone-stats-table table { width: 100%; border-collapse: collapse; }
-.zone-stats-table th, .zone-stats-table td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.zone-stats-table th, .zone-stats-table td { padding: 4px 6px; text-align: right; border-bottom: 1px solid rgba(0,0,0,0.08); white-space: nowrap; }
 .zone-stats-table th:first-child, .zone-stats-table td:first-child { text-align: left; }
 .zone-stats-table tr.muted td { color: #888; }
 .zone-stats-table .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
