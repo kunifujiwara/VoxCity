@@ -851,6 +851,10 @@ def _reset_taichi_and_caches():
     app_state.clear_sim_results()
     app_state.last_base_fig_json = None
     app_state.last_hidden_classes = None
+    # Imported DXF overlay geometry belongs to the (now-cleared) grid; drop it
+    # and any pending, uncommitted DXF upload so a refresh truly starts fresh.
+    app_state.auxiliary_lines = []
+    import_dxf_store.clear()
 
 
 # ---------------------------------------------------------------------------
