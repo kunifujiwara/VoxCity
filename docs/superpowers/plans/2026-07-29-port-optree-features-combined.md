@@ -947,8 +947,6 @@ Frontend (edit): `app/frontend/src/api.ts`, `app/frontend/src/three/SceneViewer.
 
 Conventions: backend tests run from repo root with `& "C:\Users\kunih\miniconda3\Scripts\conda.exe" run -n voxcity python -m pytest ...` and `PYTHONPATH=app` (imports are top-level `backend.*` / `from tests.importer.conftest import make_flat_voxcity`). Frontend: from `app/frontend`, `npm test -- <name>` and `npx tsc -b --noEmit`. Commit after each task.
 
-> **NOTE (assembler):** Task-level ported code for Plan 2 is reproduced in full in the standalone draft. This combined document preserves the complete task list, file targets, commands, and self-review; where a code block is long it is retained verbatim from the optree source cited in each step. If any block was elided during assembly, recover it from the optree paths named in that step before implementing.
-
 ---
 
 ### Task 1 — Backend DXF parser (pure, ezdxf) + unit tests (TDD)
@@ -1766,6 +1764,11 @@ def test_delete_auxiliary_lines_by_file_and_id(client):
 
 
 def test_far_from_origin_lands_on_map(client):
+    # A DXF drawn on a survey grid ~1,000 km from its own origin must still
+    # bake to lon/lat within a few hundred metres of the chosen anchor
+    # (anchor_model_point pins the DXF's own centre to the anchor).
+    # NOTE: VoxCity's make_flat_voxcity rectangle sits near the EQUATOR
+    # (lon0, lat0 = 0.0, 0.0), NOT Tokyo — bounds are center-relative.
     base = 1_000_000.0
     doc = ezdxf.new()
     doc.modelspace().add_lwpolyline(
@@ -1774,7 +1777,8 @@ def test_far_from_origin_lands_on_map(client):
     buf = io.StringIO(); doc.write(buf)
     up = client.post("/api/model/import_dxf/upload",
                      files={"file": ("far.dxf", buf.getvalue().encode(), "application/dxf")}).json()
-    anchor = client.get("/api/model/geo").json()["center"][::-1]
+    center_latlon = client.get("/api/model/geo").json()["center"]
+    anchor = center_latlon[::-1]  # [lon, lat]
     commit = client.post("/api/model/import_dxf/commit", json={
         "import_id": up["import_id"],
         "placement": {"anchor_lonlat": anchor, "anchor_model_point": up["model_center"],
@@ -1782,8 +1786,10 @@ def test_far_from_origin_lands_on_map(client):
         "layer_visibility": {}}).json()
     pts = commit["auxiliary_lines"][0]["points"]
     lons = [p[0] for p in pts]; lats = [p[1] for p in pts]
-    assert 139.699 < min(lons) and max(lons) < 139.702
-    assert 35.689 < min(lats) and max(lats) < 35.692
+    # ~0.005 deg ≈ 550 m: generous but catches an un-anchored 1,000 km offset.
+    tol = 0.005
+    assert anchor[0] - tol < min(lons) and max(lons) < anchor[0] + tol
+    assert anchor[1] - tol < min(lats) and max(lats) < anchor[1] + tol
 
 
 def test_commit_does_not_mutate_voxels(client):
@@ -1800,7 +1806,7 @@ def test_commit_does_not_mutate_voxels(client):
     assert before == after
 ```
 
-Note: the optree fixtures assumed `make_flat_voxcity` returns a rectangle spanning `_RECT` near Tokyo. VoxCity's `tests.importer.conftest.make_flat_voxcity(nx, ny, nz, meshsize)` is the one `test_import_obj.py` already uses; the `test_far_from_origin` / `test_dxf_upload_returns_layers_and_center` assertions about `model_center == [2.0, 1.5]` depend only on the DXF geometry, not the model rectangle. If `make_flat_voxcity`'s rectangle differs from `139.700/35.690`, adjust the two lon/lat bounds asserts in `test_far_from_origin_lands_on_map` to `geo["center"]` +/- a few 1e-3; verify against the actual center printed by the failing assertion.
+Note (verified against the live repo): VoxCity's `tests.importer.conftest.make_flat_voxcity(nx=20, ny=20, nz=10, meshsize=1.0)` builds its rectangle near the **equator** (`lon0, lat0 = 0.0, 0.0`), not Tokyo — the bounds assertions above are therefore written center-relative and pass regardless of the fixture's location. The `model_center == [2.0, 1.5]` assertion depends only on the DXF geometry, not the model rectangle. `/api/model/geo` returns `center` as `[lat, lon]` (Leaflet order), hence the `[::-1]` flips to `[lon, lat]` for placement.
 
 - [ ] **Step 6** Run:
 
@@ -2228,7 +2234,7 @@ const DxfPlacementMap: React.FC<Props> = ({ geo, placement, layers, visibility, 
 export default DxfPlacementMap;
 ```
 
-Note: verify the named imports `lonLatToUvM`, `sceneXYToLonLat`, `domainRotationDeg` from `../lib/grid` and `transformModelPoint`, `Placement` from `../lib/objPlacement` exist in VoxCity with these exact names (they are used by VoxCity's `ObjPlacementMap.tsx`). If a helper differs, mirror whatever `ObjPlacementMap.tsx` imports.
+Note (verified against the live repo): `lonLatToUvM` (grid.ts:489), `sceneXYToLonLat` (grid.ts:527), `domainRotationDeg` (grid.ts:52) and `transformModelPoint` (objPlacement.ts:77), `Placement` (objPlacement.ts:19) all exist with these exact names. `defaultPlacement` (objPlacement.ts:30) is a **function** — `useState<Placement>(defaultPlacement)` lazily initializes and `defaultPlacement()` calls both typecheck.
 
 - [ ] **Step 2** Typecheck (`npx tsc -b --noEmit` from `app/frontend`). Expected: no errors. Commit: `git add -A && git commit -m "feat(dxf): DxfPlacementMap 2D placement preview"`
 
@@ -2434,7 +2440,7 @@ Render the layer immediately after the `placementPreview` `<PlacementGizmo>` blo
           )}
 ```
 
-(`lonLatToXY` and `scene` are already in scope — `lonLatToXY` is the existing prop used by `ZoneOutlines`; `scene.ground_top_m`/`scene.meshsize_m` are the same fields `ZoneOutlines` uses for `zHeight`. Verify these exact names against the current `SceneViewer.tsx`/`ZoneOutlines.tsx` before wiring; adjust to whatever ZoneOutlines uses if they differ.)
+(Verified against the live repo: `lonLatToXY` is an existing `SceneViewerProps` prop (SceneViewer.tsx:65, destructured at :128), and `(scene.ground_top_m ?? 0) + scene.meshsize_m` is exactly the `zHeight` expression the existing zone layers use at SceneViewer.tsx:294/309. `placementPreview` renders at :318 — insert the aux-line block right after it.)
 
 - [ ] **Step 3** Typecheck from `app/frontend`:
 
@@ -2454,15 +2460,356 @@ Expected: no errors.
 
 Rework VoxCity's OBJ-only Import tab into optree's OBJ/DXF mode-toggle 3-column layout, keeping VoxCity's own specifics: the `previewDisabled`/`previewGridShape`/`PreviewDisabledNotice` path, the `gizmoMode` translate/rotate toggle, `plan-panel-header` headers, `btn-secondary` on the upload button, and plain-English strings (VoxCity's ImportTab does **not** use `useT`/i18n — do not introduce it; the i18n plan wraps it later). Mode-toggle active state uses `btn-primary` (VoxCity indigo).
 
-> This is the most invasive frontend edit. The full worked diff (imports, DXF state, handlers `handleDxfFile`/`handleDxfImport`/`handleRemoveAuxFile`, the mode toggle, the DXF `GuidedSection`s for UPLOAD/LAYERS/PLACEMENT, the mode-aware footer button, and the mode-aware 2D map + 3D result panels) is reproduced verbatim in the standalone DXF draft's Task 12. Apply it step-by-step; every code block there is complete. Key structural points:
+- [ ] **Step 1** Extend the imports block (ImportTab.tsx:8-30). Add the DXF names to the existing `../api` import and the two new components (keep every existing import — `anchorSceneUp`, `ThreeViewer`, `PreviewDisabledNotice`, `ObjPlacementMap`, etc. stay):
 
-- [ ] **Step 1** Extend imports: add `uploadImportDxf`, `commitImportDxf`, `clearAuxiliaryLines`, `getModelGeo`, `ImportDxfUploadResult`, `ModelGeoResult` from `../api`; add `DxfPlacementMap` and `AuxiliaryLinesControl` components.
-- [ ] **Step 2** Add state after `fileInputRef`: `importMode: 'obj' | 'dxf'`, `dxfUpload`, `dxfPlacement`, `dxfVisibility`, `auxVisibility`, `dxfFileInputRef`, and a `refreshGeo` callback (`getModelGeo().then(setGeo)`).
-- [ ] **Step 3** Add a DXF anchor-default effect mirroring the OBJ one (defaults `dxfPlacement.anchorLonLat` to `[geo.center[1], geo.center[0]]`).
-- [ ] **Step 4** Add `handleDxfFile`, `handleDxfImport` (calls `commitImportDxf`, then `refreshGeo()` + `onModelEdited?.()`), and `handleRemoveAuxFile` (calls `clearAuxiliaryLines({ fileName })` then `refreshGeo()`).
-- [ ] **Step 5** Replace the fixed `<h2>Import OBJ</h2>` with `<h2>Import</h2>` + a two-button mode toggle (`OBJ buildings` / `DXF reference lines`, active = `btn-primary`), wrap the existing OBJ `GuidedSection`s in `{importMode === 'obj' && (<>...</>)}`, and add the DXF `{importMode === 'dxf' && (<>...</>)}` branch with UPLOAD DXF / LAYERS (per-layer visibility checkboxes) / PLACEMENT (anchor lat/lon, rotation, move E/N, units) sections plus `<AuxiliaryLinesControl .../>`.
-- [ ] **Step 6** Make the footer button mode-aware (`Import building(s)` vs `Add reference lines`, calling `handleImport` vs `handleDxfImport`).
-- [ ] **Step 7** Make the 2D + 3D panels mode-aware: OBJ mode keeps `ObjPlacementMap`; DXF mode uses `DxfPlacementMap`; the 3D `SceneViewer` in OBJ mode also receives `auxiliaryLines={geo?.auxiliary_lines}` + `auxiliaryLineVisibility={auxVisibility}` + `lonLatToXY` so committed DXF lines appear in 3D; DXF mode shows a reference-only info note.
+```tsx
+import {
+  uploadImportObj,
+  commitImportObj,
+  uploadImportDxf,
+  commitImportDxf,
+  clearAuxiliaryLines,
+  getModelGeo,
+  getAnchorGround,
+  AnchorGroundResult,
+  ImportObjUploadResult,
+  ImportDxfUploadResult,
+  ModelGeoResult,
+} from '../api';
+import DxfPlacementMap from '../components/DxfPlacementMap';
+import AuxiliaryLinesControl from '../components/AuxiliaryLinesControl';
+```
+
+- [ ] **Step 2** Add DXF + mode state and a geo-refresh helper. Immediately after `const fileInputRef = useRef<HTMLInputElement>(null);` (ImportTab.tsx:56) add:
+
+```tsx
+  const [importMode, setImportMode] = useState<'obj' | 'dxf'>('obj');
+  // DXF auxiliary-line import state.
+  const [dxfUpload, setDxfUpload] = useState<ImportDxfUploadResult | null>(null);
+  const [dxfPlacement, setDxfPlacement] = useState<Placement>(defaultPlacement);
+  const [dxfVisibility, setDxfVisibility] = useState<Record<string, boolean>>({});
+  const [auxVisibility, setAuxVisibility] = useState<Record<string, Record<string, boolean>>>({});
+  const dxfFileInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshGeo = useCallback(() => {
+    getModelGeo().then(setGeo).catch(() => {});
+  }, []);
+```
+
+- [ ] **Step 3** Default the DXF anchor to the model centre, mirroring the OBJ effect. After the existing OBJ anchor-default `useEffect` (ImportTab.tsx:68-73) add:
+
+```tsx
+  useEffect(() => {
+    if (!dxfUpload || !geo) return;
+    setDxfPlacement((p) =>
+      p.anchorLonLat ? p : { ...p, anchorLonLat: [geo.center[1], geo.center[0]] },
+    );
+  }, [dxfUpload, geo]);
+```
+
+- [ ] **Step 4** Add the DXF handlers next to `handleImport` (after ImportTab.tsx:194):
+
+```tsx
+  const handleDxfFile = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = Array.from(files).find((f) => f.name.toLowerCase().endsWith('.dxf'));
+    if (!file) { setError('Please choose a .dxf file.'); return; }
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
+    try {
+      const res = await uploadImportDxf(file);
+      setDxfUpload(res);
+      setDxfVisibility(Object.fromEntries(res.layers.map((l) => [l.name, true])));
+      setDxfPlacement((p) => ({
+        ...defaultPlacement(),
+        anchorLonLat: p.anchorLonLat,
+        units: (res.detected_units as Units) ?? 'm',
+        anchorModelPoint: [res.model_center[0], res.model_center[1], 0],
+      }));
+      if (res.warning) setWarning(res.warning);
+      setInfo(`Loaded ${res.layers.length} layer(s). Position it and add reference lines.`);
+    } catch (err: any) {
+      setError(err.message || 'DXF upload failed');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const handleDxfImport = useCallback(async () => {
+    if (!dxfUpload) return;
+    const anchorLonLat = dxfPlacement.anchorLonLat;
+    if (!anchorLonLat) { setError('Click the map to set an anchor first.'); return; }
+    setBusy(true); setError(null); setInfo(null); setWarning(null);
+    try {
+      const r = await commitImportDxf({
+        import_id: dxfUpload.import_id,
+        placement: {
+          anchor_lonlat: anchorLonLat,
+          anchor_model_point: [dxfPlacement.anchorModelPoint[0], dxfPlacement.anchorModelPoint[1]],
+          rotation: dxfPlacement.rotation,
+          move: [dxfPlacement.move[0], dxfPlacement.move[1]],
+          units: dxfPlacement.units,
+        },
+        layer_visibility: dxfVisibility,
+      });
+      const fileName = r.auxiliary_lines[0]?.file_name;
+      if (fileName) {
+        setAuxVisibility((v) => ({ ...v, [fileName]: { ...dxfVisibility } }));
+      }
+      setWarning(r.warning);
+      setInfo(r.warning ? null : `Added ${r.auxiliary_lines.length} auxiliary line(s).`);
+      setDxfUpload(null);
+      refreshGeo();       // pull committed lines into geo.auxiliary_lines for the 3D overlay
+      onModelEdited?.();
+    } catch (err: any) {
+      setError(err.message || 'DXF import failed');
+    } finally {
+      setBusy(false);
+    }
+  }, [dxfUpload, dxfPlacement, dxfVisibility, refreshGeo, onModelEdited]);
+
+  const handleRemoveAuxFile = useCallback(async (fileName: string) => {
+    try {
+      await clearAuxiliaryLines({ fileName });
+      setAuxVisibility((v) => { const n = { ...v }; delete n[fileName]; return n; });
+      refreshGeo();
+      onModelEdited?.();
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove auxiliary lines');
+    }
+  }, [refreshGeo, onModelEdited]);
+```
+
+(If the current ImportTab's state setters are named differently — e.g. no `setWarning`/`setInfo` — reuse whatever feedback-state setters `handleFile`/`handleImport` already use; keep the handlers' structure identical.)
+
+- [ ] **Step 5** Replace the panel heading + add the mode toggle. Change the control-panel header (ImportTab.tsx:208-209) from a fixed `<h2>Import OBJ</h2>` to a title + toggle, and wrap the existing OBJ sections:
+
+```tsx
+        <div className="edit-control-scroll">
+          <h2>Import</h2>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button type="button" disabled={busy}
+                    className={`btn btn-xs${importMode === 'obj' ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => setImportMode('obj')}>OBJ buildings</button>
+            <button type="button" disabled={busy}
+                    className={`btn btn-xs${importMode === 'dxf' ? ' btn-primary' : ' btn-ghost'}`}
+                    onClick={() => setImportMode('dxf')}>DXF reference lines</button>
+          </div>
+
+          {importMode === 'obj' && (
+          <>
+```
+
+Then wrap the existing OBJ `GuidedSection` blocks (the UPLOAD / GROUPS-ROLES / PLACEMENT sections, ImportTab.tsx:211-348) unchanged inside this fragment, closing it right before the feedback/footer area, and add the DXF branch:
+
+```tsx
+          </>
+          )}
+
+          {importMode === 'dxf' && (
+          <>
+          <GuidedSection index={1} label="UPLOAD DXF">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: '100%', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+              disabled={busy}
+              onClick={() => dxfFileInputRef.current?.click()}
+            >
+              <Upload size={14} style={{ marginRight: 6 }} />
+              {dxfUpload ? 'Replace DXF…' : 'Choose DXF…'}
+            </button>
+            <input
+              ref={dxfFileInputRef}
+              type="file"
+              accept=".dxf"
+              disabled={busy}
+              style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+                       overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}
+              onChange={(e) => handleDxfFile(e.target.files)}
+            />
+          </GuidedSection>
+
+          {dxfUpload && (
+            <GuidedSection index={2} label="LAYERS">
+              <table className="role-table" style={{ width: '100%', fontSize: '0.8rem' }}>
+                <tbody>
+                  {dxfUpload.layers.map((l) => (
+                    <tr key={l.name}>
+                      <td>
+                        <span style={{ display: 'inline-block', width: 10, height: 10,
+                                       background: l.color, marginRight: 6, border: '1px solid #0003' }} />
+                        {l.name}
+                      </td>
+                      <td style={{ textAlign: 'right' }} title={`${l.n_segments} segments`}>
+                        <input type="checkbox" checked={dxfVisibility[l.name] !== false} disabled={busy}
+                               onChange={(e) => setDxfVisibility((v) => ({ ...v, [l.name]: e.target.checked }))} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </GuidedSection>
+          )}
+
+          {dxfUpload && (
+            <GuidedSection index={3} label="PLACEMENT">
+              <div className="guided-tool-hint">
+                {dxfPlacement.anchorLonLat
+                  ? 'Edit the anchor below or click the map to set it.'
+                  : 'Click the map or enter lat/lon below to set the anchor.'}
+              </div>
+              <div className="form-group">
+                <label>Anchor latitude / longitude</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="number" step="any" placeholder="lat" disabled={busy}
+                         value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[1] : ''}
+                         onChange={(e) => {
+                           const lat = parseFloat(e.target.value);
+                           if (Number.isNaN(lat)) return;
+                           setDxfPlacement((p) => ({ ...p, anchorLonLat: [p.anchorLonLat ? p.anchorLonLat[0] : 0, lat] }));
+                         }} />
+                  <input type="number" step="any" placeholder="lon" disabled={busy}
+                         value={dxfPlacement.anchorLonLat ? dxfPlacement.anchorLonLat[0] : ''}
+                         onChange={(e) => {
+                           const lon = parseFloat(e.target.value);
+                           if (Number.isNaN(lon)) return;
+                           setDxfPlacement((p) => ({ ...p, anchorLonLat: [lon, p.anchorLonLat ? p.anchorLonLat[1] : 0] }));
+                         }} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Rotation (deg)</label>
+                <input type="number" step={1} value={dxfPlacement.rotation} disabled={busy}
+                       onChange={(e) => setDxfPlacement((p) => ({ ...p, rotation: parseFloat(e.target.value) || 0 }))} />
+              </div>
+              <div className="form-group">
+                <label>Move east / north (m)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[0, 1].map((k) => (
+                    <input key={k} type="number" step={0.5} value={dxfPlacement.move[k]} disabled={busy}
+                           onChange={(e) => setDxfPlacement((p) => {
+                             const move = [...p.move] as [number, number, number];
+                             move[k] = parseFloat(e.target.value) || 0;
+                             return { ...p, move };
+                           })} />
+                  ))}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Units</label>
+                <select value={dxfPlacement.units} disabled={busy}
+                        onChange={(e) => setDxfPlacement((p) => ({ ...p, units: e.target.value as Units }))}>
+                  {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+            </GuidedSection>
+          )}
+
+          <AuxiliaryLinesControl
+            geo={geo}
+            visibility={auxVisibility}
+            onToggle={(file, layer, visible) =>
+              setAuxVisibility((v) => ({ ...v, [file]: { ...(v[file] ?? {}), [layer]: visible } }))}
+            onRemoveFile={handleRemoveAuxFile}
+            style={{ marginTop: 8 }}
+          />
+          </>
+          )}
+```
+
+(`UNIT_OPTIONS` is already defined in this file at ImportTab.tsx:41 — verified.)
+
+- [ ] **Step 6** Make the footer button mode-aware. Replace the single footer button (ImportTab.tsx:357-366) with:
+
+```tsx
+        <div className="pending-edit-footer">
+          {importMode === 'obj' ? (
+            <button className="btn btn-primary pending-update-btn"
+                    onClick={handleImport}
+                    disabled={!upload || busy || !placement.anchorLonLat}
+                    type="button">
+              {busy && <span className="spinner" />}
+              <Boxes size={14} style={{ marginRight: 6 }} />
+              {busy ? 'Importing…' : 'Import building(s)'}
+            </button>
+          ) : (
+            <button className="btn btn-primary pending-update-btn"
+                    onClick={handleDxfImport}
+                    disabled={!dxfUpload || busy || !dxfPlacement.anchorLonLat}
+                    type="button">
+              {busy && <span className="spinner" />}
+              <Boxes size={14} style={{ marginRight: 6 }} />
+              {busy ? 'Adding…' : 'Add reference lines'}
+            </button>
+          )}
+        </div>
+```
+
+- [ ] **Step 7** Make the 2D + 3D panels mode-aware. Replace the 2D map panel body (ImportTab.tsx:372-383) with:
+
+```tsx
+        <div className="visual-frame">
+          {importMode === 'obj' && (geo && upload ? (
+            <ObjPlacementMap
+              geo={geo}
+              placement={placement}
+              footprints={upload.preview.footprints}
+              onAnchor={(lonLat) => setPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
+            />
+          ) : (
+            <div className="alert alert-info">Upload an OBJ, then click the map to set the anchor.</div>
+          ))}
+          {importMode === 'dxf' && (geo && dxfUpload ? (
+            <DxfPlacementMap
+              geo={geo}
+              placement={dxfPlacement}
+              layers={dxfUpload.preview.layers}
+              visibility={dxfVisibility}
+              onAnchor={(lonLat) => setDxfPlacement((p) => ({ ...p, anchorLonLat: lonLat }))}
+            />
+          ) : (
+            <div className="alert alert-info">Upload a DXF, then click the map to set the anchor.</div>
+          ))}
+        </div>
+```
+
+Then replace the 3D result panel body (ImportTab.tsx:389-409) with a version that shows a reference-only note in DXF mode and passes the committed aux lines (plus the projection) into the OBJ-mode SceneViewer so imported lines appear in 3D:
+
+```tsx
+        <div className="visual-frame">
+          {importMode === 'dxf' ? (
+            <div className="alert alert-info">
+              DXF reference lines are a flat overlay; they are added to the 2D map and
+              the 3D scenes without changing the voxel model.
+            </div>
+          ) : previewDisabled ? (
+            <PreviewDisabledNotice gridShape={previewGridShape} />
+          ) : upload && !figureJson ? (
+            <SceneViewer
+              geometryToken="import-preview"
+              lonLatToXY={geo ? lonLatToUvM({ grid_geom: geo.grid_geom }) : undefined}
+              auxiliaryLines={geo?.auxiliary_lines}
+              auxiliaryLineVisibility={auxVisibility}
+              placementPreview={{
+                vertices: upload.preview.vertices,
+                indices: upload.preview.indices,
+                placement,
+                anchorScene,
+                domainRotationDeg: phiDeg,
+                mode: gizmoMode,
+                onChange: handlePlacementChange,
+              }}
+            />
+          ) : figureJson ? (
+            <ThreeViewer figureJson={figureJson} />
+          ) : (
+            <div className="alert alert-info">Upload an OBJ to place it in 3D.</div>
+          )}
+        </div>
+```
+
+(Leave the two `plan-panel-header` `<h2>` headers — `2D placement` / `3D result` — in place above each `visual-frame`. Reconcile the existing `SceneViewer`/`placementPreview` props against the current file — keep whatever the OBJ path already passes and only ADD `auxiliaryLines`/`auxiliaryLineVisibility`/`lonLatToXY`.)
+
 - [ ] **Step 8** Typecheck from `app/frontend`: `npx tsc -b --noEmit`. Expected: no errors. Ensure `getModelGeo` remains used (it is, via `refreshGeo` and the initial-load effect).
 - [ ] **Step 9** Commit: `git add -A && git commit -m "feat(dxf): Import tab OBJ/DXF mode toggle + DXF placement flow"`
 
