@@ -139,14 +139,14 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
     <div className="two-col">
       {/* Left – controls */}
       <GuidedPanel
-        title="Generate Model"
-        subtitle="Build the VoxCity 3D model from city data."
+        title={t('generationTab.title')}
+        subtitle={t('generationTab.subtitle')}
         status={
           error ? (
             <GuidedStatus tone="error">{error}</GuidedStatus>
           ) : gridShape ? (
             <GuidedStatus tone="success">
-              Model generated. Grid: {gridShape.join(' × ')}. Mesh: {meshsize}m.
+              {t('generationTab.modelGenerated', { grid: gridShape.join(' × '), mesh: meshsize })}
             </GuidedStatus>
           ) : undefined
         }
@@ -160,37 +160,36 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="GENERATION MODE">
+        <GuidedSection index={1} label={t('generationTab.modeHeading')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Generation mode"
+            ariaLabel={t('generationTab.modeAria')}
             value={mode}
             onChange={setMode}
             options={[
-              { id: 'normal', label: 'Normal', description: 'Global open data sources', icon: Globe },
-              { id: 'plateau', label: 'PLATEAU', description: 'Japanese CityGML data', icon: Building2 },
+              { id: 'normal', label: t('generationTab.modeNormalLabel'), description: t('generationTab.modeNormalDesc'), icon: Globe },
+              { id: 'plateau', label: t('generationTab.modePlateauLabel'), description: t('generationTab.modePlateauDesc'), icon: Building2 },
             ]}
           />
         </GuidedSection>
 
-        <GuidedSection index={2} label="GRID RESOLUTION">
+        <GuidedSection index={2} label={t('generationTab.gridHeading')}>
           <div className="form-group">
-            <label>Mesh size (meters)</label>
+            <label>{t('generationTab.meshSize')}</label>
             <input type="number" value={meshsize} min={1} max={50} onChange={(e) => setMeshsize(Number(e.target.value))} />
           </div>
         </GuidedSection>
 
         {willDisablePreview && estimate && (
           <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0 0 0.75rem' }}>
-            Estimated grid ~{estimate[0]}×{estimate[1]} — the 3D preview will be
-            disabled at this size. Generation and export still work.
+            {t('generationTab.previewWarn', { a: estimate[0], b: estimate[1] })}
           </div>
         )}
 
         {mode === 'normal' && (
           <GuidedSection
             index={3}
-            label="DATA SOURCES"
+            label={t('generationTab.dataSources')}
             collapsible
             defaultOpen={!useAutoSources}
           >
@@ -200,17 +199,17 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 checked={useAutoSources}
                 onChange={(e) => setUseAutoSources(e.target.checked)}
               />
-              <span>Auto-select sources based on location</span>
+              <span>{t('generationTab.autoSelect')}</span>
             </div>
 
             {useAutoSources && autoDetected && (
               <div className="alert alert-info" style={{ fontSize: '0.78rem', marginBottom: '0.75rem' }}>
-                <strong>Auto-detected:</strong><br />
-                Buildings: {autoDetected.building_source}<br />
-                Complementary: {autoDetected.building_complementary_source}<br />
-                Land Cover: {autoDetected.land_cover_source}<br />
-                Canopy: {autoDetected.canopy_height_source}<br />
-                DEM: {autoDetected.dem_source}
+                <strong>{t('generationTab.autoDetectedHeading')}</strong><br />
+                {t('generationTab.autoBuildings')} {autoDetected.building_source}<br />
+                {t('generationTab.autoComplementary')} {autoDetected.building_complementary_source}<br />
+                {t('generationTab.autoLandCover')} {autoDetected.land_cover_source}<br />
+                {t('generationTab.autoCanopy')} {autoDetected.canopy_height_source}<br />
+                {t('generationTab.autoDem')} {autoDetected.dem_source}
               </div>
             )}
 
@@ -221,14 +220,14 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 disabled={detectingAuto}
                 style={{ marginBottom: '0.5rem' }}
               >
-                {detectingAuto ? 'Detecting...' : 'Detect Sources'}
+                {detectingAuto ? t('generationTab.detecting') : t('generationTab.detectSources')}
               </button>
             )}
 
             {!useAutoSources && (
               <>
                 <div className="form-group">
-                  <label>Building Source</label>
+                  <label>{t('generationTab.buildingSource')}</label>
                   <select
                     value={buildingSource || 'OpenStreetMap'}
                     onChange={(e) => setBuildingSource(e.target.value)}
@@ -240,7 +239,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>Building Complementary Source</label>
+                  <label>{t('generationTab.buildingCompSource')}</label>
                   <select
                     value={buildingCompSource || 'None'}
                     onChange={(e) => setBuildingCompSource(e.target.value)}
@@ -252,7 +251,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>Land Cover Source</label>
+                  <label>{t('generationTab.landCoverSource')}</label>
                   <select
                     value={landCoverSource || 'OpenStreetMap'}
                     onChange={(e) => setLandCoverSource(e.target.value)}
@@ -264,7 +263,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>Canopy Height Source</label>
+                  <label>{t('generationTab.canopySource')}</label>
                   <select
                     value={canopyHeightSource || 'Static'}
                     onChange={(e) => setCanopyHeightSource(e.target.value)}
@@ -276,7 +275,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>DEM Source</label>
+                  <label>{t('generationTab.demSource')}</label>
                   <select
                     value={demSource || 'Flat'}
                     onChange={(e) => setDemSource(e.target.value)}
@@ -293,12 +292,12 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
 
         <GuidedSection
           index={4}
-          label="ADVANCED"
+          label={t('generationTab.advanced')}
           collapsible
           defaultOpen={false}
         >
           <div className="form-group">
-            <label>Building Complement Height (m)</label>
+            <label>{t('generationTab.buildingCompHeight')}</label>
             <input
               type="number"
               value={buildingComplementHeight}
@@ -306,7 +305,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
             />
           </div>
           <div className="form-group">
-            <label>Static Tree Height (m)</label>
+            <label>{t('generationTab.staticTreeHeight')}</label>
             <input
               type="number"
               value={staticTreeHeight}
@@ -321,7 +320,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
               checked={demInterpolation}
               onChange={(e) => setDemInterpolation(e.target.checked)}
             />
-            <span>DEM Interpolation</span>
+            <span>{t('generationTab.demInterpolation')}</span>
           </div>
           {mode === 'plateau' && (
             <>
@@ -331,7 +330,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                   checked={useCitygmlCache}
                   onChange={(e) => setUseCitygmlCache(e.target.checked)}
                 />
-                <span>Use CityGML Cache</span>
+                <span>{t('generationTab.useCitygmlCache')}</span>
               </div>
               <div className="checkbox-row">
                 <input
@@ -339,7 +338,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                   checked={useNdsmCanopy}
                   onChange={(e) => setUseNdsmCanopy(e.target.checked)}
                 />
-                <span>Use nDSM for Canopy</span>
+                <span>{t('generationTab.useNdsm')}</span>
               </div>
             </>
           )}
