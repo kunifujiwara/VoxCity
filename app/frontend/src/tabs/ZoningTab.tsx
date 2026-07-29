@@ -350,7 +350,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
   const deleteGroup = (groupId: string) => {
     const hasCommittedMembers = zones.some((z) => (z.groupId ?? z.id) === groupId);
-    if (hasCommittedMembers && !window.confirm('Delete this zone (all its rings)?')) return;
+    if (hasCommittedMembers && !window.confirm(t('zoningTab.confirmDeleteZone'))) return;
     onZonesChange(zones.filter((z) => (z.groupId ?? z.id) !== groupId));
     setDraftGroups((prev) => prev.filter((g) => g.id !== groupId));
     if (selectedId && zones.find((z) => z.id === selectedId)?.groupId === groupId) {
@@ -362,7 +362,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
 
   const clearAll = () => {
     if (zones.length === 0 && draftGroups.length === 0) return;
-    if (zones.length > 0 && !window.confirm(`Delete all ${committedGroups.length} zones?`)) return;
+    if (zones.length > 0 && !window.confirm(t('zoningTab.confirmDeleteAllZones', { n: committedGroups.length }))) return;
     onZonesChange([]);
     setDraftGroups([]);
     setGroupOrder([]);
@@ -402,8 +402,8 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
     <div className="three-col">
       {/* Left: config + zone list */}
       <GuidedPanel
-        title="Zoning"
-        subtitle="Define evaluation zones for simulation summaries."
+        title={t('zoningTab.title')}
+        subtitle={t('zoningTab.subtitle')}
         status={error ? <GuidedStatus tone="error">{error}</GuidedStatus> : undefined}
         footer={(
           <GuidedFooter>
@@ -414,53 +414,53 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               disabled={zones.length === 0 && draftGroups.length === 0}
             >
               <Trash2 size={14} aria-hidden="true" style={{ marginRight: 6 }} />
-              Clear all zones
+              {t('zoningTab.clearAllZones')}
             </button>
           </GuidedFooter>
         )}
       >
-        <GuidedSection index={1} label="ZONE TYPE">
+        <GuidedSection index={1} label={t('zoningTab.zoneTypeHeading')}>
           <ChoiceGroup
             variant="checks"
-            ariaLabel="Zone type"
+            ariaLabel={t('zoningTab.zoneTypeAria')}
             value={zoneType}
             onChange={(next) => setZoneType(next)}
             options={[
-              { id: 'horizontal', label: '2D area', icon: Square },
-              { id: 'building_surface', label: 'Building surfaces', icon: Box },
+              { id: 'horizontal', label: t('zoningTab.zoneType2d'), icon: Square },
+              { id: 'building_surface', label: t('zoningTab.zoneTypeSurface'), icon: Box },
             ]}
           />
         </GuidedSection>
         {zoneType === 'horizontal' && (
-          <GuidedSection index={2} label="SHAPE">
+          <GuidedSection index={2} label={t('zoningTab.shapeHeading')}>
             <ChoiceGroup
               variant="checks"
-              ariaLabel="Zone shape"
+              ariaLabel={t('zoningTab.zoneShapeAria')}
               value={shape}
               onChange={setShape}
               options={[
-                { id: 'rect', label: 'Rectangle', icon: Square },
-                { id: 'polygon', label: 'Polygon', icon: Hexagon },
+                { id: 'rect', label: t('zoningTab.shapeRectangle'), icon: Square },
+                { id: 'polygon', label: t('zoningTab.shapePolygon'), icon: Hexagon },
               ]}
             />
           </GuidedSection>
         )}
 
-        <GuidedSection index={3} label="ZONES" action={(
+        <GuidedSection index={3} label={t('zoningTab.zonesHeading')} action={(
           <button
             type="button"
             className="btn btn-primary btn-sm"
             onClick={handleAddZone}
-            title="Add a new zone row. Draw on the map to set its boundary."
+            title={t('zoningTab.addZoneTitle')}
           >
             <Plus size={12} aria-hidden="true" style={{ marginRight: 4 }} />
-            Add zone
+            {t('zoningTab.addZone')}
           </button>
         )}>
         <div className="zone-list">
           {groups.length === 0 && (
             <div className="alert alert-info" style={{ marginTop: 8 }}>
-              Draw a {shape === 'rect' ? 'rectangle' : 'polygon'} on the map to add a zone.
+              {shape === 'rect' ? t('zoningTab.drawHintRect') : t('zoningTab.drawHintPolygon')}
             </div>
           )}
           {groups.map((g) => {
@@ -505,7 +505,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                     {g.name}
                     {g.draft && (
                       <span style={{ opacity: 0.6, marginLeft: 6, fontSize: '0.85em' }}>
-                        pending
+                        {t('zoningTab.pending')}
                       </span>
                     )}
                     {!g.draft && g.members.length > 1 && (
@@ -517,12 +517,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                 )}
                 <span
                   className={`zone-type-badge ${groupType === 'building_surface' ? 'building' : 'two-d'}`}
-                  title={groupType === 'building_surface' ? 'Building surface zone' : '2D area zone'}
+                  title={groupType === 'building_surface' ? t('zoningTab.badgeSurfaceTitle') : t('zoningTab.badge2dTitle')}
                 >
-                  {groupType ? zoneTypeShortLabel(groupType) : 'Mixed'}
+                  {groupType ? zoneTypeShortLabel(groupType) : t('zoningTab.mixed')}
                 </span>
                 <button
-                  title="Rename"
+                  title={t('zoningTab.rename')}
                   onClick={(e) => {
                     e.stopPropagation();
                     setRenamingId(g.id);
@@ -532,7 +532,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                   ✎
                 </button>
                 <button
-                  title="Delete"
+                  title={t('zoningTab.delete')}
                   onClick={(e) => {
                     e.stopPropagation();
                     deleteGroup(g.id);
@@ -566,7 +566,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
               style={{ fontSize: '0.85em' }}
               onClick={() => setRefiningBuildingId(null)}
             >
-              Cancel refine
+              {t('zoningTab.cancelRefine')}
             </button>
           </div>
         )}
@@ -581,12 +581,12 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
           ];
           if (selectedBuildingIds.length === 0) return (
             <div className="alert alert-info" style={{ marginTop: 8 }}>
-              Click buildings in the 3D viewer to select them.
+              {t('zoningTab.hintClickBuildings3d')}
             </div>
           );
           return (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: '0.85em', opacity: 0.7, marginBottom: 4 }}>Selected buildings:</div>
+              <div style={{ fontSize: '0.85em', opacity: 0.7, marginBottom: 4 }}>{t('zoningTab.selectedBuildings')}</div>
               {selectedBuildingIds.map((bid) => {
                 const sel = activeSurfaceZone.selectors;
                 const isMode = (mode: SurfaceSelector['mode'], dir?: WallOrientation) =>
@@ -596,15 +596,15 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                 return (
                 <div key={bid} className={`surface-building-row${refiningBuildingId === bid ? ' refining' : ''}`}>
                   <div className="surface-building-head">
-                    <span className="surface-building-name" title={`Building ${bid}`}>Building {bid}</span>
+                    <span className="surface-building-name" title={t('zoningTab.building', { id: bid })}>{t('zoningTab.building', { id: bid })}</span>
                     {refiningBuildingId === bid ? (
-                      <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(null)}>Done</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(null)}>{t('zoningTab.doneRefine')}</button>
                     ) : (
                       <>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(bid)}>Refine</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setRefiningBuildingId(bid)}>{t('zoningTab.refine')}</button>
                         <button
                           className="btn btn-secondary btn-sm"
-                          title="Remove building"
+                          title={t('zoningTab.removeBuildingTitle')}
                           onClick={() => {
                             setRefiningBuildingId(null);
                             apply(activeSurfaceZone.selectors.filter((s) => s.buildingId !== bid));
@@ -616,15 +616,15 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                   {refiningBuildingId === bid && (
                     <div className="surface-refine-group">
                       <button className={`btn btn-sm ${isMode('roof') ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => apply(toggleBulkSelector(sel, bid, 'roof'))}>Roof</button>
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'roof'))}>{t('zoningTab.roof')}</button>
                       <button className={`btn btn-sm ${isMode('all_walls') ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => apply(toggleBulkSelector(sel, bid, 'all_walls'))}>All walls</button>
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'all_walls'))}>{t('zoningTab.allWalls')}</button>
                       <button className={`btn btn-sm ${isMode('window') ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => apply(toggleBulkSelector(sel, bid, 'window'))}>Window</button>
+                        onClick={() => apply(toggleBulkSelector(sel, bid, 'window'))}>{t('zoningTab.windowFace')}</button>
                       <span className="surface-refine-divider" />
                       {(['N', 'E', 'S', 'W'] as WallOrientation[]).map((dir) => (
                         <button key={dir} className={`btn btn-sm btn-icon ${isMode('wall_orientation', dir) ? 'btn-primary' : 'btn-secondary'}`}
-                          title={`${dir} wall`}
+                          title={t('zoningTab.wallOrientationTitle', { dir })}
                           onClick={() => apply(toggleBulkSelector(sel, bid, 'wall_orientation', dir))}>{dir}</button>
                       ))}
                     </div>
@@ -642,13 +642,13 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       <div className="panel visual-panel">
         <div className="plan-panel-header">
           <div>
-            <h2>2D zone editor</h2>
+            <h2>{t('zoningTab.editorHeading')}</h2>
           </div>
           <details className="display-menu" ref={displayMenuRef}>
-            <summary>Display</summary>
+            <summary>{t('zoningTab.display')}</summary>
             <div className="display-menu-popover">
               <div className="form-group">
-                <label>Basemap</label>
+                <label>{t('zoningTab.basemap')}</label>
                 <select value={basemap} onChange={(e) => setBasemap(e.target.value as BasemapKey)}>
                   <option>CartoDB Positron</option>
                   <option>Google Satellite</option>
@@ -656,18 +656,18 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
                 </select>
               </div>
               <div className="form-group">
-                <label>Overlay</label>
+                <label>{t('zoningTab.overlay')}</label>
                 <select value={backdrop} onChange={(e) => setBackdrop(e.target.value as Backdrop)}>
-                  <option value="buildings">Buildings</option>
-                  <option value="canopy">Canopy</option>
-                  <option value="land_cover">Land cover</option>
-                  <option value="none">None</option>
+                  <option value="buildings">{t('zoningTab.ovBuildings')}</option>
+                  <option value="canopy">{t('zoningTab.ovCanopy')}</option>
+                  <option value="land_cover">{t('zoningTab.ovLandCover')}</option>
+                  <option value="none">{t('zoningTab.ovNone')}</option>
                 </select>
               </div>
             </div>
           </details>
         </div>
-        {loading && <div className="alert alert-info">Loading map…</div>}
+        {loading && <div className="alert alert-info">{t('zoningTab.loadingMap')}</div>}
         <div className="visual-frame">
           {geo && (
             <PlanMapEditor
@@ -686,7 +686,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
       {/* Right: 3D viewer */}
       <div className="panel visual-panel">
         <div className="plan-panel-header">
-          <h2>3D preview</h2>
+          <h2>{t('zoningTab.previewHeading')}</h2>
         </div>
         <div className="visual-frame">
           {previewDisabled ? (
@@ -704,7 +704,7 @@ const ZoningTab: React.FC<ZoningTabProps> = ({ hasModel, figureJson, zones, onZo
             />
           ) : (
             <div className="alert alert-info" style={{ marginTop: 0 }}>
-              Generate a model on the Generation tab to preview zones in 3D.
+              {t('zoningTab.generateModelHint')}
             </div>
           )}
         </div>
