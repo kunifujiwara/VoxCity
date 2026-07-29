@@ -343,3 +343,56 @@ class ImportObjCommitResponse(BaseModel):
     n_building_voxels_added: int
     n_window_voxels_added: int = 0
     warning: Optional[str] = None
+
+
+class DxfLayerInfo(BaseModel):
+    name: str
+    color: str            # "#rrggbb"
+    n_segments: int
+
+
+class DxfPreviewLayer(BaseModel):
+    name: str
+    color: str
+    polylines: List[List[List[float]]]   # model-XY, decimated if large
+
+
+class ImportDxfPreview(BaseModel):
+    layers: List[DxfPreviewLayer]
+
+
+class ImportDxfUploadResponse(BaseModel):
+    import_id: str
+    layers: List[DxfLayerInfo]
+    model_bounds: List[List[float]]       # [[xmin,ymin],[xmax,ymax]]
+    model_center: List[float]             # [cx, cy] (default placement pivot)
+    detected_units: Optional[str] = None  # from $INSUNITS, if present
+    preview: ImportDxfPreview
+    warning: Optional[str] = None
+
+
+class DxfPlacement(BaseModel):
+    anchor_lonlat: List[float] = Field(..., min_length=2, max_length=2)  # [lon, lat]
+    anchor_model_point: List[float] = Field(default_factory=lambda: [0.0, 0.0], min_length=2, max_length=2)
+    rotation: float = 0.0                 # degrees
+    move: List[float] = Field(default_factory=lambda: [0.0, 0.0], min_length=2, max_length=2)  # [east, north] m
+    units: str = "m"
+
+
+class ImportDxfCommitRequest(BaseModel):
+    import_id: str = Field(..., max_length=64)
+    placement: DxfPlacement
+    layer_visibility: Dict[str, bool] = Field(default_factory=dict)
+
+
+class AuxiliaryLine(BaseModel):
+    id: str
+    file_name: str
+    layer: str
+    color: str
+    points: List[List[float]]             # [[lon, lat], ...]
+
+
+class ImportDxfCommitResponse(BaseModel):
+    auxiliary_lines: List[AuxiliaryLine]
+    warning: Optional[str] = None
