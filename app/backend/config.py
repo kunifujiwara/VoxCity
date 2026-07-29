@@ -35,6 +35,9 @@ DATA_DIR = _env_or("VOXCITY_DATA_DIR", os.path.join(_APP_DIR, "data"))
 OUTPUT_DIR = _env_or(
     "VOXCITY_OUTPUT_DIR", os.path.join(tempfile.gettempdir(), "voxcity_output")
 )
+# Server-side share snapshots (share-by-URL). Defaults under OUTPUT_DIR so the
+# same VOXCITY_OUTPUT_DIR override relocates shares too.
+SHARE_DIR = _env_or("VOXCITY_SHARE_DIR", os.path.join(OUTPUT_DIR, "shares"))
 
 # --- Derived data paths ----------------------------------------------------
 DEFAULT_TOKYO_EPW = _env_or(
