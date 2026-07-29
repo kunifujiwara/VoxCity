@@ -304,10 +304,10 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button type="button" disabled={busy}
                     className={`btn btn-xs${importMode === 'obj' ? ' btn-primary' : ' btn-ghost'}`}
-                    onClick={() => setImportMode('obj')}>OBJ buildings</button>
+                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('obj'); }}>OBJ buildings</button>
             <button type="button" disabled={busy}
                     className={`btn btn-xs${importMode === 'dxf' ? ' btn-primary' : ' btn-ghost'}`}
-                    onClick={() => setImportMode('dxf')}>DXF reference lines</button>
+                    onClick={() => { setError(null); setInfo(null); setWarning(null); setImportMode('dxf'); }}>DXF reference lines</button>
           </div>
 
           {importMode === 'obj' && (
@@ -627,10 +627,21 @@ const ImportTab: React.FC<ImportTabProps> = ({ hasModel, figureJson, onFigureCha
         <div className="plan-panel-header"><h2>3D result</h2></div>
         <div className="visual-frame">
           {importMode === 'dxf' ? (
-            <div className="alert alert-info">
-              DXF reference lines are a flat overlay; they are added to the 2D map and
-              the 3D scenes without changing the voxel model.
-            </div>
+            previewDisabled ? (
+              <PreviewDisabledNotice gridShape={previewGridShape} />
+            ) : geo?.auxiliary_lines && geo.auxiliary_lines.length > 0 ? (
+              <SceneViewer
+                geometryToken="import-dxf-preview"
+                lonLatToXY={geo ? lonLatToUvM({ grid_geom: geo.grid_geom }) : undefined}
+                auxiliaryLines={geo.auxiliary_lines}
+                auxiliaryLineVisibility={auxVisibility}
+              />
+            ) : (
+              <div className="alert alert-info">
+                DXF reference lines are a flat overlay added to the 2D map and the
+                3D scene without changing the voxel model. Add lines to see them here.
+              </div>
+            )
           ) : previewDisabled ? (
             <PreviewDisabledNotice gridShape={previewGridShape} />
           ) : upload && !figureJson ? (
