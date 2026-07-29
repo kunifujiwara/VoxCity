@@ -271,3 +271,38 @@ def test_apply_session_restores_state_atomically(tmp_path: Path, monkeypatch) ->
     assert state.raw_data == {}
     assert cleared["visibility"] is True
     assert cleared["solar"] is True
+
+
+# ── Task 5: auxiliary_lines round-trip ────────────────────────────────────────
+
+def test_auxiliary_lines_round_trip(tmp_path):
+    from types import SimpleNamespace
+    from backend.session_io import parse_session_zip, save_session_to_zip
+
+    aux = [
+        {"id": "a1", "file_name": "roads.dxf", "layer": "centerline",
+         "color": "#6666ff", "points": [[139.70, 35.69], [139.701, 35.6905]]},
+    ]
+    state = SimpleNamespace(
+        voxcity=SimpleNamespace(voxels=SimpleNamespace(meta=SimpleNamespace(meshsize=5.0))),
+        rectangle_vertices=[[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1]],
+        land_cover_source="OpenStreetMap",
+        auxiliary_lines=aux,
+    )
+    buf = save_session_to_zip(state)
+    parsed = parse_session_zip(buf)
+    assert parsed.auxiliary_lines == aux
+
+
+def test_auxiliary_lines_absent_when_empty(tmp_path):
+    from types import SimpleNamespace
+    from backend.session_io import parse_session_zip, save_session_to_zip
+
+    state = SimpleNamespace(
+        voxcity=SimpleNamespace(voxels=SimpleNamespace(meta=SimpleNamespace(meshsize=5.0))),
+        rectangle_vertices=[[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1]],
+        land_cover_source="OpenStreetMap",
+        auxiliary_lines=[],
+    )
+    parsed = parse_session_zip(save_session_to_zip(state))
+    assert parsed.auxiliary_lines is None  # no file written for empty list

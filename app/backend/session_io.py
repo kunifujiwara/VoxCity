@@ -23,6 +23,7 @@ DEFAULT_MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 _VOXCITY_NAME = "voxcity.h5"
 _META_NAME = "meta.json"
 _FRONTEND_STATE_NAME = "frontend_state.json"
+_AUXILIARY_LINES_NAME = "auxiliary_lines.json"
 
 
 class SessionLoadError(Exception):
@@ -37,6 +38,7 @@ class ParsedSession:
     voxcity_h5_path: str
     frontend_state: Optional[str] = None
     sim_results: Optional[Dict[str, Any]] = None  # filled in by a later task
+    auxiliary_lines: Optional[list] = None        # DXF overlay, [[...], ...]
 
 
 def _utc_iso_now() -> str:
@@ -91,6 +93,13 @@ def save_session_to_zip(
             except json.JSONDecodeError as exc:
                 raise ValueError(f"frontend_state must be valid JSON: {exc}") from exc
             (tmp / _FRONTEND_STATE_NAME).write_text(frontend_state, encoding="utf-8")
+
+        auxiliary_lines = getattr(state, "auxiliary_lines", None)
+        if auxiliary_lines:
+            (tmp / _AUXILIARY_LINES_NAME).write_text(
+                json.dumps(auxiliary_lines),
+                encoding="utf-8",
+            )
 
         if include_sim_results:
             _serialize_sim_results(state, tmp)
@@ -154,6 +163,18 @@ def parse_session_zip(stream, max_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> Pars
                 ) from exc
             frontend_state = raw
 
+        auxiliary_lines = None
+        aux_path = tmp / _AUXILIARY_LINES_NAME
+        if aux_path.is_file():
+            try:
+                loaded_aux = json.loads(aux_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise SessionLoadError(
+                    f"auxiliary_lines.json is not valid JSON: {exc}"
+                ) from exc
+            if isinstance(loaded_aux, list):
+                auxiliary_lines = loaded_aux
+
         sim_results = _parse_sim_results(tmp / _SIM_RESULTS_DIR)
 
         return ParsedSession(
@@ -161,6 +182,7 @@ def parse_session_zip(stream, max_bytes: int = DEFAULT_MAX_UPLOAD_BYTES) -> Pars
             voxcity_h5_path=str(voxcity_path),
             frontend_state=frontend_state,
             sim_results=sim_results,
+            auxiliary_lines=auxiliary_lines,
         )
     except Exception:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -397,6 +419,7 @@ def apply_session_to_state(parsed: ParsedSession, state) -> Dict[str, Any]:
     state.rectangle_vertices = parsed.meta.get("rectangle_vertices")
     state.land_cover_source = parsed.meta.get("land_cover_source", "OpenStreetMap")
     state.reset_for_session_load()
+    state.auxiliary_lines = list(parsed.auxiliary_lines or [])
     try:
         state.refresh_raw_cache()
     except Exception:
