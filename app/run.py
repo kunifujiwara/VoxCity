@@ -42,10 +42,10 @@ def _get_python() -> str:
     return sys.executable
 
 
-def run_backend():
+def run_backend(port: int = BACKEND_PORT):
     """Start the FastAPI backend with uvicorn."""
     python = _get_python()
-    print(f"[backend] Starting FastAPI server on http://localhost:8000  (python: {python})")
+    print(f"[backend] Starting FastAPI server on http://localhost:{port}  (python: {python})")
     return subprocess.Popen(
         [
             python,
@@ -55,19 +55,23 @@ def run_backend():
             "--host",
             "0.0.0.0",
             "--port",
-            "8000",
+            str(port),
         ],
         cwd=str(APP_DIR),
     )
 
 
-def run_frontend():
+def run_frontend(port: int = FRONTEND_PORT, backend_port: int = BACKEND_PORT):
     """Start the Vite dev server."""
-    print("[frontend] Starting Vite dev server on http://localhost:3000 ...")
+    print(f"[frontend] Starting Vite dev server on http://localhost:{port} ...")
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    # Pass the backend port to Vite so its proxy targets the right server.
+    env = os.environ.copy()
+    env["VITE_BACKEND_PORT"] = str(backend_port)
     return subprocess.Popen(
-        [npm_cmd, "run", "dev", "--", "--host", "0.0.0.0"],
+        [npm_cmd, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(port)],
         cwd=str(FRONTEND_DIR),
+        env=env,
     )
 
 
@@ -83,6 +87,14 @@ def main():
     parser = argparse.ArgumentParser(description="Run VoxCity Web App")
     parser.add_argument("--backend", action="store_true", help="Start backend only")
     parser.add_argument("--frontend", action="store_true", help="Start frontend only")
+    parser.add_argument(
+        "--backend-port", type=int, default=BACKEND_PORT,
+        help=f"Backend port (default: {BACKEND_PORT})",
+    )
+    parser.add_argument(
+        "--frontend-port", type=int, default=FRONTEND_PORT,
+        help=f"Frontend port (default: {FRONTEND_PORT})",
+    )
     args = parser.parse_args()
 
     # If neither flag is set, run both
@@ -95,11 +107,11 @@ def main():
 
     try:
         # Pre-flight: check ports
-        if run_be and _port_in_use(BACKEND_PORT):
-            print(f"[error] Port {BACKEND_PORT} is already in use. Stop the other process first.")
+        if run_be and _port_in_use(args.backend_port):
+            print(f"[error] Port {args.backend_port} is already in use. Stop the other process first.")
             sys.exit(1)
-        if run_fe and _port_in_use(FRONTEND_PORT):
-            print(f"[error] Port {FRONTEND_PORT} is already in use. Stop the other process first.")
+        if run_fe and _port_in_use(args.frontend_port):
+            print(f"[error] Port {args.frontend_port} is already in use. Stop the other process first.")
             sys.exit(1)
 
         # Install frontend deps first (before backend starts watching files)
@@ -107,7 +119,7 @@ def main():
             install_frontend_deps()
 
         if run_be:
-            procs.append(run_backend())
+            procs.append(run_backend(args.backend_port))
 
         # If running both, wait for the backend to be reachable before
         # starting the frontend so the Vite proxy doesn't hit ECONNREFUSED.
@@ -115,7 +127,7 @@ def main():
             import time
             print("[startup] Waiting for backend to be ready ...", end="", flush=True)
             for _ in range(60):  # up to 30 seconds
-                if _port_in_use(BACKEND_PORT):
+                if _port_in_use(args.backend_port):
                     print(" OK")
                     break
                 print(".", end="", flush=True)
@@ -124,7 +136,7 @@ def main():
                 print("\n[warning] Backend not reachable yet – starting frontend anyway")
 
         if run_fe:
-            procs.append(run_frontend())
+            procs.append(run_frontend(args.frontend_port, args.backend_port))
 
         # Wait for any process to exit
         for p in procs:
