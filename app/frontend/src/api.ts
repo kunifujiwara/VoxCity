@@ -622,6 +622,35 @@ export async function loadSession(file: File): Promise<SessionLoadSummary> {
   return res.json();
 }
 
+export interface ShareCreateResult {
+  token: string;
+  path: string;
+}
+
+/** Persist the current session server-side; returns the share token and URL path. */
+export async function createShare(frontendState: string): Promise<ShareCreateResult> {
+  const form = new FormData();
+  form.append('frontend_state', frontendState);
+  const res = await fetch(`${BASE}/share`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Load a shared snapshot into the current session. */
+export async function loadShare(token: string): Promise<SessionLoadSummary> {
+  const res = await fetch(`${BASE}/share/${encodeURIComponent(token)}/load`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // ── OBJ import tab ────────────────────────────────────────────
 
 export interface ImportObjGroupDto {
