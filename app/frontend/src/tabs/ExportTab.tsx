@@ -48,11 +48,13 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
         return true;
       }
     } catch {
-      // Async write can fail on insecure origins or after gesture activation
-      // expires (a network await ran between click and write). Fall through.
+      // The async write can fail on insecure origins, or after the click's
+      // user-activation expires (a network await ran between click and write).
+      // Fall through to the legacy path — note it may ALSO be activation-gated
+      // in some engines, so callers must keep the manual Copy button reachable.
     }
+    const textarea = document.createElement('textarea');
     try {
-      const textarea = document.createElement('textarea');
       textarea.value = url;
       textarea.setAttribute('readonly', '');
       textarea.style.position = 'fixed';
@@ -60,12 +62,13 @@ const ExportTab: React.FC<ExportTabProps> = ({ hasModel, zones, onSessionLoaded 
       textarea.style.opacity = '0';
       textarea.style.pointerEvents = 'none';
       document.body.appendChild(textarea);
+      textarea.focus();
       textarea.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return ok;
+      return document.execCommand('copy');
     } catch {
       return false;
+    } finally {
+      if (textarea.parentNode) document.body.removeChild(textarea);
     }
   };
 
