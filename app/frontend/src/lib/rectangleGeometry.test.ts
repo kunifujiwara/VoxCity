@@ -5,6 +5,7 @@ import {
   normalizeRectangleVertices,
   rotateVertices,
   buildDimensionRectangleApprox,
+  rectangleCenterLines,
 } from './rectangleGeometry';
 
 /** Euclidean distance between two lon/lat points (flat-Earth, good enough for tests). */
@@ -199,5 +200,46 @@ describe('buildDimensionRectangleApprox', () => {
     // Allow ±1 % tolerance for the flat-Earth approximation
     expect(Math.abs(measuredWidth  - widthM )).toBeLessThan(widthM  * 0.01);
     expect(Math.abs(measuredHeight - heightM)).toBeLessThan(heightM * 0.01);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+describe('rectangleCenterLines', () => {
+  it('returns two midlines through the rectangle center (axis-aligned)', () => {
+    const rect: [number, number][] = [
+      [139.76, 35.67], // SW
+      [139.76, 35.69], // NW
+      [139.78, 35.69], // NE
+      [139.78, 35.67], // SE
+    ];
+    const [lineA, lineB] = rectangleCenterLines(rect);
+    // Horizontal midline: mid(v0,v1) → mid(v3,v2)
+    // (toBeCloseTo, not toEqual: 139.76/139.78 midpoints are not exact in
+    // double-precision float arithmetic, e.g. (139.76+139.78)/2 !== 139.77)
+    expect(lineA[0][0]).toBeCloseTo(139.76, 9);
+    expect(lineA[0][1]).toBeCloseTo(35.68, 9);
+    expect(lineA[1][0]).toBeCloseTo(139.78, 9);
+    expect(lineA[1][1]).toBeCloseTo(35.68, 9);
+    // Vertical midline: mid(v1,v2) → mid(v0,v3)
+    expect(lineB[0][0]).toBeCloseTo(139.77, 9);
+    expect(lineB[0][1]).toBeCloseTo(35.69, 9);
+    expect(lineB[1][0]).toBeCloseTo(139.77, 9);
+    expect(lineB[1][1]).toBeCloseTo(35.67, 9);
+  });
+
+  it('midlines cross at the centroid for rotated rectangles', () => {
+    const base: [number, number][] = [
+      [139.76, 35.67], [139.76, 35.69], [139.78, 35.69], [139.78, 35.67],
+    ];
+    const rect = rotateVertices(base, 30);
+    const [lineA, lineB] = rectangleCenterLines(rect);
+    const midA = [(lineA[0][0] + lineA[1][0]) / 2, (lineA[0][1] + lineA[1][1]) / 2];
+    const midB = [(lineB[0][0] + lineB[1][0]) / 2, (lineB[0][1] + lineB[1][1]) / 2];
+    expect(midA[0]).toBeCloseTo(midB[0], 9);
+    expect(midA[1]).toBeCloseTo(midB[1], 9);
+  });
+
+  it('returns [] when fewer than 4 vertices', () => {
+    expect(rectangleCenterLines([[0, 0], [1, 1]])).toEqual([]);
   });
 });
