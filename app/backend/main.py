@@ -993,7 +993,7 @@ async def rectangle_from_dimensions(req: RectangleFromDimensions):
     bearing/distance of each rotated local-frame corner offset), so side
     lengths match the requested dimensions to sub-millimetre at any rotation
     and latitude. Rotating in a projected CRS distorts ground lengths with
-    latitude (a 900 m side became ~902 m at Tokyo at 45°), shifting the derived
+    latitude (a 900 m side became ~902 m at Tokyo at 45°, shifting the derived
     grid size). Positive rotation_deg turns the v0→v1 edge to azimuth
     +rotation_deg — same visual convention as voxcity._rotate_vertices().
     Vertices are returned in SW → NW → NE → SE order.
