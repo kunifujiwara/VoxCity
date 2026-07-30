@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import { fetchDimensionRectangle } from '../lib/dimensionRectangle';
-import { buildRotatedRectangleFromClicks } from '../lib/rectangleGeometry';
+import { buildRotatedRectangleFromClicks, rectangleCenterLines } from '../lib/rectangleGeometry';
+
+/** Convert rectangle vertices to Leaflet multi-segment latlngs for the center crosshair. */
+const centerLineLatLngs = (verts: number[][]): L.LatLng[][] =>
+  rectangleCenterLines(verts).map((seg) => seg.map(([lon, lat]) => L.latLng(lat, lon)));
 
 interface DimensionCenter {
   centerLon: number;
@@ -35,6 +39,10 @@ const MapPicker: React.FC<MapPickerProps> = ({
   const rectLayerRef = useRef<L.Polygon | null>(null);
   /** Live preview layer — L.Rectangle for 2-click mode, L.Polygon for rotated mode. */
   const previewLayerRef = useRef<L.Rectangle | L.Polygon | null>(null);
+  /** Dashed center crosshair for the confirmed rectangle. */
+  const rectCenterLinesRef = useRef<L.Polyline | null>(null);
+  /** Dashed center crosshair for the live preview rectangle. */
+  const previewCenterLinesRef = useRef<L.Polyline | null>(null);
   const firstCornerRef = useRef<L.LatLng | null>(null);
   /** Second click in rotated mode. */
   const secondCornerRef = useRef<L.LatLng | null>(null);
@@ -106,6 +114,10 @@ const MapPicker: React.FC<MapPickerProps> = ({
       map.removeLayer(previewLayerRef.current);
       previewLayerRef.current = null;
     }
+    if (previewCenterLinesRef.current) {
+      map.removeLayer(previewCenterLinesRef.current);
+      previewCenterLinesRef.current = null;
+    }
     if (markerRef.current) {
       map.removeLayer(markerRef.current);
       markerRef.current = null;
@@ -113,6 +125,26 @@ const MapPicker: React.FC<MapPickerProps> = ({
     if (markerRef2.current) {
       map.removeLayer(markerRef2.current);
       markerRef2.current = null;
+    }
+  }, []);
+
+  const updatePreviewCenterLines = useCallback((verts: number[][] | null, color: string) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!verts) {
+      if (previewCenterLinesRef.current) {
+        map.removeLayer(previewCenterLinesRef.current);
+        previewCenterLinesRef.current = null;
+      }
+      return;
+    }
+    const segments = centerLineLatLngs(verts);
+    if (previewCenterLinesRef.current) {
+      previewCenterLinesRef.current.setLatLngs(segments);
+    } else {
+      previewCenterLinesRef.current = L.polyline(segments, {
+        color, weight: 1, opacity: 0.8, dashArray: '4 4', interactive: false,
+      }).addTo(map);
     }
   }, []);
 
@@ -146,6 +178,12 @@ const MapPicker: React.FC<MapPickerProps> = ({
             dashArray: '6 4',
           }).addTo(map);
         }
+        updatePreviewCenterLines([
+          [bounds.getWest(), bounds.getSouth()],
+          [bounds.getWest(), bounds.getNorth()],
+          [bounds.getEast(), bounds.getNorth()],
+          [bounds.getEast(), bounds.getSouth()],
+        ], '#3388ff');
       };
 
       const onClick = (e: L.LeafletMouseEvent) => {
@@ -229,7 +267,9 @@ const MapPicker: React.FC<MapPickerProps> = ({
           // Phase 2 preview: build the rotated rectangle
           const p1: [number, number] = [firstCornerRef.current.lng, firstCornerRef.current.lat];
           const p2: [number, number] = [secondCornerRef.current.lng, secondCornerRef.current.lat];
-          updatePreviewPolygon(buildRotatedRectangleFromClicks(p1, p2, p3));
+          const verts = buildRotatedRectangleFromClicks(p1, p2, p3);
+          updatePreviewPolygon(verts);
+          updatePreviewCenterLines(verts, '#ff7800');
         }
       };
 
@@ -287,7 +327,7 @@ const MapPicker: React.FC<MapPickerProps> = ({
         map.getContainer().style.cursor = '';
       };
     }
-  }, [selectionMode, clearPreview, updateDimensionRectangle]);
+  }, [selectionMode, clearPreview, updateDimensionRectangle, updatePreviewCenterLines]);
 
   // Recompute an existing fixed-dimension rectangle when its controls change.
   useEffect(() => {
@@ -305,6 +345,10 @@ const MapPicker: React.FC<MapPickerProps> = ({
       map.removeLayer(rectLayerRef.current);
       rectLayerRef.current = null;
     }
+    if (rectCenterLinesRef.current) {
+      map.removeLayer(rectCenterLinesRef.current);
+      rectCenterLinesRef.current = null;
+    }
 
     if (rectangle && rectangle.length >= 4) {
       const latlngs = rectangle.map(([lon, lat]) => L.latLng(lat, lon));
@@ -316,6 +360,9 @@ const MapPicker: React.FC<MapPickerProps> = ({
       });
       poly.addTo(map);
       rectLayerRef.current = poly;
+      rectCenterLinesRef.current = L.polyline(centerLineLatLngs(rectangle), {
+        color: '#3388ff', weight: 1, opacity: 0.8, dashArray: '4 4', interactive: false,
+      }).addTo(map);
     }
   }, [rectangle]);
 

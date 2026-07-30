@@ -989,51 +989,36 @@ async def geocode_city(req: GeocodeRequest):
 async def rectangle_from_dimensions(req: RectangleFromDimensions):
     """Compute rectangle vertices from a center + width/height in meters.
 
-    When *rotation_deg* is non-zero the axis-aligned base rectangle is rotated
-    in Web Mercator (EPSG:3857) space around its centroid — matching the same
-    convention used by voxcity._rotate_vertices() in rectangle.py.
+    Corners are computed geodesically from the center (pyproj.Geod.fwd at the
+    bearing/distance of each rotated local-frame corner offset), so side
+    lengths match the requested dimensions to sub-millimetre at any rotation
+    and latitude. Rotating in a projected CRS distorts ground lengths with
+    latitude (a 900 m side became ~902 m at Tokyo at 45°, shifting the derived
+    grid size). Positive rotation_deg turns the v0→v1 edge to azimuth
+    +rotation_deg — same visual convention as voxcity._rotate_vertices().
     Vertices are returned in SW → NW → NE → SE order.
     """
     import math
-    from geopy import distance
-    from pyproj import Transformer
+    from pyproj import Geod
 
-    lat_c, lon_c = req.center_lat, req.center_lon
-    north = distance.distance(meters=req.height_m / 2.0).destination((lat_c, lon_c), bearing=0)
-    south = distance.distance(meters=req.height_m / 2.0).destination((lat_c, lon_c), bearing=180)
-    east = distance.distance(meters=req.width_m / 2.0).destination((lat_c, lon_c), bearing=90)
-    west = distance.distance(meters=req.width_m / 2.0).destination((lat_c, lon_c), bearing=270)
+    geod = Geod(ellps="WGS84")
+    half_w, half_h = req.width_m / 2.0, req.height_m / 2.0
 
-    # SW → NW → NE → SE
-    vertices: List[List[float]] = [
-        [west.longitude, south.latitude],
-        [west.longitude, north.latitude],
-        [east.longitude, north.latitude],
-        [east.longitude, south.latitude],
-    ]
+    # Local-frame corner offsets (x east, y north), SW → NW → NE → SE
+    corners = [(-half_w, -half_h), (-half_w, half_h), (half_w, half_h), (half_w, -half_h)]
 
-    if req.rotation_deg != 0.0:
-        to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-        to_geo  = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    angle_rad = -math.radians(req.rotation_deg)
+    cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
 
-        # Project to Web Mercator
-        merc = [to_merc.transform(lon, lat) for lon, lat in vertices]
-
-        # Centroid in Mercator
-        cx = sum(x for x, _ in merc) / 4
-        cy = sum(y for _, y in merc) / 4
-
-        # Rotate: voxcity uses negative angle (positive deg = CCW in lon/lat frame)
-        angle_rad = -req.rotation_deg * math.pi / 180.0
-        cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
-        rotated = []
-        for x, y in merc:
-            dx, dy = x - cx, y - cy
-            rx = dx * cos_a - dy * sin_a + cx
-            ry = dx * sin_a + dy * cos_a + cy
-            rotated.append(to_geo.transform(rx, ry))
-
-        vertices = [[lon, lat] for lon, lat in rotated]
+    vertices: List[List[float]] = []
+    for x, y in corners:
+        rx = x * cos_a - y * sin_a
+        ry = x * sin_a + y * cos_a
+        lon, lat, _ = geod.fwd(
+            req.center_lon, req.center_lat,
+            math.degrees(math.atan2(rx, ry)), math.hypot(rx, ry),
+        )
+        vertices.append([lon, lat])
 
     return {"vertices": vertices}
 

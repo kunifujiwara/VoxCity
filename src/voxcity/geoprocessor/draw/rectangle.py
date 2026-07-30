@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 
-from pyproj import Transformer
+from pyproj import Geod, Transformer
 from ipyleaflet import (
     Map,
     DrawControl,
@@ -441,30 +441,39 @@ def draw_rectangle_map_cityname(cityname, zoom=15):
 
 
 def _rotate_vertices(base_vertices, angle_deg):
-    """Rotate axis-aligned vertices by *angle_deg* around their centroid in Web Mercator.
+    """Rotate vertices by *angle_deg* around their centroid.
+
+    The rotation runs in a local geodesic frame (metres east/north of the
+    centroid via pyproj.Geod) so ground distances survive rotation exactly.
+    Rotating in a projected CRS such as Web Mercator stretches/shrinks side
+    lengths with latitude (±2-3 m for a 900 m square at mid-latitudes, 45°),
+    which shifted grid sizes derived from the rotated rectangle. Positive
+    angle turns the v0→v1 edge to azimuth +angle_deg (unchanged convention).
 
     Returns a new list of (lon, lat) tuples.
     """
     if angle_deg == 0:
         return list(base_vertices)
 
-    to_merc = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-    to_wgs84 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
-
-    projected = [to_merc.transform(lon, lat) for lon, lat in base_vertices]
-    cx = sum(x for x, y in projected) / len(projected)
-    cy = sum(y for x, y in projected) / len(projected)
+    geod = Geod(ellps="WGS84")
+    lon_c = sum(lon for lon, _lat in base_vertices) / len(base_vertices)
+    lat_c = sum(lat for _lon, lat in base_vertices) / len(base_vertices)
 
     angle_rad = -math.radians(angle_deg)
     cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
 
-    rotated_proj = []
-    for x, y in projected:
-        dx, dy = x - cx, y - cy
-        rotated_proj.append((dx * cos_a - dy * sin_a + cx,
-                             dx * sin_a + dy * cos_a + cy))
-
-    return [to_wgs84.transform(x, y) for x, y in rotated_proj]
+    rotated = []
+    for lon, lat in base_vertices:
+        az, _, dist = geod.inv(lon_c, lat_c, lon, lat)
+        x = dist * math.sin(math.radians(az))  # metres east of centroid
+        y = dist * math.cos(math.radians(az))  # metres north of centroid
+        rx = x * cos_a - y * sin_a
+        ry = x * sin_a + y * cos_a
+        out_lon, out_lat, _ = geod.fwd(
+            lon_c, lat_c, math.degrees(math.atan2(rx, ry)), math.hypot(rx, ry),
+        )
+        rotated.append((out_lon, out_lat))
+    return rotated
 
 
 def center_location_map_cityname(cityname, east_west_length, north_south_length, zoom=15, rotation_angle=0):

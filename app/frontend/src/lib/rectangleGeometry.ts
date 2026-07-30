@@ -239,3 +239,28 @@ export function buildDimensionRectangleApprox(
 
   return rotationDeg === 0 ? base : rotateVertices(base, rotationDeg);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Center auxiliary lines
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the two center auxiliary lines (crosshair) of a rectangle as
+ * edge-midpoint pairs, so they stay correct for rotated rectangles:
+ * midpoint(v0→v1)→midpoint(v3→v2) and midpoint(v1→v2)→midpoint(v0→v3).
+ *
+ * Mirrors the aux_lines drawn by center_location_map_cityname() in
+ * src/voxcity/geoprocessor/draw/rectangle.py.
+ */
+export function rectangleCenterLines(
+  verts: number[][],
+): [number, number][][] {
+  if (verts.length < 4) return [];
+  const [v0, v1, v2, v3] = verts;
+  const mid = (a: number[], b: number[]): [number, number] =>
+    [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  return [
+    [mid(v0, v1), mid(v3, v2)],
+    [mid(v1, v2), mid(v0, v3)],
+  ];
+}
