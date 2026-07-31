@@ -218,6 +218,15 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
+def _is_axis_aligned_rectangle(vertices, tol: float = 1e-9) -> bool:
+    """True if [SW, NW, NE, SE] lon/lat vertices form an axis-aligned rect."""
+    sw, nw, ne, se = [tuple(v) for v in vertices]
+    return (
+        abs(sw[0] - nw[0]) < tol and abs(se[0] - ne[0]) < tol
+        and abs(sw[1] - se[1]) < tol and abs(nw[1] - ne[1]) < tol
+    )
+
+
 def _load_citygml_cache(rectangle_vertices):
     """Load cached CityGML buildings from GeoParquet/FlatGeobuf."""
     try:
@@ -1069,38 +1078,78 @@ async def generate_model(req: GenerateRequest):
             kwargs["building_complementary_source"] = "None"
             kwargs["complement_building_footprints"] = True
 
-            # Attempt cached CityGML first
-            cached = None
-            if req.use_citygml_cache:
-                cached = _load_citygml_cache(req.rectangle_vertices)
-
-            if cached is not None:
-                cached_buildings, cached_terrain = (
-                    cached if isinstance(cached, tuple) else (cached, None)
-                )
-                # Use terrain GeoDataFrame for DEM when available;
-                # fall back to flat DEM when no terrain cache exists.
-                _dem_src = "GeoDataFrame" if cached_terrain is not None else "Flat"
-                voxcity_result = get_voxcity(
-                    rectangle_vertices,
+            if req.plateau_lod == "lod2":
+                # ── LOD2: true roof/wall geometry via voxcitygml ──
+                if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="PLATEAU LOD2 mode requires the CITYGML_PATH "
+                               "environment variable to point at a local "
+                               "PLATEAU CityGML dataset directory.")
+                if not _is_axis_aligned_rectangle(req.rectangle_vertices):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="PLATEAU LOD2 mode does not support rotated "
+                               "rectangles yet. Draw a non-rotated rectangle "
+                               "or use LOD1.")
+                try:
+                    from voxcitygml import VoxelizerConfig, generate_voxcity
+                except ImportError:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="The voxcitygml package is not installed in "
+                               "the backend environment. Install it with: "
+                               "pip install -e <path-to-VoxCityGML>")
+                lod2_cfg = VoxelizerConfig(
+                    citygml_path=CITYGML_PATH,
+                    rectangle_vertices=rectangle_vertices,
                     meshsize=req.meshsize,
-                    building_source="GeoDataFrame",
+                    building_lod=2,
                     land_cover_source=land_cover_source,
                     canopy_height_source=req.canopy_height_source or "Static",
-                    dem_source=_dem_src,
-                    building_gdf=cached_buildings,
-                    terrain_gdf=cached_terrain,
-                    **kwargs,
+                    static_tree_height=req.static_tree_height,
+                    output_dir=output_dir,
+                    save_output=False,
+                    gridvis=False,
                 )
+                try:
+                    voxcity_result = generate_voxcity(lod2_cfg)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
             else:
-                voxcity_result = get_voxcity_CityGML(
-                    rectangle_vertices,
-                    land_cover_source,
-                    req.canopy_height_source or "Static",
-                    req.meshsize,
-                    citygml_path=CITYGML_PATH,
-                    **kwargs,
-                )
+                # ── LOD1 (existing behavior, unchanged) ──
+                # Attempt cached CityGML first
+                cached = None
+                if req.use_citygml_cache:
+                    cached = _load_citygml_cache(req.rectangle_vertices)
+
+                if cached is not None:
+                    cached_buildings, cached_terrain = (
+                        cached if isinstance(cached, tuple) else (cached, None)
+                    )
+                    # Use terrain GeoDataFrame for DEM when available;
+                    # fall back to flat DEM when no terrain cache exists.
+                    _dem_src = "GeoDataFrame" if cached_terrain is not None else "Flat"
+                    voxcity_result = get_voxcity(
+                        rectangle_vertices,
+                        meshsize=req.meshsize,
+                        building_source="GeoDataFrame",
+                        land_cover_source=land_cover_source,
+                        canopy_height_source=req.canopy_height_source or "Static",
+                        dem_source=_dem_src,
+                        building_gdf=cached_buildings,
+                        terrain_gdf=cached_terrain,
+                        **kwargs,
+                    )
+                else:
+                    voxcity_result = get_voxcity_CityGML(
+                        rectangle_vertices,
+                        land_cover_source,
+                        req.canopy_height_source or "Static",
+                        req.meshsize,
+                        citygml_path=CITYGML_PATH,
+                        **kwargs,
+                    )
         else:
             # ── Normal mode ───────────────────────────────────────
             # Pass None for any source not specified → get_voxcity auto-selects
@@ -1172,6 +1221,8 @@ async def generate_model(req: GenerateRequest):
             "preview_disabled": preview_disabled,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

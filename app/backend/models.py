@@ -46,6 +46,7 @@ class GenerateRequest(BaseModel):
     rectangle_vertices: List[List[float]]  # [[lon, lat], ...]
     meshsize: float = 5.0
     mode: str = "plateau"  # "plateau" or "normal"
+    plateau_lod: Literal["lod1", "lod2"] = "lod1"  # PLATEAU building detail
     # Normal-mode data sources (ignored when mode="plateau")
     building_source: Optional[str] = None  # None = auto-select
     land_cover_source: Optional[str] = None  # None = auto-select
