@@ -36,6 +36,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const t = useT() as Translate;
   // Mode: "plateau" or "normal"
   const [mode, setMode] = useState<'plateau' | 'normal'>('normal');
+  const [plateauLod, setPlateauLod] = useState<'lod1' | 'lod2'>('lod1');
 
   // Common parameters
   const [meshsize, setMeshsize] = useState(5);
@@ -99,6 +100,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       };
 
       if (mode === 'plateau') {
+        params.plateau_lod = plateauLod;
         params.use_citygml_cache = useCitygmlCache;
         params.use_ndsm_canopy = useNdsmCanopy;
       } else {
@@ -173,7 +175,22 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           />
         </GuidedSection>
 
-        <GuidedSection index={2} label={t('generationTab.gridHeading')}>
+        {mode === 'plateau' && (
+          <GuidedSection index={2} label={t('generationTab.plateauLodHeading')}>
+            <ChoiceGroup
+              variant="checks"
+              ariaLabel={t('generationTab.plateauLodAria')}
+              value={plateauLod}
+              onChange={setPlateauLod}
+              options={[
+                { id: 'lod1', label: t('generationTab.plateauLod1Label'), description: t('generationTab.plateauLod1Desc') },
+                { id: 'lod2', label: t('generationTab.plateauLod2Label'), description: t('generationTab.plateauLod2Desc') },
+              ]}
+            />
+          </GuidedSection>
+        )}
+
+        <GuidedSection index={mode === 'plateau' ? 3 : 2} label={t('generationTab.gridHeading')}>
           <div className="form-group">
             <label>{t('generationTab.meshSize')}</label>
             <input type="number" value={meshsize} min={1} max={50} onChange={(e) => setMeshsize(Number(e.target.value))} />
@@ -324,14 +341,16 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           </div>
           {mode === 'plateau' && (
             <>
-              <div className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={useCitygmlCache}
-                  onChange={(e) => setUseCitygmlCache(e.target.checked)}
-                />
-                <span>{t('generationTab.useCitygmlCache')}</span>
-              </div>
+              {plateauLod === 'lod1' && (
+                <div className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={useCitygmlCache}
+                    onChange={(e) => setUseCitygmlCache(e.target.checked)}
+                  />
+                  <span>{t('generationTab.useCitygmlCache')}</span>
+                </div>
+              )}
               <div className="checkbox-row">
                 <input
                   type="checkbox"

@@ -137,6 +137,7 @@ export async function generateModel(params: {
   rectangle_vertices: number[][];
   meshsize: number;
   mode: string;
+  plateau_lod?: string;
   building_source?: string | null;
   land_cover_source?: string | null;
   canopy_height_source?: string | null;
