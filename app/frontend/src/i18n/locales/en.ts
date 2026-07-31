@@ -116,6 +116,7 @@ export const en = {
     plateauLod2Label: 'LOD2',
     plateauLod2Desc: 'Detailed roof shapes (slower)',
     plateauLod2Warn: 'LOD2 parses full CityGML geometry and is significantly slower than LOD1. Rotated rectangles are not supported yet.',
+    plateauLod2Unavailable: 'LOD2 is unavailable on this server:',
     gridHeading: 'GRID RESOLUTION',
     meshSize: 'Mesh size (meters)',
     previewWarn: 'Estimated grid ~{a}×{b} — the 3D preview will be disabled at this size. Generation and export still work.',

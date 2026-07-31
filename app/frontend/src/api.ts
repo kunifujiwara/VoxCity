@@ -92,8 +92,22 @@ export interface AutoDetectResult {
 
 // ── API functions ────────────────────────────────────────────
 
+/** Whether an optional backend capability can actually run in this deployment. */
+export interface Capability {
+  available: boolean;
+  /** Human-readable explanation when `available` is false; '' otherwise. */
+  reason: string;
+}
+
+export interface HealthResult {
+  status: string;
+  has_model: boolean;
+  /** Optional: older backends omit this entirely. */
+  capabilities?: { plateau_lod2?: Capability };
+}
+
 export async function healthCheck() {
-  return request<{ status: string; has_model: boolean }>('/health');
+  return request<HealthResult>('/health');
 }
 
 export async function resetSession() {

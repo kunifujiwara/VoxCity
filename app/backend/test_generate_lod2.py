@@ -1,4 +1,5 @@
 """Tests for the PLATEAU LOD2 generation branch (pipeline mocked)."""
+import builtins
 import sys
 import types
 
@@ -125,6 +126,8 @@ def test_lod2_calls_voxcitygml(stubbed, tmp_path):
         'output_dir': main_mod.os.path.join(main_mod.BASE_OUTPUT_DIR, "test"),
         'save_output': False,
         'gridvis': False,
+        # Design decision 3: CityGML bridges are out of scope.
+        'include_bridges': False,
     }
     assert 'stored' in stubbed
 
@@ -234,6 +237,88 @@ def test_lod1_default_unaffected(stubbed, monkeypatch):
     resp = client.post("/api/generate", json=body)
     assert resp.status_code == 200, resp.text
     assert 'generate_called' not in stubbed
+
+
+def test_lod2_excludes_bridges(stubbed):
+    """Bridges are out of scope (design decision 3); voxcitygml clears
+    collection.bridges before rasterisation when include_bridges is False."""
+    resp = TestClient(app).post("/api/generate", json=_base_request())
+    assert resp.status_code == 200, resp.text
+    assert stubbed['config']['include_bridges'] is False
+
+
+# ---------------------------------------------------------------------------
+# LOD2 capability reporting
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def clear_capability_cache():
+    """The import probe is cached for the process; reset around each test."""
+    main_mod._voxcitygml_import_state.cache_clear()
+    yield
+    main_mod._voxcitygml_import_state.cache_clear()
+
+
+def test_health_reports_lod2_available(clear_capability_cache, stubbed):
+    """voxcitygml stubbed into sys.modules + CITYGML_PATH set by the fixture."""
+    body = TestClient(app).get("/api/health").json()
+    assert body["status"] == "ok"
+    assert body["capabilities"]["plateau_lod2"] == {"available": True, "reason": ""}
+
+
+def test_health_reports_lod2_unavailable_without_package(
+        clear_capability_cache, monkeypatch, tmp_path):
+    """The happy path is the local default, so force the missing-package branch
+    by making the import fail rather than only observing what's installed."""
+    monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "voxcitygml":
+            raise ImportError("No module named 'voxcitygml'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.delitem(sys.modules, "voxcitygml", raising=False)
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "not installed" in cap["reason"]
+
+
+def test_health_reports_lod2_unavailable_when_package_too_old(
+        clear_capability_cache, monkeypatch, tmp_path):
+    """An installed-but-stale voxcitygml lacks generate_voxcity()."""
+    monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
+    stale = types.ModuleType("voxcitygml")  # no generate_voxcity attribute
+    monkeypatch.setitem(sys.modules, "voxcitygml", stale)
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "0.2.0" in cap["reason"]
+
+
+@pytest.mark.parametrize("path_value", [None, "", "/definitely/not/a/real/dir"])
+def test_health_reports_lod2_unavailable_without_dataset(
+        clear_capability_cache, stubbed, monkeypatch, path_value):
+    monkeypatch.setattr(main_mod, "CITYGML_PATH", path_value)
+    cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "CITYGML_PATH" in cap["reason"]
+
+
+def test_capability_probe_failure_does_not_break_health(
+        clear_capability_cache, monkeypatch):
+    """A probe that blows up must degrade to unavailable, not 500 /api/health."""
+    def boom():
+        raise RuntimeError("probe exploded")
+
+    monkeypatch.setattr(main_mod, "_voxcitygml_import_state", boom)
+    resp = TestClient(app).get("/api/health")
+    assert resp.status_code == 200
+    cap = resp.json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "probe exploded" in cap["reason"]
 
 
 # ---------------------------------------------------------------------------

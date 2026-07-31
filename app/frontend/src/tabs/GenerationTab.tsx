@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, Building2, Layers } from 'lucide-react';
-import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
+import { generateModel, autoDetectSources, healthCheck, AutoDetectResult, Capability } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import { estimateGridShape } from '../lib/grid';
@@ -37,6 +37,10 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   // Mode: "plateau" or "normal"
   const [mode, setMode] = useState<'plateau' | 'normal'>('normal');
   const [plateauLod, setPlateauLod] = useState<'lod1' | 'lod2'>('lod1');
+  // null = not probed yet; treat as available so the option isn't disabled by
+  // a slow or failed health call on a deployment that can in fact do LOD2.
+  const [lod2Cap, setLod2Cap] = useState<Capability | null>(null);
+  const lod2Unavailable = lod2Cap !== null && !lod2Cap.available;
 
   // Common parameters
   const [meshsize, setMeshsize] = useState(5);
@@ -60,6 +64,32 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gridShape, setGridShape] = useState<number[] | null>(null);
+
+  // Probe once whether the backend can actually run LOD2 (voxcitygml present
+  // and a CityGML dataset configured). Containerized deployments often can't,
+  // and without this the UI offers LOD2 and the request fails at generate time.
+  useEffect(() => {
+    let cancelled = false;
+    healthCheck()
+      .then((h) => {
+        if (cancelled) return;
+        // Older backends omit `capabilities`; assume available in that case.
+        setLod2Cap(h.capabilities?.plateau_lod2 ?? { available: true, reason: '' });
+      })
+      .catch(() => {
+        // A failed probe must not disable a working feature.
+        if (!cancelled) setLod2Cap({ available: true, reason: '' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Never leave an unsatisfiable selection in state: if LOD2 turns out to be
+  // unavailable, fall back to LOD1 so the request can't ask for it.
+  useEffect(() => {
+    if (lod2Unavailable && plateauLod === 'lod2') setPlateauLod('lod1');
+  }, [lod2Unavailable, plateauLod]);
 
   // Auto-detect sources when rectangle changes and mode is normal + auto
   useEffect(() => {
@@ -184,10 +214,20 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
               onChange={setPlateauLod}
               options={[
                 { id: 'lod1', label: t('generationTab.plateauLod1Label'), description: t('generationTab.plateauLod1Desc') },
-                { id: 'lod2', label: t('generationTab.plateauLod2Label'), description: t('generationTab.plateauLod2Desc') },
+                {
+                  id: 'lod2',
+                  label: t('generationTab.plateauLod2Label'),
+                  description: t('generationTab.plateauLod2Desc'),
+                  disabled: lod2Unavailable,
+                },
               ]}
             />
-            {plateauLod === 'lod2' && (
+            {lod2Unavailable && (
+              <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.75rem 0 0' }}>
+                {t('generationTab.plateauLod2Unavailable')} {lod2Cap?.reason}
+              </div>
+            )}
+            {!lod2Unavailable && plateauLod === 'lod2' && (
               <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.75rem 0 0' }}>
                 {t('generationTab.plateauLod2Warn')}
               </div>

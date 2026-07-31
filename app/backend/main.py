@@ -21,7 +21,8 @@ import shutil
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -955,9 +956,52 @@ def _reset_taichi_and_caches():
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=1)
+def _voxcitygml_import_state() -> Tuple[bool, str]:
+    """Probe whether voxcitygml is importable and new enough. Returns (ok, why).
+
+    Cached because importing voxcitygml pulls in trimesh/lxml and this is
+    reached from /api/health, which the UI polls. Call ``.cache_clear()`` if the
+    environment changes underneath a running process (tests do).
+    """
+    try:
+        import voxcitygml
+    except Exception as exc:  # ImportError, or anything a broken dep raises
+        return False, f"the voxcitygml package is not installed ({exc})"
+    if not hasattr(voxcitygml, "generate_voxcity"):
+        return False, ("the installed voxcitygml is too old — LOD2 needs "
+                       "voxcitygml >= 0.2.0, which provides generate_voxcity()")
+    return True, ""
+
+
+def _plateau_lod2_capability() -> Dict[str, Any]:
+    """Whether PLATEAU LOD2 generation can actually run in this deployment.
+
+    Lets the UI disable the option up front instead of surfacing a 500 after
+    the user waits on a request. Never raises: a broken probe reports
+    unavailable rather than taking /api/health down with it.
+    """
+    try:
+        ok, reason = _voxcitygml_import_state()
+        if not ok:
+            return {"available": False, "reason": reason}
+        if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
+            return {"available": False,
+                    "reason": "no local PLATEAU CityGML dataset is configured — "
+                              "set CITYGML_PATH or place one at <DATA_DIR>/plateau"}
+        return {"available": True, "reason": ""}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "has_model": app_state.has_model}
+    return {
+        "status": "ok",
+        "has_model": app_state.has_model,
+        "capabilities": {"plateau_lod2": _plateau_lod2_capability()},
+    }
 
 
 @app.post("/api/reset")
@@ -1205,6 +1249,10 @@ async def generate_model(req: GenerateRequest):
                     output_dir=output_dir,
                     save_output=False,
                     gridvis=False,
+                    # Design decision 3: CityGML bridges are out of scope for
+                    # this feature. voxcitygml clears collection.bridges before
+                    # rasterisation when this is False.
+                    include_bridges=False,
                 )
                 try:
                     voxcity_result = generate_voxcity(lod2_cfg)
