@@ -115,6 +115,7 @@ export const en = {
     plateauLod1Desc: 'Fast: footprint + height extrusion',
     plateauLod2Label: 'LOD2',
     plateauLod2Desc: 'Detailed roof shapes (slower)',
+    plateauLod2Warn: 'LOD2 parses full CityGML geometry and is significantly slower than LOD1. Rotated rectangles are not supported yet.',
     gridHeading: 'GRID RESOLUTION',
     meshSize: 'Mesh size (meters)',
     previewWarn: 'Estimated grid ~{a}×{b} — the 3D preview will be disabled at this size. Generation and export still work.',

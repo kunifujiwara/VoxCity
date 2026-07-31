@@ -101,7 +101,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
 
       if (mode === 'plateau') {
         params.plateau_lod = plateauLod;
-        params.use_citygml_cache = useCitygmlCache;
+        params.use_citygml_cache = plateauLod === 'lod1' ? useCitygmlCache : undefined;
         params.use_ndsm_canopy = useNdsmCanopy;
       } else {
         // Normal mode: pass sources (null = auto)
@@ -187,6 +187,11 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 { id: 'lod2', label: t('generationTab.plateauLod2Label'), description: t('generationTab.plateauLod2Desc') },
               ]}
             />
+            {plateauLod === 'lod2' && (
+              <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.75rem 0 0' }}>
+                {t('generationTab.plateauLod2Warn')}
+              </div>
+            )}
           </GuidedSection>
         )}
 
