@@ -218,13 +218,28 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
-# Absolute floor on the rotation signal, in degrees. The coordinate-entry
-# inputs use step="0.000001", and rounding four corners to 6 dp perturbs the
-# midline difference below by up to 1e-6 deg. For extents under ~200 m that
-# noise alone exceeds rel_tol (measured: 32 of 200k random 50 m rectangles
-# cross it), so the floor keeps the UI's 50 m minimum from being mis-flagged as
-# rotated. It binds only at those sizes, where it still admits just a 0.18 m
-# corner shift.
+# Absolute floor on the rotation signal, in degrees. Coordinate entry uses
+# step="0.000001", and rounding the corners to 6 dp perturbs the midline
+# difference below by up to 1e-6 deg (four terms at <=5e-7, halved by the two
+# averages) — exactly half this constant. Below ~180 m of extent that noise
+# alone exceeds rel_tol, so without the floor a hand-entered rectangle at the
+# UI's 50 m minimum can be mis-flagged as rotated.
+#
+# The floor binds below 203 m at 24N / 181 m at Tokyo / 156 m at 45.5N. Because
+# it is absolute, the rotation it admits scales as 1/size, so the ground error
+# is constant wherever it binds: a 0.13 m corner shift (half-diagonal
+# convention, consistent with the 55.8 m cited for 0.226 deg at the 20 km cap),
+# varying only with latitude — 0.14 m at 24N to 0.11 m at 45.5N.
+#
+# Before deleting this as dead code, note the crossings are strongly
+# latitude-dependent: a fixed metre extent spans fewer degrees of longitude
+# nearer the equator, so the same 1e-6 deg of noise is relatively larger there.
+# Sampling 200k random 50 m rectangles across Japan's 24-45.5N band yields 32
+# crossings, but they sit almost entirely below 26N (71/40k at 24-26N, 1/40k at
+# 26-28N, 0 above 28N). Sampling around Tokyo measures zero and proves nothing.
+# The mechanism is one corner pair straddling a 6-dp boundary, not four corners
+# conspiring: at 50 m nw.lon and sw.lon differ by ~3e-9 deg and almost always
+# round alike.
 _AXIS_ALIGN_ABS_FLOOR_DEG = 2e-6
 
 
