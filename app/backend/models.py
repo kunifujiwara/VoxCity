@@ -43,7 +43,8 @@ class AutoDetectSourcesRequest(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    rectangle_vertices: List[List[float]]  # [[lon, lat], ...]
+    # [[lon, lat], ...] in SW, NW, NE, SE order
+    rectangle_vertices: List[List[float]] = Field(..., min_length=4, max_length=4)
     meshsize: float = 5.0
     mode: str = "plateau"  # "plateau" or "normal"
     plateau_lod: Literal["lod1", "lod2"] = "lod1"  # PLATEAU building detail

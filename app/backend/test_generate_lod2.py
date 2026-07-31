@@ -85,15 +85,28 @@ def stubbed(monkeypatch, tmp_path):
     return calls
 
 
-def test_lod2_calls_voxcitygml(stubbed):
+def test_lod2_calls_voxcitygml(stubbed, tmp_path):
     client = TestClient(app)
     resp = client.post("/api/generate", json=_base_request())
     assert resp.status_code == 200, resp.text
     assert stubbed['generate_called']
+
+    # Assert the FULL kwarg set, not a subset: VoxelizerConfig is a dataclass,
+    # so a renamed/typo'd kwarg is a TypeError in production. A partial
+    # assertion would let that drift through green tests.
     cfg = stubbed['config']
-    assert cfg['building_lod'] == 2
-    assert cfg['rectangle_vertices'] == [tuple(v) for v in RECT]
-    assert cfg['save_output'] is False
+    assert cfg == {
+        'citygml_path': str(tmp_path),
+        'rectangle_vertices': [tuple(v) for v in RECT],
+        'meshsize': 5.0,
+        'building_lod': 2,
+        'land_cover_source': "OpenEarthMapJapan",
+        'canopy_height_source': "Static",
+        'static_tree_height': 10.0,
+        'output_dir': main_mod.os.path.join(main_mod.BASE_OUTPUT_DIR, "test"),
+        'save_output': False,
+        'gridvis': False,
+    }
     assert 'stored' in stubbed
 
 
@@ -137,3 +150,74 @@ def test_lod1_default_unaffected(stubbed, monkeypatch):
     resp = client.post("/api/generate", json=body)
     assert resp.status_code == 200, resp.text
     assert 'generate_called' not in stubbed
+
+
+# ---------------------------------------------------------------------------
+# _is_axis_aligned_rectangle unit tests
+# ---------------------------------------------------------------------------
+
+def _dimension_rectangle(center_lon, center_lat, width_m, height_m,
+                         rotation_deg=0.0):
+    """Build a rectangle via the real /api/rectangle-from-dimensions endpoint.
+
+    Deliberately not hand-typed: the geodesic construction is precisely what an
+    earlier absolute 1e-9 tolerance mis-classified as "rotated".
+    """
+    resp = TestClient(app).post("/api/rectangle-from-dimensions", json={
+        "center_lon": center_lon, "center_lat": center_lat,
+        "width_m": width_m, "height_m": height_m,
+        "rotation_deg": rotation_deg,
+    })
+    assert resp.status_code == 200, resp.text
+    return resp.json()["vertices"]
+
+
+def test_axis_aligned_exact_rectangle():
+    """Two-click map draw reuses the same sw/ne floats -> exactly aligned."""
+    assert main_mod._is_axis_aligned_rectangle(RECT) is True
+
+
+@pytest.mark.parametrize("center_lat,size_m", [
+    (35.65, 100),     # Tokyo, small
+    (35.65, 1250),    # Tokyo, the UI's default extent
+    (35.65, 20000),   # Tokyo, very large
+    (45.52, 1000),    # northern Japan (worst latitude for PLATEAU coverage)
+    (45.52, 20000),   # northern Japan, very large -> worst case overall
+])
+def test_geodesic_rectangle_at_rotation_zero_is_accepted(center_lat, size_m):
+    """Regression: geodesic rectangles are NOT lon/lat-aligned even at
+    rotation 0, because a given easting maps to a larger delta-lon at the north
+    edge than the south edge. An absolute tolerance rejected all of these."""
+    verts = _dimension_rectangle(139.77, center_lat, size_m, size_m, 0.0)
+    assert verts[0][0] != verts[1][0], "expected a non-trivial geodesic skew"
+    assert main_mod._is_axis_aligned_rectangle(verts) is True
+
+
+@pytest.mark.parametrize("rotation_deg", [0.5, 1.0, 30.0, -30.0, 45.0])
+def test_rotated_rectangles_are_rejected(rotation_deg):
+    verts = _dimension_rectangle(139.77, 35.65, 1000, 1000, rotation_deg)
+    assert main_mod._is_axis_aligned_rectangle(verts) is False
+
+
+def test_hand_typed_rotated_fixture_is_rejected():
+    assert main_mod._is_axis_aligned_rectangle(ROTATED_RECT) is False
+
+
+@pytest.mark.parametrize("verts", [
+    [],
+    [[139.0, 35.0]],
+    RECT[:3],
+    RECT + [[139.775, 35.646]],
+])
+def test_wrong_vertex_count_is_rejected(verts):
+    """Guards the 4-tuple unpack; must not raise."""
+    assert main_mod._is_axis_aligned_rectangle(verts) is False
+
+
+@pytest.mark.parametrize("verts", [RECT[:3], RECT + [[139.775, 35.646]]])
+def test_generate_rejects_wrong_vertex_count_with_422(verts):
+    """GenerateRequest constrains the list length, so malformed input is a
+    validation error rather than a 500 from unpacking downstream."""
+    resp = TestClient(app).post("/api/generate",
+                                json=_base_request(rectangle_vertices=verts))
+    assert resp.status_code == 422

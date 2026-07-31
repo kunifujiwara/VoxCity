@@ -218,12 +218,34 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
-def _is_axis_aligned_rectangle(vertices, tol: float = 1e-9) -> bool:
-    """True if [SW, NW, NE, SE] lon/lat vertices form an axis-aligned rect."""
+def _is_axis_aligned_rectangle(
+    vertices: List[List[float]], rel_tol: float = 4e-3
+) -> bool:
+    """True if [SW, NW, NE, SE] lon/lat vertices form an axis-aligned rect.
+
+    The tolerance is relative to the rectangle's own extent so the check
+    discriminates *rotation* rather than coordinate noise. Rectangles from
+    /api/rectangle-from-dimensions are built geodesically, so even at rotation
+    0 the north edge spans slightly more longitude than the south edge; that
+    artifact is ~tan(lat) * height / (2 * R_earth) of the extent. This gives a
+    two-sided bound (both measured, see test_generate_lod2.py):
+
+      * accept: worst rotation-0 artifact within PLATEAU's Japan coverage is
+        1.6e-3 (45.5N, 20 km — far beyond any practical LOD2 area; the UI's
+        1250 m default sits at 7e-5).
+      * reject: a deliberate 0.5 deg rotation registers as 8.7e-3.
+
+    rel_tol=4e-3 sits between them with ~2.5x margin on the accept side and
+    ~2.2x on the reject side.
+    """
+    if len(vertices) != 4:
+        return False
     sw, nw, ne, se = [tuple(v) for v in vertices]
+    tol_lon = max(abs(se[0] - sw[0]), abs(ne[0] - nw[0])) * rel_tol
+    tol_lat = max(abs(nw[1] - sw[1]), abs(ne[1] - se[1])) * rel_tol
     return (
-        abs(sw[0] - nw[0]) < tol and abs(se[0] - ne[0]) < tol
-        and abs(sw[1] - se[1]) < tol and abs(nw[1] - ne[1]) < tol
+        abs(sw[0] - nw[0]) < tol_lon and abs(se[0] - ne[0]) < tol_lon
+        and abs(sw[1] - se[1]) < tol_lat and abs(nw[1] - ne[1]) < tol_lat
     )
 
 
@@ -1080,12 +1102,15 @@ async def generate_model(req: GenerateRequest):
 
             if req.plateau_lod == "lod2":
                 # ── LOD2: true roof/wall geometry via voxcitygml ──
+                # NOTE: the kwargs set above configure get_voxcity* and apply to
+                # the LOD1/normal paths only; LOD2 is driven by VoxelizerConfig.
                 if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
                     raise HTTPException(
                         status_code=400,
-                        detail="PLATEAU LOD2 mode requires the CITYGML_PATH "
-                               "environment variable to point at a local "
-                               "PLATEAU CityGML dataset directory.")
+                        detail="PLATEAU LOD2 mode needs a local PLATEAU CityGML "
+                               "dataset directory. Place it at "
+                               "<DATA_DIR>/plateau or point the CITYGML_PATH "
+                               "environment variable at it.")
                 if not _is_axis_aligned_rectangle(req.rectangle_vertices):
                     raise HTTPException(
                         status_code=400,
@@ -1094,12 +1119,13 @@ async def generate_model(req: GenerateRequest):
                                "or use LOD1.")
                 try:
                     from voxcitygml import VoxelizerConfig, generate_voxcity
-                except ImportError:
+                except ImportError as exc:
                     raise HTTPException(
                         status_code=500,
-                        detail="The voxcitygml package is not installed in "
-                               "the backend environment. Install it with: "
-                               "pip install -e <path-to-VoxCityGML>")
+                        detail="Could not import the voxcitygml package (or one "
+                               "of its dependencies). Install it with: "
+                               f"pip install -e <path-to-VoxCityGML>. ({exc})"
+                    ) from exc
                 lod2_cfg = VoxelizerConfig(
                     citygml_path=CITYGML_PATH,
                     rectangle_vertices=rectangle_vertices,
@@ -1115,7 +1141,12 @@ async def generate_model(req: GenerateRequest):
                 try:
                     voxcity_result = generate_voxcity(lod2_cfg)
                 except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=str(exc))
+                    # ValueError covers both the expected "no buildings in the
+                    # selected area" case and genuine internal failures, so log
+                    # the traceback before it is converted to a 400 (the
+                    # HTTPException pass-through below skips print_exc()).
+                    traceback.print_exc()
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
             else:
                 # ── LOD1 (existing behavior, unchanged) ──
                 # Attempt cached CityGML first
