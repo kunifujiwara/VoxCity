@@ -227,19 +227,22 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
 #
 # The floor binds below 203 m at 24N / 181 m at Tokyo / 156 m at 45.5N. Because
 # it is absolute, the rotation it admits scales as 1/size, so the ground error
-# is constant wherever it binds: a 0.13 m corner shift (half-diagonal
-# convention, consistent with the 55.8 m cited for 0.226 deg at the 20 km cap),
-# varying only with latitude — 0.14 m at 24N to 0.11 m at 45.5N.
+# is constant wherever it binds: a 0.13 m corner shift, varying only with
+# latitude (0.14 m at 24N to 0.11 m at 45.5N). "Corner shift" here is
+# half-diagonal x tan(theta) — the same measure by which the shipped 0.057 deg
+# bound allows 14 m at the 20 km cap.
 #
 # Before deleting this as dead code, note the crossings are strongly
 # latitude-dependent: a fixed metre extent spans fewer degrees of longitude
 # nearer the equator, so the same 1e-6 deg of noise is relatively larger there.
-# Sampling 200k random 50 m rectangles across Japan's 24-45.5N band yields 32
-# crossings, but they sit almost entirely below 26N (71/40k at 24-26N, 1/40k at
-# 26-28N, 0 above 28N). Sampling around Tokyo measures zero and proves nothing.
-# The mechanism is one corner pair straddling a 6-dp boundary, not four corners
-# conspiring: at 50 m nw.lon and sw.lon differ by ~3e-9 deg and almost always
-# round alike.
+# Two separate samplings, at different densities: 200k rectangles spread over
+# Japan's whole 24-45.5N band gave 32 crossings, while 40k concentrated in
+# 24-26N alone gave 71 (that band is ~1/10 of the range, so the whole-band run
+# put only ~19k samples there — the two rates agree). Per-band 40k runs gave 1
+# crossing at 26-28N and none above 28N. Sampling around Tokyo therefore
+# measures zero and proves nothing. The mechanism is one corner pair straddling
+# a 6-dp boundary, not four corners conspiring: at 50 m nw.lon and sw.lon
+# differ by ~3e-9 deg and almost always round alike.
 _AXIS_ALIGN_ABS_FLOOR_DEG = 2e-6
 
 
@@ -262,9 +265,15 @@ def _is_axis_aligned_rectangle(
     identically 0.0 for every rotation-0 case from 50 m to 20 km over lat
     24-59N) and which equals tan(rotation) to 5 significant figures otherwise.
 
-    rel_tol=1e-3 therefore bounds rotation directly, rejecting anything beyond
-    0.057 deg. The midline test alone would accept any symmetric trapezoid, so
-    a loose flare guard rejects gross non-rectangles.
+    rel_tol=1e-3 therefore bounds rotation directly, rejecting beyond 0.057 deg
+    — but that is the *square* case. Each midline offset is normalised by its
+    own-axis extent, so rot_lon/lon_ext = (h/w) sin(theta) and
+    rot_lat/lat_ext = (w/h) sin(theta); rejecting on either means the effective
+    bound is rel_tol * min(w/h, h/w). A 4:1 rectangle rejects at ~0.014 deg.
+    The bound only tightens with aspect ratio, so 1e-3 is not safe to loosen.
+
+    The midline test alone would accept any symmetric trapezoid, so a loose
+    flare guard rejects gross non-rectangles.
     """
     if len(vertices) != 4:
         return False
@@ -283,6 +292,24 @@ def _is_axis_aligned_rectangle(
     flare_lon = abs(abs(ne[0] - nw[0]) - abs(se[0] - sw[0])) / lon_ext
     flare_lat = abs(abs(nw[1] - sw[1]) - abs(ne[1] - se[1])) / lat_ext
     return max(flare_lon, flare_lat) < 5e-2
+
+
+def _is_lod2_model(voxcity_obj) -> bool:
+    """True if this model's voxels came from LOD2 mesh voxelization.
+
+    Such a grid holds true roof/wall geometry and cannot be reconstructed from
+    the 2.5-D component grids (heights/min-heights/ids), so any
+    ``regenerate_voxels()`` call would silently replace it with extruded
+    footprints — i.e. downgrade it to LOD1. Callers that would regenerate must
+    check this first.
+    """
+    extras = getattr(voxcity_obj, "extras", None)
+    if not isinstance(extras, dict):
+        return False
+    try:
+        return int(extras.get("building_lod") or 1) >= 2
+    except (TypeError, ValueError):
+        return False
 
 
 def _load_citygml_cache(rectangle_vertices):
@@ -1161,8 +1188,10 @@ async def generate_model(req: GenerateRequest):
                     traceback.print_exc()
                     raise HTTPException(
                         status_code=500,
-                        detail="Could not import the voxcitygml package (or one "
-                               "of its dependencies). Install it with: "
+                        detail="Could not import voxcitygml >= 0.2.0 (or one of "
+                               "its dependencies). If it is already installed, "
+                               "it may predate generate_voxcity() — update it. "
+                               "Install or update with: "
                                f"pip install -e <path-to-VoxCityGML>. ({exc})"
                     ) from exc
                 lod2_cfg = VoxelizerConfig(
@@ -1179,6 +1208,17 @@ async def generate_model(req: GenerateRequest):
                 )
                 try:
                     voxcity_result = generate_voxcity(lod2_cfg)
+                except FileNotFoundError as exc:
+                    # resolve_citygml_paths() raises this when the directory has
+                    # no udx/bldg — a dataset *layout* problem, not an empty
+                    # area. It is an OSError, so the ValueError clause misses it
+                    # and it would otherwise surface as a 500.
+                    traceback.print_exc()
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The PLATEAU CityGML dataset at {CITYGML_PATH} is "
+                               f"not laid out as expected — a udx/bldg directory "
+                               f"of .gml files is required. ({exc})") from exc
                 except ValueError as exc:
                     # ValueError covers both the expected "no buildings in the
                     # selected area" case and genuine internal failures, so log
@@ -1186,6 +1226,14 @@ async def generate_model(req: GenerateRequest):
                     # HTTPException pass-through below skips print_exc()).
                     traceback.print_exc()
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+                # voxcitygml's extras carry citygml_path/paths/collection and
+                # the resolved sources, but not the LOD. Record it so paths that
+                # rebuild voxels from the 2.5-D component grids can refuse to
+                # destroy this geometry. dict(extras) is preserved across
+                # update_voxcity(), so the tag survives later grid updates.
+                if isinstance(getattr(voxcity_result, "extras", None), dict):
+                    voxcity_result.extras["building_lod"] = 2
             else:
                 # ── LOD1 (existing behavior, unchanged) ──
                 # Attempt cached CityGML first
@@ -1248,6 +1296,10 @@ async def generate_model(req: GenerateRequest):
             "use_ndsm_canopy": req.use_ndsm_canopy,
             "is_japan": _is_japan(req.rectangle_vertices),
             "OEMJ_lc": "OpenEarthMapJapan" in str(effective_lc),
+            # Refinement ends in regenerate_voxels(), which rebuilds the voxel
+            # grid from the 2.5-D component grids — that would silently replace
+            # LOD2 roof/wall geometry with extruded footprints.
+            "plateau_lod!=lod2": req.plateau_lod != "lod2",
         }
         if all(_ndsm_conditions.values()):
             try:
@@ -3298,6 +3350,19 @@ async def apply_edits(payload: dict):
 
     try:
         vc = app_state.voxcity
+
+        # Checked before any edit is applied: the batch ends in
+        # regenerate_voxels(), which rebuilds the voxel grid from the 2.5-D
+        # component grids and would silently flatten LOD2 roof/wall geometry
+        # into extruded boxes. Fail loudly instead of degrading the model.
+        if _is_lod2_model(vc):
+            raise HTTPException(
+                status_code=400,
+                detail="Editing is not supported for PLATEAU LOD2 models yet: "
+                       "applying edits would rebuild the voxel grid from "
+                       "footprints and discard the LOD2 roof and wall geometry. "
+                       "Regenerate in LOD1 mode to use the Edit tab.")
+
         n_changed_total = 0
         building_ids: List[int] = []
 

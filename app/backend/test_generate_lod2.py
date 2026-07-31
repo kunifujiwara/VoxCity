@@ -47,8 +47,11 @@ class _FakeVoxels:
 
 
 class _FakeVoxCity:
-    voxels = _FakeVoxels()
-    extras = {"land_cover_source": "OpenEarthMapJapan"}
+    # extras must be per-instance: the backend tags it with building_lod, and a
+    # shared class attribute would leak that mutation into other tests.
+    def __init__(self):
+        self.voxels = _FakeVoxels()
+        self.extras = {"land_cover_source": "OpenEarthMapJapan"}
 
 
 @pytest.fixture
@@ -72,8 +75,15 @@ def stubbed(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
     monkeypatch.setattr(main_mod, "_reset_taichi_and_caches", lambda: None)
-    monkeypatch.setattr(main_mod, "_refine_canopy_with_ndsm",
-                        lambda *a, **k: False)
+
+    def fake_refine(*a, **k):
+        # Recorded, not just stubbed: for LOD2 this must never be reached,
+        # because it ends in regenerate_voxels() and would overwrite the mesh
+        # voxelization with extruded footprints.
+        calls['ndsm_called'] = True
+        return False
+
+    monkeypatch.setattr(main_mod, "_refine_canopy_with_ndsm", fake_refine)
     monkeypatch.setattr(main_mod, "_preview_figure_json",
                         lambda *a, **k: "{}")
     monkeypatch.setattr(main_mod, "_preview_disabled_for_shape",
@@ -142,6 +152,48 @@ def test_lod2_kwargs_construct_a_real_voxelizer_config(stubbed):
     assert cfg.save_output is False
 
 
+def test_lod2_skips_ndsm_refinement(stubbed):
+    """Regression: _refine_canopy_with_ndsm ends in regenerate_voxels(), which
+    rebuilds the voxel grid from the 2.5-D component grids. Running it on an
+    LOD2 model silently replaces the true roof/wall geometry with extruded
+    footprints — an invisible downgrade to LOD1."""
+    client = TestClient(app)
+    resp = client.post("/api/generate", json=_base_request())
+    assert resp.status_code == 200, resp.text
+    assert 'ndsm_called' not in stubbed
+
+
+def test_lod1_still_runs_ndsm_refinement(stubbed, monkeypatch):
+    """Pins the counterpart: the LOD2 skip must come from the new gate alone,
+    not from some other condition failing for both LODs."""
+    monkeypatch.setattr(main_mod, "_load_citygml_cache", lambda verts: None)
+    monkeypatch.setattr(main_mod, "get_voxcity_CityGML",
+                        lambda *a, **k: _FakeVoxCity())
+    body = _base_request()
+    del body["plateau_lod"]
+    resp = TestClient(app).post("/api/generate", json=body)
+    assert resp.status_code == 200, resp.text
+    assert stubbed.get('ndsm_called') is True
+
+
+def test_lod2_tags_extras_with_building_lod(stubbed):
+    """The LOD-ness must be recorded so voxel-rebuilding paths can refuse."""
+    resp = TestClient(app).post("/api/generate", json=_base_request())
+    assert resp.status_code == 200, resp.text
+    assert stubbed['stored']['voxcity_obj'].extras["building_lod"] == 2
+
+
+def test_lod2_maps_missing_dataset_layout_to_400(stubbed):
+    """resolve_citygml_paths raises FileNotFoundError (an OSError, not a
+    ValueError) when the directory has no udx/bldg; it must not become a 500."""
+    def raise_not_found(cfg):
+        raise FileNotFoundError("No udx/bldg directory found")
+    sys.modules["voxcitygml"].generate_voxcity = raise_not_found
+    resp = TestClient(app).post("/api/generate", json=_base_request())
+    assert resp.status_code == 400
+    assert "udx/bldg" in resp.json()["detail"]
+
+
 def test_lod2_requires_citygml_path(stubbed, monkeypatch):
     monkeypatch.setattr(main_mod, "CITYGML_PATH", None)
     client = TestClient(app)
@@ -182,6 +234,70 @@ def test_lod1_default_unaffected(stubbed, monkeypatch):
     resp = client.post("/api/generate", json=body)
     assert resp.status_code == 200, resp.text
     assert 'generate_called' not in stubbed
+
+
+# ---------------------------------------------------------------------------
+# LOD2 model protection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("extras,expected", [
+    ({"building_lod": 2}, True),
+    ({"building_lod": 1}, False),
+    ({}, False),                                    # LOD1 / normal mode
+    ({"building_lod": None}, False),
+    ({"building_lod": "2"}, True),                  # tolerate a string
+    ({"building_lod": "nonsense"}, False),
+])
+def test_is_lod2_model(extras, expected):
+    vc = _FakeVoxCity()
+    vc.extras = extras
+    assert main_mod._is_lod2_model(vc) is expected
+
+
+def test_is_lod2_model_handles_missing_extras():
+    assert main_mod._is_lod2_model(object()) is False
+
+
+@pytest.fixture
+def _restore_voxcity(monkeypatch):
+    monkeypatch.setattr(main_mod.app_state, "voxcity", None)
+
+
+def test_apply_edits_rejects_lod2_model(_restore_voxcity):
+    """An LOD2 VoxCity cannot be rebuilt from its own 2.5-D component grids, so
+    apply_edits' trailing regenerate_voxels() would flatten it. Fail loudly."""
+    vc = _FakeVoxCity()
+    vc.extras["building_lod"] = 2
+    main_mod.app_state.voxcity = vc
+
+    resp = TestClient(app).post("/api/model/apply_edits", json={
+        "edits": [{"kind": "paint_lc", "cells": [[0, 0]], "class_index": 5}],
+    })
+    assert resp.status_code == 400, resp.text
+    detail = resp.json()["detail"]
+    assert "LOD2" in detail and "LOD1" in detail
+
+
+def test_apply_edits_guard_runs_before_any_edit_is_applied(_restore_voxcity,
+                                                           monkeypatch):
+    """The guard must precede mutation, or a rejected batch still leaves the
+    model half-edited."""
+    called = {"n": 0}
+
+    def spy(*a, **k):
+        called["n"] += 1
+        return {"n_changed": 1}
+
+    monkeypatch.setattr(main_mod, "_apply_paint_lc", spy)
+    vc = _FakeVoxCity()
+    vc.extras["building_lod"] = 2
+    main_mod.app_state.voxcity = vc
+
+    resp = TestClient(app).post("/api/model/apply_edits", json={
+        "edits": [{"kind": "paint_lc", "cells": [[0, 0]], "class_index": 5}],
+    })
+    assert resp.status_code == 400
+    assert called["n"] == 0, "no edit may be applied before the guard rejects"
 
 
 # ---------------------------------------------------------------------------
