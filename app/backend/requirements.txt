@@ -3,3 +3,6 @@ uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 python-dotenv>=1.0
 ezdxf>=1.1,<2
+
+# PLATEAU LOD2 mode requires the VoxCityGML package (separate repo):
+#   pip install -e <path-to-VoxCityGML>   (https://github.com/kunifujiwara/VoxCityGML)

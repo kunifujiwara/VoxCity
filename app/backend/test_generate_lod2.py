@@ -9,6 +9,15 @@ from fastapi.testclient import TestClient
 import backend.main as main_mod
 from backend.main import app
 
+# Captured at import time, *before* any fixture stubs ``sys.modules``.
+# ``pytest.importorskip("voxcitygml")`` inside a test using the ``stubbed``
+# fixture would resolve to the fake module and make the contract test below
+# vacuous, since the fixture patches ``sys.modules['voxcitygml']``.
+try:
+    from voxcitygml import VoxelizerConfig as _RealVoxelizerConfig
+except ImportError:  # package not installed in this env
+    _RealVoxelizerConfig = None
+
 
 # Axis-aligned rectangle near Tokyo ([SW, NW, NE, SE], [lon, lat])
 RECT = [
@@ -108,6 +117,29 @@ def test_lod2_calls_voxcitygml(stubbed, tmp_path):
         'gridvis': False,
     }
     assert 'stored' in stubbed
+
+
+@pytest.mark.skipif(_RealVoxelizerConfig is None,
+                    reason="voxcitygml is not installed in this environment")
+def test_lod2_kwargs_construct_a_real_voxelizer_config(stubbed):
+    """Bind the cross-repo contract with the real ``VoxelizerConfig``.
+
+    Every other test here builds the config through ``FakeConfig(**kwargs)``,
+    which accepts anything. A typo'd kwarg, or a field renamed in VoxCityGML,
+    would keep those tests green while production raised ``TypeError`` -> 500.
+    ``VoxelizerConfig`` is a dataclass, so unknown kwargs are a hard error:
+    feeding it the kwargs the backend actually passed is what catches drift.
+    """
+    client = TestClient(app)
+    resp = client.post("/api/generate", json=_base_request())
+    assert resp.status_code == 200, resp.text
+
+    cfg = _RealVoxelizerConfig(**stubbed['config'])
+
+    # Guard against a future dataclass that silently swallows **kwargs.
+    assert cfg.building_lod == 2
+    assert cfg.meshsize == 5.0
+    assert cfg.save_output is False
 
 
 def test_lod2_requires_citygml_path(stubbed, monkeypatch):
