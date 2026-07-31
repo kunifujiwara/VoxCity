@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
+
+# A single [lon, lat] pair. Constraining the inner list too means malformed
+# input is a 422 rather than an IndexError -> 500 further downstream.
+LonLat = Annotated[List[float], Field(min_length=2, max_length=2)]
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +48,7 @@ class AutoDetectSourcesRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     # [[lon, lat], ...] in SW, NW, NE, SE order
-    rectangle_vertices: List[List[float]] = Field(..., min_length=4, max_length=4)
+    rectangle_vertices: List[LonLat] = Field(..., min_length=4, max_length=4)
     meshsize: float = 5.0
     mode: str = "plateau"  # "plateau" or "normal"
     plateau_lod: Literal["lod1", "lod2"] = "lod1"  # PLATEAU building detail

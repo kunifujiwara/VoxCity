@@ -199,8 +199,51 @@ def test_rotated_rectangles_are_rejected(rotation_deg):
     assert main_mod._is_axis_aligned_rectangle(verts) is False
 
 
+@pytest.mark.parametrize("width_m,height_m", [(2000, 500), (500, 2000)])
+def test_non_square_rotated_rectangles_are_rejected(width_m, height_m):
+    """Non-square rectangles are rejected *more* aggressively than squares: the
+    midline offset is normalised by the shorter side, so 2000x500 at 0.5 deg
+    reads 3.5e-2 against the square's 8.7e-3."""
+    verts = _dimension_rectangle(139.77, 35.65, width_m, height_m, 0.5)
+    assert main_mod._is_axis_aligned_rectangle(verts) is False
+
+
+def test_rotation_threshold_boundary():
+    """Pin the rel_tol=1e-3 window: it rejects rotation beyond ~0.057 deg."""
+    accepted = _dimension_rectangle(139.77, 35.65, 1000, 1000, 0.05)
+    rejected = _dimension_rectangle(139.77, 35.65, 1000, 1000, 0.1)
+    assert main_mod._is_axis_aligned_rectangle(accepted) is True
+    assert main_mod._is_axis_aligned_rectangle(rejected) is False
+
+
 def test_hand_typed_rotated_fixture_is_rejected():
     assert main_mod._is_axis_aligned_rectangle(ROTATED_RECT) is False
+
+
+def test_symmetric_trapezoid_is_rejected_by_flare_guard():
+    """The midline metric alone reads 0 for a trapezoid symmetric about the
+    centre meridian, so the shape guard is what rejects it."""
+    trapezoid = [
+        [139.770, 35.646], [139.769, 35.650],
+        [139.776, 35.650], [139.775, 35.646],
+    ]
+    assert main_mod._is_axis_aligned_rectangle(trapezoid) is False
+
+
+def test_degenerate_rectangle_is_rejected():
+    """Zero extent must not divide by zero."""
+    point = [[139.77, 35.65]] * 4
+    assert main_mod._is_axis_aligned_rectangle(point) is False
+
+
+@pytest.mark.parametrize("size_m", [50, 100, 1250])
+def test_six_decimal_quantized_rectangle_is_accepted(size_m):
+    """Coordinate entry uses step="0.000001". Rounding four corners to 6 dp
+    perturbs the midline by up to 1e-6 deg, which alone exceeds rel_tol below
+    ~200 m — the absolute floor is what keeps the UI's 50 m minimum valid."""
+    verts = [[round(c, 6) for c in v]
+             for v in _dimension_rectangle(139.77, 35.65, size_m, size_m, 0.0)]
+    assert main_mod._is_axis_aligned_rectangle(verts) is True
 
 
 @pytest.mark.parametrize("verts", [
@@ -214,10 +257,16 @@ def test_wrong_vertex_count_is_rejected(verts):
     assert main_mod._is_axis_aligned_rectangle(verts) is False
 
 
-@pytest.mark.parametrize("verts", [RECT[:3], RECT + [[139.775, 35.646]]])
-def test_generate_rejects_wrong_vertex_count_with_422(verts):
-    """GenerateRequest constrains the list length, so malformed input is a
-    validation error rather than a 500 from unpacking downstream."""
+@pytest.mark.parametrize("verts", [
+    RECT[:3],                                       # too few vertices
+    RECT + [[139.775, 35.646]],                     # too many (5-point ring)
+    [[139.0], [1.0], [2.0], [3.0]],                 # inner pair too short
+    [[139.0, 35.0, 1.0]] * 4,                       # inner pair too long
+])
+def test_generate_rejects_malformed_vertices_with_422(verts):
+    """GenerateRequest constrains both the outer list and each [lon, lat] pair,
+    so malformed input is a validation error rather than a 500 from unpacking
+    or indexing downstream in _vertices_to_tuples."""
     resp = TestClient(app).post("/api/generate",
                                 json=_base_request(rectangle_vertices=verts))
     assert resp.status_code == 422

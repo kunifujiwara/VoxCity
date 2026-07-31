@@ -218,35 +218,56 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
+# Absolute floor on the rotation signal, in degrees. The coordinate-entry
+# inputs use step="0.000001", and rounding four corners to 6 dp perturbs the
+# midline difference below by up to 1e-6 deg. For extents under ~200 m that
+# noise alone exceeds rel_tol (measured: 32 of 200k random 50 m rectangles
+# cross it), so the floor keeps the UI's 50 m minimum from being mis-flagged as
+# rotated. It binds only at those sizes, where it still admits just a 0.18 m
+# corner shift.
+_AXIS_ALIGN_ABS_FLOOR_DEG = 2e-6
+
+
 def _is_axis_aligned_rectangle(
-    vertices: List[List[float]], rel_tol: float = 4e-3
+    vertices: List[List[float]], rel_tol: float = 1e-3
 ) -> bool:
     """True if [SW, NW, NE, SE] lon/lat vertices form an axis-aligned rect.
 
-    The tolerance is relative to the rectangle's own extent so the check
-    discriminates *rotation* rather than coordinate noise. Rectangles from
-    /api/rectangle-from-dimensions are built geodesically, so even at rotation
-    0 the north edge spans slightly more longitude than the south edge; that
-    artifact is ~tan(lat) * height / (2 * R_earth) of the extent. This gives a
-    two-sided bound (both measured, see test_generate_lod2.py):
+    Comparing opposite corners directly (sw.lon vs nw.lon) does not work at any
+    fixed tolerance. Rectangles from /api/rectangle-from-dimensions are built
+    geodesically, so even at rotation 0 the north edge spans more longitude
+    than the south edge by ~tan(lat) * height / (2 * R_earth) of the extent —
+    which grows without bound in the rectangle's size and latitude.
 
-      * accept: worst rotation-0 artifact within PLATEAU's Japan coverage is
-        1.6e-3 (45.5N, 20 km — far beyond any practical LOD2 area; the UI's
-        1250 m default sits at 7e-5).
-      * reject: a deliberate 0.5 deg rotation registers as 8.7e-3.
+    That artifact is not a rotation but an antisymmetric *flare*: the west edge
+    tilts west going north and the east edge tilts east by the same amount, an
+    isosceles trapezoid symmetric about the centre meridian. A real rotation
+    shifts both edges the *same* way. So the rotation signal is the offset
+    between opposite-edge midpoints, where the flare cancels exactly (measured
+    identically 0.0 for every rotation-0 case from 50 m to 20 km over lat
+    24-59N) and which equals tan(rotation) to 5 significant figures otherwise.
 
-    rel_tol=4e-3 sits between them with ~2.5x margin on the accept side and
-    ~2.2x on the reject side.
+    rel_tol=1e-3 therefore bounds rotation directly, rejecting anything beyond
+    0.057 deg. The midline test alone would accept any symmetric trapezoid, so
+    a loose flare guard rejects gross non-rectangles.
     """
     if len(vertices) != 4:
         return False
     sw, nw, ne, se = [tuple(v) for v in vertices]
-    tol_lon = max(abs(se[0] - sw[0]), abs(ne[0] - nw[0])) * rel_tol
-    tol_lat = max(abs(nw[1] - sw[1]), abs(ne[1] - se[1])) * rel_tol
-    return (
-        abs(sw[0] - nw[0]) < tol_lon and abs(se[0] - ne[0]) < tol_lon
-        and abs(sw[1] - se[1]) < tol_lat and abs(nw[1] - ne[1]) < tol_lat
-    )
+    lon_ext = max(abs(se[0] - sw[0]), abs(ne[0] - nw[0]))
+    lat_ext = max(abs(nw[1] - sw[1]), abs(ne[1] - se[1]))
+    if lon_ext == 0.0 or lat_ext == 0.0:
+        return False
+
+    rot_lon = abs((nw[0] + ne[0]) / 2 - (sw[0] + se[0]) / 2)
+    rot_lat = abs((se[1] + ne[1]) / 2 - (sw[1] + nw[1]) / 2)
+    if (rot_lon >= max(rel_tol * lon_ext, _AXIS_ALIGN_ABS_FLOOR_DEG)
+            or rot_lat >= max(rel_tol * lat_ext, _AXIS_ALIGN_ABS_FLOOR_DEG)):
+        return False
+
+    flare_lon = abs(abs(ne[0] - nw[0]) - abs(se[0] - sw[0])) / lon_ext
+    flare_lat = abs(abs(nw[1] - sw[1]) - abs(ne[1] - se[1])) / lat_ext
+    return max(flare_lon, flare_lat) < 5e-2
 
 
 def _load_citygml_cache(rectangle_vertices):
@@ -1120,6 +1141,9 @@ async def generate_model(req: GenerateRequest):
                 try:
                     from voxcitygml import VoxelizerConfig, generate_voxcity
                 except ImportError as exc:
+                    # Same trap as the ValueError below: the HTTPException
+                    # pass-through skips the generic handler's print_exc().
+                    traceback.print_exc()
                     raise HTTPException(
                         status_code=500,
                         detail="Could not import the voxcitygml package (or one "
