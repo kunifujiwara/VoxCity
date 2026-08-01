@@ -463,15 +463,57 @@ def test_rotation_probe_accepts_the_real_package(clear_capability_cache):
     assert ok, reason
 
 
+@pytest.fixture
+def ndsm_cog(monkeypatch, tmp_path):
+    """Pretend the ~5 GB nDSM COG is present on this server."""
+    cog = tmp_path / "ndsm_cog.tif"
+    cog.write_bytes(b"")
+    monkeypatch.setattr(main_mod, "NDSM_COG_PATH", str(cog))
+    return cog
+
+
 def test_health_reports_ndsm_canopy_lod2_available(clear_capability_cache,
-                                                   stubbed):
+                                                   stubbed, ndsm_cog):
     """The fixture's stub carries reapply_canopy, like a current install."""
     cap = TestClient(app).get("/api/health").json()["capabilities"]
     assert cap["ndsm_canopy_lod2"] == {"available": True, "reason": ""}
+    assert cap["ndsm_canopy"] == {"available": True, "reason": ""}
+
+
+def test_health_reports_ndsm_canopy_unavailable_without_the_cog(
+        clear_capability_cache, stubbed, monkeypatch, tmp_path):
+    """The likeliest reason refinement does nothing on a fresh deployment: the
+    ~5 GB nDSM raster is not shipped. Without this the checkbox stays ticked
+    and silently no-ops — the original symptom, a different cause."""
+    monkeypatch.setattr(main_mod, "NDSM_COG_PATH",
+                        str(tmp_path / "definitely-absent.tif"))
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]
+    assert cap["ndsm_canopy"]["available"] is False
+    assert "nDSM raster" in cap["ndsm_canopy"]["reason"]
+    # LOD-independent: this one is about the data file, not the package, so the
+    # LOD2-only flag must stay clean and let the UI report the right cause.
+    assert cap["ndsm_canopy_lod2"]["available"] is True
+
+
+def test_ndsm_cog_capability_is_not_cached(clear_capability_cache, stubbed,
+                                           monkeypatch, tmp_path):
+    """An operator can drop the COG in while the server runs; a cached
+    "missing" verdict would outlive the file's arrival."""
+    cog = tmp_path / "ndsm_cog.tif"
+    monkeypatch.setattr(main_mod, "NDSM_COG_PATH", str(cog))
+    client = TestClient(app)
+
+    before = client.get("/api/health").json()["capabilities"]["ndsm_canopy"]
+    assert before["available"] is False
+
+    cog.write_bytes(b"")
+    after = client.get("/api/health").json()["capabilities"]["ndsm_canopy"]
+    assert after["available"] is True, "the COG check must not be memoized"
 
 
 def test_health_reports_ndsm_canopy_unavailable_without_reapply_canopy(
-        clear_capability_cache, stubbed):
+        clear_capability_cache, stubbed, ndsm_cog):
     """Closes the loop on the original bug: without this flag the user ticks
     "Use nDSM for Canopy", waits out a full LOD2 generation, and gets a model
     where it did nothing — visible only in a server-side print."""
@@ -600,21 +642,37 @@ def test_apply_edits_guard_runs_before_any_edit_is_applied(_restore_voxcity,
 # index 0 would fall through the ``or`` chain to the 4 fallback.
 _TREE_ID = 1
 _LC_CLASSES = {"bareland": "Bareland", "tree": "Tree"}
-_REFINE_SHAPE = (4, 4)
+# Non-square on purpose: a rows/cols mix-up cannot hide behind it.
+_REFINE_SHAPE = (6, 4)
+
+
+def _asymmetric_land_cover():
+    """Tree cells in the northern rows only — so a north<->south mirror shows.
+
+    An all-tree grid (the obvious fixture) is flip-invariant, which is exactly
+    why the mirrored-canopy defect survived every earlier test. Row 0 is the
+    *southern* edge in voxcity's land-cover frame, so "northern rows" are the
+    high row indices here.
+    """
+    lc = np.zeros(_REFINE_SHAPE, dtype=np.int16)
+    lc[_REFINE_SHAPE[0] // 2:, :] = _TREE_ID
+    return lc
 
 
 class _RefineModel:
     """Stand-in VoxCity carrying exactly the grids _refine_canopy_with_ndsm reads."""
 
-    def __init__(self, building_lod: int):
+    def __init__(self, building_lod: int, land_cover=None):
         self.land_cover = types.SimpleNamespace(
-            classes=np.full(_REFINE_SHAPE, _TREE_ID, dtype=np.int16))
+            classes=(_asymmetric_land_cover() if land_cover is None
+                     else land_cover))
         self.buildings = types.SimpleNamespace(
             heights=np.zeros(_REFINE_SHAPE, dtype=float))
         self.tree_canopy = types.SimpleNamespace(
             top=np.zeros(_REFINE_SHAPE, dtype=float),
             bottom=np.zeros(_REFINE_SHAPE, dtype=float))
-        self.voxels = _FakeVoxels()
+        self.voxels = types.SimpleNamespace(
+            classes=np.zeros((*_REFINE_SHAPE, 3), dtype=np.int16))
         self.extras = {"building_lod": building_lod}
 
 
@@ -687,6 +745,13 @@ _TRUNK_RATIO = 11.76 / 19.98
 _NDSM_HEIGHT = 8.0
 
 
+def _expected_overlay_top():
+    """The canopy reapply_canopy should receive: tree cells, in the voxel frame."""
+    land_frame = np.zeros(_REFINE_SHAPE)
+    land_frame[_REFINE_SHAPE[0] // 2:, :] = _NDSM_HEIGHT
+    return np.flipud(land_frame)
+
+
 def test_refine_lod1_rebuilds_the_voxel_grid(refine_env):
     """LOD1 keeps the rebuild: its voxels *are* extruded footprints, so
     regenerating from the revised component grids is the correct update."""
@@ -714,14 +779,63 @@ def test_refine_lod2_overlays_instead_of_rebuilding(refine_env):
     # Pin the values, not a re-read of the model's own grids: on this path
     # reapply_canopy writes those grids itself, so comparing against them would
     # only assert that the (stubbed) overlay did nothing.
-    assert np.array_equal(overlay['canopy_top'],
-                          np.full(_REFINE_SHAPE, _NDSM_HEIGHT))
+    assert np.array_equal(overlay['canopy_top'], _expected_overlay_top())
     assert overlay.get('canopy_bottom') is not None, (
         "voxcitygml's own default trunk ratio currently equals ours, so "
         "passing the ratio instead would yield the same array today — passing "
         "the derived bottom keeps that a coincidence we don't depend on")
     assert np.allclose(overlay['canopy_bottom'],
-                       _NDSM_HEIGHT * _TRUNK_RATIO)
+                       _expected_overlay_top() * _TRUNK_RATIO)
+
+
+def test_refine_lod2_flips_the_canopy_into_the_voxel_frame(refine_env):
+    """The canopy must be mirrored north<->south before the overlay.
+
+    It is built in the land-cover frame, which voxcity produces south-up (row 0
+    = southern edge); reapply_canopy writes straight into the voxel grid, which
+    is north-up, and applies no flip of its own. VoxCityGML's own pipeline
+    flips at this same boundary (canopy/processor: "voxcity grids are south-up
+    ...; flip to north-up to match DEM and 3-D voxel grid orientation").
+
+    Measured on a real Chiyoda-ku LOD2 model, against the generator's own
+    north-up canopy: without the flip the refined canopy scored IoU 0.404
+    direct / 0.763 mirrored; with it, 0.966 direct / 0.347 mirrored.
+
+    The land cover here is asymmetric for a reason — an all-tree grid is
+    flip-invariant, which is precisely how this defect survived earlier tests.
+    """
+    vc = _RefineModel(building_lod=2)
+    assert _refine(vc) is True
+
+    got = _overlay_args(refine_env)['canopy_top']
+    land_frame = np.zeros(_REFINE_SHAPE)
+    land_frame[_REFINE_SHAPE[0] // 2:, :] = _NDSM_HEIGHT
+
+    assert np.array_equal(got, np.flipud(land_frame))
+    assert not np.array_equal(got, land_frame), (
+        "the canopy reached reapply_canopy still in the south-up land-cover "
+        "frame — it would land mirrored north<->south in the voxel grid")
+
+
+def test_refine_lod2_resizes_the_canopy_to_the_voxel_grid(refine_env):
+    """The canopy is sized from land_cover.classes but the overlay lands on
+    voxels.classes. They coincide today and nothing enforces it.
+
+    Current voxcitygml resamples a mismatched canopy rather than rejecting it,
+    so this is not about dodging an exception: it is that handing over the
+    wrong shape means an avoidable resample, and resampling a grid that could
+    have been built at the right size is a silent quality loss. The package's
+    resample is a safety net, not the plan.
+    """
+    vc = _RefineModel(building_lod=2)
+    voxel_shape = (_REFINE_SHAPE[0] * 2, _REFINE_SHAPE[1] * 2)
+    vc.voxels = types.SimpleNamespace(
+        classes=np.zeros((*voxel_shape, 3), dtype=np.int16))
+
+    assert _refine(vc) is True
+    overlay = _overlay_args(refine_env)
+    assert overlay['canopy_top'].shape == voxel_shape
+    assert overlay['canopy_bottom'].shape == voxel_shape
 
 
 def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
@@ -741,6 +855,42 @@ def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
     # run before any mutation — same rule as the apply_edits guard.
     assert not vc.tree_canopy.top.any(), "model must be left untouched"
     assert not vc.tree_canopy.bottom.any(), "model must be left untouched"
+
+
+@pytest.mark.parametrize("building_lod,expect_flip", [(2, True), (1, False)])
+def test_refine_flips_buildings_into_the_canopy_frame_only_for_lod2(
+        refine_env, monkeypatch, building_lod, expect_flip):
+    """_sanitize_ndsm_canopy compares tree cells against nearby building
+    heights, so both grids must share a frame.
+
+    They don't in a VoxCityGML model: measured on a real Chiyoda-ku LOD2 model,
+    buildings.heights matches the voxel building columns north-up (IoU 0.944
+    direct vs 0.107 flipped) while land_cover.classes — and hence canopy and
+    tree_mask — is south-up (0.347 vs 0.996). A voxcity LOD1 model keeps every
+    component grid in one frame, so flipping there would corrupt LOD1, which is
+    out of scope and must stay byte-identical.
+    """
+    seen = {}
+
+    def spy(canopy, building_heights, **kwargs):
+        seen['heights'] = np.asarray(building_heights).copy()
+        return canopy
+
+    monkeypatch.setattr(main_mod, "_sanitize_ndsm_canopy", spy)
+
+    vc = _RefineModel(building_lod=building_lod)
+    # Asymmetric, like the land cover, so the flip is observable.
+    heights = np.zeros(_REFINE_SHAPE)
+    heights[:_REFINE_SHAPE[0] // 2, :] = 20.0
+    vc.buildings.heights = heights
+
+    _refine(vc)
+
+    expected = np.flipud(heights) if expect_flip else heights
+    assert np.array_equal(seen['heights'], expected)
+    if expect_flip:
+        assert not np.array_equal(seen['heights'], heights), (
+            "north-up buildings were compared against a south-up canopy")
 
 
 def test_refine_lod2_leaves_the_model_untouched_when_the_overlay_raises(

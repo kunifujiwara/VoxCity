@@ -359,6 +359,35 @@ def _align_ndsm_to_grid(ndsm_grid: np.ndarray, target_shape: tuple) -> np.ndarra
     return ndsm_grid[np.ix_(r_idx, c_idx)]
 
 
+def _to_voxel_frame(grid: np.ndarray, target_shape: tuple) -> np.ndarray:
+    """Convert a land-cover-frame 2-D grid into the voxel grid's frame.
+
+    Two corrections, both required by ``reapply_canopy``'s stated precondition
+    that ``canopy_top`` be "north-up like ``city.voxels.classes``":
+
+    * **Orientation.** voxcity's land-cover grid is south-up (row 0 = the
+      southern edge) while the DEM, the canopy grids and the 3-D voxel grid are
+      north-up. VoxCityGML flips at exactly this boundary — ``canopy/processor``
+      does ``np.flipud`` on the canopy it derives from that same land-cover grid,
+      and ``voxelizer3d._apply_land_cover`` flips before painting the surface.
+      Everything upstream here is consistently south-up: the nDSM is sampled at
+      ``compute_cell_center_coords`` centres, which run south-to-north, and the
+      tree mask comes from ``land_cover.classes``. Without this flip the refined
+      canopy lands mirrored north<->south.
+    * **Shape.** the canopy is sized from ``land_cover.classes`` while the
+      overlay lands on ``voxels.classes``. They coincide today and nothing
+      enforces it. Current voxcitygml resamples a mismatched canopy rather than
+      rejecting it, so this is no longer about avoiding an exception — it is
+      that resampling twice, or resampling at all when the source could have
+      been sized correctly, is a silent quality loss. Align at the source; let
+      the package's resample stay a safety net.
+
+    Flip first, then resample: the flip is a frame correction on the source
+    grid, the resize maps source rows onto target rows once already in-frame.
+    """
+    return _align_ndsm_to_grid(np.flipud(grid), target_shape)
+
+
 def _build_canopy_from_ndsm(
     ndsm_grid: np.ndarray,
     land_cover_grid: np.ndarray,
@@ -535,8 +564,9 @@ def _refine_canopy_with_ndsm(
     # Resolved up front, before anything is mutated: an older voxcitygml has no
     # such entrypoint, and bailing out after the component grids were rewritten
     # would leave them describing crowns the voxel grid does not contain.
+    is_lod2 = _is_lod2_model(voxcity_obj)
     reapply_canopy = None
-    if _is_lod2_model(voxcity_obj):
+    if is_lod2:
         try:
             from voxcitygml import reapply_canopy
         except ImportError as exc:
@@ -564,10 +594,23 @@ def _refine_canopy_with_ndsm(
     if np.any(missing):
         canopy[missing] = float(static_tree_height)
 
-    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights
+    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights.
+    #
+    # The sanitizer compares each tree cell against nearby building heights, so
+    # both grids must share a frame. They do not in a VoxCityGML model: measured
+    # on a real Chiyoda-ku LOD2 model, buildings.heights matches the voxel
+    # building columns north-up (IoU 0.944 direct vs 0.107 flipped) while
+    # land_cover.classes — and therefore canopy and tree_mask — is south-up
+    # (0.347 direct vs 0.996 flipped). Bring buildings into the canopy's frame.
+    # A voxcity LOD1 model keeps every component grid in one frame, so it must
+    # not be flipped there.
+    building_heights = voxcity_obj.buildings.heights
+    if is_lod2:
+        building_heights = np.flipud(building_heights)
+
     canopy = _sanitize_ndsm_canopy(
         canopy,
-        building_heights=voxcity_obj.buildings.heights,
+        building_heights=building_heights,
         tree_mask=tree_mask,
         replacement_m=float(static_tree_height),
     )
@@ -579,7 +622,7 @@ def _refine_canopy_with_ndsm(
     trunk_ratio = 11.76 / 19.98
     canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
 
-    if reapply_canopy is not None:
+    if is_lod2:
         # LOD2: overlay the canopy onto the existing grid. reapply_canopy owns
         # the whole update — it writes canopy_top/canopy_bottom into
         # tree_canopy itself, in place where the existing array can take them
@@ -595,7 +638,16 @@ def _refine_canopy_with_ndsm(
         # voxcitygml's default ratio happens to equal ours today, so both would
         # produce the same array — passing the bottom keeps that a coincidence
         # this code does not depend on.
-        reapply_canopy(voxcity_obj, canopy, canopy_bottom=canopy_bottom)
+        #
+        # _to_voxel_frame is not optional: everything above is in the south-up
+        # land-cover frame, and reapply_canopy writes straight into the
+        # north-up voxel grid.
+        target_shape = voxcity_obj.voxels.classes.shape[:2]
+        reapply_canopy(
+            voxcity_obj,
+            _to_voxel_frame(canopy, target_shape),
+            canopy_bottom=_to_voxel_frame(canopy_bottom, target_shape),
+        )
     else:
         # LOD1: the voxels *are* extruded footprints, so revise the 2.5-D
         # component grids and rebuild the grid from them.
@@ -1074,14 +1126,39 @@ def _voxcitygml_reapply_state() -> Tuple[bool, str]:
     return True, ""
 
 
+def _ndsm_canopy_capability() -> Dict[str, Any]:
+    """Whether nDSM canopy refinement can run *at all*, at either LOD.
+
+    Deliberately **not** cached: unlike an installed package, the nDSM COG is a
+    ~5 GB data file that an operator can drop in (or move away) while the
+    server is running, and a cached "missing" verdict would outlive it.
+
+    This is the likeliest reason refinement does nothing on a fresh deployment
+    — the COG is not shipped — and without it the checkbox stays ticked and
+    silently no-ops, which is the exact symptom this feature set out to remove.
+    """
+    try:
+        if not os.path.exists(NDSM_COG_PATH):
+            return {"available": False,
+                    "reason": "no nDSM raster is available on this server — "
+                              f"expected a COG GeoTIFF at {NDSM_COG_PATH}"}
+        return {"available": True, "reason": ""}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
 def _ndsm_canopy_lod2_capability() -> Dict[str, Any]:
-    """Whether nDSM canopy refinement can run on a PLATEAU LOD2 model.
+    """The *additional* requirement nDSM refinement has on an LOD2 model.
+
+    Reported separately from ``_ndsm_canopy_capability`` because the two have
+    different scopes: a missing COG stops refinement at either LOD, while a
+    voxcitygml without ``reapply_canopy`` only stops it for LOD2. Collapsing
+    them would make the UI disable the checkbox in LOD1 for an LOD2-only
+    reason.
 
     Non-gating by design — LOD2 generation itself works fine without it, and
-    this never feeds ``_plateau_lod2_capability``. It exists so the "Use nDSM
-    for Canopy" checkbox can disable itself with a reason, instead of staying
-    ticked and silently doing nothing: that was the original bug's symptom, and
-    an outdated voxcitygml would otherwise reproduce it with a new cause.
+    this never feeds ``_plateau_lod2_capability``.
     """
     try:
         ok, reason = _voxcitygml_reapply_state()
@@ -1119,6 +1196,7 @@ async def health_check():
         "has_model": app_state.has_model,
         "capabilities": {
             "plateau_lod2": _plateau_lod2_capability(),
+            "ndsm_canopy": _ndsm_canopy_capability(),
             "ndsm_canopy_lod2": _ndsm_canopy_lod2_capability(),
         },
     }

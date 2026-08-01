@@ -41,11 +41,16 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   // a slow or failed health call on a deployment that can in fact do LOD2.
   const [lod2Cap, setLod2Cap] = useState<Capability | null>(null);
   const lod2Unavailable = lod2Cap !== null && !lod2Cap.available;
+  // Two scopes. The nDSM raster gates refinement at either LOD; the voxcitygml
+  // overlay entrypoint is an extra requirement LOD2 alone has, so applying it
+  // in LOD1 would disable the checkbox for a reason that doesn't apply there.
   const [ndsmCap, setNdsmCap] = useState<Capability | null>(null);
-  // Only LOD2 needs the overlay entrypoint; LOD1 refinement rebuilds the grid
-  // and works on any voxcitygml (indeed without one at all).
-  const ndsmUnavailable =
-    plateauLod === 'lod2' && ndsmCap !== null && !ndsmCap.available;
+  const [ndsmLod2Cap, setNdsmLod2Cap] = useState<Capability | null>(null);
+  const ndsmBlockedAnyLod = ndsmCap !== null && !ndsmCap.available;
+  const ndsmBlockedLod2 =
+    plateauLod === 'lod2' && ndsmLod2Cap !== null && !ndsmLod2Cap.available;
+  const ndsmUnavailable = ndsmBlockedAnyLod || ndsmBlockedLod2;
+  const ndsmReason = ndsmBlockedAnyLod ? ndsmCap?.reason : ndsmLod2Cap?.reason;
 
   // Common parameters
   const [meshsize, setMeshsize] = useState(5);
@@ -81,7 +86,8 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         if (cancelled) return;
         // Older backends omit `capabilities`; assume available in that case.
         setLod2Cap(h.capabilities?.plateau_lod2 ?? { available: true, reason: '' });
-        setNdsmCap(
+        setNdsmCap(h.capabilities?.ndsm_canopy ?? { available: true, reason: '' });
+        setNdsmLod2Cap(
           h.capabilities?.ndsm_canopy_lod2 ?? { available: true, reason: '' },
         );
       })
@@ -90,6 +96,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         if (!cancelled) {
           setLod2Cap({ available: true, reason: '' });
           setNdsmCap({ available: true, reason: '' });
+          setNdsmLod2Cap({ available: true, reason: '' });
         }
       });
     return () => {
@@ -422,7 +429,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
               </div>
               {ndsmUnavailable && (
                 <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.25rem 0 0' }}>
-                  {t('generationTab.ndsmLod2Unavailable')} {ndsmCap?.reason}
+                  {t('generationTab.ndsmUnavailable')} {ndsmReason}
                 </div>
               )}
               {plateauLod === 'lod2' && (

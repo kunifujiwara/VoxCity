@@ -105,8 +105,12 @@ export interface HealthResult {
   /** Optional: older backends omit this entirely. */
   capabilities?: {
     plateau_lod2?: Capability;
-    /** nDSM canopy refinement on an LOD2 model. Non-gating: LOD2 itself works
-     *  without it, only the "Use nDSM for Canopy" option is lost. */
+    /** nDSM canopy refinement at either LOD — chiefly whether the nDSM raster
+     *  is present on the server. */
+    ndsm_canopy?: Capability;
+    /** The *extra* requirement LOD2 refinement has (a voxcitygml that can
+     *  overlay a canopy). Non-gating: LOD2 generation works without it, only
+     *  the "Use nDSM for Canopy" option is lost. */
     ndsm_canopy_lod2?: Capability;
   };
 }
