@@ -24,6 +24,7 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from backend.ndsm_refine import (
+    MIN_SPREAD_PIXELS,
     PARTITION_KEYS,
     VERDICT_AMBIGUOUS_KEEP,
     VERDICT_AMBIGUOUS_REPLACE,
@@ -35,8 +36,10 @@ from backend.ndsm_refine import (
     _cell_labels,
     _pixel_lonlat,
     classify_and_refine,
+    format_spread_stats,
     pool_evidence,
     groupwise_percentile,
+    groupwise_percentiles,
     load_ndsm_evidence,
     local_tree_median,
     refine_from_evidence,
@@ -168,6 +171,81 @@ class TestGroupwisePercentile:
         groupwise_percentile(values, groups, 1, 50)
         assert np.isnan(values[1]) and values[0] == 3.0 and values[2] == 1.0
         assert groups.tolist() == [0, 0, 0]
+
+
+# ---------------------------------------------------------------------------
+# groupwise_percentiles (plural)
+#
+# The reader needs three quantiles of band 1 per cell -- the height percentile
+# plus the p25/p90 pair the pixel-spread veto is built from. The lexsort over
+# every raster pixel in the window dominates that cost, so it is done once and
+# read three times. These tests pin both halves of that claim: the same numbers
+# as three separate calls, from one sort.
+# ---------------------------------------------------------------------------
+class TestGroupwisePercentiles:
+    def test_matches_the_singular_call_for_every_q(self):
+        rng = np.random.default_rng(11)
+        values = rng.normal(size=500)
+        groups = rng.integers(0, 7, size=500)
+        qs = (25.0, 50.0, 90.0)
+        got, _ = groupwise_percentiles(values, groups, 7, qs)
+        for row, q in zip(got, qs):
+            assert np.allclose(
+                row, groupwise_percentile(values, groups, 7, q),
+                equal_nan=True)
+
+    def test_returns_one_row_per_q_in_order(self):
+        values = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        groups = np.zeros(5, dtype=int)
+        got, _ = groupwise_percentiles(values, groups, 1, (0.0, 100.0, 50.0))
+        assert got.shape == (3, 1)
+        assert got[:, 0].tolist() == [0.0, 4.0, 2.0]
+
+    def test_counts_are_the_finite_in_range_pixels_per_group(self):
+        values = np.array([1.0, np.nan, 3.0, 5.0, np.inf, 7.0])
+        groups = np.array([0, 0, 0, 1, 1, 9])          # 9 is out of range
+        _, counts = groupwise_percentiles(values, groups, 2, (50.0,))
+        assert counts.tolist() == [2, 1]
+
+    def test_one_lexsort_serves_every_q(self, monkeypatch):
+        """The whole reason this exists: three sorts of 16 M pixels is the cost
+        the spread signal must not add."""
+        calls = []
+        real = np.lexsort
+
+        def counting(*args, **kwargs):
+            calls.append(1)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(np, "lexsort", counting)
+        groupwise_percentiles(
+            np.arange(20.0), np.zeros(20, dtype=int), 1, (25.0, 50.0, 90.0))
+        assert len(calls) == 1
+
+    def test_empty_group_is_nan_with_a_zero_count(self):
+        values = np.array([1.0, 2.0])
+        groups = np.array([0, 0])
+        got, counts = groupwise_percentiles(values, groups, 3, (25.0, 90.0))
+        assert np.isnan(got[:, 1]).all() and np.isnan(got[:, 2]).all()
+        assert counts.tolist() == [2, 0, 0]
+
+    def test_no_finite_values_at_all(self):
+        got, counts = groupwise_percentiles(
+            np.array([np.nan, np.nan]), np.array([0, 1]), 2, (25.0, 90.0))
+        assert np.isnan(got).all()
+        assert counts.tolist() == [0, 0]
+
+    @pytest.mark.parametrize("q", [-1.0, 100.5, float("nan")])
+    def test_q_outside_0_100_is_rejected(self, q):
+        # NaN included: it fails every comparison, so an "out of range" test
+        # written as ``q < 0 or q > 100`` passes it through to rank arithmetic
+        # that casts it to a huge negative index.
+        with pytest.raises(ValueError, match="q must be in"):
+            groupwise_percentiles(np.array([1.0]), np.array([0]), 1, (50.0, q))
+
+    def test_no_quantiles_is_rejected(self):
+        with pytest.raises(ValueError, match="at least one"):
+            groupwise_percentiles(np.array([1.0]), np.array([0]), 1, ())
 
 
 # ---------------------------------------------------------------------------
@@ -583,6 +661,7 @@ def _write_synthetic_cog(
     uniform=False,
     spike=False,
     nodata_ne=False,
+    step_frac=None,
     rect=RECT,
 ):
     """Write an evidence COG covering *rect* with a margin, 0.5 m pixels.
@@ -606,6 +685,14 @@ def _write_synthetic_cog(
     frame assertions. ``spike=True`` makes band 1 flat 5 m with a single 30 m
     pixel at the rectangle centre: the contaminated-pixel mechanism the whole
     aggregation exists to reject.
+
+    ``step_frac`` overrides the band edge, putting the 20 m -> 5 m step at that
+    fraction along side_1 instead of at 0.25. The default edge falls exactly on
+    a *cell* boundary at MESHSIZE, so no cell straddles it and the pixel spread
+    is 0 everywhere -- ``step_frac=0.275`` moves it to the middle of cell row 5,
+    splitting that row's cells 2 pixels tall / 2 pixels short. That is the
+    roof-edge geometry the spread veto exists to catch, and it makes p25 = 5 and
+    p90 = 20 exactly, so the spread can be asserted as an equality.
     """
     to_xy = Transformer.from_crs("EPSG:4326", f"EPSG:{EPSG}", always_xy=True)
     to_ll = Transformer.from_crs(f"EPSG:{EPSG}", "EPSG:4326", always_xy=True)
@@ -626,10 +713,11 @@ def _write_synthetic_cog(
     lon, lat = to_ll.transform(px, py)
     f_north, f_east = _rect_fractions(lon, lat, rect)
 
+    edge = 0.25 if step_frac is None else float(step_frac)
     if uniform or spike:
         ndsm = np.full((height, width), 5.0)
     else:
-        tall = f_north < 0.25 if tall_south else f_north > 0.75
+        tall = f_north < edge if tall_south else f_north > 1.0 - edge
         ndsm = np.where(tall, 20.0, 5.0)
     if spike:
         centre = (f_north - 0.5) ** 2 + (f_east - 0.5) ** 2
@@ -638,7 +726,10 @@ def _write_synthetic_cog(
         ndsm = np.where((f_north > 0.75) & (f_east > 0.75), NODATA, ndsm)
 
     n_all = np.full((height, width), 10.0)
-    n_multi = np.where((f_north < 0.25) & (f_east < 0.25), 8.0, 1.0)
+    # Tracks the same edge as band 1, so a straddling cell carries canopy-like
+    # multi-return evidence as well as the step -- which is the whole reason a
+    # roof edge can win the canopy verdict on mrf and roughness alone.
+    n_multi = np.where((f_north < edge) & (f_east < 0.25), 8.0, 1.0)
     sparse = (f_north > 0.75) & (f_east > 0.75)
     n_ng = np.where(sparse, 0.0, 10.0)
     # 10 non-ground returns at h-1 and h+1 => population std exactly 1.0
@@ -884,8 +975,140 @@ class TestLoadNdsmEvidenceDegraded:
     def test_shape_matches_every_returned_array(self, tmp_path):
         path = _write_synthetic_cog(tmp_path / "ev.tif")
         out = _load(path)
-        for key in ("height", "mrf", "roughness", "n_all", "n_nonground"):
+        for key in ("height", "mrf", "roughness", "n_all", "n_nonground",
+                    "spread"):
             assert out[key].shape == out["shape"], key
+
+
+def _independent_pixel_counts(path, rect, shape):
+    """Valid band-1 pixels per cell, derived without the reader's labelling.
+
+    Reads the raster back, projects every pixel centre into *rect*'s own frame
+    with :func:`_rect_fractions` (``np.linalg.solve``, not the reader's Cramer
+    expansion) and floors. The rebuilt-from-the-cell-step parallelogram the
+    reader inverts agrees with the rectangle to ~1e-7 relative, i.e. ~5 microns
+    over the 40 m fixture, so the two labellings can only disagree for a pixel
+    centre sitting within microns of a cell edge -- and the fixture's pixel
+    centres clear every cell edge by at least 5 cm.
+    """
+    with rasterio.open(path) as src:
+        band1 = src.read(1).astype(float)
+        if src.nodata is not None:
+            band1 = np.where(band1 == float(src.nodata), np.nan, band1)
+        rows, cols = np.meshgrid(
+            np.arange(src.height), np.arange(src.width), indexing="ij")
+        xs, ys = rasterio.transform.xy(src.transform, rows.ravel(), cols.ravel())
+        lon, lat = Transformer.from_crs(
+            src.crs, "EPSG:4326", always_xy=True).transform(
+                np.asarray(xs), np.asarray(ys))
+
+    n_rows, n_cols = shape
+    f_1, f_2 = _rect_fractions(lon, lat, rect)
+    row = np.floor(f_1 * n_rows).astype(int)
+    col = np.floor(f_2 * n_cols).astype(int)
+    inside = (
+        (row >= 0) & (row < n_rows) & (col >= 0) & (col < n_cols)
+        & np.isfinite(band1.ravel())
+    )
+    labels = row[inside] * n_cols + col[inside]
+    return np.bincount(labels, minlength=n_rows * n_cols).reshape(shape)
+
+
+class TestLoadNdsmEvidenceSpread:
+    """``spread`` = per-cell p90 - p25 of band-1 *pixel* heights.
+
+    Point-level roughness (a standard deviation of return heights) cannot tell
+    crown texture from a step discontinuity: a 2 m cell half on a 20 m roof and
+    half on the ground next to it measures roughness ~9.9 m, which reads as
+    maximally rough and would win the canopy verdict. The pixel spread reads
+    ~20 m there and ~2-5 m on a real crown, which separates the two -- and,
+    because it comes off band 1, it is available today, before the evidence COG
+    is rebuilt.
+    """
+
+    def test_a_flat_surface_has_zero_spread(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif", uniform=True)
+        out = _load(path)
+        assert np.allclose(out["spread"], 0.0)
+
+    def test_a_step_inside_a_cell_shows_the_full_height_difference(self, tmp_path):
+        # The 20 m -> 5 m edge is moved into the middle of cell row 5, which
+        # therefore holds 2 tall and 2 short pixel rows: p25 = 5, p90 = 20.
+        path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
+        out = _load(path)
+        spread = out["spread"]
+        assert np.allclose(spread[5], 15.0), (
+            "a cell straddling a 15 m step must report the step, not the "
+            "near-zero spread of the two planes it joins")
+        # Its neighbours sit wholly on one plane or the other.
+        assert np.allclose(spread[4], 0.0)
+        assert np.allclose(spread[6], 0.0)
+
+    def test_the_step_cell_is_not_distinguishable_by_height_alone(self, tmp_path):
+        """Non-vacuity: the straddling row's *height* matches the roof, which is
+        exactly why the spike survives every height-only test."""
+        path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
+        out = _load(path)
+        assert np.allclose(out["height"][5], out["height"][4])
+
+    def test_spread_is_present_in_degraded_mode(self, tmp_path):
+        """The point of deriving it from band 1: the COG on disk is single-band,
+        so this is the only evidence channel that can be measured on real data
+        before the rebuild ships."""
+        path = _write_synthetic_cog(tmp_path / "ndsm.tif", bands=1,
+                                    step_frac=0.275)
+        out = _load(path)
+        assert out["degraded"] is True
+        assert out["mrf"] is None and out["roughness"] is None
+        assert out["spread"] is not None
+        assert np.allclose(out["spread"][5], 15.0)
+
+    def test_a_cell_with_too_few_pixels_is_nan_not_zero(self, tmp_path):
+        """At one pixel per cell p90 - p25 is 0.0 -- *maximally* planar, which
+        would grant the canopy verdict rather than withhold it. Unknown has to
+        read as unknown."""
+        path = _write_synthetic_cog(tmp_path / "ev.tif", uniform=True)
+        out = _load(path, meshsize=0.5)          # cells are one 0.5 m pixel
+        assert np.isnan(out["spread"]).all()
+        assert np.isfinite(out["height"]).any(), (
+            "the height still comes back; only the spread is withheld")
+
+    def test_the_minimum_pixel_rule_is_applied_exactly(self, tmp_path):
+        # 0.8 m cells over 0.5 m pixels: each cell holds 1, 2 or 4 pixel
+        # centres, so this straddles MIN_SPREAD_PIXELS instead of sitting far
+        # from it. Expected counts come from an independent labelling.
+        path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
+        out = _load(path, meshsize=0.8)
+        counts = _independent_pixel_counts(path, RECT, out["shape"])
+        assert set(np.unique(counts)) & {1, 2}, "fixture no longer straddles"
+        assert (counts >= MIN_SPREAD_PIXELS).any()
+        assert np.array_equal(
+            np.isnan(out["spread"]), counts < MIN_SPREAD_PIXELS)
+
+    def test_the_minimum_is_at_least_two_pixels(self):
+        assert MIN_SPREAD_PIXELS >= 2, (
+            "a single pixel yields p90 - p25 == 0.0 exactly, which is not a "
+            "measurement of anything")
+
+    def test_nodata_pixels_do_not_reach_the_spread(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif", nodata_ne=True)
+        out = _load(path)
+        n_rows, n_cols = out["shape"]
+        r, c = n_rows // 4, n_cols // 4
+        # The NE quarter is entirely nodata: no pixels, so no spread.
+        assert np.isnan(out["spread"][-r:, -c:]).all()
+        assert np.isfinite(out["spread"][:r, :c]).all()
+
+    def test_spread_uses_p25_and_p90_regardless_of_height_q(self, tmp_path):
+        """height_q moves the height, never the spread: the veto threshold has
+        to mean the same thing whatever percentile the caller asked heights
+        at."""
+        path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
+        at_90 = _load(path, height_q=90)
+        at_50 = _load(path, height_q=50)
+        assert not np.allclose(at_90["height"][5], at_50["height"][5]), (
+            "fixture is height_q-invariant, so the assertion below is vacuous")
+        assert np.allclose(at_90["spread"], at_50["spread"], equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
@@ -932,6 +1155,8 @@ def _scene(shape=SHAPE):
         "roughness": np.full(shape, 2.0),
         "n_all": np.full(shape, 100.0),
         "n_nonground": np.full(shape, 60.0),
+        # Crown-like pixel spread: textured, but nothing like a roof edge.
+        "spread": np.full(shape, 3.0),
     }
 
 
@@ -958,6 +1183,7 @@ def _refine(scene, *, static_tree_height=STATIC, params=None, **kwargs):
         roughness=scene["roughness"],
         n_all=scene["n_all"],
         n_nonground=scene["n_nonground"],
+        spread=scene["spread"],
         params=params or RefineParams(),
         **kwargs,
     )
@@ -1010,6 +1236,210 @@ class TestAcceptance:
         out = _refine(sc)
         assert out["canopy"][2, 5] == 40.0
         assert out["canopy"][13, 5] == 11.0          # control still replaced
+
+    def test_a_roof_edge_cell_does_not_win_the_canopy_verdict(self):
+        """THE regression the spread veto exists to fix, with the reviewer's
+        measured numbers.
+
+        A 2 m cell straddling the edge of a 20 m roof -- half its 0.5 m pixels
+        on the roof, half on the ground beside it -- measures roughness 9.90 m
+        (threshold 1.5) and mrf 0.40 (threshold 0.35). On roughness and mrf
+        alone that is a *maximally* canopy-like cell, so it would keep its 19.5
+        m height and override every fallback: strictly worse than the sanitiser
+        this module replaced, which gave it 10.0 m. The pixel spread reads the
+        step as a step (~19.5 m) and withholds the verdict.
+
+        The crown control at rows 12-15 differs *only* in the spread, so the
+        veto cannot pass by being blind to the whole cell.
+        """
+        step, crown = (2, 5), (13, 5)
+        sc = _scene()
+        sc["building_heights"][2, 6] = 20.0
+        _tree(sc, step, 19.5, mrf=0.40, roughness=9.90, spread=19.5)
+        _tree(sc, (4, 3), 6.0)                        # median source: {6, 12}
+        _tree(sc, (4, 4), 12.0)
+
+        sc["building_heights"][13, 6] = 20.0
+        _tree(sc, crown, 19.5, mrf=0.40, roughness=9.90, spread=3.0)
+
+        out = _refine(sc)
+
+        assert out["verdict"][step] != VERDICT_CANOPY, (
+            "a cell straddling a roof edge won the canopy verdict on point "
+            "roughness alone -- roughness cannot tell a step from texture")
+        assert out["verdict"][step] == VERDICT_AMBIGUOUS_REPLACE, (
+            "the veto must drop the cell to ambiguous, the safe bucket -- not "
+            "promote it to roof")
+        assert out["canopy"][step] == 9.0             # median of {6, 12}
+
+        assert out["verdict"][crown] == VERDICT_CANOPY, (
+            "vetoing every rough cell would 'fix' the spikes by bringing back "
+            "the caps; a textured crown has a small pixel spread and must "
+            "still keep its height")
+        assert out["canopy"][crown] == 19.5
+
+
+class TestSpreadVeto:
+    """``spread`` (per-cell p90 - p25 of pixel heights) may only ever *remove*
+    the canopy verdict. It adds no verdict of its own: a vetoed cell falls to
+    ambiguous, the existing conservative bucket, and Task 8 calibrates before
+    anything is given new power.
+    """
+
+    def _pair(self, spread, **overrides):
+        """One tree at (2, 5) with canopy evidence and the given spread."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=spread, **overrides)
+        return sc
+
+    def test_a_large_spread_removes_the_canopy_verdict(self):
+        out = _refine(self._pair(19.5))
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["counts"]["canopy"] == 0
+
+    def test_a_small_spread_leaves_the_canopy_verdict_alone(self):
+        out = _refine(self._pair(3.0))
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["counts"]["canopy"] == 1
+
+    def test_the_threshold_is_inclusive(self):
+        p = RefineParams()
+        assert _refine(self._pair(p.spread_max_m))["verdict"][2, 5] == \
+            VERDICT_CANOPY
+        assert _refine(self._pair(np.nextafter(p.spread_max_m, np.inf)))[
+            "verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+
+    def test_nan_spread_does_not_grant_the_canopy_verdict(self):
+        """The reader NaNs the spread where a cell holds too few pixels to
+        measure one. Unknown must not read as planar."""
+        out = _refine(self._pair(np.nan))
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+
+    def test_the_veto_never_produces_a_roof_verdict(self):
+        """Roof is a *confident* verdict that force-replaces. A step-like
+        spread on otherwise canopy-like evidence is not confidence in a roof."""
+        sc = self._pair(19.5)
+        sc["building_heights"][2, 6] = 30.0            # adjacent, far in height
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["counts"]["roof"] == 0
+        assert out["canopy"][2, 5] == 19.5
+
+    def test_the_veto_does_not_touch_roof_evidence(self):
+        """The roof verdict is unchanged by spread in either direction: it is
+        reached on mrf and roughness alone, so a planar spread cannot create it
+        and a step-like spread cannot remove it."""
+        for spread in (0.0, 25.0):
+            sc = _scene()
+            sc["building_heights"][2, 6] = 30.0
+            _tree(sc, (2, 5), 29.5, spread=spread, **ROOFLIKE)
+            _tree(sc, (4, 3), 12.0)
+            assert _refine(sc)["verdict"][2, 5] == VERDICT_ROOF, spread
+
+    def test_spread_none_leaves_the_veto_inert(self):
+        """Callers that predate the signal keep the old behaviour, exactly as
+        ``n_nonground=None`` does. The reader always supplies it."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)
+        out = classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            mrf=sc["mrf"], roughness=sc["roughness"], n_all=sc["n_all"],
+            n_nonground=sc["n_nonground"], spread=None,
+        )
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+
+    def test_vetoed_cells_are_counted_outside_the_partition(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)          # vetoed
+        _tree(sc, (10, 5), 19.5, spread=3.0)          # not vetoed
+        _tree(sc, (14, 5), 19.5, **AMBIGUOUS)         # never canopy anyway
+        counts = _refine(sc)["counts"]
+        assert counts["spread_veto"] == 1, (
+            "only cells that would otherwise have been canopy count as vetoed")
+        assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"]
+
+    def test_the_veto_is_inert_in_degraded_mode(self):
+        """No canopy verdict can fire without evidence bands, so the veto has
+        nothing to remove -- degraded behaviour must be bit-for-bit what it was
+        before spread existed."""
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, spread=19.5)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+        _tree(sc, (10, 10), 31.0, spread=22.0)
+
+        common = dict(mrf=None, roughness=None, n_all=None, n_nonground=None)
+        with_spread = classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            spread=sc["spread"], **common)
+        without = classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            spread=None, **common)
+
+        assert np.array_equal(with_spread["canopy"], without["canopy"])
+        assert np.array_equal(with_spread["verdict"], without["verdict"])
+        assert with_spread["counts"]["spread_veto"] == 0
+
+    def test_distrusted_evidence_is_not_reported_as_a_spread_veto(self):
+        """A cell the evidence trust gate already rejected was never going to
+        be canopy; attributing it to the veto would mislead the calibration."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5, n_all=1.0)
+        assert _refine(sc)["counts"]["spread_veto"] == 0
+
+
+class TestSpreadStatistics:
+    """Reported whether or not evidence bands exist -- the single-band COG on
+    disk is the only place the distribution can be measured before Task 8."""
+
+    def _stats(self, **kwargs):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 20.0
+        _tree(sc, (2, 5), 19.5, spread=18.0)          # footprint-adjacent
+        _tree(sc, (10, 10), 12.0, spread=2.0)         # far from any footprint
+        _tree(sc, (12, 10), 12.0, spread=4.0)         # far from any footprint
+        return classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            mrf=sc["mrf"], roughness=sc["roughness"], n_all=sc["n_all"],
+            n_nonground=sc["n_nonground"], spread=sc["spread"], **kwargs,
+        )["spread_stats"]
+
+    def test_adjacent_and_non_adjacent_are_reported_apart(self):
+        stats = self._stats()
+        assert stats["adjacent"]["n"] == 1
+        assert stats["non_adjacent"]["n"] == 2
+        assert stats["all"]["n"] == 3
+        assert stats["adjacent"]["p50"] == pytest.approx(18.0)
+        assert stats["non_adjacent"]["p50"] == pytest.approx(3.0)
+
+    def test_statistics_are_produced_in_degraded_mode(self):
+        stats = self._stats(degraded=True)
+        assert stats["all"]["n"] == 3
+        assert stats["adjacent"]["p50"] == pytest.approx(18.0)
+
+    def test_no_spread_means_no_statistics(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5)
+        out = classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            spread=None, degraded=True)
+        assert out["spread_stats"] is None
+        assert format_spread_stats(None) == ""
+
+    def test_an_empty_bucket_reports_no_percentiles(self):
+        sc = _scene()
+        _tree(sc, (10, 10), 12.0, spread=2.0)         # nothing adjacent
+        out = classify_and_refine(
+            sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+            spread=sc["spread"], degraded=True)
+        assert out["spread_stats"]["adjacent"]["n"] == 0
+        assert out["spread_stats"]["adjacent"]["p50"] is None
+
+    def test_the_summary_names_both_populations(self):
+        text = format_spread_stats(self._stats())
+        assert "adjacent" in text
+        assert "18" in text
 
 
 class TestDecisionTable:
@@ -1243,6 +1673,9 @@ class TestDegradedMode:
         return classify_and_refine(
             scene["height"], scene["tree_mask"], scene["building_heights"],
             STATIC, mrf=None, roughness=None, n_all=None, n_nonground=None,
+            # The reader returns spread even from a single-band COG, so the
+            # live degraded path really does carry it.
+            spread=scene["spread"],
             **kwargs,
         )
 
@@ -1515,7 +1948,7 @@ class TestInvariants:
 
     @pytest.mark.parametrize(
         "key", ["tree_mask", "building_heights", "mrf", "roughness",
-                "n_all", "n_nonground"]
+                "n_all", "n_nonground", "spread"]
     )
     def test_shape_mismatch_is_rejected(self, key):
         sc = _scene()
@@ -1540,10 +1973,19 @@ class TestRefineParams:
         dict(median_radius=-1),
         dict(adjacency_radius=-1),
         dict(min_points=0),
+        dict(spread_max_m=0.0),
+        dict(spread_max_m=-1.0),
     ])
     def test_incoherent_parameters_are_rejected(self, kwargs):
         with pytest.raises(ValueError):
             RefineParams(**kwargs)
+
+    def test_the_spread_ceiling_is_documented_as_a_seed(self):
+        """Nothing downstream may treat it as calibrated: Task 8 measures the
+        distribution before this number gains any authority."""
+        assert RefineParams.spread_max_m > 0
+        assert "seed" in RefineParams.__doc__.lower()
+        assert "spread_max_m" in RefineParams.__doc__
 
 
 class TestStaticTreeHeight:
@@ -1588,6 +2030,9 @@ class TestRefineFromEvidence:
             "roughness": None if degraded else scene["roughness"],
             "n_all": None if degraded else scene["n_all"],
             "n_nonground": None if degraded else scene["n_nonground"],
+            # Never None: the spread comes off band 1, so the reader returns it
+            # in degraded mode too.
+            "spread": scene["spread"],
             "degraded": degraded,
             "shape": scene["height"].shape,
         }
@@ -1601,6 +2046,17 @@ class TestRefineFromEvidence:
         )
         assert out["canopy"][2, 5] == 25.0
         assert out["degraded"] is False
+
+    def test_the_spread_reaches_the_veto(self):
+        """Without forwarding, every assertion above still passes and the veto
+        is dead code in production."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)
+        out = refine_from_evidence(
+            self._evidence(sc), sc["tree_mask"], sc["building_heights"], STATIC
+        )
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["counts"]["spread_veto"] == 1
 
     def test_degraded_dict_is_honoured(self):
         sc = _scene()
@@ -1659,3 +2115,24 @@ class TestRefineFromEvidence:
         assert out["counts"]["canopy"] == 0
         # No buildings anywhere -> nothing is suspect -> heights survive.
         assert np.nanmedian(out["canopy"][:shape[0] // 4]) > 15.0
+
+    def test_end_to_end_a_raster_step_is_vetoed(self, tmp_path):
+        """Reader to verdict, on a raster: the row of cells straddling the
+        20 m -> 5 m edge carries the roof height *and* the canopy-like evidence
+        the SW quarter gets, and only the pixel spread separates them."""
+        path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
+        evidence = _load(path)
+        shape = evidence["shape"]
+        # Row 5 pools mrf 0.45 (two of its four pixel rows are inside the
+        # high-multi-return corner) and roughness 7.57 -- the step reads as
+        # rough, exactly as the reviewer measured on real data.
+        params = RefineParams(mrf_hi=0.4, rough_hi_m=0.9, rough_lo_m=0.5,
+                              spread_max_m=6.0)
+        out = refine_from_evidence(
+            evidence, np.ones(shape, bool), np.zeros(shape), STATIC,
+            params=params)
+        c = shape[1] // 4
+        # Row 5 straddles the step; rows 0-4 sit wholly on the 20 m plane.
+        assert (out["verdict"][:5, :c] == VERDICT_CANOPY).all()
+        assert (out["verdict"][5, :c] == VERDICT_AMBIGUOUS_KEEP).all()
+        assert out["counts"]["spread_veto"] == c

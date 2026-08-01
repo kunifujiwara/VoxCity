@@ -3,8 +3,16 @@
 Replaces the coincidence heuristics that lived in main.py: the nDSM raster
 genuinely contains roofs (Tokyo LAS has no vegetation/building classes), so
 tree/roof separation here uses physical evidence -- multi-return fraction and
-surface roughness pooled from the COG's count/sum bands -- with building
-footprints and height coincidence only as fallback for ambiguous cells.
+surface roughness pooled from the COG's count/sum bands, plus the per-cell
+spread of the height band's own pixels -- with building footprints and height
+coincidence only as fallback for ambiguous cells.
+
+The three are not interchangeable. Multi-return fraction and roughness say what
+a cell is *made of*; the pixel spread says whether the cell is one surface at
+all. Roughness cannot distinguish those: a cell split between a roof and the
+ground beside it has a large standard deviation for the same reason a crown
+does. So the spread is used only to *withhold* the canopy verdict, never to
+grant one -- see RefineParams.spread_max_m.
 
 Frames: every grid returned to callers is anchored at ``rectangle_vertices[0]``
 with axis 0 running along ``side_1`` (v0 -> v1) and axis 1 along ``side_2``
@@ -31,6 +39,7 @@ import numpy as np
 
 __all__ = [
     "groupwise_percentile",
+    "groupwise_percentiles",
     "pool_evidence",
     "local_tree_median",
     "load_ndsm_evidence",
@@ -38,7 +47,11 @@ __all__ = [
     "classify_and_refine",
     "refine_from_evidence",
     "format_counts",
+    "format_spread_stats",
     "DEFAULT_PARAMS",
+    "MIN_SPREAD_PIXELS",
+    "SPREAD_LO_Q",
+    "SPREAD_HI_Q",
     "PARTITION_KEYS",
     "VERDICT_NONE",
     "VERDICT_CANOPY",
@@ -54,6 +67,37 @@ __all__ = [
 # evidence. A COG with fewer than EVIDENCE_BANDS bands is read in degraded
 # mode: height only, no evidence.
 EVIDENCE_BANDS = 6
+
+# The percentile pair whose difference is the per-cell *pixel* spread. Together
+# with :data:`MIN_SPREAD_PIXELS` these define the spread signal, and they are
+# fixed rather than parameterised: ``RefineParams.spread_max_m`` is a threshold
+# on a specific statistic, so a caller free to redefine the statistic would
+# silently change what the threshold means.
+#
+# p25 rather than the minimum, and p90 rather than the maximum, because both
+# tails are where a stray return lands: one ground hit through a gap in a crown
+# would put the minimum on the terrain, and one bird or wire would put the
+# maximum well above it. p90 also matches the height percentile the reader
+# returns, so a cell's spread is measured against the same top surface its
+# height is taken from.
+SPREAD_LO_Q = 25.0
+SPREAD_HI_Q = 90.0
+
+#: Fewest valid band-1 pixels a cell may hold and still get a spread; below it
+#: the spread is NaN.
+#:
+#: Four, because that is where the two ranks land on distinct pixels on *both*
+#: sides of an even split: for a cell of four pixels, p25 interpolates within
+#: the lower pair and p90 within the upper pair, so a half-on-roof/half-on-ground
+#: cell reports the full step. Below four the statistic degrades towards the
+#: dangerous direction rather than the safe one -- at a single pixel p90 - p25 is
+#: 0.0 *exactly*, which is not "unknown" but the maximally planar reading, and
+#: planar is what *grants* the canopy verdict. Same argument as pool_evidence's
+#: two-non-ground-point floor for roughness, with the polarity reversed.
+#:
+#: In practice this only bites where the raster barely covers a cell: the module
+#: targets 2 m cells over a 0.5 m nDSM, i.e. ~16 pixels per cell.
+MIN_SPREAD_PIXELS = 4
 
 
 def _as_group_labels(groups: np.ndarray) -> np.ndarray:
@@ -84,34 +128,60 @@ def _valid_group_selection(groups: np.ndarray, n_groups: int) -> np.ndarray:
     return (groups >= 0) & (groups < n_groups)
 
 
-def groupwise_percentile(
-    values: np.ndarray,
-    groups: np.ndarray,
-    n_groups: int,
-    q: float,
-) -> np.ndarray:
-    """Exact percentile of *values* within each group label.
+def groupwise_percentiles(values, groups, n_groups, qs):
+    """Several exact percentiles of *values* within each group, from one sort.
 
     Non-finite values (NaN, +/-inf) are ignored; a group with no finite values
-    yields NaN. Matches ``np.percentile``'s default 'linear' method.
+    yields NaN for every *q*. Matches ``np.percentile``'s default 'linear'
+    method.
 
     Vectorized: one ``np.lexsort`` puts every group's values in a contiguous
     ascending run, after which the interpolated rank of each group is read out
-    with fancy indexing. There is no Python loop over cells or pixels.
+    with fancy indexing, once per requested *q*. There is no Python loop over
+    cells or pixels.
 
-    Returns a ``(n_groups,)`` float array. Raises ``ValueError`` if *q* is
-    outside [0, 100] -- the rank arithmetic below would otherwise index out of
-    the run for q > 100 and, worse, return a plausible-looking extrapolated
-    number for q < 0.
+    Multiple quantiles share the sort because the sort is the cost: the reader
+    calls this over every raster pixel in the read window (16 M for a 2 km
+    target at 0.5 m), where the lexsort dominates and each extra quantile is one
+    more fancy-index read of arrays that already exist. Peak memory is unchanged
+    -- the sorted copies exist once either way -- so the pixel-spread signal is
+    added without moving the documented ~2 GB peak.
+
+    Args:
+        values: per-item values, raveled.
+        groups: integer group label per item; negative or >= *n_groups* is
+            dropped (see :func:`_valid_group_selection`).
+        n_groups: number of groups.
+        qs: percentiles in [0, 100]; at least one.
+
+    Returns:
+        ``(quantiles, counts)`` where *quantiles* is ``(len(qs), n_groups)`` in
+        the order given, and *counts* is the ``(n_groups,)`` integer number of
+        finite in-range values each group received. The counts come free from
+        the same pass and let callers apply a per-group minimum without a second
+        sweep over the pixels.
+
+    Raises:
+        ValueError: if *qs* is empty, or any q is outside [0, 100] -- the rank
+            arithmetic below would otherwise index out of the run for q > 100
+            and, worse, return a plausible-looking extrapolated number for
+            q < 0.
     """
-    q = float(q)
-    if not 0.0 <= q <= 100.0:
-        raise ValueError(f"q must be in [0, 100], got {q!r}")
+    qs = np.asarray([float(q) for q in qs], dtype=np.float64)
+    if qs.size == 0:
+        raise ValueError("qs must contain at least one percentile")
+    # Stated as the negation of "in range" rather than as "out of range": NaN
+    # fails every comparison, so ``(qs < 0) | (qs > 100)`` would pass it through
+    # to rank arithmetic that casts NaN to a huge negative index.
+    bad = qs[~((qs >= 0.0) & (qs <= 100.0))]
+    if bad.size:
+        raise ValueError(f"q must be in [0, 100], got {float(bad[0])!r}")
 
     n_groups = int(n_groups)
-    out = np.full(n_groups, np.nan, dtype=np.float64)
+    out = np.full((qs.size, max(n_groups, 0)), np.nan, dtype=np.float64)
+    counts = np.zeros(max(n_groups, 0), dtype=np.intp)
     if n_groups <= 0:
-        return out
+        return out, counts
 
     values = np.asarray(values, dtype=np.float64).ravel()
     groups = _as_group_labels(groups)
@@ -123,7 +193,7 @@ def groupwise_percentile(
 
     keep = np.isfinite(values) & _valid_group_selection(groups, n_groups)
     if not keep.any():
-        return out
+        return out, counts
     values = values[keep]
     groups = groups[keep]
 
@@ -132,21 +202,38 @@ def groupwise_percentile(
     sorted_values = values[order]
     sorted_groups = groups[order]
 
-    counts = np.bincount(sorted_groups, minlength=n_groups)
+    counts = np.bincount(sorted_groups, minlength=n_groups).astype(np.intp)
     starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
 
     present = np.flatnonzero(counts)
-    # Interpolated rank within each run, exactly as np.percentile computes it.
-    pos = (counts[present] - 1) * (q / 100.0)
-    lo = np.floor(pos).astype(np.intp)
-    hi = np.ceil(pos).astype(np.intp)
-    frac = pos - lo
     base = starts[present]
-    out[present] = (
-        sorted_values[base + lo] * (1.0 - frac)
-        + sorted_values[base + hi] * frac
-    )
-    return out
+    span = counts[present] - 1
+    for row, q in enumerate(qs):
+        # Interpolated rank within each run, exactly as np.percentile computes.
+        pos = span * (q / 100.0)
+        lo = np.floor(pos).astype(np.intp)
+        hi = np.ceil(pos).astype(np.intp)
+        frac = pos - lo
+        out[row, present] = (
+            sorted_values[base + lo] * (1.0 - frac)
+            + sorted_values[base + hi] * frac
+        )
+    return out, counts
+
+
+def groupwise_percentile(
+    values: np.ndarray,
+    groups: np.ndarray,
+    n_groups: int,
+    q: float,
+) -> np.ndarray:
+    """Exact percentile of *values* within each group label.
+
+    A single-quantile view of :func:`groupwise_percentiles`; see there for the
+    semantics. Returns a ``(n_groups,)`` float array.
+    """
+    quantiles, _ = groupwise_percentiles(values, groups, n_groups, (q,))
+    return quantiles[0]
 
 
 def pool_evidence(
@@ -312,6 +399,12 @@ def load_ndsm_evidence(
     returned here is the ``height_q`` percentile over the cell's pixels, which a
     lone contaminated pixel cannot move.
 
+    The same pixels also yield ``spread`` -- ``p90 - p25`` of the cell's band-1
+    heights. A cell straddling a roof edge reads ~20 m there where a crown reads
+    ~2-5 m, which is the one thing the point-level ``roughness`` cannot say: a
+    standard deviation is as large for a step as it is for texture. Because it
+    comes off band 1 it needs no new band and survives degraded mode.
+
     Everything returned is anchored at ``rectangle_vertices[0]`` with axis 0
     along ``side_1`` -- row 0 = south under the app's ``[SW, NW, NE, SE]``
     convention; see the module docstring. ``src.read(window=...)`` yields
@@ -337,6 +430,10 @@ def load_ndsm_evidence(
     as they are consumed. Targets much beyond that want the window read in row
     blocks, pooling each block's labels into the same accumulators.
 
+    ``spread`` does not move that figure: it is read out of the same single
+    lexsort as the height percentile (see :func:`groupwise_percentiles`) and
+    every array it adds is one per *cell*, not one per pixel.
+
     Args:
         rectangle_vertices: target rectangle, ``[SW, NW, NE, SE]`` in (lon, lat).
         meshsize: model cell size in metres.
@@ -349,6 +446,11 @@ def load_ndsm_evidence(
 
         * ``height``       -- (rows, cols) float, per-cell percentile of band 1;
                               NaN where no valid pixel fell in the cell.
+        * ``spread``       -- (rows, cols) float, per-cell ``p90 - p25`` of the
+                              band-1 *pixel* heights; NaN below
+                              :data:`MIN_SPREAD_PIXELS` pixels. Never ``None``:
+                              it comes off band 1, so degraded mode has it too.
+                              Independent of *height_q* by construction.
         * ``mrf``, ``roughness``, ``n_all``, ``n_nonground`` -- per-cell evidence
                               from :func:`pool_evidence`, or ``None`` each in
                               degraded mode.
@@ -445,12 +547,25 @@ def load_ndsm_evidence(
     if not (labels >= 0).any():
         return None
 
-    height = groupwise_percentile(
-        data[0].ravel(), labels, n_cells, height_q
-    ).reshape(n_rows, n_cols)
+    # One lexsort, three reads: the height percentile and the p25/p90 pair the
+    # pixel spread is the difference of. See groupwise_percentiles for why they
+    # share the sort, and SPREAD_LO_Q/SPREAD_HI_Q for why the pair is fixed.
+    quantiles, pixel_counts = groupwise_percentiles(
+        data[0].ravel(), labels, n_cells, (height_q, SPREAD_LO_Q, SPREAD_HI_Q)
+    )
+    height = quantiles[0].reshape(n_rows, n_cols)
+    spread = quantiles[2] - quantiles[1]
+    # Too few pixels to have measured a spread. NaN, not the 0.0 the arithmetic
+    # would otherwise hand back -- see MIN_SPREAD_PIXELS.
+    spread[pixel_counts < MIN_SPREAD_PIXELS] = np.nan
+    spread = spread.reshape(n_rows, n_cols)
 
     out: Dict[str, object] = {
         "height": height,
+        # Derived from band 1, so it survives degraded mode -- which is the
+        # point: it is the one evidence channel measurable on the single-band
+        # raster that is on disk today.
+        "spread": spread,
         "degraded": bool(degraded),
         "shape": (n_rows, n_cols),
     }
@@ -571,6 +686,40 @@ class RefineParams:
     which is the conservative bucket, rather than towards a confident mistake.
 
     * ``mrf_hi`` / ``rough_hi_m`` -- both must be met for the canopy verdict.
+    * ``spread_max_m`` -- ceiling on the per-cell pixel spread (``p90 - p25`` of
+      band-1 pixel heights) for the canopy verdict. A **veto only**: exceeding
+      it removes the canopy verdict, it never grants one and never produces a
+      roof verdict, so a mis-set value costs kept heights rather than
+      manufacturing confident replacements.
+
+      A **seed**, but a measured one. Over one Chuo-ku target (350 x 390 m,
+      2 m cells, 925 tree cells with a spread), among cells at least 8 m tall --
+      the population where the canopy verdict decides anything -- the spread
+      runs p50 1.5, p75 5.8, p90 8.7, and the footprint-adjacent and
+      non-adjacent distributions are *indistinguishable* up to about 8 m. They
+      separate above it: the share exceeding the threshold, adjacent versus
+      non-adjacent, goes 0.20/0.16 at 8 m, 0.14/0.07 at 9 m, 0.09/0.04 at 10 m,
+      0.07/0.02 at 12 m, and above 13.4 m the non-adjacent population is
+      exhausted entirely. A threshold in the single digits therefore vetoes a
+      quarter of all tall tree cells while separating nothing; 10 m sits just
+      past the knee, costs ~4% of non-adjacent cells, and is far below the
+      19.5 m the reviewer's roof-edge cell measures.
+
+      What the number cannot do, and the calibration must confront: the spread
+      separates a *step* from texture, not a *roof* step from a crown step. A
+      cell half on a crown and half on open ground reads much like a cell half
+      on a roof -- in the sample, nearly every high-spread cell has
+      ``spread ~= height``, i.e. p25 sitting on the ground. That is another
+      reason the signal may only veto: "I cannot tell" is what it means, and
+      ambiguous is where it belongs.
+
+      Task 8 calibrates against a wider sample; until then nothing may treat
+      this as calibrated.
+
+      It exists because ``roughness`` cannot: a standard deviation of point
+      heights is maximal for a step discontinuity and merely large for crown
+      texture, so a 2 m cell half on a 20 m roof measures roughness 9.9 m and
+      mrf 0.40 -- clearing both canopy thresholds -- and would keep 19.5 m.
     * ``mrf_lo`` / ``rough_lo_m`` -- both must be met (plus an adjacent
       footprint) for the roof verdict.
     * ``min_points`` -- pooled return count below which ``mrf`` is not trusted.
@@ -594,6 +743,7 @@ class RefineParams:
     mrf_lo: float = 0.15
     rough_hi_m: float = 1.5
     rough_lo_m: float = 1.0
+    spread_max_m: float = 10.0
     min_points: int = 8
     min_nonground: int = 4
     coincidence_tol_m: float = 5.0
@@ -623,6 +773,13 @@ class RefineParams:
             raise ValueError(
                 "min_nonground must be >= 2; pool_evidence already returns NaN "
                 f"roughness below two points, got {self.min_nonground}"
+            )
+        if not self.spread_max_m > 0:
+            # Zero would veto every cell whose pixels are not bit-identical,
+            # i.e. abolish the canopy verdict and with it the fix for the false
+            # caps -- silently, since a vetoed cell is merely "ambiguous".
+            raise ValueError(
+                f"spread_max_m must be > 0, got {self.spread_max_m}"
             )
         if self.median_radius < 0 or self.adjacency_radius < 0:
             raise ValueError("radii must be non-negative")
@@ -658,6 +815,56 @@ def _max_in_window(values: np.ndarray, radius: int) -> np.ndarray:
     return maximum_filter(arr, size=2 * radius + 1, mode="constant", cval=0.0)
 
 
+#: Percentiles reported for each spread population. Wide on both tails: the
+#: threshold has to sit above the crown body and below the step population, and
+#: a median alone cannot show where those two separate.
+_SPREAD_REPORT_QS = (5, 10, 25, 50, 75, 90, 95, 99)
+
+
+def _spread_stats(spread, classified, near_bld) -> Optional[Dict[str, object]]:
+    """Distribution of the pixel spread over classified tree cells.
+
+    Split by footprint adjacency because that is the split the veto is about:
+    the at-risk population is tree cells beside a building, which exist
+    precisely where land cover and footprints disagree. If ``spread_max_m`` is
+    right, the adjacent population carries a heavy upper tail the non-adjacent
+    one does not.
+
+    Reported regardless of ``degraded``. In degraded mode the veto is inert --
+    no canopy verdict can fire without evidence bands -- but the *signal* is
+    still measurable there, and the single-band raster on disk is the only place
+    it can be measured on real data before the COG is rebuilt. That measurement
+    is what calibrates the threshold.
+
+    Returns ``None`` when no spread was supplied, otherwise
+    ``{"all", "adjacent", "non_adjacent"}``, each ``{"n": int, "p05": float |
+    None, ...}``. ``n`` counts cells with a *finite* spread; the percentiles are
+    ``None`` when ``n`` is zero rather than NaN, so a formatter cannot print
+    "nan" as though it were a measurement.
+    """
+    if spread is None:
+        return None
+
+    sel = np.asarray(classified, dtype=bool) & np.isfinite(spread)
+    adjacent = np.asarray(near_bld, dtype=bool)
+
+    def _describe(mask: np.ndarray) -> Dict[str, object]:
+        values = spread[mask]
+        out: Dict[str, object] = {"n": int(values.size)}
+        for q in _SPREAD_REPORT_QS:
+            out[f"p{q:02d}"] = (
+                float(np.percentile(values, q)) if values.size else None
+            )
+        out["max"] = float(values.max()) if values.size else None
+        return out
+
+    return {
+        "all": _describe(sel),
+        "adjacent": _describe(sel & adjacent),
+        "non_adjacent": _describe(sel & ~adjacent),
+    }
+
+
 def classify_and_refine(
     height,
     tree_mask,
@@ -668,6 +875,7 @@ def classify_and_refine(
     roughness=None,
     n_all=None,
     n_nonground=None,
+    spread=None,
     degraded: Optional[bool] = None,
     params: RefineParams = DEFAULT_PARAMS,
 ) -> Dict[str, object]:
@@ -690,6 +898,7 @@ def classify_and_refine(
     verdict             condition                                       action
     ==================  ==============================================  ================
     canopy              ``mrf >= mrf_hi`` and ``roughness >= rough_hi``  keep the height
+                        and ``spread <= spread_max_m``
     roof                ``mrf <= mrf_lo`` and ``roughness <= rough_lo``  local median
                         and a footprint is adjacent
     ambiguous           anything else                                   replace only if
@@ -702,6 +911,23 @@ def classify_and_refine(
     the whole design: it is what lets a real tall tree beside a matching-height
     building survive, and it is checked directly by
     ``test_tall_tree_beside_matching_building_survives``.
+
+    Because it overrides everything downstream, the canopy verdict is the one
+    place a wrong answer cannot be corrected -- which is why ``spread`` is in
+    the table. ``roughness`` is a standard deviation of point heights, and it
+    reads a *step* as at least as rough as texture: a 2 m cell half on a 20 m
+    roof and half on the ground beside it measures roughness 9.9 m and mrf 0.40,
+    clearing both canopy thresholds, and would keep 19.5 m. The pixel spread
+    (``p90 - p25`` of the cell's raster pixels) reads ~20 m for that step and
+    ~2-5 m for a crown.
+
+    ``spread`` is a **veto and nothing else**. It can only remove the canopy
+    verdict; it grants none, and it does not feed the roof verdict. A vetoed
+    cell lands in *ambiguous*, the conservative bucket, where a replacement
+    still requires an adjacent footprint *and* a coinciding height -- so a
+    mis-set ``spread_max_m`` costs kept heights, never confident mistakes.
+    ``spread=None`` leaves the veto inert, as ``n_nonground=None`` does for the
+    roughness confidence band; the reader always supplies it.
 
     Evidence is *distrusted* -- the cell is forced to ambiguous -- when it is
     NaN (``pool_evidence`` NaNs roughness below two non-ground points, and mrf
@@ -735,13 +961,18 @@ def classify_and_refine(
             least ``params.min_tree_height_m`` -- see the ValueError below.
         mrf, roughness, n_all, n_nonground: per-cell evidence from
             :func:`pool_evidence`, or ``None`` for degraded mode.
+        spread: (rows, cols) per-cell pixel spread from
+            :func:`load_ndsm_evidence`, or ``None`` to disable the veto. Not
+            part of degraded mode: it is available whether or not the evidence
+            bands are, and it is *reported* in degraded mode (see
+            ``spread_stats``) even though the veto has nothing to act on there.
         degraded: force degraded mode. ``None`` infers it from the evidence
             arrays; ``False`` with missing evidence is an error rather than a
             silent downgrade.
         params: :class:`RefineParams`.
 
     Returns:
-        ``{"canopy", "verdict", "counts", "degraded"}``:
+        ``{"canopy", "verdict", "counts", "degraded", "spread_stats"}``:
 
         * ``canopy``  -- (rows, cols) float, refined heights; 0.0 at non-tree
                          cells, finite everywhere.
@@ -750,6 +981,8 @@ def classify_and_refine(
                          ``counts["tree"]``, the rest are overlapping
                          diagnostics.
         * ``degraded``-- bool, whether evidence was available.
+        * ``spread_stats`` -- see :func:`_spread_stats`, or ``None`` when no
+                         spread was passed.
     """
     p = params
     static_tree_height = float(static_tree_height)
@@ -799,7 +1032,12 @@ def classify_and_refine(
                 "degraded=None to infer, or degraded=True to ignore evidence"
             )
 
+    # Available in degraded mode too -- it comes off band 1 -- so it is
+    # validated and summarised outside the evidence branch below.
+    sp = None if spread is None else _as_2d(spread, shape, "spread")
+
     n_distrusted = 0
+    n_spread_veto = 0
     if degraded:
         canopy_ev = np.zeros(shape, dtype=bool)
         roof_ev = np.zeros(shape, dtype=bool)
@@ -828,6 +1066,18 @@ def classify_and_refine(
         canopy_ev = trusted & (m >= p.mrf_hi) & (r >= p.rough_hi_m)
         roof_ev = trusted & (m <= p.mrf_lo) & (r <= p.rough_lo_m)
         n_distrusted = int((classified & ~trusted).sum())
+
+        # The veto. Applied to canopy_ev only, and deliberately NOT to roof_ev:
+        # a step-like spread is a reason to withhold confidence, not a reason to
+        # manufacture the opposite confidence. NaN (too few pixels to measure a
+        # spread) fails by explicit finiteness test rather than by comparison
+        # semantics, for the same reason NaN roughness does above -- and here
+        # the unguarded arithmetic value would be 0.0, the maximally planar
+        # reading, which grants rather than withholds.
+        if sp is not None:
+            spread_ok = np.isfinite(sp) & (sp <= p.spread_max_m)
+            n_spread_veto = int((classified & canopy_ev & ~spread_ok).sum())
+            canopy_ev = canopy_ev & spread_ok
 
     # THE line: canopy evidence wins over everything downstream, including the
     # coincidence test that used to cap real trees beside matching buildings.
@@ -886,6 +1136,7 @@ def classify_and_refine(
         # --- overlapping diagnostics, never summed into the partition ---
         "replaced": int(replace.sum()),
         "distrusted": n_distrusted,
+        "spread_veto": n_spread_veto,
         "guard_low": int(too_low.sum()),
         "guard_high": int(too_high.sum()),
     }
@@ -894,6 +1145,7 @@ def classify_and_refine(
         "verdict": verdict,
         "counts": counts,
         "degraded": bool(degraded),
+        "spread_stats": _spread_stats(sp, classified, near_bld),
     }
 
 
@@ -930,6 +1182,9 @@ def refine_from_evidence(
         roughness=evidence.get("roughness"),
         n_all=evidence.get("n_all"),
         n_nonground=evidence.get("n_nonground"),
+        # Not gated on ``degraded``: the reader derives it from band 1, so it is
+        # present either way and the statistics are wanted either way.
+        spread=evidence.get("spread"),
         degraded=evidence.get("degraded"),
         params=params,
     )
@@ -941,7 +1196,33 @@ def format_counts(counts: Mapping[str, int]) -> str:
         "{tree} tree cells: {canopy} canopy (kept), {roof} roof -> median, "
         "{ambiguous_keep} ambiguous keep, {ambiguous_replace} ambiguous "
         "replace, {no_data} no data; guards: {guard_low} below min, "
-        "{guard_high} above max; {distrusted} distrusted evidence"
+        "{guard_high} above max; {distrusted} distrusted evidence, "
+        "{spread_veto} spread-vetoed"
     ).format(**{key: counts.get(key, 0) for key in (
         "tree", *PARTITION_KEYS, "guard_low", "guard_high", "distrusted",
+        "spread_veto",
     )})
+
+
+def format_spread_stats(stats: Optional[Mapping[str, object]]) -> str:
+    """Multi-line summary of :func:`_spread_stats`, for the pipeline log.
+
+    Empty string when there is nothing to report, so the caller can print it
+    unconditionally. One line per population; the percentiles are what Task 8
+    calibrates ``spread_max_m`` against, so they are printed even in degraded
+    mode where the veto itself is inert.
+    """
+    if not stats:
+        return ""
+    lines = []
+    for name in ("all", "adjacent", "non_adjacent"):
+        bucket = stats.get(name) or {}
+        n = int(bucket.get("n", 0))
+        if not n:
+            lines.append(f"  {name:<13} n=0")
+            continue
+        cells = " ".join(
+            f"p{q:02d}={bucket[f'p{q:02d}']:.2f}" for q in _SPREAD_REPORT_QS
+        )
+        lines.append(f"  {name:<13} n={n} {cells} max={bucket['max']:.2f}")
+    return "pixel spread (m) over tree cells:\n" + "\n".join(lines)

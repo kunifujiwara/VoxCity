@@ -28,6 +28,7 @@ from .ndsm_refine import (
     DEFAULT_PARAMS,
     RefineParams,
     format_counts,
+    format_spread_stats,
     load_ndsm_evidence,
     refine_from_evidence,
 )
@@ -167,10 +168,13 @@ def refine_canopy_with_ndsm(
 
     # An LOD2 grid is mesh-voxelized: it holds true roof/wall geometry that the
     # 2.5-D component grids cannot describe, so regenerate_voxels() — which
-    # rebuilds from those grids — would replace it with extruded footprints
-    # (measured on Chuo-ku: roof slope 0.1512 -> 0.0965, building voxels
-    # 26,088 -> 21,623). voxcitygml.reapply_canopy overlays the canopy onto the
-    # existing grid instead, clearing and rewriting only canopy voxels.
+    # rebuilds from those grids — would replace it with extruded footprints.
+    # Measured on a Tsukiji target by test_ndsm_lod2_geometry.py, which owns the
+    # metric: roof slope fraction 0.2868 -> 0.2039 and building voxels 117,270
+    # -> 89,053 when the same model is refined through the rebuild route
+    # instead. voxcitygml.reapply_canopy overlays the canopy onto the existing
+    # grid instead, clearing and rewriting only canopy voxels — through it both
+    # numbers come back bitwise identical.
     #
     # Resolved up front, before anything is mutated: an older voxcitygml has no
     # such entrypoint, and bailing out after the component grids were rewritten
@@ -205,15 +209,39 @@ def refine_canopy_with_ndsm(
         )
         return False
 
+    tree_mask = land_cover_grid == tree_id
+    building_heights = np.asarray(voxcity_obj.buildings.heights, dtype=float)
+
+    # Footprint adjacency is the only thing that can make a tree cell suspect:
+    # a cell with no building near it is never replaced, in any mode. So an
+    # all-zero building grid does not merely weaken the refinement, it disables
+    # the half of it that removes spikes -- and it does so invisibly, because
+    # every cell then reports the perfectly legitimate verdict "kept". Checked
+    # here, above the LOD1/LOD2 write-back branch, so it covers both routes.
+    if np.any(tree_mask) and not np.any(
+            np.isfinite(building_heights) & (building_heights > 0)):
+        print(
+            "[nDSM] WARNING: the building height grid has no footprint at all "
+            "(no cell > 0). Footprint adjacency is what marks a tree cell as "
+            "suspect, so every tree cell will keep its nDSM height, roof "
+            "leakage included — the counts below will still look healthy."
+        )
+
     result = refine_from_evidence(
         evidence,
-        tree_mask=land_cover_grid == tree_id,
-        building_heights=voxcity_obj.buildings.heights,
+        tree_mask=tree_mask,
+        building_heights=building_heights,
         static_tree_height=static_tree_height,
         params=params,
     )
     canopy = result["canopy"]
     print(f"[nDSM] {format_counts(result['counts'])}")
+    # Printed in degraded mode too: the veto is inert without evidence bands,
+    # but the distribution is measurable there and is what calibrates
+    # spread_max_m. .get() because a stubbed classifier may not supply it.
+    spread_report = format_spread_stats(result.get("spread_stats"))
+    if spread_report:
+        print(f"[nDSM] {spread_report}")
 
     # Belt and braces. classify_and_refine fills every tree cell -- no_data
     # cells take the local median, or static_tree_height where the window holds

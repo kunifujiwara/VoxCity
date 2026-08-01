@@ -108,12 +108,15 @@ def _assert_unchanged(vc, snap):
         assert np.array_equal(value, snap[key]), f"{key} was modified"
 
 
-def _evidence(*, height=None, degraded=False, shape=None, canopy_like=True):
+def _evidence(*, height=None, degraded=False, shape=None, canopy_like=True,
+              spread=3.0):
     """A load_ndsm_evidence() return value.
 
     ``canopy_like`` puts every cell comfortably past the canopy thresholds, so
     the default scene keeps its nDSM heights untouched and any change in the
-    written-back canopy is the pipeline's doing, not the classifier's.
+    written-back canopy is the pipeline's doing, not the classifier's. That
+    includes a crown-like ``spread``: the reader returns one whether or not the
+    evidence bands exist, so it is never None here either.
     """
     if height is None:
         height = np.full(SHAPE, NDSM_HEIGHT, dtype=float)
@@ -135,6 +138,8 @@ def _evidence(*, height=None, degraded=False, shape=None, canopy_like=True):
         )
     return dict(
         height=height,
+        spread=(spread if isinstance(spread, np.ndarray)
+                else np.full(height.shape, spread, dtype=float)),
         degraded=degraded,
         shape=tuple(height.shape) if shape is None else shape,
         **evidence,
@@ -217,8 +222,10 @@ class TestWriteBackRouting:
         """LOD2 must take reapply_canopy, which clears and rewrites only canopy
         voxels. regenerate_voxels here rebuilds from the 2.5-D grids and would
         discard the mesh-voxelized roof/wall geometry the mode exists to
-        produce -- measured on Chuo-ku as roof slope 0.1512 -> 0.0965 and
-        26,088 -> 21,623 building voxels."""
+        produce. Measured in ``test_ndsm_lod2_geometry.py``, which runs both
+        routes over one real Tsukiji model: the rebuild takes roof slope
+        fraction 0.2868 -> 0.2039 and building voxels 117,270 -> 89,053, while
+        the overlay leaves both bitwise unchanged."""
         vc = _Model(building_lod=2)
         assert _refine(vc) is True
 
@@ -489,6 +496,58 @@ class TestDegradedMode:
         assert "tree cells" in out
         n_tree = int((_asymmetric_land_cover() == _TREE_ID).sum())
         assert f"{n_tree} tree cells" in out
+
+    def test_the_spread_distribution_is_logged_in_degraded_mode(
+            self, env, capsys):
+        """The single-band COG on disk is the only place the spread can be
+        measured on real data before the evidence rebuild ships, and the
+        measurement is what calibrates ``spread_max_m``. The veto is inert here;
+        the *reporting* is not."""
+        env["evidence"] = _evidence(degraded=True, spread=7.25)
+        assert _refine(_Model(building_lod=1)) is True
+        out = capsys.readouterr().out
+        assert "pixel spread" in out
+        assert "adjacent" in out
+        assert "7.25" in out
+
+    def test_no_spread_means_no_spread_log(self, env, capsys):
+        """A reader that predates the signal must not make the pipeline print an
+        empty stanza."""
+        env["evidence"] = _evidence(degraded=True)
+        del env["evidence"]["spread"]
+        assert _refine(_Model(building_lod=1)) is True
+        assert "pixel spread" not in capsys.readouterr().out
+
+
+class TestDegenerateBuildingHeights:
+    """Footprint adjacency is what makes the ambiguous bucket safe: without a
+    building nearby a cell is never replaced. An all-zero building grid
+    therefore makes *every* tree cell keep its nDSM height -- spikes included --
+    while the counts still look healthy, since "kept" is a legitimate outcome.
+    The failure is silent by construction, so it is announced.
+    """
+
+    @pytest.mark.parametrize("building_lod", [1, 2])
+    def test_an_all_zero_building_grid_is_announced(
+            self, env, capsys, building_lod):
+        vc = _Model(building_lod=building_lod)          # heights are all zero
+        assert _refine(vc) is True
+        out = capsys.readouterr().out.lower()
+        assert "building" in out and "no footprint" in out
+
+    def test_a_grid_with_footprints_says_nothing(self, env, capsys):
+        vc = _Model(building_lod=1)
+        vc.buildings.heights[0, 0] = 12.0
+        assert _refine(vc) is True
+        assert "no footprint" not in capsys.readouterr().out.lower()
+
+    def test_a_model_with_no_tree_cells_says_nothing(self, env, capsys):
+        """Nothing is at risk when there is nothing to refine, and a warning
+        every generation is a warning nobody reads."""
+        vc = _Model(building_lod=1,
+                    land_cover=np.zeros(SHAPE, dtype=np.int16))
+        assert _refine(vc) is True
+        assert "no footprint" not in capsys.readouterr().out.lower()
 
 
 class TestInputs:
