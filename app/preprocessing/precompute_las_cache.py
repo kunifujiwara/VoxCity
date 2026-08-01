@@ -160,6 +160,14 @@ def main(
     parquet_include_nodata: bool = typer.Option(False, help="Include nodata pixels in full Parquet export"),
     merge_batch_size: int = typer.Option(300, help="Batch size for merging GeoTIFFs to limit memory (<= number of tiles)"),
     merge_tmp_dir: Optional[Path] = typer.Option(None, help="Temporary directory for intermediate merges"),
+    evidence: bool = typer.Option(
+        True,
+        help=(
+            "Write the 6-band evidence nDSM (height + n_all, n_multi, n_nonground, "
+            "sum_z, sum_z2) that the runtime classifier reads. --no-evidence "
+            "reproduces the single-band raster for comparison runs."
+        ),
+    ),
 ):
     _ensure_dir(output_dir)
 
@@ -184,11 +192,15 @@ def main(
     # Layout
     dsm_dir         = output_dir / "dsm_geotiffs"
     dtm_dir         = output_dir / "dtm_geotiffs"
+    ev_dir          = output_dir / "evidence_geotiffs"
     merged_dsm_file = output_dir / "merged_dsm.tif"
     merged_dtm_file = output_dir / "merged_dtm.tif"
+    merged_ev_file  = output_dir / "merged_evidence.tif"
     merged_ndsm     = output_dir / "merged_ndsm.tif"
     final_ndsm      = output_dir / "ndsm.tif"
     _ensure_dir(dsm_dir); _ensure_dir(dtm_dir)
+    if evidence:
+        _ensure_dir(ev_dir)
 
     # Gather LAS files and optionally filter by AOI
     las_files = find_las_files(str(las_dir))
@@ -201,23 +213,41 @@ def main(
             typer.echo("No LAS files intersect AOI")
             raise typer.Exit(code=1)
 
-    # Per-file DSM/DTM
-    dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
+    # Per-file DSM/DTM (+ per-file evidence bands)
+    if evidence:
+        dsm_list, dtm_list, ev_list = process_las_files(
+            las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs,
+            evidence_output_dir=str(ev_dir),
+        )
+    else:
+        dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
+        ev_list = []
 
     # Merge
     # Use batched merge to handle thousands of tiles
+    tmp = str(merge_tmp_dir) if merge_tmp_dir else None
     merged_dsm_path = merge_geotiffs_batched(
-        dsm_list, str(merged_dsm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+        dsm_list, str(merged_dsm_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
     ) if dsm_list else None
     merged_dtm_path = merge_geotiffs_batched(
-        dtm_list, str(merged_dtm_file), target_crs, batch_size=merge_batch_size, tmp_dir=str(merge_tmp_dir) if merge_tmp_dir else None
+        dtm_list, str(merged_dtm_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
     ) if dtm_list else None
+    merged_ev_path = merge_geotiffs_batched(
+        ev_list, str(merged_ev_file), target_crs, batch_size=merge_batch_size, tmp_dir=tmp
+    ) if ev_list else None
     if not (merged_dsm_path and merged_dtm_path):
         typer.echo("Missing merged DSM/DTM; cannot create nDSM")
         raise typer.Exit(code=1)
+    if evidence and not merged_ev_path:
+        # Silently falling back to a single-band raster would produce a COG the
+        # runtime reads in degraded mode -- the exact failure this rebuild exists
+        # to end -- while every log line still says "nDSM ready".
+        typer.echo("Evidence bands were requested but no evidence raster was merged")
+        raise typer.Exit(code=1)
 
     # nDSM
-    build_ndsm(str(merged_dsm_file), str(merged_dtm_file), str(merged_ndsm))
+    build_ndsm(str(merged_dsm_file), str(merged_dtm_file), str(merged_ndsm),
+               evidence_path=merged_ev_path)
 
     # Optional crop to AOI
     if rectangle_vertices:
