@@ -13,7 +13,9 @@ All heavy lifting delegates to the *current* voxcity package API.
 
 from __future__ import annotations
 
+import dataclasses
 import gc
+import importlib
 import json
 import math
 import os
@@ -21,7 +23,8 @@ import shutil
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -216,6 +219,24 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     center_lon = (rectangle_vertices[0][0] + rectangle_vertices[2][0]) / 2.0
     center_lat = (rectangle_vertices[0][1] + rectangle_vertices[2][1]) / 2.0
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
+
+
+def _is_lod2_model(voxcity_obj) -> bool:
+    """True if this model's voxels came from LOD2 mesh voxelization.
+
+    Such a grid holds true roof/wall geometry and cannot be reconstructed from
+    the 2.5-D component grids (heights/min-heights/ids), so any
+    ``regenerate_voxels()`` call would silently replace it with extruded
+    footprints — i.e. downgrade it to LOD1. Callers that would regenerate must
+    check this first.
+    """
+    extras = getattr(voxcity_obj, "extras", None)
+    if not isinstance(extras, dict):
+        return False
+    try:
+        return int(extras.get("building_lod") or 1) >= 2
+    except (TypeError, ValueError):
+        return False
 
 
 def _load_citygml_cache(rectangle_vertices):
@@ -487,7 +508,13 @@ def _refine_canopy_with_ndsm(
     land_cover_source: str,
     static_tree_height: float = 10.0,
 ) -> bool:
-    """Refine canopy heights using cached nDSM COG, then regenerate voxels in-place."""
+    """Refine canopy heights using the cached nDSM COG, in place.
+
+    The refined canopy is pushed into the voxel grid two different ways: LOD1
+    grids are regenerated from the revised component grids, LOD2 grids get a
+    canopy-only overlay that preserves their mesh geometry. Returns False when
+    refinement could not be applied (the caller logs it; it is never fatal).
+    """
     land_cover_grid = voxcity_obj.land_cover.classes
     lc_classes = get_land_cover_classes(land_cover_source)
     name_to_id = {name: i for i, name in enumerate(lc_classes.values())}
@@ -497,6 +524,33 @@ def _refine_canopy_with_ndsm(
     if ndsm_grid is None:
         print("[nDSM] No nDSM COG cache found — skipping canopy refinement")
         return False
+
+    # An LOD2 grid is mesh-voxelized: it holds true roof/wall geometry that the
+    # 2.5-D component grids cannot describe, so regenerate_voxels() — which
+    # rebuilds from those grids — would replace it with extruded footprints
+    # (measured on Chuo-ku: roof slope 0.1512 -> 0.0965, building voxels
+    # 26,088 -> 21,623). voxcitygml.reapply_canopy overlays the canopy onto the
+    # existing grid instead, clearing and rewriting only canopy voxels.
+    #
+    # Resolved up front, before anything is mutated: an older voxcitygml has no
+    # such entrypoint, and bailing out after the component grids were rewritten
+    # would leave them describing crowns the voxel grid does not contain.
+    is_lod2 = _is_lod2_model(voxcity_obj)
+    reapply_canopy = None
+    if is_lod2:
+        try:
+            from voxcitygml import reapply_canopy
+        except ImportError as exc:
+            # Deliberately no regenerate_voxels() fallback: that rebuild is
+            # precisely what the missing entrypoint exists to avoid. Refinement
+            # is optional, so degrade to a no-op and let the caller report it.
+            print(
+                "[nDSM] Skipping canopy refinement: this voxcitygml has no "
+                "reapply_canopy(), and rebuilding the voxel grid would flatten "
+                f"the LOD2 roof/wall geometry into extruded footprints ({exc}). "
+                "Upgrade voxcitygml to use nDSM canopy in LOD2 mode."
+            )
+            return False
 
     # Align to land cover grid shape
     ndsm_aligned = _align_ndsm_to_grid(ndsm_grid, land_cover_grid.shape)
@@ -511,7 +565,7 @@ def _refine_canopy_with_ndsm(
     if np.any(missing):
         canopy[missing] = float(static_tree_height)
 
-    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights
+    # Fix suspicious nDSM values: roof leakage, spikes, and implausible heights.
     canopy = _sanitize_ndsm_canopy(
         canopy,
         building_heights=voxcity_obj.buildings.heights,
@@ -526,15 +580,43 @@ def _refine_canopy_with_ndsm(
     trunk_ratio = 11.76 / 19.98
     canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
 
-    # Update in-place
-    voxcity_obj.tree_canopy.top[:] = canopy
-    if voxcity_obj.tree_canopy.bottom is not None:
-        voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
+    # Branch on the binding, not on is_lod2: the two are equivalent only
+    # because the probe above returns early when the import fails, and a future
+    # non-returning path there would turn this into a call on None.
+    if reapply_canopy is not None:
+        # LOD2: overlay the canopy onto the existing grid. reapply_canopy owns
+        # the whole update — it writes canopy_top/canopy_bottom into
+        # tree_canopy itself, in place where the existing array can take them
+        # (which keeps any extras alias current for free) and re-pointing the
+        # alias explicitly when it has to rebind. So this path deliberately
+        # mutates *nothing* beforehand. It raises ValueError on a missing
+        # extras['voxel_min_z'], on a canopy_bottom that does not match
+        # canopy_top, or on a mesh_vegetation_mask that does not match the
+        # voxel grid; the caller's handler is non-fatal, so pre-writing the
+        # component grids would leave them describing crowns the voxel grid
+        # never received, with only a server log to say so.
+        #
+        # Pass the already-derived bottom rather than the trunk ratio.
+        # voxcitygml's default ratio happens to equal ours today, so both would
+        # produce the same array — passing the bottom keeps that a coincidence
+        # this code does not depend on.
+        #
+        # Handed over at component-grid resolution, deliberately not resampled
+        # to the voxel grid's shape: reapply_canopy resamples a mismatched
+        # canopy itself (as it already does for the DEM) but *stores* what the
+        # caller passed, so a voxel-resolution array would leave tree_canopy.top
+        # out of step with land_cover, dem and buildings and break a later
+        # update_voxcity. Resampling is the package's job, not a fallback.
+        reapply_canopy(voxcity_obj, canopy, canopy_bottom=canopy_bottom)
     else:
-        voxcity_obj.tree_canopy.bottom = canopy_bottom
-
-    # Regenerate voxels with the refined canopy
-    regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
+        # LOD1: the voxels *are* extruded footprints, so revise the 2.5-D
+        # component grids and rebuild the grid from them.
+        voxcity_obj.tree_canopy.top[:] = canopy
+        if voxcity_obj.tree_canopy.bottom is not None:
+            voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
+        else:
+            voxcity_obj.tree_canopy.bottom = canopy_bottom
+        regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
 
     print(f"[nDSM] Canopy refinement applied — tree cells: {int(np.count_nonzero(canopy > 0))}")
     return True
@@ -861,9 +943,223 @@ def _reset_taichi_and_caches():
 # Endpoints
 # ---------------------------------------------------------------------------
 
+# Fields VoxCityGML's GridParams gained together with rotated-rectangle
+# support: the affine grid frame (NW origin + column/row basis vectors).
+_ROTATION_GRID_FIELDS = frozenset({
+    "origin_lon", "origin_lat",
+    "e_col_lon", "e_col_lat", "e_row_lon", "e_row_lat",
+})
+
+
+def _voxcitygml_grid_params(pkg):
+    """This package object's ``grid_utils.GridParams`` class, or ``None``.
+
+    Attribute first, ``importlib`` only as a fallback — and the fallback's
+    result is read back *through* ``pkg``. Both halves are deliberate:
+
+    * The attribute is how voxcitygml's own code reaches this module
+      (``from .grid_utils import ...``), so it answers the question actually
+      being asked: what will *this* package object grid with? Today it is
+      always bound, as a side effect of ``__init__`` -> ``pipeline`` importing
+      it eagerly; the ``importlib`` fallback keeps the probe correct if
+      VoxCityGML ever makes that import lazy or restructures ``pipeline``,
+      instead of misreporting a current install as pre-rotation.
+    * ``import_module`` resolves ``sys.modules['voxcitygml.grid_utils']``,
+      which can still hold the *real* submodule while ``pkg`` is a test stub —
+      importing the real package anywhere in the process poisons it for the
+      rest of the run. Re-reading the attribute afterwards is what keeps that
+      from leaking: the import machinery binds the child onto the parent it
+      actually loaded under, so a cached hit for someone else's package leaves
+      ``pkg`` untouched and is correctly ignored.
+    """
+    grid_utils = getattr(pkg, "grid_utils", None)
+    if grid_utils is None:
+        try:
+            importlib.import_module("voxcitygml.grid_utils")
+        except Exception:  # ImportError, or anything the module raises
+            return None
+        grid_utils = getattr(pkg, "grid_utils", None)
+        if grid_utils is None:
+            return None
+    return getattr(grid_utils, "GridParams", None)
+
+
+def _voxcitygml_has_rotation_frame(pkg) -> Tuple[bool, str]:
+    """Whether this voxcitygml build grids a *rotated* rectangle correctly.
+
+    Rotation shipped in voxcitygml 0.3.0, but the field probe below — not a
+    version comparison — stays the authoritative runtime gate: voxcitygml is
+    normally installed editable from a git checkout, and editable installs
+    routinely report stale metadata (the recorded version is whatever
+    ``pip install -e`` saw, not what the working tree holds now). A
+    ``__version__``/``importlib.metadata`` check would happily read "0.2.0"
+    off a current checkout and "0.3.0" off one rolled back since. The
+    structure cannot lie the same way.
+
+    This matters because the old behaviour is silent, not loud: given a rotated
+    rectangle the pre-rotation ``compute_grid_params`` did plain min/max
+    bounding-box arithmetic and returned an axis-aligned grid — no exception,
+    and no degenerate-input error either, since the rectangle is perfectly
+    valid. The wrong geometry would come back looking correct.
+
+    Returns ``(ok, why_not)``; the two ways this can fail are reported
+    separately so an unreachable ``grid_utils`` is never misdiagnosed as an
+    outdated one.
+    """
+    params = _voxcitygml_grid_params(pkg)
+    if params is None:
+        return False, ("voxcitygml is installed but its grid_utils module "
+                       "could not be imported (no GridParams), so the backend "
+                       "cannot confirm this build grids rotated target "
+                       "rectangles correctly. This usually means a broken or "
+                       "partial install: reinstall with pip install -e "
+                       "<path-to-VoxCityGML>")
+    try:
+        names = {f.name for f in dataclasses.fields(params)}
+    except TypeError:  # not a dataclass — fall back to declared annotations
+        names = set(getattr(params, "__annotations__", None) or ())
+    if not _ROTATION_GRID_FIELDS.issubset(names):
+        return False, ("the installed voxcitygml predates rotated-rectangle "
+                       "support — its GridParams has no affine grid frame "
+                       "(origin_lon/e_col_lon/...), so a rotated target "
+                       "rectangle would be silently voxelized as its "
+                       "axis-aligned bounding box. LOD2 needs voxcitygml "
+                       ">= 0.3.0; update the VoxCityGML checkout and "
+                       "reinstall: pip install -e <path-to-VoxCityGML>")
+    return True, ""
+
+
+@lru_cache(maxsize=1)
+def _voxcitygml_import_state() -> Tuple[bool, str]:
+    """Probe whether voxcitygml is importable and new enough. Returns (ok, why).
+
+    Cached because importing voxcitygml pulls in trimesh/lxml and this is
+    reached from /api/health, which the UI polls. Call ``.cache_clear()`` if the
+    environment changes underneath a running process (tests do).
+    """
+    try:
+        import voxcitygml
+    except Exception as exc:  # ImportError, or anything a broken dep raises
+        return False, f"the voxcitygml package is not installed ({exc})"
+    if not hasattr(voxcitygml, "generate_voxcity"):
+        return False, ("the installed voxcitygml is too old — LOD2 needs "
+                       "voxcitygml >= 0.2.0, which provides generate_voxcity()")
+    # Declaring the whole mode unavailable, rather than keeping it for
+    # axis-aligned rectangles only, is deliberate: telling the two apart needs
+    # the midline/flare heuristic that commit 4713fa3 removed, and a naive
+    # "opposite corners share a lon" test would reject the geodesically-built
+    # rectangles this app produces at rotation 0. Trading that class of false
+    # rejections for a mode restored by updating an editable git checkout is
+    # not worth it.
+    rotation_ok, why_not = _voxcitygml_has_rotation_frame(voxcitygml)
+    if not rotation_ok:
+        return False, why_not
+    return True, ""
+
+
+@lru_cache(maxsize=1)
+def _voxcitygml_reapply_state() -> Tuple[bool, str]:
+    """Probe whether this voxcitygml can overlay a canopy onto an LOD2 grid.
+
+    Kept deliberately *separate* from ``_voxcitygml_import_state`` and never
+    folded into it: that probe gates ``/api/generate``, where a False refuses
+    PLATEAU LOD2 outright. A missing ``reapply_canopy`` costs only the optional
+    nDSM canopy refinement, so it must not take an otherwise working mode down
+    with it.
+
+    This is for *reporting* — ``_refine_canopy_with_ndsm`` imports the function
+    itself and that import, not this probe, is what decides at run time.
+
+    Cached like its sibling because /api/health is polled by the UI. Call
+    ``.cache_clear()`` when the environment changes underneath the process.
+    """
+    try:
+        import voxcitygml
+    except Exception as exc:  # ImportError, or anything a broken dep raises
+        return False, f"the voxcitygml package is not installed ({exc})"
+    if not hasattr(voxcitygml, "reapply_canopy"):
+        return False, ("the installed voxcitygml has no reapply_canopy(), "
+                       "which is what applies a refined canopy to an LOD2 grid "
+                       "without rebuilding it (a rebuild would flatten the "
+                       "roof/wall geometry). Update the VoxCityGML checkout "
+                       "and reinstall: pip install -e <path-to-VoxCityGML>")
+    return True, ""
+
+
+def _ndsm_canopy_capability() -> Dict[str, Any]:
+    """Whether nDSM canopy refinement can run *at all*, at either LOD.
+
+    Deliberately **not** cached: unlike an installed package, the nDSM COG is a
+    ~5 GB data file that an operator can drop in (or move away) while the
+    server is running, and a cached "missing" verdict would outlive it.
+
+    This is the likeliest reason refinement does nothing on a fresh deployment
+    — the COG is not shipped — and without it the checkbox stays ticked and
+    silently no-ops, which is the exact symptom this feature set out to remove.
+    """
+    try:
+        if not os.path.exists(NDSM_COG_PATH):
+            return {"available": False,
+                    "reason": "no nDSM raster is available on this server — "
+                              f"expected a COG GeoTIFF at {NDSM_COG_PATH}"}
+        return {"available": True, "reason": ""}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
+def _ndsm_canopy_lod2_capability() -> Dict[str, Any]:
+    """The *additional* requirement nDSM refinement has on an LOD2 model.
+
+    Reported separately from ``_ndsm_canopy_capability`` because the two have
+    different scopes: a missing COG stops refinement at either LOD, while a
+    voxcitygml without ``reapply_canopy`` only stops it for LOD2. Collapsing
+    them would make the UI disable the checkbox in LOD1 for an LOD2-only
+    reason.
+
+    Non-gating by design — LOD2 generation itself works fine without it, and
+    this never feeds ``_plateau_lod2_capability``.
+    """
+    try:
+        ok, reason = _voxcitygml_reapply_state()
+        return {"available": ok, "reason": reason}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
+def _plateau_lod2_capability() -> Dict[str, Any]:
+    """Whether PLATEAU LOD2 generation can actually run in this deployment.
+
+    Lets the UI disable the option up front instead of surfacing a 500 after
+    the user waits on a request. Never raises: a broken probe reports
+    unavailable rather than taking /api/health down with it.
+    """
+    try:
+        ok, reason = _voxcitygml_import_state()
+        if not ok:
+            return {"available": False, "reason": reason}
+        if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
+            return {"available": False,
+                    "reason": "no local PLATEAU CityGML dataset is configured — "
+                              "set CITYGML_PATH or place one at <DATA_DIR>/plateau"}
+        return {"available": True, "reason": ""}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "has_model": app_state.has_model}
+    return {
+        "status": "ok",
+        "has_model": app_state.has_model,
+        "capabilities": {
+            "plateau_lod2": _plateau_lod2_capability(),
+            "ndsm_canopy": _ndsm_canopy_capability(),
+            "ndsm_canopy_lod2": _ndsm_canopy_lod2_capability(),
+        },
+    }
 
 
 @app.post("/api/reset")
@@ -1069,38 +1365,126 @@ async def generate_model(req: GenerateRequest):
             kwargs["building_complementary_source"] = "None"
             kwargs["complement_building_footprints"] = True
 
-            # Attempt cached CityGML first
-            cached = None
-            if req.use_citygml_cache:
-                cached = _load_citygml_cache(req.rectangle_vertices)
-
-            if cached is not None:
-                cached_buildings, cached_terrain = (
-                    cached if isinstance(cached, tuple) else (cached, None)
-                )
-                # Use terrain GeoDataFrame for DEM when available;
-                # fall back to flat DEM when no terrain cache exists.
-                _dem_src = "GeoDataFrame" if cached_terrain is not None else "Flat"
-                voxcity_result = get_voxcity(
-                    rectangle_vertices,
+            if req.plateau_lod == "lod2":
+                # ── LOD2: true roof/wall geometry via voxcitygml ──
+                # NOTE: the kwargs set above configure get_voxcity* and apply to
+                # the LOD1/normal paths only; LOD2 is driven by VoxelizerConfig.
+                #
+                # Dependency: this path needs a voxcitygml build with the affine
+                # GridParams frame (rotated-rectangle support), i.e. >= 0.3.0 —
+                # but the runtime gate is structural, not a version check,
+                # because editable git checkouts report stale metadata. See
+                # _voxcitygml_has_rotation_frame, which gates both /api/health
+                # and the guard below.
+                if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="PLATEAU LOD2 mode needs a local PLATEAU CityGML "
+                               "dataset directory. Place it at "
+                               "<DATA_DIR>/plateau or point the CITYGML_PATH "
+                               "environment variable at it.")
+                # /api/health disables the mode in the UI, but this endpoint is
+                # reachable directly — and the failure being guarded against is
+                # silent (wrong grid, no exception), so refuse here too rather
+                # than trust an unusable package.
+                usable, why_not = _voxcitygml_import_state()
+                if not usable:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"PLATEAU LOD2 mode is unavailable: {why_not}")
+                try:
+                    from voxcitygml import VoxelizerConfig, generate_voxcity
+                except ImportError as exc:
+                    # Same trap as the ValueError below: the HTTPException
+                    # pass-through skips the generic handler's print_exc().
+                    traceback.print_exc()
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Could not import voxcitygml >= 0.2.0 (or one of "
+                               "its dependencies). If it is already installed, "
+                               "it may predate generate_voxcity() — update it. "
+                               "Install or update with: "
+                               f"pip install -e <path-to-VoxCityGML>. ({exc})"
+                    ) from exc
+                lod2_cfg = VoxelizerConfig(
+                    citygml_path=CITYGML_PATH,
+                    rectangle_vertices=rectangle_vertices,
                     meshsize=req.meshsize,
-                    building_source="GeoDataFrame",
+                    building_lod=2,
                     land_cover_source=land_cover_source,
                     canopy_height_source=req.canopy_height_source or "Static",
-                    dem_source=_dem_src,
-                    building_gdf=cached_buildings,
-                    terrain_gdf=cached_terrain,
-                    **kwargs,
+                    static_tree_height=req.static_tree_height,
+                    output_dir=output_dir,
+                    save_output=False,
+                    gridvis=False,
+                    # voxcitygml clears collection.bridges before rasterisation
+                    # when this is False, so it governs the 2-D building grids
+                    # and the 3-D voxel grid alike. Defaults to False in
+                    # GenerateRequest (voxcitygml's own default is True).
+                    include_bridges=req.include_bridges,
                 )
+                try:
+                    voxcity_result = generate_voxcity(lod2_cfg)
+                except FileNotFoundError as exc:
+                    # resolve_citygml_paths() raises this when the directory has
+                    # no udx/bldg — a dataset *layout* problem, not an empty
+                    # area. It is an OSError, so the ValueError clause misses it
+                    # and it would otherwise surface as a 500.
+                    traceback.print_exc()
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The PLATEAU CityGML dataset at {CITYGML_PATH} is "
+                               f"not laid out as expected — a udx/bldg directory "
+                               f"of .gml files is required. ({exc})") from exc
+                except ValueError as exc:
+                    # ValueError covers both the expected "no buildings in the
+                    # selected area" case and genuine internal failures, so log
+                    # the traceback before it is converted to a 400 (the
+                    # HTTPException pass-through below skips print_exc()).
+                    traceback.print_exc()
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+                # voxcitygml's extras carry citygml_path/paths/collection and
+                # the resolved sources, but not the LOD. Record it so paths that
+                # rebuild voxels from the 2.5-D component grids can refuse to
+                # destroy this geometry. dict(extras) is preserved across
+                # update_voxcity(), so the tag survives later grid updates.
+                if isinstance(getattr(voxcity_result, "extras", None), dict):
+                    voxcity_result.extras["building_lod"] = 2
             else:
-                voxcity_result = get_voxcity_CityGML(
-                    rectangle_vertices,
-                    land_cover_source,
-                    req.canopy_height_source or "Static",
-                    req.meshsize,
-                    citygml_path=CITYGML_PATH,
-                    **kwargs,
-                )
+                # ── LOD1 (existing behavior, unchanged) ──
+                # Attempt cached CityGML first
+                cached = None
+                if req.use_citygml_cache:
+                    cached = _load_citygml_cache(req.rectangle_vertices)
+
+                if cached is not None:
+                    cached_buildings, cached_terrain = (
+                        cached if isinstance(cached, tuple) else (cached, None)
+                    )
+                    # Use terrain GeoDataFrame for DEM when available;
+                    # fall back to flat DEM when no terrain cache exists.
+                    _dem_src = "GeoDataFrame" if cached_terrain is not None else "Flat"
+                    voxcity_result = get_voxcity(
+                        rectangle_vertices,
+                        meshsize=req.meshsize,
+                        building_source="GeoDataFrame",
+                        land_cover_source=land_cover_source,
+                        canopy_height_source=req.canopy_height_source or "Static",
+                        dem_source=_dem_src,
+                        building_gdf=cached_buildings,
+                        terrain_gdf=cached_terrain,
+                        **kwargs,
+                    )
+                else:
+                    voxcity_result = get_voxcity_CityGML(
+                        rectangle_vertices,
+                        land_cover_source,
+                        req.canopy_height_source or "Static",
+                        req.meshsize,
+                        citygml_path=CITYGML_PATH,
+                        **kwargs,
+                    )
         else:
             # ── Normal mode ───────────────────────────────────────
             # Pass None for any source not specified → get_voxcity auto-selects
@@ -1142,7 +1526,12 @@ async def generate_model(req: GenerateRequest):
                 if not applied:
                     print("[nDSM] _refine_canopy_with_ndsm returned False (see above for reason)")
             except Exception as ndsm_err:
+                # "Failed" and "skipped" have different remedies, and the
+                # message alone cannot tell them apart — a TypeError from
+                # voxcitygml signature drift reads as one opaque line without
+                # the frames.
                 print(f"[nDSM] Canopy refinement failed (non-fatal): {ndsm_err}")
+                traceback.print_exc()
         else:
             _failed = [k for k, v in _ndsm_conditions.items() if not v]
             print(f"[nDSM] Skipping canopy refinement — conditions not met: {_failed}")
@@ -1172,6 +1561,8 @@ async def generate_model(req: GenerateRequest):
             "preview_disabled": preview_disabled,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -3177,6 +3568,19 @@ async def apply_edits(payload: dict):
 
     try:
         vc = app_state.voxcity
+
+        # Checked before any edit is applied: the batch ends in
+        # regenerate_voxels(), which rebuilds the voxel grid from the 2.5-D
+        # component grids and would silently flatten LOD2 roof/wall geometry
+        # into extruded boxes. Fail loudly instead of degrading the model.
+        if _is_lod2_model(vc):
+            raise HTTPException(
+                status_code=400,
+                detail="Editing is not supported for PLATEAU LOD2 models yet: "
+                       "applying edits would rebuild the voxel grid from "
+                       "footprints and discard the LOD2 roof and wall geometry. "
+                       "Regenerate in LOD1 mode to use the Edit tab.")
+
         n_changed_total = 0
         building_ids: List[int] = []
 

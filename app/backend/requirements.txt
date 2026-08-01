@@ -3,3 +3,20 @@ uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 python-dotenv>=1.0
 ezdxf>=1.1,<2
+
+# PLATEAU LOD2 mode requires the VoxCityGML package (separate repo):
+#   pip install -e <path-to-VoxCityGML>   (https://github.com/kunifujiwara/VoxCityGML)
+#
+# It must be a build that supports *rotated* target rectangles, i.e. one whose
+# grid_utils.GridParams carries the affine grid frame (origin_lon/origin_lat +
+# the e_col_*/e_row_* basis vectors). That support shipped in voxcitygml 0.3.0.
+#
+# The version is not the gate, though: the backend probes GridParams for those
+# fields at runtime and reports LOD2 unavailable without them. An editable
+# install from a git checkout — the normal setup here — records whatever
+# version `pip install -e` happened to see, so its metadata routinely lags (or
+# leads) the code actually on disk; only the structure is trustworthy. Getting
+# this wrong is silent rather than loud: a pre-rotation build grids a rotated
+# rectangle as its axis-aligned bounding box without raising. Update the
+# checkout and reinstall if /api/health says the package predates rotation
+# support.

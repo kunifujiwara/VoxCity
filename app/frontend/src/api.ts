@@ -92,8 +92,31 @@ export interface AutoDetectResult {
 
 // ── API functions ────────────────────────────────────────────
 
+/** Whether an optional backend capability can actually run in this deployment. */
+export interface Capability {
+  available: boolean;
+  /** Human-readable explanation when `available` is false; '' otherwise. */
+  reason: string;
+}
+
+export interface HealthResult {
+  status: string;
+  has_model: boolean;
+  /** Optional: older backends omit this entirely. */
+  capabilities?: {
+    plateau_lod2?: Capability;
+    /** nDSM canopy refinement at either LOD — chiefly whether the nDSM raster
+     *  is present on the server. */
+    ndsm_canopy?: Capability;
+    /** The *extra* requirement LOD2 refinement has (a voxcitygml that can
+     *  overlay a canopy). Non-gating: LOD2 generation works without it, only
+     *  the "Use nDSM for Canopy" option is lost. */
+    ndsm_canopy_lod2?: Capability;
+  };
+}
+
 export async function healthCheck() {
-  return request<{ status: string; has_model: boolean }>('/health');
+  return request<HealthResult>('/health');
 }
 
 export async function resetSession() {
@@ -137,6 +160,7 @@ export async function generateModel(params: {
   rectangle_vertices: number[][];
   meshsize: number;
   mode: string;
+  plateau_lod?: string;
   building_source?: string | null;
   land_cover_source?: string | null;
   canopy_height_source?: string | null;
@@ -148,6 +172,7 @@ export async function generateModel(params: {
   dem_interpolation?: boolean;
   use_citygml_cache?: boolean;
   use_ndsm_canopy?: boolean;
+  include_bridges?: boolean;
 }) {
   return request<GenerateResult>('/generate', {
     method: 'POST',

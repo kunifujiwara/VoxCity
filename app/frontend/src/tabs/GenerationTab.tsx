@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, Building2, Layers } from 'lucide-react';
-import { generateModel, autoDetectSources, AutoDetectResult } from '../api';
+import { generateModel, autoDetectSources, healthCheck, AutoDetectResult, Capability } from '../api';
 import ThreeViewer from '../components/ThreeViewer';
 import PreviewDisabledNotice from '../components/PreviewDisabledNotice';
 import { estimateGridShape } from '../lib/grid';
@@ -36,6 +36,21 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const t = useT() as Translate;
   // Mode: "plateau" or "normal"
   const [mode, setMode] = useState<'plateau' | 'normal'>('normal');
+  const [plateauLod, setPlateauLod] = useState<'lod1' | 'lod2'>('lod1');
+  // null = not probed yet; treat as available so the option isn't disabled by
+  // a slow or failed health call on a deployment that can in fact do LOD2.
+  const [lod2Cap, setLod2Cap] = useState<Capability | null>(null);
+  const lod2Unavailable = lod2Cap !== null && !lod2Cap.available;
+  // Two scopes. The nDSM raster gates refinement at either LOD; the voxcitygml
+  // overlay entrypoint is an extra requirement LOD2 alone has, so applying it
+  // in LOD1 would disable the checkbox for a reason that doesn't apply there.
+  const [ndsmCap, setNdsmCap] = useState<Capability | null>(null);
+  const [ndsmLod2Cap, setNdsmLod2Cap] = useState<Capability | null>(null);
+  const ndsmBlockedAnyLod = ndsmCap !== null && !ndsmCap.available;
+  const ndsmBlockedLod2 =
+    plateauLod === 'lod2' && ndsmLod2Cap !== null && !ndsmLod2Cap.available;
+  const ndsmUnavailable = ndsmBlockedAnyLod || ndsmBlockedLod2;
+  const ndsmReason = ndsmBlockedAnyLod ? ndsmCap?.reason : ndsmLod2Cap?.reason;
 
   // Common parameters
   const [meshsize, setMeshsize] = useState(5);
@@ -44,6 +59,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const [demInterpolation, setDemInterpolation] = useState(true);
   const [useCitygmlCache, setUseCitygmlCache] = useState(true);
   const [useNdsmCanopy, setUseNdsmCanopy] = useState(true);
+  const [includeBridges, setIncludeBridges] = useState(false);
 
   // Normal-mode data sources (null = auto)
   const [useAutoSources, setUseAutoSources] = useState(true);
@@ -59,6 +75,40 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gridShape, setGridShape] = useState<number[] | null>(null);
+
+  // Probe once whether the backend can actually run LOD2 (voxcitygml present
+  // and a CityGML dataset configured). Containerized deployments often can't,
+  // and without this the UI offers LOD2 and the request fails at generate time.
+  useEffect(() => {
+    let cancelled = false;
+    healthCheck()
+      .then((h) => {
+        if (cancelled) return;
+        // Older backends omit `capabilities`; assume available in that case.
+        setLod2Cap(h.capabilities?.plateau_lod2 ?? { available: true, reason: '' });
+        setNdsmCap(h.capabilities?.ndsm_canopy ?? { available: true, reason: '' });
+        setNdsmLod2Cap(
+          h.capabilities?.ndsm_canopy_lod2 ?? { available: true, reason: '' },
+        );
+      })
+      .catch(() => {
+        // A failed probe must not disable a working feature.
+        if (!cancelled) {
+          setLod2Cap({ available: true, reason: '' });
+          setNdsmCap({ available: true, reason: '' });
+          setNdsmLod2Cap({ available: true, reason: '' });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Never leave an unsatisfiable selection in state: if LOD2 turns out to be
+  // unavailable, fall back to LOD1 so the request can't ask for it.
+  useEffect(() => {
+    if (lod2Unavailable && plateauLod === 'lod2') setPlateauLod('lod1');
+  }, [lod2Unavailable, plateauLod]);
 
   // Auto-detect sources when rectangle changes and mode is normal + auto
   useEffect(() => {
@@ -99,8 +149,12 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       };
 
       if (mode === 'plateau') {
-        params.use_citygml_cache = useCitygmlCache;
-        params.use_ndsm_canopy = useNdsmCanopy;
+        params.plateau_lod = plateauLod;
+        params.use_citygml_cache = plateauLod === 'lod1' ? useCitygmlCache : undefined;
+        // Don't ask for refinement the backend has already said it can't do:
+        // it would be skipped server-side with only a log line to show for it.
+        params.use_ndsm_canopy = ndsmUnavailable ? false : useNdsmCanopy;
+        params.include_bridges = plateauLod === 'lod2' ? includeBridges : undefined;
       } else {
         // Normal mode: pass sources (null = auto)
         params.building_source = useAutoSources ? null : buildingSource;
@@ -173,7 +227,37 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           />
         </GuidedSection>
 
-        <GuidedSection index={2} label={t('generationTab.gridHeading')}>
+        {mode === 'plateau' && (
+          <GuidedSection index={2} label={t('generationTab.plateauLodHeading')}>
+            <ChoiceGroup
+              variant="checks"
+              ariaLabel={t('generationTab.plateauLodAria')}
+              value={plateauLod}
+              onChange={setPlateauLod}
+              options={[
+                { id: 'lod1', label: t('generationTab.plateauLod1Label'), description: t('generationTab.plateauLod1Desc') },
+                {
+                  id: 'lod2',
+                  label: t('generationTab.plateauLod2Label'),
+                  description: t('generationTab.plateauLod2Desc'),
+                  disabled: lod2Unavailable,
+                },
+              ]}
+            />
+            {lod2Unavailable && (
+              <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.75rem 0 0' }}>
+                {t('generationTab.plateauLod2Unavailable')} {lod2Cap?.reason}
+              </div>
+            )}
+            {!lod2Unavailable && plateauLod === 'lod2' && (
+              <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.75rem 0 0' }}>
+                {t('generationTab.plateauLod2Warn')}
+              </div>
+            )}
+          </GuidedSection>
+        )}
+
+        <GuidedSection index={mode === 'plateau' ? 3 : 2} label={t('generationTab.gridHeading')}>
           <div className="form-group">
             <label>{t('generationTab.meshSize')}</label>
             <input type="number" value={meshsize} min={1} max={50} onChange={(e) => setMeshsize(Number(e.target.value))} />
@@ -324,22 +408,40 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
           </div>
           {mode === 'plateau' && (
             <>
+              {plateauLod === 'lod1' && (
+                <div className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={useCitygmlCache}
+                    onChange={(e) => setUseCitygmlCache(e.target.checked)}
+                  />
+                  <span>{t('generationTab.useCitygmlCache')}</span>
+                </div>
+              )}
               <div className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={useCitygmlCache}
-                  onChange={(e) => setUseCitygmlCache(e.target.checked)}
-                />
-                <span>{t('generationTab.useCitygmlCache')}</span>
-              </div>
-              <div className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={useNdsmCanopy}
+                  checked={useNdsmCanopy && !ndsmUnavailable}
+                  disabled={ndsmUnavailable}
                   onChange={(e) => setUseNdsmCanopy(e.target.checked)}
                 />
                 <span>{t('generationTab.useNdsm')}</span>
               </div>
+              {ndsmUnavailable && (
+                <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.25rem 0 0' }}>
+                  {t('generationTab.ndsmUnavailable')} {ndsmReason}
+                </div>
+              )}
+              {plateauLod === 'lod2' && (
+                <div className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={includeBridges}
+                    onChange={(e) => setIncludeBridges(e.target.checked)}
+                  />
+                  <span>{t('generationTab.includeBridges')}</span>
+                </div>
+              )}
             </>
           )}
         </GuidedSection>
