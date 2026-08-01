@@ -1255,20 +1255,76 @@ class TestAcceptance:
         assert out["canopy"][2, 5] == 40.0
         assert out["canopy"][13, 5] == 11.0          # control still replaced
 
+    def test_a_tall_tree_whose_crown_edge_touches_the_ground_survives(self):
+        """The cell the spread veto's old default destroyed.
+
+        Tsukiji r186-188 c22: a 24.7 m tree beside a 24.65 m roof whose crown
+        edge overhangs open ground, so p25 sits on the terrain and the pixel
+        spread is 0.965 of the height. With the veto armed at 10 m -- which was
+        the default until a real six-band COG was measured -- it was denied the
+        canopy verdict and flattened to 4.59 m. Raw LAS says it is a tree: mid
+        band single-return fraction 0.000, returns filling every 3 m band from
+        the ground up.
+
+        The veto is off by default now, so the height survives. This is an
+        acceptance test, not a mechanism test: it pins the *default*, which is
+        the thing a caller gets.
+        """
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.65
+        _tree(sc, (2, 5), 24.70, spread=23.85)        # spread/h = 0.965
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["canopy"][2, 5] == 24.70, (
+            "a 24.7 m tree was flattened because its crown edge overhangs "
+            "open ground -- height coincidence is not evidence of leakage, "
+            "which is the whole point of this module")
+        assert out["counts"]["spread_veto"] == 0
+
+    def test_the_spread_veto_is_disabled_by_default(self):
+        assert RefineParams().spread_max_m is None, (
+            "the veto denied 331 cells the canopy verdict on real data, 36 of "
+            "them losing a median 20.1 m, while preventing 0 of 655 roof-edge "
+            "regressions; it must not be armed unless a caller asks")
+
+
+class TestSpreadVeto:
+    """The veto mechanism, exercised with an explicit ceiling.
+
+    It is ``None`` -- disabled -- by default, because measurement against a real
+    six-band COG showed the cells it denies are indistinguishable from crowns
+    (see ``RefineParams.spread_max_m``). These tests arm it deliberately: the
+    machinery is retained for calibration, so it still has to behave.
+    """
+
+    #: Armed. Every test in this class passes it explicitly, so that the
+    #: production default staying off cannot make any of them vacuous.
+    ARMED = RefineParams(spread_max_m=10.0)
+
+    def _refine(self, scene, **kwargs):
+        kwargs.setdefault("params", self.ARMED)
+        return _refine(scene, **kwargs)
+
+    def _pair(self, spread, **overrides):
+        """One tree at (2, 5) with canopy evidence and the given spread."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=spread, **overrides)
+        return sc
+
     def test_a_roof_edge_cell_does_not_win_the_canopy_verdict(self):
-        """THE regression the spread veto exists to fix, with the reviewer's
-        measured numbers.
+        """The mechanism the veto was built for, kept as a mechanism test.
 
         A 2 m cell straddling the edge of a 20 m roof -- half its 0.5 m pixels
         on the roof, half on the ground beside it -- measures roughness 9.90 m
-        (threshold 1.5) and mrf 0.40 (threshold 0.35). On roughness and mrf
-        alone that is a *maximally* canopy-like cell, so it would keep its 19.5
-        m height and override every fallback: strictly worse than the sanitiser
-        this module replaced, which gave it 10.0 m. The pixel spread reads the
-        step as a step (~19.5 m) and withholds the verdict.
+        (threshold 1.5) and mrf 0.40 (threshold 0.35), i.e. a *maximally*
+        canopy-like cell on those two axes alone. Armed, the spread reads the
+        step and withholds the verdict.
 
-        The crown control at rows 12-15 differs *only* in the spread, so the
-        veto cannot pass by being blind to the whole cell.
+        This was once an acceptance test for the module. It is not any more: on
+        a real six-band COG the regression it describes occurred in 0 of 655
+        changed cells, and the cells the veto actually caught were crowns. What
+        it still proves is that the machinery works when a caller arms it.
         """
         step, crown = (2, 5), (13, 5)
         sc = _scene()
@@ -1280,7 +1336,7 @@ class TestAcceptance:
         sc["building_heights"][13, 6] = 20.0
         _tree(sc, crown, 19.5, mrf=0.40, roughness=9.90, spread=3.0)
 
-        out = _refine(sc)
+        out = self._refine(sc)
 
         assert out["verdict"][step] != VERDICT_CANOPY, (
             "a cell straddling a roof edge won the canopy verdict on point "
@@ -1296,42 +1352,61 @@ class TestAcceptance:
             "still keep its height")
         assert out["canopy"][crown] == 19.5
 
+    def test_the_default_leaves_the_veto_disarmed(self):
+        """The same scene, with production defaults: nothing is vetoed.
 
-class TestSpreadVeto:
-    """``spread`` (per-cell p90 - p25 of pixel heights) may only ever *remove*
-    the canopy verdict. It adds no verdict of its own: a vetoed cell falls to
-    ambiguous, the existing conservative bucket, and Task 8 calibrates before
-    anything is given new power.
-    """
-
-    def _pair(self, spread, **overrides):
-        """One tree at (2, 5) with canopy evidence and the given spread."""
-        sc = _scene()
-        _tree(sc, (2, 5), 19.5, spread=spread, **overrides)
-        return sc
+        Paired with the test above, this is the whole policy change in two
+        assertions -- the mechanism still works, and it is not switched on.
+        """
+        sc = self._pair(19.5)
+        out = _refine(sc)                              # DEFAULT params
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["canopy"][2, 5] == 19.5
+        assert out["counts"]["spread_veto"] == 0
 
     def test_a_large_spread_removes_the_canopy_verdict(self):
-        out = _refine(self._pair(19.5))
+        out = self._refine(self._pair(19.5))
         assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
         assert out["counts"]["canopy"] == 0
 
     def test_a_small_spread_leaves_the_canopy_verdict_alone(self):
-        out = _refine(self._pair(3.0))
+        out = self._refine(self._pair(3.0))
         assert out["verdict"][2, 5] == VERDICT_CANOPY
         assert out["counts"]["canopy"] == 1
 
     def test_the_threshold_is_inclusive(self):
-        p = RefineParams()
-        assert _refine(self._pair(p.spread_max_m))["verdict"][2, 5] == \
+        ceiling = self.ARMED.spread_max_m
+        assert self._refine(self._pair(ceiling))["verdict"][2, 5] == \
             VERDICT_CANOPY
-        assert _refine(self._pair(np.nextafter(p.spread_max_m, np.inf)))[
+        assert self._refine(self._pair(np.nextafter(ceiling, np.inf)))[
             "verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
 
-    def test_nan_spread_does_not_grant_the_canopy_verdict(self):
-        """The reader NaNs the spread where a cell holds too few pixels to
-        measure one. Unknown must not read as planar."""
-        out = _refine(self._pair(np.nan))
-        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+    def test_an_unmeasurable_spread_does_not_deny_the_canopy_verdict(self):
+        """Absence of a measurement is not evidence against a cell.
+
+        This used to fail closed: NaN spread meant no canopy verdict. That is
+        the same polarity error MIN_SPREAD_PIXELS was lowered to fix, one level
+        up, and on the real six-band COG it was 501 cells of pure cost with no
+        signal behind it. A cell we could not measure is judged on the evidence
+        we do have.
+        """
+        out = self._refine(self._pair(np.nan))
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["canopy"][2, 5] == 19.5
+        assert out["counts"]["spread_veto"] == 0
+
+    def test_an_unmeasurable_cell_is_still_counted(self):
+        """Not denying is not the same as not noticing: calibration needs to
+        know how much of the population carries no spread at all."""
+        out = self._refine(self._pair(np.nan))
+        assert out["counts"]["spread_unknown"] == 1
+
+    def test_unmeasurable_cells_are_counted_even_with_the_veto_disarmed(self):
+        """The coverage number must not silently become zero at the default,
+        which is the configuration every production run uses."""
+        out = _refine(self._pair(np.nan))              # DEFAULT params
+        assert out["counts"]["spread_unknown"] == 1
+        assert out["counts"]["spread_veto"] == 0
 
     def test_the_veto_is_contained_by_the_ambiguous_bucket(self):
         """THE containment property, named and tested rather than incidental.
@@ -1340,9 +1415,12 @@ class TestSpreadVeto:
         ambiguous cell is only replaced when it is adjacent to a footprint
         *and* its height coincides with that footprint's; everywhere else
         ``ambiguous_keep`` hands the nDSM height straight back, byte for byte.
-        That is what makes a veto-only signal safe to enable before Task 8
-        calibrates, and on real data it is most of the effect: 17 cells vetoed,
-        3 changed.
+
+        The containment is real and this test still pins it. What was wrong was
+        the *adjudication* built on top of it: an earlier version of this
+        docstring cited "17 vetoed, 3 changed, all 3 textbook roof leakage" as
+        evidence the veto was safe. The 3 were 24.7 m trees. Containment bounds
+        the damage; it says nothing about whether the damage was deserved.
 
         Three vetoed cells here, differing only in what surrounds them.
         """
@@ -1355,7 +1433,7 @@ class TestSpreadVeto:
         _tree(sc, (12, 2), 6.0)                            # median source
         _tree(sc, (12, 3), 12.0)                           # -> 9.0
 
-        out = _refine(sc)
+        out = self._refine(sc)
         assert out["counts"]["spread_veto"] == 3
 
         # Two of the three keep their height exactly.
@@ -1378,7 +1456,7 @@ class TestSpreadVeto:
         spread on otherwise canopy-like evidence is not confidence in a roof."""
         sc = self._pair(19.5)
         sc["building_heights"][2, 6] = 30.0            # adjacent, far in height
-        out = _refine(sc)
+        out = self._refine(sc)
         assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
         assert out["counts"]["roof"] == 0
         assert out["canopy"][2, 5] == 19.5
@@ -1392,7 +1470,7 @@ class TestSpreadVeto:
             sc["building_heights"][2, 6] = 30.0
             _tree(sc, (2, 5), 29.5, spread=spread, **ROOFLIKE)
             _tree(sc, (4, 3), 12.0)
-            assert _refine(sc)["verdict"][2, 5] == VERDICT_ROOF, spread
+            assert self._refine(sc)["verdict"][2, 5] == VERDICT_ROOF, spread
 
     def test_spread_none_leaves_the_veto_inert(self):
         """Callers that predate the signal keep the old behaviour, exactly as
@@ -1402,7 +1480,7 @@ class TestSpreadVeto:
         out = classify_and_refine(
             sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
             mrf=sc["mrf"], roughness=sc["roughness"], n_all=sc["n_all"],
-            n_nonground=sc["n_nonground"], spread=None,
+            n_nonground=sc["n_nonground"], spread=None, params=self.ARMED,
         )
         assert out["verdict"][2, 5] == VERDICT_CANOPY
 
@@ -1411,45 +1489,47 @@ class TestSpreadVeto:
         _tree(sc, (2, 5), 19.5, spread=19.5)          # vetoed
         _tree(sc, (10, 5), 19.5, spread=3.0)          # not vetoed
         _tree(sc, (14, 5), 19.5, **AMBIGUOUS)         # never canopy anyway
-        counts = _refine(sc)["counts"]
+        counts = self._refine(sc)["counts"]
         assert counts["spread_veto"] == 1, (
             "only cells that would otherwise have been canopy count as vetoed")
         assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"]
 
     def test_a_measured_step_and_an_unmeasurable_cell_are_counted_apart(self):
-        """They fail closed identically and mean opposite things: "I measured a
-        step" versus "I could not measure anything". Conflated, the veto's
-        apparent hit rate becomes a function of how much nDSM nodata the target
-        happens to contain -- which is what calibration would then be reading.
+        """They mean opposite things -- "I measured a step" versus "I could not
+        measure anything" -- and only the first denies anything. Conflated, the
+        veto's apparent hit rate becomes a function of how much nDSM nodata the
+        target happens to contain, which is what calibration would be reading.
         """
         sc = _scene()
         _tree(sc, (2, 5), 19.5, spread=19.5)          # measured, over threshold
         _tree(sc, (8, 5), 19.5, spread=np.nan)        # not measurable
         _tree(sc, (12, 5), 19.5, spread=np.nan)       # not measurable
-        counts = _refine(sc)["counts"]
-        assert counts["spread_veto"] == 1
-        assert counts["spread_unknown"] == 2
+        out = self._refine(sc)
+        assert out["counts"]["spread_veto"] == 1
+        assert out["counts"]["spread_unknown"] == 2
+        # Only the measured one lost its verdict.
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["verdict"][8, 5] == VERDICT_CANOPY
+        assert out["verdict"][12, 5] == VERDICT_CANOPY
 
-    def test_an_unmeasurable_cell_is_still_denied_the_canopy_verdict(self):
-        """Counting them apart must not turn into treating them leniently."""
-        out = _refine(self._pair(np.nan))
-        assert out["counts"]["canopy"] == 0
-        assert out["counts"]["spread_unknown"] == 1
-
-    def test_the_replacement_count_covers_both_denial_reasons(self):
+    def test_the_replacement_count_excludes_unmeasurable_cells(self):
+        """``spread_veto_replaced`` is the veto's cost, so it may only count
+        cells the veto actually acted on. An unmeasurable cell in the very same
+        geometry is left alone entirely."""
         sc = _scene()
         sc["building_heights"][2, 6] = 20.0
         _tree(sc, (2, 5), 19.5, spread=19.5)          # measured step, replaced
         sc["building_heights"][8, 6] = 20.0
-        _tree(sc, (8, 5), 19.5, spread=np.nan)        # unmeasurable, replaced
+        _tree(sc, (8, 5), 19.5, spread=np.nan)        # unmeasurable, untouched
         _tree(sc, (5, 2), 6.0)
         _tree(sc, (5, 3), 12.0)
-        counts = _refine(sc)["counts"]
-        assert counts["spread_veto"] == 1
-        assert counts["spread_unknown"] == 1
-        assert counts["spread_veto_replaced"] == 2, (
-            "an unmeasurable cell costs exactly as much as a vetoed one when "
-            "it is replaced; the cost count must not omit it")
+        out = self._refine(sc)
+        assert out["counts"]["spread_veto"] == 1
+        assert out["counts"]["spread_unknown"] == 1
+        assert out["counts"]["spread_veto_replaced"] == 1
+        assert out["canopy"][8, 5] == 19.5, (
+            "an unmeasurable cell was replaced -- absence of a measurement is "
+            "not evidence against it")
 
     def test_the_veto_is_inert_in_degraded_mode(self):
         """No canopy verdict can fire without evidence bands, so the veto has
@@ -2100,6 +2180,11 @@ class TestRefineParams:
         with pytest.raises(ValueError):
             RefineParams(**kwargs)
 
+    def test_none_is_an_accepted_spread_ceiling(self):
+        """It is the default and the off switch, so the validator must not
+        treat it as a missing number."""
+        assert RefineParams(spread_max_m=None).spread_max_m is None
+
 
 class TestStaticTreeHeight:
     """``static_tree_height`` is user-supplied, so it can contradict the guards.
@@ -2162,14 +2247,29 @@ class TestRefineFromEvidence:
 
     def test_the_spread_reaches_the_veto(self):
         """Without forwarding, every assertion above still passes and the veto
-        is dead code in production."""
+        is dead code even for a caller that arms it deliberately."""
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)
+        out = refine_from_evidence(
+            self._evidence(sc), sc["tree_mask"], sc["building_heights"], STATIC,
+            params=RefineParams(spread_max_m=10.0),
+        )
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["counts"]["spread_veto"] == 1
+
+    def test_the_spread_reaches_the_statistics_at_the_default(self):
+        """The veto is off by default, so forwarding is no longer proved by the
+        test above under production settings -- but the reader's spread still
+        has to arrive, because the log is the only measurement calibration
+        gets."""
         sc = _scene()
         _tree(sc, (2, 5), 19.5, spread=19.5)
         out = refine_from_evidence(
             self._evidence(sc), sc["tree_mask"], sc["building_heights"], STATIC
         )
-        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
-        assert out["counts"]["spread_veto"] == 1
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["spread_stats"]["all"]["n"] == 1
+        assert out["spread_stats"]["all"]["p50"] == pytest.approx(19.5)
 
     def test_degraded_dict_is_honoured(self):
         sc = _scene()

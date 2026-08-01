@@ -7,12 +7,14 @@ surface roughness pooled from the COG's count/sum bands, plus the per-cell
 spread of the height band's own pixels -- with building footprints and height
 coincidence only as fallback for ambiguous cells.
 
-The three are not interchangeable. Multi-return fraction and roughness say what
-a cell is *made of*; the pixel spread says whether the cell is one surface at
-all. Roughness cannot distinguish those: a cell split between a roof and the
-ground beside it has a large standard deviation for the same reason a crown
-does. So the spread is used only to *withhold* the canopy verdict, never to
-grant one -- see RefineParams.spread_max_m.
+Multi-return fraction and roughness say what a cell is *made of*; the pixel
+spread was meant to say whether the cell is one surface at all, since roughness
+cannot tell a step from texture. Measured against a real six-band COG, the
+spread does not separate roof steps from crown edges either, so its veto is
+**disabled by default** -- the statistic is still computed and reported, because
+it is cheap and calibration may yet find a use for it, but it decides nothing.
+See RefineParams.spread_max_m for the measurement and classify_and_refine for
+why the reasoning that justified it was wrong.
 
 Frames: every grid returned to callers is anchored at ``rectangle_vertices[0]``
 with axis 0 running along ``side_1`` (v0 -> v1) and axis 1 along ``side_2``
@@ -87,10 +89,16 @@ SPREAD_HI_Q = 90.0
 #: the spread is NaN.
 #:
 #: Two, which is the hard floor and not a margin above it. At one pixel
-#: ``p90 - p25`` is 0.0 *exactly* -- not "unknown" but the maximally planar
-#: reading, and planar is what *grants* the canopy verdict, so a single-pixel
-#: cell must be refused. At two it is 0.65 x (max - min), at three between 0.5x
-#: and 0.8x: attenuated, but a step is still unmistakably a step.
+#: ``p90 - p25`` is 0.0 *exactly* -- not a measurement of anything, but a number
+#: that would sit in the distribution looking like a perfectly planar cell. At
+#: two it is 0.65 x (max - min), at three between 0.5x and 0.8x: attenuated, but
+#: a step is still unmistakably a step.
+#:
+#: Since the veto stopped denying unmeasurable cells, this floor no longer
+#: changes any verdict -- a one-pixel cell reporting 0.0 and one reporting NaN
+#: now reach the same outcome. What it still protects is ``spread_stats``, which
+#: is the measurement calibration reads, and which a few hundred fabricated
+#: zeros would quietly bias towards "everything is planar".
 #:
 #: This was 4, on the reasoning that both ranks should land on distinct pixels
 #: either side of an even split, and on the assumption that it would only ever
@@ -101,17 +109,16 @@ SPREAD_HI_Q = 90.0
 #: pervasive under canopy. At 4 the rule denied a spread to 62 cells (6.3%), at
 #: 3 to 41, at 2 to 24.
 #:
-#: The denial is not free: NaN fails the veto closed, so those cells are refused
-#: the canopy verdict outright. Of the 38 cells 4 refused and 2 admits, the
-#: measured spreads run p50 0.21, p90 1.48, max 8.60 -- *none* within 1.4 m of
-#: the 10 m threshold, so 4 bought no detections at all while changing the
-#: output of 12 of them. The attenuation argument for 4 is real in principle but
-#: empty here: no plausible attenuation turns a 20 m step into 0.21 m.
+#: The denial was not free at the time: NaN then failed the veto closed, so
+#: those cells were refused the canopy verdict outright. Of the 38 cells 4
+#: refused and 2 admits, the measured spreads run p50 0.21, p90 1.48, max 8.60
+#: -- *none* within 1.4 m of the 10 m threshold then in force, so 4 bought no
+#: detections at all while changing the output of 12 of them.
 #:
-#: Coupling worth knowing for calibration: attenuation and ``spread_max_m`` are
-#: not independent. Lowering the threshold towards the attenuated range (the
-#: recovered cells reach 8.60 m) makes two- and three-pixel cells matter, and
-#: this floor should be revisited alongside it.
+#: Coupling worth knowing if calibration ever arms the veto again: attenuation
+#: and ``spread_max_m`` are not independent. A threshold down in the attenuated
+#: range (the recovered cells reach 8.60 m) makes two- and three-pixel cells
+#: matter, and this floor should be revisited alongside it.
 MIN_SPREAD_PIXELS = 2
 
 
@@ -715,46 +722,45 @@ class RefineParams:
 
     * ``mrf_hi`` / ``rough_hi_m`` -- both must be met for the canopy verdict.
     * ``spread_max_m`` -- ceiling on the per-cell pixel spread (``p90 - p25`` of
-      band-1 pixel heights) for the canopy verdict. A **veto only**: exceeding
-      it removes the canopy verdict, it never grants one and never produces a
-      roof verdict, so a mis-set value costs kept heights rather than
-      manufacturing confident replacements.
+      band-1 pixel heights) for the canopy verdict. ``None``, the default,
+      **disables it**. A finite value is a veto only: exceeding it removes the
+      canopy verdict, never grants one and never produces a roof verdict.
 
-      A **seed**, but a measured one. Over one Chuo-ku target (350 x 390 m,
-      2 m cells, 963 tree cells with a spread), among cells at least 8 m tall --
-      the population where the canopy verdict decides anything -- the spread
-      runs p50 1.4, p75 5.1, p90 8.6, and the footprint-adjacent and
-      non-adjacent distributions are *indistinguishable* up to about 8 m. They
-      separate above it: the share exceeding the threshold, adjacent versus
-      non-adjacent, goes 0.18/0.16 at 8 m, 0.13/0.06 at 9 m, 0.09/0.04 at 10 m,
-      0.06/0.02 at 12 m, and above 13.4 m the non-adjacent population is
-      exhausted entirely. A threshold in the single digits therefore vetoes a
-      quarter of all tall tree cells while separating nothing; 10 m sits just
-      past the knee, costs ~4% of non-adjacent cells, and is far below the
-      19.5 m the reviewer's roof-edge cell measures.
+      **Disabled on measurement, not on doubt.** It was built to stop a cell
+      straddling a roof edge from winning the canopy verdict on roughness alone,
+      and seeded at 10 m from a distribution that looked like it separated roof
+      steps from crowns. The first run against a real six-band evidence COG
+      (Tsukiji and Hamarikyu) says it does not. Adjudicated by a discriminator
+      the classifier cannot see -- the single-return fraction among mid-height
+      returns, since a pulse entering a crown splits and one hitting a roof or
+      facade returns once -- the vetoed cells are indistinguishable from crowns:
 
-      Narrower still, and the number that bounds the cost: only 124 of those
-      963 cells are adjacent *and* height-coincident, which is the only
-      population where losing the canopy verdict changes a height at all. Its
-      spread runs p50 1.21, p90 6.86, p95 7.66, p99 21.53 -- so a 10 m ceiling
-      reaches into its top few percent and nothing else. ``spread_stats``
-      reports this bucket alongside the others.
+      ==========================  ================  ======================
+      population                  singleMid p50     fraction > 0.4
+      ==========================  ================  ======================
+      certain roof (control)      0.30 - 0.66       0.34 - 0.88
+      certain crown (control)     0.00              0.00 - 0.02
+      **spread-vetoed** (n=89)    **0.00**          **0.00 - 0.03**
+      ==========================  ================  ======================
 
-      What the number cannot do, and the calibration must confront: the spread
-      separates a *step* from texture, not a *roof* step from a crown step. A
-      cell half on a crown and half on open ground reads much like a cell half
-      on a roof -- in the sample, nearly every high-spread cell has
-      ``spread ~= height``, i.e. p25 sitting on the ground. That is another
-      reason the signal may only veto: "I cannot tell" is what it means, and
-      ambiguous is where it belongs.
+      It denied 331 cells the canopy verdict, all at least 8 m tall, median
+      12-13 m; 36 lost height, median -20.1 m, worst -32.2 m. Meanwhile the
+      roof-edge regression it exists to prevent occurred in **0 of 655** changed
+      cells -- the evidence path introduced no spikes at all (Tsukiji >= 15 m:
+      32 before, 32 after, tallest 18.25 m both; Hamarikyu >= 20 m: 564 and 564,
+      tallest 27.21 m both).
 
-      Task 8 calibrates against a wider sample; until then nothing may treat
-      this as calibrated.
+      Retuning does not rescue it. ``spread / height`` is 0.84-0.99 for both the
+      cells it wrongly destroyed and the only two plausible catches (39.83 m and
+      36.75 m, singleMid 0.20 and 0.12). The statistic does not separate the
+      populations on this data at any threshold. ``max_tree_height_m`` is the
+      right instrument for implausible heights and already covers those two.
 
-      It exists because ``roughness`` cannot: a standard deviation of point
-      heights is maximal for a step discontinuity and merely large for crown
-      texture, so a 2 m cell half on a 20 m roof measures roughness 9.9 m and
-      mrf 0.40 -- clearing both canopy thresholds -- and would keep 19.5 m.
+      Kept, not deleted: the reader computes ``spread`` regardless and
+      ``spread_stats`` reports it, which costs nothing and gives calibration a
+      measured signal to work from. But it is not to be re-enabled on the
+      reasoning that first justified it -- see the "why it was wrong" note in
+      :func:`classify_and_refine`.
     * ``mrf_lo`` / ``rough_lo_m`` -- both must be met (plus an adjacent
       footprint) for the roof verdict.
     * ``min_points`` -- pooled return count below which ``mrf`` is not trusted.
@@ -778,7 +784,7 @@ class RefineParams:
     mrf_lo: float = 0.15
     rough_hi_m: float = 1.5
     rough_lo_m: float = 1.0
-    spread_max_m: float = 10.0
+    spread_max_m: Optional[float] = None
     min_points: int = 8
     min_nonground: int = 4
     coincidence_tol_m: float = 5.0
@@ -809,12 +815,17 @@ class RefineParams:
                 "min_nonground must be >= 2; pool_evidence already returns NaN "
                 f"roughness below two points, got {self.min_nonground}"
             )
-        if not self.spread_max_m > 0:
+        # None is the off switch, and an explicit sentinel rather than a huge
+        # number: "disabled" and "a ceiling so permissive nothing reaches it"
+        # are the same behaviour but not the same statement, and only one of
+        # them survives someone later reading the value and reasoning about it.
+        if self.spread_max_m is not None and not self.spread_max_m > 0:
             # Zero would veto every cell whose pixels are not bit-identical,
             # i.e. abolish the canopy verdict and with it the fix for the false
             # caps -- silently, since a vetoed cell is merely "ambiguous".
             raise ValueError(
-                f"spread_max_m must be > 0, got {self.spread_max_m}"
+                "spread_max_m must be > 0, or None to disable the veto; got "
+                f"{self.spread_max_m}"
             )
         if self.median_radius < 0 or self.adjacency_radius < 0:
             raise ValueError("radii must be non-negative")
@@ -950,7 +961,8 @@ def classify_and_refine(
     verdict             condition                                       action
     ==================  ==============================================  ================
     canopy              ``mrf >= mrf_hi`` and ``roughness >= rough_hi``  keep the height
-                        and ``spread <= spread_max_m``
+                        (and ``spread <= spread_max_m``, only when that
+                        ceiling is set -- it is ``None`` by default)
     roof                ``mrf <= mrf_lo`` and ``roughness <= rough_lo``  local median
                         and a footprint is adjacent
     ambiguous           anything else                                   replace only if
@@ -964,42 +976,55 @@ def classify_and_refine(
     building survive, and it is checked directly by
     ``test_tall_tree_beside_matching_building_survives``.
 
-    Because it overrides everything downstream, the canopy verdict is the one
-    place a wrong answer cannot be corrected -- which is why ``spread`` is in
-    the table. ``roughness`` is a standard deviation of point heights, and it
-    reads a *step* as at least as rough as texture: a 2 m cell half on a 20 m
-    roof and half on the ground beside it measures roughness 9.9 m and mrf 0.40,
-    clearing both canopy thresholds, and would keep 19.5 m. The pixel spread
-    (``p90 - p25`` of the cell's raster pixels) reads ~20 m for that step and
-    ~2-5 m for a crown.
+    ``spread`` is a **veto and nothing else**, and it is **off by default**
+    (``spread_max_m=None``). When armed it can only remove the canopy verdict;
+    it grants none, and it does not feed the roof verdict. A vetoed cell lands
+    in *ambiguous*, where a replacement still requires an adjacent footprint
+    *and* a coinciding height. A cell whose spread could not be measured is not
+    denied anything -- see the note in the code: absence of a measurement is not
+    evidence against a cell. ``spread=None`` likewise leaves the veto inert, as
+    ``n_nonground=None`` does for the roughness confidence band.
 
-    ``spread`` is a **veto and nothing else**. It can only remove the canopy
-    verdict; it grants none, and it does not feed the roof verdict. A vetoed
-    cell lands in *ambiguous*, the conservative bucket, where a replacement
-    still requires an adjacent footprint *and* a coinciding height -- so a
-    mis-set ``spread_max_m`` costs kept heights, never confident mistakes.
-    ``spread=None`` leaves the veto inert, as ``n_nonground=None`` does for the
-    roughness confidence band; the reader always supplies it.
+    **Why the veto is off, and why it must not be re-enabled on the old
+    reasoning.** It was armed to stop a cell straddling a roof edge from winning
+    the canopy verdict on roughness alone -- roughness being a standard
+    deviation of point heights, which reads a *step* as at least as rough as
+    texture. The first run against a real six-band evidence COG (Tsukiji and
+    Hamarikyu) falsified the premise on both sides at once. The regression the
+    veto exists to prevent occurred in **0 of 655** changed cells; and the cells
+    the veto denied are statistically indistinguishable from crowns, judged by
+    the single-return fraction among mid-height returns -- a discriminator this
+    classifier cannot see, since a pulse entering a crown splits while one
+    hitting a roof or facade returns once:
 
-    **What the veto costs, and the residual risk.** The fall to *ambiguous* is
-    what contains it, and the containment is most of the story: measured over
-    one Chuo-ku target with canopy-passing evidence forced everywhere, 17 of 925
-    tree cells were vetoed at the 10 m seed and only 3 changed value. The other
-    14 were not adjacent, or not height-coincident, so ``ambiguous_keep`` handed
-    their nDSM height straight back, byte for byte. All 3 that changed were
-    textbook roof leakage (h = 24.70 m against an adjacent 24.65 m roof,
-    ``spread/h`` = 0.965, i.e. p25 on the ground). ``spread_veto_replaced`` in
-    the counts is exactly this number.
+    ==========================  ================  ======================
+    population                  singleMid p50     fraction > 0.4
+    ==========================  ================  ======================
+    certain roof (control)      0.30 - 0.66       0.34 - 0.88
+    certain crown (control)     0.00              0.00 - 0.02
+    **spread-vetoed** (n=89)    **0.00**          **0.00 - 0.03**
+    ==========================  ================  ======================
 
-    The residual risk is the case those 3 cannot be told apart from: a genuine
-    tall tree beside a height-matching building, whose crown edge overhangs open
-    ground so that p25 lands on the terrain. Such a cell is vetoed and replaced
-    with the local median -- which is the deleted sanitiser's failure mode,
-    returning. It is accepted on scale, not on principle: ~0.3% of tree cells,
-    against the 8,311 cells that sanitiser pinned at a flat 10.0 m. Three orders
-    of magnitude smaller, and it is why the spread may only veto: were it
-    allowed to assert "roof", those cells would be force-replaced regardless of
-    coincidence and the containment would be gone.
+    An earlier version of this docstring claimed the opposite, and the mistake
+    is worth keeping on the record because of how it was made. Three cells were
+    adjudicated "textbook roof leakage" on the grounds that ``h = 24.70`` m sat
+    beside a 24.65 m roof with ``spread/h = 0.965``. Raw LAS says those cells
+    (Tsukiji r186-188, c22) have a mid-band single-return fraction of 0.000 and
+    returns filling every 3 m band from the ground to 24.7 m, where roof
+    controls in the same tile are bimodal. **They are 24.7 m trees, and the veto
+    flattened them to 4.59 m.**
+
+    The inference was: a tree height that matches an adjacent building height is
+    evidence of leakage. That is exactly the inference the deleted coincidence
+    sanitiser made, and exactly what this module exists to eliminate -- rebuilt
+    inside the fix, and made to look safe by a containment argument that was
+    itself sound (17 vetoed, 3 changed). The containment was real; the
+    adjudication of what had been contained was not. Height coincidence is not
+    evidence. It never was.
+
+    Retuning does not rescue the statistic: ``spread / height`` runs 0.84-0.99
+    for both those trees and the only two plausible catches in the whole sample.
+    ``max_tree_height_m`` is the right instrument for implausible heights.
 
     Evidence is *distrusted* -- the cell is forced to ambiguous -- when it is
     NaN (``pool_evidence`` NaNs roughness below two non-ground points, and mrf
@@ -1141,29 +1166,34 @@ def classify_and_refine(
         roof_ev = trusted & (m <= p.mrf_lo) & (r <= p.rough_lo_m)
         n_distrusted = int((classified & ~trusted).sum())
 
-        # The veto. Applied to canopy_ev only, and deliberately NOT to roof_ev:
-        # a step-like spread is a reason to withhold confidence, not a reason to
-        # manufacture the opposite confidence. NaN (too few pixels to measure a
-        # spread) fails by explicit finiteness test rather than by comparison
-        # semantics, for the same reason NaN roughness does above -- and here
-        # the unguarded arithmetic value would be 0.0, the maximally planar
-        # reading, which grants rather than withholds.
+        # The veto, off unless spread_max_m is set. Applied to canopy_ev only,
+        # and deliberately NOT to roof_ev: a step-like spread is a reason to
+        # withhold confidence, not a reason to manufacture the opposite
+        # confidence.
         #
-        # The two reasons a cell fails are counted apart. They fail closed
-        # identically but mean opposite things -- "I measured a step" versus "I
-        # could not measure anything" -- and conflating them makes the veto's
-        # apparent hit rate a function of nDSM nodata coverage. Calibration
-        # reads these numbers, so it has to be able to tell them apart.
+        # A cell whose spread could not be measured is NOT denied. Failing
+        # closed on NaN is the same polarity error MIN_SPREAD_PIXELS was lowered
+        # to fix, one level up: absence of a measurement is not evidence against
+        # the cell, and on real data it was 501 cells of pure cost with no
+        # signal behind it. So denial requires a measurement that actually
+        # exceeds the ceiling.
+        #
+        # This is why MIN_SPREAD_PIXELS still earns its keep even though NaN no
+        # longer decides anything: a one-pixel cell would report a spread of 0.0
+        # exactly, and while that now lands on the same verdict as NaN, it would
+        # pollute spread_stats -- which is the measurement calibration reads.
+        would_be_canopy = classified & canopy_ev
         if sp is not None:
             measured = np.isfinite(sp)
-            spread_ok = measured & (sp <= p.spread_max_m)
-            would_be_canopy = classified & canopy_ev
-            vetoed = would_be_canopy & measured & ~spread_ok
-            unknown = would_be_canopy & ~measured
-            n_spread_veto = int(vetoed.sum())
-            n_spread_unknown = int(unknown.sum())
-            spread_denied = vetoed | unknown
-            canopy_ev = canopy_ev & spread_ok
+            # Counted whether or not the veto is armed: calibration needs to
+            # know how much of the population is unmeasurable, and that number
+            # must not silently become zero when the ceiling is None.
+            n_spread_unknown = int((would_be_canopy & ~measured).sum())
+            if p.spread_max_m is not None:
+                vetoed = would_be_canopy & measured & (sp > p.spread_max_m)
+                n_spread_veto = int(vetoed.sum())
+                spread_denied = vetoed
+                canopy_ev = canopy_ev & ~vetoed
 
     # THE line: canopy evidence wins over everything downstream, including the
     # coincidence test that used to cap real trees beside matching buildings.
@@ -1222,12 +1252,15 @@ def classify_and_refine(
         # --- overlapping diagnostics, never summed into the partition ---
         "replaced": int(replace.sum()),
         "distrusted": n_distrusted,
+        # Zero unless spread_max_m is set; the veto is off by default.
         "spread_veto": n_spread_veto,
+        # Would-be-canopy cells with no measurable spread. Reported whether or
+        # not the veto is armed, and it no longer denies them anything -- this
+        # is coverage information for calibration, not a decision.
         "spread_unknown": n_spread_unknown,
-        # What the spread rule actually cost: cells it took off the canopy
-        # verdict that were then replaced. The other denied cells keep their
-        # height byte for byte via ambiguous_keep -- see the veto's
-        # containment note in classify_and_refine.
+        # What the veto actually cost: cells it took off the canopy verdict
+        # that were then replaced. The rest keep their height byte for byte via
+        # ambiguous_keep.
         "spread_veto_replaced": int((spread_denied & v_amb_replace).sum()),
         "guard_low": int(too_low.sum()),
         "guard_high": int(too_high.sum()),
