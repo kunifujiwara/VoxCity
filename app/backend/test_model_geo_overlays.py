@@ -5,11 +5,10 @@ onto the *south* edge of the rectangle (``compute_grid_geometry`` anchors at
 ``rectangle_vertices[0]`` = SW and makes ``side_1`` = SW→NW, so the row index
 grows northward). That is the display frame.
 
-A voxcity-produced model keeps every 2-D grid in that one frame. A
-VoxCityGML-produced PLATEAU LOD2 model does not: ``land_cover.classes`` stays
-south-up while ``tree_canopy.top`` is north-up, because voxcitygml flips the
-canopy it derives from that land cover to match the DEM and the voxel grid.
-Drawn unflipped, the LOD2 canopy overlay lands mirrored north<->south.
+Every model keeps every 2-D grid in that one frame — voxcity-produced and
+VoxCityGML-produced PLATEAU LOD2 alike, since voxcitygml returns a south-up
+model. So the endpoint reorients nothing: both LOD1 and LOD2 canopies are drawn
+exactly as stored. Any flip here would land the overlay mirrored north<->south.
 
 The canopy grids below are deliberately **asymmetric** (a band near the south
 edge, not centred): a symmetric canopy is flip-invariant and would pass whether
@@ -61,10 +60,9 @@ def _install_model(*, lod2: bool) -> np.ndarray:
     lc[BAND_LO:BAND_HI, :] = TREE_CLS
     vc.land_cover.classes = lc
 
-    land_frame = _land_frame_canopy()
-    # A VoxCityGML LOD2 model stores the canopy already flipped into the voxel
-    # frame; a voxcity model stores it in the same frame as the land cover.
-    stored = np.flipud(land_frame).copy() if lod2 else land_frame
+    # Single frame, LOD1 and LOD2 alike: the canopy is stored in the same frame
+    # as the land cover it was derived from.
+    stored = _land_frame_canopy()
     vc.tree_canopy.top = stored
     if lod2:
         vc.extras["building_lod"] = 2
@@ -144,25 +142,22 @@ def test_canopy_overlay_lands_on_the_land_cover_side(client, lod2):
         f"land cover ({mirrored}) — it is drawn mirrored north<->south")
 
 
-def test_lod1_canopy_is_drawn_exactly_as_stored(client):
-    """No flip for a voxcity model: same bytes as building it from the grid."""
-    stored = _install_model(lod2=False)
+@pytest.mark.parametrize("lod2", [True, False], ids=["lod2", "lod1"])
+def test_canopy_is_drawn_exactly_as_stored(client, lod2):
+    """No flip, whatever the LOD: same bytes as building it from the grid.
+
+    LOD2 is parametrized alongside LOD1 rather than tested apart, because the
+    two are now the same code path — the endpoint has no LOD branch left.
+    """
+    stored = _install_model(lod2=lod2)
     gg = _grid_geom()
 
     body = client.get("/api/model/geo").json()
 
     assert body["canopy_geojson"] == _as_json(build_canopy_geojson(stored, gg))
-
-
-def test_lod2_canopy_is_drawn_flipped_from_storage(client):
-    """The LOD2 flip actually happens (and is not what LOD1 gets)."""
-    stored = _install_model(lod2=True)
-    gg = _grid_geom()
-
-    body = client.get("/api/model/geo").json()
-
-    assert body["canopy_geojson"] == _as_json(build_canopy_geojson(np.flipud(stored), gg))
-    assert body["canopy_geojson"] != _as_json(build_canopy_geojson(stored, gg))
+    assert body["canopy_geojson"] != _as_json(
+        build_canopy_geojson(np.flipud(stored), gg)), (
+        "the overlay is the flip of the stored canopy — it is drawn mirrored")
 
 
 @pytest.mark.parametrize("lod2", [True, False], ids=["lod2", "lod1"])

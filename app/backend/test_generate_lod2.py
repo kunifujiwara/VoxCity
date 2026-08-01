@@ -757,8 +757,12 @@ def _land_frame_canopy():
 
 
 def _expected_overlay_top():
-    """The canopy reapply_canopy should receive: tree cells, in the voxel frame."""
-    return np.flipud(_land_frame_canopy())
+    """The canopy reapply_canopy should receive: tree cells, unreoriented.
+
+    Every grid in the model shares one frame, so the canopy goes over exactly as
+    it was built from the land cover.
+    """
+    return _land_frame_canopy()
 
 
 def test_refine_lod1_rebuilds_the_voxel_grid(refine_env):
@@ -797,21 +801,17 @@ def test_refine_lod2_overlays_instead_of_rebuilding(refine_env):
                        _expected_overlay_top() * _TRUNK_RATIO)
 
 
-def test_refine_lod2_flips_the_canopy_into_the_voxel_frame(refine_env):
-    """The canopy must be mirrored north<->south before the overlay.
+def test_refine_lod2_hands_the_canopy_over_unreoriented(refine_env):
+    """The canopy must reach reapply_canopy in the frame it was built in.
 
-    It is built in the land-cover frame, which voxcity produces south-up (row 0
-    = southern edge); reapply_canopy writes straight into the voxel grid, which
-    is north-up, and applies no flip of its own. VoxCityGML's own pipeline
-    flips at this same boundary (canopy/processor: "voxcity grids are south-up
-    ...; flip to north-up to match DEM and 3-D voxel grid orientation").
-
-    Measured on a real Chiyoda-ku LOD2 model, against the generator's own
-    north-up canopy: without the flip the refined canopy scored IoU 0.404
-    direct / 0.763 mirrored; with it, 0.966 direct / 0.347 mirrored.
+    It is built from land_cover.classes, which is south-up (row 0 = southern
+    edge). voxcitygml returns a model that is south-up throughout — DEM, canopy
+    and voxel grid included — so reapply_canopy writes into that same frame and
+    a flip here would land the crowns mirrored north<->south.
 
     The land cover here is asymmetric for a reason — an all-tree grid is
-    flip-invariant, which is precisely how this defect survived earlier tests.
+    flip-invariant, which is precisely how the mirrored-canopy defect survived
+    earlier tests.
     """
     vc = _RefineModel(building_lod=2)
     assert _refine(vc) is True
@@ -819,10 +819,10 @@ def test_refine_lod2_flips_the_canopy_into_the_voxel_frame(refine_env):
     got = _overlay_args(refine_env)['canopy_top']
     land_frame = _land_frame_canopy()
 
-    assert np.array_equal(got, np.flipud(land_frame))
-    assert not np.array_equal(got, land_frame), (
-        "the canopy reached reapply_canopy still in the south-up land-cover "
-        "frame — it would land mirrored north<->south in the voxel grid")
+    assert np.array_equal(got, land_frame)
+    assert not np.array_equal(got, np.flipud(land_frame)), (
+        "the canopy was flipped out of the land-cover frame on the way to "
+        "reapply_canopy — it would land mirrored north<->south in the voxel grid")
 
 
 def test_refine_lod2_hands_over_the_canopy_at_component_resolution(refine_env):
@@ -868,18 +868,16 @@ def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
     assert not vc.tree_canopy.bottom.any(), "model must be left untouched"
 
 
-@pytest.mark.parametrize("building_lod,expect_flip", [(2, True), (1, False)])
-def test_refine_flips_buildings_into_the_canopy_frame_only_for_lod2(
-        refine_env, monkeypatch, building_lod, expect_flip):
+@pytest.mark.parametrize("building_lod", [2, 1])
+def test_refine_passes_buildings_to_the_sanitizer_unreoriented(
+        refine_env, monkeypatch, building_lod):
     """_sanitize_ndsm_canopy compares tree cells against nearby building
-    heights, so both grids must share a frame.
+    heights, so both grids must share a frame — and they already do.
 
-    They don't in a VoxCityGML model: measured on a real Chiyoda-ku LOD2 model,
-    buildings.heights matches the voxel building columns north-up (IoU 0.944
-    direct vs 0.107 flipped) while land_cover.classes — and hence canopy and
-    tree_mask — is south-up (0.347 vs 0.996). A voxcity LOD1 model keeps every
-    component grid in one frame, so flipping there would corrupt LOD1, which is
-    out of scope and must stay byte-identical.
+    buildings.heights and land_cover.classes (hence canopy and tree_mask) are
+    both south-up in every model, LOD1 and LOD2 alike. Reorienting either one
+    would compare each tree cell against the buildings on the opposite side of
+    the rectangle.
     """
     seen = {}
 
@@ -890,18 +888,17 @@ def test_refine_flips_buildings_into_the_canopy_frame_only_for_lod2(
     monkeypatch.setattr(main_mod, "_sanitize_ndsm_canopy", spy)
 
     vc = _RefineModel(building_lod=building_lod)
-    # Asymmetric, like the land cover, so the flip is observable.
+    # Asymmetric, like the land cover, so a stray flip is observable.
     heights = np.zeros(_REFINE_SHAPE)
     heights[:_REFINE_SHAPE[0] // 2, :] = 20.0
     vc.buildings.heights = heights
 
     _refine(vc)
 
-    expected = np.flipud(heights) if expect_flip else heights
-    assert np.array_equal(seen['heights'], expected)
-    if expect_flip:
-        assert not np.array_equal(seen['heights'], heights), (
-            "north-up buildings were compared against a south-up canopy")
+    assert np.array_equal(seen['heights'], heights)
+    assert not np.array_equal(seen['heights'], np.flipud(heights)), (
+        "buildings were flipped out of the canopy's frame — each tree cell "
+        "would be checked against the buildings on the opposite side")
 
 
 def test_refine_lod2_leaves_the_model_untouched_when_the_overlay_raises(
