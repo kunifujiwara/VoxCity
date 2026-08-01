@@ -6,8 +6,16 @@ Precompute LAS-derived rasters for fast reuse:
  - Optional crop to AOI
 
 Usage examples:
-  python app/precompute_las_cache.py --las-dir app/data/tokyo_las \
-      --output-dir app/data/temp --aoi 139.70 35.63 139.78 35.69 --resolution 0.5 --cog
+  # Run as a module from the repository root. `python app/preprocessing/
+  # precompute_las_cache.py` cannot work: this file imports `.tokyo_las`
+  # relatively, which requires the package context that -m supplies.
+  python -m app.preprocessing.precompute_las_cache --las-dir app/data/tokyo_las \
+      --output-dir app/data/temp --aoi 139.70 35.63 139.78 35.69 \
+      --resolution 0.5 --cog
+
+  # Single ward, single-band raster for a like-for-like comparison run:
+  python -m app.preprocessing.precompute_las_cache --las-dir app/data/tokyo_las \
+      --output-dir app/data/temp_v1 --aoi 139.75 35.67 139.762 35.68 --no-evidence
 """
 
 import os
@@ -31,6 +39,7 @@ from .tokyo_las import (
     merge_geotiffs_batched,
     build_ndsm,
     crop_geotiff_by_vertices_exact,
+    require_complete_evidence,
 )
 
 app = typer.Typer(add_completion=False, help="Precompute LAS-derived caches (DSM/DTM/nDSM)")
@@ -219,6 +228,12 @@ def main(
             las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs,
             evidence_output_dir=str(ev_dir),
         )
+        try:
+            require_complete_evidence(dsm_list, ev_list)
+        except RuntimeError as exc:
+            typer.echo(f"{exc} Rerun with --no-evidence to build deliberately.",
+                       err=True)
+            raise typer.Exit(code=1)
     else:
         dsm_list, dtm_list = process_las_files(las_files, str(dsm_dir), str(dtm_dir), resolution, target_crs)
         ev_list = []

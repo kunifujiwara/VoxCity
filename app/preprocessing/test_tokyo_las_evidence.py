@@ -200,6 +200,26 @@ def las_path(tmp_path_factory):
     return str(out)
 
 
+def _write_las(path, rows):
+    """Minimal LAS writer for the auxiliary fixtures.
+
+    *rows* are ``(x, y, z, classification, return_number, number_of_returns)``.
+    """
+    header = laspy.LasHeader(point_format=3, version="1.2")
+    header.offsets = np.array([X0, Y0, 0.0])
+    header.scales = np.array([0.001, 0.001, 0.001])
+    las = laspy.LasData(header)
+    cols = list(zip(*rows))
+    las.x = np.array(cols[0], dtype=np.float64)
+    las.y = np.array(cols[1], dtype=np.float64)
+    las.z = np.array(cols[2], dtype=np.float64)
+    las.classification = np.array(cols[3], dtype=np.uint8)
+    las.return_number = np.array(cols[4], dtype=np.uint8)
+    las.number_of_returns = np.array(cols[5], dtype=np.uint8)
+    las.write(str(path))
+    return str(path)
+
+
 @pytest.fixture(scope="module")
 def rasters(las_path):
     """(dsm, dtm, evidence) from the evidence-enabled rasterizer."""
@@ -378,6 +398,88 @@ def test_evidence_heights_use_the_nearest_filled_ground(rasters):
     assert _band(ev, "sum_z")[r, c] == pytest.approx(roof_z(0) - ground_z(0), abs=1e-4)
 
 
+def test_nonground_is_the_complement_of_ground_not_the_dsm_set(tmp_path):
+    """Pins a deliberate divergence between two class sets.
+
+    The DSM is built from ``dsm_classes=(1, 3)``; the evidence's "non-ground" is
+    ``~isin(cls, dtm_classes)``. On Tokyo LAS the two coincide -- only classes
+    1, 2 and 3 occur -- so nothing in the main fixture can tell them apart, and
+    a future edit could quietly swap one for the other. Here a class-5 point
+    (high vegetation, which the DSM ignores) makes the difference observable:
+    it must count as non-ground and contribute its height, while the DSM must
+    still ignore it.
+    """
+    # Two clusters 2 m apart so they cannot share a 0.5 m pixel.
+    path = _write_las(tmp_path / "cls5.las", [
+        (_x(0), _y(0), 0.0, GROUND_CLASS, 1, 1),
+        (_x(0), _y(0), 4.0, 5, 1, 1),            # high vegetation: not in (1, 3)
+        (_x(4), _y(4), 0.0, GROUND_CLASS, 1, 1),
+        (_x(4), _y(4), 2.0, ROOF_CLASS, 1, 1),
+    ])
+    dsm, dtm, ev = tokyo_las.process_las_to_raster(path, resolution=RES,
+                                                  with_evidence=True)
+
+    def at(x, y):
+        col, row = ~dsm["transform"] * (x, y)
+        h, w = dsm["array"].shape
+        return min(int(row), h - 1), min(int(col), w - 1)
+
+    veg_px = at(_x(0), _y(0))
+    bld_px = at(_x(4), _y(4))
+    assert veg_px != bld_px, "fixture must separate the two clusters"
+
+    # The class-5 point counts as non-ground and contributes its 4 m height ...
+    assert _band(ev, "n_nonground")[veg_px] == 1
+    assert _band(ev, "n_all")[veg_px] == 2
+    assert _band(ev, "sum_z")[veg_px] == pytest.approx(4.0, abs=1e-4)
+    # ... but it never reaches the DSM, which only takes classes (1, 3).
+    assert np.isnan(dsm["array"][veg_px])
+    assert dsm["array"][bld_px] == pytest.approx(2.0, abs=1e-4)
+
+
+def test_evidence_failure_never_costs_the_dsm_or_dtm(las_path, monkeypatch):
+    """Adding bands must not be able to lose a sheet's height data.
+
+    A single shared exception handler would return ``(None, None, None)`` on any
+    evidence failure and drop the tile from the DSM and DTM merges too --
+    coverage the pre-evidence pipeline produced. The failure has to surface as a
+    short evidence list, which the drivers treat as fatal, not as a missing
+    sheet nobody counted.
+    """
+    def boom(*args, **kwargs):
+        raise RuntimeError("synthetic evidence failure")
+
+    monkeypatch.setattr(tokyo_las, "_evidence_arrays", boom)
+    dsm, dtm, ev = tokyo_las.process_las_to_raster(las_path, resolution=RES,
+                                                   with_evidence=True)
+    assert ev is None
+    old_dsm, old_dtm = _legacy_process_las_to_raster(las_path, resolution=RES)
+    _assert_bit_identical(dsm, old_dsm, "DSM after an evidence failure")
+    _assert_bit_identical(dtm, old_dtm, "DTM after an evidence failure")
+
+
+def test_process_las_files_reports_a_short_evidence_list(las_path, tmp_path,
+                                                         monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("synthetic evidence failure")
+
+    monkeypatch.setattr(tokyo_las, "_evidence_arrays", boom)
+    with pytest.warns(UserWarning, match="no evidence raster"):
+        dsm_files, dtm_files, ev_files = tokyo_las.process_las_files(
+            [las_path], str(tmp_path / "d"), str(tmp_path / "g"), RES,
+            "EPSG:6677", evidence_output_dir=str(tmp_path / "e"))
+    assert len(dsm_files) == 1 and len(ev_files) == 0
+
+
+def test_incomplete_evidence_is_fatal_for_a_rebuild():
+    """The guard both drivers share. 'Some evidence merged' is not enough."""
+    tokyo_las.require_complete_evidence(["a", "b"], ["a", "b"])      # no raise
+    with pytest.raises(RuntimeError, match="nodata holes in band 1"):
+        tokyo_las.require_complete_evidence(["a", "b"], ["a"])
+    with pytest.raises(RuntimeError):
+        tokyo_las.require_complete_evidence(["a"], [])
+
+
 # ---------------------------------------------------------------------------
 # 1. The physics: roof vs canopy separate
 # ---------------------------------------------------------------------------
@@ -544,15 +646,19 @@ def test_pixels_with_returns_but_no_height_are_nodata_everywhere(built):
             f"row {row} has no nDSM height, so no band may claim data there")
 
 
-def test_six_band_ndsm_survives_the_runtime_reader(built):
-    """End to end against the actual consumer: ``load_ndsm_evidence`` must read
-    the file as non-degraded and recover the roof/canopy contrast."""
+def _import_ndsm_refine():
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
     try:
-        from app.backend.ndsm_refine import pool_evidence
+        import app.backend.ndsm_refine as mod
     except Exception:                                       # pragma: no cover
         pytest.skip("app.backend.ndsm_refine not importable in this env")
+    return mod
+
+
+def test_six_band_ndsm_pools_exactly(built):
+    """The pooling arithmetic, against the consumer's own ``pool_evidence``."""
+    pool_evidence = _import_ndsm_refine().pool_evidence
 
     with rasterio.open(built["six"]) as src:
         data = src.read().astype(np.float64)
@@ -569,6 +675,104 @@ def test_six_band_ndsm_survives_the_runtime_reader(built):
     assert roof_mrf == pytest.approx(0.0, abs=1e-9)
     assert np.nanmax(ev["roughness"][list(ROW_CANOPY)]) > 2.0
     assert np.nanmax(ev["roughness"][list(ROW_ROOF)]) < 0.2
+
+
+def _stub_grid_geometry(monkeypatch, path, n_rows, n_cols):
+    """Install a ``compute_grid_geometry`` covering *path*'s exact extent.
+
+    ``load_ndsm_evidence`` imports the real one from ``voxcity`` at call time,
+    and that package is not installed in the env that has laspy -- so without
+    this the whole reader, the part of the contract this module has to satisfy,
+    would go untested everywhere. Only the *geometry* is faked: band indexing,
+    degraded detection, the nodata mappings and the pooling are all the real
+    reader's. The grid is laid out with row 0 at the SOUTH edge, which is the
+    reader's documented anchoring and the opposite of the raster's north-up
+    row order, so a reader that indexed by array position instead of by
+    coordinate would fail this.
+    """
+    import types
+    from pyproj import Transformer
+
+    with rasterio.open(path) as src:
+        b, crs = src.bounds, src.crs
+    to_wgs = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+    (west, east), (south, north) = to_wgs.transform(
+        [b.left, b.right], [b.bottom, b.top])
+
+    origin = np.array([west, south], dtype=np.float64)       # SW corner
+    u_full = np.array([0.0, north - south], dtype=np.float64)   # side_1: north
+    v_full = np.array([east - west, 0.0], dtype=np.float64)     # side_2: east
+
+    def compute_grid_geometry(rectangle_vertices, meshsize):
+        return {
+            "grid_size": (n_rows, n_cols),
+            "origin": origin,
+            "adj_mesh": (1.0, 1.0),
+            "u_vec": u_full / n_rows,
+            "v_vec": v_full / n_cols,
+        }
+
+    core = types.ModuleType("voxcity.geoprocessor.raster.core")
+    core.compute_grid_geometry = compute_grid_geometry
+    for name, mod in (
+        ("voxcity", types.ModuleType("voxcity")),
+        ("voxcity.geoprocessor", types.ModuleType("voxcity.geoprocessor")),
+        ("voxcity.geoprocessor.raster", types.ModuleType("voxcity.geoprocessor.raster")),
+        ("voxcity.geoprocessor.raster.core", core),
+    ):
+        monkeypatch.setitem(sys.modules, name, mod)
+
+
+def test_load_ndsm_evidence_reads_the_six_band_raster(built, monkeypatch):
+    """The real reader, end to end: band count, band order, nodata mapping.
+
+    ``pool_evidence`` alone tests none of these -- it is handed already-unpacked
+    arrays. This is the test that would catch a band written in the wrong slot,
+    a nodata value the reader does not recognise, or a six-band file the reader
+    still calls degraded.
+    """
+    refine = _import_ndsm_refine()
+    _stub_grid_geometry(monkeypatch, built["six"], HEIGHT, 1)
+
+    ev = refine.load_ndsm_evidence([(0, 0), (0, 1), (1, 1), (1, 0)], 1.0,
+                                   built["six"])
+    assert ev is not None
+    assert ev["degraded"] is False, "six bands must not read as degraded"
+    assert ev["shape"] == (HEIGHT, 1)
+    for key in ("mrf", "roughness", "n_all", "n_nonground"):
+        assert ev[key] is not None
+
+    # Row 0 of the model grid is the SOUTH edge, i.e. the roof; the last row is
+    # the north edge, i.e. the canopy. Getting this backwards is exactly the
+    # orientation bug the coordinate-based mapping exists to prevent.
+    assert ev["mrf"][0, 0] == pytest.approx(0.0, abs=1e-9)
+    assert ev["mrf"][-1, 0] == pytest.approx(1.0, abs=1e-9)
+    assert ev["roughness"][-1, 0] > 2.0
+
+    # The co-occurrence precondition, seen through the reader's own two
+    # different nodata mappings: band 1 -> NaN, evidence -> 0.0. They agree only
+    # if a nodata pixel is nodata in every band, so a cell that pooled no
+    # returns must also have no height. This is the assertion that would fire on
+    # the measured bad state -- NaN height beside n_all=160.
+    empty = ev["n_all"] == 0
+    assert empty.any(), "fixture must contain a cell with no returns at all"
+    assert np.isnan(ev["height"][empty]).all()
+    assert np.isfinite(ev["height"][~empty]).any()
+
+
+def test_load_ndsm_evidence_calls_the_single_band_raster_degraded(built, monkeypatch):
+    """The other half of the contract: the raster in production today has one
+    band, and the reader must keep working on it."""
+    refine = _import_ndsm_refine()
+    _stub_grid_geometry(monkeypatch, built["one"], HEIGHT, 1)
+
+    ev = refine.load_ndsm_evidence([(0, 0), (0, 1), (1, 1), (1, 0)], 1.0,
+                                   built["one"])
+    assert ev is not None
+    assert ev["degraded"] is True
+    assert ev["mrf"] is None and ev["roughness"] is None
+    assert ev["spread"] is not None          # derived from band 1, always there
+    assert np.isfinite(ev["height"]).any()
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +829,80 @@ def test_merge_tolerates_a_one_pixel_sliver(tmp_path, recwarn):
     b = _write_tile(tmp_path / "b.tif", float(TILE_PX - 1), 0.0, value=2.0)
     tokyo_las.merge_geotiffs([a, b], str(tmp_path / "m.tif"), "EPSG:6677")
     assert not _overlap_warnings(recwarn)
+
+
+def test_merge_warns_on_a_small_but_real_overlap(tmp_path):
+    """Pins OVERLAP_WARN_FRAC from above.
+
+    The 50% case below would still pass at a threshold of 0.4, and the sliver
+    case only pins it from below, so between them any value in (0.005, 0.5]
+    survives. A 5% overlap -- an order of magnitude past the sliver and an order
+    below a duplicated sheet -- is what makes the interval two-sided.
+    """
+    overlap_px = TILE_PX // 20                       # 5% of the side
+    assert tokyo_las.OVERLAP_WARN_FRAC < overlap_px / TILE_PX < 0.5
+    a = _write_tile(tmp_path / "a.tif", 0.0, 0.0)
+    b = _write_tile(tmp_path / "b.tif", float(TILE_PX - overlap_px), 0.0, value=2.0)
+    with pytest.warns(UserWarning, match="overlap"):
+        tokyo_las.merge_geotiffs([a, b], str(tmp_path / "m.tif"), "EPSG:6677")
+
+
+def test_batched_merge_checks_the_whole_list_exactly_once(tmp_path, recwarn):
+    """The batched merge is the production path, and it is the *only* place the
+    check has to run over the whole list rather than per chunk.
+
+    Exactly one warning, not at least one. Per-chunk checking would report the
+    same sheets again once per batch -- 23 times over a real rebuild's 5,669
+    tiles at batch_size 250 -- and would still miss every pair split across a
+    chunk boundary. One whole-list pass is both cheaper and strictly more
+    complete, and the count is what pins it.
+    """
+    files = [_write_tile(tmp_path / f"t{i}.tif", i * TILE_PX / 2, 0.0, value=i + 1.0)
+             for i in range(4)]                       # each overlaps its neighbour 50%
+    tokyo_las.merge_geotiffs_batched(
+        files, str(tmp_path / "m.tif"), "EPSG:6677", batch_size=2,
+        tmp_dir=str(tmp_path / "tmp"))
+    hits = _overlap_warnings(recwarn)
+    assert len(hits) == 1, [str(w.message) for w in hits]
+    assert "3 pair(s)" in str(hits[0].message)
+
+
+def test_batched_merge_ignores_interleaving_intermediates(tmp_path, recwarn):
+    """Abutting sheets, ordered so the chunks interleave.
+
+    A chunk is an arbitrary slice of the file list, so chunk bounding boxes
+    overlap by construction even when no two *sheets* do -- here chunk 0 spans
+    x=[0,600) and chunk 1 spans x=[200,800), a 67% box overlap over data that
+    never collides. Checking the intermediates would warn on every real rebuild;
+    this is the test that says so.
+    """
+    xs = [0.0, 2.0 * TILE_PX, 1.0 * TILE_PX, 3.0 * TILE_PX]     # interleaved order
+    files = [_write_tile(tmp_path / f"t{i}.tif", x, 0.0, value=i + 1.0)
+             for i, x in enumerate(xs)]
+    tokyo_las.merge_geotiffs_batched(
+        files, str(tmp_path / "m.tif"), "EPSG:6677", batch_size=2,
+        tmp_dir=str(tmp_path / "tmp"))
+    assert not _overlap_warnings(recwarn)
+
+
+def test_touching_sheets_are_not_an_overlap_at_any_threshold(tmp_path):
+    """``min_overlap_frac`` is a public argument, and at 0.0 the fraction test
+    stops distinguishing anything -- two sheets sharing only an edge have zero
+    shared *area*, and merge() never has to choose between them. Without this,
+    dropping the strict-positive-area guard is invisible: at the 1% default the
+    fraction test hides it.
+    """
+    a = _write_tile(tmp_path / "a.tif", 0.0, 0.0)
+    touching = _write_tile(tmp_path / "b.tif", float(TILE_PX), 0.0, value=2.0)
+    assert tokyo_las.warn_if_inputs_overlap(
+        [a, touching], "EPSG:6677", min_overlap_frac=0.0) == []
+    # ... and the same call does report a real, arbitrarily small overlap, so
+    # the assertion above is not passing merely because nothing is ever found.
+    sliver = _write_tile(tmp_path / "c.tif", float(TILE_PX - 1), 0.0, value=3.0)
+    with pytest.warns(UserWarning, match="overlap"):
+        found = tokyo_las.warn_if_inputs_overlap(
+            [a, sliver], "EPSG:6677", min_overlap_frac=0.0)
+    assert len(found) == 1
 
 
 def test_merge_overlap_check_is_opt_outable(tmp_path, recwarn):

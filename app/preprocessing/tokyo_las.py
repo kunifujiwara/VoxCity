@@ -285,10 +285,28 @@ def normalize_crs(crs_like):
 #     roughness = sqrt(sum(sum_z2)/n - (sum(sum_z)/n)^2),  n = sum(n_nonground)
 #
 # Ratios stored per pixel would only be *averageable*, which is wrong whenever
-# pixel point counts differ, and at the measured 5-8 returns per 0.5 m pixel a
-# per-pixel ratio is a handful of Bernoulli trials -- statistically meaningless
-# at native resolution even before the pooling error. The whole design rests on
-# this property; see pool_evidence() in ndsm_refine.py, which is the consumer.
+# pixel point counts differ, and at the measured 4.7-21.3 returns per *occupied*
+# 0.5 m pixel a per-pixel ratio is a handful of Bernoulli trials -- statistically
+# meaningless at native resolution even before the pooling error. The whole
+# design rests on this property; see pool_evidence() in ndsm_refine.py, which is
+# the consumer.
+#
+# HOW MUCH SIGNAL THERE IS VARIES ENORMOUSLY BY SHEET, and a city-wide rebuild
+# must expect that. Measured over 21 sheets in two independent samples:
+#
+#     multi-return fraction     5.1% - 80.2%   (median ~37%)
+#     class 1 (unclassified)      47% -   83%
+#     class 2 (ground)            22% -   50%
+#     class 3 (low vegetation)   0.3% -  4.7%
+#     returns per occupied px    4.7  - 21.3
+#
+# The low end is not a curiosity. On a sheet where only 5% of returns are
+# multi-return, no pooled cell can reach ndsm_refine's seeded ``mrf_hi = 0.35``,
+# so the canopy verdict is simply dead there and every tree cell falls to
+# *ambiguous* -- the conservative bucket, which is the right failure, but it
+# means the evidence bands buy nothing on that ward. Calibration (Task 8) has to
+# be per-ward or explicitly robust to this, and a single city-wide threshold
+# tuned on a strong sheet will silently do nothing on a weak one.
 #
 # All six bands share one dtype (float32) and one nodata value. That is not a
 # preference: GDAL's GTiff driver cannot create a dataset with per-band data
@@ -340,6 +358,21 @@ def _evidence_arrays(idx_flat, height, width, z, cls, n_returns, dtm_arr,
     a crown echoes several times, so its ground echo *is* a multi-return point
     and belongs in both halves of the ratio, while its height above ground
     (~0 m) says nothing about the crown.
+
+    "Non-ground" is the complement of *dtm_classes*, not membership of
+    *dsm_classes*, and the difference is deliberate rather than an oversight.
+    ``n_nonground``/``sum_z``/``sum_z2`` describe the returns that came off
+    something above the terrain, so any class that is not ground belongs there
+    -- including classes the DSM ignores. The DSM's ``(1, 3)`` is a *max-height*
+    surface and excludes noise and water on purpose; the evidence is a
+    *population* statistic and excluding an unexpected class from it would
+    understate the point count rather than protect anything.
+
+    On Tokyo LAS the two definitions coincide: only classes 1, 2 and 3 occur
+    (measured on 21 sheets), so ``~isin(cls, (2,))`` and ``isin(cls, (1, 3))``
+    select the same points. They would diverge on data carrying, say, class 5,
+    which is why ``test_nonground_is_the_complement_of_ground_not_the_dsm_set``
+    pins the choice instead of leaving it to be discovered.
     """
     n_pixels = int(height) * int(width)
     bands = np.full((len(EVIDENCE_BAND_NAMES), n_pixels), 0.0, dtype=np.float64)
@@ -445,25 +478,37 @@ def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_clas
         if not with_evidence:
             return dsm, dtm
 
+        # The evidence sits in its OWN try, outside the DSM/DTM one. Adding
+        # bands must not be able to cost a sheet its height data: with a single
+        # shared handler, any failure in here would return (None, None, None)
+        # and drop the tile from the DSM and DTM merges as well -- coverage the
+        # pre-evidence pipeline would have produced. The caller sees a shorter
+        # evidence list than DSM list and is expected to treat that as fatal
+        # (see process_las_files and the callers' count check), so this degrades
+        # loudly one level up rather than silently here.
         try:
-            n_returns = np.asarray(las.number_of_returns)
-        except Exception as exc:
-            # Refusing rather than substituting zeros: an all-single-return
-            # reading makes the multi-return fraction 0 everywhere, which is
-            # the maximally roof-like value, and the classifier would suppress
-            # every tree it was built to keep.
-            raise ValueError(
-                f"{las_path} has no 'number_of_returns' dimension, so the "
-                f"multi-return evidence cannot be measured: {exc}"
-            )
+            try:
+                n_returns = np.asarray(las.number_of_returns)
+            except Exception as exc:
+                # Refusing rather than substituting zeros: an all-single-return
+                # reading makes the multi-return fraction 0 everywhere, which is
+                # the maximally roof-like value, and the classifier would suppress
+                # every tree it was built to keep.
+                raise ValueError(
+                    f"{las_path} has no 'number_of_returns' dimension, so the "
+                    f"multi-return evidence cannot be measured: {exc}"
+                )
 
-        evidence = dict(
-            array=_evidence_arrays(
-                idx_flat, height, width, z, cls, n_returns, dtm_arr,
-                dtm_classes, base['nodata'],
-            ),
-            **base,
-        )
+            evidence = dict(
+                array=_evidence_arrays(
+                    idx_flat, height, width, z, cls, n_returns, dtm_arr,
+                    dtm_classes, base['nodata'],
+                ),
+                **base,
+            )
+        except Exception as exc:
+            print(f"Error building evidence bands for {las_path}: {exc}")
+            return dsm, dtm, None
         return dsm, dtm, evidence
 
     except Exception as e:
@@ -513,6 +558,14 @@ def process_las_files(las_files, dsm_output_dir, dtm_output_dir, resolution, tar
     each DSM/DTM; the return value then gains a third list. Omitting it
     reproduces the pre-evidence behaviour byte for byte, which is what the
     comparison runs in Task 7/8 need.
+
+    **Callers must check ``len(ev_files) == len(dsm_files)``.** A sheet that
+    rasterises but whose evidence does not is not a partial success: build_ndsm's
+    co-occurrence rule turns that sheet into a nodata *hole in band 1*, so the
+    rebuilt COG silently loses coverage the single-band one had. This function
+    reports the shortfall but does not raise -- it does not know whether the
+    caller is building a COG or probing one tile -- so it is the pipeline
+    drivers that treat it as fatal.
     """
     os.makedirs(dsm_output_dir, exist_ok=True)
     os.makedirs(dtm_output_dir, exist_ok=True)
@@ -544,8 +597,39 @@ def process_las_files(las_files, dsm_output_dir, dtm_output_dir, resolution, tar
     if with_evidence:
         print(f"Created {len(ev_files)} evidence GeoTIFFs "
               f"({len(EVIDENCE_BAND_NAMES)} bands each)")
+        if len(ev_files) != len(dsm_files):
+            warnings.warn(
+                f"{len(dsm_files) - len(ev_files)} sheet(s) produced a DSM but "
+                "no evidence raster; every pixel of those sheets will be nodata "
+                "in the six-band nDSM, losing coverage the single-band raster "
+                "had. Do not build a COG from this.",
+                UserWarning,
+                stacklevel=2,
+            )
         return dsm_files, dtm_files, ev_files
     return dsm_files, dtm_files
+
+
+def require_complete_evidence(dsm_files, ev_files):
+    """Raise unless every sheet that produced a height also produced evidence.
+
+    Not "did any evidence survive" -- that guard passes while coverage silently
+    disappears. :func:`build_ndsm` makes a pixel nodata in *band 1* wherever the
+    evidence is missing, so a sheet with a DSM and no evidence contributes a
+    nodata hole to the rebuilt COG: strictly less ground covered than the
+    single-band raster it replaces, with every log line still reading "nDSM
+    ready". The only safe responses are to fix the sheet or to build the
+    single-band raster deliberately, so this raises rather than warns.
+
+    One implementation shared by both pipeline drivers, so the two cannot drift.
+    """
+    if len(ev_files) != len(dsm_files):
+        raise RuntimeError(
+            f"{len(dsm_files)} DSM sheets but only {len(ev_files)} evidence "
+            "sheets; the missing sheets would become nodata holes in band 1 of "
+            "the six-band nDSM, losing coverage the single-band raster had. Fix "
+            "the failing sheets or build without evidence deliberately."
+        )
 
 
 # =========================
@@ -578,6 +662,14 @@ def warn_if_inputs_overlap(input_files, target_crs, min_overlap_frac=OVERLAP_WAR
     Warns (never raises): an overlap makes the merge arbitrary, not wrong, and
     aborting a multi-hour rebuild over it would be worse than reporting it.
 
+    Implemented as a numpy sweep over axis-aligned bounds rather than with
+    ``shapely.STRtree``. The tree was the obvious choice and the wrong one: its
+    ``query`` returns *indices* in shapely 2 and *geometries* in shapely 1.8, so
+    the index arithmetic would have raised partway through a multi-hour rebuild
+    on an older environment -- a failure mode with no test that could catch it
+    here, since the pinned version is 2.x. Sheet footprints are rectangles in a
+    projected CRS, so no geometry engine is needed for this at all.
+
     Returns the list of ``(file_a, file_b, fraction)`` offenders, empty when the
     assumption holds.
     """
@@ -585,46 +677,52 @@ def warn_if_inputs_overlap(input_files, target_crs, min_overlap_frac=OVERLAP_WAR
     if len(files) < 2:
         return []
 
-    from shapely.geometry import box
-    from shapely.strtree import STRtree
+    from rasterio.warp import transform_bounds
 
     tcrs = normalize_crs(target_crs)
-    boxes = []
+    bounds = []
     for fp in files:
         try:
             with rasterio.open(fp) as src:
                 b = src.bounds
-                geom = box(b.left, b.bottom, b.right, b.top)
                 if src.crs is not None and tcrs is not None and src.crs != tcrs:
-                    to_target = Transformer.from_crs(src.crs, tcrs, always_xy=True).transform
-                    geom = shp_transform(to_target, geom)
+                    b = transform_bounds(src.crs, tcrs, *b)
+                bounds.append((float(b[0]), float(b[1]), float(b[2]), float(b[3])))
         except Exception as exc:
             print(f"Warning: could not read bounds of {fp} for overlap check: {exc}")
-            geom = None
-        boxes.append(geom)
+            bounds.append(None)
 
-    indexed = [i for i, g in enumerate(boxes) if g is not None and not g.is_empty]
-    if len(indexed) < 2:
+    keep = [i for i, b in enumerate(bounds)
+            if b is not None and b[2] > b[0] and b[3] > b[1]]
+    if len(keep) < 2:
         return []
-    tree = STRtree([boxes[i] for i in indexed])
+    idx = np.asarray(keep)
+    box = np.asarray([bounds[i] for i in keep], dtype=np.float64)
+    x0, y0, x1, y1 = box[:, 0], box[:, 1], box[:, 2], box[:, 3]
+    area = (x1 - x0) * (y1 - y0)
 
+    # Sweep in x: sorted by left edge, tile i can only meet tiles whose left
+    # edge lies before i's right edge, which for a sheet grid is a handful.
+    order = np.argsort(x0, kind="stable")
+    sx0 = x0[order]
     offenders = []
-    for position, i in enumerate(indexed):
-        gi = boxes[i]
-        for hit in tree.query(gi):
-            if int(hit) <= position:          # unordered pairs, each seen once
-                continue
-            j = indexed[int(hit)]
-            gj = boxes[j]
-            shared = gi.intersection(gj).area
-            if shared <= 0.0:
-                continue
-            smaller = min(gi.area, gj.area)
-            if smaller <= 0.0:
-                continue
-            frac = shared / smaller
-            if frac >= float(min_overlap_frac):
-                offenders.append((files[i], files[j], frac))
+    for pos in range(order.size - 1):
+        i = order[pos]
+        stop = int(np.searchsorted(sx0, x1[i], side="right"))
+        if stop <= pos + 1:
+            continue
+        cand = order[pos + 1:stop]
+        w = np.minimum(x1[i], x1[cand]) - np.maximum(x0[i], x0[cand])
+        h = np.minimum(y1[i], y1[cand]) - np.maximum(y0[i], y0[cand])
+        shared = np.maximum(w, 0.0) * np.maximum(h, 0.0)
+        smaller = np.minimum(area[i], area[cand])
+        with np.errstate(invalid="ignore", divide="ignore"):
+            frac = np.where(smaller > 0.0, shared / np.maximum(smaller, 1e-30), 0.0)
+        # Strictly positive shared *area*: two sheets that merely touch along an
+        # edge share a line, and merge() never has to choose between them.
+        hit = (shared > 0.0) & (frac >= float(min_overlap_frac))
+        for k, f in zip(cand[hit], frac[hit]):
+            offenders.append((files[int(idx[i])], files[int(idx[k])], float(f)))
 
     if offenders:
         offenders.sort(key=lambda t: -t[2])
@@ -1153,6 +1251,7 @@ def get_ndsm_geotiff_from_tokyo_dsm(rectangle_vertices, las_dir="data/tokyo_las"
             las_files, dsm_dir, dtm_dir, resolution, target_crs,
             evidence_output_dir=ev_dir,
         )
+        require_complete_evidence(dsm_list, ev_list)
     else:
         dsm_list, dtm_list = process_las_files(las_files, dsm_dir, dtm_dir, resolution, target_crs)
         ev_list = []

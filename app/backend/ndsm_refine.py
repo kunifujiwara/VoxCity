@@ -536,9 +536,17 @@ def load_ndsm_evidence(
         # Clip rather than read boundless. A non-boundless read of a window that
         # overhangs the raster silently returns the *clipped* array while
         # window_transform() still describes the unclipped window, which would
-        # shift every pixel coordinate; and boundless=True with fill_value=nan
-        # on an integer band (the counts are uint16) fills 0 without warning,
-        # inventing returns where there is no data. Neither failure raises.
+        # shift every pixel coordinate; and boundless=True fills the overhang
+        # with the band's own nodata, which for the count bands this function
+        # then maps to 0.0 -- inventing "no returns here" for ground that was
+        # never surveyed rather than for ground that was surveyed and empty.
+        # Neither failure raises.
+        #
+        # (The writer stores all six bands as float32 sharing one nodata value,
+        # not uint16 counts alongside float32 heights: GDAL's GTiff driver has
+        # no per-band data type and rasterio exposes a single src.nodata, which
+        # is what this function reads. See EVIDENCE_BAND_NAMES in
+        # app/preprocessing/tokyo_las.py.)
         full = Window(0, 0, src.width, src.height)
         if not intersect(window, full):
             return None
