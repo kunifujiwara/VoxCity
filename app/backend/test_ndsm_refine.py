@@ -24,11 +24,14 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from backend.ndsm_refine import (
+    _cell_labels,
+    _pixel_lonlat,
     pool_evidence,
     groupwise_percentile,
     load_ndsm_evidence,
     local_tree_median,
 )
+from voxcity.geoprocessor.raster.core import compute_cell_center_coords
 
 
 # ---------------------------------------------------------------------------
@@ -484,14 +487,19 @@ class TestLocalTreeMedian:
 # ---------------------------------------------------------------------------
 # load_ndsm_evidence
 #
-# The COG is north-up raster space (row 0 = north); the model grid is the
-# display frame (row 0 = south, because compute_grid_geometry anchors at
-# rectangle_vertices[0] = SW and side_1 runs SW->NW). A windowed read carries
-# the raster's orientation, so the fixture below is asymmetric along BOTH axes
-# and the assertions pin the tall band to the SOUTH rows and the multi-return
-# evidence to the SOUTH-WEST corner. A symmetric fixture would pass whether or
-# not the reader flipped, which is exactly how the last two-frame bug survived
-# four review passes.
+# The COG is north-up raster space (row 0 = north); the model grid is anchored
+# at rectangle_vertices[0] with axis 0 along side_1, which for the [SW, NW, NE,
+# SE] rectangles below puts row 0 on the SOUTH. A windowed read carries the
+# raster's orientation, so the fixture is asymmetric along BOTH axes and the
+# assertions pin the tall band to the SOUTH rows and the multi-return evidence
+# to the SOUTH-WEST corner. A symmetric fixture would pass whether or not the
+# reader flipped, which is exactly how the last two-frame bug survived four
+# review passes.
+#
+# Load-level assertions alone are not enough: a rotation-blind labelling off the
+# lat/lon bounding box satisfies them too. test_cell_centres_round_trip_to_their
+# _own_cells pins the geometry directly, and the rotated fixtures paint their
+# bands in the rectangle's own frame so a bbox mapping smears them.
 # ---------------------------------------------------------------------------
 EPSG = 6677                      # JGD2011 / Japan Plane Rectangular CS IX
 PIXEL = 0.5                      # metres, as in the real nDSM COG
@@ -500,18 +508,60 @@ SIDE_M = 40.0                    # -> 20x20 model cells
 NODATA = -9999.0
 
 _W, _S = 139.7600, 35.6800
-_DLAT = SIDE_M / 110946.0
-_DLON = SIDE_M / (111320.0 * math.cos(math.radians(_S)))
-_E, _N = _W + _DLON, _S + _DLAT
-
-# [SW, NW, NE, SE]: compute_grid_geometry takes v0 as the origin, side_1 =
-# v1 - v0 (northward, the row axis) and side_2 = v3 - v0 (eastward, the col axis).
-RECT = [(_W, _S), (_W, _N), (_E, _N), (_E, _S)]
 
 
-def _rect_fractions(lon, lat):
-    """Position within the target rectangle: (northward, eastward) in [0, 1]."""
-    return (lat - _S) / (_N - _S), (lon - _W) / (_E - _W)
+def _axis_aligned_rect(north_m, east_m):
+    """``[SW, NW, NE, SE]``: compute_grid_geometry takes v0 as the origin,
+    side_1 = v1 - v0 (northward, the row axis) and side_2 = v3 - v0 (eastward,
+    the column axis)."""
+    north = _S + north_m / 110946.0
+    east = _W + east_m / (111320.0 * math.cos(math.radians(_S)))
+    return [(_W, _S), (_W, north), (east, north), (east, _S)]
+
+
+RECT = _axis_aligned_rect(SIDE_M, SIDE_M)
+# Non-square on purpose: against a square grid, transposing n_rows and n_cols is
+# a literal no-op, so every shape and reshape below would be unguarded.
+RECT_TALL = _axis_aligned_rect(60.0, 40.0)          # -> 30 rows x 20 cols
+
+
+def _rect_fractions(lon, lat, rect):
+    """Position within *rect*'s own frame: (along side_1, along side_2) in [0, 1].
+
+    Inverts the rectangle parallelogram with ``np.linalg.solve``, not the
+    reader's Cramer expansion, so the fixture places its bands independently of
+    the code under test -- and honours rotation, so a rotated rectangle gets its
+    bands painted along its own edges rather than a lat/lon bounding box.
+
+    For an axis-aligned rectangle the two fractions are simply northward and
+    eastward.
+    """
+    v0 = np.asarray(rect[0], dtype=float)
+    axes = np.column_stack([
+        np.asarray(rect[1], dtype=float) - v0,      # side_1
+        np.asarray(rect[3], dtype=float) - v0,      # side_2
+    ])
+    shape = np.shape(lon)
+    delta = np.stack([
+        np.asarray(lon, dtype=float).ravel() - v0[0],
+        np.asarray(lat, dtype=float).ravel() - v0[1],
+    ])
+    frac_1, frac_2 = np.linalg.solve(axes, delta)
+    return frac_1.reshape(shape), frac_2.reshape(shape)
+
+
+def _rotated(rect, degrees):
+    """Rotate *rect* about its centroid by *degrees* in a locally metric frame."""
+    if not degrees:
+        return list(rect)
+    points = np.asarray(rect, dtype=float)
+    cx, cy = points.mean(axis=0)
+    scale = math.cos(math.radians(cy))
+    theta = math.radians(degrees)
+    dx, dy = (points[:, 0] - cx) * scale, points[:, 1] - cy
+    rx = dx * math.cos(theta) - dy * math.sin(theta)
+    ry = dx * math.sin(theta) + dy * math.cos(theta)
+    return [(cx + x / scale, cy + y) for x, y in zip(rx, ry)]
 
 
 def _write_synthetic_cog(
@@ -526,6 +576,11 @@ def _write_synthetic_cog(
     rect=RECT,
 ):
     """Write an evidence COG covering *rect* with a margin, 0.5 m pixels.
+
+    Content is placed in *rect*'s own frame (see :func:`_rect_fractions`), so
+    "the first quarter along side_1" is the southern quarter for the axis-aligned
+    rectangles and the corresponding rotated strip otherwise. Named below by the
+    axis-aligned reading, which is what the positional assertions use.
 
     Band 1 (nDSM) is 20 m in the SOUTHERN quarter of the rectangle and 5 m
     elsewhere -- asymmetric north<->south, so a flipped reader cannot pass.
@@ -559,7 +614,7 @@ def _write_synthetic_cog(
     px = left + (cols + 0.5) * PIXEL
     py = top - (rows + 0.5) * PIXEL
     lon, lat = to_ll.transform(px, py)
-    f_north, f_east = _rect_fractions(lon, lat)
+    f_north, f_east = _rect_fractions(lon, lat, rect)
 
     if uniform or spike:
         ndsm = np.full((height, width), 5.0)
@@ -625,6 +680,23 @@ class TestSyntheticCogFixture:
         out = _load(path)
         assert out["shape"] == (20, 20)
 
+    def test_broadcast_affine_matches_rasterio_transform_xy(self, tmp_path):
+        # _pixel_lonlat applies the window affine by broadcasting rather than
+        # materializing two meshgrids, to halve peak allocation on large
+        # windows. Pin it to the library implementation it replaced.
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        with rasterio.open(path) as src:
+            transform = src.window_transform(rasterio.windows.Window(3, 5, 7, 11))
+            crs = src.crs
+        lon, lat = _pixel_lonlat(transform, 11, 7, crs)
+        rows, cols = np.meshgrid(np.arange(11), np.arange(7), indexing="ij")
+        xs, ys = rasterio.transform.xy(transform, rows.ravel(), cols.ravel())
+        ref_lon, ref_lat = Transformer.from_crs(
+            crs, "EPSG:4326", always_xy=True
+        ).transform(np.asarray(xs), np.asarray(ys))
+        assert np.allclose(lon, ref_lon, rtol=0, atol=0)
+        assert np.allclose(lat, ref_lat, rtol=0, atol=0)
+
 
 class TestLoadNdsmEvidenceFrame:
     def test_tall_band_lands_on_the_south_rows(self, tmp_path):
@@ -649,26 +721,60 @@ class TestLoadNdsmEvidenceFrame:
         assert np.nanmedian(mrf[-r:, :c]) < 0.3         # NW
         assert np.nanmedian(mrf[-r:, -c:]) < 0.3        # NE
 
-    def test_rotated_rectangle_still_resolves(self, tmp_path):
-        # Coordinate-based assignment must not care about rotation. The band
-        # geometry no longer aligns with the grid axes, so this only asserts
-        # that every cell is filled -- a shape/indexing regression would leave
-        # NaN holes or raise.
-        cx, cy = (_W + _E) / 2.0, (_S + _N) / 2.0
-        theta = math.radians(30.0)
-        scale = math.cos(math.radians(_S))
+    def test_non_square_grid_keeps_rows_and_columns_apart(self, tmp_path):
+        # 60 m north-south x 40 m east-west at 2 m -> 30 rows, 20 cols. On the
+        # square fixture, transposing n_rows and n_cols is a no-op.
+        path = _write_synthetic_cog(tmp_path / "ev.tif", rect=RECT_TALL)
+        out = _load(path, rect=RECT_TALL)
+        assert out["shape"] == (30, 20)
+        assert out["height"].shape == (30, 20)
+        assert np.nanmedian(out["height"][:7]) > 15.0        # south quarter
+        assert np.nanmedian(out["height"][-7:]) < 8.0        # north quarter
 
-        def _rot(lon, lat):
-            dx, dy = (lon - cx) * scale, lat - cy
-            rx = dx * math.cos(theta) - dy * math.sin(theta)
-            ry = dx * math.sin(theta) + dy * math.cos(theta)
-            return cx + rx / scale, cy + ry
-
-        rect = [_rot(lon, lat) for lon, lat in RECT]
+    @pytest.mark.parametrize("degrees", [0.0, 30.0, 137.0])
+    def test_rotated_rectangle_puts_the_band_on_its_own_south_edge(
+        self, tmp_path, degrees
+    ):
+        # Coordinate-based assignment must not care about rotation. The fixture
+        # paints the band in the *rectangle's* frame, so the band is a rotated
+        # strip that no longer aligns with any lat/lon bounding box -- a reader
+        # that labelled pixels off the bbox instead of the parallelogram would
+        # smear it across the grid and fail here. (137 degrees also puts the
+        # v0->v1 edge on a negative delta-lat, where "row 0" is compass-north.)
+        rect = _rotated(RECT, degrees)
         path = _write_synthetic_cog(tmp_path / "ev.tif", rect=rect)
         out = _load(path, rect=rect)
-        assert np.isfinite(out["height"]).all()
-        assert np.isfinite(out["mrf"]).all()
+        h = out["height"]
+        n = h.shape[0]
+        assert np.isfinite(h).all()
+        assert np.nanmedian(h[:n // 4]) > 15.0
+        assert np.nanmedian(h[-(n // 4):]) < 8.0
+
+    @pytest.mark.parametrize("degrees", [0.0, 30.0, 137.0])
+    @pytest.mark.parametrize("rect_base", [RECT, RECT_TALL], ids=["square", "tall"])
+    def test_cell_centres_round_trip_to_their_own_cells(self, degrees, rect_base):
+        # The load-level assertions are satisfied by any labelling that is
+        # roughly right, including a rotation-blind bounding-box mapping. This
+        # pins the geometry itself: every centre compute_cell_center_coords
+        # produces must label as exactly its own cell, at every rotation and on
+        # a non-square grid.
+        rect = _rotated(rect_base, degrees)
+        centres = compute_cell_center_coords(rect, MESHSIZE)
+        n_rows, n_cols = centres["grid_size"]
+        origin = np.asarray(centres["origin"], dtype=float)
+        u_full = n_rows * centres["adj_mesh"][0] * np.asarray(centres["u_vec"], float)
+        v_full = n_cols * centres["adj_mesh"][1] * np.asarray(centres["v_vec"], float)
+
+        labels = _cell_labels(
+            centres["lons"].ravel(), centres["lats"].ravel(),
+            origin, u_full, v_full, n_rows, n_cols,
+        )
+        expected = (
+            np.arange(n_rows)[:, None] * n_cols + np.arange(n_cols)[None, :]
+        ).ravel()
+        assert np.array_equal(labels, expected), (
+            f"{int((labels != expected).sum())} of {labels.size} cell centres "
+            f"landed outside their own cell at {degrees} degrees")
 
 
 class TestLoadNdsmEvidenceAggregation:
@@ -686,11 +792,18 @@ class TestLoadNdsmEvidenceAggregation:
             "the reader is not aggregating all pixels under the cell")
 
     def test_all_pixels_under_a_cell_are_pooled(self, tmp_path):
-        # 2 m cells over 0.5 m pixels: ~16 pixels each, 10 returns per pixel.
+        # 2 m cells over 0.5 m pixels: 16 pixels each, 10 returns per pixel = 160.
+        #
+        # The floor is exact, not a tolerance. Rounding the read window's far
+        # edge down instead of up starves the boundary rows and columns of a
+        # fraction of a pixel, which showed up here as 120 -- a 25% deficit on
+        # exactly the counts the classifier gates on, comfortably inside a
+        # "> 100" tolerance. Assert the true full-coverage count.
         path = _write_synthetic_cog(tmp_path / "ev.tif")
         out = _load(path)
-        assert np.nanmedian(out["n_all"]) == pytest.approx(160.0, abs=20.0)
-        assert out["n_all"].min() > 100.0
+        assert out["n_all"].min() >= 160.0
+        assert out["n_nonground"][:5].min() >= 160.0
+        assert np.nanmedian(out["n_all"]) == pytest.approx(160.0, abs=1e-9)
 
     def test_roughness_matches_the_written_dispersion(self, tmp_path):
         path = _write_synthetic_cog(tmp_path / "ev.tif")

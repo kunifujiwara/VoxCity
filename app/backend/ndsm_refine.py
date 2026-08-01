@@ -6,13 +6,22 @@ tree/roof separation here uses physical evidence -- multi-return fraction and
 surface roughness pooled from the COG's count/sum bands -- with building
 footprints and height coincidence only as fallback for ambiguous cells.
 
-Frames: everything returned to callers is in the model's display frame
-(south-up). The COG is north-up raster space; the conversion happens exactly
-once, in load_ndsm_evidence(), by assigning raster pixels to display-frame
-cells through the grid geometry (coordinate-based, orientation-free).
+Frames: every grid returned to callers is anchored at ``rectangle_vertices[0]``
+with axis 0 running along ``side_1`` (v0 -> v1) and axis 1 along ``side_2``
+(v0 -> v3) -- the same frame every other voxcity grid built from the same
+geometry uses. Under the app's ``[SW, NW, NE, SE]`` vertex convention that makes
+row 0 the *south* edge, which is the display frame; but that is a consequence of
+the convention, not a promise of this module. ``/api/rectangle-from-dimensions``
+can orient the v0->v1 edge to an arbitrary azimuth, and at, say, 137 degrees
+``side_1`` has negative delta-lat and row 0 is compass-north. What holds
+unconditionally is the anchoring, which is what matters: the grids stay mutually
+consistent. The COG is north-up raster space; the conversion happens exactly
+once, in load_ndsm_evidence(), by assigning raster pixels to cells through the
+grid geometry (coordinate-based, orientation-free).
 """
 from __future__ import annotations
 
+import math
 import os
 import warnings
 from typing import Dict, Optional
@@ -223,19 +232,19 @@ def _cell_labels(
     n_rows: int,
     n_cols: int,
 ) -> np.ndarray:
-    """Display-frame cell label ``row * n_cols + col`` for each (lon, lat).
+    """Cell label ``row * n_cols + col`` for each (lon, lat).
 
     The model grid is the parallelogram ``origin + a*u_full + b*v_full`` with
-    ``a, b`` in [0, 1); *u_full* spans SW->NW (the row axis, growing north) and
-    *v_full* spans SW->SE (the column axis, growing east). Inverting that 2x2
-    system by Cramer's rule gives each point's fractional position along the two
-    grid axes, which floors directly to a row and a column.
+    ``a, b`` in [0, 1); *u_full* spans the row axis (v0 -> v1, side_1) and
+    *v_full* the column axis (v0 -> v3, side_2). Inverting that 2x2 system by
+    Cramer's rule gives each point's fractional position along the two grid
+    axes, which floors directly to a row and a column.
 
-    This is the *only* place the raster's north-up layout meets the model's
-    south-up display frame, and it never touches an array index: a pixel's cell
-    is decided by where the pixel *is*, so rotation, mirroring and pixel order
-    are all handled by construction. Any point outside the grid gets label -1,
-    which pool_evidence and groupwise_percentile drop.
+    This is the *only* place the raster's north-up layout meets the model grid,
+    and it never touches an array index: a pixel's cell is decided by where the
+    pixel *is*, so rotation, mirroring and pixel order are all handled by
+    construction. Any point outside the grid gets label -1, which pool_evidence
+    and groupwise_percentile drop.
     """
     det = u_full[0] * v_full[1] - u_full[1] * v_full[0]
     if not np.isfinite(det) or det == 0.0:
@@ -255,6 +264,25 @@ def _cell_labels(
     return np.where(inside, row * n_cols + col, -1)
 
 
+def _pixel_lonlat(transform, height: int, width: int, src_crs):
+    """(lon, lat) of every pixel *centre* of a read window, raveled row-major.
+
+    Applies the window's affine by broadcasting a row vector against a column
+    vector, rather than materializing two full index grids with ``meshgrid``:
+    identical to ``rasterio.transform.xy`` (asserted in the tests) at half the
+    peak allocation, which matters because these arrays are one per raster pixel
+    in the window, not one per model cell.
+    """
+    from pyproj import Transformer
+
+    rows = np.arange(height, dtype=np.float64)[:, None] + 0.5
+    cols = np.arange(width, dtype=np.float64)[None, :] + 0.5
+    x = (transform.c + cols * transform.a + rows * transform.b).ravel()
+    y = (transform.f + cols * transform.d + rows * transform.e).ravel()
+    lon, lat = Transformer.from_crs(src_crs, "EPSG:4326", always_xy=True).transform(x, y)
+    return np.asarray(lon), np.asarray(lat)
+
+
 def load_ndsm_evidence(
     rectangle_vertices,
     meshsize: float,
@@ -270,13 +298,29 @@ def load_ndsm_evidence(
     returned here is the ``height_q`` percentile over the cell's pixels, which a
     lone contaminated pixel cannot move.
 
-    Everything returned is in the model's **display frame** (row 0 = south).
-    ``src.read(window=...)`` yields north-up raster layout; the conversion
-    happens in :func:`_cell_labels`, by coordinate, never by index arithmetic.
+    Everything returned is anchored at ``rectangle_vertices[0]`` with axis 0
+    along ``side_1`` -- row 0 = south under the app's ``[SW, NW, NE, SE]``
+    convention; see the module docstring. ``src.read(window=...)`` yields
+    north-up raster layout; the conversion happens in :func:`_cell_labels`, by
+    coordinate, never by index arithmetic.
 
     Heights are returned exactly as the raster stores them, negatives included:
     clamping is the canopy builder's job (``_build_canopy_from_ndsm``), and a
     reader that silently clamped would hide a botched ground surface.
+
+    Precondition on the COG writer: nodata must co-occur across all six bands.
+    Where band 1 is nodata but the count bands are not, this returns a NaN height
+    alongside confident-looking evidence. The evidence is not discarded there on
+    purpose -- returns exist independently of whether a ground reference did, so
+    zeroing them would paper over a preprocessing bug rather than fix it.
+
+    Memory: the per-pixel intermediates are sized by the *raster window*, not the
+    model grid. For a 2 km target at 0.5 m (16 M pixels) the concurrently-live
+    arrays peak near 2 GB -- ~730 MB for the six-band float64 stack, ~240 MB each
+    for the projected and geographic coordinates, and ~490 MB of transient
+    products inside :func:`_cell_labels`. Coordinate arrays are released as soon
+    as they are consumed. Targets much beyond that want the window read in row
+    blocks, pooling each block's labels into the same accumulators.
 
     Args:
         rectangle_vertices: target rectangle, ``[SW, NW, NE, SE]`` in (lon, lat).
@@ -312,14 +356,16 @@ def load_ndsm_evidence(
 
     # grid_size is (along side_1, along side_2) -- see calculate_grid_size in
     # voxcity/geoprocessor/raster/core.py, and compute_cell_center_coords which
-    # builds its (nx, ny) arrays with index 0 along side_1. side_1 is SW->NW, so
-    # index 0 is the row axis growing north: the display frame.
+    # builds its (nx, ny) arrays with index 0 along side_1.
     n_rows, n_cols = (int(n) for n in geom["grid_size"])
     n_cells = n_rows * n_cols
     origin = np.asarray(geom["origin"], dtype=np.float64)
     d_row, d_col = geom["adj_mesh"]
     # Full-extent side vectors rebuilt from the *cell* step, so the parallelogram
-    # inverted below is exactly the one compute_cell_center_coords lays cells on.
+    # inverted below is the one compute_cell_center_coords lays cells on. (It
+    # differs from side_1/side_2 by ~1e-10 degrees, since u_vec round-trips
+    # through a geodesic distance -- but rebuilding from the step is the
+    # definition the cell centres actually use.)
     u_full = n_rows * float(d_row) * np.asarray(geom["u_vec"], dtype=np.float64)
     v_full = n_cols * float(d_col) * np.asarray(geom["v_vec"], dtype=np.float64)
 
@@ -331,10 +377,24 @@ def load_ndsm_evidence(
         corner_x, corner_y = to_src.transform(
             [float(c[0]) for c in corners], [float(c[1]) for c in corners]
         )
-        window = from_bounds(
+        exact = from_bounds(
             min(corner_x), min(corner_y), max(corner_x), max(corner_y),
             transform=src.transform,
-        ).round_offsets().round_lengths()
+        )
+        # Grow to whole pixels on BOTH edges. round_offsets().round_lengths()
+        # floors twice in rasterio 1.5, which drops the fractional far edge --
+        # measured at 0.87 px, enough to starve the whole boundary row of cells
+        # of a quarter of their returns while leaving the height percentile
+        # looking fine. n_all and n_nonground are the classifier's confidence
+        # weights, so a systematic deficit there silently demotes edge cells.
+        col_off = math.floor(exact.col_off)
+        row_off = math.floor(exact.row_off)
+        window = Window(
+            col_off,
+            row_off,
+            math.ceil(exact.col_off + exact.width) - col_off,
+            math.ceil(exact.row_off + exact.height) - row_off,
+        )
 
         # Clip rather than read boundless. A non-boundless read of a window that
         # overhangs the raster silently returns the *clipped* array while
@@ -364,16 +424,9 @@ def load_ndsm_evidence(
         if not degraded:
             data[1:] = np.where(data[1:] == float(nodata), 0.0, data[1:])
 
-    rows, cols = np.meshgrid(
-        np.arange(data.shape[1]), np.arange(data.shape[2]), indexing="ij"
-    )
-    pixel_x, pixel_y = rasterio.transform.xy(
-        window_transform, rows.ravel(), cols.ravel()
-    )
-    from_src = Transformer.from_crs(src_crs, "EPSG:4326", always_xy=True)
-    lon, lat = from_src.transform(np.asarray(pixel_x), np.asarray(pixel_y))
-
+    lon, lat = _pixel_lonlat(window_transform, data.shape[1], data.shape[2], src_crs)
     labels = _cell_labels(lon, lat, origin, u_full, v_full, n_rows, n_cols)
+    del lon, lat          # one float64 per raster pixel each; see Memory above
     if not (labels >= 0).any():
         return None
 
