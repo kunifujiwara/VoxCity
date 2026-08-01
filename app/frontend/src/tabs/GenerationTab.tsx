@@ -134,7 +134,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         params.plateau_lod = plateauLod;
         params.use_citygml_cache = plateauLod === 'lod1' ? useCitygmlCache : undefined;
         params.use_ndsm_canopy = useNdsmCanopy;
-        params.include_bridges = includeBridges;
+        params.include_bridges = plateauLod === 'lod2' ? includeBridges : undefined;
       } else {
         // Normal mode: pass sources (null = auto)
         params.building_source = useAutoSources ? null : buildingSource;
