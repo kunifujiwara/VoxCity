@@ -141,7 +141,7 @@ export const en = {
     demInterpolation: 'DEM Interpolation',
     useCitygmlCache: 'Use CityGML Cache',
     useNdsm: 'Use nDSM for Canopy',
-    includeBridges: 'Include Bridges',
+    includeBridges: 'Include Bridges (as building voxels)',
   },
   targetAreaTab: {
     title: 'Target Area',
