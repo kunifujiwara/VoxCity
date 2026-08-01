@@ -13,6 +13,7 @@ All heavy lifting delegates to the *current* voxcity package API.
 
 from __future__ import annotations
 
+import dataclasses
 import gc
 import json
 import math
@@ -880,6 +881,40 @@ def _reset_taichi_and_caches():
 # Endpoints
 # ---------------------------------------------------------------------------
 
+# Fields VoxCityGML's GridParams gained together with rotated-rectangle
+# support: the affine grid frame (NW origin + column/row basis vectors).
+_ROTATION_GRID_FIELDS = frozenset({
+    "origin_lon", "origin_lat",
+    "e_col_lon", "e_col_lat", "e_row_lon", "e_row_lat",
+})
+
+
+def _voxcitygml_has_rotation_frame(pkg) -> bool:
+    """Whether this voxcitygml build grids a *rotated* rectangle correctly.
+
+    A version check cannot answer this. Rotation landed as commits on top of
+    the 0.2.0 bump without another one, and voxcitygml is normally installed
+    editable from a git checkout whose declared version lags its code — so
+    ``__version__`` and ``generate_voxcity``'s presence both say "0.2.0" for a
+    pre-rotation and a current build alike. Probe the structure instead.
+
+    This matters because the old behaviour is silent, not loud: given a rotated
+    rectangle the pre-rotation ``compute_grid_params`` did plain min/max
+    bounding-box arithmetic and returned an axis-aligned grid — no exception,
+    and no degenerate-input error either, since the rectangle is perfectly
+    valid. The wrong geometry would come back looking correct.
+    """
+    grid_utils = getattr(pkg, "grid_utils", None)
+    params = getattr(grid_utils, "GridParams", None)
+    if params is None:
+        return False
+    try:
+        names = {f.name for f in dataclasses.fields(params)}
+    except TypeError:  # not a dataclass — fall back to declared annotations
+        names = set(getattr(params, "__annotations__", None) or ())
+    return _ROTATION_GRID_FIELDS.issubset(names)
+
+
 @lru_cache(maxsize=1)
 def _voxcitygml_import_state() -> Tuple[bool, str]:
     """Probe whether voxcitygml is importable and new enough. Returns (ok, why).
@@ -895,6 +930,21 @@ def _voxcitygml_import_state() -> Tuple[bool, str]:
     if not hasattr(voxcitygml, "generate_voxcity"):
         return False, ("the installed voxcitygml is too old — LOD2 needs "
                        "voxcitygml >= 0.2.0, which provides generate_voxcity()")
+    if not _voxcitygml_has_rotation_frame(voxcitygml):
+        # Declaring the whole mode unavailable, rather than keeping it for
+        # axis-aligned rectangles only, is deliberate: telling the two apart
+        # needs the midline/flare heuristic that commit 4713fa3 removed, and a
+        # naive "opposite corners share a lon" test would reject the
+        # geodesically-built rectangles this app produces at rotation 0.
+        # Trading that class of false rejections for a mode restored by
+        # updating an editable git checkout is not worth it.
+        return False, ("the installed voxcitygml predates rotated-rectangle "
+                       "support — its GridParams has no affine grid frame "
+                       "(origin_lon/e_col_lon/...), so a rotated target "
+                       "rectangle would be silently voxelized as its "
+                       "axis-aligned bounding box. Update the VoxCityGML "
+                       "checkout and reinstall: pip install -e "
+                       "<path-to-VoxCityGML>")
     return True, ""
 
 
@@ -1135,6 +1185,13 @@ async def generate_model(req: GenerateRequest):
                 # ── LOD2: true roof/wall geometry via voxcitygml ──
                 # NOTE: the kwargs set above configure get_voxcity* and apply to
                 # the LOD1/normal paths only; LOD2 is driven by VoxelizerConfig.
+                #
+                # Dependency: this path needs a voxcitygml build with the affine
+                # GridParams frame (rotated-rectangle support), which is newer
+                # than the 0.2.0 that first shipped generate_voxcity() and is
+                # *not* distinguishable by version — see
+                # _voxcitygml_has_rotation_frame, which gates both /api/health
+                # and the guard below.
                 if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):
                     raise HTTPException(
                         status_code=400,
@@ -1142,6 +1199,15 @@ async def generate_model(req: GenerateRequest):
                                "dataset directory. Place it at "
                                "<DATA_DIR>/plateau or point the CITYGML_PATH "
                                "environment variable at it.")
+                # /api/health disables the mode in the UI, but this endpoint is
+                # reachable directly — and the failure being guarded against is
+                # silent (wrong grid, no exception), so refuse here too rather
+                # than trust an unusable package.
+                usable, why_not = _voxcitygml_import_state()
+                if not usable:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"PLATEAU LOD2 mode is unavailable: {why_not}")
                 try:
                     from voxcitygml import VoxelizerConfig, generate_voxcity
                 except ImportError as exc:

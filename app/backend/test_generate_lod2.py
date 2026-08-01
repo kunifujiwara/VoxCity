@@ -1,5 +1,6 @@
 """Tests for the PLATEAU LOD2 generation branch (pipeline mocked)."""
 import builtins
+import dataclasses
 import sys
 import types
 
@@ -48,6 +49,41 @@ def _base_request(**overrides):
     return body
 
 
+def _fake_grid_utils(*, rotation_capable: bool):
+    """A stub of ``voxcitygml.grid_utils`` with/without the affine grid frame.
+
+    The backend probes ``GridParams`` for the affine fields because rotation
+    support landed *after* the 0.2.0 version bump — neither ``__version__`` nor
+    ``generate_voxcity()``'s presence separates the two builds.
+    """
+    mod = types.ModuleType("voxcitygml.grid_utils")
+
+    @dataclasses.dataclass
+    class _BboxGridParams:
+        """Pre-rotation shape: plain min/max bounding-box arithmetic."""
+        n_rows: int = 0
+        n_cols: int = 0
+        min_lon: float = 0.0
+        max_lon: float = 0.0
+        min_lat: float = 0.0
+        max_lat: float = 0.0
+        pixel_width: float = 0.0
+        pixel_height: float = 0.0
+
+    @dataclasses.dataclass
+    class _AffineGridParams(_BboxGridParams):
+        """Post-rotation shape: NW origin + column/row basis vectors."""
+        origin_lon: float = 0.0
+        origin_lat: float = 0.0
+        e_col_lon: float = 0.0
+        e_col_lat: float = 0.0
+        e_row_lon: float = 0.0
+        e_row_lat: float = 0.0
+
+    mod.GridParams = _AffineGridParams if rotation_capable else _BboxGridParams
+    return mod
+
+
 class _FakeVoxels:
     classes = np.zeros((4, 4, 3), dtype=np.int16)
 
@@ -77,7 +113,13 @@ def stubbed(monkeypatch, tmp_path):
 
     fake_pkg.VoxelizerConfig = FakeConfig
     fake_pkg.generate_voxcity = fake_generate
+    # The stub must mirror the *rotation-capable* package, or the backend's
+    # capability probe would report every LOD2 test's environment unusable.
+    fake_pkg.grid_utils = _fake_grid_utils(rotation_capable=True)
     monkeypatch.setitem(sys.modules, "voxcitygml", fake_pkg)
+    # The probe is process-cached; swapping the package underneath it must not
+    # leave a stale verdict behind for (or from) a neighbouring test.
+    main_mod._voxcitygml_import_state.cache_clear()
 
     monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
     monkeypatch.setattr(main_mod, "_reset_taichi_and_caches", lambda: None)
@@ -107,7 +149,8 @@ def stubbed(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main_mod.app_state, "store_generation_result",
                         fake_store)
-    return calls
+    yield calls
+    main_mod._voxcitygml_import_state.cache_clear()
 
 
 def test_lod2_calls_voxcitygml(stubbed, tmp_path):
@@ -221,6 +264,21 @@ def test_lod2_accepts_rotated_rectangle(stubbed):
     assert stubbed['config']['rectangle_vertices'] == [tuple(v) for v in ROTATED_RECT]
 
 
+def test_lod2_generate_refuses_a_package_without_rotation_support(stubbed):
+    """/api/health gating the UI is not enough: the endpoint is reachable
+    directly, and a pre-rotation voxcitygml returns *wrong* geometry rather
+    than raising. Refuse before calling it — for the axis-aligned request too,
+    since the whole mode is declared unavailable rather than half-supported."""
+    sys.modules["voxcitygml"].grid_utils = _fake_grid_utils(
+        rotation_capable=False)
+    main_mod._voxcitygml_import_state.cache_clear()
+
+    resp = TestClient(app).post("/api/generate", json=_base_request())
+    assert resp.status_code == 500, resp.text
+    assert "rotat" in resp.json()["detail"].lower(), resp.text
+    assert 'generate_called' not in stubbed
+
+
 def test_lod2_maps_no_buildings_to_400(stubbed, monkeypatch):
     def raise_no_buildings(cfg):
         raise ValueError("No CityGML buildings found in the selected area.")
@@ -304,6 +362,43 @@ def test_health_reports_lod2_unavailable_when_package_too_old(
     cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
     assert cap["available"] is False
     assert "0.2.0" in cap["reason"]
+
+
+def test_health_reports_lod2_unavailable_without_rotation_support(
+        clear_capability_cache, monkeypatch, tmp_path):
+    """An installed voxcitygml that has generate_voxcity() but no rotation.
+
+    The three rotation commits landed on top of the 0.2.0 bump without another
+    one, so neither ``__version__`` nor ``generate_voxcity``'s presence can
+    tell this build from a current one. Such a build does not *fail* on a
+    rotated rectangle — it quietly grids the axis-aligned bounding box — so the
+    probe has to key on the affine ``GridParams`` fields instead.
+    """
+    monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
+    old = types.ModuleType("voxcitygml")
+    old.generate_voxcity = lambda cfg: None
+    old.VoxelizerConfig = object
+    old.grid_utils = _fake_grid_utils(rotation_capable=False)
+    monkeypatch.setitem(sys.modules, "voxcitygml", old)
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "rotat" in cap["reason"].lower(), cap["reason"]
+
+
+@pytest.mark.skipif(_RealVoxelizerConfig is None,
+                    reason="voxcitygml is not installed in this environment")
+def test_rotation_probe_accepts_the_real_package(clear_capability_cache):
+    """Non-vacuity for the test above: the probe must not reject reality.
+
+    ``_fake_grid_utils`` only asserts that the probe distinguishes two stubs of
+    the app's own making. This pins the other direction against the installed
+    package — which does carry the affine frame — so a probe keyed on a field
+    name that VoxCityGML later renames fails here instead of silently
+    disabling LOD2 for everyone.
+    """
+    ok, reason = main_mod._voxcitygml_import_state()
+    assert ok, reason
 
 
 @pytest.mark.parametrize("path_value", [None, "", "/definitely/not/a/real/dir"])
