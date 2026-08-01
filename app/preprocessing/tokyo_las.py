@@ -13,7 +13,7 @@ What’s included
 Requires: requests, laspy, rasterio, shapely, pyproj, numpy, matplotlib
 """
 
-import os, re, math, warnings, zipfile
+import os, re, math, shutil, warnings, zipfile
 from pathlib import Path
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import numpy as np
 import rasterio
-from rasterio.merge import merge
+import rasterio.merge as _rio_merge
 from rasterio.windows import Window, from_bounds
 from rasterio.transform import from_origin
 from rasterio.mask import mask as rio_mask
@@ -515,6 +515,76 @@ def process_las_to_raster(las_path, resolution=0.5, dsm_classes=(1, 3), dtm_clas
         print(f"Error processing LAS file {las_path}: {e}")
         return (None, None, None) if with_evidence else (None, None)
 
+#: GTiff creation options for every raster this module writes.
+#:
+#: The pre-Task-7b writers emitted uncompressed, untiled GeoTIFFs. At city scale
+#: that is not a tidiness question, it is a hard stop: 5,669 five-band evidence
+#: tiles come to ~51 GB uncompressed, the merged evidence raster to 85 GB and the
+#: merged nDSM to 102 GB, against ~102 GB free on the rebuild machine's C: drive.
+#: Deflate with the floating-point predictor takes the measured evidence tile
+#: from 9.2 MB to well under half that, and it is *lossless* -- the bit-identity
+#: guard compares decoded arrays, not files, so compression cannot move a value
+#: even in principle.
+#:
+#: ``tiled`` matters for reads, not writes: the merged rasters are consumed
+#: window-by-window by :func:`build_ndsm`, and a striped TIFF makes every window
+#: read pull whole scanlines the full width of the raster.
+#:
+#: ``BIGTIFF="IF_SAFER"`` rather than ``"YES"``: past 4 GB a classic TIFF's
+#: 32-bit directory offsets overflow, and the merged rasters are twenty times
+#: that, but per-sheet tiles are a few megabytes and stay classic TIFFs that any
+#: reader can open.
+GTIFF_CREATION_OPTS = {
+    "compress": "deflate",
+    "predictor": 3,          # floating-point predictor; see creation_opts()
+    "tiled": True,
+    "blockxsize": 512,
+    "blockysize": 512,
+    "BIGTIFF": "IF_SAFER",
+}
+
+
+def creation_opts(dtype):
+    """:data:`GTIFF_CREATION_OPTS` with a predictor *dtype* actually allows.
+
+    ``PREDICTOR=3`` is the floating-point predictor and GDAL refuses it outright
+    on anything else -- ``RasterioIOError: PREDICTOR=3 is only supported with
+    Float32 or Float64``, not a warning. Everything this module writes today is
+    float32, but :func:`merge_geotiffs` takes its output dtype from whatever it
+    is handed, so hard-coding 3 would turn "merge some integer rasters" from
+    working into failing. Integers get ``PREDICTOR=2``, the horizontal
+    differencing one, which is the right choice for them anyway.
+    """
+    opts = dict(GTIFF_CREATION_OPTS)
+    if not np.issubdtype(np.dtype(dtype), np.floating):
+        opts["predictor"] = 2
+    return opts
+
+#: Rows of the merged grid held in memory at once by :func:`merge_geotiffs`.
+#:
+#: 512 to line up with ``GTIFF_CREATION_OPTS['blockysize']``, so a stripe write
+#: covers whole block rows and GDAL never has to read a partially written block
+#: back. At the live raster's 64,464-pixel width one five-band stripe is 660 MB;
+#: the array it replaces was 85 GB.
+MERGE_STRIPE_ROWS = 512
+
+
+def copy_raster_file(src_path, dst_path):
+    """Copy a raster file without decoding it.
+
+    ``precompute_las_cache``'s no-AOI branch used to do ``src.read()`` and write
+    the array back out under the same profile -- a 102 GB read on a 63.7 GB
+    machine to reproduce a file that was already correct on disk. A byte copy is
+    both cheaper and a strictly stronger guarantee: it preserves the profile, the
+    block layout and every pixel exactly, with no decode/encode round trip to get
+    wrong.
+    """
+    if os.path.abspath(src_path) == os.path.abspath(dst_path):
+        return dst_path
+    shutil.copyfile(src_path, dst_path)
+    return dst_path
+
+
 def save_raster(raster_data, output_path, crs):
     """Write a raster dict to GeoTIFF.
 
@@ -522,6 +592,10 @@ def save_raster(raster_data, output_path, crs):
     array writes that many bands. Multi-band is how the evidence tile is
     persisted: all its bands share one dtype and one nodata value, which is what
     a GTiff can express and what the runtime reader assumes.
+
+    Written compressed and tiled (:data:`GTIFF_CREATION_OPTS`). Values are
+    unaffected -- deflate is lossless -- but 5,669 five-band tiles are ~51 GB
+    uncompressed and the rebuild machine does not have that.
     """
     array = raster_data['array'].astype(np.float32, copy=False)
     if array.ndim == 2:
@@ -539,6 +613,7 @@ def save_raster(raster_data, output_path, crs):
         'dtype':  rasterio.float32,
         'transform': transform,
         'nodata': nodata,
+        **creation_opts(rasterio.float32),
     }
     crs_obj = normalize_crs(crs)
     if crs_obj is not None:
@@ -739,6 +814,138 @@ def warn_if_inputs_overlap(input_files, target_crs, min_overlap_frac=OVERLAP_WAR
     return offenders
 
 
+#: ``rasterio.merge``'s own "first available pixel wins" compositor.
+#:
+#: Taken from the library rather than reimplemented so that the streamed merge
+#: below cannot drift from the dense one it has to stay bit-identical to.
+_COPY_FIRST = _rio_merge.MERGE_METHODS["first"]
+
+
+def _merge_paste_plan(src, output_transform, dst_bounds):
+    """Where *src* lands in the merged grid, using ``rasterio.merge``'s arithmetic.
+
+    Lifted line for line from ``rasterio.merge.merge`` (1.3.x) so the streamed
+    merge places every source exactly where the dense merge placed it: the same
+    intersection, the same ``round_lengths`` then ``round_offsets`` on the
+    destination window, the same source window. Returns ``None`` for a source
+    that does not intersect the grid at all.
+
+    In a full-extent merge the destination bounds are the union of the source
+    bounds, so the intersection is always the source's own footprint and no
+    source is ever clipped. That is what makes streaming safe here and is why
+    this is *not* the same trick as chunking a merge by output tile, which does
+    clip sources and does move values at chunk seams.
+    """
+    src_w, src_s, src_e, src_n = src.bounds
+    dst_w, dst_s, dst_e, dst_n = dst_bounds
+
+    int_w = src_w if src_w > dst_w else dst_w
+    int_s = src_s if src_s > dst_s else dst_s
+    int_e = src_e if src_e < dst_e else dst_e
+    int_n = src_n if src_n < dst_n else dst_n
+    if int_w >= int_e or int_s >= int_n:
+        return None
+
+    src_window = from_bounds(int_w, int_s, int_e, int_n, src.transform)
+    dst_window = from_bounds(int_w, int_s, int_e, int_n, output_transform)
+    return src_window.round_lengths(), dst_window.round_lengths().round_offsets()
+
+
+def _read_paste_rows(src, src_window, dst_window, row0, row1, n_cols, resampling):
+    """Rows ``[row0, row1)`` of what the dense merge would have read from *src*.
+
+    The dense merge reads the whole source at once
+    (``src.read(out_shape=..., window=src_window)``) and pastes it. For a source
+    that needs no rescaling -- every input here is a ``WarpedVRT`` forced to the
+    merge resolution, so that is the normal case -- reading a row sub-window is
+    the identical operation on identical pixels, and it is what keeps a single
+    source from costing the merge its own full size in RAM. That matters more
+    than it sounds: the *intermediates* of a batched merge are near-full-extent
+    rasters, so the dense path could hold 85 GB of destination and tens of GB of
+    one source simultaneously.
+
+    Anything that would rescale falls back to the dense read, which is exactly
+    the old behaviour: correctness first, memory second.
+    """
+    rescales = (src_window.height != dst_window.height
+                or src_window.width != dst_window.width)
+    off_grid = src_window.row_off != 0 or src_window.col_off != 0
+    if rescales or off_grid:
+        temp = src.read(out_shape=(src.count, dst_window.height, dst_window.width),
+                        window=src_window, boundless=False, masked=True,
+                        resampling=resampling)
+        temp = temp[:, row0:row1, :]
+    else:
+        temp = src.read(window=Window(0, row0, src_window.width, row1 - row0),
+                        boundless=False, masked=True, resampling=resampling)
+    return temp[:, :, :n_cols]
+
+
+def _merge_streaming(sources, dst, output_transform, output_height, output_width,
+                     dst_bounds, nodataval, resampling, stripe_rows):
+    """Composite *sources* into the open dataset *dst*, one row stripe at a time.
+
+    Peak memory is one stripe of the merged grid plus the rows of one source that
+    the stripe touches, instead of the whole merged array. ``method="first"``
+    survives because the source order is preserved within every stripe and a
+    pixel belongs to exactly one stripe, so no compositing decision spans a
+    stripe boundary.
+    """
+    count = sources[0].count
+    dtype = sources[0].dtypes[0]
+
+    plans = []
+    for idx, src in enumerate(sources):
+        plan = _merge_paste_plan(src, output_transform, dst_bounds)
+        if plan is not None:
+            plans.append((idx, src, plan[0], plan[1]))
+
+    # One buffer for the whole merge, reused stripe by stripe.
+    #
+    # Flat, then reshaped per stripe, rather than a 3-D array sliced on its row
+    # axis: the final stripe is shorter than the rest, and ``buf3d[:, :h, :]`` is
+    # not C-contiguous, so ``dst.write`` would silently copy it. Both mistakes
+    # were measured on real sheets -- allocating inside the loop cost 167 MB
+    # against an 80 MB stripe (the previous stripe stays alive until the rebind),
+    # and the non-contiguous last stripe still cost 158 MB.
+    buffer = np.empty(count * min(stripe_rows, output_height) * output_width,
+                      dtype=dtype)
+
+    for top in range(0, output_height, stripe_rows):
+        bottom = min(top + stripe_rows, output_height)
+        rows = bottom - top
+        dest = buffer[:count * rows * output_width].reshape(count, rows, output_width)
+        dest.fill(nodataval)
+
+        for idx, src, src_window, dst_window in plans:
+            # max(0, ...) mirrors the dense merge, which clamps the paste origin
+            # but keeps the full paste height/width.
+            roff = max(0, dst_window.row_off)
+            coff = max(0, dst_window.col_off)
+            row_end = min(roff + dst_window.height, output_height)
+            col_end = min(coff + dst_window.width, output_width)
+            r0 = max(roff, top)
+            r1 = min(row_end, bottom)
+            if r1 <= r0 or col_end <= coff:
+                continue
+
+            region = dest[:, r0 - top:r1 - top, coff:col_end]
+            temp = _read_paste_rows(src, src_window, dst_window, r0 - roff,
+                                    r1 - roff, col_end - coff, resampling)
+
+            if math.isnan(nodataval):
+                region_mask = np.isnan(region)
+            elif np.issubdtype(region.dtype, np.floating):
+                region_mask = np.isclose(region, nodataval)
+            else:
+                region_mask = region == nodataval
+
+            _COPY_FIRST(region, temp, region_mask, np.ma.getmask(temp),
+                        index=idx, roff=roff, coff=coff)
+
+        dst.write(dest, window=Window(0, top, output_width, bottom - top))
+
+
 def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, res=None,
                    check_overlap=True):
     """
@@ -749,6 +956,23 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
     ``method="first"``; see :func:`warn_if_inputs_overlap`. Turn it off when the
     inputs are known to interleave, as the intermediate products of
     :func:`merge_geotiffs_batched` do.
+
+    **Streams to disk.** ``rasterio.merge.merge`` builds the entire merged array
+    before writing it. At city scale that array is 17.0 GB for the DSM or DTM and
+    85.0 GB for the five evidence bands, on a machine with 63.7 GB, so the
+    evidence merge simply could not run. This composites one
+    :data:`MERGE_STRIPE_ROWS`-row stripe at a time into an already-open dataset;
+    :func:`_merge_paste_plan` reproduces the library's placement arithmetic
+    exactly, so the result is bit-identical to what the dense merge produced.
+
+    ``merge(dst_path=...)`` is *not* the mechanism, despite accepting the
+    argument: in rasterio 1.3.11 -- the version in ``voxcityapp2``, the only
+    environment that has ``laspy`` and therefore the only one a rebuild can run
+    in -- ``dst_path`` still allocates the whole array and then writes it
+    (``merge.py:297``). Measured: 79.2 MB peak against a 78.7 MB dense array.
+    rasterio 1.4+ does stream it, but by a chunking scheme that clips sources at
+    chunk boundaries and so is not bit-identical to the 1.3 output that produced
+    the live COG.
     """
     if not input_files:
         print("No GeoTIFF files to merge")
@@ -796,22 +1020,39 @@ def merge_geotiffs(input_files, output_path, target_crs, nodata_value=-9999.0, r
 
         print(f"Target CRS: {tcrs}")
         print("Merging files...")
-        # No dst_crs here — all inputs are already warped VRTs
-        merged, transform = merge(warped, nodata=nodata_value, method="first")
+        # No dst_crs here — all inputs are already warped VRTs.
+        #
+        # Output grid: the union of the source footprints at the merge
+        # resolution, computed the way rasterio.merge computes it (min/max of the
+        # bounds, round() on the pixel counts, from_origin on the north-west
+        # corner) so the transform and shape match the dense merge exactly.
+        merge_res = warped[0].res
+        xs, ys = [], []
+        for vrt in warped:
+            left, bottom, right, top = vrt.bounds
+            xs.extend([left, right])
+            ys.extend([bottom, top])
+        dst_w, dst_s, dst_e, dst_n = min(xs), min(ys), max(xs), max(ys)
+        output_width = int(round((dst_e - dst_w) / merge_res[0]))
+        output_height = int(round((dst_n - dst_s) / merge_res[1]))
+        transform = from_origin(dst_w, dst_n, merge_res[0], merge_res[1])
 
         meta = {
             "driver": "GTiff",
-            "height": merged.shape[1],
-            "width": merged.shape[2],
-            "count": merged.shape[0],
-            "dtype": merged.dtype,
+            "height": output_height,
+            "width": output_width,
+            "count": warped[0].count,
+            "dtype": warped[0].dtypes[0],
             "crs": tcrs,
             "transform": transform,
-            "nodata": nodata_value
+            "nodata": nodata_value,
+            **creation_opts(warped[0].dtypes[0]),
         }
         print(f"Writing merged file to {output_path}")
         with rasterio.open(output_path, "w", **meta) as dst:
-            dst.write(merged)
+            _merge_streaming(warped, dst, transform, output_height, output_width,
+                             (dst_w, dst_s, dst_e, dst_n), nodata_value,
+                             Resampling.nearest, int(MERGE_STRIPE_ROWS))
         print("Merge completed successfully")
         return output_path
 

@@ -29,6 +29,7 @@ laspy = pytest.importorskip("laspy")
 
 import rasterio                                              # noqa: E402
 from rasterio.transform import from_origin                   # noqa: E402
+from rasterio.windows import Window                          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tokyo_las                                             # noqa: E402
@@ -646,6 +647,60 @@ def test_pixels_with_returns_but_no_height_are_nodata_everywhere(built):
             f"row {row} has no nDSM height, so no band may claim data there")
 
 
+def test_a_height_without_evidence_is_dropped_from_every_band(tmp_path):
+    """The other direction of the co-occurrence rule, which the LAS fixture
+    cannot reach.
+
+    ``build_ndsm`` masks both ways: a pixel loses its evidence if it has no
+    height, *and* it loses its height if it has no evidence. Only the first
+    direction ever arises from a real point cloud -- a pixel with a DSM and a DTM
+    return necessarily has returns to count -- so on the synthetic LAS tile the
+    second mask is dead code, and deleting it changes nothing that the suite
+    could see. Measured: mutating ``valid &= ~getmaskarray(ev).any(axis=0)`` to a
+    no-op left all tests passing.
+
+    That mask is not decoration. The three rasters come from three independent
+    merges, and a sheet that produced a DSM/DTM pair but whose evidence bands
+    failed (:func:`process_las_to_raster` returns them separately, precisely so a
+    failure there cannot cost the tile its heights) leaves exactly this shape:
+    height everywhere, evidence missing. Without the mask the runtime reader maps
+    that to ``n_all=0, roughness=0`` beside a real height -- the maximally
+    roof-like evidence value, on a cell nothing was measured about.
+
+    So the case is built by hand rather than derived from points.
+    """
+    transform = from_origin(0.0, 4.0, 1.0, 1.0)
+    common = {"driver": "GTiff", "height": 4, "width": 4, "dtype": "float32",
+              "crs": "EPSG:6677", "transform": transform, "nodata": NODATA}
+
+    dsm = np.full((4, 4), 12.0, dtype=np.float32)
+    dtm = np.full((4, 4), 2.0, dtype=np.float32)
+    ev = np.stack([np.full((4, 4), float(10 * (b + 1)), dtype=np.float32)
+                   for b in range(5)])
+    ev[:, 1, 2] = NODATA          # returns missing here, height present
+
+    paths = {}
+    for name, arr, count in (("dsm", dsm[None], 1), ("dtm", dtm[None], 1),
+                             ("ev", ev, 5)):
+        paths[name] = str(tmp_path / f"{name}.tif")
+        with rasterio.open(paths[name], "w", count=count, **common) as dst:
+            dst.write(arr)
+
+    out = str(tmp_path / "ndsm6.tif")
+    tokyo_las.build_ndsm(paths["dsm"], paths["dtm"], out, evidence_path=paths["ev"])
+
+    with rasterio.open(out) as src:
+        data = src.read()
+    assert data.shape == (6, 4, 4)
+    # The pixel with no evidence loses its height too, in every band.
+    assert (data[:, 1, 2] == NODATA).all(), (
+        f"pixel (1, 2) kept data {data[:, 1, 2]} although it had no evidence")
+    # ... and it is the only one, so the mask is targeted rather than blanket.
+    assert (data[0] != NODATA).sum() == 15
+    assert data[0, 0, 0] == pytest.approx(10.0)
+    assert data[1, 0, 0] == pytest.approx(10.0) and data[5, 0, 0] == pytest.approx(50.0)
+
+
 def _import_ndsm_refine():
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
@@ -920,3 +975,525 @@ def test_merge_overlap_check_handles_multiband_evidence(tmp_path):
         out = tokyo_las.merge_geotiffs([a, b], str(tmp_path / "m.tif"), "EPSG:6677")
     with rasterio.open(out) as src:
         assert src.count == 5
+
+
+# ---------------------------------------------------------------------------
+# The merge has to fit in RAM, and on disk
+# ---------------------------------------------------------------------------
+# A city-scale rebuild merges 5,669 survey sheets into a 65,900 x 64,464 grid.
+# One float32 band of that is 17.0 GB; the five evidence bands are 85.0 GB, and
+# the rebuild machine has 63.7 GB. The pre-change merge built the whole merged
+# array in memory before writing it, so the evidence merge could not run at all
+# -- and the failure mode is a MemoryError hours into a multi-hour job, or
+# thrashing that never finishes. These tests pin the two properties that make it
+# possible: the merge never materialises the full extent, and every raster this
+# module writes is compressed and tiled.
+
+
+def _legacy_merge_geotiffs(input_files, output_path, target_crs,
+                           nodata_value=-9999.0, res=None):
+    """The pre-Task-7b merge, verbatim, as the bit-identity oracle.
+
+    Materialises the entire merged array and writes it uncompressed. This is the
+    implementation that produced the live ``ndsm_cog.tif``, so "the streaming
+    merge did not change any value" means "equal to this".
+
+    Note that this oracle also pins the *rasterio* merge algorithm: it calls
+    ``rasterio.merge.merge`` directly, and rasterio 1.3 and 1.4+ composite
+    differently (1.4 added its own chunked path, which clips each source to the
+    chunk boundary). If this suite is ever run against a different rasterio than
+    the 1.3.11 that ``voxcityapp2`` pins, these tests will say so rather than
+    quietly comparing against a reference that moved.
+    """
+    from rasterio.merge import merge as _rio_merge
+
+    warped, opened = [], []
+    try:
+        first_src = rasterio.open(input_files[0])
+        opened.append(first_src)
+        if res is None:
+            res = first_src.res
+        tcrs = tokyo_las.normalize_crs(target_crs) or target_crs
+        for fp in input_files:
+            src = rasterio.open(fp)
+            opened.append(src)
+            kwargs = dict(crs=tcrs, src_nodata=src.nodata, dst_nodata=nodata_value,
+                          resampling=tokyo_las.Resampling.nearest, resolution=res)
+            if src.crs is None:
+                kwargs["src_crs"] = tcrs
+            warped.append(tokyo_las.WarpedVRT(src, **kwargs))
+
+        merged, transform = _rio_merge(warped, nodata=nodata_value, method="first")
+        meta = {"driver": "GTiff", "height": merged.shape[1], "width": merged.shape[2],
+                "count": merged.shape[0], "dtype": merged.dtype, "crs": tcrs,
+                "transform": transform, "nodata": nodata_value}
+        with rasterio.open(output_path, "w", **meta) as dst:
+            dst.write(merged)
+        return output_path
+    finally:
+        for v in warped:
+            try:
+                v.close()
+            except Exception:
+                pass
+        for s in opened:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+
+def _assert_rasters_bit_identical(new_path, old_path, what):
+    """Compare *arrays*, not files.
+
+    Deliberately: the point of Task 7b is that the new writer compresses and
+    tiles, so the bytes on disk differ by construction while every pixel value
+    must not. ``tobytes()`` on the decoded array is the strongest statement that
+    can be true here -- it catches a NaN pattern change and a single-ulp change
+    that ``allclose`` would wave through.
+    """
+    with rasterio.open(new_path) as a, rasterio.open(old_path) as b:
+        assert (a.count, a.width, a.height) == (b.count, b.width, b.height), what
+        assert a.transform == b.transform, f"{what}: transform moved"
+        assert a.bounds == b.bounds, f"{what}: bounds moved"
+        assert a.crs == b.crs, what
+        assert a.nodata == b.nodata, what
+        na, nb = a.read(), b.read()
+        assert na.dtype == nb.dtype == np.float32, what
+        assert na.tobytes() == nb.tobytes(), f"{what} is not bit-identical"
+        # ... and the comparison is not cheap: the oracle has to hold real data,
+        # real holes, and more than one distinct value.
+        real = nb[nb != NODATA]
+        assert real.size > 0 and (nb == NODATA).any(), f"{what}: trivial oracle"
+        assert np.unique(real).size > 1, f"{what}: oracle is a constant"
+
+
+#: A value that is *not* nodata but is within ``np.isclose``'s default tolerance
+#: of it (rtol 1e-5 on 9999 is ~0.1, so anything in [-9999.1, -9998.9] counts).
+#:
+#: ``rasterio.merge`` asks "has this destination pixel been written yet?" with
+#: ``np.isclose(region, nodata)``, not ``==``. On a pixel holding this value the
+#: two answers differ, and a later overlapping sheet therefore overwrites under
+#: one rule and not under the other. Without such a pixel the streamed merge
+#: could swap ``isclose`` for ``==`` and no fixture could tell.
+NEAR_NODATA = np.float32(-9998.95)
+
+
+def _write_varied_tile(path, west, south, height, width, res, base, count=5,
+                       hole=None, near_nodata_at=None):
+    """A tile whose every pixel differs from every other pixel.
+
+    A constant-valued tile cannot see a paste that lands one row off, is
+    transposed, or is mirrored -- the overlap fixtures above are constant because
+    they only test the overlap *warning*. Here the value encodes (band, row, col)
+    plus a per-tile base, so any misplacement changes a value.
+    """
+    b, r, c = np.meshgrid(np.arange(count), np.arange(height), np.arange(width),
+                          indexing="ij")
+    arr = (base + 1000.0 * b + r + 0.001 * c).astype(np.float32)
+    if hole is not None:
+        hr, hc = hole
+        arr[:, hr, hc] = NODATA          # an interior nodata hole, all bands
+    if near_nodata_at is not None:
+        nr, nc = near_nodata_at
+        arr[:, nr, nc] = NEAR_NODATA
+    transform = from_origin(west, south + height * res, res, res)
+    profile = {"driver": "GTiff", "height": height, "width": width, "count": count,
+               "dtype": "float32", "crs": "EPSG:6677", "transform": transform,
+               "nodata": NODATA}
+    with rasterio.open(str(path), "w", **profile) as dst:
+        dst.write(arr)
+    return str(path)
+
+
+@pytest.fixture
+def varied_sheets(tmp_path):
+    """Sheets chosen to make the merge arithmetic hard.
+
+    - Different shapes (non-square, and not multiples of each other), so a
+      transposed or size-assuming paste cannot pass.
+    - Origins that are *not* on a common multiple of the tile size, so the
+      destination windows have fractional offsets and ``round_offsets`` is
+      actually exercised rather than being a no-op.
+    - One overlapping pair, so ``method="first"`` has to make a choice and the
+      choice has to be the same one; without it the merge is a disjoint paste
+      and the compositing logic is untested.
+    - Interior nodata holes, so the "already written?" mask is non-trivial.
+    - A :data:`NEAR_NODATA` pixel inside the contested strip, so the mask is
+      built with ``isclose`` semantics rather than equality semantics.
+    - One sheet on a half-pixel origin, so the merged grid's width and height in
+      pixels are *not* whole numbers before rounding. Every other sheet sits on
+      integer coordinates, and with only those a merge that truncated the pixel
+      count instead of rounding it would be indistinguishable. Real survey sheets
+      are the awkward case: each one's extent is its own point cloud's bounding
+      box rounded up, so their origins share no common grid.
+    """
+    res = 1.0
+    specs = [
+        # (west, south, height, width, base, hole, near_nodata_at)
+        (0.0,    0.0,   37, 53, 10_000.0, (5, 7), None),
+        (53.0,   0.0,   37, 41, 20_000.0, (11, 3), None),
+        (94.0,  17.0,   29, 47, 30_000.0, (2, 2), None),
+        # near-nodata at local (5, 45) -> x=75.5, y=54.5, inside the strip below
+        (30.0,  37.0,   23, 61, 40_000.0, (9, 40), (5, 45)),
+        # overlaps the sheet above by half its width -> method="first" decides
+        (60.0,  37.0,   23, 61, 50_000.0, (1, 1), None),
+        # half-pixel origin: pushes the union bounds off the pixel grid
+        (-0.5,  -0.5,   19, 29, 60_000.0, (3, 3), None),
+    ]
+    return [_write_varied_tile(tmp_path / f"s{i}.tif", w, s, h, wd, res, base,
+                               hole=hole, near_nodata_at=near)
+            for i, (w, s, h, wd, base, hole, near) in enumerate(specs)]
+
+
+@pytest.mark.parametrize("stripe_rows", [1, 3, 8, 64, 100_000])
+def test_streamed_merge_is_bit_identical_to_the_dense_merge(
+        varied_sheets, tmp_path, monkeypatch, stripe_rows):
+    """The invariant the whole rebuild rests on.
+
+    Swept across stripe heights that do not divide any sheet height (1, 3, 8),
+    one that divides neither the sheet heights nor the output height (64), and
+    one larger than the whole raster (the degenerate single-stripe case). A seam
+    is a bug that appears at one particular alignment, so a single stripe height
+    would be testing one alignment out of many.
+    """
+    monkeypatch.setattr(tokyo_las, "MERGE_STRIPE_ROWS", stripe_rows)
+    new = tokyo_las.merge_geotiffs(varied_sheets, str(tmp_path / "new.tif"),
+                                   "EPSG:6677", check_overlap=False)
+    old = _legacy_merge_geotiffs(varied_sheets, str(tmp_path / "old.tif"),
+                                 "EPSG:6677")
+    _assert_rasters_bit_identical(new, old, f"merge (stripe_rows={stripe_rows})")
+
+
+def test_streamed_merge_keeps_first_wins_at_an_overlap(varied_sheets, tmp_path):
+    """The overlapping pair really does contest pixels.
+
+    Without this the fixture could be disjoint by accident -- a merge that
+    ignored ``method="first"`` entirely would still be bit-identical to an oracle
+    that never had to choose. Here the earlier sheet's values must win on the
+    shared ground.
+    """
+    out = tokyo_las.merge_geotiffs(varied_sheets, str(tmp_path / "m.tif"),
+                                   "EPSG:6677", check_overlap=False)
+    with rasterio.open(out) as src:
+        # sheet 3 spans x=[30,91), sheet 4 spans x=[60,121); both y=[37,60)
+        row, col = src.index(70.5, 45.5)        # inside the contested strip
+        got = src.read(1, window=Window(col, row, 1, 1))[0, 0]
+    assert 40_000.0 <= got < 50_000.0, (
+        f"contested pixel took the later sheet ({got}); method='first' broke")
+
+
+def test_a_near_nodata_pixel_counts_as_unwritten(varied_sheets, tmp_path):
+    """``isclose``, not ``==``, decides whether a destination pixel is free.
+
+    This is the one place the two rules disagree, and the merge has to disagree
+    the same way the library does or the streamed merge is not a faithful
+    replacement. Kept as its own test because the bit-identity comparison would
+    report it as "some byte differs" without saying which rule moved.
+
+    Asserted by absence rather than at a fixed coordinate: the half-pixel sheet
+    puts the merged grid half a pixel off every other sheet's, so which merged
+    cell the value lands in is a rounding decision, and a test that hard-coded
+    the cell would be testing the rounding instead.
+    """
+    with rasterio.open(varied_sheets[3]) as sheet3:
+        r, c = sheet3.index(75.5, 54.5)
+        assert sheet3.read(1, window=Window(c, r, 1, 1))[0, 0] == NEAR_NODATA, (
+            "fixture lost its near-nodata pixel")
+        assert (sheet3.read() == NEAR_NODATA).sum() == 5, "one pixel, all 5 bands"
+
+    out = tokyo_las.merge_geotiffs(varied_sheets, str(tmp_path / "m.tif"),
+                                   "EPSG:6677", check_overlap=False)
+    with rasterio.open(out) as src:
+        merged = src.read()
+    assert (merged == NEAR_NODATA).sum() == 0, (
+        "the near-nodata pixel survived the merge, so the destination mask used "
+        "equality; rasterio.merge uses np.isclose and the outputs diverge")
+
+
+def test_batched_merge_is_bit_identical_to_the_dense_merge(varied_sheets, tmp_path):
+    """The production path. Its final merge is the full-extent one."""
+    new = tokyo_las.merge_geotiffs_batched(
+        varied_sheets, str(tmp_path / "new.tif"), "EPSG:6677", batch_size=2,
+        tmp_dir=str(tmp_path / "tmp"), check_overlap=False)
+    old = _legacy_merge_geotiffs(varied_sheets, str(tmp_path / "old.tif"),
+                                 "EPSG:6677")
+    _assert_rasters_bit_identical(new, old, "batched merge")
+
+
+# ---------------------------------------------------------------------------
+# The memory ceiling
+# ---------------------------------------------------------------------------
+#: Bands, pixel size and layout of the memory-ceiling fixture.
+#:
+#: Twenty-four five-band 128 x 128 tiles laid on a diagonal, spaced far enough
+#: apart that the *merged* grid is 1,600 x 11,904 -- 381 MB dense, 1,164 times
+#: the 327 KB of any single tile. That ratio is the whole point: a merge that
+#: allocates per tile is fine and a merge that allocates per merged extent is
+#: not, and only a fixture whose combined extent dwarfs its inputs can tell them
+#: apart.
+CEIL_BANDS = 5
+CEIL_TILE = 128
+CEIL_N = 24
+CEIL_STRIDE_X = 64.0
+CEIL_STRIDE_Y = 512.0
+
+#: Traced-allocation ceiling for that merge, in bytes.
+#:
+#: The streaming merge holds one stripe of the merged grid --
+#: MERGE_STRIPE_ROWS x 1,600 x 5 bands x 4 B = 16.4 MB -- plus the rows of one
+#: source that the stripe touches. Measured on this exact fixture: 17.7 MB,
+#: repeatable to 0.1 MB over three runs. 32 MB is 1.8x that and 11.9x below the
+#: 380.9 MB dense array -- loose enough not to be flaky, tight enough that
+#: reintroducing the dense allocation cannot slip under it.
+#:
+#: It is deliberately *not* set just above 17.7 MB. A ceiling that tight would
+#: also catch a merge that merely doubled its stripe, which is a speed and
+#: memory regression but not a wrong answer, at the cost of a test that fails on
+#: an unrelated numpy allocation. ``test_stripe_writes_are_contiguous`` pins that
+#: narrower property directly instead.
+CEIL_BYTES = 32 * 1024 * 1024
+
+
+def test_merge_never_materialises_the_full_extent(tmp_path):
+    """A future change that rebuilds the whole merged array in memory fails here.
+
+    **Instrument: ``tracemalloc``, not process RSS.** Three reasons, each
+    measured rather than assumed:
+
+    1. ``psutil`` is not installed in ``voxcityapp2`` -- the only environment
+       with ``laspy``, so the only one a rebuild can run in -- and an RSS probe
+       would have to be hand-rolled per platform.
+    2. numpy's data buffers *are* traced: a 100 MB ``np.zeros`` shows up as
+       100.0 MB of traced memory in this environment, verified before this test
+       was written. What is being guarded against is precisely a numpy
+       allocation -- ``rasterio.merge.merge`` builds ``np.zeros((count, H, W))``.
+    3. Process RSS on Windows also counts GDAL's block cache and the page cache
+       for the GeoTIFF being written: large, reclaimable, and not under this
+       module's control. A threshold tight enough to catch a 381 MB array would
+       be dominated by that noise.
+
+    The trade is that GDAL-side C++ allocations are invisible here. That is why
+    the test also asserts the *output*: a merge that allocated nothing because it
+    produced nothing would otherwise pass.
+    """
+    import tracemalloc
+
+    files = [
+        _write_varied_tile(
+            tmp_path / f"c{i}.tif", i * CEIL_STRIDE_X, i * CEIL_STRIDE_Y,
+            CEIL_TILE, CEIL_TILE, 1.0, 100_000.0 * (i + 1), count=CEIL_BANDS)
+        for i in range(CEIL_N)
+    ]
+
+    width = int((CEIL_N - 1) * CEIL_STRIDE_X) + CEIL_TILE
+    height = int((CEIL_N - 1) * CEIL_STRIDE_Y) + CEIL_TILE
+    dense_bytes = CEIL_BANDS * width * height * 4
+    tile_bytes = CEIL_BANDS * CEIL_TILE * CEIL_TILE * 4
+    # The fixture has to be *able* to fail: a merged extent that fits under the
+    # ceiling anyway would make this test vacuous.
+    assert dense_bytes > 5 * CEIL_BYTES, dense_bytes
+    assert dense_bytes > 100 * tile_bytes, "combined extent must dwarf any tile"
+
+    out = str(tmp_path / "merged.tif")
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        tokyo_las.merge_geotiffs(files, out, "EPSG:6677", check_overlap=False)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak < CEIL_BYTES, (
+        f"merge peaked at {peak / 1e6:.0f} MB of traced allocations; the merged "
+        f"grid is {width} x {height} x {CEIL_BANDS} = {dense_bytes / 1e6:.0f} MB "
+        f"dense, so this looks like a full materialisation again")
+
+    # The merge actually happened, and landed where it should.
+    with rasterio.open(out) as src:
+        assert (src.width, src.height, src.count) == (width, height, CEIL_BANDS)
+        for i in (0, CEIL_N // 2, CEIL_N - 1):
+            r, c = src.index(i * CEIL_STRIDE_X + 0.5,
+                             i * CEIL_STRIDE_Y + CEIL_TILE - 0.5)
+            got = src.read(1, window=Window(c, r, 1, 1))[0, 0]
+            assert got == pytest.approx(100_000.0 * (i + 1)), f"tile {i} misplaced"
+        # ... and the ground between tiles really is empty, so the check above is
+        # not passing on a raster uniformly filled with one tile's value.
+        r, c = src.index(CEIL_STRIDE_X * 3 + 0.5, CEIL_STRIDE_Y * 10 + 0.5)
+        assert src.read(1, window=Window(c, r, 1, 1))[0, 0] == NODATA
+
+
+def test_stripe_writes_are_contiguous(varied_sheets, tmp_path, monkeypatch):
+    """Every array handed to ``dst.write`` is C-contiguous.
+
+    The stripe buffer is allocated once and reused. The obvious way to write that
+    -- a 3-D buffer sliced ``[:, :rows, :]`` for the short final stripe -- yields
+    a non-contiguous view, and ``dst.write`` then copies it silently, doubling
+    the merge's peak for the last stripe. Measured on real sheets: 158 MB against
+    an 80 MB stripe.
+
+    Pinned here rather than by tightening the memory ceiling, because the ceiling
+    would have to sit within ~25% of the measured peak to see it, and a threshold
+    that tight is a flaky test rather than a strict one. This asserts the actual
+    property, and it cannot be satisfied vacuously: the stripe height is chosen
+    so that the final stripe *is* short, and the test says so.
+    """
+    stripe = 7
+    monkeypatch.setattr(tokyo_las, "MERGE_STRIPE_ROWS", stripe)
+
+    seen = []
+
+    class _SpyWriter:
+        def write(self, arr, window=None):
+            seen.append((bool(arr.flags["C_CONTIGUOUS"]), arr.shape[1]))
+
+    srcs = [rasterio.open(f) for f in varied_sheets]
+    try:
+        xs, ys = [], []
+        for s in srcs:
+            left, bottom, right, top = s.bounds
+            xs.extend([left, right])
+            ys.extend([bottom, top])
+        res = srcs[0].res
+        w, s_, e, n = min(xs), min(ys), max(xs), max(ys)
+        width = int(round((e - w) / res[0]))
+        height = int(round((n - s_) / res[1]))
+        tokyo_las._merge_streaming(
+            srcs, _SpyWriter(), from_origin(w, n, res[0], res[1]), height, width,
+            (w, s_, e, n), NODATA, tokyo_las.Resampling.nearest, stripe)
+    finally:
+        for s in srcs:
+            s.close()
+
+    assert seen, "no stripes were written"
+    assert height % stripe != 0 and any(rows != stripe for _, rows in seen), (
+        "the fixture must produce a short final stripe or this test is vacuous")
+    bad = [rows for ok, rows in seen if not ok]
+    assert not bad, f"non-contiguous stripe writes of heights {bad}"
+
+
+# ---------------------------------------------------------------------------
+# Compression and tiling
+# ---------------------------------------------------------------------------
+def _smooth_array(count, height, width):
+    """Spatially correlated float32 -- what a DSM or a return count looks like.
+
+    Random noise is incompressible, so a ``np.random.rand`` fixture would make a
+    "compression shrinks the file" assertion fail even with compression fully
+    enabled, and the natural response would be to weaken the assertion. Real
+    rasters are smooth, and the deflate/predictor-3 pair on this module's writers
+    is chosen for exactly that.
+    """
+    r = np.arange(height, dtype=np.float32)[:, None]
+    c = np.arange(width, dtype=np.float32)[None, :]
+    base = 20.0 + 0.01 * r + 0.02 * c
+    return np.stack([base + 3.0 * b for b in range(count)]).astype(np.float32)
+
+
+@pytest.mark.parametrize("count", [1, 5])
+def test_save_raster_writes_compressed_tiled_rasters(tmp_path, count):
+    arr = _smooth_array(count, 600, 700)
+    path = str(tmp_path / "t.tif")
+    tokyo_las.save_raster(
+        {"array": arr if count > 1 else arr[0],
+         "transform": from_origin(0.0, 600.0, 1.0, 1.0), "nodata": NODATA},
+        path, "EPSG:6677")
+    with rasterio.open(path) as src:
+        assert src.profile.get("compress") == "deflate"
+        assert src.profile.get("tiled") is True
+        assert src.count == count
+        # Lossless: the values that come back are the values that went in.
+        assert src.read().tobytes() == arr.reshape(count, 600, 700).tobytes()
+    raw = count * 600 * 700 * 4
+    assert os.path.getsize(path) < raw / 2, (
+        "compression is declared but the file is not actually smaller; a 51 GB "
+        "evidence_geotiffs/ does not fit next to a 102 GB free C:")
+
+
+def test_merged_rasters_are_compressed_and_tiled(varied_sheets, tmp_path):
+    out = tokyo_las.merge_geotiffs(varied_sheets, str(tmp_path / "m.tif"),
+                                   "EPSG:6677", check_overlap=False)
+    with rasterio.open(out) as src:
+        assert src.profile.get("compress") == "deflate"
+        assert src.profile.get("tiled") is True
+
+
+def test_creation_options_ask_for_bigtiff_when_it_is_needed():
+    """A 65,900 x 64,464 five-band float32 raster is 85 GB -- twenty times past
+    the 4 GB where a classic TIFF's 32-bit directory offsets overflow. There is
+    no way to observe that on a fixture-sized file, so the option itself is what
+    gets pinned, as ``IF_SAFER`` rather than ``YES`` so small tiles stay classic
+    TIFFs that any reader can open.
+    """
+    assert tokyo_las.GTIFF_CREATION_OPTS["BIGTIFF"] == "IF_SAFER"
+    assert tokyo_las.GTIFF_CREATION_OPTS["compress"] == "deflate"
+    assert tokyo_las.GTIFF_CREATION_OPTS["tiled"] is True
+
+
+def test_an_integer_merge_still_works(tmp_path):
+    """``PREDICTOR=3`` is float-only, and GDAL *refuses* it rather than warning.
+
+    Everything this pipeline writes is float32, but ``merge_geotiffs`` takes its
+    output dtype from its inputs, so pinning the float predictor unconditionally
+    would turn a working integer merge into ``RasterioIOError: PREDICTOR=3 is
+    only supported with Float32 or Float64`` -- a hard failure introduced by a
+    change whose whole point was that nothing observable changes.
+    """
+    assert tokyo_las.creation_opts("float32")["predictor"] == 3
+    assert tokyo_las.creation_opts("int32")["predictor"] == 2
+    assert tokyo_las.creation_opts("uint16")["compress"] == "deflate"
+
+    paths = []
+    for i, west in enumerate((0.0, 40.0)):
+        p = str(tmp_path / f"i{i}.tif")
+        with rasterio.open(p, "w", driver="GTiff", height=40, width=40, count=1,
+                           dtype="int32", crs="EPSG:6677", nodata=-9999,
+                           transform=from_origin(west, 40.0, 1.0, 1.0)) as dst:
+            dst.write(np.full((1, 40, 40), 7 + i, dtype=np.int32))
+        paths.append(p)
+    out = tokyo_las.merge_geotiffs(paths, str(tmp_path / "m.tif"), "EPSG:6677",
+                                   nodata_value=-9999, check_overlap=False)
+    with rasterio.open(out) as src:
+        assert src.dtypes[0] == "int32"
+        assert src.profile.get("compress") == "deflate"
+        data = src.read(1)
+    assert data[0, 0] == 7 and data[0, -1] == 8
+
+
+# ---------------------------------------------------------------------------
+# Copying the finished nDSM without reading it
+# ---------------------------------------------------------------------------
+def test_copy_raster_file_does_not_read_the_raster(tmp_path):
+    """``precompute_las_cache``'s no-AOI path used to do ``data = src.read()``.
+
+    On the six-band city raster that is a 102 GB read on a 63.7 GB machine, to
+    produce a file identical to the one already on disk. Same instrument and same
+    reasoning as the merge ceiling above.
+    """
+    import tracemalloc
+
+    src_path = str(tmp_path / "src.tif")
+    arr = _smooth_array(6, 800, 900)                      # 17.3 MB of pixels
+    profile = {"driver": "GTiff", "height": 800, "width": 900, "count": 6,
+               "dtype": "float32", "crs": "EPSG:6677", "nodata": NODATA,
+               "transform": from_origin(0.0, 800.0, 1.0, 1.0),
+               "tiled": True, "blockxsize": 256, "blockysize": 256}
+    with rasterio.open(src_path, "w", **profile) as dst:
+        dst.write(arr)
+
+    dst_path = str(tmp_path / "dst.tif")
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        tokyo_las.copy_raster_file(src_path, dst_path)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    dense = 6 * 800 * 900 * 4
+    assert peak < dense / 8, (
+        f"copy peaked at {peak / 1e6:.1f} MB against a {dense / 1e6:.1f} MB "
+        f"raster; it is reading the whole thing again")
+    with rasterio.open(src_path) as a, rasterio.open(dst_path) as b:
+        assert a.read().tobytes() == b.read().tobytes()
+        assert a.profile == b.profile

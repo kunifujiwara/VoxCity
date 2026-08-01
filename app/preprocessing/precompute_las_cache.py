@@ -16,6 +16,14 @@ Usage examples:
   # Single ward, single-band raster for a like-for-like comparison run:
   python -m app.preprocessing.precompute_las_cache --las-dir app/data/tokyo_las \
       --output-dir app/data/temp_v1 --aoi 139.75 35.67 139.762 35.68 --no-evidence
+
+  # Whole city, all 5,669 survey sheets. --output-dir MUST be on a volume with
+  # ~210 GB free. Measured budget for the no-AOI run at 0.5 m: the six products
+  # coexist at 206 GB of compressed intermediates at the COG stage (the tiles
+  # 41 GB, the three merged rasters 57 GB, merged_ndsm/ndsm/ndsm_cog 109 GB).
+  # Peak RAM is ~3 GB: the merge streams (see tokyo_las.merge_geotiffs).
+  python -m app.preprocessing.precompute_las_cache --las-dir D:/03_Data/tokyo_las \
+      --output-dir D:/03_Data/ndsm_rebuild --resolution 0.5 --cog --no-write-parquet
 """
 
 import os
@@ -40,6 +48,7 @@ from .tokyo_las import (
     build_ndsm,
     crop_geotiff_by_vertices_exact,
     require_complete_evidence,
+    copy_raster_file,
 )
 
 app = typer.Typer(add_completion=False, help="Precompute LAS-derived caches (DSM/DTM/nDSM)")
@@ -270,12 +279,13 @@ def main(
             str(merged_ndsm), str(final_ndsm), rectangle_vertices, pad_m=crop_pad_m, use_mask=use_mask
         )
     else:
-        # Save uncropped as final
-        with rasterio.open(str(merged_ndsm)) as src:
-            profile = src.profile.copy()
-            data = src.read()
-        with rasterio.open(str(final_ndsm), 'w', **profile) as dst:
-            dst.write(data)
+        # Save uncropped as final.
+        #
+        # A byte copy, not a decode-and-rewrite. The whole-city nDSM is
+        # 65,900 x 64,464 x 6 bands of float32 = 102 GB, and reading it into an
+        # array on a 63.7 GB machine cannot succeed -- to produce a file that is
+        # already, byte for byte, the one on disk.
+        copy_raster_file(str(merged_ndsm), str(final_ndsm))
 
     # Optional COG conversion of final nDSM
     if cog:
