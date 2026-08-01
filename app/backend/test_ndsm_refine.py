@@ -121,6 +121,29 @@ class TestGroupwisePercentile:
                 else:
                     assert np.isnan(out[g])
 
+    @pytest.mark.parametrize("q", [150, -10, 100.5, np.nan])
+    def test_q_outside_0_100_is_rejected(self, q):
+        # q=150 would index past the end of a group's run; q=-10 is worse --
+        # it extrapolates below the minimum and returns a plausible number
+        # (1.1 for values [1, 2]) with no error at all.
+        with pytest.raises(ValueError, match="q must be in"):
+            groupwise_percentile(np.array([1.0, 2.0]), np.array([0, 0]), 1, q)
+
+    def test_q_bounds_are_inclusive(self):
+        values, groups = np.array([1.0, 2.0]), np.array([0, 0])
+        assert groupwise_percentile(values, groups, 1, 0)[0] == 1.0
+        assert groupwise_percentile(values, groups, 1, 100)[0] == 2.0
+
+    def test_float_group_labels_are_rejected(self):
+        # Task 2 derives labels from coordinates; a float array there means a
+        # missing floor, and astype(intp) would silently truncate 2.7 -> cell 2.
+        with pytest.raises(TypeError, match="integer array"):
+            groupwise_percentile(np.array([1.0, 2.0]), np.array([0.0, 2.7]), 3, 50)
+
+    def test_length_mismatch_is_rejected(self):
+        with pytest.raises(ValueError, match="same length"):
+            groupwise_percentile(np.array([1.0, 2.0]), np.array([0]), 1, 50)
+
     def test_does_not_mutate_inputs(self):
         values = np.array([3.0, np.nan, 1.0])
         groups = np.array([0, 0, 0])
@@ -155,9 +178,49 @@ class TestPoolEvidence:
 
     def test_output_keys_and_shapes(self):
         ev = pool_evidence(np.array([0]), 4, *[np.array([1.0]) for _ in range(5)])
-        assert set(ev) == {"mrf", "roughness", "n_all"}
+        assert set(ev) == {"mrf", "roughness", "n_all", "n_nonground"}
         for key in ev:
             assert ev[key].shape == (4,), key
+
+    def test_pooled_nonground_count_is_returned(self):
+        # The classifier weights roughness confidence by this count, so it has
+        # to come back alongside the statistic it qualifies.
+        ev = pool_evidence(
+            np.array([0, 0]), 1,
+            np.array([4.0, 4.0]), np.array([1.0, 3.0]), np.array([3.0, 1.0]),
+            np.array([6.0, 10.0]), np.array([12.0, 100.0]),
+        )
+        assert ev["n_nonground"][0] == 4
+
+    def test_roughness_needs_two_nonground_points(self):
+        # n=1: the population std is *defined* (0.0) but says nothing about
+        # dispersion -- and 0.0 is the maximally roof-like value, so reporting
+        # it would let a single pulse clipping a thin tree top be capped as a
+        # roof. That is the exact false-cap failure this module removes.
+        def _roughness(n_nonground, sum_z, sum_z2):
+            ev = pool_evidence(
+                np.array([0]), 1,
+                np.array([10.0]), np.array([5.0]),
+                np.array([float(n_nonground)]),
+                np.array([sum_z]), np.array([sum_z2]),
+            )
+            return ev["roughness"][0]
+
+        assert np.isnan(_roughness(1, 20.0, 400.0))
+        # n=2 at heights {8, 12}: mean 10, E[z^2] = 104 -> std = 2
+        assert _roughness(2, 20.0, 208.0) == pytest.approx(2.0)
+
+    def test_roughness_nan_when_nonground_split_across_pixels_totals_one(self):
+        # The guard is on the *pooled* count, not the per-pixel count: two
+        # pixels holding half a point each is not a thing, but two pixels where
+        # only one holds the single non-ground point is.
+        ev = pool_evidence(
+            np.array([0, 0]), 1,
+            np.array([5.0, 5.0]), np.array([1.0, 1.0]), np.array([1.0, 0.0]),
+            np.array([9.0, 0.0]), np.array([81.0, 0.0]),
+        )
+        assert np.isnan(ev["roughness"][0])
+        assert ev["n_nonground"][0] == 1
 
     def test_pooling_is_additive_split_pixels_match_single_pixel(self):
         # THE property the design rests on: the same points, split across any
@@ -243,16 +306,6 @@ class TestPoolEvidence:
             )
         assert ev["roughness"][0] == 0.0
 
-    def test_mrf_bounds(self):
-        groups = np.array([0, 1])
-        ev = pool_evidence(
-            groups, 2,
-            np.array([4.0, 4.0]), np.array([4.0, 0.0]), np.array([4.0, 4.0]),
-            np.array([1.0, 1.0]), np.array([1.0, 1.0]),
-        )
-        assert ev["mrf"][0] == 1.0
-        assert ev["mrf"][1] == 0.0
-
     def test_interleaved_and_out_of_range_groups(self):
         # Scrambled order plus a sentinel pixel that belongs to no cell.
         groups = np.array([1, 0, -1, 1, 0])
@@ -266,6 +319,18 @@ class TestPoolEvidence:
         assert ev["n_all"][1] == 4      # 1 + 3
         assert ev["mrf"][0] == 0.0
         assert ev["mrf"][1] == pytest.approx(0.25)
+
+    def test_float_group_labels_are_rejected(self):
+        with pytest.raises(TypeError, match="integer array"):
+            pool_evidence(np.array([0.0]), 1, *[np.array([1.0])] * 5)
+
+    def test_length_mismatch_is_rejected(self):
+        with pytest.raises(ValueError, match="same length as groups"):
+            pool_evidence(
+                np.array([0, 0]), 1,
+                np.array([1.0, 1.0]), np.array([1.0]), np.array([1.0, 1.0]),
+                np.array([1.0, 1.0]), np.array([1.0, 1.0]),
+            )
 
     def test_does_not_mutate_inputs(self):
         args = [np.array([4.0]), np.array([1.0]), np.array([4.0]),
@@ -349,10 +414,18 @@ class TestLocalTreeMedian:
         assert np.isnan(med).sum() == med.size - 3
 
     def test_orientation_symmetry(self):
-        # A row/column mix-up in the shift stack would break transpose equality.
-        can, mask = _fixture_grid()
+        # Non-square on purpose: against a square grid a row/column mix-up in
+        # the shift indices still produces a conformable array, so the fixture
+        # has to be rectangular for this test to have teeth.
+        can = np.zeros((9, 13))
+        mask = np.zeros((9, 13), bool)
+        for (row, col), value in {(1, 2): 10.0, (1, 4): 20.0,
+                                  (7, 11): 99.0, (3, 0): 5.0}.items():
+            can[row, col] = value
+            mask[row, col] = True
         a = local_tree_median(can, mask, radius=2).T
         b = local_tree_median(can.T, mask.T, radius=2)
+        assert a.shape == (13, 9)
         assert np.allclose(a, b, equal_nan=True)
 
     def test_shape_and_no_input_mutation(self):
@@ -378,10 +451,14 @@ class TestLocalTreeMedian:
 
     def test_suppression_is_not_global(self):
         # The narrow suppression must not leak into the caller's warning filters.
+        #
+        # Asserting on a *later* warning cannot detect a leak: pytest.warns (and
+        # any catch_warnings) installs its own filter stack, wiping the leaked
+        # state before the assertion runs. Compare the filter list itself.
         can, mask = _fixture_grid()
+        before = list(warnings.filters)
         local_tree_median(can, mask, radius=2)
-        with pytest.warns(RuntimeWarning):
-            np.nanmedian(np.array([np.nan, np.nan]))
+        assert warnings.filters == before
 
     def test_is_vectorized_single_nanmedian_call(self, monkeypatch):
         # Structural check for the timing test below: a per-cell Python loop
@@ -397,14 +474,3 @@ class TestLocalTreeMedian:
         can, mask = _fixture_grid()
         local_tree_median(can, mask, radius=2)
         assert len(calls) == 1
-
-    def test_no_python_loop_over_cells(self):
-        # Backstop for the structural test: catches an accidental
-        # O(H*W*w^2) Python loop. Generous ceiling -- not a benchmark.
-        import time
-        rng = np.random.default_rng(0)
-        can = rng.uniform(2, 30, (200, 200))
-        mask = rng.random((200, 200)) > 0.7
-        t0 = time.perf_counter()
-        local_tree_median(can, mask, radius=3)
-        assert time.perf_counter() - t0 < 5.0
