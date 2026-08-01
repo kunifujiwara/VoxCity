@@ -508,7 +508,13 @@ def _refine_canopy_with_ndsm(
     land_cover_source: str,
     static_tree_height: float = 10.0,
 ) -> bool:
-    """Refine canopy heights using cached nDSM COG, then regenerate voxels in-place."""
+    """Refine canopy heights using the cached nDSM COG, in place.
+
+    The refined canopy is pushed into the voxel grid two different ways: LOD1
+    grids are regenerated from the revised component grids, LOD2 grids get a
+    canopy-only overlay that preserves their mesh geometry. Returns False when
+    refinement could not be applied (the caller logs it; it is never fatal).
+    """
     land_cover_grid = voxcity_obj.land_cover.classes
     lc_classes = get_land_cover_classes(land_cover_source)
     name_to_id = {name: i for i, name in enumerate(lc_classes.values())}
@@ -518,6 +524,32 @@ def _refine_canopy_with_ndsm(
     if ndsm_grid is None:
         print("[nDSM] No nDSM COG cache found — skipping canopy refinement")
         return False
+
+    # An LOD2 grid is mesh-voxelized: it holds true roof/wall geometry that the
+    # 2.5-D component grids cannot describe, so regenerate_voxels() — which
+    # rebuilds from those grids — would replace it with extruded footprints
+    # (measured on Chuo-ku: roof slope 0.1512 -> 0.0965, building voxels
+    # 26,088 -> 21,623). voxcitygml.reapply_canopy overlays the canopy onto the
+    # existing grid instead, clearing and rewriting only canopy voxels.
+    #
+    # Resolved up front, before anything is mutated: an older voxcitygml has no
+    # such entrypoint, and bailing out after the component grids were rewritten
+    # would leave them describing crowns the voxel grid does not contain.
+    reapply_canopy = None
+    if _is_lod2_model(voxcity_obj):
+        try:
+            from voxcitygml import reapply_canopy
+        except ImportError as exc:
+            # Deliberately no regenerate_voxels() fallback: that rebuild is
+            # precisely what the missing entrypoint exists to avoid. Refinement
+            # is optional, so degrade to a no-op and let the caller report it.
+            print(
+                "[nDSM] Skipping canopy refinement: this voxcitygml has no "
+                "reapply_canopy(), and rebuilding the voxel grid would flatten "
+                f"the LOD2 roof/wall geometry into extruded footprints ({exc}). "
+                "Upgrade voxcitygml to use nDSM canopy in LOD2 mode."
+            )
+            return False
 
     # Align to land cover grid shape
     ndsm_aligned = _align_ndsm_to_grid(ndsm_grid, land_cover_grid.shape)
@@ -554,8 +586,15 @@ def _refine_canopy_with_ndsm(
     else:
         voxcity_obj.tree_canopy.bottom = canopy_bottom
 
-    # Regenerate voxels with the refined canopy
-    regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
+    # Write the refined canopy into the voxel grid: overlay for LOD2 (resolved
+    # above), rebuild for LOD1, whose voxels *are* extruded footprints.
+    if reapply_canopy is not None:
+        # Pass the already-derived bottom rather than the trunk ratio: it is
+        # what was just written to tree_canopy.bottom, and reapply_canopy
+        # writes its own derivation back onto that grid.
+        reapply_canopy(voxcity_obj, canopy, canopy_bottom=canopy_bottom)
+    else:
+        regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
 
     print(f"[nDSM] Canopy refinement applied — tree cells: {int(np.count_nonzero(canopy > 0))}")
     return True
@@ -1377,10 +1416,6 @@ async def generate_model(req: GenerateRequest):
             "use_ndsm_canopy": req.use_ndsm_canopy,
             "is_japan": _is_japan(req.rectangle_vertices),
             "OEMJ_lc": "OpenEarthMapJapan" in str(effective_lc),
-            # Refinement ends in regenerate_voxels(), which rebuilds the voxel
-            # grid from the 2.5-D component grids — that would silently replace
-            # LOD2 roof/wall geometry with extruded footprints.
-            "plateau_lod!=lod2": req.plateau_lod != "lod2",
         }
         if all(_ndsm_conditions.values()):
             try:
