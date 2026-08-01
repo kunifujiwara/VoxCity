@@ -260,10 +260,16 @@ def test_the_seam_fixture_actually_goes_through_the_seam(monkeypatch):
         "row 0 of the assembled DEM is not the southern (lowest) edge — the "
         "voxcitygml assembly seam is not converting to south-up")
     assert dem[-1, 0] == pytest.approx(DEM_BASE + DEM_SLOPE * (NX - 1))
-    assert "rotation_angle" not in city.extras, (
-        "this module assumes an axis-aligned AOI with no rotation_angle; the "
-        "solar paths' extras.get('rotation_angle', 0) default is only correct "
-        "for that case")
+    # RECT is axis-aligned, so the angle must be present *and* zero. It used to
+    # be absent: assemble_voxcity — the constructor voxcitygml assembles
+    # through — never set it, and the solar paths'
+    # extras.get('rotation_angle', 0) default merely happened to be right here.
+    # On a rotated AOI that default silently rotated every shadow by the AOI's
+    # own angle, so absence is no longer an acceptable answer.
+    assert city.extras["rotation_angle"] == 0, (
+        "this module assumes an axis-aligned AOI; a non-zero rotation_angle "
+        "means the fixture rectangle changed and the frame assertions below "
+        "no longer hold")
 
 
 # ==========================================================================
