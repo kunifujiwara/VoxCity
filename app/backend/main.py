@@ -3199,6 +3199,22 @@ async def model_geo():
         canopy_top = vc.tree_canopy.top if vc.tree_canopy is not None else None
         land_cover = vc.land_cover.classes if vc.land_cover is not None else None
 
+        # Both builders walk row 0 of their grid onto the *south* edge of the
+        # rectangle (compute_grid_geometry anchors at rectangle_vertices[0] = SW
+        # and makes side_1 = SW->NW, so the row index grows northward). A
+        # voxcity model keeps every 2-D grid in that frame, but a VoxCityGML
+        # LOD2 model is mixed: land_cover.classes stays south-up while
+        # tree_canopy.top is north-up, because voxcitygml flips the canopy it
+        # derives from that land cover to match the DEM and the voxel grid.
+        # Measured on Chuo-ku LOD2: the stored canopy is exactly flipud of the
+        # Tree land-cover cells (IoU 1.000 flipped vs 0.000 direct), and drawn
+        # unflipped the overlay landed ~100 m off on a 200 m rectangle.
+        #
+        # A view, never the stored array: _refine_canopy_with_ndsm and
+        # reapply_canopy rely on tree_canopy.top staying in the voxel frame.
+        if canopy_top is not None and _is_lod2_model(vc):
+            canopy_top = np.flipud(canopy_top)
+
         building_fc   = build_building_geojson(building_gdf, include_height=True)
         canopy_fc     = build_canopy_geojson(canopy_top, grid_geom)
         land_cover_fc = build_lc_geojson(land_cover, grid_geom, lc_source)
