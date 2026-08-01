@@ -1281,10 +1281,11 @@ async def generate_model(req: GenerateRequest):
                     output_dir=output_dir,
                     save_output=False,
                     gridvis=False,
-                    # Design decision 3: CityGML bridges are out of scope for
-                    # this feature. voxcitygml clears collection.bridges before
-                    # rasterisation when this is False.
-                    include_bridges=False,
+                    # voxcitygml clears collection.bridges before rasterisation
+                    # when this is False, so it governs the 2-D building grids
+                    # and the 3-D voxel grid alike. Defaults to False in
+                    # GenerateRequest (voxcitygml's own default is True).
+                    include_bridges=req.include_bridges,
                 )
                 try:
                     voxcity_result = generate_voxcity(lod2_cfg)

@@ -176,7 +176,7 @@ def test_lod2_calls_voxcitygml(stubbed, tmp_path):
         'output_dir': main_mod.os.path.join(main_mod.BASE_OUTPUT_DIR, "test"),
         'save_output': False,
         'gridvis': False,
-        # Design decision 3: CityGML bridges are out of scope.
+        # User-controllable, but off unless the request opts in.
         'include_bridges': False,
     }
     assert 'stored' in stubbed
@@ -307,12 +307,25 @@ def test_lod1_default_unaffected(stubbed, monkeypatch):
     assert 'generate_called' not in stubbed
 
 
-def test_lod2_excludes_bridges(stubbed):
-    """Bridges are out of scope (design decision 3); voxcitygml clears
-    collection.bridges before rasterisation when include_bridges is False."""
+def test_lod2_excludes_bridges_by_default(stubbed):
+    """Omitting the field must preserve the pre-toggle behaviour exactly.
+
+    voxcitygml's own ``VoxelizerConfig.include_bridges`` defaults to True, so
+    the False here has to come from *our* request model — forwarding a missing
+    field as "unset" would silently switch bridges on for every existing user.
+    """
     resp = TestClient(app).post("/api/generate", json=_base_request())
     assert resp.status_code == 200, resp.text
     assert stubbed['config']['include_bridges'] is False
+
+
+def test_lod2_includes_bridges_when_requested(stubbed):
+    """Opting in reaches VoxelizerConfig, where voxcitygml keeps
+    collection.bridges before building both the 2-D grids and the voxel grid."""
+    resp = TestClient(app).post("/api/generate",
+                                json=_base_request(include_bridges=True))
+    assert resp.status_code == 200, resp.text
+    assert stubbed['config']['include_bridges'] is True
 
 
 # ---------------------------------------------------------------------------

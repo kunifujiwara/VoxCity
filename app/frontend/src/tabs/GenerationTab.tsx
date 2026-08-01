@@ -49,6 +49,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   const [demInterpolation, setDemInterpolation] = useState(true);
   const [useCitygmlCache, setUseCitygmlCache] = useState(true);
   const [useNdsmCanopy, setUseNdsmCanopy] = useState(true);
+  const [includeBridges, setIncludeBridges] = useState(false);
 
   // Normal-mode data sources (null = auto)
   const [useAutoSources, setUseAutoSources] = useState(true);
@@ -133,6 +134,7 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         params.plateau_lod = plateauLod;
         params.use_citygml_cache = plateauLod === 'lod1' ? useCitygmlCache : undefined;
         params.use_ndsm_canopy = useNdsmCanopy;
+        params.include_bridges = includeBridges;
       } else {
         // Normal mode: pass sources (null = auto)
         params.building_source = useAutoSources ? null : buildingSource;
@@ -404,6 +406,16 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
                 />
                 <span>{t('generationTab.useNdsm')}</span>
               </div>
+              {plateauLod === 'lod2' && (
+                <div className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={includeBridges}
+                    onChange={(e) => setIncludeBridges(e.target.checked)}
+                  />
+                  <span>{t('generationTab.includeBridges')}</span>
+                </div>
+              )}
             </>
           )}
         </GuidedSection>

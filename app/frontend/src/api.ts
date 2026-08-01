@@ -163,6 +163,7 @@ export async function generateModel(params: {
   dem_interpolation?: boolean;
   use_citygml_cache?: boolean;
   use_ndsm_canopy?: boolean;
+  include_bridges?: boolean;
 }) {
   return request<GenerateResult>('/generate', {
     method: 'POST',

@@ -65,6 +65,10 @@ class GenerateRequest(BaseModel):
     dem_interpolation: bool = True
     use_citygml_cache: bool = True
     use_ndsm_canopy: bool = True
+    # PLATEAU LOD2: voxelize CityGML bridge features (udx/brid). Off by
+    # default — voxcitygml's own default is True, so this must be sent
+    # explicitly to keep the pre-existing behaviour.
+    include_bridges: bool = False
 
 
 class SolarRequest(BaseModel):

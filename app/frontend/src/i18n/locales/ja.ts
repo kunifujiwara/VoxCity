@@ -143,6 +143,7 @@ export const ja: Messages = {
     demInterpolation: 'DEM 補間',
     useCitygmlCache: 'CityGML キャッシュを使用',
     useNdsm: '樹冠に nDSM を使用',
+    includeBridges: '橋梁を含める',
   },
   targetAreaTab: {
     title: '対象エリア',
