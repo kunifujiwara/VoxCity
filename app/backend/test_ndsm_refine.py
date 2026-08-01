@@ -24,12 +24,23 @@ from pyproj import Transformer
 from rasterio.transform import from_origin
 
 from backend.ndsm_refine import (
+    PARTITION_KEYS,
+    VERDICT_AMBIGUOUS_KEEP,
+    VERDICT_AMBIGUOUS_REPLACE,
+    VERDICT_CANOPY,
+    VERDICT_NO_DATA,
+    VERDICT_NONE,
+    VERDICT_ROOF,
+    RefineParams,
     _cell_labels,
     _pixel_lonlat,
+    classify_and_refine,
+    format_counts,
     pool_evidence,
     groupwise_percentile,
     load_ndsm_evidence,
     local_tree_median,
+    refine_from_evidence,
 )
 from voxcity.geoprocessor.raster.core import compute_cell_center_coords
 
@@ -876,3 +887,772 @@ class TestLoadNdsmEvidenceDegraded:
         out = _load(path)
         for key in ("height", "mrf", "roughness", "n_all", "n_nonground"):
             assert out[key].shape == out["shape"], key
+
+
+# ---------------------------------------------------------------------------
+# classify_and_refine
+#
+# The decision table under test, per land-cover Tree cell with a finite height:
+#
+#   canopy    mrf >= mrf_hi and roughness >= rough_hi_m      -> keep the nDSM height
+#   roof      mrf <= mrf_lo and roughness <= rough_lo_m
+#             and adjacent to a footprint                    -> local tree median
+#   ambiguous everything else                                -> replace only when
+#             adjacent AND |h - nearby building h| <= tol; otherwise keep
+#
+# The canopy verdict overrides the coincidence test. That is the whole point of
+# the refactor, and test_tall_tree_beside_matching_building_survives is its
+# acceptance test: the superseded _sanitize_ndsm_canopy flattens that cell to a
+# flat 10 m because its height happens to match the neighbouring roof.
+#
+# Fixture discipline: the grid is 17x13, so rows and columns are never
+# interchangeable; features are placed at least 2*median_radius+2 rows apart so
+# one test region's trees can never leak into another's median window; and the
+# expected replacement values are computed by hand and asserted exactly, so a
+# regression to a flat constant (the old behaviour) fails rather than passing on
+# a loose inequality. Every test that asserts "kept" carries a control cell that
+# differs only in the evidence and must be replaced, so a pass cannot be vacuous.
+# ---------------------------------------------------------------------------
+SHAPE = (17, 13)                 # non-square on purpose
+STATIC = 10.0                    # static_tree_height in every test below
+
+
+def _scene(shape=SHAPE):
+    """Neutral scene: no trees, no buildings, well-sampled canopy-like evidence.
+
+    Evidence defaults sit clear of both thresholds on the canopy side, so any
+    tree added without an explicit override is a canopy-verdict cell. Tests that
+    need ambiguity or roof evidence say so at the cell.
+    """
+    return {
+        "height": np.zeros(shape),
+        "tree_mask": np.zeros(shape, dtype=bool),
+        "building_heights": np.zeros(shape),
+        "mrf": np.full(shape, 0.50),
+        "roughness": np.full(shape, 2.0),
+        "n_all": np.full(shape, 100.0),
+        "n_nonground": np.full(shape, 60.0),
+    }
+
+
+def _tree(scene, rc, height, **evidence):
+    """Mark *rc* a tree of *height*, overriding any named evidence band."""
+    scene["tree_mask"][rc] = True
+    scene["height"][rc] = height
+    for key, value in evidence.items():
+        scene[key][rc] = value
+    return scene
+
+
+AMBIGUOUS = dict(mrf=0.25, roughness=1.2)      # between lo and hi on both axes
+ROOFLIKE = dict(mrf=0.05, roughness=0.3)       # single-echo, planar
+
+
+def _refine(scene, *, static_tree_height=STATIC, params=None, **kwargs):
+    return classify_and_refine(
+        scene["height"],
+        scene["tree_mask"],
+        scene["building_heights"],
+        static_tree_height,
+        mrf=scene["mrf"],
+        roughness=scene["roughness"],
+        n_all=scene["n_all"],
+        n_nonground=scene["n_nonground"],
+        params=params or RefineParams(),
+        **kwargs,
+    )
+
+
+class TestAcceptance:
+    def test_tall_tree_beside_matching_building_survives(self):
+        """THE regression this refactor exists to fix.
+
+        A genuine 25 m tree in the cell next to a 24 m building. The heights
+        coincide within the 5 m tolerance, so the superseded coincidence test
+        calls it roof leakage and flattens it to a flat 10 m. With canopy
+        evidence -- multi-return, rough -- the height must survive untouched.
+
+        The control pair at rows 13/15 is the same geometry with mid-range
+        evidence: it *is* replaced, which proves the fixture can trigger the
+        replacement path and that the assertion above is not vacuous.
+        """
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)                       # canopy evidence
+
+        sc["building_heights"][13, 6] = 24.0
+        _tree(sc, (13, 5), 25.0, **AMBIGUOUS)         # control
+        _tree(sc, (15, 2), 8.0)                       # median source for the
+        _tree(sc, (15, 3), 14.0)                      # control: median 11.0
+
+        out = _refine(sc)
+
+        assert out["canopy"][2, 5] == 25.0, (
+            "a 25 m tree beside a 24 m building was capped -- the canopy "
+            "verdict must override the height-coincidence test")
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        # Control: identical geometry, no canopy evidence -> replaced with the
+        # local tree median of {8, 14}, not a flat 10 m constant.
+        assert out["verdict"][13, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][13, 5] == 11.0
+
+    def test_canopy_verdict_survives_above_the_old_35m_cap(self):
+        # The superseded sanitiser clamped every tree to 35 m. A 40 m tree with
+        # canopy evidence beside a 39 m building must keep all 40 m.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 39.0
+        _tree(sc, (2, 5), 40.0)
+        _tree(sc, (13, 5), 40.0, **AMBIGUOUS)
+        sc["building_heights"][13, 6] = 39.0
+        _tree(sc, (15, 2), 8.0)
+        _tree(sc, (15, 3), 14.0)
+
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == 40.0
+        assert out["canopy"][13, 5] == 11.0          # control still replaced
+
+
+class TestDecisionTable:
+    def test_roof_spike_becomes_the_local_median_not_a_flat_constant(self):
+        # Roof evidence next to a footprint, at the roof's height: replaced.
+        # The replacement is the median of the credible trees around it --
+        # {6, 12, 18} -> 12.0 -- and emphatically not the 10 m constant the
+        # superseded sanitiser wrote.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 30.0
+        _tree(sc, (2, 5), 29.5, **ROOFLIKE)
+        _tree(sc, (4, 3), 6.0)
+        _tree(sc, (4, 4), 12.0)
+        _tree(sc, (5, 3), 18.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_ROOF
+        assert out["canopy"][2, 5] == 12.0, (
+            "the roof spike must be replaced by the local tree median, not by "
+            f"static_tree_height ({STATIC})")
+
+    def test_ambiguous_adjacent_and_coincident_is_replaced(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 22.0
+        _tree(sc, (2, 5), 24.0, **AMBIGUOUS)          # |24 - 22| = 2 <= 5
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0            # median of {7, 15}
+
+    def test_ambiguous_far_from_any_building_is_kept(self):
+        # A tall tree in open ground is never touched, whatever its height.
+        sc = _scene()
+        sc["building_heights"][2, 0] = 30.0           # four columns away
+        _tree(sc, (2, 5), 31.0, **AMBIGUOUS)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 31.0
+
+    def test_ambiguous_adjacent_but_height_does_not_coincide_is_kept(self):
+        # Adjacency alone is not evidence: a 25 m tree beside a 10 m shed is
+        # not roof leakage under any reading.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 10.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)          # |25 - 10| = 15 > 5
+        _tree(sc, (13, 5), 25.0, **AMBIGUOUS)         # control: coincident
+        sc["building_heights"][13, 6] = 24.0
+        _tree(sc, (15, 2), 8.0)
+        _tree(sc, (15, 3), 14.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 25.0
+        assert out["canopy"][13, 5] == 11.0           # control replaced
+
+    def test_canopy_verdict_needs_both_axes_not_just_the_multi_return(self):
+        # High multi-return over a *planar* surface is not canopy -- a glazed
+        # or cluttered roof scatters echoes without being rough. Neither
+        # verdict applies, so the cell falls to the ambiguous path and, being
+        # adjacent and coincident, is replaced.
+        #
+        # This fixture is the only one where the two evidence axes disagree.
+        # Without it, "mrf alone decides" and "roughness alone decides" are
+        # both indistinguishable from the real rule.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, mrf=0.80, roughness=0.2)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0
+
+    def test_canopy_verdict_needs_both_axes_not_just_the_roughness(self):
+        # The mirror case: rough but single-echo. A sparse crown seen once per
+        # pulse is not proven canopy either.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, mrf=0.05, roughness=3.0)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0
+
+    def test_roof_evidence_without_a_footprint_is_only_ambiguous(self):
+        # Pins a deliberate gap in the spec: the roof verdict requires an
+        # adjacent footprint, so roof evidence over unmapped built-up ground
+        # falls through to ambiguous -- and, having no neighbour to coincide
+        # with, is kept. Change this only on purpose.
+        sc = _scene()
+        _tree(sc, (2, 5), 30.0, **ROOFLIKE)           # no building anywhere
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 30.0
+
+    def test_a_tree_cell_on_a_footprint_counts_as_adjacent(self):
+        # The adjacency window includes the cell itself: a tree cell sitting on
+        # a building footprint is the strongest leakage case there is, so it
+        # must not need a *neighbouring* footprint to qualify.
+        sc = _scene()
+        sc["building_heights"][2, 5] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        # Control: the same tree two cells from the footprint is out of range.
+        sc["building_heights"][13, 7] = 24.0
+        _tree(sc, (13, 5), 25.0, **AMBIGUOUS)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0            # median of {7, 15}
+        assert out["verdict"][13, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][13, 5] == 25.0
+
+
+class TestEvidenceTrust:
+    def test_low_n_all_distrusts_the_evidence(self):
+        # Canopy-looking numbers from four returns are noise, not evidence.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, n_all=4.0)            # below min_points = 8
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        sc["building_heights"][13, 6] = 24.0
+        _tree(sc, (13, 5), 25.0)                      # control: n_all = 100
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0
+        assert out["verdict"][13, 5] == VERDICT_CANOPY
+        assert out["canopy"][13, 5] == 25.0
+
+    def test_low_n_nonground_distrusts_the_evidence(self):
+        # Roughness is a dispersion over the *non-ground* returns; three of
+        # them do not make a trustworthy standard deviation in either
+        # direction. pool_evidence already NaNs it below two -- this is the
+        # confidence band above that hard floor, and it is why the reader
+        # returns n_nonground at all.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, n_nonground=3.0)      # below min_nonground = 4
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        sc["building_heights"][13, 6] = 24.0
+        _tree(sc, (13, 5), 25.0, n_nonground=60.0)    # control
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0
+        assert out["verdict"][13, 5] == VERDICT_CANOPY
+
+    def test_low_n_nonground_also_blocks_the_roof_verdict(self):
+        # Symmetry matters: a barely-sampled cell reads planar, and treating
+        # that as roof evidence is exactly the false cap this module removes.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 30.0
+        _tree(sc, (2, 5), 12.0, n_nonground=3.0, **ROOFLIKE)
+        # |12 - 30| = 18 > 5, so with the roof verdict blocked the ambiguous
+        # fallback keeps it.
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 12.0
+
+    def test_nan_roughness_is_not_canopy_evidence(self):
+        # The sparse cell pool_evidence flags with NaN. It must satisfy
+        # *neither* verdict -- and in particular must not be read as 0.0,
+        # which is the maximally roof-like value.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, roughness=np.nan)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0
+
+    def test_nan_roughness_is_not_roof_evidence(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 30.0
+        _tree(sc, (2, 5), 12.0, mrf=0.05, roughness=np.nan)
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 12.0
+
+    def test_nan_mrf_satisfies_neither_verdict(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 30.0
+        _tree(sc, (2, 5), 12.0, mrf=np.nan, roughness=0.3)     # roof-like rough
+        _tree(sc, (13, 5), 25.0, mrf=np.nan)                   # canopy-like rough
+        sc["building_heights"][13, 6] = 24.0
+        _tree(sc, (15, 2), 8.0)
+        _tree(sc, (15, 3), 14.0)
+
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP     # not roof
+        assert out["verdict"][13, 5] == VERDICT_AMBIGUOUS_REPLACE  # not canopy
+        assert out["canopy"][13, 5] == 11.0
+
+    def test_thresholds_are_inclusive_at_the_boundary(self):
+        # mrf == mrf_hi and roughness == rough_hi_m is a canopy cell; the
+        # table's comparisons are >= and <=, not > and <.
+        p = RefineParams()
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, mrf=p.mrf_hi, roughness=p.rough_hi_m)
+        sc["building_heights"][13, 6] = 30.0
+        _tree(sc, (13, 5), 29.0, mrf=p.mrf_lo, roughness=p.rough_lo_m)
+        _tree(sc, (15, 2), 8.0)
+        _tree(sc, (15, 3), 14.0)
+
+        out = _refine(sc, params=p)
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+        assert out["verdict"][13, 5] == VERDICT_ROOF
+
+
+class TestDegradedMode:
+    """The live path today: the COG on disk is still single band."""
+
+    def _degraded(self, scene, **kwargs):
+        return classify_and_refine(
+            scene["height"], scene["tree_mask"], scene["building_heights"],
+            STATIC, mrf=None, roughness=None, n_all=None, n_nonground=None,
+            **kwargs,
+        )
+
+    def test_every_tree_cell_is_ambiguous(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)                       # canopy evidence ignored
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+        _tree(sc, (10, 10), 31.0)
+
+        out = self._degraded(sc)
+        assert out["degraded"] is True
+        assert out["counts"]["canopy"] == 0
+        assert out["counts"]["roof"] == 0
+        assert set(np.unique(out["verdict"][sc["tree_mask"]])) <= {
+            VERDICT_AMBIGUOUS_KEEP, VERDICT_AMBIGUOUS_REPLACE, VERDICT_NO_DATA
+        }
+
+    def test_tall_cell_far_from_a_building_is_still_kept(self):
+        # Degraded mode must not become a blanket cap: without a footprint
+        # nearby there is nothing to suspect.
+        sc = _scene()
+        _tree(sc, (10, 10), 31.0)
+        out = self._degraded(sc)
+        assert out["canopy"][10, 10] == 31.0
+
+    def test_adjacent_coincident_cell_is_replaced_with_the_median(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = self._degraded(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][2, 5] == 11.0            # median, not the constant
+
+    def test_explicit_degraded_flag_overrides_present_evidence(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)                       # canopy evidence present
+        _tree(sc, (4, 3), 7.0)
+        _tree(sc, (4, 4), 15.0)
+
+        out = _refine(sc, degraded=True)
+        assert out["degraded"] is True
+        assert out["counts"]["canopy"] == 0
+        assert out["canopy"][2, 5] == 11.0
+
+    def test_degraded_false_without_evidence_is_rejected(self):
+        sc = _scene()
+        with pytest.raises(ValueError, match="degraded"):
+            classify_and_refine(
+                sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
+                degraded=False,
+            )
+
+
+class TestGuards:
+    def test_below_minimum_height_becomes_the_local_median(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 0.5)                        # canopy verdict, absurd h
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == 12.0            # median of {8, 16}
+        assert out["counts"]["guard_low"] == 1
+        # The guard is orthogonal to the verdict: the cell is still classified.
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+
+    def test_below_minimum_with_no_credible_neighbour_falls_back_to_static(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 0.5)                        # isolated
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == STATIC
+
+    def test_above_maximum_height_is_clamped(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 60.0)
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == RefineParams().max_tree_height_m
+        assert out["counts"]["guard_high"] == 1
+        assert out["verdict"][2, 5] == VERDICT_CANOPY
+
+    def test_the_median_source_uses_clamped_heights(self):
+        # A 60 m neighbour contributes its clamped 45 m, not 60, so a single
+        # implausible cell cannot drag a whole neighbourhood upward.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        _tree(sc, (4, 3), 60.0)
+        _tree(sc, (4, 4), 20.0)
+
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == 32.5            # median of {45, 20}
+
+
+class TestReplacementValue:
+    def test_replaced_cells_are_not_their_own_median_source(self):
+        # A run of contaminated cells along a roof edge would otherwise vouch
+        # for itself: the median of five cells three of which read 30 m is
+        # 30 m, and the replacement would be a no-op. Only kept cells are
+        # credible sources.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 30.0
+        for row in (1, 2, 3):
+            _tree(sc, (row, 5), 30.0, **AMBIGUOUS)
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+
+        out = _refine(sc)
+        for row in (1, 2, 3):
+            assert out["verdict"][row, 5] == VERDICT_AMBIGUOUS_REPLACE
+            assert out["canopy"][row, 5] == 12.0      # median of {8, 16}
+
+    def test_isolated_replacement_falls_back_to_static(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)          # no tree neighbours
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == STATIC
+
+    def test_median_radius_bounds_the_neighbourhood(self):
+        # A credible tree outside the window must not be reachable.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        _tree(sc, (9, 5), 18.0)                       # 7 rows away
+        out = _refine(sc, params=RefineParams(median_radius=3))
+        assert out["canopy"][2, 5] == STATIC
+        out_wide = _refine(sc, params=RefineParams(median_radius=7))
+        assert out_wide["canopy"][2, 5] == 18.0
+
+
+class TestAccounting:
+    def _mixed_scene(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)                              # canopy
+        sc["building_heights"][6, 6] = 30.0
+        _tree(sc, (6, 5), 29.5, **ROOFLIKE)                  # roof
+        _tree(sc, (10, 1), 31.0, **AMBIGUOUS)                # ambiguous keep
+        sc["building_heights"][14, 6] = 24.0
+        _tree(sc, (14, 5), 25.0, **AMBIGUOUS)                # ambiguous replace
+        _tree(sc, (16, 11), np.nan)                          # no nDSM data
+        _tree(sc, (8, 2), 9.0)                               # plain kept tree
+        return sc
+
+    def test_verdict_counts_partition_the_tree_cells(self):
+        sc = self._mixed_scene()
+        out = _refine(sc)
+        counts = out["counts"]
+        assert counts["tree"] == int(sc["tree_mask"].sum())
+        assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"]
+        # every bucket is actually exercised, so the sum is not trivially right
+        for key in PARTITION_KEYS:
+            assert counts[key] > 0, key
+
+    def test_verdict_array_agrees_with_the_counts(self):
+        sc = self._mixed_scene()
+        out = _refine(sc)
+        codes = {
+            "canopy": VERDICT_CANOPY,
+            "roof": VERDICT_ROOF,
+            "ambiguous_keep": VERDICT_AMBIGUOUS_KEEP,
+            "ambiguous_replace": VERDICT_AMBIGUOUS_REPLACE,
+            "no_data": VERDICT_NO_DATA,
+        }
+        for key, code in codes.items():
+            assert int((out["verdict"] == code).sum()) == out["counts"][key], key
+        assert (out["verdict"][~sc["tree_mask"]] == VERDICT_NONE).all()
+
+    def test_guard_counts_are_reported_outside_the_partition(self):
+        # Guards can fire on a cell in any bucket, so they overlap it and must
+        # not be summed into it.
+        sc = _scene()
+        _tree(sc, (2, 5), 60.0)                       # canopy verdict, clamped
+        _tree(sc, (10, 5), 0.5)                       # canopy verdict, lifted
+        out = _refine(sc)
+        counts = out["counts"]
+        assert counts["canopy"] == 2
+        assert counts["guard_high"] == 1
+        assert counts["guard_low"] == 1
+        assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"] == 2
+
+    def test_format_counts_mentions_every_partition_bucket(self):
+        sc = self._mixed_scene()
+        text = format_counts(_refine(sc)["counts"])
+        assert isinstance(text, str) and text
+        for key in PARTITION_KEYS:
+            assert key.replace("_", " ") in text or key in text, key
+
+
+class TestInvariants:
+    def test_non_tree_cells_are_zero(self):
+        sc = _scene()
+        sc["height"][:] = 7.0
+        sc["building_heights"][:, 6] = 20.0
+        _tree(sc, (2, 5), 25.0)
+        out = _refine(sc)
+        assert (out["canopy"][~sc["tree_mask"]] == 0.0).all()
+
+    def test_tree_cell_without_an_ndsm_height_gets_the_median_fallback(self):
+        # Today's pipeline fills these with a flat static height before
+        # sanitising; the local median is strictly better and keeps the tree.
+        sc = _scene()
+        _tree(sc, (2, 5), np.nan)
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_NO_DATA
+        assert out["canopy"][2, 5] == 12.0
+        # Filled deliberately, not rescued by the below-minimum guard: leaving
+        # the cell at 0.0 and letting the guard pick it up produces the same
+        # height but misreports it, and would hide the missing fill entirely.
+        assert out["counts"]["guard_low"] == 0
+
+    def test_isolated_tree_cell_without_a_height_falls_back_to_static(self):
+        sc = _scene()
+        _tree(sc, (2, 5), np.nan)
+        out = _refine(sc)
+        assert out["canopy"][2, 5] == STATIC
+
+    def test_infinite_height_is_treated_as_missing(self):
+        sc = _scene()
+        _tree(sc, (2, 5), np.inf)
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_NO_DATA
+        assert out["canopy"][2, 5] == 12.0
+
+    def test_nan_building_height_is_not_a_footprint(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = np.nan
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        out = _refine(sc)
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 25.0
+
+    def test_negative_building_height_is_not_a_footprint(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = -3.0
+        _tree(sc, (2, 5), 1.0, **AMBIGUOUS)
+        out = _refine(sc)
+        # |1 - (-3)| = 4 <= 5 would "coincide" if negatives counted.
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+
+    def test_rows_and_columns_are_not_interchanged(self):
+        # Every operator here is isotropic, so transposing the whole scene must
+        # transpose the result exactly. On the 17x13 grid a row/column mix-up
+        # inside the neighbourhood filters cannot survive this.
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+        _tree(sc, (11, 9), 31.0)
+
+        direct = _refine(sc)
+        flipped = _refine({k: v.T for k, v in sc.items()})
+        assert flipped["canopy"].shape == (SHAPE[1], SHAPE[0])
+        assert np.array_equal(flipped["canopy"], direct["canopy"].T)
+        assert np.array_equal(flipped["verdict"], direct["verdict"].T)
+
+    def test_inputs_are_not_mutated(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0, **AMBIGUOUS)
+        _tree(sc, (4, 3), 8.0)
+        snapshot = {key: value.copy() for key, value in sc.items()}
+        _refine(sc)
+        for key, value in sc.items():
+            assert np.array_equal(value, snapshot[key], equal_nan=True), key
+
+    @pytest.mark.parametrize(
+        "key", ["tree_mask", "building_heights", "mrf", "roughness",
+                "n_all", "n_nonground"]
+    )
+    def test_shape_mismatch_is_rejected(self, key):
+        sc = _scene()
+        sc[key] = sc[key][:-1]
+        with pytest.raises(ValueError, match="shape"):
+            _refine(sc)
+
+    def test_one_dimensional_height_is_rejected(self):
+        with pytest.raises(ValueError, match="2-D"):
+            classify_and_refine(
+                np.zeros(5), np.zeros(5, bool), np.zeros(5), STATIC,
+                degraded=True,
+            )
+
+    def test_output_dtype_and_shape(self):
+        sc = _scene()
+        _tree(sc, (2, 5), 25.0)
+        out = _refine(sc)
+        assert out["canopy"].shape == SHAPE
+        assert out["canopy"].dtype == np.float64
+        assert out["verdict"].shape == SHAPE
+        assert np.isfinite(out["canopy"]).all()
+
+
+class TestRefineParams:
+    @pytest.mark.parametrize("kwargs", [
+        dict(mrf_lo=0.5, mrf_hi=0.3),
+        dict(rough_lo_m=2.0, rough_hi_m=1.0),
+        dict(min_tree_height_m=50.0, max_tree_height_m=45.0),
+        dict(min_nonground=1),
+        dict(median_radius=-1),
+        dict(adjacency_radius=-1),
+        dict(min_points=0),
+    ])
+    def test_incoherent_parameters_are_rejected(self, kwargs):
+        with pytest.raises(ValueError):
+            RefineParams(**kwargs)
+
+    def test_defaults_are_the_documented_seeds(self):
+        p = RefineParams()
+        assert (p.mrf_hi, p.mrf_lo) == (0.35, 0.15)
+        assert (p.rough_hi_m, p.rough_lo_m) == (1.5, 1.0)
+        assert p.min_points == 8
+        assert p.coincidence_tol_m == 5.0
+        assert (p.min_tree_height_m, p.max_tree_height_m) == (2.0, 45.0)
+        assert p.median_radius == 3
+
+    def test_params_are_frozen(self):
+        with pytest.raises(Exception):
+            RefineParams().mrf_hi = 0.9
+
+
+class TestRefineFromEvidence:
+    """The calling convention Task 4 wires up: reader dict in, canopy out."""
+
+    def _evidence(self, scene, degraded=False):
+        return {
+            "height": scene["height"],
+            "mrf": None if degraded else scene["mrf"],
+            "roughness": None if degraded else scene["roughness"],
+            "n_all": None if degraded else scene["n_all"],
+            "n_nonground": None if degraded else scene["n_nonground"],
+            "degraded": degraded,
+            "shape": scene["height"].shape,
+        }
+
+    def test_unpacks_the_reader_dict(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)
+        out = refine_from_evidence(
+            self._evidence(sc), sc["tree_mask"], sc["building_heights"], STATIC
+        )
+        assert out["canopy"][2, 5] == 25.0
+        assert out["degraded"] is False
+
+    def test_degraded_dict_is_honoured(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 24.0
+        _tree(sc, (2, 5), 25.0)
+        _tree(sc, (4, 3), 8.0)
+        _tree(sc, (4, 4), 16.0)
+        out = refine_from_evidence(
+            self._evidence(sc, degraded=True), sc["tree_mask"],
+            sc["building_heights"], STATIC,
+        )
+        assert out["degraded"] is True
+        assert out["canopy"][2, 5] == 12.0
+
+    def test_a_none_reader_result_is_rejected(self):
+        # load_ndsm_evidence returns None for a missing or non-overlapping COG.
+        # Refining nothing is not a sensible degradation; the caller keeps
+        # static tree heights instead.
+        sc = _scene()
+        with pytest.raises(ValueError, match="fall back to static"):
+            refine_from_evidence(
+                None, sc["tree_mask"], sc["building_heights"], STATIC
+            )
+
+    def test_end_to_end_from_a_synthetic_cog(self, tmp_path):
+        # Contract check between the two halves of the module: whatever
+        # load_ndsm_evidence returns must feed the classifier unmodified.
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        evidence = _load(path)
+        shape = evidence["shape"]
+        tree_mask = np.ones(shape, dtype=bool)
+        buildings = np.zeros(shape)
+        # The fixture writes roughness == 1.0 exactly, so the seeds have to be
+        # narrowed for either evidence verdict to be reachable here.
+        params = RefineParams(mrf_hi=0.5, rough_hi_m=0.9, rough_lo_m=0.5)
+        out = refine_from_evidence(
+            evidence, tree_mask, buildings, STATIC, params=params
+        )
+        assert out["canopy"].shape == shape
+        counts = out["counts"]
+        assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"]
+        r, c = shape[0] // 4, shape[1] // 4
+        # SW quarter: mrf 0.8, roughness 1.0 -> canopy verdict.
+        assert (out["verdict"][:r, :c] == VERDICT_CANOPY).all()
+        # NE quarter: zero non-ground returns -> NaN roughness -> distrusted.
+        assert (out["verdict"][-r:, -c:] == VERDICT_AMBIGUOUS_KEEP).all()
+
+    def test_end_to_end_single_band_cog_is_degraded(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ndsm.tif", bands=1)
+        evidence = _load(path)
+        shape = evidence["shape"]
+        out = refine_from_evidence(
+            evidence, np.ones(shape, bool), np.zeros(shape), STATIC
+        )
+        assert out["degraded"] is True
+        assert out["counts"]["canopy"] == 0
+        # No buildings anywhere -> nothing is suspect -> heights survive.
+        assert np.nanmedian(out["canopy"][:shape[0] // 4]) > 15.0

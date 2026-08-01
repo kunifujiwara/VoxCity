@@ -24,7 +24,8 @@ from __future__ import annotations
 import math
 import os
 import warnings
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Dict, Mapping, Optional
 
 import numpy as np
 
@@ -33,6 +34,18 @@ __all__ = [
     "pool_evidence",
     "local_tree_median",
     "load_ndsm_evidence",
+    "RefineParams",
+    "classify_and_refine",
+    "refine_from_evidence",
+    "format_counts",
+    "PARTITION_KEYS",
+    "VERDICT_NONE",
+    "VERDICT_CANOPY",
+    "VERDICT_ROOF",
+    "VERDICT_AMBIGUOUS_KEEP",
+    "VERDICT_AMBIGUOUS_REPLACE",
+    "VERDICT_NO_DATA",
+    "VERDICT_NAMES",
 ]
 
 # Band schema of the evidence COG. Band 1 is the nDSM height; bands 2-6 are the
@@ -502,3 +515,405 @@ def local_tree_median(
             category=RuntimeWarning,
         )
         return np.nanmedian(stack, axis=0)
+
+
+# ---------------------------------------------------------------------------
+# Evidence classifier
+# ---------------------------------------------------------------------------
+# Verdict codes written into the returned ``verdict`` grid. They partition every
+# land-cover Tree cell: exactly one applies, so the five counts they index sum to
+# the tree-cell total. Non-tree cells carry VERDICT_NONE.
+VERDICT_NONE = 0
+VERDICT_CANOPY = 1                  # evidence says canopy -> nDSM height kept
+VERDICT_ROOF = 2                    # evidence says roof, footprint adjacent
+VERDICT_AMBIGUOUS_KEEP = 3          # no verdict, nothing to suspect -> kept
+VERDICT_AMBIGUOUS_REPLACE = 4       # no verdict, adjacent and height coincides
+VERDICT_NO_DATA = 5                 # land cover says tree, nDSM has no height
+
+VERDICT_NAMES = {
+    VERDICT_NONE: "none",
+    VERDICT_CANOPY: "canopy",
+    VERDICT_ROOF: "roof",
+    VERDICT_AMBIGUOUS_KEEP: "ambiguous_keep",
+    VERDICT_AMBIGUOUS_REPLACE: "ambiguous_replace",
+    VERDICT_NO_DATA: "no_data",
+}
+
+#: The count keys that partition the tree cells. ``sum(counts[k] for k in
+#: PARTITION_KEYS) == counts["tree"]`` always holds. Every other key in the
+#: counts dict (``guard_low``, ``guard_high``, ``replaced``, ``distrusted``) is a
+#: diagnostic that *overlaps* the partition and must never be summed into it.
+PARTITION_KEYS = (
+    "canopy",
+    "roof",
+    "ambiguous_keep",
+    "ambiguous_replace",
+    "no_data",
+)
+
+
+@dataclass(frozen=True)
+class RefineParams:
+    """Thresholds for the evidence classifier.
+
+    These are **seeds**, not calibrated values: they come from the distribution
+    of one Chuo-ku tile (among tall cells, 5.3% have mrf <= 0.1, 66.6% >= 0.4,
+    28.1% in between), and the roughness cuts are physical guesses rather than
+    measurements. Calibration against labelled cells is a separate step. The
+    classifier is built so that mis-set thresholds degrade towards *ambiguous*,
+    which is the conservative bucket, rather than towards a confident mistake.
+
+    * ``mrf_hi`` / ``rough_hi_m`` -- both must be met for the canopy verdict.
+    * ``mrf_lo`` / ``rough_lo_m`` -- both must be met (plus an adjacent
+      footprint) for the roof verdict.
+    * ``min_points`` -- pooled return count below which ``mrf`` is not trusted.
+    * ``min_nonground`` -- pooled non-ground count below which ``roughness`` is
+      not trusted. ``pool_evidence`` already returns NaN below two points; this
+      is the confidence band above that hard floor. It gates *both* verdicts,
+      not just the roof one: a thinly-sampled cell reads spuriously planar as
+      easily as spuriously rough, and a spurious "planar" is the false cap this
+      module exists to remove.
+    * ``coincidence_tol_m`` -- the old height-coincidence tolerance, now used
+      only for ambiguous cells that are also adjacent to a footprint.
+    * ``min_tree_height_m`` / ``max_tree_height_m`` -- sanity guards, applied
+      after the verdict and no longer load-bearing.
+    * ``median_radius`` -- window half-width for the replacement median.
+    * ``adjacency_radius`` -- footprint adjacency half-width. The window
+      *includes the cell itself*, so a tree cell sitting on a footprint counts
+      as adjacent, which is the strongest leakage case there is.
+    """
+
+    mrf_hi: float = 0.35
+    mrf_lo: float = 0.15
+    rough_hi_m: float = 1.5
+    rough_lo_m: float = 1.0
+    min_points: int = 8
+    min_nonground: int = 4
+    coincidence_tol_m: float = 5.0
+    min_tree_height_m: float = 2.0
+    max_tree_height_m: float = 45.0
+    median_radius: int = 3
+    adjacency_radius: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.mrf_lo <= self.mrf_hi:
+            raise ValueError(
+                f"mrf_lo ({self.mrf_lo}) must not exceed mrf_hi ({self.mrf_hi})"
+            )
+        if not self.rough_lo_m <= self.rough_hi_m:
+            raise ValueError(
+                f"rough_lo_m ({self.rough_lo_m}) must not exceed rough_hi_m "
+                f"({self.rough_hi_m})"
+            )
+        if not self.min_tree_height_m <= self.max_tree_height_m:
+            raise ValueError(
+                f"min_tree_height_m ({self.min_tree_height_m}) must not exceed "
+                f"max_tree_height_m ({self.max_tree_height_m})"
+            )
+        if self.min_points < 1:
+            raise ValueError(f"min_points must be >= 1, got {self.min_points}")
+        if self.min_nonground < 2:
+            raise ValueError(
+                "min_nonground must be >= 2; pool_evidence already returns NaN "
+                f"roughness below two points, got {self.min_nonground}"
+            )
+        if self.median_radius < 0 or self.adjacency_radius < 0:
+            raise ValueError("radii must be non-negative")
+        if self.coincidence_tol_m < 0:
+            raise ValueError("coincidence_tol_m must be non-negative")
+
+
+DEFAULT_PARAMS = RefineParams()
+
+
+def _as_2d(values, shape, name: str, dtype=float) -> np.ndarray:
+    arr = np.asarray(values, dtype=dtype)
+    if arr.shape != shape:
+        raise ValueError(
+            f"{name} has shape {arr.shape}, expected the height grid's {shape}"
+        )
+    return arr
+
+
+def _max_in_window(values: np.ndarray, radius: int) -> np.ndarray:
+    """Max over the ``(2r+1)^2`` window centred on each cell, itself included.
+
+    Outside the grid counts as zero, i.e. no building -- which is what
+    ``mode="constant", cval=0.0`` gives, and why the input must have had its
+    NaNs replaced by 0.0 first.
+    """
+    radius = int(radius)
+    arr = np.asarray(values, dtype=np.float64)
+    if radius <= 0:
+        return arr.copy()
+    from scipy.ndimage import maximum_filter
+
+    return maximum_filter(arr, size=2 * radius + 1, mode="constant", cval=0.0)
+
+
+def classify_and_refine(
+    height,
+    tree_mask,
+    building_heights,
+    static_tree_height: float,
+    *,
+    mrf=None,
+    roughness=None,
+    n_all=None,
+    n_nonground=None,
+    degraded: Optional[bool] = None,
+    params: RefineParams = DEFAULT_PARAMS,
+) -> Dict[str, object]:
+    """Refine nDSM tree-canopy heights from physical evidence.
+
+    The nDSM genuinely contains roofs -- Tokyo LAS carries no vegetation or
+    building classification, so nothing upstream separates a crown from a roof
+    plane. The superseded heuristic inferred contamination from *height
+    coincidence*: any tree cell within one cell of a building whose height
+    matched that building's within a few metres was declared leakage and
+    flattened to a constant. A genuine 25 m tree beside a 24 m building is
+    indistinguishable from leakage under that test, and flattening it is the
+    user-visible bug this function exists to remove.
+
+    The decision is made on evidence instead. A LiDAR pulse entering a canopy
+    echoes several times and the surface it samples is rough at metre scale; a
+    roof returns one echo off a plane. Per tree cell with a finite height:
+
+    ==================  ==============================================  ================
+    verdict             condition                                       action
+    ==================  ==============================================  ================
+    canopy              ``mrf >= mrf_hi`` and ``roughness >= rough_hi``  keep the height
+    roof                ``mrf <= mrf_lo`` and ``roughness <= rough_lo``  local median
+                        and a footprint is adjacent
+    ambiguous           anything else                                   replace only if
+                                                                        adjacent *and*
+                                                                        the height
+                                                                        coincides
+    ==================  ==============================================  ================
+
+    **The canopy verdict overrides the coincidence test.** That is the point of
+    the whole design: it is what lets a real tall tree beside a matching-height
+    building survive, and it is checked directly by
+    ``test_tall_tree_beside_matching_building_survives``.
+
+    Evidence is *distrusted* -- the cell is forced to ambiguous -- when it is
+    NaN (``pool_evidence`` NaNs roughness below two non-ground points, and mrf
+    where no return landed), when ``n_all < min_points``, or when
+    ``n_nonground < min_nonground``. NaN satisfies neither verdict by explicit
+    finiteness test rather than by relying on comparison semantics: a NaN
+    roughness read as 0.0 would be *maximally roof-like* and would recreate the
+    false cap from a sparse cell.
+
+    In degraded mode -- ``mrf``/``roughness``/``n_all`` all ``None``, which is
+    the live path until the evidence COG is rebuilt -- every cell is ambiguous.
+    That is still strictly better than the superseded heuristic on both failure
+    modes: cells away from footprints are never touched, and the ones that are
+    get a neighbourhood median rather than a flat constant.
+
+    Replacement is always the local median of *credible* tree heights, never a
+    flat constant. Credible means kept by the classifier and at least
+    ``min_tree_height_m`` tall, so a run of contaminated cells along a roof edge
+    cannot vouch for itself, and heights are clamped into the median so one
+    implausible cell cannot drag a neighbourhood upward. ``static_tree_height``
+    is used only when the window holds no credible neighbour at all.
+
+    Args:
+        height: (rows, cols) nDSM height per cell; NaN where the raster had no
+            valid pixel. Typically ``load_ndsm_evidence(...)["height"]``.
+        tree_mask: (rows, cols) bool, land cover == tree.
+        building_heights: (rows, cols) float; ``> 0`` marks a footprint. NaN and
+            negative values are treated as "no building".
+        static_tree_height: fallback height, used only where a replacement is
+            needed and the window holds no credible tree.
+        mrf, roughness, n_all, n_nonground: per-cell evidence from
+            :func:`pool_evidence`, or ``None`` for degraded mode.
+        degraded: force degraded mode. ``None`` infers it from the evidence
+            arrays; ``False`` with missing evidence is an error rather than a
+            silent downgrade.
+        params: :class:`RefineParams`.
+
+    Returns:
+        ``{"canopy", "verdict", "counts", "degraded"}``:
+
+        * ``canopy``  -- (rows, cols) float, refined heights; 0.0 at non-tree
+                         cells, finite everywhere.
+        * ``verdict`` -- (rows, cols) int8 of ``VERDICT_*`` codes.
+        * ``counts``  -- dict; the :data:`PARTITION_KEYS` entries sum to
+                         ``counts["tree"]``, the rest are overlapping
+                         diagnostics.
+        * ``degraded``-- bool, whether evidence was available.
+    """
+    p = params
+    h = np.asarray(height, dtype=np.float64)
+    if h.ndim != 2:
+        raise ValueError(f"height must be a 2-D grid, got {h.ndim} dimensions")
+    shape = h.shape
+
+    is_tree = _as_2d(tree_mask, shape, "tree_mask", dtype=bool)
+    finite_h = np.isfinite(h)
+    classified = is_tree & finite_h
+    no_data = is_tree & ~finite_h
+
+    # A NaN or negative building height is not a footprint. Substituting 0.0
+    # before the max filter keeps NaN out of the comparison chain entirely.
+    bld = _as_2d(building_heights, shape, "building_heights")
+    bld = np.where(np.isfinite(bld), bld, 0.0)
+    near_bld_h = _max_in_window(bld, p.adjacency_radius)
+    near_bld = near_bld_h > 0.0
+
+    if degraded is None:
+        degraded = mrf is None or roughness is None or n_all is None
+    else:
+        degraded = bool(degraded)
+        if not degraded and (mrf is None or roughness is None or n_all is None):
+            raise ValueError(
+                "degraded=False requires mrf, roughness and n_all; pass "
+                "degraded=None to infer, or degraded=True to ignore evidence"
+            )
+
+    n_distrusted = 0
+    if degraded:
+        canopy_ev = np.zeros(shape, dtype=bool)
+        roof_ev = np.zeros(shape, dtype=bool)
+    else:
+        m = _as_2d(mrf, shape, "mrf")
+        r = _as_2d(roughness, shape, "roughness")
+        na = _as_2d(n_all, shape, "n_all")
+        if n_nonground is None:
+            # Roughness confidence then rests only on pool_evidence's NaN
+            # contract (>= 2 non-ground points). Callers that have the count
+            # should pass it; the reader always returns it.
+            ng_ok = np.ones(shape, dtype=bool)
+        else:
+            ng = _as_2d(n_nonground, shape, "n_nonground")
+            ng_ok = np.isfinite(ng) & (ng >= p.min_nonground)
+
+        # NaN satisfies NEITHER verdict, stated as an explicit finiteness test
+        # rather than left to the comparison operators.
+        trusted = (
+            np.isfinite(m)
+            & np.isfinite(r)
+            & np.isfinite(na)
+            & (na >= p.min_points)
+            & ng_ok
+        )
+        canopy_ev = trusted & (m >= p.mrf_hi) & (r >= p.rough_hi_m)
+        roof_ev = trusted & (m <= p.mrf_lo) & (r <= p.rough_lo_m)
+        n_distrusted = int((classified & ~trusted).sum())
+
+    # THE line: canopy evidence wins over everything downstream, including the
+    # coincidence test that used to cap real trees beside matching buildings.
+    v_canopy = classified & canopy_ev
+    v_roof = classified & ~canopy_ev & roof_ev & near_bld
+    ambiguous = classified & ~v_canopy & ~v_roof
+    # Tightened coincidence: adjacency is required, not merely implied.
+    coincident = near_bld & (np.abs(h - near_bld_h) <= p.coincidence_tol_m)
+    v_amb_replace = ambiguous & coincident
+    v_amb_keep = ambiguous & ~coincident
+
+    keep = v_canopy | v_amb_keep
+    replace = v_roof | v_amb_replace
+
+    # Median source: kept cells only, and only at plausible heights, clamped so
+    # one 60 m cell cannot lift its whole neighbourhood. Because credibility
+    # requires h >= min_tree_height_m, a finite median is always >= that floor.
+    credible = keep & (h >= p.min_tree_height_m)
+    source = np.where(credible, np.minimum(h, p.max_tree_height_m), np.nan)
+    median = local_tree_median(source, credible, radius=p.median_radius)
+    fill = np.where(np.isfinite(median), median, float(static_tree_height))
+
+    # Starts at zero, which is the value non-tree cells keep: every write below
+    # is gated on a subset of is_tree, and there is deliberately no trailing
+    # ``canopy[~is_tree] = 0.0``. Such a line would mask an ungated guard --
+    # every non-tree cell sits at 0.0, i.e. below min_tree_height_m -- and
+    # test_non_tree_cells_are_zero is what detects that.
+    canopy = np.zeros(shape, dtype=np.float64)
+    canopy[keep] = h[keep]
+    needs_fill = replace | no_data
+    canopy[needs_fill] = fill[needs_fill]
+
+    # Guards, applied to the composed result so a replacement value is sanity
+    # checked too. They are orthogonal to the verdict: a guard can fire on a
+    # cell in any bucket, which is why their counts sit outside the partition.
+    too_low = is_tree & (canopy < p.min_tree_height_m)
+    canopy = np.where(too_low, fill, canopy)
+    too_high = is_tree & (canopy > p.max_tree_height_m)
+    canopy = np.where(too_high, p.max_tree_height_m, canopy)
+
+    verdict = np.zeros(shape, dtype=np.int8)
+    verdict[v_canopy] = VERDICT_CANOPY
+    verdict[v_roof] = VERDICT_ROOF
+    verdict[v_amb_keep] = VERDICT_AMBIGUOUS_KEEP
+    verdict[v_amb_replace] = VERDICT_AMBIGUOUS_REPLACE
+    verdict[no_data] = VERDICT_NO_DATA
+
+    counts = {
+        "tree": int(is_tree.sum()),
+        # --- partition (see PARTITION_KEYS) ---
+        "canopy": int(v_canopy.sum()),
+        "roof": int(v_roof.sum()),
+        "ambiguous_keep": int(v_amb_keep.sum()),
+        "ambiguous_replace": int(v_amb_replace.sum()),
+        "no_data": int(no_data.sum()),
+        # --- overlapping diagnostics, never summed into the partition ---
+        "replaced": int(replace.sum()),
+        "distrusted": n_distrusted,
+        "guard_low": int(too_low.sum()),
+        "guard_high": int(too_high.sum()),
+    }
+    return {
+        "canopy": canopy,
+        "verdict": verdict,
+        "counts": counts,
+        "degraded": bool(degraded),
+    }
+
+
+def refine_from_evidence(
+    evidence: Mapping[str, object],
+    tree_mask,
+    building_heights,
+    static_tree_height: float,
+    params: RefineParams = DEFAULT_PARAMS,
+) -> Dict[str, object]:
+    """Run :func:`classify_and_refine` on a :func:`load_ndsm_evidence` dict.
+
+    The single seam between the reader and the classifier, so callers never
+    unpack the evidence keys themselves and cannot pair a height grid with
+    another grid's evidence. The reader's ``degraded`` flag is forwarded
+    verbatim rather than re-inferred.
+
+    A ``None`` from :func:`load_ndsm_evidence` -- missing COG, or no overlap --
+    is rejected here rather than fed through: there is no nDSM to refine, and
+    the caller's response is to keep static tree heights, not to run the
+    classifier on nothing.
+    """
+    if evidence is None:
+        raise ValueError(
+            "load_ndsm_evidence returned None (missing COG or no overlap with "
+            "the target); fall back to static tree heights instead of refining"
+        )
+    return classify_and_refine(
+        evidence["height"],
+        tree_mask,
+        building_heights,
+        static_tree_height,
+        mrf=evidence.get("mrf"),
+        roughness=evidence.get("roughness"),
+        n_all=evidence.get("n_all"),
+        n_nonground=evidence.get("n_nonground"),
+        degraded=evidence.get("degraded"),
+        params=params,
+    )
+
+
+def format_counts(counts: Mapping[str, int]) -> str:
+    """One-line summary of a classification, for the pipeline log."""
+    return (
+        "{tree} tree cells: {canopy} canopy (kept), {roof} roof -> median, "
+        "{ambiguous_keep} ambiguous keep, {ambiguous_replace} ambiguous "
+        "replace, {no_data} no data; guards: {guard_low} below min, "
+        "{guard_high} above max; {distrusted} distrusted evidence"
+    ).format(**{key: counts.get(key, 0) for key in (
+        "tree", *PARTITION_KEYS, "guard_low", "guard_high", "distrusted",
+    )})
