@@ -19,6 +19,11 @@ try:
 except ImportError:  # package not installed in this env
     _RealVoxelizerConfig = None
 
+try:
+    from voxcitygml.grid_utils import compute_grid_params as _real_compute_grid_params
+except ImportError:  # package not installed in this env
+    _real_compute_grid_params = None
+
 
 # Axis-aligned rectangle near Tokyo ([SW, NW, NE, SE], [lon, lat])
 RECT = [
@@ -205,12 +210,15 @@ def test_lod2_requires_citygml_path(stubbed, monkeypatch):
     assert "CITYGML_PATH" in resp.json()["detail"]
 
 
-def test_lod2_rejects_rotated_rectangle(stubbed):
+def test_lod2_accepts_rotated_rectangle(stubbed):
+    """Rotated rectangles are supported since VoxCityGML gained an affine
+    grid frame; vertices must be forwarded verbatim."""
     client = TestClient(app)
     resp = client.post("/api/generate",
                        json=_base_request(rectangle_vertices=ROTATED_RECT))
-    assert resp.status_code == 400
-    assert "rotat" in resp.json()["detail"].lower()
+    assert resp.status_code == 200, resp.text
+    assert stubbed['generate_called']
+    assert stubbed['config']['rectangle_vertices'] == [tuple(v) for v in ROTATED_RECT]
 
 
 def test_lod2_maps_no_buildings_to_400(stubbed, monkeypatch):
@@ -386,108 +394,45 @@ def test_apply_edits_guard_runs_before_any_edit_is_applied(_restore_voxcity,
 
 
 # ---------------------------------------------------------------------------
-# _is_axis_aligned_rectangle unit tests
+# Rectangle validation
 # ---------------------------------------------------------------------------
 
-def _dimension_rectangle(center_lon, center_lat, width_m, height_m,
-                         rotation_deg=0.0):
-    """Build a rectangle via the real /api/rectangle-from-dimensions endpoint.
-
-    Deliberately not hand-typed: the geodesic construction is precisely what an
-    earlier absolute 1e-9 tolerance mis-classified as "rotated".
-    """
-    resp = TestClient(app).post("/api/rectangle-from-dimensions", json={
-        "center_lon": center_lon, "center_lat": center_lat,
-        "width_m": width_m, "height_m": height_m,
-        "rotation_deg": rotation_deg,
-    })
-    assert resp.status_code == 200, resp.text
-    return resp.json()["vertices"]
-
-
-def test_axis_aligned_exact_rectangle():
-    """Two-click map draw reuses the same sw/ne floats -> exactly aligned."""
-    assert main_mod._is_axis_aligned_rectangle(RECT) is True
-
-
-@pytest.mark.parametrize("center_lat,size_m", [
-    (35.65, 100),     # Tokyo, small
-    (35.65, 1250),    # Tokyo, the UI's default extent
-    (35.65, 20000),   # Tokyo, very large
-    (45.52, 1000),    # northern Japan (worst latitude for PLATEAU coverage)
-    (45.52, 20000),   # northern Japan, very large -> worst case overall
-])
-def test_geodesic_rectangle_at_rotation_zero_is_accepted(center_lat, size_m):
-    """Regression: geodesic rectangles are NOT lon/lat-aligned even at
-    rotation 0, because a given easting maps to a larger delta-lon at the north
-    edge than the south edge. An absolute tolerance rejected all of these."""
-    verts = _dimension_rectangle(139.77, center_lat, size_m, size_m, 0.0)
-    assert verts[0][0] != verts[1][0], "expected a non-trivial geodesic skew"
-    assert main_mod._is_axis_aligned_rectangle(verts) is True
-
-
-@pytest.mark.parametrize("rotation_deg", [0.5, 1.0, 30.0, -30.0, 45.0])
-def test_rotated_rectangles_are_rejected(rotation_deg):
-    verts = _dimension_rectangle(139.77, 35.65, 1000, 1000, rotation_deg)
-    assert main_mod._is_axis_aligned_rectangle(verts) is False
-
-
-@pytest.mark.parametrize("width_m,height_m", [(2000, 500), (500, 2000)])
-def test_non_square_rotated_rectangles_are_rejected(width_m, height_m):
-    """Non-square rectangles are rejected *more* aggressively than squares: the
-    midline offset is normalised by the shorter side, so 2000x500 at 0.5 deg
-    reads 3.5e-2 against the square's 8.7e-3."""
-    verts = _dimension_rectangle(139.77, 35.65, width_m, height_m, 0.5)
-    assert main_mod._is_axis_aligned_rectangle(verts) is False
-
-
-def test_rotation_threshold_boundary():
-    """Pin the rel_tol=1e-3 window: it rejects rotation beyond ~0.057 deg."""
-    accepted = _dimension_rectangle(139.77, 35.65, 1000, 1000, 0.05)
-    rejected = _dimension_rectangle(139.77, 35.65, 1000, 1000, 0.1)
-    assert main_mod._is_axis_aligned_rectangle(accepted) is True
-    assert main_mod._is_axis_aligned_rectangle(rejected) is False
-
-
-def test_hand_typed_rotated_fixture_is_rejected():
-    assert main_mod._is_axis_aligned_rectangle(ROTATED_RECT) is False
-
-
-def test_symmetric_trapezoid_is_rejected_by_flare_guard():
-    """The midline metric alone reads 0 for a trapezoid symmetric about the
-    centre meridian, so the shape guard is what rejects it."""
-    trapezoid = [
-        [139.770, 35.646], [139.769, 35.650],
-        [139.776, 35.650], [139.775, 35.646],
-    ]
-    assert main_mod._is_axis_aligned_rectangle(trapezoid) is False
-
-
-def test_degenerate_rectangle_is_rejected():
-    """Zero extent must not divide by zero."""
-    point = [[139.77, 35.65]] * 4
-    assert main_mod._is_axis_aligned_rectangle(point) is False
-
-
-@pytest.mark.parametrize("size_m", [50, 100, 1250])
-def test_six_decimal_quantized_rectangle_is_accepted(size_m):
-    """Coordinate entry uses step="0.000001". Rounding four corners to 6 dp
-    perturbs the midline by up to 1e-6 deg, which alone exceeds rel_tol below
-    ~200 m — the absolute floor is what keeps the UI's 50 m minimum valid."""
-    verts = [[round(c, 6) for c in v]
-             for v in _dimension_rectangle(139.77, 35.65, size_m, size_m, 0.0)]
-    assert main_mod._is_axis_aligned_rectangle(verts) is True
-
-
+@pytest.mark.skipif(_real_compute_grid_params is None,
+                    reason="voxcitygml is not installed in this environment")
 @pytest.mark.parametrize("verts", [
-    [],
-    [[139.0, 35.0]],
-    RECT[:3],
-    RECT + [[139.775, 35.646]],
+    pytest.param([[139.77, 35.65]] * 4, id="zero-area"),
+    pytest.param([[139.770, 35.646], [139.772, 35.646],
+                  [139.774, 35.646], [139.776, 35.646]], id="collinear"),
 ])
-def test_wrong_vertex_count_is_rejected(verts):
-    """Guards the 4-tuple unpack; must not raise."""
-    assert main_mod._is_axis_aligned_rectangle(verts) is False
+def test_lod2_degenerate_rectangle_yields_400(stubbed, verts):
+    """The deleted axis-alignment guard also rejected zero-area input as a side
+    effect, because it bailed out when either extent was 0. That protection now
+    lives in voxcitygml's ``_check_non_degenerate``, which every grid-params
+    call runs. Route the *real* function's exception through the endpoint to
+    prove the composition still produces a 400 rather than a 500.
+
+    ``_real_compute_grid_params`` is captured at import time, before the
+    ``stubbed`` fixture patches ``sys.modules['voxcitygml']`` — otherwise this
+    would resolve to the fake and assert nothing.
+    """
+    def real_guard(_cfg):
+        # FakeConfig only records its kwargs, so read them back from the
+        # fixture — which is also the stricter check: these are the exact
+        # vertices the endpoint forwarded.
+        passed = stubbed['config']
+        _real_compute_grid_params(passed['rectangle_vertices'],
+                                  passed['meshsize'])
+        raise AssertionError(
+            "voxcitygml accepted a degenerate rectangle; the app no longer "
+            "screens these itself, so this would reach the voxelizer")
+
+    sys.modules["voxcitygml"].generate_voxcity = real_guard
+    resp = TestClient(app).post("/api/generate",
+                                json=_base_request(rectangle_vertices=verts))
+    assert resp.status_code == 400, resp.text
+    # Non-vacuity: the 400 must be voxcitygml's degeneracy ValueError, not some
+    # unrelated early rejection that would mask a future regression.
+    assert "degenerate" in resp.json()["detail"].lower(), resp.text
 
 
 @pytest.mark.parametrize("verts", [

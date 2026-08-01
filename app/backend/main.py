@@ -219,82 +219,6 @@ def _is_japan(rectangle_vertices: List[List[float]]) -> bool:
     return 122.0 <= center_lon <= 154.0 and 24.0 <= center_lat <= 46.5
 
 
-# Absolute floor on the rotation signal, in degrees. Coordinate entry uses
-# step="0.000001", and rounding the corners to 6 dp perturbs the midline
-# difference below by up to 1e-6 deg (four terms at <=5e-7, halved by the two
-# averages) — exactly half this constant. Below ~180 m of extent that noise
-# alone exceeds rel_tol, so without the floor a hand-entered rectangle at the
-# UI's 50 m minimum can be mis-flagged as rotated.
-#
-# The floor binds below 203 m at 24N / 181 m at Tokyo / 156 m at 45.5N. Because
-# it is absolute, the rotation it admits scales as 1/size, so the ground error
-# is constant wherever it binds: a 0.13 m corner shift, varying only with
-# latitude (0.14 m at 24N to 0.11 m at 45.5N). "Corner shift" here is
-# half-diagonal x tan(theta) — the same measure by which the shipped 0.057 deg
-# bound allows 14 m at the 20 km cap.
-#
-# Before deleting this as dead code, note the crossings are strongly
-# latitude-dependent: a fixed metre extent spans fewer degrees of longitude
-# nearer the equator, so the same 1e-6 deg of noise is relatively larger there.
-# Two separate samplings, at different densities: 200k rectangles spread over
-# Japan's whole 24-45.5N band gave 32 crossings, while 40k concentrated in
-# 24-26N alone gave 71 (that band is ~1/10 of the range, so the whole-band run
-# put only ~19k samples there — the two rates agree). Per-band 40k runs gave 1
-# crossing at 26-28N and none above 28N. Sampling around Tokyo therefore
-# measures zero and proves nothing. The mechanism is one corner pair straddling
-# a 6-dp boundary, not four corners conspiring: at 50 m nw.lon and sw.lon
-# differ by ~3e-9 deg and almost always round alike.
-_AXIS_ALIGN_ABS_FLOOR_DEG = 2e-6
-
-
-def _is_axis_aligned_rectangle(
-    vertices: List[List[float]], rel_tol: float = 1e-3
-) -> bool:
-    """True if [SW, NW, NE, SE] lon/lat vertices form an axis-aligned rect.
-
-    Comparing opposite corners directly (sw.lon vs nw.lon) does not work at any
-    fixed tolerance. Rectangles from /api/rectangle-from-dimensions are built
-    geodesically, so even at rotation 0 the north edge spans more longitude
-    than the south edge by ~tan(lat) * height / (2 * R_earth) of the extent —
-    which grows without bound in the rectangle's size and latitude.
-
-    That artifact is not a rotation but an antisymmetric *flare*: the west edge
-    tilts west going north and the east edge tilts east by the same amount, an
-    isosceles trapezoid symmetric about the centre meridian. A real rotation
-    shifts both edges the *same* way. So the rotation signal is the offset
-    between opposite-edge midpoints, where the flare cancels exactly (measured
-    identically 0.0 for every rotation-0 case from 50 m to 20 km over lat
-    24-59N) and which equals tan(rotation) to 5 significant figures otherwise.
-
-    rel_tol=1e-3 therefore bounds rotation directly, rejecting beyond 0.057 deg
-    — but that is the *square* case. Each midline offset is normalised by its
-    own-axis extent, so rot_lon/lon_ext = (h/w) sin(theta) and
-    rot_lat/lat_ext = (w/h) sin(theta); rejecting on either means the effective
-    bound is rel_tol * min(w/h, h/w). A 4:1 rectangle rejects at ~0.014 deg.
-    The bound only tightens with aspect ratio, so 1e-3 is not safe to loosen.
-
-    The midline test alone would accept any symmetric trapezoid, so a loose
-    flare guard rejects gross non-rectangles.
-    """
-    if len(vertices) != 4:
-        return False
-    sw, nw, ne, se = [tuple(v) for v in vertices]
-    lon_ext = max(abs(se[0] - sw[0]), abs(ne[0] - nw[0]))
-    lat_ext = max(abs(nw[1] - sw[1]), abs(ne[1] - se[1]))
-    if lon_ext == 0.0 or lat_ext == 0.0:
-        return False
-
-    rot_lon = abs((nw[0] + ne[0]) / 2 - (sw[0] + se[0]) / 2)
-    rot_lat = abs((se[1] + ne[1]) / 2 - (sw[1] + nw[1]) / 2)
-    if (rot_lon >= max(rel_tol * lon_ext, _AXIS_ALIGN_ABS_FLOOR_DEG)
-            or rot_lat >= max(rel_tol * lat_ext, _AXIS_ALIGN_ABS_FLOOR_DEG)):
-        return False
-
-    flare_lon = abs(abs(ne[0] - nw[0]) - abs(se[0] - sw[0])) / lon_ext
-    flare_lat = abs(abs(nw[1] - sw[1]) - abs(ne[1] - se[1])) / lat_ext
-    return max(flare_lon, flare_lat) < 5e-2
-
-
 def _is_lod2_model(voxcity_obj) -> bool:
     """True if this model's voxels came from LOD2 mesh voxelization.
 
@@ -1218,12 +1142,6 @@ async def generate_model(req: GenerateRequest):
                                "dataset directory. Place it at "
                                "<DATA_DIR>/plateau or point the CITYGML_PATH "
                                "environment variable at it.")
-                if not _is_axis_aligned_rectangle(req.rectangle_vertices):
-                    raise HTTPException(
-                        status_code=400,
-                        detail="PLATEAU LOD2 mode does not support rotated "
-                               "rectangles yet. Draw a non-rotated rectangle "
-                               "or use LOD1.")
                 try:
                     from voxcitygml import VoxelizerConfig, generate_voxcity
                 except ImportError as exc:

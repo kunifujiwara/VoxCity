@@ -117,7 +117,7 @@ export const ja: Messages = {
     plateauLod1Desc: '高速（フットプリント＋高さ押し出し）',
     plateauLod2Label: 'LOD2',
     plateauLod2Desc: '詳細な屋根形状（低速）',
-    plateauLod2Warn: 'LOD2 は CityGML の形状を完全に解析するため、LOD1 より生成に時間がかかります。回転した矩形にはまだ対応していません。',
+    plateauLod2Warn: 'LOD2 は CityGML の形状を完全に解析するため、LOD1 より生成に時間がかかります。',
     plateauLod2Unavailable: 'このサーバーでは LOD2 を利用できません:',
     gridHeading: 'グリッド解像度',
     meshSize: 'メッシュサイズ（メートル）',
