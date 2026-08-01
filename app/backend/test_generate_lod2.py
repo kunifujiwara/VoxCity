@@ -124,10 +124,13 @@ def stubbed(monkeypatch, tmp_path):
     # The stub must mirror the *rotation-capable* package, or the backend's
     # capability probe would report every LOD2 test's environment unusable.
     fake_pkg.grid_utils = _fake_grid_utils(rotation_capable=True)
+    # Likewise current enough to overlay a canopy onto an LOD2 grid.
+    fake_pkg.reapply_canopy = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "voxcitygml", fake_pkg)
     # The probe is process-cached; swapping the package underneath it must not
     # leave a stale verdict behind for (or from) a neighbouring test.
     main_mod._voxcitygml_import_state.cache_clear()
+    main_mod._voxcitygml_reapply_state.cache_clear()
 
     monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
     monkeypatch.setattr(main_mod, "_reset_taichi_and_caches", lambda: None)
@@ -159,6 +162,7 @@ def stubbed(monkeypatch, tmp_path):
                         fake_store)
     yield calls
     main_mod._voxcitygml_import_state.cache_clear()
+    main_mod._voxcitygml_reapply_state.cache_clear()
 
 
 def test_lod2_calls_voxcitygml(stubbed, tmp_path):
@@ -285,6 +289,7 @@ def test_lod2_generate_refuses_a_package_without_rotation_support(stubbed):
     sys.modules["voxcitygml"].grid_utils = _fake_grid_utils(
         rotation_capable=False)
     main_mod._voxcitygml_import_state.cache_clear()
+    main_mod._voxcitygml_reapply_state.cache_clear()
 
     resp = TestClient(app).post("/api/generate", json=_base_request())
     assert resp.status_code == 500, resp.text
@@ -347,8 +352,10 @@ def test_lod2_includes_bridges_when_requested(stubbed):
 def clear_capability_cache():
     """The import probe is cached for the process; reset around each test."""
     main_mod._voxcitygml_import_state.cache_clear()
+    main_mod._voxcitygml_reapply_state.cache_clear()
     yield
     main_mod._voxcitygml_import_state.cache_clear()
+    main_mod._voxcitygml_reapply_state.cache_clear()
 
 
 def test_health_reports_lod2_available(clear_capability_cache, stubbed):
@@ -454,6 +461,47 @@ def test_rotation_probe_accepts_the_real_package(clear_capability_cache):
     """
     ok, reason = main_mod._voxcitygml_import_state()
     assert ok, reason
+
+
+def test_health_reports_ndsm_canopy_lod2_available(clear_capability_cache,
+                                                   stubbed):
+    """The fixture's stub carries reapply_canopy, like a current install."""
+    cap = TestClient(app).get("/api/health").json()["capabilities"]
+    assert cap["ndsm_canopy_lod2"] == {"available": True, "reason": ""}
+
+
+def test_health_reports_ndsm_canopy_unavailable_without_reapply_canopy(
+        clear_capability_cache, stubbed):
+    """Closes the loop on the original bug: without this flag the user ticks
+    "Use nDSM for Canopy", waits out a full LOD2 generation, and gets a model
+    where it did nothing — visible only in a server-side print."""
+    del sys.modules["voxcitygml"].reapply_canopy
+    main_mod._voxcitygml_reapply_state.cache_clear()
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]
+    assert cap["ndsm_canopy_lod2"]["available"] is False
+    assert "reapply_canopy" in cap["ndsm_canopy_lod2"]["reason"]
+
+
+def test_missing_reapply_canopy_does_not_disable_lod2_generation(
+        clear_capability_cache, stubbed):
+    """The nDSM probe must stay *non-gating*.
+
+    Folding it into _voxcitygml_import_state would be the tempting
+    simplification, and it would be wrong: that verdict refuses /api/generate
+    with a 500 and flips plateau_lod2 to unavailable. LOD2 generation itself
+    works perfectly well on a package without reapply_canopy — only the
+    optional canopy refinement is lost.
+    """
+    del sys.modules["voxcitygml"].reapply_canopy
+    main_mod._voxcitygml_reapply_state.cache_clear()
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]
+    assert cap["plateau_lod2"] == {"available": True, "reason": ""}
+
+    resp = TestClient(app).post("/api/generate", json=_base_request())
+    assert resp.status_code == 200, resp.text
+    assert stubbed['generate_called']
 
 
 @pytest.mark.parametrize("path_value", [None, "", "/definitely/not/a/real/dir"])
@@ -595,14 +643,17 @@ def refine_env(monkeypatch):
 
     fake_pkg = types.ModuleType("voxcitygml")
 
-    def fake_reapply(city, canopy_top, canopy_bottom=None,
-                     trunk_height_ratio=None):
+    def fake_reapply(*args, **kwargs):
+        # Captured verbatim, positional-vs-keyword included: the signature test
+        # replays this against the *real* reapply_canopy, so normalizing the
+        # call here would hide exactly the renamed parameter it exists to
+        # catch. ndarrays are snapshotted, never held by reference.
+        def snap(v):
+            return v.copy() if isinstance(v, np.ndarray) else v
+
         calls['reapply'] = {
-            'city': city,
-            'canopy_top': np.asarray(canopy_top).copy(),
-            'canopy_bottom': (None if canopy_bottom is None
-                              else np.asarray(canopy_bottom).copy()),
-            'trunk_height_ratio': trunk_height_ratio,
+            'args': tuple(snap(a) for a in args),
+            'kwargs': {k: snap(v) for k, v in kwargs.items()},
         }
 
     fake_pkg.reapply_canopy = fake_reapply
@@ -613,6 +664,27 @@ def refine_env(monkeypatch):
 def _refine(vc):
     return main_mod._refine_canopy_with_ndsm(
         vc, RECT, meshsize=5.0, land_cover_source="OpenEarthMapJapan")
+
+
+def _overlay_args(calls):
+    """The captured reapply_canopy call, resolved to parameter names.
+
+    Accepts either calling convention so a switch between positional and
+    keyword in the backend is not a spurious failure here — the *signature*
+    test is what pins the call shape against the real function.
+    """
+    names = ("city", "canopy_top", "canopy_bottom", "trunk_height_ratio")
+    resolved = dict(zip(names, calls['reapply']['args']))
+    resolved.update(calls['reapply']['kwargs'])
+    return resolved
+
+
+# The trunk ratio _refine_canopy_with_ndsm derives crown bases with.
+_TRUNK_RATIO = 11.76 / 19.98
+# _load_ndsm_grid is stubbed to this, and the sanitizer leaves it alone: it is
+# within [min_tree_height_m, max_tree_height_m] and the model has no buildings,
+# so no leakage/outlier rule fires.
+_NDSM_HEIGHT = 8.0
 
 
 def test_refine_lod1_rebuilds_the_voxel_grid(refine_env):
@@ -637,16 +709,19 @@ def test_refine_lod2_overlays_instead_of_rebuilding(refine_env):
     assert 'regenerate' not in refine_env, (
         "regenerate_voxels rebuilds from the 2.5-D grids and flattens LOD2")
 
-    overlay = refine_env['reapply']
+    overlay = _overlay_args(refine_env)
     assert overlay['city'] is vc
-    # The overlay must get the same canopy the component grids were given, or
-    # the voxels and the 2.5-D grids describe different crowns.
-    assert np.array_equal(overlay['canopy_top'], vc.tree_canopy.top)
-    assert overlay['canopy_bottom'] is not None, (
-        "the app already derived the crown base; leaving it to voxcitygml's "
-        "own default ratio would overwrite tree_canopy.bottom with a "
-        "different array")
-    assert np.array_equal(overlay['canopy_bottom'], vc.tree_canopy.bottom)
+    # Pin the values, not a re-read of the model's own grids: on this path
+    # reapply_canopy writes those grids itself, so comparing against them would
+    # only assert that the (stubbed) overlay did nothing.
+    assert np.array_equal(overlay['canopy_top'],
+                          np.full(_REFINE_SHAPE, _NDSM_HEIGHT))
+    assert overlay.get('canopy_bottom') is not None, (
+        "voxcitygml's own default trunk ratio currently equals ours, so "
+        "passing the ratio instead would yield the same array today — passing "
+        "the derived bottom keeps that a coincidence we don't depend on")
+    assert np.allclose(overlay['canopy_bottom'],
+                       _NDSM_HEIGHT * _TRUNK_RATIO)
 
 
 def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
@@ -668,26 +743,49 @@ def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
     assert not vc.tree_canopy.bottom.any(), "model must be left untouched"
 
 
+def test_refine_lod2_leaves_the_model_untouched_when_the_overlay_raises(
+        refine_env):
+    """reapply_canopy raises ValueError on a missing extras['voxel_min_z'], a
+    mismatched mesh_vegetation_mask, or a canopy shape mismatch. The endpoint
+    treats refinement failures as non-fatal, so a half-written model would sail
+    on with its 2.5-D grids describing crowns the voxel grid does not contain —
+    for the rest of the session, reported only in a server log. On this path
+    reapply_canopy owns those grids, so the app writes nothing of its own.
+    """
+    def boom(*a, **k):
+        raise ValueError("extras['voxel_min_z'] is missing or None")
+
+    sys.modules["voxcitygml"].reapply_canopy = boom
+    vc = _RefineModel(building_lod=2)
+
+    with pytest.raises(ValueError):
+        _refine(vc)
+    assert not vc.tree_canopy.top.any(), "the canopy grids must be untouched"
+    assert not vc.tree_canopy.bottom.any(), "the canopy grids must be untouched"
+
+
 @pytest.mark.skipif(_real_reapply_canopy is None,
                     reason="voxcitygml with reapply_canopy is not installed")
 def test_refine_lod2_call_matches_the_real_reapply_canopy_signature(refine_env):
     """Bind the cross-repo contract, as the VoxelizerConfig test does above.
 
-    ``refine_env`` stubs ``reapply_canopy`` with a fake that would accept a
-    renamed or dropped parameter without complaint, so every assertion here
-    would stay green while production raised TypeError. Replay the exact call
-    the backend made against the *real* function's signature — captured at
-    import time, before the fixture patched ``sys.modules``.
+    ``refine_env`` stubs reapply_canopy with a fake that swallows any argument
+    list, so every other assertion here would stay green while production
+    raised TypeError. This replays the captured call — verbatim, keywords as
+    keywords — against the *real* signature, captured at import time before the
+    fixture patched ``sys.modules``.
     """
     vc = _RefineModel(building_lod=2)
     assert _refine(vc) is True
-    overlay = refine_env['reapply']
+    raw = refine_env['reapply']
 
     # bind() raises TypeError on an unknown/renamed keyword or a changed arity.
-    bound = inspect.signature(_real_reapply_canopy).bind(
-        overlay['city'], overlay['canopy_top'],
-        canopy_bottom=overlay['canopy_bottom'])
-    assert bound.arguments['canopy_bottom'] is overlay['canopy_bottom']
+    bound = inspect.signature(_real_reapply_canopy).bind(*raw['args'],
+                                                         **raw['kwargs'])
+    # bind() alone is not enough: a *positional* argument binds to whatever the
+    # parameter is now called, so a rename of canopy_top would pass silently.
+    # Assert the names the call actually resolves to.
+    assert bound.arguments.keys() == {"city", "canopy_top", "canopy_bottom"}
 
 
 # ---------------------------------------------------------------------------

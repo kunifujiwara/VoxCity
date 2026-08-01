@@ -579,21 +579,31 @@ def _refine_canopy_with_ndsm(
     trunk_ratio = 11.76 / 19.98
     canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
 
-    # Update in-place
-    voxcity_obj.tree_canopy.top[:] = canopy
-    if voxcity_obj.tree_canopy.bottom is not None:
-        voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
-    else:
-        voxcity_obj.tree_canopy.bottom = canopy_bottom
-
-    # Write the refined canopy into the voxel grid: overlay for LOD2 (resolved
-    # above), rebuild for LOD1, whose voxels *are* extruded footprints.
     if reapply_canopy is not None:
-        # Pass the already-derived bottom rather than the trunk ratio: it is
-        # what was just written to tree_canopy.bottom, and reapply_canopy
-        # writes its own derivation back onto that grid.
+        # LOD2: overlay the canopy onto the existing grid. reapply_canopy owns
+        # the whole update — it writes canopy_top/canopy_bottom into
+        # tree_canopy itself, in place where the existing array can take them
+        # (which keeps any extras alias current for free) and re-pointing the
+        # alias explicitly when it has to rebind. So this path deliberately
+        # mutates *nothing* beforehand. It also raises ValueError on a missing
+        # extras['voxel_min_z'] or a shape mismatch, and the caller's handler
+        # is non-fatal: pre-writing the component grids would leave them
+        # describing crowns the voxel grid never received, with only a server
+        # log to say so.
+        #
+        # Pass the already-derived bottom rather than the trunk ratio.
+        # voxcitygml's default ratio happens to equal ours today, so both would
+        # produce the same array — passing the bottom keeps that a coincidence
+        # this code does not depend on.
         reapply_canopy(voxcity_obj, canopy, canopy_bottom=canopy_bottom)
     else:
+        # LOD1: the voxels *are* extruded footprints, so revise the 2.5-D
+        # component grids and rebuild the grid from them.
+        voxcity_obj.tree_canopy.top[:] = canopy
+        if voxcity_obj.tree_canopy.bottom is not None:
+            voxcity_obj.tree_canopy.bottom[:] = canopy_bottom
+        else:
+            voxcity_obj.tree_canopy.bottom = canopy_bottom
         regenerate_voxels(voxcity_obj, land_cover_source=land_cover_source, inplace=True)
 
     print(f"[nDSM] Canopy refinement applied — tree cells: {int(np.count_nonzero(canopy > 0))}")
@@ -1035,6 +1045,52 @@ def _voxcitygml_import_state() -> Tuple[bool, str]:
     return True, ""
 
 
+@lru_cache(maxsize=1)
+def _voxcitygml_reapply_state() -> Tuple[bool, str]:
+    """Probe whether this voxcitygml can overlay a canopy onto an LOD2 grid.
+
+    Kept deliberately *separate* from ``_voxcitygml_import_state`` and never
+    folded into it: that probe gates ``/api/generate``, where a False refuses
+    PLATEAU LOD2 outright. A missing ``reapply_canopy`` costs only the optional
+    nDSM canopy refinement, so it must not take an otherwise working mode down
+    with it.
+
+    This is for *reporting* — ``_refine_canopy_with_ndsm`` imports the function
+    itself and that import, not this probe, is what decides at run time.
+
+    Cached like its sibling because /api/health is polled by the UI. Call
+    ``.cache_clear()`` when the environment changes underneath the process.
+    """
+    try:
+        import voxcitygml
+    except Exception as exc:  # ImportError, or anything a broken dep raises
+        return False, f"the voxcitygml package is not installed ({exc})"
+    if not hasattr(voxcitygml, "reapply_canopy"):
+        return False, ("the installed voxcitygml has no reapply_canopy(), "
+                       "which is what applies a refined canopy to an LOD2 grid "
+                       "without rebuilding it (a rebuild would flatten the "
+                       "roof/wall geometry). Update the VoxCityGML checkout "
+                       "and reinstall: pip install -e <path-to-VoxCityGML>")
+    return True, ""
+
+
+def _ndsm_canopy_lod2_capability() -> Dict[str, Any]:
+    """Whether nDSM canopy refinement can run on a PLATEAU LOD2 model.
+
+    Non-gating by design — LOD2 generation itself works fine without it, and
+    this never feeds ``_plateau_lod2_capability``. It exists so the "Use nDSM
+    for Canopy" checkbox can disable itself with a reason, instead of staying
+    ticked and silently doing nothing: that was the original bug's symptom, and
+    an outdated voxcitygml would otherwise reproduce it with a new cause.
+    """
+    try:
+        ok, reason = _voxcitygml_reapply_state()
+        return {"available": ok, "reason": reason}
+    except Exception as exc:
+        traceback.print_exc()
+        return {"available": False, "reason": f"capability probe failed: {exc}"}
+
+
 def _plateau_lod2_capability() -> Dict[str, Any]:
     """Whether PLATEAU LOD2 generation can actually run in this deployment.
 
@@ -1061,7 +1117,10 @@ async def health_check():
     return {
         "status": "ok",
         "has_model": app_state.has_model,
-        "capabilities": {"plateau_lod2": _plateau_lod2_capability()},
+        "capabilities": {
+            "plateau_lod2": _plateau_lod2_capability(),
+            "ndsm_canopy_lod2": _ndsm_canopy_lod2_capability(),
+        },
     }
 
 
@@ -1429,7 +1488,12 @@ async def generate_model(req: GenerateRequest):
                 if not applied:
                     print("[nDSM] _refine_canopy_with_ndsm returned False (see above for reason)")
             except Exception as ndsm_err:
+                # "Failed" and "skipped" have different remedies, and the
+                # message alone cannot tell them apart — a TypeError from
+                # voxcitygml signature drift reads as one opaque line without
+                # the frames.
                 print(f"[nDSM] Canopy refinement failed (non-fatal): {ndsm_err}")
+                traceback.print_exc()
         else:
             _failed = [k for k, v in _ndsm_conditions.items() if not v]
             print(f"[nDSM] Skipping canopy refinement — conditions not met: {_failed}")

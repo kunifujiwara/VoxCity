@@ -41,6 +41,11 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
   // a slow or failed health call on a deployment that can in fact do LOD2.
   const [lod2Cap, setLod2Cap] = useState<Capability | null>(null);
   const lod2Unavailable = lod2Cap !== null && !lod2Cap.available;
+  const [ndsmCap, setNdsmCap] = useState<Capability | null>(null);
+  // Only LOD2 needs the overlay entrypoint; LOD1 refinement rebuilds the grid
+  // and works on any voxcitygml (indeed without one at all).
+  const ndsmUnavailable =
+    plateauLod === 'lod2' && ndsmCap !== null && !ndsmCap.available;
 
   // Common parameters
   const [meshsize, setMeshsize] = useState(5);
@@ -76,10 +81,16 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
         if (cancelled) return;
         // Older backends omit `capabilities`; assume available in that case.
         setLod2Cap(h.capabilities?.plateau_lod2 ?? { available: true, reason: '' });
+        setNdsmCap(
+          h.capabilities?.ndsm_canopy_lod2 ?? { available: true, reason: '' },
+        );
       })
       .catch(() => {
         // A failed probe must not disable a working feature.
-        if (!cancelled) setLod2Cap({ available: true, reason: '' });
+        if (!cancelled) {
+          setLod2Cap({ available: true, reason: '' });
+          setNdsmCap({ available: true, reason: '' });
+        }
       });
     return () => {
       cancelled = true;
@@ -133,7 +144,9 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
       if (mode === 'plateau') {
         params.plateau_lod = plateauLod;
         params.use_citygml_cache = plateauLod === 'lod1' ? useCitygmlCache : undefined;
-        params.use_ndsm_canopy = useNdsmCanopy;
+        // Don't ask for refinement the backend has already said it can't do:
+        // it would be skipped server-side with only a log line to show for it.
+        params.use_ndsm_canopy = ndsmUnavailable ? false : useNdsmCanopy;
         params.include_bridges = plateauLod === 'lod2' ? includeBridges : undefined;
       } else {
         // Normal mode: pass sources (null = auto)
@@ -401,11 +414,17 @@ const GenerationTab: React.FC<GenerationTabProps> = ({
               <div className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={useNdsmCanopy}
+                  checked={useNdsmCanopy && !ndsmUnavailable}
+                  disabled={ndsmUnavailable}
                   onChange={(e) => setUseNdsmCanopy(e.target.checked)}
                 />
                 <span>{t('generationTab.useNdsm')}</span>
               </div>
+              {ndsmUnavailable && (
+                <div className="alert alert-info" style={{ fontSize: '0.78rem', margin: '0.25rem 0 0' }}>
+                  {t('generationTab.ndsmLod2Unavailable')} {ndsmCap?.reason}
+                </div>
+              )}
               {plateauLod === 'lod2' && (
                 <div className="checkbox-row">
                   <input

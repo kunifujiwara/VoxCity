@@ -119,6 +119,7 @@ export const ja: Messages = {
     plateauLod2Desc: '詳細な屋根形状（低速）',
     plateauLod2Warn: 'LOD2 は CityGML の形状を完全に解析するため、LOD1 より生成に時間がかかります。',
     plateauLod2Unavailable: 'このサーバーでは LOD2 を利用できません:',
+    ndsmLod2Unavailable: 'このサーバーでは LOD2 の nDSM 樹冠補正を利用できません:',
     gridHeading: 'グリッド解像度',
     meshSize: 'メッシュサイズ（メートル）',
     previewWarn: '推定グリッド ~{a}×{b} — このサイズでは 3D プレビューが無効になります。生成とエクスポートは引き続き利用できます。',

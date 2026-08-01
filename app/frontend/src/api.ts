@@ -103,7 +103,12 @@ export interface HealthResult {
   status: string;
   has_model: boolean;
   /** Optional: older backends omit this entirely. */
-  capabilities?: { plateau_lod2?: Capability };
+  capabilities?: {
+    plateau_lod2?: Capability;
+    /** nDSM canopy refinement on an LOD2 model. Non-gating: LOD2 itself works
+     *  without it, only the "Use nDSM for Canopy" option is lost. */
+    ndsm_canopy_lod2?: Capability;
+  };
 }
 
 export async function healthCheck() {
