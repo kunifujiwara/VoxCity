@@ -359,33 +359,29 @@ def _align_ndsm_to_grid(ndsm_grid: np.ndarray, target_shape: tuple) -> np.ndarra
     return ndsm_grid[np.ix_(r_idx, c_idx)]
 
 
-def _to_voxel_frame(grid: np.ndarray, target_shape: tuple) -> np.ndarray:
-    """Convert a land-cover-frame 2-D grid into the voxel grid's frame.
+def _to_voxel_frame(grid: np.ndarray) -> np.ndarray:
+    """Reorient a land-cover-frame 2-D grid to the voxel grid's row order.
 
-    Two corrections, both required by ``reapply_canopy``'s stated precondition
-    that ``canopy_top`` be "north-up like ``city.voxels.classes``":
+    voxcity's land-cover grid is south-up (row 0 = the southern edge) while the
+    DEM, the canopy grids and the 3-D voxel grid are north-up. VoxCityGML flips
+    at exactly this boundary — ``canopy/processor`` does ``np.flipud`` on the
+    canopy it derives from that same land-cover grid, and
+    ``voxelizer3d._apply_land_cover`` flips before painting the surface.
+    Everything upstream here is consistently south-up: the nDSM is sampled at
+    ``compute_cell_center_coords`` centres, which run south-to-north, and the
+    tree mask comes from ``land_cover.classes``. Without this flip the refined
+    canopy lands mirrored north<->south.
 
-    * **Orientation.** voxcity's land-cover grid is south-up (row 0 = the
-      southern edge) while the DEM, the canopy grids and the 3-D voxel grid are
-      north-up. VoxCityGML flips at exactly this boundary — ``canopy/processor``
-      does ``np.flipud`` on the canopy it derives from that same land-cover grid,
-      and ``voxelizer3d._apply_land_cover`` flips before painting the surface.
-      Everything upstream here is consistently south-up: the nDSM is sampled at
-      ``compute_cell_center_coords`` centres, which run south-to-north, and the
-      tree mask comes from ``land_cover.classes``. Without this flip the refined
-      canopy lands mirrored north<->south.
-    * **Shape.** the canopy is sized from ``land_cover.classes`` while the
-      overlay lands on ``voxels.classes``. They coincide today and nothing
-      enforces it. Current voxcitygml resamples a mismatched canopy rather than
-      rejecting it, so this is no longer about avoiding an exception — it is
-      that resampling twice, or resampling at all when the source could have
-      been sized correctly, is a silent quality loss. Align at the source; let
-      the package's resample stay a safety net.
-
-    Flip first, then resample: the flip is a frame correction on the source
-    grid, the resize maps source rows onto target rows once already in-frame.
+    Orientation only — deliberately **not** resampling to the voxel grid's
+    shape. ``reapply_canopy`` resamples a mismatched canopy itself (exactly as
+    it already does for the DEM), and it stores what the caller passed: handing
+    it a voxel-resolution array would leave ``tree_canopy.top`` at voxel
+    resolution while ``land_cover``, ``dem`` and ``buildings`` stayed at
+    component resolution, desyncing the 2.5-D grids from each other and
+    breaking a later ``update_voxcity``. Resampling is the package's job and
+    its intended path, not a fallback.
     """
-    return _align_ndsm_to_grid(np.flipud(grid), target_shape)
+    return np.flipud(grid)
 
 
 def _build_canopy_from_ndsm(
@@ -622,17 +618,21 @@ def _refine_canopy_with_ndsm(
     trunk_ratio = 11.76 / 19.98
     canopy_bottom = np.minimum(canopy * trunk_ratio, canopy)
 
-    if is_lod2:
+    # Branch on the binding, not on is_lod2: the two are equivalent only
+    # because the probe above returns early when the import fails, and a future
+    # non-returning path there would turn this into a call on None.
+    if reapply_canopy is not None:
         # LOD2: overlay the canopy onto the existing grid. reapply_canopy owns
         # the whole update — it writes canopy_top/canopy_bottom into
         # tree_canopy itself, in place where the existing array can take them
         # (which keeps any extras alias current for free) and re-pointing the
         # alias explicitly when it has to rebind. So this path deliberately
-        # mutates *nothing* beforehand. It also raises ValueError on a missing
-        # extras['voxel_min_z'] or a shape mismatch, and the caller's handler
-        # is non-fatal: pre-writing the component grids would leave them
-        # describing crowns the voxel grid never received, with only a server
-        # log to say so.
+        # mutates *nothing* beforehand. It raises ValueError on a missing
+        # extras['voxel_min_z'], on a canopy_bottom that does not match
+        # canopy_top, or on a mesh_vegetation_mask that does not match the
+        # voxel grid; the caller's handler is non-fatal, so pre-writing the
+        # component grids would leave them describing crowns the voxel grid
+        # never received, with only a server log to say so.
         #
         # Pass the already-derived bottom rather than the trunk ratio.
         # voxcitygml's default ratio happens to equal ours today, so both would
@@ -641,12 +641,13 @@ def _refine_canopy_with_ndsm(
         #
         # _to_voxel_frame is not optional: everything above is in the south-up
         # land-cover frame, and reapply_canopy writes straight into the
-        # north-up voxel grid.
-        target_shape = voxcity_obj.voxels.classes.shape[:2]
+        # north-up voxel grid. It reorients only — the canopy stays at
+        # component-grid resolution so that what reapply_canopy stores on
+        # tree_canopy keeps the other 2.5-D grids' shape.
         reapply_canopy(
             voxcity_obj,
-            _to_voxel_frame(canopy, target_shape),
-            canopy_bottom=_to_voxel_frame(canopy_bottom, target_shape),
+            _to_voxel_frame(canopy),
+            canopy_bottom=_to_voxel_frame(canopy_bottom),
         )
     else:
         # LOD1: the voxels *are* extruded footprints, so revise the 2.5-D

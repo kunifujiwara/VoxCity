@@ -745,11 +745,20 @@ _TRUNK_RATIO = 11.76 / 19.98
 _NDSM_HEIGHT = 8.0
 
 
+def _land_frame_canopy():
+    """The canopy as built upstream: _NDSM_HEIGHT at tree cells, south-up.
+
+    Derived from _asymmetric_land_cover() rather than restating its layout, so
+    that reverting *only* the fixture to something flip-invariant trips the
+    non-vacuity guard in the mirror test — with its explanation — instead of
+    failing an unrelated equality first as a bare `assert False`.
+    """
+    return np.where(_asymmetric_land_cover() == _TREE_ID, _NDSM_HEIGHT, 0.0)
+
+
 def _expected_overlay_top():
     """The canopy reapply_canopy should receive: tree cells, in the voxel frame."""
-    land_frame = np.zeros(_REFINE_SHAPE)
-    land_frame[_REFINE_SHAPE[0] // 2:, :] = _NDSM_HEIGHT
-    return np.flipud(land_frame)
+    return np.flipud(_land_frame_canopy())
 
 
 def test_refine_lod1_rebuilds_the_voxel_grid(refine_env):
@@ -808,8 +817,7 @@ def test_refine_lod2_flips_the_canopy_into_the_voxel_frame(refine_env):
     assert _refine(vc) is True
 
     got = _overlay_args(refine_env)['canopy_top']
-    land_frame = np.zeros(_REFINE_SHAPE)
-    land_frame[_REFINE_SHAPE[0] // 2:, :] = _NDSM_HEIGHT
+    land_frame = _land_frame_canopy()
 
     assert np.array_equal(got, np.flipud(land_frame))
     assert not np.array_equal(got, land_frame), (
@@ -817,15 +825,15 @@ def test_refine_lod2_flips_the_canopy_into_the_voxel_frame(refine_env):
         "frame — it would land mirrored north<->south in the voxel grid")
 
 
-def test_refine_lod2_resizes_the_canopy_to_the_voxel_grid(refine_env):
-    """The canopy is sized from land_cover.classes but the overlay lands on
-    voxels.classes. They coincide today and nothing enforces it.
+def test_refine_lod2_hands_over_the_canopy_at_component_resolution(refine_env):
+    """The canopy must keep land_cover's shape, not the voxel grid's.
 
-    Current voxcitygml resamples a mismatched canopy rather than rejecting it,
-    so this is not about dodging an exception: it is that handing over the
-    wrong shape means an avoidable resample, and resampling a grid that could
-    have been built at the right size is a silent quality loss. The package's
-    resample is a safety net, not the plan.
+    reapply_canopy resamples a mismatched canopy itself — as it already does
+    for the DEM — but it *stores* what the caller passed. Pre-resampling to the
+    voxel shape would therefore leave tree_canopy.top at voxel resolution while
+    land_cover, dem and buildings stayed at component resolution: the 2.5-D
+    grids desync from each other, and a later update_voxcity raises
+    "Grid shape mismatch". Resampling is the package's job.
     """
     vc = _RefineModel(building_lod=2)
     voxel_shape = (_REFINE_SHAPE[0] * 2, _REFINE_SHAPE[1] * 2)
@@ -834,8 +842,11 @@ def test_refine_lod2_resizes_the_canopy_to_the_voxel_grid(refine_env):
 
     assert _refine(vc) is True
     overlay = _overlay_args(refine_env)
-    assert overlay['canopy_top'].shape == voxel_shape
-    assert overlay['canopy_bottom'].shape == voxel_shape
+    assert overlay['canopy_top'].shape == _REFINE_SHAPE, (
+        "the canopy was pre-resampled to the voxel grid; what reapply_canopy "
+        "stores would then desync tree_canopy from the other 2.5-D grids")
+    assert overlay['canopy_bottom'].shape == _REFINE_SHAPE
+    assert vc.land_cover.classes.shape == _REFINE_SHAPE
 
 
 def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
