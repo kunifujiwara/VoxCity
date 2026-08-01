@@ -1,0 +1,195 @@
+"""Evidence-based nDSM canopy refinement.
+
+Replaces the coincidence heuristics that lived in main.py: the nDSM raster
+genuinely contains roofs (Tokyo LAS has no vegetation/building classes), so
+tree/roof separation here uses physical evidence -- multi-return fraction and
+surface roughness pooled from the COG's count/sum bands -- with building
+footprints and height coincidence only as fallback for ambiguous cells.
+
+Frames: everything returned to callers is in the model's display frame
+(south-up). The COG is north-up raster space; the conversion happens exactly
+once, in load_ndsm_evidence(), by assigning raster pixels to display-frame
+cells through the grid geometry (coordinate-based, orientation-free).
+"""
+from __future__ import annotations
+
+import warnings
+from typing import Dict
+
+import numpy as np
+
+__all__ = ["groupwise_percentile", "pool_evidence", "local_tree_median"]
+
+
+def _valid_group_selection(groups: np.ndarray, n_groups: int) -> np.ndarray:
+    """Boolean mask of group labels that address a real cell.
+
+    Pixels that fall outside the model grid carry a negative sentinel, and
+    clipping can in principle produce a label at or past ``n_groups``. Both are
+    dropped rather than raising: the raster covers more ground than the grid by
+    construction, so out-of-range labels are normal, not an error.
+    """
+    return (groups >= 0) & (groups < n_groups)
+
+
+def groupwise_percentile(
+    values: np.ndarray,
+    groups: np.ndarray,
+    n_groups: int,
+    q: float,
+) -> np.ndarray:
+    """Exact percentile of *values* within each group label.
+
+    Non-finite values (NaN, +/-inf) are ignored; a group with no finite values
+    yields NaN. Matches ``np.percentile``'s default 'linear' method.
+
+    Vectorized: one ``np.lexsort`` puts every group's values in a contiguous
+    ascending run, after which the interpolated rank of each group is read out
+    with fancy indexing. There is no Python loop over cells or pixels.
+
+    Returns a ``(n_groups,)`` float array.
+    """
+    n_groups = int(n_groups)
+    out = np.full(n_groups, np.nan, dtype=np.float64)
+    if n_groups <= 0:
+        return out
+
+    values = np.asarray(values, dtype=np.float64).ravel()
+    groups = np.asarray(groups).ravel().astype(np.intp, copy=False)
+
+    keep = np.isfinite(values) & _valid_group_selection(groups, n_groups)
+    if not keep.any():
+        return out
+    values = values[keep]
+    groups = groups[keep]
+
+    # Sort by group, then by value: each group is now an ascending run.
+    order = np.lexsort((values, groups))
+    sorted_values = values[order]
+    sorted_groups = groups[order]
+
+    counts = np.bincount(sorted_groups, minlength=n_groups)
+    starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
+
+    present = np.flatnonzero(counts)
+    # Interpolated rank within each run, exactly as np.percentile computes it.
+    pos = (counts[present] - 1) * (float(q) / 100.0)
+    lo = np.floor(pos).astype(np.intp)
+    hi = np.ceil(pos).astype(np.intp)
+    frac = pos - lo
+    base = starts[present]
+    out[present] = (
+        sorted_values[base + lo] * (1.0 - frac)
+        + sorted_values[base + hi] * frac
+    )
+    return out
+
+
+def pool_evidence(
+    groups: np.ndarray,
+    n_groups: int,
+    n_all: np.ndarray,
+    n_multi: np.ndarray,
+    n_nonground: np.ndarray,
+    sum_z: np.ndarray,
+    sum_z2: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    """Pool per-pixel LiDAR counts and sums into per-cell evidence.
+
+    The raster carries *counts and sums*, never pre-computed ratios, because
+    counts and sums are additive: summing them over whichever pixels happen to
+    fall in a cell reproduces the statistic that would have been computed from
+    the underlying points directly. Any runtime cell size therefore pools
+    exactly, with no resampling error. Pre-computed per-pixel ratios would only
+    be averageable, which is wrong whenever pixel point counts differ. The
+    whole design rests on this property.
+
+    Returns ``{"mrf", "roughness", "n_all"}``, each a ``(n_groups,)`` float
+    array:
+
+    * ``mrf``       -- multi-return fraction, ``sum(n_multi) / sum(n_all)``;
+                      NaN where the cell received no returns. Canopy scatters a
+                      pulse into several echoes; a roof plane echoes once.
+    * ``roughness`` -- population standard deviation of non-ground return
+                      heights, ``sqrt(E[z^2] - E[z]^2)`` over ``n_nonground``
+                      points; NaN where the cell has no non-ground returns.
+                      Canopy is rough at metre scale, roofs are planar.
+    * ``n_all``     -- pooled return count, the confidence weight for both.
+    """
+    n_groups = int(n_groups)
+    groups = np.asarray(groups).ravel().astype(np.intp, copy=False)
+
+    def _pool(weights: np.ndarray) -> np.ndarray:
+        weights = np.asarray(weights, dtype=np.float64).ravel()
+        if groups.size == 0:
+            return np.zeros(n_groups, dtype=np.float64)
+        keep = _valid_group_selection(groups, n_groups)
+        return np.bincount(
+            groups[keep], weights=weights[keep], minlength=n_groups
+        ).astype(np.float64, copy=False)[:n_groups]
+
+    tot_all = _pool(n_all)
+    tot_multi = _pool(n_multi)
+    tot_ng = _pool(n_nonground)
+    tot_z = _pool(sum_z)
+    tot_z2 = _pool(sum_z2)
+
+    mrf = np.full(n_groups, np.nan, dtype=np.float64)
+    has_returns = tot_all > 0
+    mrf[has_returns] = tot_multi[has_returns] / tot_all[has_returns]
+
+    roughness = np.full(n_groups, np.nan, dtype=np.float64)
+    has_ng = tot_ng > 0
+    if has_ng.any():
+        n = tot_ng[has_ng]
+        mean = tot_z[has_ng] / n
+        # Clamp before the sqrt: the sums arrive pre-accumulated, so
+        # E[z^2] can land a hair below mean^2 through cancellation.
+        var = np.maximum(tot_z2[has_ng] / n - mean * mean, 0.0)
+        roughness[has_ng] = np.sqrt(var)
+
+    return {"mrf": mrf, "roughness": roughness, "n_all": tot_all}
+
+
+def local_tree_median(
+    canopy: np.ndarray,
+    tree_mask: np.ndarray,
+    radius: int = 3,
+) -> np.ndarray:
+    """Median of valid tree heights in the ``(2r+1)^2`` window around each cell.
+
+    A height counts as valid where *tree_mask* is set and *canopy* is finite.
+    Cells whose window contains no valid tree yield NaN.
+
+    Fully vectorized: the padded grid is stacked into ``(window, H, W)`` shifted
+    views and reduced with a single ``np.nanmedian``. The only Python loop runs
+    over the window offsets (a few dozen), never over cells.
+    """
+    can = np.asarray(canopy, dtype=np.float64)
+    mask = np.asarray(tree_mask, dtype=bool)
+    radius = int(radius)
+
+    # NaN marks "not a valid tree height" so nanmedian ignores it.
+    valid = np.where(mask & np.isfinite(can), can, np.nan)
+    if radius <= 0:
+        return valid
+
+    height, width = valid.shape
+    size = 2 * radius + 1
+    padded = np.pad(valid, radius, mode="constant", constant_values=np.nan)
+
+    stack = np.empty((size * size, height, width), dtype=np.float64)
+    k = 0
+    for d_row in range(size):
+        for d_col in range(size):
+            stack[k] = padded[d_row:d_row + height, d_col:d_col + width]
+            k += 1
+
+    with warnings.catch_warnings():
+        # Windows with no tree at all are expected and return NaN by design.
+        warnings.filterwarnings(
+            "ignore",
+            message="All-NaN slice encountered",
+            category=RuntimeWarning,
+        )
+        return np.nanmedian(stack, axis=0)
