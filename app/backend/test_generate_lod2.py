@@ -1005,3 +1005,102 @@ def test_generate_rejects_malformed_vertices_with_422(verts):
     resp = TestClient(app).post("/api/generate",
                                 json=_base_request(rectangle_vertices=verts))
     assert resp.status_code == 422
+
+
+# --- Tree-class resolution -------------------------------------------------
+#
+# ``name_to_id.get("Tree") or name_to_id.get("Trees") or ... or 4`` treats index
+# **0** as missing. ESA WorldCover puts ``Trees`` at index 0, so that source
+# fell through the whole chain to the hard-coded ``4`` — which in ESA WorldCover
+# is ``Built-up``. The nDSM canopy was then built on the *building* cells and
+# the real tree cells got nothing.
+
+# ESA WorldCover's ordering, restated positionally. Only the first five entries
+# matter here; the point is that Trees is index 0 and Built-up is index 4.
+_ESA_CLASSES = {
+    (0, 112, 0): "Trees",
+    (255, 224, 80): "Shrubland",
+    (255, 255, 170): "Grassland",
+    (255, 176, 176): "Cropland",
+    (230, 0, 0): "Built-up",
+}
+_ESA_TREE_ID = 0
+_ESA_BUILT_UP_ID = 4
+
+
+def test_esa_worldcover_really_puts_trees_at_zero_and_builtup_at_four():
+    """Pin the premise against the real source, not just the fixture above.
+
+    If voxcity ever reorders ESA WorldCover, the fixture stops modelling it and
+    the regression test below would be asserting about nothing.
+    """
+    from voxcity.utils.lc import get_land_cover_classes
+
+    names = list(get_land_cover_classes("ESA WorldCover").values())
+    assert names.index("Trees") == _ESA_TREE_ID
+    assert names.index("Built-up") == _ESA_BUILT_UP_ID
+    assert list(_ESA_CLASSES.values()) == names[:len(_ESA_CLASSES)]
+
+
+def _esa_land_cover():
+    """Trees at index 0 in the north half, Built-up (index 4) in the south."""
+    lc = np.full(_REFINE_SHAPE, _ESA_BUILT_UP_ID, dtype=np.int16)
+    lc[_REFINE_SHAPE[0] // 2:, :] = _ESA_TREE_ID
+    return lc
+
+
+def test_refine_puts_canopy_on_trees_not_buildings_when_tree_id_is_zero(
+        refine_env, monkeypatch):
+    """A tree class at index 0 must not fall through to the ``or 4`` fallback.
+
+    With the truthiness chain, ESA WorldCover resolves ``tree_id`` to 4 —
+    ``Built-up`` — so nDSM heights land on the building cells and every actual
+    tree cell is left bare. The grid here is asymmetric (trees north, built-up
+    south) precisely so that swapping the two is visible.
+    """
+    monkeypatch.setattr(main_mod, "get_land_cover_classes",
+                        lambda source: _ESA_CLASSES)
+
+    vc = _RefineModel(building_lod=1, land_cover=_esa_land_cover())
+    assert main_mod._refine_canopy_with_ndsm(
+        vc, RECT, meshsize=5.0, land_cover_source="ESA WorldCover") is True
+
+    lc = vc.land_cover.classes
+    canopy = vc.tree_canopy.top
+    assert np.all(canopy[lc == _ESA_TREE_ID] == _NDSM_HEIGHT), (
+        "tree cells got no canopy — the index-0 tree class fell through the "
+        "truthiness chain")
+    assert np.all(canopy[lc == _ESA_BUILT_UP_ID] == 0.0), (
+        "canopy heights were written onto Built-up cells: the hard-coded 4 "
+        "fallback is ESA WorldCover's Built-up index")
+
+
+def test_refine_skips_when_the_source_has_no_tree_class(refine_env, monkeypatch):
+    """No tree class at all must skip refinement, not guess an index.
+
+    The old ``or 4`` guessed a class index belonging to whatever source was in
+    play — a foreign class is worse than no refinement, and silently so.
+    """
+    monkeypatch.setattr(main_mod, "get_land_cover_classes",
+                        lambda source: {(0, 0, 0): "Bareland",
+                                        (1, 1, 1): "Water"})
+
+    vc = _RefineModel(building_lod=1,
+                      land_cover=np.zeros(_REFINE_SHAPE, dtype=np.int16))
+    assert main_mod._refine_canopy_with_ndsm(
+        vc, RECT, meshsize=5.0, land_cover_source="Treeless") is False
+    assert 'regenerate' not in refine_env
+    assert not vc.tree_canopy.top.any(), "the model must be left untouched"
+
+
+@pytest.mark.parametrize("labels, expected", [
+    ({"Tree": 0}, 0),
+    ({"Trees": 0}, 0),
+    ({"Tree Canopy": 0}, 0),
+    ({"Tree": 5, "Trees": 3}, 5),          # first label wins, as before
+    ({"Trees": 0, "Tree Canopy": 7}, 0),   # index 0 is a real answer
+    ({"Bareland": 0}, None),               # no tree class -> no guess
+])
+def test_resolve_tree_id(labels, expected):
+    """The resolver itself: explicit ``is not None``, no numeric fallback."""
+    assert main_mod._resolve_tree_id(labels) == expected
