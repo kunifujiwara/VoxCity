@@ -52,9 +52,11 @@ def _base_request(**overrides):
 def _fake_grid_utils(*, rotation_capable: bool):
     """A stub of ``voxcitygml.grid_utils`` with/without the affine grid frame.
 
-    The backend probes ``GridParams`` for the affine fields because rotation
-    support landed *after* the 0.2.0 version bump — neither ``__version__`` nor
-    ``generate_voxcity()``'s presence separates the two builds.
+    The backend probes ``GridParams`` for the affine fields rather than
+    comparing versions: rotation shipped in 0.3.0, but voxcitygml is installed
+    editable from a git checkout whose recorded metadata routinely lags the
+    code on disk, so ``__version__`` cannot be trusted to separate the two
+    builds (nor can ``generate_voxcity()``'s presence — 0.2.0 has it too).
     """
     mod = types.ModuleType("voxcitygml.grid_utils")
 
@@ -368,11 +370,12 @@ def test_health_reports_lod2_unavailable_without_rotation_support(
         clear_capability_cache, monkeypatch, tmp_path):
     """An installed voxcitygml that has generate_voxcity() but no rotation.
 
-    The three rotation commits landed on top of the 0.2.0 bump without another
-    one, so neither ``__version__`` nor ``generate_voxcity``'s presence can
-    tell this build from a current one. Such a build does not *fail* on a
-    rotated rectangle — it quietly grids the axis-aligned bounding box — so the
-    probe has to key on the affine ``GridParams`` fields instead.
+    Rotation shipped in 0.3.0, but an editable checkout's recorded version
+    lags its code, so neither ``__version__`` nor ``generate_voxcity``'s
+    presence reliably tells this build from a current one. Such a build does
+    not *fail* on a rotated rectangle — it quietly grids the axis-aligned
+    bounding box — so the probe has to key on the affine ``GridParams`` fields
+    instead.
     """
     monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
     old = types.ModuleType("voxcitygml")
@@ -383,7 +386,35 @@ def test_health_reports_lod2_unavailable_without_rotation_support(
 
     cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
     assert cap["available"] is False
-    assert "rotat" in cap["reason"].lower(), cap["reason"]
+    assert "predates rotated-rectangle" in cap["reason"], cap["reason"]
+
+
+def test_health_reports_lod2_unavailable_when_grid_utils_is_unreachable(
+        clear_capability_cache, monkeypatch, tmp_path):
+    """An unreachable ``grid_utils`` must fail closed *and* say so distinctly.
+
+    Two things are pinned here. First: the probe resolves ``grid_utils``
+    through the package object, so a stub that does not expose it is reported
+    unavailable even though the real ``voxcitygml.grid_utils`` is sitting in
+    ``sys.modules`` (imported at the top of this file) with the affine fields
+    present — a bare ``importlib.import_module`` would return that real module
+    and pass this test vacuously.
+
+    Second: the reason must not be the "predates rotated-rectangle support"
+    text. That message names a cause — an outdated install — that is simply
+    wrong here, and it would send users chasing a version bump when the actual
+    fault is a broken/partial install or a restructured package.
+    """
+    monkeypatch.setattr(main_mod, "CITYGML_PATH", str(tmp_path))
+    headless = types.ModuleType("voxcitygml")  # no grid_utils attribute
+    headless.generate_voxcity = lambda cfg: None
+    headless.VoxelizerConfig = object
+    monkeypatch.setitem(sys.modules, "voxcitygml", headless)
+
+    cap = TestClient(app).get("/api/health").json()["capabilities"]["plateau_lod2"]
+    assert cap["available"] is False
+    assert "grid_utils" in cap["reason"], cap["reason"]
+    assert "predates" not in cap["reason"], cap["reason"]
 
 
 @pytest.mark.skipif(_RealVoxelizerConfig is None,
@@ -509,6 +540,10 @@ def test_lod2_degenerate_rectangle_yields_400(stubbed, verts):
     ``_real_compute_grid_params`` is captured at import time, before the
     ``stubbed`` fixture patches ``sys.modules['voxcitygml']`` — otherwise this
     would resolve to the fake and assert nothing.
+
+    Caveat on the message: in the real pipeline a degenerate rectangle would
+    likely trip "No CityGML buildings found" first, so what is pinned here is
+    the *mapping* (ValueError -> 400), not the exact wording a user sees.
     """
     def real_guard(_cfg):
         # FakeConfig only records its kwargs, so read them back from the

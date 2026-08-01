@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import gc
+import importlib
 import json
 import math
 import os
@@ -889,30 +890,82 @@ _ROTATION_GRID_FIELDS = frozenset({
 })
 
 
-def _voxcitygml_has_rotation_frame(pkg) -> bool:
+def _voxcitygml_grid_params(pkg):
+    """This package object's ``grid_utils.GridParams`` class, or ``None``.
+
+    Attribute first, ``importlib`` only as a fallback — and the fallback's
+    result is read back *through* ``pkg``. Both halves are deliberate:
+
+    * The attribute is how voxcitygml's own code reaches this module
+      (``from .grid_utils import ...``), so it answers the question actually
+      being asked: what will *this* package object grid with? Today it is
+      always bound, as a side effect of ``__init__`` -> ``pipeline`` importing
+      it eagerly; the ``importlib`` fallback keeps the probe correct if
+      VoxCityGML ever makes that import lazy or restructures ``pipeline``,
+      instead of misreporting a current install as pre-rotation.
+    * ``import_module`` resolves ``sys.modules['voxcitygml.grid_utils']``,
+      which can still hold the *real* submodule while ``pkg`` is a test stub —
+      importing the real package anywhere in the process poisons it for the
+      rest of the run. Re-reading the attribute afterwards is what keeps that
+      from leaking: the import machinery binds the child onto the parent it
+      actually loaded under, so a cached hit for someone else's package leaves
+      ``pkg`` untouched and is correctly ignored.
+    """
+    grid_utils = getattr(pkg, "grid_utils", None)
+    if grid_utils is None:
+        try:
+            importlib.import_module("voxcitygml.grid_utils")
+        except Exception:  # ImportError, or anything the module raises
+            return None
+        grid_utils = getattr(pkg, "grid_utils", None)
+        if grid_utils is None:
+            return None
+    return getattr(grid_utils, "GridParams", None)
+
+
+def _voxcitygml_has_rotation_frame(pkg) -> Tuple[bool, str]:
     """Whether this voxcitygml build grids a *rotated* rectangle correctly.
 
-    A version check cannot answer this. Rotation landed as commits on top of
-    the 0.2.0 bump without another one, and voxcitygml is normally installed
-    editable from a git checkout whose declared version lags its code — so
-    ``__version__`` and ``generate_voxcity``'s presence both say "0.2.0" for a
-    pre-rotation and a current build alike. Probe the structure instead.
+    Rotation shipped in voxcitygml 0.3.0, but the field probe below — not a
+    version comparison — stays the authoritative runtime gate: voxcitygml is
+    normally installed editable from a git checkout, and editable installs
+    routinely report stale metadata (the recorded version is whatever
+    ``pip install -e`` saw, not what the working tree holds now). A
+    ``__version__``/``importlib.metadata`` check would happily read "0.2.0"
+    off a current checkout and "0.3.0" off one rolled back since. The
+    structure cannot lie the same way.
 
     This matters because the old behaviour is silent, not loud: given a rotated
     rectangle the pre-rotation ``compute_grid_params`` did plain min/max
     bounding-box arithmetic and returned an axis-aligned grid — no exception,
     and no degenerate-input error either, since the rectangle is perfectly
     valid. The wrong geometry would come back looking correct.
+
+    Returns ``(ok, why_not)``; the two ways this can fail are reported
+    separately so an unreachable ``grid_utils`` is never misdiagnosed as an
+    outdated one.
     """
-    grid_utils = getattr(pkg, "grid_utils", None)
-    params = getattr(grid_utils, "GridParams", None)
+    params = _voxcitygml_grid_params(pkg)
     if params is None:
-        return False
+        return False, ("voxcitygml is installed but its grid_utils module "
+                       "could not be imported (no GridParams), so the backend "
+                       "cannot confirm this build grids rotated target "
+                       "rectangles correctly. This usually means a broken or "
+                       "partial install: reinstall with pip install -e "
+                       "<path-to-VoxCityGML>")
     try:
         names = {f.name for f in dataclasses.fields(params)}
     except TypeError:  # not a dataclass — fall back to declared annotations
         names = set(getattr(params, "__annotations__", None) or ())
-    return _ROTATION_GRID_FIELDS.issubset(names)
+    if not _ROTATION_GRID_FIELDS.issubset(names):
+        return False, ("the installed voxcitygml predates rotated-rectangle "
+                       "support — its GridParams has no affine grid frame "
+                       "(origin_lon/e_col_lon/...), so a rotated target "
+                       "rectangle would be silently voxelized as its "
+                       "axis-aligned bounding box. LOD2 needs voxcitygml "
+                       ">= 0.3.0; update the VoxCityGML checkout and "
+                       "reinstall: pip install -e <path-to-VoxCityGML>")
+    return True, ""
 
 
 @lru_cache(maxsize=1)
@@ -930,21 +983,16 @@ def _voxcitygml_import_state() -> Tuple[bool, str]:
     if not hasattr(voxcitygml, "generate_voxcity"):
         return False, ("the installed voxcitygml is too old — LOD2 needs "
                        "voxcitygml >= 0.2.0, which provides generate_voxcity()")
-    if not _voxcitygml_has_rotation_frame(voxcitygml):
-        # Declaring the whole mode unavailable, rather than keeping it for
-        # axis-aligned rectangles only, is deliberate: telling the two apart
-        # needs the midline/flare heuristic that commit 4713fa3 removed, and a
-        # naive "opposite corners share a lon" test would reject the
-        # geodesically-built rectangles this app produces at rotation 0.
-        # Trading that class of false rejections for a mode restored by
-        # updating an editable git checkout is not worth it.
-        return False, ("the installed voxcitygml predates rotated-rectangle "
-                       "support — its GridParams has no affine grid frame "
-                       "(origin_lon/e_col_lon/...), so a rotated target "
-                       "rectangle would be silently voxelized as its "
-                       "axis-aligned bounding box. Update the VoxCityGML "
-                       "checkout and reinstall: pip install -e "
-                       "<path-to-VoxCityGML>")
+    # Declaring the whole mode unavailable, rather than keeping it for
+    # axis-aligned rectangles only, is deliberate: telling the two apart needs
+    # the midline/flare heuristic that commit 4713fa3 removed, and a naive
+    # "opposite corners share a lon" test would reject the geodesically-built
+    # rectangles this app produces at rotation 0. Trading that class of false
+    # rejections for a mode restored by updating an editable git checkout is
+    # not worth it.
+    rotation_ok, why_not = _voxcitygml_has_rotation_frame(voxcitygml)
+    if not rotation_ok:
+        return False, why_not
     return True, ""
 
 
@@ -1187,9 +1235,9 @@ async def generate_model(req: GenerateRequest):
                 # the LOD1/normal paths only; LOD2 is driven by VoxelizerConfig.
                 #
                 # Dependency: this path needs a voxcitygml build with the affine
-                # GridParams frame (rotated-rectangle support), which is newer
-                # than the 0.2.0 that first shipped generate_voxcity() and is
-                # *not* distinguishable by version — see
+                # GridParams frame (rotated-rectangle support), i.e. >= 0.3.0 —
+                # but the runtime gate is structural, not a version check,
+                # because editable git checkouts report stale metadata. See
                 # _voxcitygml_has_rotation_frame, which gates both /api/health
                 # and the guard below.
                 if not CITYGML_PATH or not os.path.isdir(CITYGML_PATH):

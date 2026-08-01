@@ -68,15 +68,17 @@ RUN python -m pip install -c /tmp/constraints.txt -r app/backend/requirements.tx
 # plateau_lod2 unavailable via /api/health and the UI disables the LOD2 option
 # with the reason, rather than failing at generate time.
 #
-# To enable it, uncomment the line below and point it at a ref that provides
-# `generate_voxcity()` — that is voxcitygml >= 0.2.0. Do NOT point it at a ref
-# that predates that API: it would install successfully and then fail at
-# request time with an ImportError the capability probe already guards against.
+# To enable it, uncomment the line below and point it at voxcitygml >= 0.3.0 —
+# 0.2.0 first shipped `generate_voxcity()`, 0.3.0 added the affine GridParams
+# frame the backend requires for rotated target rectangles. Do NOT point it at
+# an older ref: it would install successfully and then be refused at request
+# time by the capability probe (an older-still ref lacking `generate_voxcity()`
+# fails with an ImportError the same probe already guards against).
 # LOD2 also needs a PLATEAU CityGML dataset mounted and CITYGML_PATH set (see
 # the note below); without one it stays unavailable even when installed.
 #
 # RUN python -m pip install -c /tmp/constraints.txt \
-#         "voxcitygml @ git+https://github.com/kunifujiwara/VoxCityGML@v0.2.0"
+#         "voxcitygml @ git+https://github.com/kunifujiwara/VoxCityGML@v0.3.0"
 
 # Built frontend from the node stage → served by the backend SPA route.
 COPY --from=frontend /work/dist ./app/frontend/dist
