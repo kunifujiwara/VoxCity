@@ -56,6 +56,13 @@ RECT = [
 MESHSIZE = 2.0
 LAND_COVER_SOURCE = "OpenEarthMapJapan"
 
+#: Roof slope fraction a fixture must beat to count as LOD2 on this rectangle.
+#: Measured here: ``building_lod=1`` scores 0.1490, ``building_lod=2`` scores
+#: 0.2868. Extruded footprints are not flat as a population -- neighbouring
+#: footprints of unequal height touch constantly in Chuo-ku -- so a threshold
+#: near zero is satisfied by the very thing it is meant to exclude.
+LOD1_SLOPE_CEILING = 0.22
+
 
 def _voxcitygml_ready() -> bool:
     try:
@@ -165,6 +172,34 @@ class TestTheMetricItself:
     def test_an_empty_grid_is_zero_not_a_zero_division(self):
         assert roof_slope_fraction(np.zeros((3, 3, 3), dtype=np.int16)) == 0.0
 
+    def test_a_partly_stepped_roof_scores_strictly_between_zero_and_one(self):
+        # Four columns in a row -> three pairs; only the last one steps.
+        grid = np.zeros((4, 1, 8), dtype=np.int16)
+        grid[0:3, 0, :3] = BUILDING_CODE
+        grid[3, 0, :5] = BUILDING_CODE
+        assert roof_slope_fraction(grid) == pytest.approx(1 / 3)
+
+    def test_pairs_are_four_connected_not_eight(self):
+        """Diagonal neighbours must not count.
+
+        Two columns touching only at a corner: under 8-connectivity that is one
+        pair and the metric would be 1.0; under 4-connectivity there are no
+        pairs at all and it is 0.0. Nothing else in this file pins which one
+        the definition means.
+        """
+        grid = np.zeros((2, 2, 6), dtype=np.int16)
+        grid[0, 0, :2] = BUILDING_CODE
+        grid[1, 1, :4] = BUILDING_CODE
+        assert roof_slope_fraction(grid) == 0.0
+
+    def test_both_axes_contribute_pairs(self):
+        # A 2x2 block, one corner raised: two of the four 4-connected pairs
+        # straddle the step -- one along each axis.
+        grid = np.zeros((2, 2, 8), dtype=np.int16)
+        grid[:, :, :3] = BUILDING_CODE
+        grid[1, 1, :5] = BUILDING_CODE
+        assert roof_slope_fraction(grid) == pytest.approx(0.5)
+
     def test_the_top_is_the_topmost_building_voxel(self):
         grid = np.zeros((1, 1, 6), dtype=np.int16)
         grid[0, 0, 1] = BUILDING_CODE
@@ -225,12 +260,24 @@ def _refine(model) -> bool:
 class TestLod2GeometryIsPreserved:
     def test_the_fixture_actually_has_lod2_roofs(self, lod2_model):
         """Non-vacuity for everything below: a grid of flat-topped extrusions
-        would make 'the roofs survived' true and meaningless."""
+        would make 'the roofs survived' true and meaningless.
+
+        The threshold has to sit above what LOD1 actually scores, not above
+        zero. Measured on this rectangle, ``building_lod=1`` gives 0.1490 --
+        extruded footprints are far from flat as a *population*, because Chuo-ku
+        packs buildings of differing heights against each other and every such
+        contact is a differing pair. LOD2 gives 0.2868. An earlier version of
+        this guard used 0.05 and passed happily on the LOD1 fixture, i.e. it
+        could not catch the one failure it exists for: a voxcitygml that
+        silently falls back to LOD1. 0.22 sits 48% above the LOD1 score and 23%
+        below the LOD2 one.
+        """
         vox = np.asarray(lod2_model.voxels.classes)
         assert (vox == BUILDING_CODE).sum() > 1000
-        assert roof_slope_fraction(vox) > 0.05, (
-            "the LOD2 fixture has near-flat roofs, so this file cannot detect "
-            "a flattening")
+        assert roof_slope_fraction(vox) > LOD1_SLOPE_CEILING, (
+            "the fixture's roofs are no more varied than extruded footprints "
+            "would be, so this file cannot detect a flattening -- has "
+            "voxcitygml fallen back to LOD1?")
 
     def test_the_fixture_has_trees_to_refine(self, lod2_model):
         """And a refinement with nothing to refine proves nothing either."""

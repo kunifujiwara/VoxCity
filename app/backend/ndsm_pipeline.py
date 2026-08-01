@@ -239,9 +239,9 @@ def refine_canopy_with_ndsm(
     # Printed in degraded mode too: the veto is inert without evidence bands,
     # but the distribution is measurable there and is what calibrates
     # spread_max_m. .get() because a stubbed classifier may not supply it.
-    spread_report = format_spread_stats(result.get("spread_stats"))
+    spread_report = format_spread_stats(result.get("spread_stats"), "[nDSM] ")
     if spread_report:
-        print(f"[nDSM] {spread_report}")
+        print(spread_report)
 
     # Belt and braces. classify_and_refine fills every tree cell -- no_data
     # cells take the local median, or static_tree_height where the window holds

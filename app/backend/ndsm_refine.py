@@ -33,7 +33,7 @@ import math
 import os
 import warnings
 from dataclasses import dataclass
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -86,18 +86,33 @@ SPREAD_HI_Q = 90.0
 #: Fewest valid band-1 pixels a cell may hold and still get a spread; below it
 #: the spread is NaN.
 #:
-#: Four, because that is where the two ranks land on distinct pixels on *both*
-#: sides of an even split: for a cell of four pixels, p25 interpolates within
-#: the lower pair and p90 within the upper pair, so a half-on-roof/half-on-ground
-#: cell reports the full step. Below four the statistic degrades towards the
-#: dangerous direction rather than the safe one -- at a single pixel p90 - p25 is
-#: 0.0 *exactly*, which is not "unknown" but the maximally planar reading, and
-#: planar is what *grants* the canopy verdict. Same argument as pool_evidence's
-#: two-non-ground-point floor for roughness, with the polarity reversed.
+#: Two, which is the hard floor and not a margin above it. At one pixel
+#: ``p90 - p25`` is 0.0 *exactly* -- not "unknown" but the maximally planar
+#: reading, and planar is what *grants* the canopy verdict, so a single-pixel
+#: cell must be refused. At two it is 0.65 x (max - min), at three between 0.5x
+#: and 0.8x: attenuated, but a step is still unmistakably a step.
 #:
-#: In practice this only bites where the raster barely covers a cell: the module
-#: targets 2 m cells over a 0.5 m nDSM, i.e. ~16 pixels per cell.
-MIN_SPREAD_PIXELS = 4
+#: This was 4, on the reasoning that both ranks should land on distinct pixels
+#: either side of an even split, and on the assumption that it would only ever
+#: bite where the raster barely covers a cell -- 2 m cells over a 0.5 m nDSM
+#: being ~16 pixels each. Measured on the real COG, that assumption is false.
+#: Only 281 of 987 tree cells hold the full 16 pixels; the count tails smoothly
+#: down to 1 as cells straddle the edges of nDSM nodata gaps, which are
+#: pervasive under canopy. At 4 the rule denied a spread to 62 cells (6.3%), at
+#: 3 to 41, at 2 to 24.
+#:
+#: The denial is not free: NaN fails the veto closed, so those cells are refused
+#: the canopy verdict outright. Of the 38 cells 4 refused and 2 admits, the
+#: measured spreads run p50 0.21, p90 1.48, max 8.60 -- *none* within 1.4 m of
+#: the 10 m threshold, so 4 bought no detections at all while changing the
+#: output of 12 of them. The attenuation argument for 4 is real in principle but
+#: empty here: no plausible attenuation turns a 20 m step into 0.21 m.
+#:
+#: Coupling worth knowing for calibration: attenuation and ``spread_max_m`` are
+#: not independent. Lowering the threshold towards the attenuated range (the
+#: recovered cells reach 8.60 m) makes two- and three-pixel cells matter, and
+#: this floor should be revisited alongside it.
+MIN_SPREAD_PIXELS = 2
 
 
 def _as_group_labels(groups: np.ndarray) -> np.ndarray:
@@ -128,7 +143,12 @@ def _valid_group_selection(groups: np.ndarray, n_groups: int) -> np.ndarray:
     return (groups >= 0) & (groups < n_groups)
 
 
-def groupwise_percentiles(values, groups, n_groups, qs):
+def groupwise_percentiles(
+    values: np.ndarray,
+    groups: np.ndarray,
+    n_groups: int,
+    qs: Sequence[float],
+) -> Tuple[np.ndarray, np.ndarray]:
     """Several exact percentiles of *values* within each group, from one sort.
 
     Non-finite values (NaN, +/-inf) are ignored; a group with no finite values
@@ -693,17 +713,24 @@ class RefineParams:
       manufacturing confident replacements.
 
       A **seed**, but a measured one. Over one Chuo-ku target (350 x 390 m,
-      2 m cells, 925 tree cells with a spread), among cells at least 8 m tall --
+      2 m cells, 963 tree cells with a spread), among cells at least 8 m tall --
       the population where the canopy verdict decides anything -- the spread
-      runs p50 1.5, p75 5.8, p90 8.7, and the footprint-adjacent and
+      runs p50 1.4, p75 5.1, p90 8.6, and the footprint-adjacent and
       non-adjacent distributions are *indistinguishable* up to about 8 m. They
       separate above it: the share exceeding the threshold, adjacent versus
-      non-adjacent, goes 0.20/0.16 at 8 m, 0.14/0.07 at 9 m, 0.09/0.04 at 10 m,
-      0.07/0.02 at 12 m, and above 13.4 m the non-adjacent population is
+      non-adjacent, goes 0.18/0.16 at 8 m, 0.13/0.06 at 9 m, 0.09/0.04 at 10 m,
+      0.06/0.02 at 12 m, and above 13.4 m the non-adjacent population is
       exhausted entirely. A threshold in the single digits therefore vetoes a
       quarter of all tall tree cells while separating nothing; 10 m sits just
       past the knee, costs ~4% of non-adjacent cells, and is far below the
       19.5 m the reviewer's roof-edge cell measures.
+
+      Narrower still, and the number that bounds the cost: only 124 of those
+      963 cells are adjacent *and* height-coincident, which is the only
+      population where losing the canopy verdict changes a height at all. Its
+      spread runs p50 1.21, p90 6.86, p95 7.66, p99 21.53 -- so a 10 m ceiling
+      reaches into its top few percent and nothing else. ``spread_stats``
+      reports this bucket alongside the others.
 
       What the number cannot do, and the calibration must confront: the spread
       separates a *step* from texture, not a *roof* step from a crown step. A
@@ -821,7 +848,13 @@ def _max_in_window(values: np.ndarray, radius: int) -> np.ndarray:
 _SPREAD_REPORT_QS = (5, 10, 25, 50, 75, 90, 95, 99)
 
 
-def _spread_stats(spread, classified, near_bld) -> Optional[Dict[str, object]]:
+#: The populations :func:`_spread_stats` describes, in report order.
+SPREAD_STAT_KEYS = ("all", "adjacent", "non_adjacent", "adjacent_coincident")
+
+
+def _spread_stats(
+    spread, classified, near_bld, coincident
+) -> Optional[Dict[str, object]]:
     """Distribution of the pixel spread over classified tree cells.
 
     Split by footprint adjacency because that is the split the veto is about:
@@ -830,17 +863,27 @@ def _spread_stats(spread, classified, near_bld) -> Optional[Dict[str, object]]:
     right, the adjacent population carries a heavy upper tail the non-adjacent
     one does not.
 
+    ``adjacent_coincident`` is the one that answers the cost question. Adjacency
+    alone is not enough for a veto to change anything: a vetoed cell falls to
+    *ambiguous*, and an ambiguous cell is only replaced when it is adjacent
+    **and** its height coincides with the neighbouring roof. So the veto's
+    entire output footprint lies inside this population -- everywhere else it
+    reclassifies a cell and leaves its height alone. Reported separately so the
+    cost can be read off the log instead of reconstructed by hand.
+
     Reported regardless of ``degraded``. In degraded mode the veto is inert --
     no canopy verdict can fire without evidence bands -- but the *signal* is
     still measurable there, and the single-band raster on disk is the only place
     it can be measured on real data before the COG is rebuilt. That measurement
     is what calibrates the threshold.
 
-    Returns ``None`` when no spread was supplied, otherwise
-    ``{"all", "adjacent", "non_adjacent"}``, each ``{"n": int, "p05": float |
-    None, ...}``. ``n`` counts cells with a *finite* spread; the percentiles are
-    ``None`` when ``n`` is zero rather than NaN, so a formatter cannot print
-    "nan" as though it were a measurement.
+    Returns ``None`` when no spread was supplied, otherwise a dict keyed by
+    :data:`SPREAD_STAT_KEYS`, each ``{"n": int, "p05": float | None, ...}``.
+    ``n`` counts cells with a *finite* spread; the percentiles are ``None`` when
+    ``n`` is zero rather than NaN, so a formatter cannot print "nan" as though
+    it were a measurement. The buckets deliberately overlap --
+    ``adjacent_coincident`` is a subset of ``adjacent`` -- so they must never be
+    summed.
     """
     if spread is None:
         return None
@@ -862,6 +905,7 @@ def _spread_stats(spread, classified, near_bld) -> Optional[Dict[str, object]]:
         "all": _describe(sel),
         "adjacent": _describe(sel & adjacent),
         "non_adjacent": _describe(sel & ~adjacent),
+        "adjacent_coincident": _describe(sel & np.asarray(coincident, bool)),
     }
 
 
@@ -928,6 +972,26 @@ def classify_and_refine(
     mis-set ``spread_max_m`` costs kept heights, never confident mistakes.
     ``spread=None`` leaves the veto inert, as ``n_nonground=None`` does for the
     roughness confidence band; the reader always supplies it.
+
+    **What the veto costs, and the residual risk.** The fall to *ambiguous* is
+    what contains it, and the containment is most of the story: measured over
+    one Chuo-ku target with canopy-passing evidence forced everywhere, 17 of 925
+    tree cells were vetoed at the 10 m seed and only 3 changed value. The other
+    14 were not adjacent, or not height-coincident, so ``ambiguous_keep`` handed
+    their nDSM height straight back, byte for byte. All 3 that changed were
+    textbook roof leakage (h = 24.70 m against an adjacent 24.65 m roof,
+    ``spread/h`` = 0.965, i.e. p25 on the ground). ``spread_veto_replaced`` in
+    the counts is exactly this number.
+
+    The residual risk is the case those 3 cannot be told apart from: a genuine
+    tall tree beside a height-matching building, whose crown edge overhangs open
+    ground so that p25 lands on the terrain. Such a cell is vetoed and replaced
+    with the local median -- which is the deleted sanitiser's failure mode,
+    returning. It is accepted on scale, not on principle: ~0.3% of tree cells,
+    against the 8,311 cells that sanitiser pinned at a flat 10.0 m. Three orders
+    of magnitude smaller, and it is why the spread may only veto: were it
+    allowed to assert "roof", those cells would be force-replaced regardless of
+    coincidence and the containment would be gone.
 
     Evidence is *distrusted* -- the cell is forced to ambiguous -- when it is
     NaN (``pool_evidence`` NaNs roughness below two non-ground points, and mrf
@@ -1038,6 +1102,8 @@ def classify_and_refine(
 
     n_distrusted = 0
     n_spread_veto = 0
+    n_spread_unknown = 0
+    spread_denied = np.zeros(shape, dtype=bool)
     if degraded:
         canopy_ev = np.zeros(shape, dtype=bool)
         roof_ev = np.zeros(shape, dtype=bool)
@@ -1074,9 +1140,21 @@ def classify_and_refine(
         # semantics, for the same reason NaN roughness does above -- and here
         # the unguarded arithmetic value would be 0.0, the maximally planar
         # reading, which grants rather than withholds.
+        #
+        # The two reasons a cell fails are counted apart. They fail closed
+        # identically but mean opposite things -- "I measured a step" versus "I
+        # could not measure anything" -- and conflating them makes the veto's
+        # apparent hit rate a function of nDSM nodata coverage. Calibration
+        # reads these numbers, so it has to be able to tell them apart.
         if sp is not None:
-            spread_ok = np.isfinite(sp) & (sp <= p.spread_max_m)
-            n_spread_veto = int((classified & canopy_ev & ~spread_ok).sum())
+            measured = np.isfinite(sp)
+            spread_ok = measured & (sp <= p.spread_max_m)
+            would_be_canopy = classified & canopy_ev
+            vetoed = would_be_canopy & measured & ~spread_ok
+            unknown = would_be_canopy & ~measured
+            n_spread_veto = int(vetoed.sum())
+            n_spread_unknown = int(unknown.sum())
+            spread_denied = vetoed | unknown
             canopy_ev = canopy_ev & spread_ok
 
     # THE line: canopy evidence wins over everything downstream, including the
@@ -1137,6 +1215,12 @@ def classify_and_refine(
         "replaced": int(replace.sum()),
         "distrusted": n_distrusted,
         "spread_veto": n_spread_veto,
+        "spread_unknown": n_spread_unknown,
+        # What the spread rule actually cost: cells it took off the canopy
+        # verdict that were then replaced. The other denied cells keep their
+        # height byte for byte via ambiguous_keep -- see the veto's
+        # containment note in classify_and_refine.
+        "spread_veto_replaced": int((spread_denied & v_amb_replace).sum()),
         "guard_low": int(too_low.sum()),
         "guard_high": int(too_high.sum()),
     }
@@ -1145,7 +1229,7 @@ def classify_and_refine(
         "verdict": verdict,
         "counts": counts,
         "degraded": bool(degraded),
-        "spread_stats": _spread_stats(sp, classified, near_bld),
+        "spread_stats": _spread_stats(sp, classified, near_bld, coincident),
     }
 
 
@@ -1197,32 +1281,40 @@ def format_counts(counts: Mapping[str, int]) -> str:
         "{ambiguous_keep} ambiguous keep, {ambiguous_replace} ambiguous "
         "replace, {no_data} no data; guards: {guard_low} below min, "
         "{guard_high} above max; {distrusted} distrusted evidence, "
-        "{spread_veto} spread-vetoed"
+        "{spread_veto} spread-vetoed + {spread_unknown} spread-unknown "
+        "({spread_veto_replaced} of them replaced)"
     ).format(**{key: counts.get(key, 0) for key in (
         "tree", *PARTITION_KEYS, "guard_low", "guard_high", "distrusted",
-        "spread_veto",
+        "spread_veto", "spread_unknown", "spread_veto_replaced",
     )})
 
 
-def format_spread_stats(stats: Optional[Mapping[str, object]]) -> str:
+def format_spread_stats(
+    stats: Optional[Mapping[str, object]], prefix: str = ""
+) -> str:
     """Multi-line summary of :func:`_spread_stats`, for the pipeline log.
 
     Empty string when there is nothing to report, so the caller can print it
-    unconditionally. One line per population; the percentiles are what Task 8
-    calibrates ``spread_max_m`` against, so they are printed even in degraded
-    mode where the veto itself is inert.
+    unconditionally. One line per population in :data:`SPREAD_STAT_KEYS`; the
+    percentiles are what Task 8 calibrates ``spread_max_m`` against, so they are
+    printed even in degraded mode where the veto itself is inert.
+
+    *prefix* is applied to **every** line, not just the first. A caller that
+    formats the prefix itself tags only the opening line and leaves the rest
+    looking like output from somewhere else.
     """
     if not stats:
         return ""
-    lines = []
-    for name in ("all", "adjacent", "non_adjacent"):
+    lines = [f"{prefix}pixel spread (m) over tree cells:"]
+    for name in SPREAD_STAT_KEYS:
         bucket = stats.get(name) or {}
         n = int(bucket.get("n", 0))
         if not n:
-            lines.append(f"  {name:<13} n=0")
+            lines.append(f"{prefix}  {name:<20} n=0")
             continue
         cells = " ".join(
             f"p{q:02d}={bucket[f'p{q:02d}']:.2f}" for q in _SPREAD_REPORT_QS
         )
-        lines.append(f"  {name:<13} n={n} {cells} max={bucket['max']:.2f}")
-    return "pixel spread (m) over tree cells:\n" + "\n".join(lines)
+        lines.append(
+            f"{prefix}  {name:<20} n={n} {cells} max={bucket['max']:.2f}")
+    return "\n".join(lines)

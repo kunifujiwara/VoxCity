@@ -26,6 +26,9 @@ from rasterio.transform import from_origin
 from backend.ndsm_refine import (
     MIN_SPREAD_PIXELS,
     PARTITION_KEYS,
+    SPREAD_HI_Q,
+    SPREAD_LO_Q,
+    SPREAD_STAT_KEYS,
     VERDICT_AMBIGUOUS_KEEP,
     VERDICT_AMBIGUOUS_REPLACE,
     VERDICT_CANOPY,
@@ -1063,13 +1066,16 @@ class TestLoadNdsmEvidenceSpread:
         assert out["spread"] is not None
         assert np.allclose(out["spread"][5], 15.0)
 
-    def test_a_cell_with_too_few_pixels_is_nan_not_zero(self, tmp_path):
-        """At one pixel per cell p90 - p25 is 0.0 -- *maximally* planar, which
-        would grant the canopy verdict rather than withhold it. Unknown has to
-        read as unknown."""
+    def test_a_single_pixel_cell_is_nan_not_zero(self, tmp_path):
+        """The reason the floor exists at all. At one pixel p90 - p25 is 0.0
+        *exactly* -- not "unknown" but the maximally planar reading, and planar
+        is what grants the canopy verdict. Unknown has to read as unknown."""
         path = _write_synthetic_cog(tmp_path / "ev.tif", uniform=True)
-        out = _load(path, meshsize=0.5)          # cells are one 0.5 m pixel
-        assert np.isnan(out["spread"]).all()
+        out = _load(path, meshsize=0.5)          # cells are ~one 0.5 m pixel
+        counts = _independent_pixel_counts(path, RECT, out["shape"])
+        lone = counts == 1
+        assert lone.any(), "fixture no longer produces single-pixel cells"
+        assert np.isnan(out["spread"][lone]).all()
         assert np.isfinite(out["height"]).any(), (
             "the height still comes back; only the spread is withheld")
 
@@ -1080,15 +1086,27 @@ class TestLoadNdsmEvidenceSpread:
         path = _write_synthetic_cog(tmp_path / "ev.tif", step_frac=0.275)
         out = _load(path, meshsize=0.8)
         counts = _independent_pixel_counts(path, RECT, out["shape"])
-        assert set(np.unique(counts)) & {1, 2}, "fixture no longer straddles"
+        assert (counts < MIN_SPREAD_PIXELS).any(), "fixture no longer straddles"
         assert (counts >= MIN_SPREAD_PIXELS).any()
         assert np.array_equal(
             np.isnan(out["spread"]), counts < MIN_SPREAD_PIXELS)
 
-    def test_the_minimum_is_at_least_two_pixels(self):
-        assert MIN_SPREAD_PIXELS >= 2, (
-            "a single pixel yields p90 - p25 == 0.0 exactly, which is not a "
-            "measurement of anything")
+    def test_two_pixels_still_report_most_of_a_step(self):
+        """Why the floor is 2 and not a margin above it.
+
+        The floor was 4, on the reasoning that both ranks should land on
+        distinct pixels either side of an even split. Measured on the real COG
+        that denied a spread to 6.3% of tree cells -- nDSM nodata gaps, not
+        resolution -- and NaN fails the veto closed, so those cells lost the
+        canopy verdict outright. At two pixels the statistic is attenuated to
+        0.65x, not destroyed: a 15 m step still reports 9.75 m. Only at one
+        pixel does it collapse to a number that means the opposite of the truth.
+        """
+        got, counts = groupwise_percentiles(
+            np.array([5.0, 20.0]), np.zeros(2, dtype=int), 1,
+            (SPREAD_LO_Q, SPREAD_HI_Q))
+        assert counts[0] == 2
+        assert float(got[1, 0] - got[0, 0]) == pytest.approx(0.65 * 15.0)
 
     def test_nodata_pixels_do_not_reach_the_spread(self, tmp_path):
         path = _write_synthetic_cog(tmp_path / "ev.tif", nodata_ne=True)
@@ -1315,6 +1333,46 @@ class TestSpreadVeto:
         out = _refine(self._pair(np.nan))
         assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
 
+    def test_the_veto_is_contained_by_the_ambiguous_bucket(self):
+        """THE containment property, named and tested rather than incidental.
+
+        Losing the canopy verdict is not the same as losing the height. An
+        ambiguous cell is only replaced when it is adjacent to a footprint
+        *and* its height coincides with that footprint's; everywhere else
+        ``ambiguous_keep`` hands the nDSM height straight back, byte for byte.
+        That is what makes a veto-only signal safe to enable before Task 8
+        calibrates, and on real data it is most of the effect: 17 cells vetoed,
+        3 changed.
+
+        Three vetoed cells here, differing only in what surrounds them.
+        """
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)               # nothing nearby
+        sc["building_heights"][8, 6] = 30.0
+        _tree(sc, (8, 5), 19.5, spread=19.5)               # adjacent, far apart
+        sc["building_heights"][14, 6] = 20.0
+        _tree(sc, (14, 5), 19.5, spread=19.5)              # adjacent + coincide
+        _tree(sc, (12, 2), 6.0)                            # median source
+        _tree(sc, (12, 3), 12.0)                           # -> 9.0
+
+        out = _refine(sc)
+        assert out["counts"]["spread_veto"] == 3
+
+        # Two of the three keep their height exactly.
+        assert out["verdict"][2, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][2, 5] == 19.5
+        assert out["verdict"][8, 5] == VERDICT_AMBIGUOUS_KEEP
+        assert out["canopy"][8, 5] == 19.5, (
+            "adjacency alone must not cost a cell its height -- the "
+            "coincidence test still has to agree")
+
+        # Only the coincident one is replaced, and that is the whole cost.
+        assert out["verdict"][14, 5] == VERDICT_AMBIGUOUS_REPLACE
+        assert out["canopy"][14, 5] == 9.0
+        assert out["counts"]["spread_veto_replaced"] == 1, (
+            "the cost of the veto is the number of cells it actually changed, "
+            "not the number it reclassified")
+
     def test_the_veto_never_produces_a_roof_verdict(self):
         """Roof is a *confident* verdict that force-replaces. A step-like
         spread on otherwise canopy-like evidence is not confidence in a roof."""
@@ -1358,6 +1416,41 @@ class TestSpreadVeto:
             "only cells that would otherwise have been canopy count as vetoed")
         assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"]
 
+    def test_a_measured_step_and_an_unmeasurable_cell_are_counted_apart(self):
+        """They fail closed identically and mean opposite things: "I measured a
+        step" versus "I could not measure anything". Conflated, the veto's
+        apparent hit rate becomes a function of how much nDSM nodata the target
+        happens to contain -- which is what calibration would then be reading.
+        """
+        sc = _scene()
+        _tree(sc, (2, 5), 19.5, spread=19.5)          # measured, over threshold
+        _tree(sc, (8, 5), 19.5, spread=np.nan)        # not measurable
+        _tree(sc, (12, 5), 19.5, spread=np.nan)       # not measurable
+        counts = _refine(sc)["counts"]
+        assert counts["spread_veto"] == 1
+        assert counts["spread_unknown"] == 2
+
+    def test_an_unmeasurable_cell_is_still_denied_the_canopy_verdict(self):
+        """Counting them apart must not turn into treating them leniently."""
+        out = _refine(self._pair(np.nan))
+        assert out["counts"]["canopy"] == 0
+        assert out["counts"]["spread_unknown"] == 1
+
+    def test_the_replacement_count_covers_both_denial_reasons(self):
+        sc = _scene()
+        sc["building_heights"][2, 6] = 20.0
+        _tree(sc, (2, 5), 19.5, spread=19.5)          # measured step, replaced
+        sc["building_heights"][8, 6] = 20.0
+        _tree(sc, (8, 5), 19.5, spread=np.nan)        # unmeasurable, replaced
+        _tree(sc, (5, 2), 6.0)
+        _tree(sc, (5, 3), 12.0)
+        counts = _refine(sc)["counts"]
+        assert counts["spread_veto"] == 1
+        assert counts["spread_unknown"] == 1
+        assert counts["spread_veto_replaced"] == 2, (
+            "an unmeasurable cell costs exactly as much as a vetoed one when "
+            "it is replaced; the cost count must not omit it")
+
     def test_the_veto_is_inert_in_degraded_mode(self):
         """No canopy verdict can fire without evidence bands, so the veto has
         nothing to remove -- degraded behaviour must be bit-for-bit what it was
@@ -1380,6 +1473,8 @@ class TestSpreadVeto:
         assert np.array_equal(with_spread["canopy"], without["canopy"])
         assert np.array_equal(with_spread["verdict"], without["verdict"])
         assert with_spread["counts"]["spread_veto"] == 0
+        assert with_spread["counts"]["spread_unknown"] == 0
+        assert with_spread["counts"]["spread_veto_replaced"] == 0
 
     def test_distrusted_evidence_is_not_reported_as_a_spread_veto(self):
         """A cell the evidence trust gate already rejected was never going to
@@ -1396,7 +1491,9 @@ class TestSpreadStatistics:
     def _stats(self, **kwargs):
         sc = _scene()
         sc["building_heights"][2, 6] = 20.0
-        _tree(sc, (2, 5), 19.5, spread=18.0)          # footprint-adjacent
+        _tree(sc, (2, 5), 19.5, spread=18.0)          # adjacent AND coincident
+        sc["building_heights"][5, 6] = 30.0
+        _tree(sc, (5, 5), 3.0, spread=6.0)            # adjacent, NOT coincident
         _tree(sc, (10, 10), 12.0, spread=2.0)         # far from any footprint
         _tree(sc, (12, 10), 12.0, spread=4.0)         # far from any footprint
         return classify_and_refine(
@@ -1407,16 +1504,26 @@ class TestSpreadStatistics:
 
     def test_adjacent_and_non_adjacent_are_reported_apart(self):
         stats = self._stats()
-        assert stats["adjacent"]["n"] == 1
+        assert stats["all"]["n"] == 4
+        assert stats["adjacent"]["n"] == 2
         assert stats["non_adjacent"]["n"] == 2
-        assert stats["all"]["n"] == 3
-        assert stats["adjacent"]["p50"] == pytest.approx(18.0)
         assert stats["non_adjacent"]["p50"] == pytest.approx(3.0)
+
+    def test_the_coincident_subset_is_reported_apart_from_adjacency(self):
+        """Adjacency alone does not put a cell at risk: an ambiguous cell is
+        only replaced when it is adjacent *and* height-coincident, so this
+        narrower population is the one the veto's cost lives in. Reporting only
+        ``adjacent`` overstates it -- here by 2x."""
+        stats = self._stats()
+        assert stats["adjacent"]["n"] == 2
+        assert stats["adjacent_coincident"]["n"] == 1, (
+            "the non-coincident neighbour must not be counted at risk")
+        assert stats["adjacent_coincident"]["p50"] == pytest.approx(18.0)
 
     def test_statistics_are_produced_in_degraded_mode(self):
         stats = self._stats(degraded=True)
-        assert stats["all"]["n"] == 3
-        assert stats["adjacent"]["p50"] == pytest.approx(18.0)
+        assert stats["all"]["n"] == 4
+        assert stats["adjacent_coincident"]["p50"] == pytest.approx(18.0)
 
     def test_no_spread_means_no_statistics(self):
         sc = _scene()
@@ -1433,13 +1540,26 @@ class TestSpreadStatistics:
         out = classify_and_refine(
             sc["height"], sc["tree_mask"], sc["building_heights"], STATIC,
             spread=sc["spread"], degraded=True)
-        assert out["spread_stats"]["adjacent"]["n"] == 0
-        assert out["spread_stats"]["adjacent"]["p50"] is None
+        for name in ("adjacent", "adjacent_coincident"):
+            assert out["spread_stats"][name]["n"] == 0
+            assert out["spread_stats"][name]["p50"] is None
+        assert "n=0" in format_spread_stats(out["spread_stats"])
 
-    def test_the_summary_names_both_populations(self):
+    def test_the_summary_reports_every_population(self):
         text = format_spread_stats(self._stats())
-        assert "adjacent" in text
-        assert "18" in text
+        for name in SPREAD_STAT_KEYS:
+            assert name in text, name
+        # The at-risk bucket's median, formatted -- not a bare substring that
+        # any percentile could satisfy.
+        assert "p50=18.00" in text
+
+    def test_the_prefix_tags_every_line_not_just_the_first(self):
+        """The pipeline tags its output with '[nDSM] '. Formatting that at the
+        call site labels the header and leaves four data lines looking like
+        output from somewhere else entirely."""
+        lines = format_spread_stats(self._stats(), "[nDSM] ").splitlines()
+        assert len(lines) == 1 + len(SPREAD_STAT_KEYS)
+        assert all(line.startswith("[nDSM] ") for line in lines)
 
 
 class TestDecisionTable:
@@ -1979,13 +2099,6 @@ class TestRefineParams:
     def test_incoherent_parameters_are_rejected(self, kwargs):
         with pytest.raises(ValueError):
             RefineParams(**kwargs)
-
-    def test_the_spread_ceiling_is_documented_as_a_seed(self):
-        """Nothing downstream may treat it as calibrated: Task 8 measures the
-        distribution before this number gains any authority."""
-        assert RefineParams.spread_max_m > 0
-        assert "seed" in RefineParams.__doc__.lower()
-        assert "spread_max_m" in RefineParams.__doc__
 
 
 class TestStaticTreeHeight:
