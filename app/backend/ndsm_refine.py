@@ -13,12 +13,24 @@ cells through the grid geometry (coordinate-based, orientation-free).
 """
 from __future__ import annotations
 
+import os
 import warnings
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 
-__all__ = ["groupwise_percentile", "pool_evidence", "local_tree_median"]
+__all__ = [
+    "groupwise_percentile",
+    "pool_evidence",
+    "local_tree_median",
+    "load_ndsm_evidence",
+]
+
+# Band schema of the evidence COG. Band 1 is the nDSM height; bands 2-6 are the
+# additive per-pixel LiDAR statistics that pool_evidence() turns into per-cell
+# evidence. A COG with fewer than EVIDENCE_BANDS bands is read in degraded
+# mode: height only, no evidence.
+EVIDENCE_BANDS = 6
 
 
 def _as_group_labels(groups: np.ndarray) -> np.ndarray:
@@ -200,6 +212,193 @@ def pool_evidence(
         "n_all": tot_all,
         "n_nonground": tot_ng,
     }
+
+
+def _cell_labels(
+    lon: np.ndarray,
+    lat: np.ndarray,
+    origin: np.ndarray,
+    u_full: np.ndarray,
+    v_full: np.ndarray,
+    n_rows: int,
+    n_cols: int,
+) -> np.ndarray:
+    """Display-frame cell label ``row * n_cols + col`` for each (lon, lat).
+
+    The model grid is the parallelogram ``origin + a*u_full + b*v_full`` with
+    ``a, b`` in [0, 1); *u_full* spans SW->NW (the row axis, growing north) and
+    *v_full* spans SW->SE (the column axis, growing east). Inverting that 2x2
+    system by Cramer's rule gives each point's fractional position along the two
+    grid axes, which floors directly to a row and a column.
+
+    This is the *only* place the raster's north-up layout meets the model's
+    south-up display frame, and it never touches an array index: a pixel's cell
+    is decided by where the pixel *is*, so rotation, mirroring and pixel order
+    are all handled by construction. Any point outside the grid gets label -1,
+    which pool_evidence and groupwise_percentile drop.
+    """
+    det = u_full[0] * v_full[1] - u_full[1] * v_full[0]
+    if not np.isfinite(det) or det == 0.0:
+        raise ValueError("degenerate grid geometry: side vectors are collinear")
+
+    d_lon = np.asarray(lon, dtype=np.float64) - origin[0]
+    d_lat = np.asarray(lat, dtype=np.float64) - origin[1]
+    a = (d_lon * v_full[1] - d_lat * v_full[0]) / det       # fraction along u
+    b = (d_lat * u_full[0] - d_lon * u_full[1]) / det       # fraction along v
+
+    # Floor explicitly: ndsm_refine's group helpers reject float labels because
+    # an implicit astype() here would truncate towards zero and put a pixel at
+    # a = -0.3 into row 0 instead of outside the grid.
+    row = np.floor(a * n_rows).astype(np.intp)
+    col = np.floor(b * n_cols).astype(np.intp)
+    inside = (row >= 0) & (row < n_rows) & (col >= 0) & (col < n_cols)
+    return np.where(inside, row * n_cols + col, -1)
+
+
+def load_ndsm_evidence(
+    rectangle_vertices,
+    meshsize: float,
+    cog_path: str,
+    height_q: float = 90,
+) -> Optional[Dict[str, object]]:
+    """Read the nDSM evidence COG once, aggregated onto the model grid.
+
+    One windowed read replaces the old per-cell ``src.sample()``: *every* raster
+    pixel under a cell contributes, instead of the single pixel that happened to
+    sit under the cell centre. That point sampling is the spike mechanism -- one
+    roof-edge pixel under a 2 m cell centre became a 30 m "tree" -- so the height
+    returned here is the ``height_q`` percentile over the cell's pixels, which a
+    lone contaminated pixel cannot move.
+
+    Everything returned is in the model's **display frame** (row 0 = south).
+    ``src.read(window=...)`` yields north-up raster layout; the conversion
+    happens in :func:`_cell_labels`, by coordinate, never by index arithmetic.
+
+    Heights are returned exactly as the raster stores them, negatives included:
+    clamping is the canopy builder's job (``_build_canopy_from_ndsm``), and a
+    reader that silently clamped would hide a botched ground surface.
+
+    Args:
+        rectangle_vertices: target rectangle, ``[SW, NW, NE, SE]`` in (lon, lat).
+        meshsize: model cell size in metres.
+        cog_path: path to the nDSM COG.
+        height_q: percentile of band 1 within each cell, in [0, 100].
+
+    Returns:
+        ``None`` when the COG is missing or does not overlap the rectangle,
+        otherwise a dict with
+
+        * ``height``       -- (rows, cols) float, per-cell percentile of band 1;
+                              NaN where no valid pixel fell in the cell.
+        * ``mrf``, ``roughness``, ``n_all``, ``n_nonground`` -- per-cell evidence
+                              from :func:`pool_evidence`, or ``None`` each in
+                              degraded mode.
+        * ``degraded``     -- True when the COG carries fewer than six bands, as
+                              the single-band raster on disk does until the
+                              rebuild ships. Callers must stay functional then.
+        * ``shape``        -- ``(rows, cols)``, the model grid size.
+    """
+    import rasterio
+    from rasterio.windows import Window, from_bounds, intersect, intersection
+    from pyproj import Transformer
+    from voxcity.geoprocessor.raster.core import compute_grid_geometry
+
+    if not cog_path or not os.path.exists(cog_path):
+        return None
+
+    geom = compute_grid_geometry(rectangle_vertices, meshsize)
+    if geom is None:
+        return None
+
+    # grid_size is (along side_1, along side_2) -- see calculate_grid_size in
+    # voxcity/geoprocessor/raster/core.py, and compute_cell_center_coords which
+    # builds its (nx, ny) arrays with index 0 along side_1. side_1 is SW->NW, so
+    # index 0 is the row axis growing north: the display frame.
+    n_rows, n_cols = (int(n) for n in geom["grid_size"])
+    n_cells = n_rows * n_cols
+    origin = np.asarray(geom["origin"], dtype=np.float64)
+    d_row, d_col = geom["adj_mesh"]
+    # Full-extent side vectors rebuilt from the *cell* step, so the parallelogram
+    # inverted below is exactly the one compute_cell_center_coords lays cells on.
+    u_full = n_rows * float(d_row) * np.asarray(geom["u_vec"], dtype=np.float64)
+    v_full = n_cols * float(d_col) * np.asarray(geom["v_vec"], dtype=np.float64)
+
+    with rasterio.open(cog_path) as src:
+        if src.crs is None:
+            raise ValueError("nDSM COG has no CRS")
+        to_src = Transformer.from_crs("EPSG:4326", src.crs, always_xy=True)
+        corners = [origin, origin + u_full, origin + u_full + v_full, origin + v_full]
+        corner_x, corner_y = to_src.transform(
+            [float(c[0]) for c in corners], [float(c[1]) for c in corners]
+        )
+        window = from_bounds(
+            min(corner_x), min(corner_y), max(corner_x), max(corner_y),
+            transform=src.transform,
+        ).round_offsets().round_lengths()
+
+        # Clip rather than read boundless. A non-boundless read of a window that
+        # overhangs the raster silently returns the *clipped* array while
+        # window_transform() still describes the unclipped window, which would
+        # shift every pixel coordinate; and boundless=True with fill_value=nan
+        # on an integer band (the counts are uint16) fills 0 without warning,
+        # inventing returns where there is no data. Neither failure raises.
+        full = Window(0, 0, src.width, src.height)
+        if not intersect(window, full):
+            return None
+        window = intersection(window, full)
+        if window.width <= 0 or window.height <= 0:
+            return None
+
+        n_bands = int(src.count)
+        degraded = n_bands < EVIDENCE_BANDS
+        indexes = [1] if degraded else list(range(1, EVIDENCE_BANDS + 1))
+        data = src.read(indexes=indexes, window=window).astype(np.float64)
+        nodata = src.nodata
+        window_transform = src.window_transform(window)
+        src_crs = src.crs
+
+    if nodata is not None:
+        # Height must become NaN so the percentile ignores it. The count/sum
+        # bands are additive, so their nodata is "no returns here" -- zero.
+        data[0] = np.where(data[0] == float(nodata), np.nan, data[0])
+        if not degraded:
+            data[1:] = np.where(data[1:] == float(nodata), 0.0, data[1:])
+
+    rows, cols = np.meshgrid(
+        np.arange(data.shape[1]), np.arange(data.shape[2]), indexing="ij"
+    )
+    pixel_x, pixel_y = rasterio.transform.xy(
+        window_transform, rows.ravel(), cols.ravel()
+    )
+    from_src = Transformer.from_crs(src_crs, "EPSG:4326", always_xy=True)
+    lon, lat = from_src.transform(np.asarray(pixel_x), np.asarray(pixel_y))
+
+    labels = _cell_labels(lon, lat, origin, u_full, v_full, n_rows, n_cols)
+    if not (labels >= 0).any():
+        return None
+
+    height = groupwise_percentile(
+        data[0].ravel(), labels, n_cells, height_q
+    ).reshape(n_rows, n_cols)
+
+    out: Dict[str, object] = {
+        "height": height,
+        "degraded": bool(degraded),
+        "shape": (n_rows, n_cols),
+    }
+    if degraded:
+        out.update(mrf=None, roughness=None, n_all=None, n_nonground=None)
+        return out
+
+    flat = data.reshape(data.shape[0], -1)
+    evidence = pool_evidence(
+        labels, n_cells,
+        n_all=flat[1], n_multi=flat[2], n_nonground=flat[3],
+        sum_z=flat[4], sum_z2=flat[5],
+    )
+    for key, values in evidence.items():
+        out[key] = values.reshape(n_rows, n_cols)
+    return out
 
 
 def local_tree_median(

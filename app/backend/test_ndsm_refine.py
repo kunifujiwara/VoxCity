@@ -14,14 +14,19 @@ Import form note: sibling modules in this package are imported as
 ``app/backend/__init__.py`` makes ``backend`` a package, so pytest puts
 ``app/`` -- not ``app/backend/`` -- on ``sys.path``.
 """
+import math
 import warnings
 
 import numpy as np
 import pytest
+import rasterio
+from pyproj import Transformer
+from rasterio.transform import from_origin
 
 from backend.ndsm_refine import (
     pool_evidence,
     groupwise_percentile,
+    load_ndsm_evidence,
     local_tree_median,
 )
 
@@ -474,3 +479,287 @@ class TestLocalTreeMedian:
         can, mask = _fixture_grid()
         local_tree_median(can, mask, radius=2)
         assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# load_ndsm_evidence
+#
+# The COG is north-up raster space (row 0 = north); the model grid is the
+# display frame (row 0 = south, because compute_grid_geometry anchors at
+# rectangle_vertices[0] = SW and side_1 runs SW->NW). A windowed read carries
+# the raster's orientation, so the fixture below is asymmetric along BOTH axes
+# and the assertions pin the tall band to the SOUTH rows and the multi-return
+# evidence to the SOUTH-WEST corner. A symmetric fixture would pass whether or
+# not the reader flipped, which is exactly how the last two-frame bug survived
+# four review passes.
+# ---------------------------------------------------------------------------
+EPSG = 6677                      # JGD2011 / Japan Plane Rectangular CS IX
+PIXEL = 0.5                      # metres, as in the real nDSM COG
+MESHSIZE = 2.0                   # -> 4x4 raster pixels per model cell
+SIDE_M = 40.0                    # -> 20x20 model cells
+NODATA = -9999.0
+
+_W, _S = 139.7600, 35.6800
+_DLAT = SIDE_M / 110946.0
+_DLON = SIDE_M / (111320.0 * math.cos(math.radians(_S)))
+_E, _N = _W + _DLON, _S + _DLAT
+
+# [SW, NW, NE, SE]: compute_grid_geometry takes v0 as the origin, side_1 =
+# v1 - v0 (northward, the row axis) and side_2 = v3 - v0 (eastward, the col axis).
+RECT = [(_W, _S), (_W, _N), (_E, _N), (_E, _S)]
+
+
+def _rect_fractions(lon, lat):
+    """Position within the target rectangle: (northward, eastward) in [0, 1]."""
+    return (lat - _S) / (_N - _S), (lon - _W) / (_E - _W)
+
+
+def _write_synthetic_cog(
+    path,
+    *,
+    bands=6,
+    tall_south=True,
+    dtype="float32",
+    uniform=False,
+    spike=False,
+    nodata_ne=False,
+    rect=RECT,
+):
+    """Write an evidence COG covering *rect* with a margin, 0.5 m pixels.
+
+    Band 1 (nDSM) is 20 m in the SOUTHERN quarter of the rectangle and 5 m
+    elsewhere -- asymmetric north<->south, so a flipped reader cannot pass.
+
+    Band 3 (n_multi) is high only in the SOUTH-WEST quarter: a second,
+    *independent* asymmetry, so the evidence bands' orientation is checked in
+    its own right and not merely inherited from the height band.
+
+    The NORTH-EAST quarter carries n_nonground = 0, so its pooled count is
+    below the two-point minimum and roughness must come back NaN there.
+
+    ``tall_south=False`` mirrors band 1 to the north -- the teeth-check for the
+    frame assertions. ``spike=True`` makes band 1 flat 5 m with a single 30 m
+    pixel at the rectangle centre: the contaminated-pixel mechanism the whole
+    aggregation exists to reject.
+    """
+    to_xy = Transformer.from_crs("EPSG:4326", f"EPSG:{EPSG}", always_xy=True)
+    to_ll = Transformer.from_crs(f"EPSG:{EPSG}", "EPSG:4326", always_xy=True)
+
+    xs, ys = to_xy.transform([v[0] for v in rect], [v[1] for v in rect])
+    margin = 5.0
+    left = math.floor((min(xs) - margin) / PIXEL) * PIXEL
+    bottom = math.floor((min(ys) - margin) / PIXEL) * PIXEL
+    right = math.ceil((max(xs) + margin) / PIXEL) * PIXEL
+    top = math.ceil((max(ys) + margin) / PIXEL) * PIXEL
+    width = int(round((right - left) / PIXEL))
+    height = int(round((top - bottom) / PIXEL))
+    transform = from_origin(left, top, PIXEL, PIXEL)
+
+    rows, cols = np.meshgrid(np.arange(height), np.arange(width), indexing="ij")
+    px = left + (cols + 0.5) * PIXEL
+    py = top - (rows + 0.5) * PIXEL
+    lon, lat = to_ll.transform(px, py)
+    f_north, f_east = _rect_fractions(lon, lat)
+
+    if uniform or spike:
+        ndsm = np.full((height, width), 5.0)
+    else:
+        tall = f_north < 0.25 if tall_south else f_north > 0.75
+        ndsm = np.where(tall, 20.0, 5.0)
+    if spike:
+        centre = (f_north - 0.5) ** 2 + (f_east - 0.5) ** 2
+        ndsm.flat[int(np.argmin(centre))] = 30.0
+    if nodata_ne:
+        ndsm = np.where((f_north > 0.75) & (f_east > 0.75), NODATA, ndsm)
+
+    n_all = np.full((height, width), 10.0)
+    n_multi = np.where((f_north < 0.25) & (f_east < 0.25), 8.0, 1.0)
+    sparse = (f_north > 0.75) & (f_east > 0.75)
+    n_ng = np.where(sparse, 0.0, 10.0)
+    # 10 non-ground returns at h-1 and h+1 => population std exactly 1.0
+    sum_z = n_ng * ndsm
+    sum_z2 = np.where(sparse, 0.0, 10.0 * ndsm * ndsm + 10.0)
+
+    layers = [ndsm, n_all, n_multi, n_ng, sum_z, sum_z2][:bands]
+    profile = dict(
+        driver="GTiff", height=height, width=width, count=bands,
+        dtype=dtype, crs=f"EPSG:{EPSG}", transform=transform,
+    )
+    if np.dtype(dtype).kind == "f":
+        profile["nodata"] = NODATA
+    with rasterio.open(path, "w", **profile) as dst:
+        for index, layer in enumerate(layers, start=1):
+            dst.write(np.asarray(layer, dtype=dtype), index)
+    return str(path)
+
+
+def _load(path, *, rect=RECT, meshsize=MESHSIZE, height_q=90):
+    return load_ndsm_evidence(rect, meshsize, str(path), height_q=height_q)
+
+
+class TestSyntheticCogFixture:
+    """Guard the guard: a flip-invariant fixture makes every check vacuous."""
+
+    def test_height_band_is_asymmetric_north_south(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        with rasterio.open(path) as src:
+            band1 = src.read(1)
+        assert not np.array_equal(band1, np.flipud(band1))
+        tall = band1 > 15.0
+        assert tall.any()
+        # The band and its own mirror must not overlap at all, otherwise a
+        # flipped reader would still land partly on the tall cells.
+        assert not (tall & np.flipud(tall)).any()
+
+    def test_multi_return_band_is_asymmetric_on_both_axes(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        with rasterio.open(path) as src:
+            band3 = src.read(3)
+        hot = band3 > 4.0
+        assert hot.any()
+        assert not (hot & np.flipud(hot)).any()
+        assert not (hot & np.fliplr(hot)).any()
+
+    def test_grid_is_the_expected_20x20(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        assert out["shape"] == (20, 20)
+
+
+class TestLoadNdsmEvidenceFrame:
+    def test_tall_band_lands_on_the_south_rows(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        h = out["height"]
+        n = h.shape[0]
+        assert np.nanmedian(h[:n // 4]) > 15.0, (
+            "the 20 m band was written in the southern quarter of the "
+            "rectangle but did not come back on the southern rows -- the "
+            "north-up raster frame leaked into the display frame")
+        assert np.nanmedian(h[-(n // 4):]) < 8.0
+
+    def test_multi_return_evidence_lands_on_the_south_west_corner(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        mrf = out["mrf"]
+        n_rows, n_cols = mrf.shape
+        r, c = n_rows // 4, n_cols // 4
+        assert np.nanmedian(mrf[:r, :c]) > 0.5          # SW: hot
+        assert np.nanmedian(mrf[:r, -c:]) < 0.3         # SE
+        assert np.nanmedian(mrf[-r:, :c]) < 0.3         # NW
+        assert np.nanmedian(mrf[-r:, -c:]) < 0.3        # NE
+
+    def test_rotated_rectangle_still_resolves(self, tmp_path):
+        # Coordinate-based assignment must not care about rotation. The band
+        # geometry no longer aligns with the grid axes, so this only asserts
+        # that every cell is filled -- a shape/indexing regression would leave
+        # NaN holes or raise.
+        cx, cy = (_W + _E) / 2.0, (_S + _N) / 2.0
+        theta = math.radians(30.0)
+        scale = math.cos(math.radians(_S))
+
+        def _rot(lon, lat):
+            dx, dy = (lon - cx) * scale, lat - cy
+            rx = dx * math.cos(theta) - dy * math.sin(theta)
+            ry = dx * math.sin(theta) + dy * math.cos(theta)
+            return cx + rx / scale, cy + ry
+
+        rect = [_rot(lon, lat) for lon, lat in RECT]
+        path = _write_synthetic_cog(tmp_path / "ev.tif", rect=rect)
+        out = _load(path, rect=rect)
+        assert np.isfinite(out["height"]).all()
+        assert np.isfinite(out["mrf"]).all()
+
+
+class TestLoadNdsmEvidenceAggregation:
+    def test_single_contaminated_pixel_does_not_become_a_tree(self, tmp_path):
+        # THE spike mechanism: one roof-edge pixel under a cell used to be the
+        # whole cell, because the loader sampled a single point per centre.
+        path = _write_synthetic_cog(tmp_path / "ev.tif", spike=True)
+        p50 = _load(path, height_q=50)["height"]
+        p90 = _load(path, height_q=90)["height"]
+        p100 = _load(path, height_q=100)["height"]
+        assert np.nanmax(p50) == pytest.approx(5.0)
+        assert np.nanmax(p90) < 8.0
+        assert np.nanmax(p100) == pytest.approx(30.0), (
+            "the 30 m pixel is in the window but never reaches any cell -- "
+            "the reader is not aggregating all pixels under the cell")
+
+    def test_all_pixels_under_a_cell_are_pooled(self, tmp_path):
+        # 2 m cells over 0.5 m pixels: ~16 pixels each, 10 returns per pixel.
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        assert np.nanmedian(out["n_all"]) == pytest.approx(160.0, abs=20.0)
+        assert out["n_all"].min() > 100.0
+
+    def test_roughness_matches_the_written_dispersion(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        n = out["roughness"].shape[0]
+        # Southern half is a uniform 20 m band with +/-1 m returns.
+        assert np.nanmedian(out["roughness"][:n // 4]) == pytest.approx(1.0, abs=1e-6)
+
+    def test_roughness_is_nan_where_pooled_nonground_is_below_two(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        n_rows, n_cols = out["roughness"].shape
+        r, c = n_rows // 4, n_cols // 4
+        ne = out["roughness"][-r:, -c:]
+        assert np.isnan(ne).all(), (
+            "the NE quarter has zero non-ground returns; roughness 0.0 there "
+            "would read as maximally roof-like")
+        assert (out["n_nonground"][-r:, -c:] == 0).all()
+        # ... and the rest is unaffected.
+        assert np.isfinite(out["roughness"][:r, :c]).all()
+
+    def test_integer_evidence_bands_are_read(self, tmp_path):
+        # The real rebuild writes counts as uint16; a boundless read with
+        # fill_value=nan silently casts on an integer band, so the reader must
+        # not rely on it.
+        path = _write_synthetic_cog(tmp_path / "ev.tif", dtype="uint16")
+        out = _load(path)
+        assert out["degraded"] is False
+        assert np.isfinite(out["mrf"]).all()
+        n = out["height"].shape[0]
+        assert np.nanmedian(out["height"][:n // 4]) > 15.0
+
+    def test_nodata_pixels_do_not_reach_the_height(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif", nodata_ne=True)
+        out = _load(path)
+        n_rows, n_cols = out["height"].shape
+        r, c = n_rows // 4, n_cols // 4
+        assert np.isnan(out["height"][-r + 1:, -c + 1:]).all()
+        assert np.isfinite(out["height"][:r, :c]).all()
+
+
+class TestLoadNdsmEvidenceDegraded:
+    def test_single_band_cog_returns_height_only(self, tmp_path):
+        # The COG on disk today is single-band; the rebuild ships separately.
+        path = _write_synthetic_cog(tmp_path / "ndsm.tif", bands=1)
+        out = _load(path)
+        assert out["degraded"] is True
+        assert out["mrf"] is None
+        assert out["roughness"] is None
+        assert out["n_all"] is None
+        assert out["n_nonground"] is None
+        assert np.isfinite(out["height"]).all()
+        n = out["height"].shape[0]
+        assert np.nanmedian(out["height"][:n // 4]) > 15.0
+
+    def test_six_band_cog_is_not_degraded(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        assert _load(path)["degraded"] is False
+
+    def test_missing_file_returns_none(self, tmp_path):
+        assert _load(tmp_path / "does_not_exist.tif") is None
+
+    def test_no_overlap_returns_none(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        far = [(lon + 1.0, lat + 1.0) for lon, lat in RECT]
+        assert _load(path, rect=far) is None
+
+    def test_shape_matches_every_returned_array(self, tmp_path):
+        path = _write_synthetic_cog(tmp_path / "ev.tif")
+        out = _load(path)
+        for key in ("height", "mrf", "roughness", "n_all", "n_nonground"):
+            assert out[key].shape == out["shape"], key
