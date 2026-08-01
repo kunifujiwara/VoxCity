@@ -38,6 +38,7 @@ __all__ = [
     "classify_and_refine",
     "refine_from_evidence",
     "format_counts",
+    "DEFAULT_PARAMS",
     "PARTITION_KEYS",
     "VERDICT_NONE",
     "VERDICT_CANOPY",
@@ -543,13 +544,18 @@ VERDICT_NAMES = {
 #: PARTITION_KEYS) == counts["tree"]`` always holds. Every other key in the
 #: counts dict (``guard_low``, ``guard_high``, ``replaced``, ``distrusted``) is a
 #: diagnostic that *overlaps* the partition and must never be summed into it.
-PARTITION_KEYS = (
-    "canopy",
-    "roof",
-    "ambiguous_keep",
-    "ambiguous_replace",
-    "no_data",
-)
+#:
+#: Derived from :data:`VERDICT_NAMES` rather than restated: a count key *is* the
+#: name of the verdict it counts, so the two must not be able to drift. That
+#: also makes VERDICT_NAMES load-bearing -- a typo in it now breaks the counts
+#: rather than only a diagnostic label nothing reads.
+PARTITION_KEYS = tuple(VERDICT_NAMES[code] for code in (
+    VERDICT_CANOPY,
+    VERDICT_ROOF,
+    VERDICT_AMBIGUOUS_KEEP,
+    VERDICT_AMBIGUOUS_REPLACE,
+    VERDICT_NO_DATA,
+))
 
 
 @dataclass(frozen=True)
@@ -724,7 +730,8 @@ def classify_and_refine(
         building_heights: (rows, cols) float; ``> 0`` marks a footprint. NaN and
             negative values are treated as "no building".
         static_tree_height: fallback height, used only where a replacement is
-            needed and the window holds no credible tree.
+            needed and the window holds no credible tree. Must be finite and at
+            least ``params.min_tree_height_m`` -- see the ValueError below.
         mrf, roughness, n_all, n_nonground: per-cell evidence from
             :func:`pool_evidence`, or ``None`` for degraded mode.
         degraded: force degraded mode. ``None`` infers it from the evidence
@@ -744,6 +751,26 @@ def classify_and_refine(
         * ``degraded``-- bool, whether evidence was available.
     """
     p = params
+    static_tree_height = float(static_tree_height)
+    if not math.isfinite(static_tree_height):
+        raise ValueError(
+            f"static_tree_height must be finite, got {static_tree_height!r}"
+        )
+    if static_tree_height < p.min_tree_height_m:
+        # Not merely odd -- unsatisfiable. The fallback is what the
+        # below-minimum guard *substitutes*, so a fallback below the minimum
+        # makes the guard fire, install a value that is still below the
+        # minimum, and report guard_low as though it had fixed the cell. The
+        # documented invariant (every tree cell >= min_tree_height_m) would be
+        # quietly false. Callers taking this from user input should clamp it
+        # and say so, not pass the contradiction down.
+        raise ValueError(
+            f"static_tree_height ({static_tree_height}) is below "
+            f"min_tree_height_m ({p.min_tree_height_m}); the below-minimum "
+            "guard substitutes this value, so it cannot itself be below the "
+            "minimum"
+        )
+
     h = np.asarray(height, dtype=np.float64)
     if h.ndim != 2:
         raise ValueError(f"height must be a 2-D grid, got {h.ndim} dimensions")

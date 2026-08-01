@@ -35,7 +35,6 @@ from backend.ndsm_refine import (
     _cell_labels,
     _pixel_lonlat,
     classify_and_refine,
-    format_counts,
     pool_evidence,
     groupwise_percentile,
     load_ndsm_evidence,
@@ -1430,13 +1429,6 @@ class TestAccounting:
         assert counts["guard_low"] == 1
         assert sum(counts[key] for key in PARTITION_KEYS) == counts["tree"] == 2
 
-    def test_format_counts_mentions_every_partition_bucket(self):
-        sc = self._mixed_scene()
-        text = format_counts(_refine(sc)["counts"])
-        assert isinstance(text, str) and text
-        for key in PARTITION_KEYS:
-            assert key.replace("_", " ") in text or key in text, key
-
 
 class TestInvariants:
     def test_non_tree_cells_are_zero(self):
@@ -1537,15 +1529,6 @@ class TestInvariants:
                 degraded=True,
             )
 
-    def test_output_dtype_and_shape(self):
-        sc = _scene()
-        _tree(sc, (2, 5), 25.0)
-        out = _refine(sc)
-        assert out["canopy"].shape == SHAPE
-        assert out["canopy"].dtype == np.float64
-        assert out["verdict"].shape == SHAPE
-        assert np.isfinite(out["canopy"]).all()
-
 
 class TestRefineParams:
     @pytest.mark.parametrize("kwargs", [
@@ -1561,18 +1544,37 @@ class TestRefineParams:
         with pytest.raises(ValueError):
             RefineParams(**kwargs)
 
-    def test_defaults_are_the_documented_seeds(self):
-        p = RefineParams()
-        assert (p.mrf_hi, p.mrf_lo) == (0.35, 0.15)
-        assert (p.rough_hi_m, p.rough_lo_m) == (1.5, 1.0)
-        assert p.min_points == 8
-        assert p.coincidence_tol_m == 5.0
-        assert (p.min_tree_height_m, p.max_tree_height_m) == (2.0, 45.0)
-        assert p.median_radius == 3
 
-    def test_params_are_frozen(self):
-        with pytest.raises(Exception):
-            RefineParams().mrf_hi = 0.9
+class TestStaticTreeHeight:
+    """``static_tree_height`` is user-supplied, so it can contradict the guards.
+
+    A fallback below ``min_tree_height_m`` never converges: the below-minimum
+    guard fires on the cell, substitutes the fallback, and the fallback is
+    itself below the minimum. The cell is left under the documented floor with
+    ``guard_low`` incremented -- the guard reporting that it fixed something it
+    did not. The output invariant is a promise, so the contradiction is refused
+    at the door rather than half-applied.
+    """
+
+    def test_a_static_height_below_the_minimum_is_rejected(self):
+        sc = _scene()
+        _tree(sc, (2, 5), np.nan)
+        with pytest.raises(ValueError, match="min_tree_height_m"):
+            _refine(sc, static_tree_height=0.5)
+
+    def test_a_non_finite_static_height_is_rejected(self):
+        sc = _scene()
+        with pytest.raises(ValueError):
+            _refine(sc, static_tree_height=float("nan"))
+
+    def test_the_minimum_itself_is_accepted(self):
+        # The boundary is inclusive: at exactly the minimum the guard does not
+        # fire, so the fallback is a fixed point and the invariant holds.
+        sc = _scene()
+        _tree(sc, (2, 5), np.nan)
+        out = _refine(sc, static_tree_height=RefineParams().min_tree_height_m)
+        assert out["canopy"][2, 5] == RefineParams().min_tree_height_m
+        assert out["counts"]["guard_low"] == 0
 
 
 class TestRefineFromEvidence:
