@@ -11,6 +11,7 @@ server log.
 No COG is read: ``load_ndsm_evidence`` is stubbed, so the reader's own tests own
 the raster and these tests own the pipeline.
 """
+import inspect
 import sys
 import types
 
@@ -19,6 +20,14 @@ import pytest
 
 import backend.ndsm_pipeline as pipeline
 from backend.ndsm_refine import RefineParams
+
+# Captured at import time, *before* any fixture stubs ``sys.modules``. An
+# ``importorskip`` inside a test using the ``env`` fixture would resolve to the
+# fake package and make the signature contract below vacuous.
+try:
+    from voxcitygml import reapply_canopy as _real_reapply_canopy
+except ImportError:  # package predates canopy re-apply, or is not installed
+    _real_reapply_canopy = None
 
 # Axis-aligned rectangle near Tokyo ([SW, NW, NE, SE], [lon, lat]). Never read
 # by anything here -- load_ndsm_evidence is stubbed -- but passed through so the
@@ -181,8 +190,9 @@ def _overlay(calls):
     """The captured reapply_canopy call, resolved to parameter names.
 
     Accepts either calling convention, so a positional/keyword switch in the
-    pipeline is not a spurious failure here; ``test_generate_lod2.py`` pins the
-    call shape against the real function's signature.
+    pipeline is not a spurious failure here;
+    ``TestTheCrossRepoContract`` below pins the call shape against the real
+    function's signature.
     """
     names = ("city", "canopy_top", "canopy_bottom", "trunk_height_ratio")
     resolved = dict(zip(names, calls["reapply"]["args"]))
@@ -238,6 +248,28 @@ class TestWriteBackRouting:
             "the pipeline wrote the canopy grids itself; reapply_canopy owns "
             "them on this path and may still raise")
         assert not vc.tree_canopy.bottom.any()
+
+    def test_lod2_leaves_the_model_untouched_when_the_overlay_raises(self, env):
+        """reapply_canopy raises ValueError on a missing extras['voxel_min_z'],
+        a mismatched mesh_vegetation_mask, or a canopy shape mismatch. The
+        endpoint treats refinement failures as non-fatal, so a half-written
+        model would sail on with its 2.5-D grids describing crowns the voxel
+        grid does not contain -- for the rest of the session, reported only in a
+        server log. On this path reapply_canopy owns those grids, so the
+        pipeline writes nothing of its own before calling it.
+        """
+        def boom(*a, **k):
+            raise ValueError("extras['voxel_min_z'] is missing or None")
+
+        sys.modules["voxcitygml"].reapply_canopy = boom
+        vc = _Model(building_lod=2)
+        snap = _snapshot(vc)
+
+        with pytest.raises(ValueError):
+            _refine(vc)
+        _assert_unchanged(vc, snap)
+        assert "regenerate" not in env, (
+            "a failed overlay must not fall back to the LOD2-flattening rebuild")
 
     def test_lod2_hands_over_the_canopy_at_component_resolution(self, env):
         """The canopy must keep land_cover's shape, not the voxel grid's.
@@ -328,6 +360,31 @@ class TestSkipPathsLeaveTheModelAlone:
         snap = _snapshot(vc)
 
         assert _refine(vc) is False
+        _assert_unchanged(vc, snap)
+
+    def test_shape_mismatch_is_also_taken_from_the_height_grid(self, env):
+        """The declared ``shape`` agreeing with the model is not enough.
+
+        Isolates the second half of the guard: today's reader builds ``height``
+        by reshaping to the very tuple it reports, so the two can only disagree
+        if the evidence came from somewhere else -- and it is ``height``, not
+        the declared shape, that decides everything downstream
+        (``refine_from_evidence`` takes its working shape from ``height.shape``,
+        and the canopy it returns is what gets written into the component
+        grids). Without this case the whole ``height`` clause can be deleted
+        with the suite still green: the other two mismatch tests both break
+        ``shape`` as well.
+        """
+        env["evidence"] = _evidence(
+            height=np.full((SHAPE[0] + 1, SHAPE[1]), NDSM_HEIGHT),
+            shape=SHAPE)
+        vc = _Model(building_lod=1)
+        snap = _snapshot(vc)
+
+        assert _refine(vc) is False, (
+            "a height grid that does not match the model must be an announced "
+            "no-op, not an exception the caller's non-fatal handler swallows")
+        assert "regenerate" not in env
         _assert_unchanged(vc, snap)
 
 
@@ -500,3 +557,34 @@ class TestInputs:
         assert np.all(vc.tree_canopy.top[tree] == 24.0), (
             "the buildings were flipped into the tree rows: every tree was "
             "treated as roof leakage and replaced")
+
+
+class TestTheCrossRepoContract:
+    @pytest.mark.skipif(_real_reapply_canopy is None,
+                        reason="voxcitygml with reapply_canopy is not installed")
+    def test_the_overlay_call_matches_the_real_reapply_canopy_signature(
+            self, env):
+        """Bind the LOD2 overlay call against the *real* voxcitygml signature.
+
+        ``env`` stubs reapply_canopy with a fake that swallows any argument
+        list, so every other assertion in this file would stay green while
+        production raised TypeError. This replays the captured call -- verbatim,
+        keywords as keywords -- against the real signature, captured at import
+        time before the fixture patched ``sys.modules``.
+
+        This is the only test in the repo that pins that contract; a
+        reapply_canopy rename or arity change in VoxCityGML is otherwise
+        invisible until a generation fails.
+        """
+        vc = _Model(building_lod=2)
+        assert _refine(vc) is True
+        raw = env["reapply"]
+
+        # bind() raises TypeError on an unknown/renamed keyword or a changed
+        # arity.
+        bound = inspect.signature(_real_reapply_canopy).bind(
+            *raw["args"], **raw["kwargs"])
+        # bind() alone is not enough: a *positional* argument binds to whatever
+        # the parameter is now called, so a rename of canopy_top would pass
+        # silently. Assert the names the call actually resolves to.
+        assert bound.arguments.keys() == {"city", "canopy_top", "canopy_bottom"}

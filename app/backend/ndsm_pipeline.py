@@ -32,7 +32,7 @@ from .ndsm_refine import (
     refine_from_evidence,
 )
 
-__all__ = ["refine_canopy_with_ndsm", "TRUNK_HEIGHT_RATIO"]
+__all__ = ["refine_canopy_with_ndsm", "is_lod2_model", "TRUNK_HEIGHT_RATIO"]
 
 #: Crown base as a fraction of crown top. Empirical mean trunk height over mean
 #: total height; kept as the ratio it was measured as rather than rounded.
@@ -45,13 +45,18 @@ _TREE_CLASS_NAMES = ("Tree", "Trees", "Tree Canopy")
 _TREE_ID_FALLBACK = 4
 
 
-def _is_lod2_model(voxcity_obj) -> bool:
+def is_lod2_model(voxcity_obj) -> bool:
     """True if this model's voxels came from LOD2 mesh voxelization.
 
     Such a grid holds true roof/wall geometry that the 2.5-D component grids
     (heights, min-heights, ids) cannot describe, so any ``regenerate_voxels()``
     call would silently replace it with extruded footprints -- i.e. downgrade it
     to LOD1. Callers that would regenerate must check this first.
+
+    Public, and lives here rather than in ``main``, because it is the predicate
+    that decides this module's write-back route -- and ``main`` imports this
+    module, so the dependency can only run one way. ``main`` re-uses it for the
+    apply-edits guard, which refuses the same rebuild for the same reason.
     """
     extras = getattr(voxcity_obj, "extras", None)
     if not isinstance(extras, dict):
@@ -171,7 +176,7 @@ def refine_canopy_with_ndsm(
     # such entrypoint, and bailing out after the component grids were rewritten
     # would leave them describing crowns the voxel grid does not contain.
     reapply_canopy = None
-    if _is_lod2_model(voxcity_obj):
+    if is_lod2_model(voxcity_obj):
         try:
             from voxcitygml import reapply_canopy
         except ImportError as exc:
@@ -223,7 +228,7 @@ def refine_canopy_with_ndsm(
 
     canopy_bottom = _canopy_bottom(canopy)
 
-    # Branch on the binding, not on _is_lod2_model: the two are equivalent only
+    # Branch on the binding, not on is_lod2_model: the two are equivalent only
     # because the probe above returns early when the import fails, and a future
     # non-returning path there would turn this into a call on None.
     if reapply_canopy is not None:

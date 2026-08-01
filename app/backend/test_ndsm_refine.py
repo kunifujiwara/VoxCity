@@ -901,8 +901,9 @@ class TestLoadNdsmEvidenceDegraded:
 #
 # The canopy verdict overrides the coincidence test. That is the whole point of
 # the refactor, and test_tall_tree_beside_matching_building_survives is its
-# acceptance test: the superseded _sanitize_ndsm_canopy flattens that cell to a
-# flat 10 m because its height happens to match the neighbouring roof.
+# acceptance test: the coincidence sanitizer this replaced (since deleted from
+# main.py) flattened that cell to a flat 10 m because its height happens to
+# match the neighbouring roof.
 #
 # Fixture discipline: the grid is 17x13, so rows and columns are never
 # interchangeable; features are placed at least 2*median_radius+2 rows apart so

@@ -1,7 +1,6 @@
 """Tests for the PLATEAU LOD2 generation branch (pipeline mocked)."""
 import builtins
 import dataclasses
-import inspect
 import sys
 import types
 
@@ -25,11 +24,6 @@ try:
     from voxcitygml.grid_utils import compute_grid_params as _real_compute_grid_params
 except ImportError:  # package not installed in this env
     _real_compute_grid_params = None
-
-try:
-    from voxcitygml import reapply_canopy as _real_reapply_canopy
-except ImportError:  # package predates canopy re-apply, or is not installed
-    _real_reapply_canopy = None
 
 
 # Axis-aligned rectangle near Tokyo ([SW, NW, NE, SE], [lon, lat])
@@ -138,11 +132,11 @@ def stubbed(monkeypatch, tmp_path):
     def fake_refine(*a, **k):
         # Recorded, not just stubbed: the endpoint must reach refinement for
         # both LODs. Which *grid-writing* entrypoint refinement then takes
-        # (rebuild vs overlay) is pinned by the unit tests further down.
+        # (rebuild vs overlay) is pinned by ``test_ndsm_pipeline.py``.
         calls['ndsm_called'] = True
         return False
 
-    monkeypatch.setattr(main_mod, "_refine_canopy_with_ndsm", fake_refine)
+    monkeypatch.setattr(main_mod, "refine_canopy_with_ndsm", fake_refine)
     monkeypatch.setattr(main_mod, "_preview_figure_json",
                         lambda *a, **k: "{}")
     monkeypatch.setattr(main_mod, "_preview_disabled_for_shape",
@@ -222,8 +216,8 @@ def test_lod2_runs_ndsm_refinement(stubbed):
     regenerate_voxels() — a rebuild from the 2.5-D component grids that
     replaces true roof/wall geometry with extruded footprints. The checkbox
     rendered, stayed checked, and silently did nothing. The gate is gone: LOD2
-    safety now lives *inside* _refine_canopy_with_ndsm, which overlays the
-    canopy with reapply_canopy instead of rebuilding.
+    safety now lives *inside* ``ndsm_pipeline.refine_canopy_with_ndsm``, which
+    overlays the canopy with reapply_canopy instead of rebuilding.
     """
     client = TestClient(app)
     resp = client.post("/api/generate", json=_base_request())
@@ -582,13 +576,17 @@ def test_capability_probe_failure_does_not_break_health(
     ({"building_lod": "nonsense"}, False),
 ])
 def test_is_lod2_model(extras, expected):
+    # Defined in ``ndsm_pipeline`` (which ``main`` imports, so the dependency
+    # can only run that way) and re-used here for the apply-edits guard.
+    # Exercised through ``main_mod`` on purpose: that is the binding the guard
+    # below actually calls.
     vc = _FakeVoxCity()
     vc.extras = extras
-    assert main_mod._is_lod2_model(vc) is expected
+    assert main_mod.is_lod2_model(vc) is expected
 
 
 def test_is_lod2_model_handles_missing_extras():
-    assert main_mod._is_lod2_model(object()) is False
+    assert main_mod.is_lod2_model(object()) is False
 
 
 @pytest.fixture
@@ -631,319 +629,6 @@ def test_apply_edits_guard_runs_before_any_edit_is_applied(_restore_voxcity,
     })
     assert resp.status_code == 400
     assert called["n"] == 0, "no edit may be applied before the guard rejects"
-
-
-# ---------------------------------------------------------------------------
-# nDSM canopy refinement: which grid-writing entrypoint gets used
-# ---------------------------------------------------------------------------
-
-# Index of "Tree" in _LC_CLASSES below. Deliberately not 0: _refine_canopy_with_
-# ndsm resolves the id with ``name_to_id.get("Tree") or ...``, so a Tree at
-# index 0 would fall through the ``or`` chain to the 4 fallback.
-_TREE_ID = 1
-_LC_CLASSES = {"bareland": "Bareland", "tree": "Tree"}
-# Non-square on purpose: a rows/cols mix-up cannot hide behind it.
-_REFINE_SHAPE = (6, 4)
-
-
-def _asymmetric_land_cover():
-    """Tree cells in the northern rows only — so a north<->south mirror shows.
-
-    An all-tree grid (the obvious fixture) is flip-invariant, which is exactly
-    why the mirrored-canopy defect survived every earlier test. Row 0 is the
-    *southern* edge in voxcity's land-cover frame, so "northern rows" are the
-    high row indices here.
-    """
-    lc = np.zeros(_REFINE_SHAPE, dtype=np.int16)
-    lc[_REFINE_SHAPE[0] // 2:, :] = _TREE_ID
-    return lc
-
-
-class _RefineModel:
-    """Stand-in VoxCity carrying exactly the grids _refine_canopy_with_ndsm reads."""
-
-    def __init__(self, building_lod: int, land_cover=None):
-        self.land_cover = types.SimpleNamespace(
-            classes=(_asymmetric_land_cover() if land_cover is None
-                     else land_cover))
-        self.buildings = types.SimpleNamespace(
-            heights=np.zeros(_REFINE_SHAPE, dtype=float))
-        self.tree_canopy = types.SimpleNamespace(
-            top=np.zeros(_REFINE_SHAPE, dtype=float),
-            bottom=np.zeros(_REFINE_SHAPE, dtype=float))
-        self.voxels = types.SimpleNamespace(
-            classes=np.zeros((*_REFINE_SHAPE, 3), dtype=np.int16))
-        self.extras = {"building_lod": building_lod}
-
-
-@pytest.fixture
-def refine_env(monkeypatch):
-    """Record which grid-writing entrypoint _refine_canopy_with_ndsm reaches.
-
-    Both are stubbed, so a test can assert on the one that *was not* called —
-    which is the whole point: calling the wrong one is the bug. Arrays handed
-    to the stub are copied on capture, never held by reference: the real
-    reapply_canopy writes through the model's grids, and regenerate_voxels
-    rebinds ``city.voxels`` outright, so a retained reference would report
-    pre-call state and pass on the very regression it exists to catch.
-    """
-    calls = {}
-
-    monkeypatch.setattr(main_mod, "get_land_cover_classes",
-                        lambda source: _LC_CLASSES)
-    monkeypatch.setattr(main_mod, "_load_ndsm_grid",
-                        lambda verts, meshsize: np.full(_REFINE_SHAPE, 8.0))
-
-    def fake_regenerate(obj, **kwargs):
-        calls['regenerate'] = kwargs
-
-    monkeypatch.setattr(main_mod, "regenerate_voxels", fake_regenerate)
-
-    fake_pkg = types.ModuleType("voxcitygml")
-
-    def fake_reapply(*args, **kwargs):
-        # Captured verbatim, positional-vs-keyword included: the signature test
-        # replays this against the *real* reapply_canopy, so normalizing the
-        # call here would hide exactly the renamed parameter it exists to
-        # catch. ndarrays are snapshotted, never held by reference.
-        def snap(v):
-            return v.copy() if isinstance(v, np.ndarray) else v
-
-        calls['reapply'] = {
-            'args': tuple(snap(a) for a in args),
-            'kwargs': {k: snap(v) for k, v in kwargs.items()},
-        }
-
-    fake_pkg.reapply_canopy = fake_reapply
-    monkeypatch.setitem(sys.modules, "voxcitygml", fake_pkg)
-    return calls
-
-
-def _refine(vc):
-    return main_mod._refine_canopy_with_ndsm(
-        vc, RECT, meshsize=5.0, land_cover_source="OpenEarthMapJapan")
-
-
-def _overlay_args(calls):
-    """The captured reapply_canopy call, resolved to parameter names.
-
-    Accepts either calling convention so a switch between positional and
-    keyword in the backend is not a spurious failure here — the *signature*
-    test is what pins the call shape against the real function.
-    """
-    names = ("city", "canopy_top", "canopy_bottom", "trunk_height_ratio")
-    resolved = dict(zip(names, calls['reapply']['args']))
-    resolved.update(calls['reapply']['kwargs'])
-    return resolved
-
-
-# The trunk ratio _refine_canopy_with_ndsm derives crown bases with.
-_TRUNK_RATIO = 11.76 / 19.98
-# _load_ndsm_grid is stubbed to this, and the sanitizer leaves it alone: it is
-# within [min_tree_height_m, max_tree_height_m] and the model has no buildings,
-# so no leakage/outlier rule fires.
-_NDSM_HEIGHT = 8.0
-
-
-def _land_frame_canopy():
-    """The canopy as built upstream: _NDSM_HEIGHT at tree cells, south-up.
-
-    Derived from _asymmetric_land_cover() rather than restating its layout, so
-    that reverting *only* the fixture to something flip-invariant trips the
-    non-vacuity guard in the mirror test — with its explanation — instead of
-    failing an unrelated equality first as a bare `assert False`.
-    """
-    return np.where(_asymmetric_land_cover() == _TREE_ID, _NDSM_HEIGHT, 0.0)
-
-
-def _expected_overlay_top():
-    """The canopy reapply_canopy should receive: tree cells, unreoriented.
-
-    Every grid in the model shares one frame, so the canopy goes over exactly as
-    it was built from the land cover.
-    """
-    return _land_frame_canopy()
-
-
-def test_refine_lod1_rebuilds_the_voxel_grid(refine_env):
-    """LOD1 keeps the rebuild: its voxels *are* extruded footprints, so
-    regenerating from the revised component grids is the correct update."""
-    vc = _RefineModel(building_lod=1)
-    assert _refine(vc) is True
-    assert 'regenerate' in refine_env
-    assert refine_env['regenerate']['inplace'] is True
-    assert refine_env['regenerate']['land_cover_source'] == "OpenEarthMapJapan"
-    assert 'reapply' not in refine_env
-
-
-def test_refine_lod2_overlays_instead_of_rebuilding(refine_env):
-    """LOD2 must take reapply_canopy, which clears and rewrites only canopy
-    voxels. regenerate_voxels here would discard the mesh-voxelized roof/wall
-    geometry the mode exists to produce — measured on real data as roof-slope
-    0.1512 -> 0.0965 and 26,088 -> 21,623 building voxels."""
-    vc = _RefineModel(building_lod=2)
-    assert _refine(vc) is True
-    assert 'reapply' in refine_env
-    assert 'regenerate' not in refine_env, (
-        "regenerate_voxels rebuilds from the 2.5-D grids and flattens LOD2")
-
-    overlay = _overlay_args(refine_env)
-    assert overlay['city'] is vc
-    # Pin the values, not a re-read of the model's own grids: on this path
-    # reapply_canopy writes those grids itself, so comparing against them would
-    # only assert that the (stubbed) overlay did nothing.
-    assert np.array_equal(overlay['canopy_top'], _expected_overlay_top())
-    assert overlay.get('canopy_bottom') is not None, (
-        "voxcitygml's own default trunk ratio currently equals ours, so "
-        "passing the ratio instead would yield the same array today — passing "
-        "the derived bottom keeps that a coincidence we don't depend on")
-    assert np.allclose(overlay['canopy_bottom'],
-                       _expected_overlay_top() * _TRUNK_RATIO)
-
-
-def test_refine_lod2_hands_the_canopy_over_unreoriented(refine_env):
-    """The canopy must reach reapply_canopy in the frame it was built in.
-
-    It is built from land_cover.classes, which is south-up (row 0 = southern
-    edge). voxcitygml returns a model that is south-up throughout — DEM, canopy
-    and voxel grid included — so reapply_canopy writes into that same frame and
-    a flip here would land the crowns mirrored north<->south.
-
-    The land cover here is asymmetric for a reason — an all-tree grid is
-    flip-invariant, which is precisely how the mirrored-canopy defect survived
-    earlier tests.
-    """
-    vc = _RefineModel(building_lod=2)
-    assert _refine(vc) is True
-
-    got = _overlay_args(refine_env)['canopy_top']
-    land_frame = _land_frame_canopy()
-
-    assert np.array_equal(got, land_frame)
-    assert not np.array_equal(got, np.flipud(land_frame)), (
-        "the canopy was flipped out of the land-cover frame on the way to "
-        "reapply_canopy — it would land mirrored north<->south in the voxel grid")
-
-
-def test_refine_lod2_hands_over_the_canopy_at_component_resolution(refine_env):
-    """The canopy must keep land_cover's shape, not the voxel grid's.
-
-    reapply_canopy resamples a mismatched canopy itself — as it already does
-    for the DEM — but it *stores* what the caller passed. Pre-resampling to the
-    voxel shape would therefore leave tree_canopy.top at voxel resolution while
-    land_cover, dem and buildings stayed at component resolution: the 2.5-D
-    grids desync from each other, and a later update_voxcity raises
-    "Grid shape mismatch". Resampling is the package's job.
-    """
-    vc = _RefineModel(building_lod=2)
-    voxel_shape = (_REFINE_SHAPE[0] * 2, _REFINE_SHAPE[1] * 2)
-    vc.voxels = types.SimpleNamespace(
-        classes=np.zeros((*voxel_shape, 3), dtype=np.int16))
-
-    assert _refine(vc) is True
-    overlay = _overlay_args(refine_env)
-    assert overlay['canopy_top'].shape == _REFINE_SHAPE, (
-        "the canopy was pre-resampled to the voxel grid; what reapply_canopy "
-        "stores would then desync tree_canopy from the other 2.5-D grids")
-    assert overlay['canopy_bottom'].shape == _REFINE_SHAPE
-    assert vc.land_cover.classes.shape == _REFINE_SHAPE
-
-
-def test_refine_lod2_skips_when_reapply_canopy_is_unavailable(refine_env):
-    """An older voxcitygml has no reapply_canopy. Refinement is optional and
-    non-fatal, so it degrades to a no-op — but it must NOT fall back to
-    regenerate_voxels, which would silently destroy the LOD2 geometry that the
-    missing entrypoint exists to protect."""
-    del sys.modules["voxcitygml"].reapply_canopy
-    vc = _RefineModel(building_lod=2)
-
-    assert _refine(vc) is False, "the caller logs the reason when this is False"
-    assert 'regenerate' not in refine_env, (
-        "no silent fallback: rebuilding is exactly what LOD2 must never do")
-    assert 'reapply' not in refine_env
-    # Bailing out after the component grids were rewritten would leave them
-    # describing crowns the voxel grid does not contain, so the check has to
-    # run before any mutation — same rule as the apply_edits guard.
-    assert not vc.tree_canopy.top.any(), "model must be left untouched"
-    assert not vc.tree_canopy.bottom.any(), "model must be left untouched"
-
-
-@pytest.mark.parametrize("building_lod", [2, 1])
-def test_refine_passes_buildings_to_the_sanitizer_unreoriented(
-        refine_env, monkeypatch, building_lod):
-    """_sanitize_ndsm_canopy compares tree cells against nearby building
-    heights, so both grids must share a frame — and they already do.
-
-    buildings.heights and land_cover.classes (hence canopy and tree_mask) are
-    both south-up in every model, LOD1 and LOD2 alike. Reorienting either one
-    would compare each tree cell against the buildings on the opposite side of
-    the rectangle.
-    """
-    seen = {}
-
-    def spy(canopy, building_heights, **kwargs):
-        seen['heights'] = np.asarray(building_heights).copy()
-        return canopy
-
-    monkeypatch.setattr(main_mod, "_sanitize_ndsm_canopy", spy)
-
-    vc = _RefineModel(building_lod=building_lod)
-    # Asymmetric, like the land cover, so a stray flip is observable.
-    heights = np.zeros(_REFINE_SHAPE)
-    heights[:_REFINE_SHAPE[0] // 2, :] = 20.0
-    vc.buildings.heights = heights
-
-    _refine(vc)
-
-    assert np.array_equal(seen['heights'], heights)
-    assert not np.array_equal(seen['heights'], np.flipud(heights)), (
-        "buildings were flipped out of the canopy's frame — each tree cell "
-        "would be checked against the buildings on the opposite side")
-
-
-def test_refine_lod2_leaves_the_model_untouched_when_the_overlay_raises(
-        refine_env):
-    """reapply_canopy raises ValueError on a missing extras['voxel_min_z'], a
-    mismatched mesh_vegetation_mask, or a canopy shape mismatch. The endpoint
-    treats refinement failures as non-fatal, so a half-written model would sail
-    on with its 2.5-D grids describing crowns the voxel grid does not contain —
-    for the rest of the session, reported only in a server log. On this path
-    reapply_canopy owns those grids, so the app writes nothing of its own.
-    """
-    def boom(*a, **k):
-        raise ValueError("extras['voxel_min_z'] is missing or None")
-
-    sys.modules["voxcitygml"].reapply_canopy = boom
-    vc = _RefineModel(building_lod=2)
-
-    with pytest.raises(ValueError):
-        _refine(vc)
-    assert not vc.tree_canopy.top.any(), "the canopy grids must be untouched"
-    assert not vc.tree_canopy.bottom.any(), "the canopy grids must be untouched"
-
-
-@pytest.mark.skipif(_real_reapply_canopy is None,
-                    reason="voxcitygml with reapply_canopy is not installed")
-def test_refine_lod2_call_matches_the_real_reapply_canopy_signature(refine_env):
-    """Bind the cross-repo contract, as the VoxelizerConfig test does above.
-
-    ``refine_env`` stubs reapply_canopy with a fake that swallows any argument
-    list, so every other assertion here would stay green while production
-    raised TypeError. This replays the captured call — verbatim, keywords as
-    keywords — against the *real* signature, captured at import time before the
-    fixture patched ``sys.modules``.
-    """
-    vc = _RefineModel(building_lod=2)
-    assert _refine(vc) is True
-    raw = refine_env['reapply']
-
-    # bind() raises TypeError on an unknown/renamed keyword or a changed arity.
-    bound = inspect.signature(_real_reapply_canopy).bind(*raw['args'],
-                                                         **raw['kwargs'])
-    # bind() alone is not enough: a *positional* argument binds to whatever the
-    # parameter is now called, so a rename of canopy_top would pass silently.
-    # Assert the names the call actually resolves to.
-    assert bound.arguments.keys() == {"city", "canopy_top", "canopy_bottom"}
 
 
 # ---------------------------------------------------------------------------

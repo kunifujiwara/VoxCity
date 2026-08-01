@@ -319,8 +319,9 @@ def load_ndsm_evidence(
     coordinate, never by index arithmetic.
 
     Heights are returned exactly as the raster stores them, negatives included:
-    clamping is the canopy builder's job (``_build_canopy_from_ndsm``), and a
-    reader that silently clamped would hide a botched ground surface.
+    clamping is the classifier's job (:func:`classify_and_refine`'s
+    below-minimum guard), and a reader that silently clamped would hide a
+    botched ground surface.
 
     Precondition on the COG writer: nodata must co-occur across all six bands.
     Where band 1 is nodata but the count bands are not, this returns a NaN height
